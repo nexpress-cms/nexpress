@@ -1,0 +1,161 @@
+⸻
+
+NexPress 기획서 v3 — 요약본
+
+⸻
+
+1. 한 줄 요약
+
+"Payload가 개발자의 프레임워크라면, NexPress는 운영자의 제품이다."
+
+WordPress의 쉬움과 범용성을 Next.js 위에서 다시 만드는 오픈소스 CMS.
+사람은 Admin UI로 운영하고, AI 에이전트는 선언적 인터페이스로 조립한다.
+
+⸻
+
+2. 핵심 포지셔닝
+
+  WordPress보다 현대적
+  Payload보다 운영자 친화적
+  Directus보다 사이트 중심
+  Ghost보다 범용적
+  코드 생성형 빌더보다 재현 가능
+
+차별화 축: 비개발자 운영 UX + 에이전트 선언적 인터페이스
+경쟁 회피: 개발자 중심 기능에서 Payload와 정면 경쟁하지 않음
+
+⸻
+
+3. 핵심 아키텍처 결정
+
+  ┌─────────────────────────────────────────────────┐
+  │                결정 사항 요약                      │
+  ├──────────────────┬──────────────────────────────┤
+  │ 콘텐츠 모델링      │ Code-first (MVP) + UI 보조   │
+  │ 테마 시스템        │ CSS Custom Properties        │
+  │                  │ + Cascade Layers (3-Layer)   │
+  │ 플러그인 격리      │ Trust → Permission → R&D     │
+  │                  │ (MVP에서 샌드박스 약속 안 함)    │
+  │ 에이전트 레이어    │ 인터페이스만 제공               │
+  │                  │ AI 로직은 CMS 바깥             │
+  │ 리치 텍스트       │ Lexical (Meta)               │
+  │ DB              │ PostgreSQL + Drizzle ORM      │
+  │ Admin UI        │ React + Tailwind v4 + shadcn  │
+  │ 모노레포         │ pnpm + Turborepo             │
+  │ 배포            │ Docker + standalone output    │
+  └──────────────────┴──────────────────────────────┘
+
+⸻
+
+4. 테마 시스템 (v3 신규)
+
+  Layer 3: Block Overrides — className 슬롯 (고급, 선택적)
+  Layer 2: Site Theme     — CSS Custom Properties 오버라이드
+  Layer 1: Token Contract — --nx-color-*, --nx-font-*, --nx-radius-*
+
+  @layer nx-base, nx-blocks, nx-theme, nx-overrides;
+
+- 플러그인 블록은 --nx-* 변수만 참조 → 사이트 테마에 자동 적응
+- Admin UI에서 비개발자가 색상/폰트/radius 조절 가능
+- 에이전트는 테마 JSON으로 시각 아이덴티티 선언적 제어
+- RSC 환경에서 zero-runtime (서버에서 CSS 변수 주입)
+
+⸻
+
+5. 에이전트 인터페이스 (v2→v3 핵심 변경)
+
+v2: CMS 안에 AI 추론 로직 포함 (추천, 자동 선택, 자동 생성)
+v3: CMS는 인터페이스만 제공, AI 로직은 외부 에이전트가 수행
+
+NexPress가 제공:
+  - nexpress.config.json (선언적 사이트 구성 스펙)
+  - 블록/플러그인 manifest (JSON Schema + 자연어 설명)
+  - REST API 전체 CRUD + OpenAPI 스펙
+  - 테마 토큰 JSON API
+  - Import/Export 단일 JSON
+
+외부 에이전트가 수행:
+  - 요구사항 해석
+  - 플러그인/블록 선택
+  - 블록 트리 구조 생성
+  - 콘텐츠 초안 작성
+
+⸻
+
+6. MVP 2단계 분리
+
+MVP-α — 블로그 CMS (8-10주)
+  "설치 → 로그인 → 포스트 작성 → 사이트 확인" 매끄럽게 동작
+
+  포함: 인증, Post/Page/Media, Lexical 편집기,
+       Draft/Publish, Revision, SEO, 프리뷰,
+       Revalidation, Docker, 기본 테마
+
+MVP-β — 페이지 빌더 + 확장성 (추가 10-12주)
+
+  포함: 블록 편집기, 드래그앤드롭, 기본 블록 세트,
+       Block Registry, 플러그인 시스템(Trust-based),
+       테마 Admin UI, 선언적 구성 포맷,
+       에이전트 인터페이스 초안
+
+성공 기준: "5분 안에 wow"
+  npx create-nexpress my-site && cd my-site && docker compose up
+  → localhost:3000 사이트 + localhost:3000/admin 관리자
+
+⸻
+
+7. 프로젝트 구조
+
+  nexpress/
+  ├── packages/
+  │   ├── core/         # 콘텐츠 모델, DB, 인증, API
+  │   ├── admin/        # 관리자 UI
+  │   ├── blocks/       # 기본 블록 컴포넌트
+  │   ├── editor/       # 리치텍스트 + 블록 편집기
+  │   ├── theme/        # 테마 엔진
+  │   ├── cli/          # create-nexpress
+  │   └── plugin-sdk/   # 플러그인 SDK + lint
+  ├── apps/
+  │   └── web/          # 레퍼런스 사이트
+  └── docker/
+
+⸻
+
+8. 로드맵 요약
+
+  Phase 1  코어 성립 (MVP-α)        → 블로그 CMS
+  Phase 2  페이지 빌더 + 테마 (MVP-β) → 블록 편집, 테마 UI
+  Phase 3  플러그인 생태계            → SDK, Permission-scoped
+  Phase 4  에이전트 인터페이스 고도화   → OpenAPI, manifest 안정화
+  Phase 5  WordPress 마이그레이션     → 콘텐츠/미디어 이전
+  Phase 6  격리 플러그인 런타임       → 장기 R&D
+
+⸻
+
+9. 주요 리스크 & 대응
+
+  범위 과대화     → MVP α/β 2단계 분리
+  빌더 복잡도     → 초기 제한된 블록 조합, 자유형 편집기 제외
+  플러그인 격리   → 3단계 전략, MVP에서 샌드박스 미약속
+  생태계 부재     → 코어 팀이 기본 블록/플러그인 충분히 제공
+  Payload 열화판  → 운영자 UX + 에이전트 인터페이스에 차별화 집중
+  에이전트 미완성  → AI 로직 아닌 인터페이스에 집중
+
+⸻
+
+10. v2 → v3 변경사항 대조
+
+  v2                          v3
+  ─────────────────────────────────────────────────
+  Payload 언급 없음            → 정면 비교, 차별화 전략 명시
+  콘텐츠 모델링 미정의          → Code-first + UI 보조 Hybrid
+  에이전트 = CMS 내부 AI 로직   → 에이전트 = 외부, CMS = 인터페이스
+  샌드박스 플러그인 약속         → 3단계 격리, MVP에서 미약속
+  테마 시스템 없음              → CSS Custom Properties 3-Layer
+  단일 MVP                    → MVP-α (8-10주) + MVP-β (10-12주)
+  "WordPress처럼 쉬운 설치"     → Docker/Cloud 원클릭으로 재정의
+  기술 스택 미정의              → 구체적 스택 확정
+  프로젝트 구조 없음            → monorepo 패키지 구조 명시
+  리스크만 나열                → 리스크 + 구체적 대응 방안
+
+⸻
