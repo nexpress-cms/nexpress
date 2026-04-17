@@ -1,0 +1,1049 @@
+⸻
+
+Next.js 기반 오픈소스 CMS 기획서 v3
+
+프로젝트명 가칭: NexPress
+
+부제: Next.js 시대의 WordPress 대체재
+
+보조 슬로건: 사람과 AI 에이전트 모두를 위한 CMS
+
+⸻
+
+1. 프로젝트 개요
+
+본 프로젝트는 Next.js 기반의 오픈소스 CMS를 개발하여,
+기존 WordPress가 담당해온 "누구나 쉽게 설치하고 운영할 수 있는 범용 CMS"의 역할을
+현대적인 웹 아키텍처 위에서 다시 구현하는 것을 목표로 한다.
+
+현재 CMS 시장에는 다양한 헤드리스 CMS가 존재하지만,
+대부분은 개발자 중심이며 콘텐츠 저장소 역할에 집중되어 있다.
+반면 WordPress는 여전히 강력한 운영 경험, 쉬운 설치, 풍부한 확장성, 비개발자 친화성 덕분에 뚜렷한 대체재가 부족하다.
+
+본 프로젝트는 단순한 헤드리스 CMS가 아니라,
+다음의 가치를 동시에 만족하는 현대적 WordPress 대체재를 지향한다.
+
+* Next.js 네이티브
+* Self-hosted 우선
+* 비개발자 친화적 관리자 경험
+* React 컴포넌트 기반 확장성
+* 단계적 격리 플러그인 구조
+* AI 에이전트 친화적 선언형 인터페이스
+* 오픈소스 커뮤니티 중심 성장
+
+⸻
+
+2. 문제 정의
+
+2.1 기존 WordPress의 한계
+
+WordPress는 여전히 강력하지만 다음과 같은 구조적 한계를 가진다.
+
+* 오래된 PHP 기반 구조
+* 플러그인 충돌과 보안 취약성
+* 복잡한 테마/플러그인 의존성
+* 현대적인 React/Next.js 개발 흐름과의 거리
+* 대규모 커스터마이징 시 개발 생산성 저하
+
+2.2 기존 헤드리스 CMS의 한계
+
+Strapi, Directus, Payload, Keystone 등 다양한 헤드리스 CMS가 존재하지만 다음과 같은 한계가 있다.
+
+* 비개발자 입장에서 운영 UX가 부족함
+* 사이트 운영형 CMS보다는 API/콘텐츠 저장소에 가까움
+* 설치형 범용 CMS의 감각이 약함
+* 페이지 편집, 미리보기, 플러그인 확장 경험이 WordPress만큼 직관적이지 않음
+
+2.3 Payload CMS v3와의 관계
+
+Payload CMS v3는 Next.js App Router 위에서 동작하는 검증된 풀스택 CMS이다.
+본 프로젝트와 기술 기반이 겹치며, 블록 필드, 플러그인, Draft/Publish 등 핵심 기능이 성숙해 있다.
+
+그러나 Payload는 개발자 중심 프레임워크로서 다음 영역에 여전히 공백이 있다.
+
+* 비개발자가 코드 없이 사이트를 구성하고 편집하는 운영 UX
+* AI 에이전트가 소비할 수 있는 선언적 사이트 조립 인터페이스
+* WordPress급 설치/온보딩 경험
+* CSS Custom Properties 기반 통합 테마 시스템
+
+본 프로젝트는 Payload를 적이 아닌 참조 구현으로 본다.
+검증된 아키텍처 패턴(DB 어댑터, Config 기반 플러그인, Block 타입)은 학습하되,
+차별화 축은 "운영자 UX"와 "에이전트 인터페이스"에 집중한다.
+
+핵심 포지셔닝:
+
+"Payload는 개발자를 위한 프레임워크, NexPress는 운영자를 위한 제품."
+
+2.4 AI 기반 사이트 제작 방식의 한계
+
+AI 에이전트를 활용한 사이트 제작은 늘어나고 있지만,
+현재 방식은 종종 "매번 새 코드를 대량 생성하는 방식"에 의존한다.
+
+이 방식은 다음과 같은 한계가 있다.
+
+* 높은 토큰 사용량
+* 코드 품질 편차
+* 반복 수정 시 재생성 비용 증가
+* 유지보수 일관성 부족
+* 검증되지 않은 코드 누적 가능성
+* 보안/성능 기준 통제 어려움
+
+2.5 시장의 빈 공간
+
+현재 시장에는 다음 조건을 동시에 만족하는 제품이 부족하다.
+
+* 오픈소스
+* 셀프 설치 가능 (Docker/Cloud 원클릭)
+* 비개발자 운영 친화적
+* React/Next.js 중심
+* 현대적 보안 구조
+* 플러그인 확장 가능
+* AI 에이전트가 선언적 인터페이스를 통해 조립형 구축 가능
+
+이 프로젝트는 바로 이 빈 공간을 겨냥한다.
+
+⸻
+
+3. 비전
+
+3.1 목표
+
+"WordPress의 쉬움과 범용성을, Next.js와 React 생태계 위에서 다시 구현한다."
+
+3.2 핵심 비전 문장
+
+* Next.js 시대의 WordPress 대체재
+* Self-hosted by default, modern by design
+* WordPress의 운영 경험 + 현대적 보안 모델
+* 데이터뿐 아니라 React 컴포넌트를 확장하는 CMS
+* 사람과 AI 에이전트 모두를 위한 구축 플랫폼
+
+3.3 지향점
+
+이 프로젝트는 단순 CMS가 아니라 다음을 지향한다.
+
+* 개발자에게는 타입 안정적이고 현대적인 CMS 프레임워크
+* 운영자에게는 WordPress처럼 쉬운 관리자 도구
+* 커뮤니티에게는 플러그인과 테마를 만들 수 있는 오픈 플랫폼
+* AI 에이전트에게는 잘 정의된 선언적 인터페이스를 통해 사이트를 조립할 수 있는 시스템
+
+⸻
+
+4. 제품 포지셔닝
+
+4.1 무엇을 만들 것인가
+
+본 프로젝트는 다음 성격을 가진다.
+
+* 헤드리스 CMS이기도 하지만, 그것만이 아님
+* 사이트 운영형 CMS이면서 개발 친화적임
+* 관리자 UI와 공개 사이트를 같은 Next.js 기반에서 통합 가능
+* 콘텐츠를 단순 데이터가 아니라 React 컴포넌트 기반 블록 구조로 다룰 수 있음
+* 사람뿐 아니라 AI 에이전트가 조립하기 쉬운 CMS임
+
+4.2 경쟁 제품 대비 포지션
+
+우리가 목표로 하는 위치는 다음과 같다.
+
+* WordPress보다 현대적
+* Payload보다 운영자 친화적 (비개발자 UX에 집중)
+* Directus보다 사이트 친화적
+* Ghost보다 범용적
+* 코드 생성형 웹 빌더보다 유지보수 가능하고 재현 가능한 구조
+
+4.3 핵심 차별점
+
+1. Next.js 네이티브
+2. 비개발자 중심 운영 경험 (WordPress급 관리자 UX)
+3. CSS Custom Properties 기반 통합 테마 시스템
+4. React 컴포넌트 공유 기반 확장성
+5. 단계적 격리 플러그인 구조
+6. AI 에이전트가 소비하기 좋은 선언적 인터페이스
+7. WordPress 마이그레이션 친화성
+
+⸻
+
+5. 주요 대상 사용자
+
+5.1 1차 타겟
+
+a. 소규모 웹 에이전시 / 프리랜서
+
+* 고객용 웹사이트를 빠르게 제작하고 유지보수해야 함
+* WordPress는 익숙하지만 더 현대적인 스택을 원함
+* 고객이 직접 수정 가능한 CMS가 필요함
+
+b. Next.js 기반 스타트업/개발팀
+
+* 서비스, 마케팅 사이트, 블로그를 같은 기술 스택으로 통합하고 싶음
+* 마케팅팀이 직접 콘텐츠를 수정해야 함
+* CMS와 프론트엔드를 따로 운영하는 부담을 줄이고 싶음
+
+c. AI 에이전트 기반 구축 워크플로를 활용하는 팀
+
+* 사이트 제작 자동화 비율을 높이고 싶음
+* 반복적으로 비슷한 사이트를 빠르게 구축하고 싶음
+* 코드 생성보다 조립 기반 자동화를 선호함
+
+5.2 2차 타겟
+
+* 개인 블로거
+* 기술 문서 사이트 운영팀
+* 기업 홈페이지 운영팀
+* 셀프호스팅 선호 커뮤니티/기관
+* AI 기반 제작 서비스를 운영하는 플랫폼/에이전시
+
+⸻
+
+6. 핵심 가치 제안
+
+6.1 운영자 입장
+
+* Docker 또는 클라우드 원클릭으로 쉽게 설치 가능
+* 관리자 페이지에서 코드 없이 직접 편집 가능
+* 초안/게시/수정 이력 관리 가능
+* 페이지와 콘텐츠를 직관적으로 편집 가능
+* 플러그인 설치로 기능 확장 가능
+* 테마 색상/폰트/스타일을 관리자 UI에서 조절 가능
+
+6.2 개발자 입장
+
+* Next.js와 React 기반으로 익숙한 개발 경험
+* TypeScript 기반 타입 안정성
+* App Router, SSR, RSC, Draft Mode, Revalidation 적극 활용
+* 같은 리포지토리에서 사이트와 CMS 동시 운영 가능
+* npm 생태계와 연결된 확장 구조
+* Code-first 콘텐츠 모델링으로 타입 자동 생성
+
+6.3 AI 에이전트 입장
+
+* 잘 정의된 JSON Schema와 REST API로 사이트 CRUD 가능
+* 블록/플러그인의 machine-readable manifest로 기능 이해 가능
+* 선언적 사이트 구성 포맷(nexpress.config.json)으로 전체 사이트 조립 가능
+* 테마 토큰 JSON으로 시각 아이덴티티 제어 가능
+* 적은 토큰으로 빠르고 일관된 결과 생성 가능
+* import/export 단일 JSON으로 사이트 복제/수정 가능
+
+⸻
+
+7. 핵심 제품 컨셉
+
+7.1 컴포넌트 네이티브 CMS
+
+기존 CMS는 대개 콘텐츠를 HTML이나 리치 텍스트 중심으로 저장한다.
+본 프로젝트는 한 단계 더 나아가 React 컴포넌트 자체를 콘텐츠 확장의 단위로 삼는다.
+
+예를 들어 페이지는 다음과 같은 블록 트리 구조로 저장된다.
+
+* HeroSection
+* FeatureGrid
+* PricingTable
+* FAQBlock
+* RichTextBlock
+* RecentPostsBlock
+
+각 블록은 단순 텍스트 조각이 아니라,
+실제 Next.js/React 컴포넌트와 연결되어 렌더링된다.
+
+7.2 사이트 + 관리자 + API의 통합
+
+다음 세 요소를 같은 플랫폼 안에서 통합적으로 제공한다.
+
+* 공개 사이트 렌더링
+* 관리자 패널
+* API / 콘텐츠 전달 레이어
+
+7.3 Self-hosting 우선
+
+이 프로젝트는 SaaS가 아니라 설치형 오픈소스를 기본으로 한다.
+
+WordPress의 설치 용이성은 PHP + MySQL의 공유 호스팅 환경에 기반한다.
+Next.js 앱은 Node.js 런타임과 PostgreSQL을 필요로 하므로 설치 환경이 근본적으로 다르다.
+
+따라서 "쉬운 설치"를 현대적 인프라 맥락에서 재정의한다.
+
+핵심 설치 목표:
+
+* docker compose up 원커맨드 실행
+* Vercel / Railway / Render 원클릭 deploy 버튼
+* CLI 위저드 (npx create-nexpress)
+* DigitalOcean / Hetzner 마켓플레이스 앱 (향후)
+* PostgreSQL + S3 호환 object storage 조합 지원
+* 로컬 개발 환경 간편 구성
+
+"5분 안에 wow" 경험 목표:
+
+  npx create-nexpress my-site
+  cd my-site
+  docker compose up
+  → localhost:3000 에 사이트
+  → localhost:3000/admin 에 관리자 패널
+
+이 경험이 Phase 1의 진짜 완성 기준이다.
+
+7.4 에이전트-네이티브 인터페이스
+
+본 프로젝트는 인간 사용자의 관리자 경험뿐 아니라,
+AI 에이전트가 웹사이트를 생성하고 수정하는 흐름까지 고려한다.
+
+중요한 원칙: NexPress는 AI 엔진이 아니라, AI가 소비하기 좋은 인터페이스를 제공하는 플랫폼이다.
+
+"요구사항 해석", "플러그인 추천", "블록 자동 선택" 같은 AI 추론 로직은
+CMS 바깥의 에이전트가 수행하는 영역이며, NexPress는 그 에이전트가 작업할 수 있는
+잘 정의된 입출력 인터페이스를 제공하는 데 집중한다.
+
+NexPress가 에이전트에게 제공하는 것:
+
+* nexpress.config.json — 선언적 사이트 구성 스펙
+* 블록/플러그인 registry의 machine-readable manifest (JSON Schema + 자연어 설명)
+* REST API의 일관된 CRUD (어떤 에이전트든 호출 가능)
+* 테마 토큰 JSON API (시각 아이덴티티 선언적 제어)
+* import/export 단일 JSON 포맷 (사이트 전체 직렬화)
+
+에이전트가 NexPress 위에서 수행하는 것 (CMS 바깥):
+
+* 사용자 요구사항 해석
+* 적절한 플러그인/블록 선택
+* 블록 트리 구조 생성
+* 콘텐츠 초안 작성
+* 테마 토큰 결정
+
+이 방식은 다음 장점을 가진다.
+
+* CMS 코어가 AI 로직에 의존하지 않아 안정적
+* 어떤 AI 모델/에이전트든 동일한 인터페이스로 연동 가능
+* 적은 토큰으로 선언적 조립 가능
+* 높은 재현성과 유지보수 일관성
+
+⸻
+
+8. 제품 핵심 기능
+
+8.1 콘텐츠 모델링
+
+모델링 방식: Code-first + UI 보조 (Hybrid)
+
+MVP에서는 Code-first 방식을 기본으로 한다.
+개발자가 TypeScript 코드로 콘텐츠 모델(Collection)을 정의하면,
+DB 스키마, Admin UI, TypeScript 타입이 자동 생성된다.
+
+향후(Phase 3 이후) Admin UI에서 기본 필드 추가/수정을 지원하여
+비개발자도 간단한 모델 변경이 가능하도록 확장한다.
+
+기능 목록:
+
+* Collection 정의 (코드 기반)
+* 필드 타입 정의 (text, richText, number, select, relationship, blocks, upload 등)
+* 관계형 필드
+* slug 자동 생성
+* SEO 메타 필드
+* 상태 관리 (draft / published)
+* 다국어 확장 가능 구조 (i18n 필드 레벨)
+* TypeScript 타입 자동 생성
+
+8.2 관리자 기능
+
+* 로그인 / 세션 관리
+* 역할 기반 접근 제어 (RBAC)
+* 콘텐츠 목록 / 검색 / 필터
+* Draft / Publish 워크플로
+* Revision history (버전 비교 가능)
+* 미디어 라이브러리
+* 페이지/블록 편집 UI
+* 실시간 또는 근실시간 프리뷰
+* 테마 설정 UI (색상/폰트/스타일 조절)
+
+8.3 편집 기능
+
+* 리치 텍스트 편집기 (Lexical 기반)
+* 블록 기반 페이지 구성
+* 섹션 드래그앤드롭 재배치
+* 블록별 props 설정 UI
+* 초안 미리보기
+* 페이지별 SEO 설정
+
+8.4 사이트 렌더링 기능
+
+* SSR / SSG / ISR 활용
+* Draft Mode 기반 초안 미리보기
+* revalidatePath / revalidateTag 기반 게시 반영
+* Route Handler 기반 웹훅/API
+* Server Actions 기반 관리자 작업 처리
+
+8.5 미디어 기능
+
+* 파일 업로드
+* sharp 기반 이미지 최적화
+* 스토리지 추상화 (로컬 파일시스템 / S3 호환)
+* 향후 CDN 연계
+
+8.6 에이전트 인터페이스
+
+NexPress가 에이전트에게 제공하는 기계 판독 가능한 인터페이스:
+
+* 블록/플러그인 manifest (JSON Schema + 자연어 description)
+  - 블록별 입력 props 스키마
+  - 플러그인별 기능 설명, 사용 조건, 설정 스키마
+* 선언적 사이트 구성 포맷 (nexpress.config.json)
+  - 사이트 메타, 테마 토큰, 페이지 구조, 블록 트리를 단일 JSON으로 표현
+* REST API 전체 CRUD
+  - 콘텐츠, 미디어, 설정, 테마를 API로 완전 제어 가능
+* import/export API
+  - 사이트 전체를 단일 JSON으로 직렬화/역직렬화
+* OpenAPI 스펙 자동 생성
+
+8.7 마이그레이션 기능 (Phase 5)
+
+* WordPress import (WP REST API 또는 WXR XML)
+* 게시글/페이지/카테고리/태그/미디어 변환
+* slug 및 permalink 규칙 매핑
+* 기본 콘텐츠 구조 변환 보조
+
+참고: WordPress의 테마/플러그인 기능 매핑은 1:1 변환이 불가능하며,
+콘텐츠 데이터 이전에 집중한다.
+
+⸻
+
+9. 테마 시스템
+
+9.1 설계 원칙
+
+플러그인 블록은 npm 패키지로 배포되므로, 각 사이트의 시각 아이덴티티에
+자동으로 적응해야 한다. 이를 위해 CSS Custom Properties 기반 테마 시스템을 채택한다.
+
+핵심 제약:
+* React Server Components에서 Context가 작동하지 않으므로 React ThemeProvider 패턴은 사용할 수 없음
+* CSS Custom Properties는 서버/클라이언트 어디서든 동작하며 zero-runtime
+
+9.2 3-Layer 테마 아키텍처
+
+  Layer 3: Block Overrides (선택적, 고급 커스터마이징)
+  — 특정 블록의 특정 부분만 className 슬롯으로 덮어쓰기
+
+  Layer 2: Site Theme
+  — CSS Custom Properties 오버라이드
+  — 사이트별 theme.css 또는 Admin UI에서 설정
+  — colors, fonts, spacing, radius, shadows
+
+  Layer 1: Design Token Contract
+  — --nx-color-*, --nx-font-*, --nx-radius-*, ...
+  — NexPress 코어가 정의, 모든 블록이 이 계약을 따름
+  — 기본 테마 (fallback values) 포함
+
+9.3 디자인 토큰 계약
+
+NexPress 코어가 정의하는 CSS Custom Properties:
+
+  Colors (Semantic):
+  --nx-color-primary, --nx-color-primary-foreground
+  --nx-color-secondary, --nx-color-accent
+  --nx-color-background, --nx-color-foreground
+  --nx-color-muted, --nx-color-border
+
+  Typography:
+  --nx-font-heading, --nx-font-body
+  --nx-font-size-base ~ --nx-font-size-4xl
+
+  Shape:
+  --nx-radius-sm, --nx-radius-md, --nx-radius-lg
+  --nx-shadow-sm, --nx-shadow-md
+
+모든 플러그인 블록은 이 변수만 참조하여 스타일링한다.
+하드코딩된 색상/폰트 사용은 Plugin SDK lint에서 경고한다.
+
+9.4 CSS Cascade Layers
+
+  @layer nx-base, nx-blocks, nx-theme, nx-overrides;
+
+  nx-base     — NexPress 코어 리셋/기본 (코어)
+  nx-blocks   — 플러그인 블록 기본 스타일 (플러그인 개발자)
+  nx-theme    — 사이트 테마 CSS 변수 재정의 (사이트 운영자/개발자)
+  nx-overrides — 블록별 세밀 조정 (사이트 운영자)
+
+이 구조로 사이트 테마가 플러그인 스타일보다 항상 우선한다.
+
+9.5 테마 저장 및 적용 흐름
+
+1. Admin UI에서 색상/폰트/radius 등 설정
+2. DB에 테마 JSON 저장
+3. 렌더링 시 Server Component에서 JSON → CSS Custom Properties 변환
+4. <head>에 <style> 태그로 주입 (zero client JS)
+5. 다크모드는 [data-theme="dark"] 스코프로 변수 재정의
+
+테마 JSON 구조:
+
+  {
+    "colors": {
+      "primary": "oklch(0.55 0.20 250)",
+      "accent": "oklch(0.65 0.15 200)",
+      "background": "oklch(0.99 0.00 0)",
+      "foreground": "oklch(0.15 0.02 260)"
+    },
+    "typography": {
+      "headingFont": "Playfair Display",
+      "bodyFont": "Inter",
+      "baseFontSize": "16px"
+    },
+    "shape": {
+      "borderRadius": "0.5rem",
+      "shadowLevel": "light"
+    },
+    "darkMode": {
+      "enabled": true,
+      "colors": { "background": "oklch(0.15 0.02 260)", ... }
+    }
+  }
+
+에이전트는 이 JSON을 API로 설정하여 토큰 수십 개로 전체 사이트 시각 아이덴티티를 제어할 수 있다.
+
+9.6 Tailwind CSS v4 통합
+
+사이트 레벨에서 Tailwind CSS v4의 @theme 디렉티브와 자연스럽게 통합한다.
+
+  @import "tailwindcss";
+
+  @theme {
+    --nx-color-primary: oklch(0.55 0.20 250);
+    --nx-font-heading: "Playfair Display", serif;
+    --nx-radius-md: 0.75rem;
+  }
+
+Tailwind가 NexPress 디자인 토큰을 자동으로 유틸리티 클래스로 변환한다.
+
+⸻
+
+10. 플러그인 시스템
+
+10.1 플러그인의 역할
+
+플러그인은 단순 JS 실행 코드가 아니라 다음을 포함할 수 있다.
+
+* React 블록 컴포넌트
+* 관리자 설정 UI
+* 필드 타입 확장
+* 서버 액션
+* API 라우트
+* 웹훅
+* 렌더 전략 선언
+* 캐시 무효화 정책
+
+10.2 플러그인 목표
+
+WordPress 수준의 확장성을 제공하면서도,
+WordPress 플러그인 생태계의 문제였던 충돌과 보안 취약성을 줄인다.
+
+또한 플러그인은 사람뿐 아니라 AI 에이전트가 사이트를 조립하는 기본 부품 역할을 한다.
+
+10.3 설계 원칙
+
+* 선언형 manifest 기반
+* 권한(capability) 기반 접근
+* 코어와 플러그인의 명확한 경계
+* 버전 호환성 정책
+* 코어가 React/Next 버전을 통제
+* 에이전트가 이해하기 쉬운 메타데이터 구조 제공
+* 플러그인 스타일은 @layer nx-blocks 안에서만 정의 (테마 계약 준수)
+
+10.4 단계적 격리 전략
+
+"샌드박스 플러그인"은 기술적 난도가 매우 높다.
+Next.js RSC 환경에서 서드파티 React 컴포넌트를 격리 실행하면서
+렌더링 품질을 유지하는 검증된 방법이 아직 없다.
+
+따라서 현실적인 3단계 격리 전략을 채택한다.
+
+1단계 — Trust-based 플러그인 (MVP)
+
+* npm 패키지로 배포, 코드 리뷰 후 등록
+* 선언형 manifest + Config 함수 기반
+* 블록/필드/관리자 확장
+* WordPress 초기 모델과 유사
+* Plugin SDK의 정적 분석 도구로 위험 패턴 감지
+
+2단계 — Permission-scoped 플러그인
+
+* 플러그인별 capability 선언 (예: "db:read", "media:write", "api:create")
+* 선언하지 않은 API 접근 차단
+* 런타임 권한 검증 레이어
+* 관리자 UI에서 플러그인별 권한 확인/제어 가능
+
+3단계 — 격리 실행 (장기 R&D)
+
+* 기술 성숙 시 도입 (WebAssembly, Worker, isolated-vm 등)
+* 완전한 프로세스 격리
+* 현 시점에서는 연구 과제로 분류
+* MVP에서 약속하지 않음
+
+⸻
+
+11. 컴포넌트 공유 시스템
+
+11.1 기본 아이디어
+
+플러그인 혹은 테마는 Next/React 컴포넌트를 공유 가능한 설치 단위로 제공한다.
+
+예:
+
+* @nexpress/block-hero 패키지
+* @nexpress/block-blog-list 패키지
+* @nexpress/block-pricing 패키지
+* @nexpress/block-contact-form 패키지
+
+운영자는 관리자 UI에서 이를 조합해 페이지를 구성한다.
+
+AI 에이전트는 사용자 요구사항에 맞춰
+적절한 컴포넌트와 플러그인을 선택하여 선언적으로 사이트를 조립한다.
+
+11.2 블록 개발 규칙
+
+모든 블록은 NexPress 테마 계약을 따라야 한다.
+
+필수 규칙:
+* var(--nx-*) 변수만 참조하여 스타일링 (테마 반응형)
+* @layer nx-blocks 안에 스타일 작성 (우선순위 보장)
+* manifest에 사용하는 디자인 토큰 선언 (usesTokens)
+* styleSlots 정의 (테마가 세밀 조정 가능하도록)
+
+금지 규칙:
+* 하드코딩된 색상/폰트 (예: color: #ff0000, text-blue-500)
+* !important 사용 (테마 오버라이드 차단됨)
+
+Plugin SDK에서 빌드 타임 lint로 이를 검증한다.
+
+11.3 장점
+
+* 실제 프런트엔드와 동일한 렌더 품질
+* 중복 구현 감소
+* React 생태계 재사용 가능
+* 테마/섹션 생태계 형성 가능
+* 개발자 경험 향상
+* 사이트 테마가 바뀌면 모든 블록이 자동으로 적응
+
+11.4 저장 방식
+
+페이지는 HTML 자체가 아니라
+블록 트리 + props + data binding 정보로 저장한다.
+
+  예시:
+  {
+    "pageSlug": "/",
+    "blocks": [
+      {
+        "type": "hero",
+        "props": { "title": "Welcome", "subtitle": "...", "ctaText": "Get Started" }
+      },
+      {
+        "type": "feature-grid",
+        "props": { "columns": 3 },
+        "dataBinding": { "items": { "collection": "features", "limit": 6 } }
+      }
+    ]
+  }
+
+⸻
+
+12. 아키텍처 개요
+
+12.1 주요 구성요소
+
+1. Core CMS
+
+* 인증 (JWT + bcrypt 또는 Auth.js v5)
+* 권한 (RBAC)
+* 콘텐츠 모델 (Code-first Collection 정의)
+* 관리자 UI (React + Tailwind + shadcn/ui)
+* 미디어 (S3 호환 스토리지 추상화)
+* Revision (버전 테이블 + diff)
+* Plugin Registry
+
+2. Rendering Layer
+
+* Next.js App Router 기반
+* 페이지 렌더링 (SSR/SSG/ISR)
+* Block Resolver (블록 타입 → React 컴포넌트 매핑)
+* Preview Mode (Draft Mode API)
+* Cache Invalidation (revalidatePath/revalidateTag)
+
+3. Theme Engine
+
+* Design Token Contract (CSS Custom Properties)
+* CSS Cascade Layers (@layer)
+* Theme JSON → CSS 변환 (Server Component)
+* Admin UI 테마 설정 패널
+* 다크모드 지원 ([data-theme])
+
+4. Plugin Runtime
+
+* Manifest Loader
+* Block Registry
+* Admin Extension Registry
+* Capability Enforcement (2단계)
+* Plugin SDK + lint 도구
+
+5. Storage Layer
+
+* PostgreSQL (Drizzle ORM)
+* Object Storage Adapter (로컬/S3)
+* Caching Layer (선택)
+
+6. Agent Interface Layer
+
+* 선언적 사이트 구성 포맷 (nexpress.config.json)
+* 블록/플러그인 Manifest API
+* REST API (CRUD 전체)
+* OpenAPI 스펙 자동 생성
+* Import/Export API
+
+7. Migration Layer (Phase 5)
+
+* WordPress Importer
+* Content Transformer
+* Media Migration
+
+12.2 기술 스택
+
+  프레임워크:       Next.js 15+ (App Router)
+  언어:            TypeScript (strict mode)
+  데이터베이스:      PostgreSQL
+  ORM:             Drizzle ORM
+  인증:            자체 구현 (JWT + bcrypt) 또는 Auth.js v5
+  리치 텍스트:      Lexical (Meta)
+  Admin UI:        React + Tailwind CSS v4 + shadcn/ui
+  미디어 스토리지:   S3 호환 (로컬 MinIO / 프로덕션 S3)
+  패키지 매니저:     pnpm
+  모노레포:         Turborepo
+  배포:            Docker + standalone output
+  테마:            CSS Custom Properties + Cascade Layers
+
+12.3 프로젝트 구조
+
+  nexpress/
+  ├── packages/
+  │   ├── core/           # 콘텐츠 모델, DB, 인증, API
+  │   ├── admin/          # 관리자 UI (Next.js 앱)
+  │   ├── blocks/         # 기본 블록 컴포넌트 세트
+  │   ├── editor/         # 리치텍스트 + 블록 편집기
+  │   ├── theme/          # 테마 엔진 (토큰 계약, 변환)
+  │   ├── cli/            # create-nexpress CLI
+  │   └── plugin-sdk/     # 플러그인 개발 SDK + lint
+  ├── apps/
+  │   └── web/            # 레퍼런스 사이트 (통합 앱)
+  ├── docker/
+  │   ├── Dockerfile
+  │   └── docker-compose.yml
+  ├── turbo.json
+  └── package.json
+
+Monorepo 구조 채택 이유:
+* core/admin/blocks를 독립 패키지로 분리해야 플러그인 생태계와 테마 시스템이 가능
+* 각 패키지를 독립적으로 버전 관리 및 npm 배포 가능
+* 개발 시 의존성 경계가 명확하여 아키텍처 오염 방지
+
+⸻
+
+13. MVP 범위
+
+초기 버전은 범용 CMS 전체를 다 만들기보다,
+WordPress 대체의 핵심 감각을 빠르게 보여줄 수 있는 범위로 제한한다.
+
+MVP를 2단계로 나누어 점진적으로 완성한다.
+
+13.1 MVP-α — 블로그 CMS (목표: 8-10주)
+
+"설치 → 관리자 로그인 → 포스트 작성 → 사이트에서 확인"이 매끄럽게 동작.
+
+포함 기능:
+* 프로젝트 스캐폴딩 (npx create-nexpress)
+* PostgreSQL 기반 콘텐츠 저장 (Drizzle ORM)
+* 사용자 인증 / 기본 권한 관리
+* Post / Page / Media 기본 모델 (Code-first)
+* 리치 텍스트 편집 (Lexical)
+* Draft / Publish 워크플로
+* SEO 메타
+* Revision history
+* Draft Mode 기반 프리뷰
+* Revalidation 연동
+* 기본 사이트 렌더링 (SSR)
+* Docker 설치 지원
+* 기본 테마 (CSS Custom Properties)
+
+이것만으로도 "Next.js 네이티브 블로그 CMS"로 가치가 있다.
+
+13.2 MVP-β — 페이지 빌더 + 확장성 (목표: 추가 10-12주)
+
+포함 기능:
+* 블록 기반 페이지 편집기
+* 블록 드래그앤드롭 재배치
+* 기본 블록 세트 (Hero, Feature Grid, FAQ, RichText 등)
+* Block Registry
+* 기본 플러그인 시스템 (Trust-based, manifest 기반)
+* Plugin SDK 초안
+* 테마 설정 Admin UI (색상/폰트/radius)
+* 선언적 사이트 구성 포맷 (nexpress.config.json)
+* 블록/플러그인 manifest (에이전트 인터페이스 초안)
+* Import/Export API
+
+13.3 MVP 제외 기능 (이후 Phase에서)
+
+* 고급 멀티사이트
+* 실시간 협업 편집
+* 완전한 마켓플레이스
+* 고급 다국어
+* 복잡한 워크플로 엔진
+* 엔터프라이즈급 SSO
+* 완전 자유형 시각 편집기
+* WordPress 마이그레이션 (Phase 5)
+* Permission-scoped 플러그인 (Phase 3 이후)
+* 격리 실행 환경 (장기 R&D)
+
+⸻
+
+14. 단계별 로드맵
+
+Phase 1 — 코어 성립 (MVP-α)
+
+* 프로젝트 구조 확정 (monorepo, 기술 스택)
+* 콘텐츠 모델 시스템 (Code-first Collection)
+* 관리자 UI 기본 (목록/검색/편집)
+* 인증 및 권한
+* 기본 Post/Page/Media 관리
+* Draft/Publish
+* Preview (Draft Mode) / Revalidation
+* Docker 설치
+* 기본 테마 (CSS Custom Properties)
+
+Phase 2 — 페이지 빌더 및 테마 (MVP-β)
+
+* 블록 기반 페이지 편집기
+* 테마 설정 Admin UI
+* React Block Registry
+* 기본 블록 라이브러리
+* 선언적 사이트 구성 포맷
+
+Phase 3 — 플러그인 생태계
+
+* Plugin SDK 공개
+* Manifest 기반 확장
+* 관리자 확장 API
+* 렌더 확장 API
+* 예제 플러그인 제공
+* Permission-scoped 플러그인 (capability 모델)
+
+Phase 4 — 에이전트 인터페이스 고도화
+
+* 에이전트 친화적 플러그인 메타데이터 확정
+* 선언적 사이트 구성 포맷 안정화
+* OpenAPI 스펙 자동 생성
+* Import/Export 고도화
+* 에이전트 연동 예제/문서 제공
+
+Phase 5 — WordPress 마이그레이션
+
+* WordPress Import 도구
+* 콘텐츠/미디어 이전
+* slug/permalink 호환
+* 기본 콘텐츠 변환 보조
+
+Phase 6 — 격리 플러그인 런타임 (장기 R&D)
+
+* 기술 성숙도 평가 (WebAssembly, Worker, isolated-vm)
+* 프로토타입 및 성능 벤치마크
+* 보안 정책 수립
+* 안정적 확장 생태계 기반 마련
+
+⸻
+
+15. 기술적 차별점
+
+15.1 Next.js의 특수 기능 적극 활용
+
+이 프로젝트는 단순히 Next.js로 만든 CMS가 아니라,
+Next.js의 고유 기능을 CMS의 핵심 기능으로 승격한다.
+
+활용 대상:
+
+* App Router — 사이트/관리자 라우팅 통합
+* React Server Components — 블록 서버 렌더링, zero client JS 테마
+* Server Actions — 관리자 CRUD 작업
+* Route Handlers — 웹훅/API
+* Draft Mode — 초안 프리뷰
+* revalidatePath/revalidateTag — 게시 반영
+* Layout/Segment 구조 — 사이트 레이아웃
+* Streaming 렌더링 — 대용량 페이지 점진적 로딩
+* Standalone output — 컨테이너 최적화 배포
+
+기대 효과:
+
+* 빠른 렌더링
+* 높은 SEO 성능
+* 효율적인 게시 반영
+* 자연스러운 프리뷰 흐름
+* 프론트/백오피스 통합
+* 에이전트가 조립한 사이트도 일관된 품질로 렌더링 가능
+
+15.2 코드 생성보다 선언적 조립에 최적화
+
+기존 AI 기반 제작 흐름은 많은 코드를 직접 생성하는 데 의존한다.
+본 프로젝트는 그 대신, 이미 검증된 React 블록과 플러그인을 선언적으로 조합하는 방식을 채택한다.
+
+이를 통해 다음 효과를 얻는다.
+
+* 코드 생성량 감소
+* 토큰 비용 절감
+* 결과 품질 표준화
+* 유지보수 구조 일관성 확보
+* 반복 제작 속도 향상
+
+15.3 CSS Custom Properties 기반 테마 시스템
+
+기존 CMS의 테마 시스템은 대부분 PHP 템플릿 교체(WordPress) 또는
+JavaScript ThemeProvider(Chakra/Mantine) 방식이다.
+
+NexPress는 CSS Custom Properties + Cascade Layers 기반으로:
+
+* RSC 환경에서 zero-runtime으로 동작
+* 플러그인 블록이 사이트 테마에 자동 적응
+* 비개발자가 Admin UI에서 시각 조정 가능
+* 에이전트가 JSON으로 테마 선언 가능
+
+⸻
+
+16. 오픈소스 전략
+
+16.1 목표
+
+이 프로젝트는 단순 제품이 아니라 커뮤니티 기반 플랫폼으로 성장해야 한다.
+
+16.2 원칙
+
+* 코어는 완전 오픈소스 (MIT 또는 Apache 2.0)
+* 문서와 예제를 풍부하게 제공
+* 빠른 로컬 실행 환경 제공
+* 기여 친화적 구조 (monorepo, 명확한 패키지 경계)
+* 플러그인/테마 제작이 쉬운 SDK 제공
+* 에이전트 연동 예제 제공
+
+16.3 커뮤니티 성장 전략
+
+* 예제 템플릿 제공 (블로그, 기업 사이트, 포트폴리오)
+* 기본 플러그인 묶음 제공
+* "5분 안에 wow" 설치 경험 최우선
+* WordPress 마이그레이션 성공 사례 확보
+* 에이전시/개발자 대상 도입 장벽 최소화
+* AI 에이전트 기반 구축 사례 확보
+
+⸻
+
+17. 성공 조건
+
+이 프로젝트가 단순한 헤드리스 CMS 하나 더가 되지 않으려면 다음이 반드시 강해야 한다.
+
+17.1 비개발자 편집 UX
+
+운영자가 개발자 도움 없이도 페이지와 콘텐츠를 수정할 수 있어야 한다.
+이것이 Payload 등 기존 Next.js CMS와의 가장 큰 차별점이다.
+
+17.2 "5분 안에 wow" 설치 경험
+
+npx create-nexpress → docker compose up → 브라우저에서 사이트 확인까지
+5분 이내에 완료되어야 한다. Phase 1의 진짜 완성 기준.
+
+17.3 테마 적응성
+
+플러그인 블록이 설치되면 사이트 테마에 자동으로 적응해야 한다.
+테마 변경 시 모든 블록이 일관되게 반응하는 경험이 핵심.
+
+17.4 확장성
+
+플러그인과 테마 생태계를 만들 수 있어야 한다.
+
+17.5 에이전트 인터페이스 완성도
+
+선언적 사이트 구성 포맷과 manifest가 충분히 정의되어,
+실제 AI 에이전트가 사이트를 조립하는 데모가 가능해야 한다.
+
+17.6 재현 가능한 품질
+
+반복 제작 시에도 결과물 구조와 품질이 안정적으로 유지되어야 한다.
+
+⸻
+
+18. 주요 리스크 및 대응
+
+18.1 범위 과대화
+
+리스크: WordPress 전체를 한 번에 대체하려 하면 실패 가능성이 높다.
+대응: MVP를 α/β 2단계로 분리. α는 블로그 CMS로 한정하여 빠르게 출시.
+
+18.2 페이지 빌더 복잡도
+
+리스크: 자유도가 높아질수록 구현과 UX 모두 어려워진다.
+대응: 초기에는 제한된 블록 조합만 허용. 자유형 시각 편집기는 MVP 제외.
+
+18.3 플러그인 격리 난이도
+
+리스크: 완전한 샌드박스는 현재 기술로 실현이 어렵다.
+대응: 3단계 격리 전략. MVP에서는 Trust-based 방식. 완전 격리는 장기 R&D.
+MVP에서 "샌드박스"를 약속하지 않는다.
+
+18.4 생태계 문제
+
+리스크: 플러그인/테마가 없으면 대체재로 자리잡기 어렵다.
+대응: 코어 팀이 기본 블록 세트와 예제 플러그인을 충분히 제공.
+Plugin SDK를 쉽게 만들어 기여 장벽을 낮춘다.
+
+18.5 Payload와의 포지셔닝 실패
+
+리스크: 단순 헤드리스 CMS나 Payload 열화판으로 인식되면 차별점이 사라진다.
+대응: "운영자 UX"와 "에이전트 인터페이스"에 차별화를 집중.
+개발자 중심 기능에서 Payload와 경쟁하지 않는다.
+
+18.6 에이전트 인터페이스 미완성
+
+리스크: 에이전트 친화성을 내세우면서 실제 manifest나 조립 구조가 불충분하면 강점이 약해진다.
+대응: 에이전트 "AI 로직"이 아닌 "인터페이스"에 집중.
+JSON Schema, OpenAPI, 선언적 구성 포맷을 철저히 정의.
+CMS 안에 AI 추론 로직을 넣지 않는다.
+
+⸻
+
+19. 핵심 메시지
+
+이 프로젝트는 다음 한 문장으로 설명될 수 있다.
+
+"WordPress의 쉬움과 범용성을, Next.js와 React의 현대적 아키텍처 위에서 다시 만드는 오픈소스 CMS."
+
+그리고 확장된 형태로는 이렇게 설명할 수 있다.
+
+"사람은 쉽게 운영하고, AI 에이전트는 선언적 인터페이스로 조립할 수 있는 Next.js 기반 오픈소스 CMS."
+
+Payload와의 관계를 포함하면:
+
+"Payload가 개발자의 프레임워크라면, NexPress는 운영자의 제품이다."
+
+⸻
+
+20. 제안 결론
+
+지금 시장은 헤드리스 CMS는 많지만,
+WordPress를 대체할 수 있는 설치형, 운영형, 확장형, 현대적 오픈소스 CMS는 여전히 부족하다.
+
+Payload CMS v3가 개발자 중심 Next.js CMS로 자리잡았으나,
+비개발자 운영 UX와 에이전트 친화적 인터페이스는 여전히 공백이다.
+
+또한 AI 에이전트 기반 사이트 구축이 늘어나는 환경에서,
+매번 많은 코드를 생성하는 방식은 비용과 품질 측면에서 한계를 가진다.
+
+본 프로젝트는 다음의 틈새를 동시에 노린다.
+
+* WordPress는 낡았다고 느끼지만 완전히 버리긴 어려운 사용자
+* Payload 등 헤드리스 CMS는 강력하지만 운영이 불편하다고 느끼는 팀
+* Next.js와 React 기반으로 사이트와 CMS를 통합하고 싶은 개발팀
+* 셀프호스팅과 오픈소스를 선호하는 커뮤니티
+* AI 에이전트를 활용해 반복적인 사이트 구축을 자동화하고 싶은 팀
+
+따라서 본 프로젝트는 단순 기술 실험이 아니라,
+현대적 설치형 CMS의 부재와 에이전트 시대 웹 구축 방식의 비효율을 동시에 해결하려는
+장기 오픈소스 프로젝트로서 의미가 있다.
+
+⸻
