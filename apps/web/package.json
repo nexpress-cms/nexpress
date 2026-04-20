@@ -17,6 +17,7 @@
     "@nexpress/blocks": "workspace:*",
     "@nexpress/theme": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
