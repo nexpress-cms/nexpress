@@ -23,8 +23,9 @@ import {
 import { buildSearchVector } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { nxRevisions } from "../db/schema/system.js";
+import { nxMediaRefs } from "../db/schema/media.js";
 
-let dbInstance: NodePgDatabase | null = null;
+let dbInstance: NodePgDatabase<Record<string, unknown>> | null = null;
 
 interface PreparedDocumentData {
   mainData: Record<string, unknown>;
@@ -68,11 +69,11 @@ interface DrizzleDatabaseLike extends DrizzleTransactionLike {
   transaction<T>(callback: (tx: DrizzleTransactionLike) => Promise<T>): Promise<T>;
 }
 
-export function setDb(db: NodePgDatabase): void {
+export function setDb(db: NodePgDatabase<Record<string, unknown>>): void {
   dbInstance = db;
 }
 
-function getDb(): NodePgDatabase {
+function getDb(): NodePgDatabase<Record<string, unknown>> {
   if (!dbInstance) {
     throw new Error("Database not initialized. Call setDb() first.");
   }
@@ -118,6 +119,7 @@ export async function saveDocument(
 
     await syncChildTables(tx, registration.childTables, prepared.childRows, persistedDocId);
     await syncJoinTables(tx, registration.joinTables, prepared.joinRows, persistedDocId);
+    await syncMediaRefsForDocument(tx, collection, persistedDocId, config.fields, hookData);
 
     if (config.versions) {
       await insertRevision(tx, collection, persistedDocId, operation, hookData, originalDoc, user);
@@ -168,6 +170,9 @@ export async function deleteDocument(
   await db.transaction(async (tx) => {
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
+    await tx.delete(nxMediaRefs as unknown as PgTable).where(
+      sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), docId)}`,
+    );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   });
 
@@ -683,6 +688,155 @@ function normalizeJoinIds(value: unknown): string[] {
   }
 
   return value.filter((item): item is string => typeof item === "string");
+}
+
+async function syncMediaRefsForDocument(
+  tx: DrizzleTransactionLike,
+  collection: string,
+  documentId: string,
+  fields: NxFieldConfig[],
+  data: Record<string, unknown>,
+): Promise<void> {
+  const refs = extractMediaIdsFromFields(fields, data, []);
+
+  if (refs.length === 0) {
+    await tx.delete(nxMediaRefs as unknown as PgTable).where(
+      sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+    );
+    return;
+  }
+
+  await tx.delete(nxMediaRefs as unknown as PgTable).where(
+    sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+  );
+
+  const values = refs.map((ref) => ({
+    id: randomUUID(),
+    mediaId: ref.mediaId,
+    collection,
+    documentId,
+    field: ref.field,
+  }));
+
+  await tx.insert(nxMediaRefs as unknown as PgTable).values(values);
+}
+
+function extractMediaIdsFromFields(
+  fields: NxFieldConfig[],
+  data: Record<string, unknown>,
+  prefix: string[],
+): Array<{ mediaId: string; field: string }> {
+  const refs: Array<{ mediaId: string; field: string }> = [];
+
+  for (const field of fields) {
+    if (field.type === "row" || field.type === "collapsible") {
+      refs.push(...extractMediaIdsFromFields(field.fields, data, prefix));
+      continue;
+    }
+
+    if (field.type === "group") {
+      const groupData = toOptionalRecord(data[field.name]);
+      if (groupData) {
+        refs.push(...extractMediaIdsFromFields(field.fields, groupData, [...prefix, field.name]));
+      }
+      continue;
+    }
+
+    const fieldPath = [...prefix, field.name].join(".");
+
+    if (field.type === "upload") {
+      const mediaId = data[field.name];
+      if (typeof mediaId === "string" && mediaId.length > 0) {
+        refs.push({ mediaId, field: fieldPath });
+      }
+      continue;
+    }
+
+    if (field.type === "richText") {
+      const richTextValue = data[field.name];
+      if (richTextValue && typeof richTextValue === "object") {
+        refs.push(...extractMediaIdsFromLexicalJson(richTextValue, fieldPath));
+      }
+      continue;
+    }
+
+    if (field.type === "array") {
+      const arrayValue = data[field.name];
+      if (Array.isArray(arrayValue)) {
+        for (const item of arrayValue) {
+          const itemRecord = toOptionalRecord(item);
+          if (itemRecord) {
+            refs.push(...extractMediaIdsFromFields(field.fields, itemRecord, [...prefix, field.name]));
+          }
+        }
+      }
+      continue;
+    }
+
+    if (field.type === "blocks") {
+      const blocksValue = data[field.name];
+      if (Array.isArray(blocksValue)) {
+        for (const block of blocksValue) {
+          const blockRecord = toOptionalRecord(block);
+          if (blockRecord) {
+            extractBlockMediaIds(blockRecord, fieldPath, refs);
+          }
+        }
+      }
+      continue;
+    }
+  }
+
+  return refs;
+}
+
+function extractMediaIdsFromLexicalJson(
+  node: unknown,
+  fieldPath: string,
+): Array<{ mediaId: string; field: string }> {
+  const refs: Array<{ mediaId: string; field: string }> = [];
+
+  if (!node || typeof node !== "object") {
+    return refs;
+  }
+
+  const record = node as Record<string, unknown>;
+
+  if (record.type === "image" || record.type === "upload") {
+    const mediaId = record.mediaId ?? record.value;
+    if (typeof mediaId === "string" && mediaId.length > 0) {
+      refs.push({ mediaId, field: fieldPath });
+    }
+  }
+
+  const children = record.children ?? (toOptionalRecord(record.root) as Record<string, unknown> | null)?.children;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      refs.push(...extractMediaIdsFromLexicalJson(child, fieldPath));
+    }
+  }
+
+  return refs;
+}
+
+function extractBlockMediaIds(
+  block: Record<string, unknown>,
+  fieldPath: string,
+  refs: Array<{ mediaId: string; field: string }>,
+): void {
+  for (const [key, value] of Object.entries(block)) {
+    if (key === "blockType" || key === "id") {
+      continue;
+    }
+
+    if (typeof value === "string" && isUuid(value)) {
+      refs.push({ mediaId: value, field: `${fieldPath}.${key}` });
+    }
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 function getChangedFields(
