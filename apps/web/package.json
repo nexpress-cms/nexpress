@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
     "clean": "rm -rf .next"
