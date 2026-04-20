@@ -3,11 +3,13 @@ import {
   setMediaDb,
   setStorageAdapter,
   createStorageAdapter,
+  loadPlugins,
 } from "@nexpress/core";
 
 import { getDb } from "@/lib/db";
 
 let initialized = false;
+let pluginsLoaded = false;
 
 export function ensureCoreServices(): void {
   if (initialized) return;
@@ -36,4 +38,10 @@ export function ensureCoreServices(): void {
 
   setStorageAdapter(createStorageAdapter(storageConfig));
   initialized = true;
+}
+
+export async function ensurePluginsLoaded(plugins: Parameters<typeof loadPlugins>[0]): Promise<void> {
+  if (pluginsLoaded) return;
+  await loadPlugins(plugins);
+  pluginsLoaded = true;
 }
