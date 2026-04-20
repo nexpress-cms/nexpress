@@ -73,7 +73,7 @@ export function setDb(db: NodePgDatabase<Record<string, unknown>>): void {
   dbInstance = db;
 }
 
-function getDb(): NodePgDatabase<Record<string, unknown>> {
+export function getDb(): NodePgDatabase<Record<string, unknown>> {
   if (!dbInstance) {
     throw new Error("Database not initialized. Call setDb() first.");
   }
