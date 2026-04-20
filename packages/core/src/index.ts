@@ -100,3 +100,34 @@ export {
   registerBuiltinHandlers,
 } from "./jobs/index.js";
 export type { NxJobHandler, NxJobQueue } from "./jobs/index.js";
+
+export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
+export { LocalStorageAdapter } from "./storage/local.js";
+export { S3StorageAdapter } from "./storage/s3.js";
+export { createStorageAdapter } from "./storage/index.js";
+
+export {
+  setStorageAdapter,
+  getStorageAdapter,
+  setMediaDb,
+  getMediaDb,
+  uploadMedia,
+  processMediaImage,
+  getMediaById,
+  deleteMedia,
+  listMedia,
+  cleanupDeletedMedia,
+} from "./media/service.js";
+export { processImage, DEFAULT_IMAGE_SIZES } from "./media/processor.js";
+export type { NxProcessedImageVariant, NxProcessedImageResult } from "./media/processor.js";
+export { extractMediaIds } from "./media/refs.js";
+
+export type {
+  NxThemeTokens,
+  NxThemeColors,
+  NxThemeTypography,
+  NxThemeShape,
+} from "./theme/types.js";
+export { DEFAULT_THEME } from "./theme/defaults.js";
+export { sanitizeTokenValue } from "./theme/sanitize.js";
+export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
