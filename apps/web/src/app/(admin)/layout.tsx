@@ -1,7 +1,7 @@
-export default function AdminLayout({
+export default function AdminGroupLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="nx-admin">{children}</div>;
+  return <>{children}</>;
 }
