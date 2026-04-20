@@ -1,0 +1,29 @@
+{
+  "name": "@nexpress/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --turbopack",
+    "start": "next start",
+    "lint": "next lint",
+    "clean": "rm -rf .next"
+  },
+  "dependencies": {
+    "@nexpress/core": "workspace:*",
+    "@nexpress/admin": "workspace:*",
+    "@nexpress/editor": "workspace:*",
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/theme": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.8.0"
+  }
+}
