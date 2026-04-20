@@ -4,12 +4,7 @@ import { eq, sql } from "drizzle-orm";
 
 import type { NxAuthUser } from "../config/types.js";
 import { verifyToken } from "./token.js";
-
-async function loadSystemSchema() {
-  const modulePath = "../db/schema/system.js";
-
-  return import(modulePath);
-}
+import { nxSessions, nxUsers } from "../db/schema/system.js";
 
 export async function sha256(input: string): Promise<string> {
   const digest = await webcrypto.subtle.digest(
@@ -28,7 +23,6 @@ export async function verifyTokenFull(
   db: any,
 ): Promise<NxAuthUser | null> {
   const payload = await verifyToken(token, secret);
-  const { nxUsers } = await loadSystemSchema();
   const [user] = await db
     .select({
       id: nxUsers.id,
@@ -52,8 +46,6 @@ export async function invalidateAllSessions(
   userId: string,
   db: any,
 ): Promise<void> {
-  const { nxSessions, nxUsers } = await loadSystemSchema();
-
   await db.transaction(async (tx: any) => {
     await tx
       .update(nxUsers)
