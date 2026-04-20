@@ -19,7 +19,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@nexpress/core": "workspace:*"
+    "@nexpress/core": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
