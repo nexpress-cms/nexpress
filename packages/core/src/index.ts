@@ -142,3 +142,19 @@ export type {
 export { DEFAULT_THEME } from "./theme/defaults.js";
 export { sanitizeTokenValue } from "./theme/sanitize.js";
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
+
+export {
+  loadPlugins,
+  runHook,
+  getPluginRoutes,
+  getPluginRegistration,
+  getAllPluginIds,
+  schedulePluginTask,
+  resetPlugins,
+} from "./plugins/index.js";
+export type {
+  PluginHookHandler,
+  PluginRouteHandler,
+  PluginRouteRequest,
+  PluginRouteResponse,
+} from "./plugins/index.js";
