@@ -1,34 +1,41 @@
-# NexPress 설계서 리뷰 (2차)
+# NexPress 설계서 리뷰 (3차)
 
 > 리뷰 대상: `nexpress-core-design.md`, `plugin-system-design.md`, `nexpress.txt` (기획서 v3)
 > 1차 리뷰: 2026-04-17
-> 2차 리뷰: 2026-04-17 (설계서 K-P 섹션 추가, 플러그인 시스템 1.1.1 추가 이후)
+> 2차 리뷰: 2026-04-17 (K-P 섹션, 플러그인 1.1.1 추가)
+> 3차 리뷰: 2026-04-20 (C.9-C.13 인증 섹션 추가, QA 시나리오 전체 추가)
 > 상태: 코드 작성 전 (설계 단계)
 
 ---
 
-## 전체 평가 (2차)
+## 전체 평가 (3차)
 
-1차 리뷰에서 지적한 21건 중 **17건이 해결되었다.**
-남은 4건도 차단급은 아니며, 구현 착수가 가능한 상태다.
+1차 리뷰에서 지적한 21건 중 **18건이 해결되었다.** (2차 대비 +1: CB-1 해결)
 
-추가된 섹션(K-P)은 라우팅 계약, 쓰기 파이프라인, 백그라운드 작업, 플랫폼 정책, 스키마 진화, 검색을 충실하게 다루고 있다.
-플러그인 시스템도 1.1.1에서 v1 실행 모델(npm 패키지 + rebuild)을 명확히 정의하여 코어와의 모순을 제거했다.
+2차 리뷰에서 유일한 실질적 미해결이었던 **CB-1(인증/세션 모델)**이 C.9-C.13 추가로 완전히 해결되었다:
+- C.9: 비밀번호 변경 후 새 세션 생성 흐름 (invalidateAllSessions → 새 세션 + 토큰 발급)
+- C.10: Refresh token rotation (old 삭제 → new 발급, 단일 트랜잭션, replay 방어)
+- C.11: CSRF protection (double-submit cookie 패턴)
+- C.12: 3-tier 인증 검증 전략 (Edge/API Handler/RSC 각각의 역할과 trade-off 문서화)
+- C.13: End-to-end 시퀀스 다이어그램 7개 (login, read, write, refresh, password change, logout, admin force-invalidation)
 
-**남은 작업**: 인증/세션 흐름 end-to-end 정규화(CB-1)가 유일한 실질적 미해결 사항이다.
+**구현 차단 이슈는 0건이다. 즉시 코드 작성 착수가 가능하다.**
+
+남은 3건은 모두 의도적 범위 제한 또는 구현 중 결정 사항이다.
 
 ---
 
-## ✅ 해결됨 (Resolved) — 17건
+## ✅ 해결됨 (Resolved) — 18건
 
-### 구현 차단 → 해결 (5/6건)
+### 구현 차단 → 전체 해결 (6/6건)
 
 | ID | 원래 이슈 | 해결 섹션 | 요약 |
 |---|---|---|---|
+| CB-1 | 인증/세션 모델 내부 모순 | Core C.9-C.13 | refresh rotation + replay 방어(C.10), CSRF double-submit cookie(C.11), 비밀번호 변경 후 세션 재생성(C.9), 3-tier 인증 전략(C.12), E2E 시퀀스 7개(C.13) |
 | CB-2 | 빌드 타임 코어 vs 런타임 플러그인 모델 충돌 | Plugin 1.1.1 | v1 Plugin = npm package + rebuild로 명시. 런타임 설치 불가. 모순 해소 |
 | CB-3 | 라우팅 모델 미완성 | Core K | 예약 경로 목록, 해석 우선순위(system → static → slug), 플러그인 루트 경로(rewrites), optional catch-all `[[...slug]]` 정의 |
-| CB-4 | 스케줄러/워커 아키텍처 부재 | Core M | pg-boss 기반 job queue. 미디어 처리·webhook·import/export를 비동기 job으로 분리. 스케줄 태스크도 pg-boss schedule 활용 |
-| CB-5 | 쓰기 작업 일관성 모델 부재 | Core L.1 | 4단계 파이프라인(validate → hooks → DB tx → async jobs). 트랜잭션 경계 명확화. 캐시/검색/webhook은 job으로 분리 |
+| CB-4 | 스케줄러/워커 아키텍처 부재 | Core M | pg-boss 기반 job queue. 미디어 처리·webhook·import/export를 비동기 job으로 분리 |
+| CB-5 | 쓰기 작업 일관성 모델 부재 | Core L.1 | 4단계 파이프라인(validate → hooks → DB tx → async jobs). 트랜잭션 경계 명확화 |
 | CB-6 | 권한 모델이 너무 단순함 | Core L.2 | API 핸들러에서 access 함수 enforcement 패턴 정의. 컬렉션별·오퍼레이션별 접근 제어 |
 
 ### 높은 심각도 → 해결 (6/8건)
@@ -37,90 +44,77 @@
 |---|---|---|---|
 | HS-1 | Zod 빌드 타임 검증만 존재 | Core O.1 | 런타임 Zod 스키마 생성 명시. `saveDocument()`에서 런타임 검증 적용 |
 | HS-3 | 스키마 진화 정책 미정의 | Core O.2 | 필드 추가/삭제/이름변경/타입변경/컬렉션 삭제 각 시나리오별 가이드라인 제공 |
-| HS-4 | 미디어 생명주기 불완전 | Core O.3 | `nx_media_refs` 참조 추적 테이블, soft delete, 업로드 제한(파일 크기·MIME 화이트리스트), 비동기 처리 |
-| HS-5 | Import/Export 안전성 부족 | Core I.4 (업데이트) | preflight 검증, ID 매핑, 미디어 처리, 트랜잭션 경계, idempotent 재시도 정의 |
-| HS-7 | 검색 구현 부재 | Core P | PostgreSQL FTS (`tsvector`/`tsquery`), 자동 인덱스 갱신, 검색 가중치, Admin 검색 통합 |
-| HS-8 | 에러 처리/관측성 부재 | Core N.1 | `NxApiError` 표준 형식, 글로벌 에러 핸들러, 구조화 로깅 (`pino`) |
+| HS-4 | 미디어 생명주기 불완전 | Core O.3 | `nx_media_refs` 참조 추적 테이블, soft delete, 업로드 제한, 비동기 처리 |
+| HS-5 | Import/Export 안전성 부족 | Core I.4 | preflight 검증, slug 기반 upsert, 미디어 hash 매칭, 트랜잭션, idempotent |
+| HS-7 | 검색 구현 부재 | Core P | PostgreSQL FTS (`tsvector`/`tsquery`), GIN 인덱스, 자동 인덱싱, 랭킹 |
+| HS-8 | 에러 처리/관측성 부재 | Core N.1 | `NxApiError` 표준 형식, 에러 코드 체계, 구조화 로깅 |
 
 ### 중간 심각도 → 해결 (6/7건)
 
 | ID | 원래 이슈 | 해결 섹션 | 요약 |
 |---|---|---|---|
-| MS-1 | Revision JSONB 스냅샷 비대화 | Core N.5 | `NxRevisionPolicy` — retention 정책, autosave vs 정식 revision 구분, pruning 규칙 |
-| MS-2 | 로컬 미디어 스토리지와 수평 확장 충돌 | Core N.8 | v1은 단일 노드로 명시. 로컬 스토리지 제약 문서화 |
-| MS-3 | 테마 JSON → CSS injection 위험 | Core N.3 | `sanitizeTokenValue()` 도입. 값 화이트리스트/sanitization |
-| MS-4 | `unstable_cache` 의존 | Core N.6 | `nxCache` 추상화 레이어로 래핑. 향후 교체 가능 |
-| MS-6 | Draft/Preview 캐시 누출 위험 | Core N.7 | Draft 캐시 격리 규칙 정의. Draft 요청 캐시 bypass 보장 |
-| MS-7 | CORS / Rate Limiting / CSP 미정의 | Core N.2 | 보안 헤더, rate limiting, CORS origin 정책 정의 |
+| MS-1 | Revision JSONB 스냅샷 비대화 | Core N.5 | `NxRevisionPolicy` — retention, autosave 구분, pruning cron |
+| MS-2 | 로컬 미디어 스토리지와 수평 확장 충돌 | Core N.8 | v1 단일 노드 명시. 시작 시 경고 |
+| MS-3 | 테마 JSON → CSS injection 위험 | Core N.3 | `sanitizeTokenValue()` — 세미콜론/중괄호/url()/expression() 제거 |
+| MS-4 | `unstable_cache` 의존 | Core N.6 | `nxCache` 추상화 레이어. 향후 교체 가능 |
+| MS-6 | Draft/Preview 캐시 누출 위험 | Core N.7 | Draft 요청 캐시 bypass, `Cache-Control: no-store` |
+| MS-7 | CORS / Rate Limiting / CSP 미정의 | Core N.2 | 보안 헤더, 엔드포인트별 rate limit, CSP 정의 |
 
 ---
 
-## 🟡 미해결 (Remaining) — 4건
+## 🟡 미해결 (Remaining) — 3건
 
-### CB-1. 인증/세션 모델 (부분 해결)
+모두 구현 차단이 아닌, 의도적 범위 제한 또는 구현 시 결정 사항이다.
 
-**원래 심각도**: 🔴 구현 차단
-**현재 심각도**: 🟠 높음 (차단급에서 하향)
+### HS-2. 플러그인 격리 (의도적 수용)
 
-OpenAPI 스펙에 `POST /api/auth/refresh` 엔드포인트가 추가되었으나, 구현 수준의 세부 설계가 여전히 부족하다.
+**심각도**: 🟡 낮음 (의도적 설계 결정)
 
-**해결된 부분**:
-- refresh 엔드포인트 존재 확인
+Plugin 1.1.1에서 v1 trust model을 정직하게 문서화했다:
+- "v1 plugins run with the same permissions as the NexPress core"
+- 사용자 대면 보안 경고 문구 명시 (Admin UI 플러그인 페이지에 표시)
+- Stage 2(Proxy capability enforcement) / Stage 3(isolated-vm) 로드맵 존재
 
-**여전히 필요한 부분**:
-- refresh token rotation 및 replay 방어 메커니즘
-- CSRF 보호 (cookie 기반 인증 필수)
-- 비밀번호 변경 후 세션 생성 흐름 (invalidateAllSessions → 새 세션 생성 누락)
-- Edge 미들웨어 vs API 핸들러 인증 분리 해결 (세션 무효화 후 최대 2시간 JWT 유효)
-- 단일 인증 검증 경로 정의 (미들웨어/RSC/API 핸들러 간)
-
-**권장**: 인증 흐름 시퀀스 다이어그램을 추가하여 login → refresh → logout → password change → session invalidation 전체 경로를 명시할 것.
-
-### HS-2. 플러그인 격리 약속 vs enforcement (의도적 수용)
-
-**원래 심각도**: 🟠 높음
-**현재 심각도**: 🟡 중간 (의도적 설계 결정)
-
-플러그인 시스템 1.1.1에서 v1 모델을 "trusted plugin = npm 패키지"로 정직하게 정의했다.
-이는 1차 리뷰의 "정직하게 문서화해야 한다"는 권고를 수용한 것이다.
-
-**현재 상태**:
-- v1에서 플러그인은 코어와 동일 프로세스에서 실행되며 격리 없음
-- capability 검증, 네트워크 제한 등은 v2+ 로드맵
-- ESLint 경고 수준의 소프트 가드만 존재
-
-**남은 권고**: 플러그인 문서에 "v1 플러그인은 코어와 동일한 권한으로 실행됩니다. 신뢰할 수 있는 플러그인만 설치하십시오" 경고를 사용자 대면 문서에 포함할 것.
+**남은 작업**: 출시 전 사용자 문서에 경고 포함 확인.
 
 ### HS-6. 분산 캐시 전략 (의도적 범위 제한)
 
-**원래 심각도**: 🟠 높음
-**현재 심각도**: 🟡 낮음 (범위 제한으로 해소)
+**심각도**: 🟡 낮음
 
-Core N.4에서 v1은 단일 노드로 명시적으로 범위를 제한했다.
-멀티 노드 배포는 v2+ 로드맵으로 이관.
+Core N.4에서 v1은 단일 노드로 명시. 멀티 노드는 v2+ 로드맵.
+ISR 캐시, in-memory rate limiter, pg-boss worker 모두 단일 프로세스 기준.
 
-**남은 권고**: 배포 가이드에 "v1은 단일 인스턴스 배포만 지원합니다" 문구를 명시할 것.
+**남은 작업**: 배포 가이드에 "v1은 단일 인스턴스 배포만 지원합니다" 명시.
 
 ### MS-5. Admin 상태 관리 미정의
 
-**원래 심각도**: 🟡 중간
-**현재 심각도**: 🟡 중간 (변경 없음)
+**심각도**: 🟡 중간
 
-이 항목은 업데이트에서 다루어지지 않았다. 다만 v1 구현 과정에서 점진적으로 결정해도 차단되지 않는다.
-
-**여전히 필요한 부분**:
+여전히 미정의. 구현 과정에서 점진적으로 결정 가능:
 - Optimistic update 전략
-- Autosave 구현 방식 (디바운스 주기, 충돌 시 동작)
+- Autosave (디바운스 주기, 충돌 동작)
 - 동시 편집 충돌 감지 (optimistic locking / version check)
 - Dirty form navigation 경고
 
-**권장**: 구현 중 에디터 컴포넌트 설계 시 함께 결정. 별도 설계 문서 불필요.
+**권장**: 에디터 컴포넌트 구현 시 함께 결정. 별도 설계 문서 불필요.
+
+---
+
+## 🔵 새로 발견된 관찰 사항 (Non-blocking)
+
+전체 설계서 재통독 과정에서 발견한 소규모 관찰 사항:
+
+| # | 항목 | 심각도 | 설명 |
+|---|---|---|---|
+| OBS-1 | D.5 ISR 예시에서 `unstable_cache` 직접 사용 | 문서 불일치 | N.6에서 `nxCache` 추상화를 정의했으나, D.5 코드 예시는 `unstable_cache`를 직접 import. 실제 구현 시 `nxCache`로 통일 필요 |
+| OBS-2 | `status` vs `_status` 컬럼 혼동 가능성 | DX | `nxBaseColumns.status` (draft/published/archived)와 versioning용 `_status` (draft/published)가 공존. Payload CMS 패턴이나, 개발자 혼동 방지를 위해 코드 주석 또는 타입 수준의 구분 필요 |
+| OBS-3 | 검색 언어 하드코딩 | 향후 i18n | P.1에서 `plainto_tsquery('english', ...)` 하드코딩. i18n 추가 시 `regconfig` 파라미터화 필요. v1 범위 내 문제 아님 |
+| OBS-4 | Rate limiter가 in-memory | 운영 | 프로세스 재시작 시 rate limit 카운터 리셋. v1 단일 노드에서는 허용 가능하나 인지 필요 |
+| OBS-5 | Audit log 미설계 | 관측성 | N.1에서 구조화 로깅(pino)은 정의했으나, 인증/콘텐츠/플러그인 변경에 대한 전용 audit log 테이블은 없음. 운영 후 필요성 판단 |
 
 ---
 
 ## 🔵 참고 사항 (변경 없음)
-
-다음은 차단 사항은 아니며, 1차 리뷰와 동일하다.
 
 | 항목 | 비고 |
 |---|---|
@@ -129,19 +123,20 @@ Core N.4에서 v1은 단일 노드로 명시적으로 범위를 제한했다.
 | i18n (다국어) | 기획서에 "향후"로 명시됨 |
 | 실시간 협업 편집 | MVP 제외로 명시됨 |
 | 멀티사이트 | MVP 제외로 명시됨 |
-| 접근성 (a11y) | Admin UI에 shadcn/ui 사용하므로 기본 수준은 확보되나, 명시적 정책이 없음 |
+| 접근성 (a11y) | Admin UI에 shadcn/ui 사용하므로 기본 수준은 확보되나, 명시적 정책 없음 |
 | 비밀번호 정책 | 8자 최소만 있고, 복잡성 요구사항 없음 |
 | 비밀번호 재설정 (이메일) | v1 로컬 관리자용이면 불필요할 수 있음 |
 
 ---
 
-## 📋 권장 조치 (업데이트)
+## 📋 권장 조치 (3차 업데이트)
 
-| 순서 | 조치 | 관련 이슈 | 예상 노력 | 긴급도 |
-|---|---|---|---|---|
-| 1 | 인증/세션 흐름 end-to-end 정규화: refresh rotation, CSRF, 세션 생성/갱신 규칙, 통합 인증 검증 경로 | CB-1 | 1-2일 | 구현 전 필수 |
-| 2 | 플러그인 사용자 대면 보안 경고 문서화 | HS-2 | 0.5일 | 출시 전 |
-| 3 | Admin 에디터 상태 관리 설계 (autosave, optimistic locking) | MS-5 | 구현 중 결정 | 에디터 구현 시 |
+| 순서 | 조치 | 관련 이슈 | 긴급도 |
+|---|---|---|---|
+| 1 | 플러그인 사용자 대면 보안 경고를 사용자 문서에 포함 | HS-2 | 출시 전 |
+| 2 | 배포 가이드에 "v1 = 단일 인스턴스" 명시 | HS-6 | 출시 전 |
+| 3 | D.5 ISR 코드 예시를 `nxCache`로 수정 (문서 정합성) | OBS-1 | 구현 시 |
+| 4 | Admin 에디터 상태 관리 (autosave, optimistic locking) | MS-5 | 에디터 구현 시 |
 
 ---
 
@@ -157,5 +152,9 @@ Core N.4에서 v1은 단일 노드로 명시적으로 범위를 제한했다.
 
 ## 결론
 
-설계서가 구현 착수 가능한 수준에 도달했다.
-CB-1(인증/세션)만 구현 전에 보강하면, 나머지는 코딩하면서 세부 조정이 가능하다.
+**설계 완료. 구현 착수 가능.**
+
+21건의 원래 이슈 중 18건 해결, 나머지 3건은 의도적 범위 제한 또는 구현 중 결정 사항이다.
+구현 차단 이슈(Critical Blocker)는 0건이다.
+
+QA 시나리오도 섹션별로 정의되어 있어 구현 후 검증 기준이 명확하다.

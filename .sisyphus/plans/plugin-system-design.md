@@ -66,6 +66,9 @@
 
 **Trust model**: v1 plugins run **in-process with full Node.js access**. A trusted plugin is equivalent to arbitrary code execution in your CMS process. This is the same model as Payload CMS, WordPress, and most self-hosted CMS platforms. Stage 2/3 (capability enforcement, isolated-vm) mitigate this for untrusted plugins — but v1 does not promise sandboxing.
 
+**User-facing security warning** (MUST appear in plugin installation docs and Admin UI plugin page):
+> ⚠️ **v1 plugins run with the same permissions as the NexPress core.** Only install plugins from authors you trust. A malicious plugin can read your database, access environment variables, and execute arbitrary code. Third-party plugin sandboxing is planned for a future release.
+
 ### 1.2 Capability Enum
 
 ```typescript

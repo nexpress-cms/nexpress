@@ -2135,12 +2135,13 @@ Rationale: For a self-hosted CMS admin, local auth is the right default. It's si
 Subsequent requests:
 ┌─────────┐   Any /admin/* or /api/* request   ┌──────────────┐
 │  Browser │──────────────────────────────────▶│  Middleware   │
-│          │  Cookie: nx-session=<JWT>          │              │
+│          │  Cookie: nx-session=<JWT>          │  (Tier 1)    │
+│          │                                    │              │
 │          │                                    │  1. Extract JWT from cookie
-│          │                                    │  2. Verify signature (jose)
-│          │                                    │  3. Check tokenVersion matches DB
-│          │                                    │  4. Attach user to request context
-│          │                                    │  5. Continue to handler
+│          │                                    │  2. Verify signature + expiration (jose)
+│          │                                    │  3. Attach decoded payload to headers
+│          │                                    │  4. Continue to handler
+│          │                                    │  (NO DB query — see C.12 for tier details)
 └─────────┘                                    └──────────────┘
 ```
 
@@ -2667,6 +2668,181 @@ Auto-refresh flow (client-side):
 2. AuthProvider sets a timer for (tokenExpiry - 5min)
 3. On timer: POST /api/auth/refresh
 4. On 401 from any fetch: attempt refresh once, then redirect to login
+```
+
+### C.13 End-to-End Auth Sequences
+
+```
+═══════════════════════════════════════════════════════════
+  1. LOGIN
+═══════════════════════════════════════════════════════════
+
+  Client              Server (C.5)             DB
+    │ POST /api/auth/login  │                    │
+    │ {email, password}     │                    │
+    │──────────────────────▶│                    │
+    │                       │ findUser(email)    │
+    │                       │───────────────────▶│
+    │                       │◀───────────────────│ user row
+    │                       │ verify argon2      │
+    │                       │ check lockout      │
+    │                       │ reset login_attempts│
+    │                       │───────────────────▶│ UPDATE
+    │                       │ insert nx_sessions │
+    │                       │───────────────────▶│ INSERT (tokenHash, expiresAt)
+    │                       │ signToken(user)    │
+    │  Set-Cookie:          │                    │
+    │    nx-session=<JWT>   │                    │
+    │    nx-refresh=<UUID>  │                    │
+    │    nx-csrf=<UUID>     │                    │
+    │◀──────────────────────│                    │
+    │  200 { user }         │                    │
+
+═══════════════════════════════════════════════════════════
+  2. AUTHENTICATED REQUEST (Read — Tier 1 only)
+═══════════════════════════════════════════════════════════
+
+  Client              Middleware (Tier 1)       API Handler
+    │ GET /admin/...        │                    │
+    │ Cookie: nx-session    │                    │
+    │──────────────────────▶│                    │
+    │                       │ verify JWT sig+exp │
+    │                       │ (NO DB query)      │
+    │                       │ attach payload to  │
+    │                       │ x-nx-user header   │
+    │                       │───────────────────▶│ render page
+    │◀──────────────────────────────────────────│ 200
+
+═══════════════════════════════════════════════════════════
+  3. AUTHENTICATED REQUEST (Write — Tier 1 + Tier 2)
+═══════════════════════════════════════════════════════════
+
+  Client              Middleware (Tier 1)       API Handler (Tier 2)    DB
+    │ POST /api/collections │                    │                      │
+    │ Cookie: nx-session    │                    │                      │
+    │ X-CSRF-Token: <csrf>  │                    │                      │
+    │──────────────────────▶│                    │                      │
+    │                       │ verify JWT sig+exp │                      │
+    │                       │ verify CSRF match  │                      │
+    │                       │───────────────────▶│                      │
+    │                       │                    │ verifyTokenFull()    │
+    │                       │                    │─────────────────────▶│ SELECT user
+    │                       │                    │◀─────────────────────│ check tokenVersion
+    │                       │                    │ saveDocument(...)    │
+    │◀──────────────────────────────────────────│ 201 / 403 / 400     │
+
+═══════════════════════════════════════════════════════════
+  4. TOKEN REFRESH (C.10 — silent, before JWT expires)
+═══════════════════════════════════════════════════════════
+
+  Client (AuthProvider)   Server (C.10)            DB
+    │ POST /api/auth/refresh │                      │
+    │ Cookie: nx-refresh     │                      │
+    │───────────────────────▶│                      │
+    │                        │ sha256(refreshToken) │
+    │                        │ find nx_sessions     │
+    │                        │─────────────────────▶│ SELECT by tokenHash
+    │                        │◀─────────────────────│ session row
+    │                        │ check expiresAt      │
+    │                        │ load user + verify   │
+    │                        │   tokenVersion       │
+    │                        │─────────────────────▶│ SELECT user
+    │                        │                      │
+    │                        │ ── ROTATE (in tx) ── │
+    │                        │ DELETE old session   │
+    │                        │─────────────────────▶│ DELETE
+    │                        │ INSERT new session   │
+    │                        │   (new tokenHash)    │
+    │                        │─────────────────────▶│ INSERT
+    │                        │ signToken(user)      │
+    │  Set-Cookie:           │                      │
+    │    nx-session=<newJWT> │                      │
+    │    nx-refresh=<newUUID>│                      │
+    │    nx-csrf=<newUUID>   │                      │
+    │◀───────────────────────│                      │
+    │  200 { user }          │                      │
+
+  Replay defense: old refresh token is DELETED in the same tx.
+  If an attacker replays the old token → session not found → 401.
+  All cookies rotated together (access + refresh + CSRF).
+
+═══════════════════════════════════════════════════════════
+  5. PASSWORD CHANGE (C.9)
+═══════════════════════════════════════════════════════════
+
+  Client              Server (C.9)             DB
+    │ PATCH /api/auth/      │                    │
+    │   change-password     │                    │
+    │ {currentPassword,     │                    │
+    │  newPassword}         │                    │
+    │──────────────────────▶│                    │
+    │                       │ verifyTokenFull()  │
+    │                       │───────────────────▶│ verify tokenVersion
+    │                       │ verify current pwd │
+    │                       │───────────────────▶│ SELECT password
+    │                       │ hash new password  │
+    │                       │───────────────────▶│ UPDATE password
+    │                       │                    │
+    │                       │ invalidateAllSessions(userId)
+    │                       │───────────────────▶│ bump tokenVersion (+1)
+    │                       │                    │ DELETE all nx_sessions
+    │                       │                    │
+    │                       │ create NEW session │
+    │                       │   for current client│
+    │                       │───────────────────▶│ INSERT nx_sessions
+    │                       │ signToken(updated) │
+    │  Set-Cookie:          │                    │
+    │    nx-session=<newJWT>│                    │
+    │    nx-refresh=<newUUID>│                   │
+    │    nx-csrf=<newUUID>  │                    │
+    │◀──────────────────────│                    │
+    │  200 { success }      │                    │
+
+  Result: All other sessions invalidated.
+  Current client gets fresh tokens. Other clients get 401 on next request.
+
+═══════════════════════════════════════════════════════════
+  6. LOGOUT (C.5)
+═══════════════════════════════════════════════════════════
+
+  Client              Server (C.5)             DB
+    │ POST /api/auth/logout │                    │
+    │ Cookie: nx-refresh    │                    │
+    │──────────────────────▶│                    │
+    │                       │ sha256(refreshToken)│
+    │                       │ DELETE nx_sessions │
+    │                       │───────────────────▶│ DELETE by tokenHash
+    │  Clear-Cookie:        │                    │
+    │    nx-session          │                    │
+    │    nx-refresh          │                    │
+    │    nx-csrf             │                    │
+    │◀──────────────────────│                    │
+    │  200 { success }      │                    │
+
+  Note: JWT (nx-session) remains valid until expiry (max 2h),
+  but without the refresh token, the client cannot renew.
+  Tier 2 checks will reject the JWT once tokenVersion is bumped
+  (only if admin force-invalidates; normal logout does not bump).
+
+═══════════════════════════════════════════════════════════
+  7. ADMIN FORCE-INVALIDATION
+═══════════════════════════════════════════════════════════
+
+  Admin               Server                   DB
+    │ POST /api/auth/       │                    │
+    │   invalidate/{userId} │                    │
+    │──────────────────────▶│                    │
+    │                       │ requireAuth(admin) │
+    │                       │ invalidateAllSessions(userId)
+    │                       │───────────────────▶│ bump tokenVersion
+    │                       │                    │ DELETE all sessions
+    │◀──────────────────────│                    │
+    │  200 { success }      │                    │
+
+  Target user's JWTs become stale:
+  - Tier 1 (Edge): still passes for up to 2h (known gap — reads only)
+  - Tier 2 (API):  rejected immediately (tokenVersion mismatch)
+  - Tier 3 (RSC):  rejected immediately
 ```
 
 ---
