@@ -11,7 +11,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -19,7 +21,17 @@
     "lint": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.2",
+    "pg": "^8.20.0",
+    "pg-boss": "^12.15.0",
+    "zod": "^4.3.6"
   }
 }
