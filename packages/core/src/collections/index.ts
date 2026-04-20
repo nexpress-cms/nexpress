@@ -8,6 +8,7 @@ export {
 } from "./registry.js";
 export {
   setDb,
+  getDb,
   saveDocument,
   deleteDocument,
   findDocuments,

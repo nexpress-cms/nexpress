@@ -67,11 +67,22 @@ export {
   getCollectionRegistration,
   getAllCollectionSlugs,
   setDb,
+  getDb,
   saveDocument,
   deleteDocument,
   findDocuments,
   getDocumentById,
 } from "./collections/index.js";
+
+export {
+  getTheme,
+  getNavigation,
+  getPageBySlug,
+  getPostBySlug,
+  findPosts,
+  getAllPageSlugs,
+  getSetting,
+} from "./content/index.js";
 export { buildZodSchema, getCollectionZodSchema } from "./collections/validation.js";
 
 export { collectionConfigSchema } from "./config/validation.js";
