@@ -1,0 +1,413 @@
+import type { ZodType } from "zod";
+
+import type { NxPluginManifest } from "./manifest.js";
+
+export const nxPluginCapabilities = [
+  "content:read",
+  "content:write",
+  "content:delete",
+  "media:read",
+  "media:write",
+  "media:delete",
+  "users:read",
+  "users:write",
+  "settings:read",
+  "settings:write",
+  "theme:read",
+  "theme:write",
+  "admin:panel",
+  "admin:dashboard",
+  "admin:collection-tab",
+  "api:route",
+  "site:route",
+  "network:fetch",
+  "storage:kv",
+  "hooks:content",
+  "hooks:auth",
+  "hooks:render",
+  "hooks:scheduled",
+] as const;
+
+export type NxPluginCapability = (typeof nxPluginCapabilities)[number];
+
+export const nxPluginAgentCategories = [
+  "seo",
+  "analytics",
+  "ecommerce",
+  "forms",
+  "social",
+  "media",
+  "security",
+  "performance",
+  "i18n",
+  "email",
+  "integration",
+  "content",
+  "layout",
+  "navigation",
+  "utility",
+] as const;
+
+export type NxPluginAgentCategory = (typeof nxPluginAgentCategories)[number];
+
+export const nxHookNames = [
+  "content:beforeCreate",
+  "content:afterCreate",
+  "content:beforeUpdate",
+  "content:afterUpdate",
+  "content:beforeDelete",
+  "content:afterDelete",
+  "content:beforePublish",
+  "content:afterPublish",
+  "content:beforeUnpublish",
+  "auth:afterLogin",
+  "auth:beforeLogout",
+  "auth:afterRegister",
+  "render:beforePage",
+  "render:afterPage",
+  "media:beforeUpload",
+  "media:afterUpload",
+] as const;
+
+export type NxHookName = (typeof nxHookNames)[number];
+
+export const nxRouteMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+export type NxRouteMethod = (typeof nxRouteMethods)[number];
+
+export interface NxPluginUser {
+  id: string;
+  email: string;
+  role: string;
+}
+
+export interface NxBlockRegistration {
+  type: string;
+  label: string;
+  description?: string;
+  component: string;
+  propsSchema: Record<string, unknown>;
+  thumbnail?: string;
+  defaultProps?: Record<string, unknown>;
+  usesTokens?: string[];
+  styleSlots?: Record<string, string>;
+}
+
+export interface NxFieldRegistration {
+  type: string;
+  label: string;
+  component: string;
+  cellComponent?: string;
+  schema: Record<string, unknown>;
+}
+
+export interface NxAdminPanelExtension {
+  id: string;
+  label: string;
+  component: string;
+  icon?: string;
+  position?: "top" | "bottom";
+}
+
+export interface NxDashboardWidgetExtension {
+  id: string;
+  label: string;
+  component: string;
+  size?: "small" | "medium" | "large";
+}
+
+export interface NxCollectionTabExtension {
+  id: string;
+  label: string;
+  component: string;
+  collections: string[] | "*";
+}
+
+export interface NxAdminInjectionPoints {
+  beforeDashboard?: string[];
+  afterDashboard?: string[];
+  beforeLogin?: string[];
+  afterLogin?: string[];
+}
+
+export interface NxAdminExtension {
+  panels?: NxAdminPanelExtension[];
+  dashboardWidgets?: NxDashboardWidgetExtension[];
+  collectionTabs?: NxCollectionTabExtension[];
+  injections?: NxAdminInjectionPoints;
+}
+
+export interface NxContentFilterOperator {
+  equals?: unknown;
+  notEquals?: unknown;
+  in?: unknown[];
+  notIn?: unknown[];
+  contains?: string;
+  startsWith?: string;
+  endsWith?: string;
+  exists?: boolean;
+  gt?: number | string | Date;
+  gte?: number | string | Date;
+  lt?: number | string | Date;
+  lte?: number | string | Date;
+}
+
+export interface NxContentWhere {
+  and?: NxContentWhere[];
+  or?: NxContentWhere[];
+  [field: string]: NxContentFilterOperator | NxContentWhere[] | unknown;
+}
+
+export interface NxContentQuery {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  search?: string;
+  select?: string[];
+  where?: NxContentWhere;
+  draft?: boolean;
+}
+
+export interface NxContentItem {
+  id: string;
+  collection?: string;
+  slug?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface NxContentResult {
+  docs: NxContentItem[];
+  totalDocs: number;
+  totalPages: number;
+  page: number;
+  limit: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+export interface NxImageTransform {
+  width?: number;
+  height?: number;
+  fit?: "cover" | "contain" | "fill" | "inside" | "outside";
+  quality?: number;
+  format?: "webp" | "avif" | "jpeg" | "png";
+}
+
+export interface NxMediaQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  mimeType?: string;
+  folder?: string;
+  tags?: string[];
+}
+
+export interface NxMediaItem {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url?: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface NxMediaResult {
+  docs: NxMediaItem[];
+  totalDocs: number;
+  totalPages: number;
+  page: number;
+  limit: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+export interface NxMediaUpload {
+  filename: string;
+  mimeType: string;
+  alt?: string;
+  folder?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface NxReadableStreamLike<T = Uint8Array> extends AsyncIterable<T> {
+  cancel?(reason?: unknown): Promise<void>;
+}
+
+export type NxUploadInput = Uint8Array | ArrayBuffer | NxReadableStreamLike<Uint8Array>;
+
+export type NxFetchBody =
+  | string
+  | Uint8Array
+  | ArrayBuffer
+  | ArrayBufferView
+  | Record<string, unknown>
+  | null;
+
+export interface NxFetchOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: NxFetchBody;
+  timeoutMs?: number;
+}
+
+export interface NxFetchResponse {
+  ok: boolean;
+  status: number;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+export type NxSiteSettings = Record<string, unknown>;
+
+export type NxThemeTokens = Record<string, string | number>;
+
+export interface NxRouteRequest {
+  method: string;
+  path: string;
+  params: Record<string, string>;
+  query: Record<string, string>;
+  body: unknown;
+  headers: Record<string, string>;
+  user?: NxPluginUser;
+}
+
+export interface NxRouteResponse {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+export type NxActionHandler<TConfig = Record<string, unknown>> = (
+  data: unknown,
+  ctx: NxPluginContext<TConfig>,
+) => Promise<NxActionResult>;
+
+export interface NxActionResult {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+export interface NxPluginContext<TConfig = Record<string, unknown>> {
+  readonly pluginId: string;
+  readonly config: Readonly<TConfig>;
+  readonly capabilities: readonly NxPluginCapability[];
+  readonly content: {
+    find(collection: string, query?: NxContentQuery): Promise<NxContentResult>;
+    findOne(collection: string, id: string): Promise<NxContentItem | null>;
+    create(collection: string, data: Record<string, unknown>): Promise<NxContentItem>;
+    update(collection: string, id: string, data: Record<string, unknown>): Promise<NxContentItem>;
+    delete(collection: string, id: string): Promise<void>;
+    count(collection: string, where?: NxContentWhere): Promise<number>;
+  };
+  readonly media: {
+    list(query?: NxMediaQuery): Promise<NxMediaResult>;
+    getById(id: string): Promise<NxMediaItem | null>;
+    getUrl(id: string, transform?: NxImageTransform): Promise<string>;
+    upload(file: NxUploadInput, metadata: NxMediaUpload): Promise<NxMediaItem>;
+    delete(id: string): Promise<void>;
+  };
+  readonly storage: {
+    get<T = unknown>(key: string): Promise<T | null>;
+    set(key: string, value: unknown, options?: { ttl?: number }): Promise<void>;
+    delete(key: string): Promise<void>;
+    list(prefix?: string): Promise<string[]>;
+    has(key: string): Promise<boolean>;
+  };
+  readonly settings: {
+    getSite(): Promise<NxSiteSettings>;
+    getPlugin(): Promise<TConfig>;
+    setPlugin(data: Partial<TConfig>): Promise<void>;
+  };
+  readonly theme: {
+    getTokens(): Promise<NxThemeTokens>;
+    setTokens(tokens: Partial<NxThemeTokens>): Promise<void>;
+  };
+  readonly http: {
+    fetch(url: string, options?: NxFetchOptions): Promise<NxFetchResponse>;
+  };
+  readonly log: {
+    debug(message: string, data?: Record<string, unknown>): void;
+    info(message: string, data?: Record<string, unknown>): void;
+    warn(message: string, data?: Record<string, unknown>): void;
+    error(message: string, data?: Record<string, unknown>): void;
+  };
+  readonly cache: {
+    get<T = unknown>(key: string): Promise<T | null>;
+    set(key: string, value: unknown, ttl?: number): Promise<void>;
+    invalidate(key: string): Promise<void>;
+    invalidateAll(): Promise<void>;
+  };
+  readonly next: {
+    revalidatePath(path: string): Promise<void>;
+    revalidateTag(tag: string): Promise<void>;
+  };
+  readonly actions: {
+    register(actionName: string, handler: NxActionHandler<TConfig>): void;
+    dispatch(pluginId: string, actionName: string, data?: unknown): Promise<NxActionResult>;
+  };
+}
+
+export interface NxHookContext<TConfig = Record<string, unknown>> {
+  hook: string;
+  data: Record<string, unknown>;
+  collection?: string;
+  user?: NxPluginUser;
+  ctx: NxPluginContext<TConfig>;
+}
+
+export type NxHookHandler<TConfig = Record<string, unknown>> =
+  | ((ctx: NxHookContext<TConfig>) => void | Promise<void>)
+  | string;
+
+export type NxHookRegistration<TConfig = Record<string, unknown>> = Partial<
+  Record<NxHookName, NxHookHandler<TConfig>>
+>;
+
+export type NxRouteHandler<TConfig = Record<string, unknown>> = (
+  req: NxRouteRequest,
+  ctx: NxPluginContext<TConfig>,
+) => Promise<NxRouteResponse>;
+
+export interface NxRouteRegistration<TConfig = Record<string, unknown>> {
+  path: string;
+  method: NxRouteMethod;
+  handler: NxRouteHandler<TConfig> | string;
+  description?: string;
+  auth?: boolean;
+}
+
+export interface NxScheduledTask<TConfig = Record<string, unknown>> {
+  id: string;
+  cron: string;
+  handler: ((ctx: NxPluginContext<TConfig>) => void | Promise<void>) | string;
+  description?: string;
+}
+
+export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
+  manifest: NxPluginManifest;
+  blocks?: NxBlockRegistration[];
+  fields?: NxFieldRegistration[];
+  admin?: NxAdminExtension;
+  hooks?: NxHookRegistration<TConfig>;
+  routes?: NxRouteRegistration<TConfig>[];
+  scheduled?: NxScheduledTask<TConfig>[];
+  configSchema?: ZodType<TConfig>;
+  setup?: (ctx: NxPluginContext<TConfig>) => void | Promise<void>;
+  teardown?: () => void | Promise<void>;
+}
+
+export type NxResolvedPlugin<TConfig = Record<string, unknown>> = Omit<
+  NxPluginDefinition<TConfig>,
+  "manifest"
+> & {
+  manifest: NxPluginManifest;
+};
