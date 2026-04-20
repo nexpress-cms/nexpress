@@ -23,7 +23,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/app/globals.css": globalsCssTemplate(),
     "src/app/(site)/layout.tsx": siteLayoutTemplate(config),
     "src/app/(site)/page.tsx": homePageTemplate(config),
-    "src/app/(site)/[[...slug]]/page.tsx": slugPageTemplate(config),
+    "src/app/(site)/[...slug]/page.tsx": slugPageTemplate(config),
     "src/app/(admin)/admin/[[...path]]/page.tsx": adminPageTemplate(config),
     "src/app/api/health/route.ts": healthRouteTemplate(),
   };
@@ -37,6 +37,8 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
 }
 
 function packageJsonTemplate(config: TemplateConfig): string {
+  const nexpressVersion = config.localMode ? "workspace:*" : "latest";
+
   return JSON.stringify(
     {
       name: config.projectName,
@@ -49,12 +51,12 @@ function packageJsonTemplate(config: TemplateConfig): string {
         start: "next start",
       },
       dependencies: {
-        "@nexpress/core": "latest",
-        "@nexpress/admin": "latest",
-        "@nexpress/editor": "latest",
-        "@nexpress/blocks": "latest",
-        "@nexpress/theme": "latest",
-        "@nexpress/plugin-sdk": "latest",
+        "@nexpress/core": nexpressVersion,
+        "@nexpress/admin": nexpressVersion,
+        "@nexpress/editor": nexpressVersion,
+        "@nexpress/blocks": nexpressVersion,
+        "@nexpress/theme": nexpressVersion,
+        "@nexpress/plugin-sdk": nexpressVersion,
         next: "^15.0.0",
         react: "^19.0.0",
         "react-dom": "^19.0.0",

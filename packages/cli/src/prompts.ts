@@ -11,6 +11,7 @@ export interface ProjectConfig {
   storageMode: StorageMode;
   includeExampleContent: boolean;
   dockerSetup: boolean;
+  localMode?: boolean;
 }
 
 export async function promptForProjectConfig(

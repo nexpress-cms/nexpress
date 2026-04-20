@@ -4,10 +4,12 @@ import { promptForProjectConfig } from "./prompts.js";
 import { scaffoldProject } from "./scaffold.js";
 
 async function main(): Promise<void> {
-  const initialProjectName = process.argv.slice(2)[0];
+  const args = process.argv.slice(2);
+  const localMode = args.includes("--local");
+  const initialProjectName = args.find((arg) => !arg.startsWith("--"));
   const config = await promptForProjectConfig(initialProjectName);
 
-  await scaffoldProject(config);
+  await scaffoldProject({ ...config, localMode });
 }
 
 main().catch((error: unknown) => {
