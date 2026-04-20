@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@layer nx-base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--nx-font-body, system-ui, sans-serif);
+    font-size: var(--nx-font-size-base, 16px);
+    line-height: var(--nx-line-height, 1.6);
+    color: var(--nx-color-foreground, #0f172a);
+    background: var(--nx-color-background, #fff);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@theme {
+  --color-primary: var(--nx-color-primary, oklch(0.55 0.2 250));
+  --color-primary-foreground: var(--nx-color-primary-foreground, oklch(0.98 0 0));
+  --color-secondary: var(--nx-color-secondary, oklch(0.75 0.05 250));
+  --color-secondary-foreground: var(--nx-color-secondary-foreground, oklch(0.15 0.02 260));
+  --color-accent: var(--nx-color-accent, oklch(0.65 0.15 200));
+  --color-accent-foreground: var(--nx-color-accent-foreground, oklch(0.15 0.02 260));
+  --color-background: var(--nx-color-background, oklch(0.99 0 0));
+  --color-foreground: var(--nx-color-foreground, oklch(0.15 0.02 260));
+  --color-muted: var(--nx-color-muted, oklch(0.95 0.01 260));
+  --color-muted-foreground: var(--nx-color-muted-foreground, oklch(0.45 0.02 260));
+  --color-border: var(--nx-color-border, oklch(0.9 0.01 260));
+  --color-input: var(--nx-color-input, oklch(0.9 0.01 260));
+  --color-ring: var(--nx-color-ring, oklch(0.55 0.2 250));
+  --color-destructive: var(--nx-color-destructive, oklch(0.55 0.25 25));
+  --color-destructive-foreground: var(--nx-color-destructive-foreground, oklch(0.98 0 0));
+  --color-card: var(--nx-color-card, oklch(0.99 0 0));
+  --color-card-foreground: var(--nx-color-card-foreground, oklch(0.15 0.02 260));
+
+  --font-heading: var(--nx-font-heading, "Inter", system-ui, sans-serif);
+  --font-body: var(--nx-font-body, "Inter", system-ui, sans-serif);
+  --font-mono: var(--nx-font-mono, "JetBrains Mono", monospace);
+
+  --radius-sm: var(--nx-radius-sm, 0.25rem);
+  --radius-md: var(--nx-radius-md, 0.5rem);
+  --radius-lg: var(--nx-radius-lg, 0.75rem);
+}
