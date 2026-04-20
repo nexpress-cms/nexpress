@@ -24,7 +24,7 @@ export async function scaffoldProject(config: ProjectConfig): Promise<void> {
     await writeFile(absolutePath, content, "utf8");
   }
 
-  printSuccess(config.projectName, config.dockerSetup);
+  printSuccess(config.projectName, config.dockerSetup, config.localMode ?? false);
 }
 
 async function ensureTargetDirectory(targetDir: string): Promise<void> {
@@ -46,15 +46,28 @@ async function ensureTargetDirectory(targetDir: string): Promise<void> {
   }
 }
 
-function printSuccess(projectName: string, dockerSetup: boolean): void {
+function printSuccess(projectName: string, dockerSetup: boolean, localMode: boolean): void {
+  const installStep = localMode
+    ? "  pnpm install         (run from the monorepo root — uses workspace:* links)"
+    : "  pnpm install        (or npm install)";
+  const devStep = localMode ? `  pnpm --filter ${projectName} dev` : "  pnpm dev";
   const nextSteps = [
     `  cd ${projectName}`,
-    "  pnpm install        (or npm install)",
+    installStep,
     ...(dockerSetup ? ["  docker compose -f docker/docker-compose.yml up -d db"] : []),
-    "  pnpm dev",
+    devStep,
   ];
 
   console.log(`${pc.green("✓")} Project created at ./${projectName}`);
+
+  if (localMode) {
+    console.log(
+      pc.yellow(
+        "  Local mode: @nexpress/* deps use workspace:*. Scaffold inside a NexPress monorepo app folder.",
+      ),
+    );
+  }
+
   console.log("\nNext steps:");
 
   for (const step of nextSteps) {

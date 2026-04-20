@@ -6,6 +6,7 @@ declare module "picocolors" {
   interface PicoColors {
     red: Formatter;
     green: Formatter;
+    yellow: Formatter;
   }
 
   const picocolors: PicoColors;
