@@ -24,7 +24,8 @@ export async function ensurePluginsLoaded(
 
   pluginsLoadingPromise = (async () => {
     ensureCoreServices();
-    await loadPlugins(overrides ?? plugins);
+    const pluginList = (overrides ?? plugins) as Parameters<typeof loadPlugins>[0];
+    await loadPlugins(pluginList);
     pluginsLoaded = true;
   })();
 
