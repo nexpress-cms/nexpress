@@ -8,6 +8,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./db-schema": {
+      "types": "./dist/db-schema.d.ts",
+      "import": "./dist/db-schema.js",
+      "default": "./dist/db-schema.js"
     }
   },
   "main": "./dist/index.js",
