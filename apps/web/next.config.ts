@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     "@nexpress/blocks",
     "@nexpress/theme",
     "@nexpress/plugin-sdk",
+    "@nexpress/plugin-reading-time",
   ],
   serverExternalPackages: [
     "@nexpress/core",
