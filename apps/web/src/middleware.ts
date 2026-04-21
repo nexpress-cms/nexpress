@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const SECURITY_HEADERS: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "0",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Content-Security-Policy": [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "font-src 'self'",
-    "connect-src 'self'",
-    "frame-ancestors 'none'",
-  ].join("; "),
-};
+function getSecurityHeaders(request: NextRequest): Record<string, string> {
+  const isDev = process.env.NODE_ENV !== "production";
+  const protocol = request.nextUrl.protocol === "https:" ? "wss:" : "ws:";
+
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "0",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self'",
+      `connect-src 'self'${isDev ? ` ${protocol}//${request.nextUrl.host}` : ""}`,
+      "frame-ancestors 'none'",
+    ].join("; "),
+  };
+}
 
 interface RateLimitEntry {
   count: number;
@@ -72,6 +77,7 @@ setInterval(() => {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const securityHeaders = getSecurityHeaders(request);
 
   if (pathname.startsWith("/api/")) {
     const ip = getClientIp(request);
@@ -83,7 +89,7 @@ export function middleware(request: NextRequest) {
         {
           status: 429,
           headers: {
-            ...SECURITY_HEADERS,
+            ...securityHeaders,
             "Retry-After": String(retryAfter),
           },
         },
@@ -93,7 +99,7 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
 
-  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+  for (const [key, value] of Object.entries(securityHeaders)) {
     response.headers.set(key, value);
   }
 

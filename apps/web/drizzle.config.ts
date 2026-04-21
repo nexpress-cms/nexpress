@@ -15,7 +15,7 @@ if (!connectionString) {
 
 export default defineConfig({
   schema: [
-    "../../packages/core/src/db/schema/**/*.ts",
+    "./node_modules/@nexpress/core/dist/db-schema.js",
     "./src/db/generated/*.ts",
   ],
   out: "./drizzle",

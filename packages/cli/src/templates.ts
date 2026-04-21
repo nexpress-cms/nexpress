@@ -10,22 +10,51 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     ".env": envTemplate(config),
     ".gitignore": gitignoreTemplate(),
     "README.md": readmeTemplate(config),
+    "drizzle.config.ts": drizzleConfigTemplate(),
     "next.config.ts": nextConfigTemplate(),
     "package.json": packageJsonTemplate(config),
     "postcss.config.mjs": postcssConfigTemplate(),
     "tsconfig.json": tsconfigTemplate(),
     "next-env.d.ts": nextEnvTemplate(),
     "public/media/.gitkeep": "",
+    "src/db/generated/.gitkeep": "",
     "src/nexpress.config.ts": nexpressConfigTemplate(config),
     "src/collections/posts.ts": postsCollectionTemplate(),
     "src/collections/pages.ts": pagesCollectionTemplate(),
+    "src/lib/bootstrap.ts": bootstrapLibTemplate(),
+    "src/lib/auth-helpers.ts": authHelpersLibTemplate(),
+    "src/lib/api-response.ts": apiResponseLibTemplate(),
+    "src/lib/collection-helpers.ts": collectionHelpersLibTemplate(),
+    "src/lib/revalidate.ts": revalidateLibTemplate(),
+    "src/lib/manifest.ts": manifestLibTemplate(),
+    "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
+    "scripts/seed-admin.ts": seedAdminScriptTemplate(),
     "src/app/layout.tsx": rootLayoutTemplate(config),
     "src/app/globals.css": globalsCssTemplate(),
     "src/app/(site)/layout.tsx": siteLayoutTemplate(config),
     "src/app/(site)/page.tsx": homePageTemplate(config),
     "src/app/(site)/[...slug]/page.tsx": slugPageTemplate(config),
-    "src/app/(admin)/admin/[[...path]]/page.tsx": adminPageTemplate(config),
+    "src/app/(admin)/admin/login/page.tsx": adminLoginPageTemplate(),
+    "src/app/(admin)/admin/(protected)/layout.tsx": adminProtectedLayoutTemplate(),
+    "src/app/(admin)/admin/(protected)/page.tsx": adminDashboardPageTemplate(),
+    "src/app/(admin)/admin/(protected)/collections/[collection]/page.tsx":
+      adminCollectionListPageTemplate(),
+    "src/app/(admin)/admin/(protected)/collections/[collection]/create/page.tsx":
+      adminCollectionCreatePageTemplate(),
+    "src/app/(admin)/admin/(protected)/collections/[collection]/[id]/page.tsx":
+      adminCollectionEditPageTemplate(),
     "src/app/api/health/route.ts": healthRouteTemplate(),
+    "src/app/api/auth/login/route.ts": authLoginRouteTemplate(),
+    "src/app/api/auth/logout/route.ts": authLogoutRouteTemplate(),
+    "src/app/api/auth/me/route.ts": authMeRouteTemplate(),
+    "src/app/api/collections/[slug]/route.ts": collectionsListRouteTemplate(),
+    "src/app/api/collections/[slug]/[id]/route.ts": collectionsItemRouteTemplate(),
+    "src/app/api/meta/collections/route.ts": metaCollectionsRouteTemplate(),
+    "src/app/api/meta/blocks/route.ts": metaBlocksRouteTemplate(),
+    "src/app/api/meta/plugins/route.ts": metaPluginsRouteTemplate(),
+    "src/app/api/openapi.json/route.ts": openapiRouteTemplate(),
+    "src/app/api/settings/theme/route.ts": settingsThemeRouteTemplate(),
+    "src/app/api/plugins/[pluginId]/[...path]/route.ts": pluginsRouteTemplate(),
   };
 
   if (config.dockerSetup) {
@@ -39,7 +68,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
 function packageJsonTemplate(config: TemplateConfig): string {
   const nexpressVersion = config.localMode ? "workspace:*" : "latest";
 
-  return JSON.stringify(
+  return `${JSON.stringify(
     {
       name: config.projectName,
       version: "0.1.0",
@@ -49,6 +78,12 @@ function packageJsonTemplate(config: TemplateConfig): string {
         dev: "next dev",
         build: "next build",
         start: "next start",
+        "schema:gen": "tsx scripts/generate-schema.ts",
+        "seed:admin": "tsx scripts/seed-admin.ts",
+        "db:generate": "pnpm schema:gen && drizzle-kit generate",
+        "db:migrate": "drizzle-kit migrate",
+        "db:push": "pnpm schema:gen && drizzle-kit push",
+        "db:studio": "drizzle-kit studio",
       },
       dependencies: {
         "@nexpress/core": nexpressVersion,
@@ -56,8 +91,10 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/editor": nexpressVersion,
         "@nexpress/blocks": nexpressVersion,
         "@nexpress/theme": nexpressVersion,
+        "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
-        next: "^15.0.0",
+        "drizzle-orm": "^0.45.2",
+        next: "^15.3.0",
         react: "^19.0.0",
         "react-dom": "^19.0.0",
       },
@@ -65,14 +102,18 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@tailwindcss/postcss": "^4.0.0",
         "@types/node": "^22.0.0",
         "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        dotenv: "^17.2.4",
+        "drizzle-kit": "^0.31.10",
         postcss: "^8.5.0",
         tailwindcss: "^4.0.0",
+        tsx: "^4.20.6",
         typescript: "^5.8.0",
       },
     },
     null,
     2,
-  );
+  )}\n`;
 }
 
 function nexpressConfigTemplate(config: TemplateConfig): string {
@@ -92,8 +133,334 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   return `import { defineConfig } from "@nexpress/core";\n${imports}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  auth: {\n    secret: process.env.NX_SECRET!,\n  },\n${pluginsHint}\n});\n`;
 }
 
+function drizzleConfigTemplate(): string {
+  return `import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+import { config as loadEnv } from "dotenv";
+import { defineConfig } from "drizzle-kit";
+
+const here = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: resolve(here, ".env") });
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set — copy .env.example to .env first.");
+}
+
+export default defineConfig({
+  schema: [
+    "./node_modules/@nexpress/core/dist/db-schema.js",
+    "./src/db/generated/*.ts",
+  ],
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: { url: connectionString },
+  strict: true,
+  verbose: true,
+});
+`;
+}
+
+function bootstrapLibTemplate(): string {
+  return `import { createBootstrap } from "@nexpress/next";
+
+import nexpressConfig from "@/nexpress.config";
+import * as generatedSchema from "@/db/generated/collections";
+
+export const { getDb, ensureCoreServices, ensurePluginsLoaded } = createBootstrap({
+  config: nexpressConfig,
+  generatedSchema: generatedSchema as unknown as Record<string, unknown>,
+});
+
+export type { NxDb } from "@nexpress/next";
+export { nexpressConfig };
+`;
+}
+
+function authHelpersLibTemplate(): string {
+  return `import { createAuthHelpers } from "@nexpress/next";
+
+import { getDb } from "@/lib/bootstrap";
+
+export const {
+  getAuthRuntimeConfig,
+  requireAuth,
+  optionalAuth,
+  requireCsrf,
+  setAuthCookies,
+  clearAuthCookies,
+} = createAuthHelpers({ getDb });
+
+export type { AuthCookieTokens, AuthRuntimeConfig } from "@nexpress/next";
+`;
+}
+
+function apiResponseLibTemplate(): string {
+  return `export { nxSuccessResponse, nxErrorResponse, type NxApiError } from "@nexpress/next";
+`;
+}
+
+function collectionHelpersLibTemplate(): string {
+  return `import { createCollectionHelpers } from "@nexpress/next";
+
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/bootstrap";
+
+export const {
+  parseFindOptions,
+  findCollectionDocuments,
+  getCollectionDocument,
+  saveCollectionDocument,
+  deleteCollectionDocument,
+} = createCollectionHelpers({
+  async ensureReady() {
+    ensureCoreServices();
+    await ensurePluginsLoaded();
+  },
+});
+`;
+}
+
+function revalidateLibTemplate(): string {
+  return `import {
+  defaultRevalidationRules,
+  revalidateCollection as coreRevalidateCollection,
+} from "@nexpress/next";
+
+export function revalidateCollection(
+  slug: string,
+  doc?: Record<string, unknown> | null,
+): void {
+  coreRevalidateCollection(defaultRevalidationRules, slug, doc);
+}
+`;
+}
+
+function manifestLibTemplate(): string {
+  return `import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
+import type { NxBlockDefinition, NxBlockPropField } from "@nexpress/blocks";
+
+export interface NxFieldManifest {
+  name: string;
+  type: NxFieldConfig["type"];
+  label?: string;
+  description?: string;
+  required?: boolean;
+  defaultValue?: unknown;
+  options?: Array<{ label: string; value: string }>;
+  relationTo?: string | string[];
+  hasMany?: boolean;
+  integerOnly?: boolean;
+  fields?: NxFieldManifest[];
+}
+
+export interface NxCollectionManifest {
+  slug: string;
+  labels: { singular: string; plural: string };
+  description?: string;
+  slug_auto?: boolean;
+  versions: { drafts: boolean; max?: number };
+  fields: NxFieldManifest[];
+}
+
+export interface NxBlockManifest {
+  type: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  propsSchema: NxBlockPropField[];
+}
+
+export interface NxPluginManifest {
+  id: string;
+  name: string;
+  version?: string;
+  description?: string;
+  capabilities: string[];
+  hooks: string[];
+  routes: Array<{ method: string; path: string }>;
+}
+
+export function collectionToManifest(config: NxCollectionConfig): NxCollectionManifest {
+  return {
+    slug: config.slug,
+    labels: config.labels,
+    description: config.admin?.description,
+    slug_auto: Boolean(config.slugField),
+    versions: { drafts: Boolean(config.versions?.drafts), max: config.versions?.max },
+    fields: config.fields.map(fieldToManifest),
+  };
+}
+
+function fieldToManifest(field: NxFieldConfig): NxFieldManifest {
+  if (field.type === "row" || field.type === "collapsible") {
+    return {
+      name: field.type === "collapsible" ? field.label : "row",
+      type: field.type,
+      fields: field.fields.map(fieldToManifest),
+    };
+  }
+
+  const base: NxFieldManifest = {
+    name: field.name,
+    type: field.type,
+    label: field.label,
+    description: field.admin?.description,
+    required: field.required,
+    defaultValue: field.defaultValue,
+  };
+
+  switch (field.type) {
+    case "select":
+    case "radio":
+      base.options = field.options;
+      break;
+    case "relationship":
+      base.relationTo = field.relationTo;
+      base.hasMany = field.hasMany;
+      break;
+    case "upload":
+      base.relationTo = field.relationTo;
+      break;
+    case "number":
+      base.integerOnly = field.integerOnly;
+      break;
+    case "group":
+    case "array":
+      base.fields = field.fields.map(fieldToManifest);
+      break;
+  }
+
+  return base;
+}
+
+export function blockToManifest(definition: NxBlockDefinition): NxBlockManifest {
+  return {
+    type: definition.type,
+    label: definition.label,
+    description: definition.description,
+    icon: definition.icon,
+    propsSchema: definition.propsSchema,
+  };
+}
+`;
+}
+
+function generateSchemaScriptTemplate(): string {
+  return `import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { generateDrizzleSchema } from "@nexpress/core";
+
+import nexpressConfig from "../src/nexpress.config";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const outFile = resolve(here, "../src/db/generated/collections.ts");
+
+const header = \`// AUTO-GENERATED by scripts/generate-schema.ts
+// Do not edit by hand. Re-run \\\`pnpm db:generate\\\` after changing collections.
+/* eslint-disable */
+
+\`;
+
+const body = generateDrizzleSchema(nexpressConfig.collections);
+
+mkdirSync(dirname(outFile), { recursive: true });
+writeFileSync(outFile, header + body + "\\n", "utf8");
+
+process.stdout.write(\`✓ wrote \${outFile}\\n\`);
+process.stdout.write(
+  \`  collections: \${nexpressConfig.collections.map((c) => c.slug).join(", ")}\\n\`,
+);
+`;
+}
+
+function seedAdminScriptTemplate(): string {
+  return `import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
+
+import { config as loadEnv } from "dotenv";
+import { count, eq } from "drizzle-orm";
+
+import { createDbConnection, hashPassword, nxUsers } from "@nexpress/core";
+
+const here = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: resolve(here, "../.env") });
+
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
+  process.exit(1);
+}
+
+const db = createDbConnection({ connectionString: databaseUrl });
+
+async function prompt(question: string): Promise<string> {
+  const rl = createInterface({ input: stdin, output: stdout });
+  const answer = await rl.question(question);
+  rl.close();
+  return answer.trim();
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
+}
+
+async function main(): Promise<void> {
+  const existing = await db.select({ value: count() }).from(nxUsers);
+  const userCount = existing[0]?.value ?? 0;
+
+  if (userCount > 0) {
+    console.log(\`DB already has \${userCount} user(s). Use the admin UI to add more.\`);
+    process.exit(0);
+  }
+
+  const email = process.argv[2] ?? process.env.NX_ADMIN_EMAIL ?? (await prompt("Admin email: "));
+  if (!isValidEmail(email)) {
+    console.error(\`"\${email}" is not a valid email address.\`);
+    process.exit(1);
+  }
+
+  const password = process.argv[3] ?? process.env.NX_ADMIN_PASSWORD ?? (await prompt("Admin password (min 12 chars): "));
+  if (password.length < 12) {
+    console.error("Password must be at least 12 characters.");
+    process.exit(1);
+  }
+
+  const name = process.argv[4] ?? process.env.NX_ADMIN_NAME ?? "Admin";
+  const passwordHash = await hashPassword(password);
+
+  const existingEmail = await db
+    .select({ id: nxUsers.id })
+    .from(nxUsers)
+    .where(eq(nxUsers.email, email))
+    .limit(1);
+
+  if (existingEmail.length > 0) {
+    console.error(\`User with email "\${email}" already exists.\`);
+    process.exit(1);
+  }
+
+  await db.insert(nxUsers).values({ email, password: passwordHash, name, role: "admin" });
+  console.log(\`✓ Admin created: \${email} (\${name})\`);
+  console.log(\`  Log in at http://localhost:3000/admin\`);
+  process.exit(0);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+}
+
 function dockerComposeTemplate(): string {
-  return `services:\n  db:\n    image: postgres:16-alpine\n    ports:\n      - "\${NEXPRESS_DB_PORT:-5433}:5432"\n    environment:\n      POSTGRES_DB: nexpress\n      POSTGRES_USER: nexpress\n      POSTGRES_PASSWORD: nexpress\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n  app:\n    build:\n      context: ..\n      dockerfile: docker/Dockerfile\n    ports:\n      - "3000:3000"\n    environment:\n      DATABASE_URL: postgres://nexpress:nexpress@db:5432/nexpress\n      NX_SECRET: \${NX_SECRET}\n    depends_on:\n      - db\n\nvolumes:\n  pgdata:\n`;
+  return `services:\n  db:\n    image: postgres:16-alpine\n    ports:\n      - "\${NEXPRESS_DB_PORT:-5433}:5432"\n    environment:\n      POSTGRES_DB: nexpress\n      POSTGRES_USER: nexpress\n      POSTGRES_PASSWORD: nexpress\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n\nvolumes:\n  pgdata:\n`;
 }
 
 function dockerfileTemplate(): string {
@@ -121,7 +488,38 @@ function envTemplate(config: TemplateConfig): string {
 }
 
 function nextConfigTemplate(): string {
-  return `import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = {\n  output: "standalone",\n  transpilePackages: ["@nexpress/admin", "@nexpress/editor", "@nexpress/blocks", "@nexpress/theme", "@nexpress/plugin-sdk"],\n  serverExternalPackages: ["@nexpress/core"],\n};\n\nexport default nextConfig;\n`;
+  return `import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  output: "standalone",
+  transpilePackages: [
+    "@nexpress/admin",
+    "@nexpress/editor",
+    "@nexpress/blocks",
+    "@nexpress/theme",
+    "@nexpress/next",
+    "@nexpress/plugin-sdk",
+  ],
+  serverExternalPackages: [
+    "@nexpress/core",
+    "@node-rs/argon2",
+    "pg",
+    "pg-boss",
+    "sharp",
+  ],
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = config.externals || [];
+      if (Array.isArray(config.externals)) {
+        config.externals.push("@node-rs/argon2", "pg-native", "sharp");
+      }
+    }
+    return config;
+  },
+};
+
+export default nextConfig;
+`;
 }
 
 function tsconfigTemplate(): string {
@@ -139,11 +537,12 @@ function tsconfigTemplate(): string {
     "resolveJsonModule": true,
     "isolatedModules": true,
     "incremental": true,
+    "allowJs": true,
     "noEmit": true,
     "paths": { "@/*": ["./src/*"] },
     "plugins": [{ "name": "next" }]
   },
-  "include": ["src", "next-env.d.ts", ".next/types/**/*.ts"],
+  "include": ["src", "scripts", "next-env.d.ts", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
 `;
@@ -154,7 +553,15 @@ function postcssConfigTemplate(): string {
 }
 
 function gitignoreTemplate(): string {
-  return `node_modules/\n.next/\ndist/\n.env\n*.generated.ts\n`;
+  return `node_modules/
+.next/
+dist/
+.env
+*.tsbuildinfo
+src/db/generated/*.ts
+!src/db/generated/.gitkeep
+uploads/
+`;
 }
 
 function nextEnvTemplate(): string {
@@ -166,52 +573,1092 @@ function rootLayoutTemplate(config: TemplateConfig): string {
 }
 
 function globalsCssTemplate(): string {
-  return `@import "tailwindcss";\n\n:root {\n  color-scheme: light;\n  --background: #ffffff;\n  --foreground: #111827;\n}\n\nbody {\n  margin: 0;\n  min-height: 100vh;\n  background: var(--background);\n  color: var(--foreground);\n  font-family: Arial, Helvetica, sans-serif;\n}\n\na {\n  color: inherit;\n  text-decoration: none;\n}\n`;
+  return `@import "tailwindcss";
+
+@layer nx-base, nx-blocks, nx-theme, nx-overrides;
+
+@layer nx-base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--nx-font-body, system-ui, sans-serif);
+    font-size: var(--nx-font-size-base, 16px);
+    line-height: var(--nx-line-height, 1.6);
+    color: var(--nx-color-foreground, #0f172a);
+    background: var(--nx-color-background, #fff);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+`;
 }
 
 function siteLayoutTemplate(config: TemplateConfig): string {
-  return `import type { ReactNode } from "react";\n\nexport default function SiteLayout({ children }: { children: ReactNode }) {\n  return (\n    <div className="min-h-screen bg-white text-slate-900">\n      <header className="border-b border-slate-200 px-6 py-4">\n        <div className="mx-auto max-w-5xl text-lg font-semibold">${config.projectName}</div>\n      </header>\n      <main className="mx-auto max-w-5xl px-6 py-12">{children}</main>\n    </div>\n  );\n}\n`;
+  return `import type { ReactNode } from "react";
+
+import { NxThemeStyle } from "@nexpress/theme";
+import { getTheme } from "@nexpress/core";
+
+import { ensureCoreServices } from "@/lib/bootstrap";
+
+export const dynamic = "force-dynamic";
+
+export default async function SiteLayout({ children }: { children: ReactNode }) {
+  ensureCoreServices();
+  const theme = await getTheme();
+
+  return (
+    <>
+      <NxThemeStyle theme={theme} />
+      <header className="border-b px-6 py-4">
+        <div className="mx-auto max-w-5xl text-lg font-semibold">${config.projectName}</div>
+      </header>
+      <main className="mx-auto max-w-5xl px-6 py-12">{children}</main>
+    </>
+  );
+}
+`;
 }
 
 function homePageTemplate(config: TemplateConfig): string {
-  const description = config.includeExampleContent
-    ? "Start by editing the example collections or wiring your own content model."
-    : "Start by defining your collections in src/nexpress.config.ts.";
+  return `import { ensureCoreServices } from "@/lib/bootstrap";
 
-  return `export default function HomePage() {\n  return (\n    <section className="space-y-4">\n      <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">NexPress</p>\n      <h1 className="text-4xl font-bold tracking-tight">Welcome to ${config.projectName}</h1>\n      <p className="max-w-2xl text-lg text-slate-600">${description}</p>\n    </section>\n  );\n}\n`;
+export default function HomePage() {
+  ensureCoreServices();
+  return (
+    <section className="space-y-4">
+      <p className="text-sm font-medium uppercase tracking-[0.2em] opacity-70">NexPress</p>
+      <h1 className="text-4xl font-bold tracking-tight">Welcome to ${config.projectName}</h1>
+      <p className="max-w-2xl text-lg opacity-80">
+        Sign in at <a className="underline" href="/admin">/admin</a> to create content, or edit
+        src/collections to add your own models.
+      </p>
+    </section>
+  );
+}
+`;
 }
 
-function slugPageTemplate(config: TemplateConfig): string {
-  const body = config.includeExampleContent
-    ? "This catch-all route is ready for page rendering once you connect your collections."
-    : "This catch-all route is ready for your custom page rendering logic.";
+function slugPageTemplate(_config: TemplateConfig): string {
+  return `import { getPageBySlug } from "@nexpress/core";
+import { notFound } from "next/navigation";
 
-  return `export default function SitePage() {\n  return (\n    <section className="space-y-3">\n      <h1 className="text-3xl font-semibold">Dynamic page route</h1>\n      <p className="text-slate-600">${body}</p>\n    </section>\n  );\n}\n`;
+import { ensureCoreServices } from "@/lib/bootstrap";
+
+interface SitePageProps {
+  params: Promise<{ slug?: string[] }>;
 }
 
-function adminPageTemplate(config: TemplateConfig): string {
-  return `export default function AdminPage() {\n  return (\n    <section className="space-y-3 p-6">\n      <h1 className="text-3xl font-semibold">${config.projectName} admin</h1>\n      <p className="text-slate-600">Install your dependencies, start the app, and connect the NexPress admin experience here.</p>\n    </section>\n  );\n}\n`;
+export default async function SitePage({ params }: SitePageProps) {
+  ensureCoreServices();
+  const { slug } = await params;
+  const path = slug?.join("/") || "/";
+  const page = await getPageBySlug(path);
+  if (!page) notFound();
+
+  return (
+    <article className="prose">
+      <h1>{(page.title as string) ?? "Untitled"}</h1>
+      {typeof page.summary === "string" ? <p>{page.summary}</p> : null}
+    </article>
+  );
+}
+`;
 }
 
 function healthRouteTemplate(): string {
   return `export function GET(): Response {\n  return Response.json({ status: "ok" });\n}\n`;
 }
 
+function adminLoginPageTemplate(): string {
+  return `"use client";
+
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+
+export default function AdminLoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        throw new Error(body?.error?.message ?? "Login failed");
+      }
+      router.push("/admin");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6">
+      <h1 className="text-2xl font-semibold">Sign in</h1>
+      <form className="space-y-4" onSubmit={onSubmit}>
+        <label className="block space-y-1 text-sm">
+          <span>Email</span>
+          <input
+            className="block w-full rounded border px-3 py-2"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+        <label className="block space-y-1 text-sm">
+          <span>Password</span>
+          <input
+            className="block w-full rounded border px-3 py-2"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </label>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        <button
+          type="submit"
+          className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-60"
+          disabled={loading}
+        >
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+`;
+}
+
+function adminProtectedLayoutTemplate(): string {
+  return `import type { ReactNode } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+
+import { verifyTokenFull } from "@nexpress/core";
+import { getDb } from "@/lib/bootstrap";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminProtectedLayout({ children }: { children: ReactNode }) {
+  const token = (await cookies()).get("nx-session")?.value;
+  if (!token) redirect("/admin/login");
+
+  const secret =
+    process.env.NX_SECRET ?? process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) throw new Error("NX_SECRET must be set");
+
+  try {
+    await verifyTokenFull(token, secret, getDb() as never);
+  } catch {
+    redirect("/admin/login");
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="border-b bg-white px-6 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <a className="text-lg font-semibold" href="/admin">
+            NexPress Admin
+          </a>
+          <form action="/api/auth/logout" method="post">
+            <button type="submit" className="text-sm underline">
+              Sign out
+            </button>
+          </form>
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    </div>
+  );
+}
+`;
+}
+
+function adminDashboardPageTemplate(): string {
+  return `import Link from "next/link";
+
+import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
+
+import { ensureCoreServices } from "@/lib/bootstrap";
+
+export default function AdminDashboard() {
+  ensureCoreServices();
+  const collections = getAllCollectionSlugs().map((slug) => getCollectionConfig(slug));
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold">Collections</h1>
+      <ul className="grid gap-4 sm:grid-cols-2">
+        {collections.map((c) => (
+          <li key={c.slug} className="rounded border bg-white p-4">
+            <Link className="block space-y-1" href={\`/admin/collections/\${c.slug}\`}>
+              <h2 className="font-semibold">{c.labels.plural}</h2>
+              {c.admin?.description ? (
+                <p className="text-sm text-slate-600">{c.admin.description}</p>
+              ) : null}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+`;
+}
+
+function adminCollectionListPageTemplate(): string {
+  return `import Link from "next/link";
+
+import { findDocuments, getCollectionConfig } from "@nexpress/core";
+
+import { ensureCoreServices } from "@/lib/bootstrap";
+
+interface Props {
+  params: Promise<{ collection: string }>;
+}
+
+export default async function AdminCollectionList({ params }: Props) {
+  ensureCoreServices();
+  const { collection } = await params;
+  const config = getCollectionConfig(collection);
+  const { docs } = await findDocuments(collection, { limit: 50, sort: "-updatedAt" });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{config.labels.plural}</h1>
+        <Link
+          href={\`/admin/collections/\${collection}/create\`}
+          className="rounded bg-black px-3 py-1.5 text-sm text-white"
+        >
+          New {config.labels.singular.toLowerCase()}
+        </Link>
+      </div>
+      <table className="w-full border bg-white text-sm">
+        <thead>
+          <tr className="border-b bg-slate-100 text-left">
+            <th className="px-3 py-2">Title</th>
+            <th className="px-3 py-2">Status</th>
+            <th className="px-3 py-2">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {docs.map((doc) => (
+            <tr key={doc.id as string} className="border-b">
+              <td className="px-3 py-2">
+                <Link
+                  className="underline"
+                  href={\`/admin/collections/\${collection}/\${doc.id as string}\`}
+                >
+                  {(doc.title as string) ?? "(untitled)"}
+                </Link>
+              </td>
+              <td className="px-3 py-2">{(doc.status as string) ?? ""}</td>
+              <td className="px-3 py-2 text-slate-500">
+                {(doc.updatedAt as Date)?.toLocaleString?.() ?? ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+`;
+}
+
+function adminCollectionCreatePageTemplate(): string {
+  return `"use client";
+
+import { useState, type FormEvent } from "react";
+import { useRouter, useParams } from "next/navigation";
+
+function readCookie(name: string): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  for (const raw of document.cookie.split(";")) {
+    const [k, ...rest] = raw.trim().split("=");
+    if (k === name) return decodeURIComponent(rest.join("="));
+  }
+  return undefined;
+}
+
+export default function CreateDocumentPage() {
+  const router = useRouter();
+  const params = useParams<{ collection: string }>();
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [status, setStatus] = useState("draft");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const body = {
+        title,
+        status,
+        content: {
+          root: {
+            type: "root",
+            version: 1,
+            format: "",
+            indent: 0,
+            direction: "ltr",
+            children: [
+              {
+                type: "paragraph",
+                version: 1,
+                format: "",
+                indent: 0,
+                direction: "ltr",
+                children: content ? [{ type: "text", version: 1, format: 0, text: content }] : [],
+              },
+            ],
+          },
+        },
+      };
+      const res = await fetch(\`/api/collections/\${params.collection}\`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": readCookie("nx-csrf") ?? "",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        throw new Error(payload?.error?.message ?? "Save failed");
+      }
+      const doc = (await res.json()) as { id: string };
+      router.push(\`/admin/collections/\${params.collection}/\${doc.id}\`);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="space-y-4 rounded border bg-white p-6" onSubmit={onSubmit}>
+      <h1 className="text-xl font-semibold">New document</h1>
+      <label className="block space-y-1 text-sm">
+        <span>Title</span>
+        <input
+          className="block w-full rounded border px-3 py-2"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+        />
+      </label>
+      <label className="block space-y-1 text-sm">
+        <span>Content</span>
+        <textarea
+          className="block h-40 w-full rounded border px-3 py-2"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
+      </label>
+      <label className="block space-y-1 text-sm">
+        <span>Status</span>
+        <select
+          className="block w-full rounded border px-3 py-2"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="draft">Draft</option>
+          <option value="published">Published</option>
+        </select>
+      </label>
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      <button
+        type="submit"
+        disabled={saving}
+        className="rounded bg-black px-4 py-2 text-white disabled:opacity-60"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+    </form>
+  );
+}
+`;
+}
+
+function adminCollectionEditPageTemplate(): string {
+  return `import Link from "next/link";
+
+import { getDocumentById } from "@nexpress/core";
+
+import { ensureCoreServices } from "@/lib/bootstrap";
+
+interface Props {
+  params: Promise<{ collection: string; id: string }>;
+}
+
+export default async function AdminEditDocument({ params }: Props) {
+  ensureCoreServices();
+  const { collection, id } = await params;
+  const doc = await getDocumentById(collection, id);
+
+  if (!doc) {
+    return <p className="text-sm text-slate-600">Document not found.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <Link className="text-sm underline" href={\`/admin/collections/\${collection}\`}>
+        ← Back
+      </Link>
+      <h1 className="text-2xl font-semibold">{(doc.title as string) ?? "(untitled)"}</h1>
+      <pre className="overflow-auto rounded border bg-slate-50 p-4 text-xs">
+        {JSON.stringify(doc, null, 2)}
+      </pre>
+      <p className="text-sm text-slate-600">
+        Full edit UI ships with the @nexpress/admin package — this scaffold shows the raw
+        document for now.
+      </p>
+    </div>
+  );
+}
+`;
+}
+
+function authLoginRouteTemplate(): string {
+  return `import {
+  NxAuthError,
+  NxError,
+  type NxUserRole,
+  NxValidationError,
+  signToken,
+  verifyPassword,
+} from "@nexpress/core";
+import type { NextRequest } from "next/server";
+
+import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
+import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { getDb } from "@/lib/bootstrap";
+
+interface LoginUserRow extends Record<string, unknown> {
+  id: string;
+  email: string;
+  password: string;
+  name: string;
+  role: NxUserRole;
+  loginAttempts: number;
+  lockUntil: Date | null;
+  tokenVersion: number;
+}
+
+function validateLoginBody(body: unknown): { email: string; password: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new NxValidationError("Invalid input", [
+      { field: "body", message: "Request body must be an object" },
+    ]);
+  }
+  const { email, password } = body as { email?: unknown; password?: unknown };
+  if (typeof email !== "string" || !email.includes("@")) {
+    throw new NxValidationError("Invalid input", [
+      { field: "email", message: "Valid email is required" },
+    ]);
+  }
+  if (typeof password !== "string" || password.length === 0) {
+    throw new NxValidationError("Invalid input", [
+      { field: "password", message: "Password is required" },
+    ]);
+  }
+  return { email, password };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { email, password } = validateLoginBody(await request.json());
+    const db = getDb();
+    const config = getAuthRuntimeConfig();
+
+    const result = await db.$client.query<LoginUserRow>(
+      'select id, email, password, name, role, login_attempts as "loginAttempts", lock_until as "lockUntil", token_version as "tokenVersion" from nx_users where email = $1 limit 1',
+      [email],
+    );
+    const user = result.rows[0];
+    if (!user) throw new NxAuthError("Invalid email or password");
+
+    const now = new Date();
+    if (user.lockUntil && user.lockUntil > now) {
+      throw new NxError("Too many login attempts", "TOO_MANY_REQUESTS", 429);
+    }
+
+    const validPassword = await verifyPassword(user.password, password);
+    if (!validPassword) {
+      const nextAttempts = user.loginAttempts + 1;
+      const shouldLock = nextAttempts >= config.maxLoginAttempts;
+      await db.$client.query(
+        "update nx_users set login_attempts = $1, lock_until = $2, updated_at = $3 where id = $4",
+        [
+          nextAttempts,
+          shouldLock ? new Date(now.getTime() + config.lockoutDuration * 1000) : null,
+          now,
+          user.id,
+        ],
+      );
+      throw new NxAuthError("Invalid email or password");
+    }
+
+    await db.$client.query(
+      "update nx_users set login_attempts = 0, lock_until = null, updated_at = $1 where id = $2",
+      [now, user.id],
+    );
+
+    const access = await signToken(user, config.secret, config.tokenExpiration);
+    const refresh = await signToken(user, config.secret, config.refreshTokenExpiration);
+    const response = nxSuccessResponse({
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    });
+    setAuthCookies(response, { access, refresh, csrf: crypto.randomUUID() });
+    return response;
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function authLogoutRouteTemplate(): string {
+  return `import { NextResponse } from "next/server";
+
+import { clearAuthCookies } from "@/lib/auth-helpers";
+
+export function POST() {
+  const response = NextResponse.redirect(new URL("/admin/login", process.env.SITE_URL ?? "http://localhost:3000"), { status: 303 });
+  clearAuthCookies(response);
+  return response;
+}
+`;
+}
+
+function authMeRouteTemplate(): string {
+  return `import type { NextRequest } from "next/server";
+
+import { optionalAuth } from "@/lib/auth-helpers";
+import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+
+export async function GET(request: NextRequest) {
+  try {
+    const user = await optionalAuth(request);
+    if (!user) {
+      return nxErrorResponse(
+        Object.assign(new Error("Unauthorized"), { code: "UNAUTHORIZED", statusCode: 401 }),
+      );
+    }
+    return nxSuccessResponse({
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function collectionsListRouteTemplate(): string {
+  return `import { NxValidationError } from "@nexpress/core";
+import type { NextRequest } from "next/server";
+
+import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import {
+  findCollectionDocuments,
+  parseFindOptions,
+  saveCollectionDocument,
+} from "@/lib/collection-helpers";
+import { revalidateCollection } from "@/lib/revalidate";
+
+function parseBodyRecord(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new NxValidationError("Invalid input", [
+      { field: "body", message: "Request body must be a JSON object" },
+    ]);
+  }
+  return body as Record<string, unknown>;
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  try {
+    const { slug } = await params;
+    const user = await optionalAuth(request);
+    const result = await findCollectionDocuments(
+      slug,
+      parseFindOptions(request.nextUrl.searchParams),
+      user,
+    );
+    return nxSuccessResponse(result);
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  try {
+    const { slug } = await params;
+    const user = await requireAuth(request);
+    requireCsrf(request);
+    const data = parseBodyRecord(await request.json());
+    const result = await saveCollectionDocument(slug, null, data, user);
+    revalidateCollection(slug, result.doc);
+    return nxSuccessResponse(result.doc, { status: 201 });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function collectionsItemRouteTemplate(): string {
+  return `import { NxNotFoundError, NxValidationError } from "@nexpress/core";
+import { NextResponse, type NextRequest } from "next/server";
+
+import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import {
+  deleteCollectionDocument,
+  getCollectionDocument,
+  saveCollectionDocument,
+} from "@/lib/collection-helpers";
+import { revalidateCollection } from "@/lib/revalidate";
+
+function parseBodyRecord(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new NxValidationError("Invalid input", [
+      { field: "body", message: "Request body must be a JSON object" },
+    ]);
+  }
+  return body as Record<string, unknown>;
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string; id: string }> },
+) {
+  try {
+    const { slug, id } = await params;
+    const user = await optionalAuth(request);
+    const document = await getCollectionDocument(slug, id, user);
+    if (!document) throw new NxNotFoundError(slug, id);
+    return nxSuccessResponse(document);
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string; id: string }> },
+) {
+  try {
+    const { slug, id } = await params;
+    const user = await requireAuth(request);
+    requireCsrf(request);
+    const data = parseBodyRecord(await request.json());
+    const previous = await getCollectionDocument(slug, id, user);
+    const result = await saveCollectionDocument(slug, id, data, user);
+    revalidateCollection(slug, result.doc);
+    if (previous && previous.slug !== result.doc.slug) {
+      revalidateCollection(slug, previous);
+    }
+    return nxSuccessResponse(result.doc);
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string; id: string }> },
+) {
+  try {
+    const { slug, id } = await params;
+    const user = await requireAuth(request);
+    requireCsrf(request);
+    const previous = await getCollectionDocument(slug, id, user);
+    await deleteCollectionDocument(slug, id, user);
+    revalidateCollection(slug, previous);
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function metaCollectionsRouteTemplate(): string {
+  return `import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
+
+import { ensureCoreServices } from "@/lib/bootstrap";
+import { collectionToManifest } from "@/lib/manifest";
+import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
+
+export function GET() {
+  try {
+    ensureCoreServices();
+    const items = getAllCollectionSlugs()
+      .map((slug) => collectionToManifest(getCollectionConfig(slug)))
+      .sort((a, b) => a.slug.localeCompare(b.slug));
+    return nxSuccessResponse({ items });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function metaBlocksRouteTemplate(): string {
+  return `import { getDefaultBlocks } from "@nexpress/blocks";
+
+import { blockToManifest } from "@/lib/manifest";
+import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
+
+export function GET() {
+  try {
+    const items = getDefaultBlocks()
+      .map(blockToManifest)
+      .sort((a, b) => a.type.localeCompare(b.type));
+    return nxSuccessResponse({ items });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function metaPluginsRouteTemplate(): string {
+  return `import { getAllPluginIds, getPluginRegistration } from "@nexpress/core";
+
+import { ensurePluginsLoaded } from "@/lib/bootstrap";
+import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
+import type { NxPluginManifest } from "@/lib/manifest";
+
+export async function GET() {
+  try {
+    await ensurePluginsLoaded();
+    const items: NxPluginManifest[] = [];
+    for (const id of getAllPluginIds()) {
+      const reg = getPluginRegistration(id);
+      if (!reg) continue;
+      items.push({
+        id: reg.id,
+        name: reg.name,
+        version: reg.version,
+        description: reg.description,
+        capabilities: [...reg.capabilities].sort(),
+        hooks: [...reg.hooks.keys()].sort(),
+        routes: reg.routes.map((r) => ({ method: r.method.toUpperCase(), path: r.path })),
+      });
+    }
+    items.sort((a, b) => a.id.localeCompare(b.id));
+    return nxSuccessResponse({ items });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+`;
+}
+
+function openapiRouteTemplate(): string {
+  return `import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
+import { NextResponse } from "next/server";
+
+import { ensureCoreServices } from "@/lib/bootstrap";
+import { collectionToManifest, type NxFieldManifest } from "@/lib/manifest";
+
+type OpenApiSchema = Record<string, unknown>;
+
+function fieldToSchema(field: NxFieldManifest): OpenApiSchema {
+  switch (field.type) {
+    case "text":
+    case "textarea":
+    case "email":
+    case "select":
+    case "radio":
+      return { type: "string", ...(field.options && { enum: field.options.map((o) => o.value) }) };
+    case "number":
+      return { type: field.integerOnly ? "integer" : "number" };
+    case "checkbox":
+      return { type: "boolean" };
+    case "date":
+      return { type: "string", format: "date-time" };
+    case "richText":
+    case "blocks":
+    case "json":
+      return { type: "object", additionalProperties: true };
+    case "upload":
+    case "relationship":
+      return field.hasMany
+        ? { type: "array", items: { type: "string", format: "uuid" } }
+        : { type: "string", format: "uuid" };
+    default:
+      return { type: "object", additionalProperties: true };
+  }
+}
+
+function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): OpenApiSchema {
+  const properties: Record<string, OpenApiSchema> = {
+    id: { type: "string", format: "uuid", readOnly: true },
+    status: { type: "string", enum: ["draft", "published", "archived"] },
+    createdAt: { type: "string", format: "date-time", readOnly: true },
+    updatedAt: { type: "string", format: "date-time", readOnly: true },
+  };
+  for (const field of manifest.fields) {
+    if (field.type === "row" || field.type === "collapsible") continue;
+    properties[field.name] = {
+      ...fieldToSchema(field),
+      ...(field.description && { description: field.description }),
+    };
+  }
+  if (manifest.slug_auto) {
+    properties.slug = { type: "string", description: "Auto-derived unless provided." };
+  }
+  return { type: "object", properties };
+}
+
+export function GET() {
+  ensureCoreServices();
+  const slugs = getAllCollectionSlugs();
+  const schemas: Record<string, OpenApiSchema> = {};
+  const paths: Record<string, OpenApiSchema> = {
+    "/api/auth/login": { post: { summary: "Log in" } },
+    "/api/auth/logout": { post: { summary: "Log out" } },
+    "/api/auth/me": { get: { summary: "Current user" } },
+  };
+  for (const slug of slugs) {
+    const manifest = collectionToManifest(getCollectionConfig(slug));
+    const schemaName = \`\${slug}_document\`;
+    schemas[schemaName] = collectionSchema(manifest);
+    paths[\`/api/collections/\${slug}\`] = { get: { summary: \`List \${manifest.labels.plural}\` } };
+    paths[\`/api/collections/\${slug}/{id}\`] = { get: { summary: \`Get \${manifest.labels.singular}\` } };
+  }
+  return NextResponse.json(
+    {
+      openapi: "3.1.0",
+      info: { title: "NexPress API", version: "0.1.0" },
+      servers: [{ url: process.env.SITE_URL ?? "http://localhost:3000" }],
+      components: { schemas },
+      paths,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+`;
+}
+
+function settingsThemeRouteTemplate(): string {
+  return `import {
+  NxForbiddenError,
+  NxValidationError,
+  hasRole,
+  nxSettings,
+  DEFAULT_THEME,
+} from "@nexpress/core";
+import type { NxThemeTokens } from "@nexpress/core";
+import { eq } from "drizzle-orm";
+import type { NextRequest } from "next/server";
+
+import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { getDb } from "@/lib/bootstrap";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidTheme(value: unknown): value is NxThemeTokens {
+  return (
+    isRecord(value) && isRecord(value.colors) && isRecord(value.typography) && isRecord(value.shape)
+  );
+}
+
+export async function GET(_request: NextRequest) {
+  try {
+    const db = getDb();
+    const [row] = await db
+      .select()
+      .from(nxSettings)
+      .where(eq(nxSettings.key, "theme"))
+      .limit(1);
+    return nxSuccessResponse(row?.value ?? DEFAULT_THEME);
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const user = await requireAuth(request);
+    requireCsrf(request);
+    if (!hasRole(user, "admin")) throw new NxForbiddenError("settings/theme", "update");
+
+    const theme = await request.json();
+    if (!isValidTheme(theme)) {
+      throw new NxValidationError("Invalid input", [
+        { field: "theme", message: "Theme must have colors, typography, and shape objects" },
+      ]);
+    }
+
+    const db = getDb();
+    const now = new Date();
+    await db
+      .insert(nxSettings)
+      .values({ key: "theme", value: theme, updatedAt: now, updatedBy: user.id })
+      .onConflictDoUpdate({
+        target: nxSettings.key,
+        set: { value: theme, updatedAt: now, updatedBy: user.id },
+      });
+
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/", "layout");
+
+    return nxSuccessResponse(theme);
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export { PUT as PATCH };
+`;
+}
+
+function pluginsRouteTemplate(): string {
+  return `import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { getPluginRoutes } from "@nexpress/core";
+
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/bootstrap";
+
+export const dynamic = "force-dynamic";
+
+async function handle(
+  request: NextRequest,
+  { params }: { params: Promise<{ pluginId: string; path: string[] }> },
+) {
+  ensureCoreServices();
+  await ensurePluginsLoaded();
+  const { pluginId, path } = await params;
+  const routePath = \`/\${path.join("/")}\`;
+  const method = request.method;
+
+  const matched = getPluginRoutes().find(
+    (r) => r.pluginId === pluginId && r.method === method && r.path === routePath,
+  );
+  if (!matched) {
+    return NextResponse.json(
+      { error: { code: "NOT_FOUND", message: "Plugin route not found" }, status: 404 },
+      { status: 404 },
+    );
+  }
+
+  const query: Record<string, string> = {};
+  request.nextUrl.searchParams.forEach((v, k) => {
+    query[k] = v;
+  });
+  const headers: Record<string, string> = {};
+  request.headers.forEach((v, k) => {
+    headers[k] = v;
+  });
+
+  let body: unknown = undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      body = await request.json();
+    }
+  }
+
+  const result = await matched.handler({
+    method,
+    path: routePath,
+    params: { pluginId },
+    query,
+    body,
+    headers,
+  });
+
+  return NextResponse.json(result.body ?? null, { status: result.status, headers: result.headers });
+}
+
+export const GET = handle;
+export const POST = handle;
+export const PUT = handle;
+export const PATCH = handle;
+export const DELETE = handle;
+`;
+}
+
 function postsCollectionTemplate(): string {
-  return `import { defineCollection } from "@nexpress/core";\n\nexport const postsCollection = defineCollection({\n  slug: "posts",\n  labels: { singular: "Post", plural: "Posts" },\n  slugField: { useField: "title", unique: true },\n  admin: {\n    defaultSort: "-publishedAt",\n    listColumns: ["title", "status", "publishedAt"],\n  },\n  versions: { drafts: true },\n  fields: [\n    {\n      name: "title",\n      type: "text",\n      required: true,\n    },\n    {\n      name: "excerpt",\n      type: "textarea",\n    },\n    {\n      name: "content",\n      type: "richText",\n      required: true,\n    },\n    {\n      name: "status",\n      type: "select",\n      defaultValue: "draft",\n      options: [\n        { label: "Draft", value: "draft" },\n        { label: "Published", value: "published" },\n      ],\n    },\n    {\n      name: "publishedAt",\n      type: "date",\n    },\n  ],\n});\n`;
+  return `import { defineCollection } from "@nexpress/core";\n\nexport const postsCollection = defineCollection({\n  slug: "posts",\n  labels: { singular: "Post", plural: "Posts" },\n  slugField: { useField: "title", unique: true },\n  admin: {\n    defaultSort: "-publishedAt",\n    listColumns: ["title", "status", "publishedAt"],\n    description: "Blog posts.",\n  },\n  versions: { drafts: true },\n  access: {\n    read: () => true,\n  },\n  fields: [\n    { name: "title", type: "text", required: true },\n    { name: "excerpt", type: "textarea" },\n    { name: "content", type: "richText", required: true },\n    { name: "publishedAt", type: "date" },\n  ],\n});\n`;
 }
 
 function pagesCollectionTemplate(): string {
-  return `import { defineCollection } from "@nexpress/core";\n\nexport const pagesCollection = defineCollection({\n  slug: "pages",\n  labels: { singular: "Page", plural: "Pages" },\n  slugField: { useField: "title", unique: true },\n  admin: {\n    defaultSort: "title",\n    listColumns: ["title", "updatedAt"],\n  },\n  versions: { drafts: true },\n  fields: [\n    {\n      name: "title",\n      type: "text",\n      required: true,\n    },\n    {\n      name: "heroTitle",\n      type: "text",\n    },\n    {\n      name: "summary",\n      type: "textarea",\n    },\n    {\n      name: "content",\n      type: "richText",\n      required: true,\n    },\n  ],\n});\n`;
+  return `import { defineCollection } from "@nexpress/core";\n\nexport const pagesCollection = defineCollection({\n  slug: "pages",\n  labels: { singular: "Page", plural: "Pages" },\n  slugField: { useField: "title", unique: true },\n  admin: {\n    defaultSort: "title",\n    listColumns: ["title", "updatedAt"],\n    description: "Static pages.",\n  },\n  versions: { drafts: true },\n  access: {\n    read: () => true,\n  },\n  fields: [\n    { name: "title", type: "text", required: true },\n    { name: "summary", type: "textarea" },\n    { name: "blocks", type: "blocks" },\n  ],\n});\n`;
 }
 
 function readmeTemplate(config: TemplateConfig): string {
   const dockerStep = config.dockerSetup
-    ? "docker compose -f docker/docker-compose.yml up -d db\npnpm dev"
-    : "pnpm dev";
+    ? "docker compose -f docker/docker-compose.yml up -d db"
+    : "# ensure DATABASE_URL points at a running Postgres";
   const storage = config.storageMode === "s3" ? "S3/MinIO" : "Local filesystem";
   const database =
     config.databaseMode === "remote-url" ? "Remote PostgreSQL URL" : "Local Docker PostgreSQL";
 
-  return `# ${config.projectName}\n\nScaffolded with create-nexpress.\n\n## Selected options\n\n- Database: ${database}\n- Storage: ${storage}\n- Example content: ${config.includeExampleContent ? "Yes" : "No"}\n- Docker setup: ${config.dockerSetup ? "Yes" : "No"}\n\n## Getting started\n\n\`\`\`bash\n${dockerStep}\n\`\`\`\n\nAdmin: http://localhost:3000/admin\n`;
+  return `# ${config.projectName}
+
+Scaffolded with create-nexpress.
+
+## Options
+
+- Database: ${database}
+- Storage: ${storage}
+- Example content: ${config.includeExampleContent ? "Yes" : "No"}
+- Docker setup: ${config.dockerSetup ? "Yes" : "No"}
+
+## Getting started
+
+\`\`\`bash
+pnpm install
+${dockerStep}
+pnpm db:generate        # regen collection schema and SQL migrations
+pnpm db:migrate         # apply migrations
+pnpm seed:admin         # create first admin (interactive, or pass args: email password name)
+pnpm dev
+\`\`\`
+
+- Site: http://localhost:3000
+- Admin: http://localhost:3000/admin
+- OpenAPI spec: http://localhost:3000/api/openapi.json
+`;
 }
