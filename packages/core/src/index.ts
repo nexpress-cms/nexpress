@@ -32,6 +32,7 @@ export type {
   NxBlockInstance,
   NxPluginConfig,
   NxPluginContext,
+  NxResolvedPluginLike,
   NxNavItem,
   NxConfig,
   NxJobType,

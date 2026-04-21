@@ -1,7 +1,7 @@
 import { loadPlugins } from "@nexpress/core";
-import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 
 import { getDb } from "@/lib/db";
+import { plugins } from "@/lib/nexpress-config";
 
 let pluginsLoaded = false;
 let pluginsLoadingPromise: Promise<void> | null = null;
@@ -16,17 +16,15 @@ export function ensureCoreServices(): void {
   getDb();
 }
 
-const enabledPlugins = [readingTimePlugin];
-
 export async function ensurePluginsLoaded(
-  plugins: Parameters<typeof loadPlugins>[0] = enabledPlugins,
+  overrides?: Parameters<typeof loadPlugins>[0],
 ): Promise<void> {
   if (pluginsLoaded) return;
   if (pluginsLoadingPromise) return pluginsLoadingPromise;
 
   pluginsLoadingPromise = (async () => {
     ensureCoreServices();
-    await loadPlugins(plugins);
+    await loadPlugins(overrides ?? plugins);
     pluginsLoaded = true;
   })();
 
