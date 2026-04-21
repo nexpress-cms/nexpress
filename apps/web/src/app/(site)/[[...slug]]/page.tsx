@@ -3,11 +3,14 @@ import { renderBlocks } from "@nexpress/blocks";
 import { notFound } from "next/navigation";
 import type { NxPageBlocks } from "@nexpress/blocks";
 
+import { ensureCoreServices } from "@/lib/init-core";
+
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
 }
 
 export default async function CatchAllPage({ params }: PageProps) {
+  ensureCoreServices();
   const { slug } = await params;
   const path = slug?.join("/") || "/";
 

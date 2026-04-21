@@ -36,7 +36,21 @@ interface TableContext {
   parentTargetIdentifier?: string;
 }
 
-export function generateDrizzleSchema(collections: NxCollectionConfig[]): string {
+export interface GenerateDrizzleSchemaOptions {
+  /**
+   * Module specifier to import the core schema tables (nxUsers, nxMedia) from.
+   * Defaults to "@nexpress/core". Override when the consumer's tooling
+   * (e.g. drizzle-kit's CJS resolver) can't load the core package via its
+   * exports map — point at a relative path to core's source in that case.
+   */
+  schemaImport?: string;
+}
+
+export function generateDrizzleSchema(
+  collections: NxCollectionConfig[],
+  options?: GenerateDrizzleSchemaOptions,
+): string {
+  const schemaImport = options?.schemaImport ?? "@nexpress/core";
   const collectionTables = new Map<string, string>();
 
   for (const collection of collections) {
@@ -112,7 +126,7 @@ export function generateDrizzleSchema(collections: NxCollectionConfig[]): string
   return [
     'import { relations } from "drizzle-orm";',
     'import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";',
-    'import { nxMedia, nxUsers } from "@nexpress/core";',
+    `import { nxMedia, nxUsers } from "${schemaImport}";`,
     '',
     'const tsvector = customType<{ data: string }>({',
     '  dataType() {',
@@ -391,23 +405,26 @@ function renderTable(table: GeneratedTable): string {
 
   const relationsSource = [
     `export const ${table.identifier}Relations = relations(${table.identifier}, ({ many, one }) => ({`,
-    ...table.relations.map(renderRelation),
+    ...table.relations.map((relation) => renderRelation(relation, table.identifier)),
     "}));",
   ].join("\n");
 
   return `${tableSource}\n\n${relationsSource}`;
 }
 
-function renderRelation(relation: TableRelation): string {
+function renderRelation(relation: TableRelation, ownerIdentifier: string): string {
   if (relation.kind === "many") {
     return `  ${relation.key}: many(${relation.targetIdentifier}),`;
   }
 
-  return `  ${relation.key}: one(${relation.targetIdentifier}, { fields: [${relation.fields?.map((field) => `${relation.fields ? getOwnerIdentifier(field) : field}`).join(", ")}], references: [${relation.references?.map((reference) => `${relation.targetIdentifier}.${reference}`).join(", ")}] }),`;
-}
+  const fields = (relation.fields ?? [])
+    .map((field) => `${ownerIdentifier}.${field}`)
+    .join(", ");
+  const references = (relation.references ?? [])
+    .map((reference) => `${relation.targetIdentifier}.${reference}`)
+    .join(", ");
 
-function getOwnerIdentifier(field: string): string {
-  return `table.${field}`;
+  return `  ${relation.key}: one(${relation.targetIdentifier}, { fields: [${fields}], references: [${references}] }),`;
 }
 
 function hasSlugField(collection: NxCollectionConfig): boolean {

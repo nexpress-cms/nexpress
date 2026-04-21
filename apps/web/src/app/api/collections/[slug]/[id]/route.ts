@@ -8,6 +8,7 @@ import {
   getCollectionDocument,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
+import { revalidateCollection } from "@/lib/revalidate";
 
 function parseBodyRecord(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -49,7 +50,13 @@ export async function PATCH(
     requireCsrf(request);
 
     const data = parseBodyRecord(await request.json());
+    const previous = await getCollectionDocument(slug, id, user);
     const result = await saveCollectionDocument(slug, id, data, user);
+
+    revalidateCollection(slug, result.doc);
+    if (previous && previous.slug !== result.doc.slug) {
+      revalidateCollection(slug, previous);
+    }
 
     return nxSuccessResponse(result.doc);
   } catch (error) {
@@ -66,7 +73,10 @@ export async function DELETE(
     const user = await requireAuth(request);
 
     requireCsrf(request);
+    const previous = await getCollectionDocument(slug, id, user);
     await deleteCollectionDocument(slug, id, user);
+
+    revalidateCollection(slug, previous);
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

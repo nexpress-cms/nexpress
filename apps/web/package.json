@@ -8,7 +8,13 @@
     "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .next"
+    "clean": "rm -rf .next",
+    "schema:gen": "tsx scripts/generate-schema.ts",
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "db:generate": "pnpm schema:gen && drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "pnpm schema:gen && drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@nexpress/admin": "workspace:*",
@@ -26,6 +32,9 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv": "^17.2.4",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.20.6",
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.8.0"

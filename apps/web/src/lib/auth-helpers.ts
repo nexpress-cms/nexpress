@@ -32,10 +32,13 @@ export function initAuthHelpers(secret: string, db: NxDb): void {
 }
 
 function readRequiredSecret(): string {
-  const secret = process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  const secret =
+    process.env.NX_SECRET ??
+    process.env.NX_AUTH_SECRET ??
+    process.env.AUTH_SECRET;
 
   if (!secret) {
-    throw new Error("NX_AUTH_SECRET or AUTH_SECRET must be set");
+    throw new Error("NX_SECRET must be set (see .env.example)");
   }
 
   return secret;

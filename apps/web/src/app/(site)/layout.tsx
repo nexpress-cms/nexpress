@@ -2,6 +2,8 @@ import { NxThemeStyle } from "@nexpress/theme";
 import { getTheme, getNavigation } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
 
+import { ensureCoreServices } from "@/lib/init-core";
+
 export const dynamic = "force-dynamic";
 
 export default async function SiteLayout({
@@ -9,6 +11,7 @@ export default async function SiteLayout({
 }: {
   children: React.ReactNode;
 }) {
+  ensureCoreServices();
   const theme = await getTheme();
   const headerNav = await getNavigation("header");
   const footerNav = await getNavigation("footer");

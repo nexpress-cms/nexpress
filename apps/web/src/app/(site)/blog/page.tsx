@@ -1,11 +1,14 @@
 import { findPosts } from "@nexpress/core";
 import Link from "next/link";
 
+import { ensureCoreServices } from "@/lib/init-core";
+
 interface BlogPageProps {
   searchParams: Promise<{ page?: string }>;
 }
 
 export default async function BlogPage({ searchParams }: BlogPageProps) {
+  ensureCoreServices();
   const { page } = await searchParams;
   const pageNum = Math.max(1, parseInt(page || "1", 10));
 

@@ -19,6 +19,16 @@ export function getJobQueue(): NxJobQueue {
   return jobQueue;
 }
 
+export function getOptionalJobQueue(): NxJobQueue | null {
+  return jobQueue;
+}
+
+/**
+ * Enqueues a job if the queue is wired up; otherwise no-ops so callers
+ * (content pipeline, media processing) can run without pg-boss during MVP
+ * blog-only workloads. Return value is an empty string in the no-op path.
+ */
 export async function enqueueJob(type: NxJobType, data: unknown): Promise<string> {
-  return getJobQueue().enqueue(type, data);
+  if (!jobQueue) return "";
+  return jobQueue.enqueue(type, data);
 }
