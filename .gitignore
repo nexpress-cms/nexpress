@@ -35,3 +35,5 @@ minio-data/
 
 # Media uploads (local dev)
 public/media/
+
+CLAUDE.md
