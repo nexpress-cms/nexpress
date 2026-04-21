@@ -14,6 +14,7 @@ import {
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
+import { nxFetch } from "../lib/api-client.js";
 
 const defaultTheme: NxThemeTokens = {
   colors: {
@@ -129,7 +130,7 @@ export function ThemeEditor() {
     setError(null);
 
     try {
-      const response = await fetch("/api/settings/theme");
+      const response = await nxFetch("/api/settings/theme");
       const payload = (await response.json().catch(() => null)) as unknown;
 
       if (!response.ok) {
@@ -151,7 +152,7 @@ export function ThemeEditor() {
     setMessage(null);
 
     try {
-      const response = await fetch("/api/settings/theme", {
+      const response = await nxFetch("/api/settings/theme", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(theme),

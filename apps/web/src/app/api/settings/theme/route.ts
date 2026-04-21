@@ -64,11 +64,14 @@ export async function PUT(request: NextRequest) {
         set: { value: theme, updatedAt: now, updatedBy: user.id },
       });
 
-    const { revalidateTag } = await import("next/cache");
+    const { revalidatePath, revalidateTag } = await import("next/cache");
     revalidateTag("nx:theme");
+    revalidatePath("/", "layout");
 
     return nxSuccessResponse(theme);
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
+
+export { PUT as PATCH };
