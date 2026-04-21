@@ -1,10 +1,12 @@
 import { getAllPluginIds, getPluginRegistration } from "@nexpress/core";
 
+import { ensurePluginsLoaded } from "@/lib/init-core";
 import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
 import type { NxPluginManifest } from "@/lib/manifest";
 
-export function GET() {
+export async function GET() {
   try {
+    await ensurePluginsLoaded();
     const items: NxPluginManifest[] = getAllPluginIds()
       .map((id) => {
         const reg = getPluginRegistration(id);
@@ -14,6 +16,9 @@ export function GET() {
         return {
           id: reg.id,
           name: reg.name,
+          version: reg.version,
+          description: reg.description,
+          capabilities: [...reg.capabilities].sort(),
           hooks: [...reg.hooks.keys()].sort(),
           routes: reg.routes.map((route) => ({
             method: route.method.toUpperCase(),

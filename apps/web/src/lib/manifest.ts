@@ -38,6 +38,9 @@ export interface NxBlockManifest {
 export interface NxPluginManifest {
   id: string;
   name: string;
+  version?: string;
+  description?: string;
+  capabilities: string[];
   hooks: string[];
   routes: Array<{ method: string; path: string }>;
 }

@@ -28,17 +28,109 @@ export interface PluginRouteResponse {
   headers?: Record<string, string>;
 }
 
+export interface PluginCapabilityRequirement {
+  requirement: string;
+  declared: readonly string[];
+}
+
 interface PluginRegistration {
   id: string;
   name: string;
+  version?: string;
+  description?: string;
+  capabilities: readonly string[];
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
 }
 
+/**
+ * Hook names start with a namespace — "content:afterCreate",
+ * "auth:afterLogin", "render:beforePage", etc. The plugin must declare the
+ * matching "hooks:<namespace>" capability to register a handler. This is the
+ * v1 runtime enforcement: coarse, easy to reason about, and deliberately
+ * additive — plugins without any capabilities can still do nothing.
+ */
+function hookCapabilityFor(hookName: string): string | null {
+  const namespace = hookName.split(":")[0];
+  if (!namespace) return null;
+  return `hooks:${namespace}`;
+}
+
+function assertCapability(
+  pluginId: string,
+  requirement: string,
+  declared: readonly string[],
+): void {
+  if (declared.includes(requirement)) return;
+
+  throw new Error(
+    `[plugin:${pluginId}] declares capabilities ${JSON.stringify(declared)} ` +
+      `but is registering something that requires "${requirement}". ` +
+      `Add "${requirement}" to the plugin manifest's capabilities array.`,
+  );
+}
+
 const pluginRegistry = new Map<string, PluginRegistration>();
 const globalHooks = new Map<string, PluginHookHandler[]>();
 const globalRoutes: PluginRouteHandler[] = [];
+
+/**
+ * Structural shape for plugins built via `@nexpress/plugin-sdk`'s
+ * `definePlugin()`. Declared here (rather than importing from plugin-sdk)
+ * because core is a dependency of plugin-sdk — importing would be cyclic.
+ */
+export interface ResolvedPluginLike {
+  manifest: {
+    id: string;
+    name: string;
+    version?: string;
+    description?: string;
+    capabilities: readonly string[];
+  };
+  hooks?: Record<
+    string,
+    | ((ctx: {
+        hook: string;
+        data: Record<string, unknown>;
+        collection?: string;
+      }) => void | Promise<void>)
+    | string
+  >;
+  routes?: Array<{
+    path: string;
+    method: string;
+    handler:
+      | ((req: PluginRouteRequest) => Promise<PluginRouteResponse>)
+      | string;
+    description?: string;
+    auth?: boolean;
+  }>;
+}
+
+function isResolvedPlugin(value: unknown): value is ResolvedPluginLike {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { manifest?: unknown };
+  if (!candidate.manifest || typeof candidate.manifest !== "object") return false;
+  const manifest = candidate.manifest as { id?: unknown; capabilities?: unknown };
+  return typeof manifest.id === "string" && Array.isArray(manifest.capabilities);
+}
+
+function registerHookHandler(
+  registration: PluginRegistration,
+  hookName: string,
+  handler: PluginHookHandler,
+): void {
+  if (!registration.hooks.has(hookName)) {
+    registration.hooks.set(hookName, []);
+  }
+  registration.hooks.get(hookName)!.push(handler);
+
+  if (!globalHooks.has(hookName)) {
+    globalHooks.set(hookName, []);
+  }
+  globalHooks.get(hookName)!.push(handler);
+}
 
 function createPluginContext(pluginId: string, registration: PluginRegistration): NxPluginContext {
   return {
@@ -50,38 +142,96 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
     },
     addHook: (collection: string, event: string, hook) => {
       const hookName = `${collection}:${event}`;
-      const handler: PluginHookHandler = {
-        pluginId,
-        handler: async (data) => { await hook({ data, collection } as never); },
-      };
-      if (!registration.hooks.has(hookName)) {
-        registration.hooks.set(hookName, []);
+      const requirement = hookCapabilityFor(hookName);
+      if (requirement) {
+        assertCapability(pluginId, requirement, registration.capabilities);
       }
-      registration.hooks.get(hookName)!.push(handler);
 
-      if (!globalHooks.has(hookName)) {
-        globalHooks.set(hookName, []);
-      }
-      globalHooks.get(hookName)!.push(handler);
+      registerHookHandler(registration, hookName, {
+        pluginId,
+        handler: async (data) => {
+          await hook({ data, collection } as never);
+        },
+      });
     },
   };
 }
 
-export async function loadPlugins(plugins: NxPluginConfig[]): Promise<void> {
-  for (const plugin of plugins) {
-    const registration: PluginRegistration = {
-      id: plugin.id,
-      name: plugin.name,
-      hooks: new Map(),
-      routes: [],
-      actions: new Map(),
+async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
+  const { manifest } = plugin;
+  const registration: PluginRegistration = {
+    id: manifest.id,
+    name: manifest.name,
+    version: manifest.version,
+    description: manifest.description,
+    capabilities: [...manifest.capabilities],
+    hooks: new Map(),
+    routes: [],
+    actions: new Map(),
+  };
+
+  pluginRegistry.set(manifest.id, registration);
+
+  for (const [hookName, rawHandler] of Object.entries(plugin.hooks ?? {})) {
+    if (typeof rawHandler !== "function") continue;
+
+    const requirement = hookCapabilityFor(hookName);
+    if (requirement) {
+      assertCapability(manifest.id, requirement, registration.capabilities);
+    }
+
+    const handler = rawHandler;
+    registerHookHandler(registration, hookName, {
+      pluginId: manifest.id,
+      handler: async (data) => {
+        const collection = typeof data.collection === "string" ? data.collection : undefined;
+        await handler({ hook: hookName, data, collection });
+      },
+    });
+  }
+
+  for (const route of plugin.routes ?? []) {
+    if (typeof route.handler !== "function") continue;
+
+    assertCapability(manifest.id, "api:route", registration.capabilities);
+
+    const entry: PluginRouteHandler = {
+      pluginId: manifest.id,
+      path: route.path,
+      method: route.method.toUpperCase(),
+      handler: route.handler,
     };
+    registration.routes.push(entry);
+    globalRoutes.push(entry);
+  }
+}
 
-    pluginRegistry.set(plugin.id, registration);
+async function loadLegacyPlugin(plugin: NxPluginConfig): Promise<void> {
+  const registration: PluginRegistration = {
+    id: plugin.id,
+    name: plugin.name,
+    capabilities: ["hooks:content"],
+    hooks: new Map(),
+    routes: [],
+    actions: new Map(),
+  };
 
-    if (plugin.init) {
-      const ctx = createPluginContext(plugin.id, registration);
-      await plugin.init(ctx);
+  pluginRegistry.set(plugin.id, registration);
+
+  if (plugin.init) {
+    const ctx = createPluginContext(plugin.id, registration);
+    await plugin.init(ctx);
+  }
+}
+
+export async function loadPlugins(
+  plugins: Array<NxPluginConfig | ResolvedPluginLike>,
+): Promise<void> {
+  for (const plugin of plugins) {
+    if (isResolvedPlugin(plugin)) {
+      await loadResolvedPlugin(plugin);
+    } else {
+      await loadLegacyPlugin(plugin);
     }
   }
 }

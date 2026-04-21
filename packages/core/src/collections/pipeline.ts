@@ -22,6 +22,7 @@ import {
 } from "./registry.js";
 import { buildSearchVector } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
+import { runHook } from "../plugins/host.js";
 import { nxRevisions } from "../db/schema/system.js";
 import { nxMediaRefs } from "../db/schema/media.js";
 
@@ -138,6 +139,14 @@ export async function saveDocument(
     userId: user.id,
   });
 
+  const pluginHookName = operation === "create" ? "content:afterCreate" : "content:afterUpdate";
+  await runHook(pluginHookName, {
+    collection,
+    doc: savedDoc,
+    operation,
+    user,
+  });
+
   return {
     doc: savedDoc,
     operation,
@@ -182,6 +191,12 @@ export async function deleteDocument(
     collection,
     documentId: docId,
     userId: user.id,
+  });
+
+  await runHook("content:afterDelete", {
+    collection,
+    documentId: docId,
+    user,
   });
 }
 

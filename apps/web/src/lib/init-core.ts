@@ -1,8 +1,10 @@
 import { loadPlugins } from "@nexpress/core";
+import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 
 import { getDb } from "@/lib/db";
 
 let pluginsLoaded = false;
+let pluginsLoadingPromise: Promise<void> | null = null;
 
 /**
  * Triggers the one-time wiring of core services (DB, media, storage, collection
@@ -14,9 +16,19 @@ export function ensureCoreServices(): void {
   getDb();
 }
 
-export async function ensurePluginsLoaded(plugins: Parameters<typeof loadPlugins>[0]): Promise<void> {
+const enabledPlugins = [readingTimePlugin];
+
+export async function ensurePluginsLoaded(
+  plugins: Parameters<typeof loadPlugins>[0] = enabledPlugins,
+): Promise<void> {
   if (pluginsLoaded) return;
-  ensureCoreServices();
-  await loadPlugins(plugins);
-  pluginsLoaded = true;
+  if (pluginsLoadingPromise) return pluginsLoadingPromise;
+
+  pluginsLoadingPromise = (async () => {
+    ensureCoreServices();
+    await loadPlugins(plugins);
+    pluginsLoaded = true;
+  })();
+
+  return pluginsLoadingPromise;
 }

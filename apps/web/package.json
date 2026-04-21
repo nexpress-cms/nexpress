@@ -21,6 +21,7 @@
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/editor": "workspace:*",
+    "@nexpress/plugin-reading-time": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
     "@nexpress/theme": "workspace:*",
     "drizzle-orm": "^0.45.2",

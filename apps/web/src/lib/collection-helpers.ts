@@ -4,7 +4,7 @@ import {
   NxValidationError,
 } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 
 export interface NxFindOptions {
   page?: number;
@@ -55,6 +55,7 @@ const coreModulePromise = import("@nexpress/core") as Promise<
 
 async function getCollectionPipeline(): Promise<CollectionPipelineModule> {
   ensureCoreServices();
+  await ensurePluginsLoaded();
   const coreModule = await coreModulePromise;
 
   if (

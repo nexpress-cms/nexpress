@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getPluginRoutes } from "@nexpress/core";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,7 @@ async function handlePluginRoute(
   { params }: { params: Promise<{ pluginId: string; path: string[] }> },
 ) {
   ensureCoreServices();
+  await ensurePluginsLoaded();
   const { pluginId, path } = await params;
   const routePath = `/${path.join("/")}`;
   const method = request.method;
