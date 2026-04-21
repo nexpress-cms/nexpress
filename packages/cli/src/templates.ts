@@ -87,7 +87,9 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
       ? `  storage: {\n    adapter: "s3",\n    s3: {\n      bucket: process.env.S3_BUCKET || "nexpress-media",\n      region: process.env.S3_REGION || "us-east-1",\n      endpoint: process.env.S3_ENDPOINT || undefined,\n    },\n  },`
       : `  storage: {\n    adapter: "local",\n    local: { directory: "./public/media", baseUrl: "/media" },\n  },`;
 
-  return `import { defineConfig } from "@nexpress/core";\n${imports}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  auth: {\n    secret: process.env.NX_SECRET!,\n  },\n  plugins: [],\n});\n`;
+  const pluginsHint = `  plugins: [\n    // Register sdk-built plugins here. Example:\n    //   import { readingTimePlugin } from "@nexpress/plugin-reading-time";\n    //   plugins: [readingTimePlugin],\n  ],`;
+
+  return `import { defineConfig } from "@nexpress/core";\n${imports}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  auth: {\n    secret: process.env.NX_SECRET!,\n  },\n${pluginsHint}\n});\n`;
 }
 
 function dockerComposeTemplate(): string {

@@ -250,6 +250,29 @@ export interface NxPluginConfig {
   init?: (ctx: NxPluginContext) => void | Promise<void>;
 }
 
+/**
+ * Structural shape accepted by `loadPlugins()` for SDK-built plugins.
+ * Declared here rather than imported from `@nexpress/plugin-sdk` to avoid a
+ * dependency cycle (plugin-sdk already depends on core).
+ */
+export interface NxResolvedPluginLike {
+  manifest: {
+    id: string;
+    name: string;
+    version?: string;
+    description?: string;
+    capabilities: readonly string[];
+  };
+  hooks?: Record<string, unknown>;
+  routes?: ReadonlyArray<{
+    path: string;
+    method: string;
+    handler: unknown;
+    description?: string;
+    auth?: boolean;
+  }>;
+}
+
 export interface NxPluginContext {
   addCollection: (config: NxCollectionConfig) => void;
   addBlock: (config: NxBlockConfig) => void;
@@ -299,7 +322,7 @@ export interface NxConfig {
     maxLoginAttempts?: number;
     lockoutDuration?: number;
   };
-  plugins?: NxPluginConfig[];
+  plugins?: Array<NxPluginConfig | NxResolvedPluginLike>;
   typescript?: {
     outputFile?: string;
   };
