@@ -21,6 +21,7 @@
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/editor": "workspace:*",
+    "@nexpress/next": "workspace:*",
     "@nexpress/plugin-reading-time": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
     "@nexpress/theme": "workspace:*",

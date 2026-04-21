@@ -37,3 +37,5 @@ minio-data/
 public/media/
 
 CLAUDE.md
+
+*.tsbuildinfo
