@@ -34,3 +34,5 @@ export { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.js";
 export { DataTable } from "./ui/data-table.js";
 export { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "./ui/form.js";
 export { cn } from "./ui/utils.js";
+
+export { nxFetch } from "./lib/api-client.js";

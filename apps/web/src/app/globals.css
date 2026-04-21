@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@layer nx-base, nx-blocks, nx-theme, nx-overrides;
+
 @layer nx-base {
   *,
   *::before,
