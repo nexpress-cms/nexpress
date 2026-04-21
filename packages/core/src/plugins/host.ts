@@ -77,8 +77,9 @@ const globalRoutes: PluginRouteHandler[] = [];
 
 /**
  * Structural shape for plugins built via `@nexpress/plugin-sdk`'s
- * `definePlugin()`. Declared here (rather than importing from plugin-sdk)
- * because core is a dependency of plugin-sdk — importing would be cyclic.
+ * `definePlugin()`. Matches `NxResolvedPluginLike` in config/types.ts —
+ * kept deliberately loose so `loadPlugins` can accept the same array
+ * that `NxConfig.plugins` does without narrowing gymnastics.
  */
 export interface ResolvedPluginLike {
   manifest: {
@@ -88,25 +89,23 @@ export interface ResolvedPluginLike {
     description?: string;
     capabilities: readonly string[];
   };
-  hooks?: Record<
-    string,
-    | ((ctx: {
-        hook: string;
-        data: Record<string, unknown>;
-        collection?: string;
-      }) => void | Promise<void>)
-    | string
-  >;
-  routes?: Array<{
+  hooks?: Record<string, unknown>;
+  routes?: ReadonlyArray<{
     path: string;
     method: string;
-    handler:
-      | ((req: PluginRouteRequest) => Promise<PluginRouteResponse>)
-      | string;
+    handler: unknown;
     description?: string;
     auth?: boolean;
   }>;
 }
+
+type ResolvedHookFn = (ctx: {
+  hook: string;
+  data: Record<string, unknown>;
+  collection?: string;
+}) => void | Promise<void>;
+
+type ResolvedRouteFn = (req: PluginRouteRequest) => Promise<PluginRouteResponse>;
 
 function isResolvedPlugin(value: unknown): value is ResolvedPluginLike {
   if (!value || typeof value !== "object") return false;
@@ -180,7 +179,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       assertCapability(manifest.id, requirement, registration.capabilities);
     }
 
-    const handler = rawHandler;
+    const handler = rawHandler as ResolvedHookFn;
     registerHookHandler(registration, hookName, {
       pluginId: manifest.id,
       handler: async (data) => {
@@ -199,7 +198,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       pluginId: manifest.id,
       path: route.path,
       method: route.method.toUpperCase(),
-      handler: route.handler,
+      handler: route.handler as ResolvedRouteFn,
     };
     registration.routes.push(entry);
     globalRoutes.push(entry);
