@@ -8,6 +8,7 @@ import {
   parseFindOptions,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
+import { revalidateCollection } from "@/lib/revalidate";
 
 function parseBodyRecord(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -50,6 +51,8 @@ export async function POST(
 
     const data = parseBodyRecord(await request.json());
     const result = await saveCollectionDocument(slug, null, data, user);
+
+    revalidateCollection(slug, result.doc);
 
     return nxSuccessResponse(result.doc, { status: 201 });
   } catch (error) {

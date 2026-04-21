@@ -2,6 +2,7 @@ import { getPostBySlug } from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import { notFound } from "next/navigation";
 import { NxImage, getMediaUrl } from "@/components/nx-image";
+import { ensureCoreServices } from "@/lib/init-core";
 import type { Metadata } from "next";
 import type { NxRichTextContent } from "@nexpress/editor";
 
@@ -10,6 +11,7 @@ interface PostPageProps {
 }
 
 export default async function PostPage({ params }: PostPageProps) {
+  ensureCoreServices();
   const { slug } = await params;
   const post = await getPostBySlug(slug);
   if (!post) notFound();
@@ -43,6 +45,7 @@ export default async function PostPage({ params }: PostPageProps) {
 export async function generateMetadata({
   params,
 }: PostPageProps): Promise<Metadata> {
+  ensureCoreServices();
   const { slug } = await params;
   const post = await getPostBySlug(slug);
   if (!post) return {};
