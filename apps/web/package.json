@@ -11,6 +11,7 @@
     "clean": "rm -rf .next",
     "schema:gen": "tsx scripts/generate-schema.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
+    "worker": "tsx scripts/worker.ts",
     "db:generate": "pnpm schema:gen && drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "pnpm schema:gen && drizzle-kit push",

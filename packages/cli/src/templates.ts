@@ -29,6 +29,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/lib/manifest.ts": manifestLibTemplate(),
     "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
     "scripts/seed-admin.ts": seedAdminScriptTemplate(),
+    "scripts/worker.ts": workerScriptTemplate(),
     "src/app/layout.tsx": rootLayoutTemplate(config),
     "src/app/globals.css": globalsCssTemplate(),
     "src/app/(site)/layout.tsx": siteLayoutTemplate(config),
@@ -80,6 +81,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         start: "next start",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
+        worker: "tsx scripts/worker.ts",
         "db:generate": "pnpm schema:gen && drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "db:push": "pnpm schema:gen && drizzle-kit push",
@@ -374,6 +376,75 @@ process.stdout.write(\`✓ wrote \${outFile}\\n\`);
 process.stdout.write(
   \`  collections: \${nexpressConfig.collections.map((c) => c.slug).join(", ")}\\n\`,
 );
+`;
+}
+
+function workerScriptTemplate(): string {
+  return `import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { config as loadEnv } from "dotenv";
+
+import {
+  configureBuiltinJobContext,
+  getCollectionConfig,
+  getDocumentById,
+  startWorker,
+  stopWorker,
+} from "@nexpress/core";
+
+import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/bootstrap";
+
+const here = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: resolve(here, "../.env") });
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
+  process.exit(1);
+}
+
+async function main() {
+  ensureCoreServices();
+  await ensurePluginsLoaded();
+
+  configureBuiltinJobContext({
+    async resolveContentAfterSaveContext({ collection, documentId, userId }) {
+      const config = getCollectionConfig(collection);
+      const doc = await getDocumentById(collection, documentId);
+      if (!doc) return null;
+      return {
+        collectionConfig: config,
+        data: doc,
+        user: { id: userId, email: "", name: "", role: "admin", tokenVersion: 0 },
+      };
+    },
+    async resolveContentAfterDeleteContext({ collection, documentId, userId }) {
+      const config = getCollectionConfig(collection);
+      return {
+        collectionConfig: config,
+        data: { id: documentId },
+        user: { id: userId, email: "", name: "", role: "admin", tokenVersion: 0 },
+      };
+    },
+  });
+
+  await startWorker(databaseUrl);
+  console.log("[nexpress] worker started — press Ctrl+C to stop");
+
+  const shutdown = async (signal: string) => {
+    console.log(\`\\n[nexpress] received \${signal}, stopping…\`);
+    await stopWorker();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}
+
+main().catch((error) => {
+  console.error("[nexpress] worker failed to start:", error);
+  process.exit(1);
+});
 `;
 }
 
@@ -1660,5 +1731,20 @@ pnpm dev
 - Site: http://localhost:3000
 - Admin: http://localhost:3000/admin
 - OpenAPI spec: http://localhost:3000/api/openapi.json
+
+## Background jobs (pg-boss)
+
+Optional. Enable when you want async content hooks, scheduled pruning, or
+image post-processing.
+
+\`\`\`bash
+# in .env
+NX_ENABLE_JOBS=1
+
+# in a second terminal
+pnpm worker
+\`\`\`
+
+With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
 `;
 }
