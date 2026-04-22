@@ -2,7 +2,7 @@
 
 import { lazy, Suspense, type ComponentType } from "react";
 import type { NxFieldConfig } from "@nexpress/core";
-import type { NxBlockInstance } from "@nexpress/blocks";
+import { getDefaultBlocks, type NxBlockDefinition, type NxBlockInstance } from "@nexpress/blocks";
 import type { NxRichTextContent } from "@nexpress/editor";
 import { ChevronDown } from "lucide-react";
 import type { Control, FieldPath } from "react-hook-form";
@@ -214,7 +214,14 @@ const renderNamedField = (
           )}
         />
       );
-    case "blocks":
+    case "blocks": {
+      const allDefinitions = getDefaultBlocks();
+      const allowedTypes = field.allowedBlocks;
+      const availableBlocks: NxBlockDefinition[] =
+        allowedTypes && allowedTypes.length > 0
+          ? allDefinitions.filter((definition) => allowedTypes.includes(definition.type))
+          : allDefinitions;
+      const blockLabels = availableBlocks.map((definition) => definition.label ?? definition.type).join(", ");
       return (
         <FormField
           control={control}
@@ -227,16 +234,21 @@ const renderNamedField = (
                   <LazyBlockPageEditor
                     blocks={toBlockInstances(formField.value)}
                     onChange={formField.onChange}
-                    availableBlocks={[]}
+                    availableBlocks={availableBlocks}
                   />
                 </Suspense>
               </FormControl>
-              <FormDescription>Allowed blocks: {(field.allowedBlocks ?? []).join(", ") || "No block registry connected yet."}</FormDescription>
+              <FormDescription>
+                {availableBlocks.length === 0
+                  ? "No block definitions available."
+                  : `Available blocks: ${blockLabels}`}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
       );
+    }
     case "checkbox":
       return (
         <FormField

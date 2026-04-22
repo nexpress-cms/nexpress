@@ -42,9 +42,16 @@ export async function getNavigation(
 
 export async function getPageBySlug(
   slug: string,
+  options?: { draft?: boolean },
 ): Promise<Record<string, unknown> | null> {
+  const where: Record<string, unknown> = { slug: slug || "/" };
+
+  if (!options?.draft) {
+    where.status = "published";
+  }
+
   const result = await findDocuments("pages", {
-    where: { slug: slug || "/" },
+    where,
     limit: 1,
   });
 
