@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@source "../../../../packages/admin/src/**/*.{ts,tsx}";
+@source "../../../../packages/blocks/src/**/*.{ts,tsx}";
+@source "../../../../packages/editor/src/**/*.{ts,tsx}";
+
 @layer nx-base, nx-blocks, nx-theme, nx-overrides;
 
 @layer nx-base {
