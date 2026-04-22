@@ -130,7 +130,7 @@ export async function saveDocument(
     }
 
     return persistedDoc;
-  })) as Record<string, unknown>;
+  }));
   const savedDocId = getRecordId(savedDoc);
 
   await enqueueJob("content:afterSave", {
@@ -226,7 +226,7 @@ export async function findDocuments(
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
   return {
-    docs: docs as Record<string, unknown>[],
+    docs: docs,
     totalDocs,
     totalPages,
     page,
@@ -831,7 +831,7 @@ function extractMediaIdsFromLexicalJson(
     }
   }
 
-  const children = record.children ?? (toOptionalRecord(record.root) as Record<string, unknown> | null)?.children;
+  const children = record.children ?? (toOptionalRecord(record.root))?.children;
   if (Array.isArray(children)) {
     for (const child of children) {
       refs.push(...extractMediaIdsFromLexicalJson(child, fieldPath));

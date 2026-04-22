@@ -7,7 +7,7 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "tsc --noEmit",
     "clean": "rm -rf .next",
     "schema:gen": "tsx scripts/generate-schema.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",

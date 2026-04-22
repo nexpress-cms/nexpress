@@ -11,8 +11,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint .",
+    "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
     "typecheck": "turbo run lint",
     "test": "turbo run test",
     "format": "prettier --write .",

@@ -9,7 +9,7 @@ import { DEFAULT_THEME } from "../theme/defaults.js";
 import { findDocuments, getDb } from "../collections/index.js";
 
 export async function getTheme(): Promise<NxThemeTokens> {
-  const db = getDb() as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = await db
     .select()
     .from(nxSettings)
@@ -26,7 +26,7 @@ export async function getTheme(): Promise<NxThemeTokens> {
 export async function getNavigation(
   location: string = "header",
 ): Promise<NxNavItem[]> {
-  const db = getDb() as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = await db
     .select()
     .from(nxNavigation)
@@ -87,7 +87,7 @@ export async function getAllPageSlugs(): Promise<string[]> {
 }
 
 export async function getSetting<T = unknown>(key: string): Promise<T | null> {
-  const db = getDb() as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = await db
     .select()
     .from(nxSettings)
