@@ -171,10 +171,23 @@ function bootstrapLibTemplate(): string {
 import nexpressConfig from "@/nexpress.config";
 import * as generatedSchema from "@/db/generated/collections";
 
-export const { getDb, ensureCoreServices, ensurePluginsLoaded } = createBootstrap({
-  config: nexpressConfig,
-  generatedSchema: generatedSchema as unknown as Record<string, unknown>,
-});
+export const { getDb, ensureCoreServices, ensurePluginsLoaded, ensureJobProducer } =
+  createBootstrap({
+    config: nexpressConfig,
+    generatedSchema: generatedSchema as unknown as Record<string, unknown>,
+  });
+
+/**
+ * One-call setup for any write entrypoint (API route, server action, import).
+ * Wires core services, loads plugins so hooks fire, and starts the pg-boss
+ * producer so \`enqueueJob\` actually sends work to the worker when
+ * \`NX_ENABLE_JOBS=1\`.
+ */
+export async function ensureWriteReady(): Promise<void> {
+  ensureCoreServices();
+  await ensurePluginsLoaded();
+  await ensureJobProducer();
+}
 
 export type { NxDb } from "@nexpress/next";
 export { nexpressConfig };
@@ -207,7 +220,7 @@ function apiResponseLibTemplate(): string {
 function collectionHelpersLibTemplate(): string {
   return `import { createCollectionHelpers } from "@nexpress/next";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/bootstrap";
+import { ensureWriteReady } from "@/lib/bootstrap";
 
 export const {
   parseFindOptions,
@@ -216,10 +229,7 @@ export const {
   saveCollectionDocument,
   deleteCollectionDocument,
 } = createCollectionHelpers({
-  async ensureReady() {
-    ensureCoreServices();
-    await ensurePluginsLoaded();
-  },
+  ensureReady: ensureWriteReady,
 });
 `;
 }

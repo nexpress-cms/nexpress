@@ -1,6 +1,6 @@
 import { createCollectionHelpers } from "@nexpress/next";
 
-import { ensureCoreServices, ensureJobProducer, ensurePluginsLoaded } from "@/lib/bootstrap";
+import { ensureWriteReady } from "@/lib/init-core";
 
 export const {
   parseFindOptions,
@@ -9,9 +9,5 @@ export const {
   saveCollectionDocument,
   deleteCollectionDocument,
 } = createCollectionHelpers({
-  async ensureReady() {
-    ensureCoreServices();
-    await ensurePluginsLoaded();
-    await ensureJobProducer();
-  },
+  ensureReady: ensureWriteReady,
 });
