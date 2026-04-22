@@ -3,6 +3,7 @@ import {
   type NxAuthUser,
   type NxFindOptions,
   type NxFindResult,
+  type NxSaveOptions,
   type NxSaveResult,
   findDocuments as coreFindDocuments,
   getDocumentById as coreGetDocumentById,
@@ -35,6 +36,7 @@ export type CollectionHelpers = {
     id: string | null,
     data: Record<string, unknown>,
     user: NxAuthUser,
+    options?: NxSaveOptions,
   ) => Promise<NxSaveResult>;
   readonly deleteCollectionDocument: (
     this: void,
@@ -136,9 +138,10 @@ export function createCollectionHelpers(
     id: string | null,
     data: Record<string, unknown>,
     user: NxAuthUser,
+    options?: NxSaveOptions,
   ): Promise<NxSaveResult> => {
     await ready();
-    return coreSaveDocument(slug, id, data, user);
+    return coreSaveDocument(slug, id, data, user, options);
   };
 
   const deleteCollectionDocument = async (

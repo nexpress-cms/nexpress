@@ -145,7 +145,20 @@ describe("collection operations", () => {
     const result = await helpers.saveCollectionDocument("posts", null, { title: "x" }, user);
 
     expect(result.doc).toEqual({ id: "new" });
-    expect(core.saveDocument).toHaveBeenCalledWith("posts", null, { title: "x" }, user);
+    expect(core.saveDocument).toHaveBeenCalledWith("posts", null, { title: "x" }, user, undefined);
+  });
+
+  it("saveCollectionDocument forwards save options to core.saveDocument", async () => {
+    vi.mocked(core.saveDocument).mockResolvedValue({
+      doc: { id: "new" },
+      operation: "create",
+    });
+
+    const { helpers } = buildHelpers();
+    const user = { id: "u", email: "u@x", name: "u", role: "admin" as const, tokenVersion: 0 };
+    await helpers.saveCollectionDocument("posts", null, { title: "x" }, user, { status: "draft" });
+
+    expect(core.saveDocument).toHaveBeenCalledWith("posts", null, { title: "x" }, user, { status: "draft" });
   });
 
   it("deleteCollectionDocument awaits ensureReady even though it returns void", async () => {
