@@ -140,7 +140,12 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
       throw new Error(`[plugin:${pluginId}] Runtime block registration not supported in v1. Add blocks to nexpress.config.ts.`);
     },
     addHook: (collection: string, event: string, hook) => {
-      const hookName = `${collection}:${event}`;
+      // Legacy API: collection is the docs' collection ("posts"), event is the
+      // lifecycle step ("afterCreate"). The pipeline emits canonical hook names
+      // under the "content:" namespace (e.g. `content:afterCreate`), so
+      // register there and filter by collection at dispatch time. This keeps
+      // legacy hooks firing on the same stream as resolved-plugin hooks.
+      const hookName = `content:${event}`;
       const requirement = hookCapabilityFor(hookName);
       if (requirement) {
         assertCapability(pluginId, requirement, registration.capabilities);
@@ -149,6 +154,9 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
       registerHookHandler(registration, hookName, {
         pluginId,
         handler: async (data) => {
+          if (typeof data.collection === "string" && data.collection !== collection) {
+            return;
+          }
           await hook({ data, collection } as never);
         },
       });

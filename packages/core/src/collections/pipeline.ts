@@ -13,7 +13,8 @@ import {
   type NxCollectionHook,
   type NxFieldConfig,
 } from "../config/types.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { NxForbiddenError, NxNotFoundError } from "../errors.js";
+import { applySlugField } from "./slug.js";
 import { getCollectionZodSchema } from "./validation.js";
 import {
   getCollectionConfig,
@@ -623,54 +624,6 @@ async function getDocumentByIdOptional(
 ): Promise<Record<string, unknown> | null> {
   const [doc] = await db.select().from(table).where(eq(getTableColumn(table, "id"), id)).limit(1);
   return doc ? toRecord(doc) : null;
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
-}
-
-function applySlugField(
-  config: NxCollectionConfig,
-  data: Record<string, unknown>,
-  originalDoc: Record<string, unknown> | null,
-): void {
-  if (!config.slugField) return;
-
-  const existingSlug = typeof data.slug === "string" ? data.slug.trim() : "";
-
-  if (existingSlug.length > 0) {
-    data.slug = slugify(existingSlug) || existingSlug;
-    return;
-  }
-
-  if (originalDoc && typeof originalDoc.slug === "string" && originalDoc.slug.length > 0) {
-    data.slug = originalDoc.slug;
-    return;
-  }
-
-  const useField =
-    typeof config.slugField === "object" && config.slugField.useField
-      ? config.slugField.useField
-      : "title";
-  const source = data[useField];
-  const candidate = typeof source === "string" ? slugify(source) : "";
-
-  if (candidate.length === 0) {
-    throw new NxValidationError("Slug generation failed", [
-      {
-        field: "slug",
-        message: `Cannot derive a slug — provide "slug" or a non-empty "${useField}".`,
-      },
-    ]);
-  }
-
-  data.slug = candidate;
 }
 
 function prepareDocumentData(
