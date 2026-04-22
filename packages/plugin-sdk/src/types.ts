@@ -155,7 +155,9 @@ export interface NxContentFilterOperator {
 export interface NxContentWhere {
   and?: NxContentWhere[];
   or?: NxContentWhere[];
-  [field: string]: NxContentFilterOperator | NxContentWhere[] | unknown;
+  // Index signature is deliberately broad: plugins may pass direct values
+  // (string, number, Date, etc.) alongside the structured operators.
+  [field: string]: unknown;
 }
 
 export interface NxContentQuery {

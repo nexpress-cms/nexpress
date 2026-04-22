@@ -140,7 +140,7 @@ function toReadableStream(body: unknown): ReadableStream {
   }
 
   if (body instanceof Readable) {
-    return Readable.toWeb(body) as ReadableStream;
+    return Readable.toWeb(body);
   }
 
   throw new Error("S3 object body is not a readable stream.");

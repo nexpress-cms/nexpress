@@ -40,7 +40,7 @@ interface DrizzleDatabaseLike {
     };
   };
   delete(table: PgTable): {
-    where(condition: ReturnType<typeof inArray> | ReturnType<typeof eq>): Promise<unknown>;
+    where(condition: ReturnType<typeof inArray>  ): Promise<unknown>;
   };
   select(selection?: Record<string, unknown>): {
     from(table: PgTable): SelectQuery;
@@ -403,8 +403,8 @@ function getFormatMimeType(format: string): string {
 }
 
 function combineConditions(
-  conditions: Array<ReturnType<typeof and> | ReturnType<typeof isNull> | ReturnType<typeof eq>>,
-): ReturnType<typeof and> | ReturnType<typeof isNull> | ReturnType<typeof eq> | undefined {
+  conditions: Array<ReturnType<typeof and> | ReturnType<typeof isNull>  >,
+): ReturnType<typeof and> | ReturnType<typeof isNull>   | undefined {
   if (conditions.length === 0) {
     return undefined;
   }

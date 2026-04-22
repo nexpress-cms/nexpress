@@ -15,7 +15,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureWriteReady } from "@/lib/init-core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       throw new NxForbiddenError("import", "create");
     }
 
-    ensureCoreServices();
+    await ensureWriteReady();
 
     const payload = validatePayload(await request.json());
     const db = getDb();

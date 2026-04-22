@@ -33,7 +33,7 @@ export class LocalStorageAdapter implements NxStorageAdapter {
   }
 
   async getStream(key: string): Promise<ReadableStream> {
-    return Readable.toWeb(createReadStream(this.resolvePath(key))) as ReadableStream;
+    return Readable.toWeb(createReadStream(this.resolvePath(key)));
   }
 
   async getUrl(key: string): Promise<string> {

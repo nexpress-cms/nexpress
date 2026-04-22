@@ -15,3 +15,4 @@ export {
   getDocumentById,
 } from "./pipeline.js";
 export { buildZodSchema, getCollectionZodSchema } from "./validation.js";
+export { slugify, applySlugField } from "./slug.js";
