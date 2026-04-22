@@ -1,5 +1,6 @@
 import { getPostBySlug } from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
+import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import { NxImage, getMediaUrl } from "@/components/nx-image";
 import { ensureCoreServices } from "@/lib/init-core";
@@ -13,13 +14,19 @@ interface PostPageProps {
 export default async function PostPage({ params }: PostPageProps) {
   ensureCoreServices();
   const { slug } = await params;
-  const post = await getPostBySlug(slug);
+  const { isEnabled: isDraft } = await draftMode();
+  const post = await getPostBySlug(slug, { draft: isDraft });
   if (!post) notFound();
 
   const content = post.content as NxRichTextContent | undefined;
 
   return (
     <article className="nx-post">
+      {isDraft ? (
+        <div className="nx-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
+          Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
+        </div>
+      ) : null}
       <header className="nx-post-header">
         <h1>{post.title as string}</h1>
         {post.publishedAt ? (
@@ -47,7 +54,8 @@ export async function generateMetadata({
 }: PostPageProps): Promise<Metadata> {
   ensureCoreServices();
   const { slug } = await params;
-  const post = await getPostBySlug(slug);
+  const { isEnabled: isDraft } = await draftMode();
+  const post = await getPostBySlug(slug, { draft: isDraft });
   if (!post) return {};
 
   const title = (post.seo as Record<string, unknown>)?.metaTitle ?? post.title;

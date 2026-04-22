@@ -38,7 +38,9 @@ export type {
   NxJobType,
   NxFindOptions,
   NxFindResult,
+  NxSaveOptions,
   NxSaveResult,
+  NxDocumentStatus,
 } from "./config/types.js";
 
 export { ROLE_HIERARCHY, hasRole } from "./config/types.js";
