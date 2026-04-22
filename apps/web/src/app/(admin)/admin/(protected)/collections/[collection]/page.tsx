@@ -1,5 +1,6 @@
 import { getCollectionConfig, findDocuments } from "@nexpress/core";
 import { CollectionListView } from "@nexpress/admin/client";
+import { toClientCollectionConfig } from "@nexpress/next";
 import { notFound } from "next/navigation";
 import { ensureCoreServices } from "@/lib/init-core";
 
@@ -31,7 +32,7 @@ export default async function CollectionListPage({
 
   return (
     <CollectionListView
-      config={config}
+      config={toClientCollectionConfig(config)}
       docs={result.docs}
       totalDocs={result.totalDocs}
       totalPages={result.totalPages}

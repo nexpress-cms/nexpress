@@ -77,7 +77,7 @@ const toBlockInstances = (value: unknown): NxBlockInstance[] => {
         type: candidate.type,
         props:
           typeof candidate.props === "object" && candidate.props !== null && !Array.isArray(candidate.props)
-            ? (candidate.props as Record<string, unknown>)
+            ? (candidate.props)
             : {},
       },
     ];
@@ -105,7 +105,7 @@ const renderNamedField = (
   control: Control<Record<string, unknown>>,
   namePrefix?: string,
 ) => {
-  const name = buildFieldName(field.name, namePrefix) as FieldPath<Record<string, unknown>>;
+  const name = buildFieldName(field.name, namePrefix);
   const label = field.label ?? field.name;
 
   switch (field.type) {

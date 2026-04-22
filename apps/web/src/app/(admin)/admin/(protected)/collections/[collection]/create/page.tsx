@@ -1,5 +1,6 @@
 import { getCollectionConfig } from "@nexpress/core";
 import { CollectionEditView } from "@nexpress/admin/client";
+import { toClientCollectionConfig } from "@nexpress/next";
 import { notFound } from "next/navigation";
 import { ensureCoreServices } from "@/lib/init-core";
 
@@ -16,5 +17,5 @@ export default async function CreatePage({ params }: Props) {
   const config = getCollectionConfig(collection);
   if (!config) notFound();
 
-  return <CollectionEditView config={config} collectionSlug={collection} />;
+  return <CollectionEditView config={toClientCollectionConfig(config)} collectionSlug={collection} />;
 }

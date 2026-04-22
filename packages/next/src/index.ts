@@ -27,3 +27,5 @@ export {
   type BootstrapOptions,
   type NxDb,
 } from "./bootstrap.js";
+
+export { toClientCollectionConfig } from "./client-safe.js";

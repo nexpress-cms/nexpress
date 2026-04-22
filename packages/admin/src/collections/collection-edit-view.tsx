@@ -13,6 +13,7 @@ import { FieldRenderer } from "./field-renderer.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
+import { nxFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
   config: NxCollectionConfig;
@@ -205,7 +206,7 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
         ? `/api/collections/${collectionSlug}/${String(doc.id)}`
         : `/api/collections/${collectionSlug}`;
 
-      const response = await fetch(endpoint, {
+      const response = await nxFetch(endpoint, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -250,7 +251,7 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
     setToast(null);
 
     try {
-      const response = await fetch(`/api/collections/${collectionSlug}/${String(doc.id)}`, {
+      const response = await nxFetch(`/api/collections/${collectionSlug}/${String(doc.id)}`, {
         method: "DELETE",
       });
 

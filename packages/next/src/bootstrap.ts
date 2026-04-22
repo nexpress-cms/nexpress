@@ -6,6 +6,7 @@ import {
   setDb,
   setMediaDb,
   setStorageAdapter,
+  startProducer,
   type NxConfig,
 } from "@nexpress/core";
 
@@ -34,6 +35,7 @@ export type Bootstrap = {
   readonly getDb: (this: void) => NxDb;
   readonly ensureCoreServices: (this: void) => void;
   readonly ensurePluginsLoaded: (this: void) => Promise<void>;
+  readonly ensureJobProducer: (this: void) => Promise<void>;
 };
 
 function toCamelCase(slug: string): string {
@@ -72,6 +74,8 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
   let collectionsRegistered = false;
   let pluginsLoaded = false;
   let pluginsLoadingPromise: Promise<void> | null = null;
+  let producerStarted = false;
+  let producerStartingPromise: Promise<void> | null = null;
 
   function getConnectionString(): string {
     const connectionString =
@@ -139,9 +143,33 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     getDbInstance();
   };
 
+  /**
+   * Wires pg-boss as the job queue for this process so `enqueueJob` calls
+   * actually send jobs. Opt-in via `NX_ENABLE_JOBS=1` — when it's off the
+   * producer stays unwired and `enqueueJob` remains a no-op.
+   *
+   * Idempotent + race-safe.
+   */
+  async function ensureJobProducer(): Promise<void> {
+    if (producerStarted) return;
+    if (process.env.NX_ENABLE_JOBS !== "1") {
+      producerStarted = true;
+      return;
+    }
+    if (producerStartingPromise) return producerStartingPromise;
+
+    producerStartingPromise = (async () => {
+      await startProducer(getConnectionString());
+      producerStarted = true;
+    })();
+
+    return producerStartingPromise;
+  }
+
   return {
     getDb: getDbInstance,
     ensureCoreServices,
     ensurePluginsLoaded,
+    ensureJobProducer,
   };
 }

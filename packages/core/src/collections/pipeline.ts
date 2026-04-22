@@ -13,7 +13,8 @@ import {
   type NxCollectionHook,
   type NxFieldConfig,
 } from "../config/types.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { NxForbiddenError, NxNotFoundError } from "../errors.js";
+import { applySlugField } from "./slug.js";
 import { getCollectionZodSchema } from "./validation.js";
 import {
   getCollectionConfig,
@@ -129,7 +130,7 @@ export async function saveDocument(
     }
 
     return persistedDoc;
-  })) as Record<string, unknown>;
+  }));
   const savedDocId = getRecordId(savedDoc);
 
   await enqueueJob("content:afterSave", {
@@ -225,7 +226,7 @@ export async function findDocuments(
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
   return {
-    docs: docs as Record<string, unknown>[],
+    docs: docs,
     totalDocs,
     totalPages,
     page,
@@ -625,54 +626,6 @@ async function getDocumentByIdOptional(
   return doc ? toRecord(doc) : null;
 }
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
-}
-
-function applySlugField(
-  config: NxCollectionConfig,
-  data: Record<string, unknown>,
-  originalDoc: Record<string, unknown> | null,
-): void {
-  if (!config.slugField) return;
-
-  const existingSlug = typeof data.slug === "string" ? data.slug.trim() : "";
-
-  if (existingSlug.length > 0) {
-    data.slug = slugify(existingSlug) || existingSlug;
-    return;
-  }
-
-  if (originalDoc && typeof originalDoc.slug === "string" && originalDoc.slug.length > 0) {
-    data.slug = originalDoc.slug;
-    return;
-  }
-
-  const useField =
-    typeof config.slugField === "object" && config.slugField.useField
-      ? config.slugField.useField
-      : "title";
-  const source = data[useField];
-  const candidate = typeof source === "string" ? slugify(source) : "";
-
-  if (candidate.length === 0) {
-    throw new NxValidationError("Slug generation failed", [
-      {
-        field: "slug",
-        message: `Cannot derive a slug — provide "slug" or a non-empty "${useField}".`,
-      },
-    ]);
-  }
-
-  data.slug = candidate;
-}
-
 function prepareDocumentData(
   fields: NxFieldConfig[],
   data: Record<string, unknown>,
@@ -878,7 +831,7 @@ function extractMediaIdsFromLexicalJson(
     }
   }
 
-  const children = record.children ?? (toOptionalRecord(record.root) as Record<string, unknown> | null)?.children;
+  const children = record.children ?? (toOptionalRecord(record.root))?.children;
   if (Array.isArray(children)) {
     for (const child of children) {
       refs.push(...extractMediaIdsFromLexicalJson(child, fieldPath));

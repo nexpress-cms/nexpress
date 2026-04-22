@@ -1,4 +1,4 @@
-import { NxError } from "@nexpress/core";
+import { NxError, NxValidationError } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
 export interface NxApiError {
@@ -38,9 +38,15 @@ export function nxErrorResponse(error: Error): NextResponse<NxApiError> {
   }
 
   if (error instanceof NxError) {
+    const details = error instanceof NxValidationError ? error.errors : undefined;
+
     return NextResponse.json(
       {
-        error: { code: error.code, message: error.message },
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(details !== undefined && { details }),
+        },
         status: error.statusCode,
       },
       { status: error.statusCode },

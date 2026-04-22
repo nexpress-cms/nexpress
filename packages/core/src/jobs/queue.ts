@@ -8,7 +8,7 @@ export interface NxJobQueue {
 
 let jobQueue: NxJobQueue | null = null;
 
-export function setJobQueue(queue: NxJobQueue): void {
+export function setJobQueue(queue: NxJobQueue | null): void {
   jobQueue = queue;
 }
 

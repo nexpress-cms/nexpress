@@ -108,6 +108,8 @@ export {
   enqueueJob,
   startWorker,
   stopWorker,
+  startProducer,
+  stopProducer,
   PgBossAdapter,
   registerBuiltinHandlers,
 } from "./jobs/index.js";
