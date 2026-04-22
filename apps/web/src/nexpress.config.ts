@@ -1,5 +1,6 @@
 import { defineConfig } from "@nexpress/core";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
+import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
@@ -30,7 +31,7 @@ export default defineConfig({
           },
         },
   collections: [postsCollection, pagesCollection],
-  plugins: [readingTimePlugin],
+  plugins: [readingTimePlugin, seoAuditPlugin],
   auth: {
     secret: process.env.NX_SECRET ?? "",
   },
