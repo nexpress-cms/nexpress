@@ -898,9 +898,47 @@ export default function AdminDashboard() {
 }
 
 function adminCollectionListPageTemplate(): string {
-  return `import Link from "next/link";
+  return `import { findDocuments, getCollectionConfig } from "@nexpress/core";
+import { CollectionListView } from "@nexpress/admin/client";
+import { toClientCollectionConfig } from "@nexpress/next";
 
-import { findDocuments, getCollectionConfig } from "@nexpress/core";
+import { ensureCoreServices } from "@/lib/bootstrap";
+
+interface Props {
+  params: Promise<{ collection: string }>;
+  searchParams: Promise<{ page?: string }>;
+}
+
+export default async function AdminCollectionList({ params, searchParams }: Props) {
+  ensureCoreServices();
+  const { collection } = await params;
+  const { page } = await searchParams;
+  const currentPage = Math.max(1, Number(page ?? 1) || 1);
+
+  const config = getCollectionConfig(collection);
+  const { docs, totalDocs, totalPages } = await findDocuments(collection, {
+    page: currentPage,
+    limit: 20,
+    sort: "-updatedAt",
+  });
+
+  return (
+    <CollectionListView
+      config={toClientCollectionConfig(config)}
+      docs={docs}
+      totalDocs={totalDocs}
+      totalPages={totalPages}
+      currentPage={currentPage}
+    />
+  );
+}
+`;
+}
+
+function adminCollectionCreatePageTemplate(): string {
+  return `import { getCollectionConfig } from "@nexpress/core";
+import { CollectionEditView } from "@nexpress/admin/client";
+import { toClientCollectionConfig } from "@nexpress/next";
 
 import { ensureCoreServices } from "@/lib/bootstrap";
 
@@ -908,179 +946,25 @@ interface Props {
   params: Promise<{ collection: string }>;
 }
 
-export default async function AdminCollectionList({ params }: Props) {
+export default async function AdminCollectionCreate({ params }: Props) {
   ensureCoreServices();
   const { collection } = await params;
   const config = getCollectionConfig(collection);
-  const { docs } = await findDocuments(collection, { limit: 50, sort: "-updatedAt" });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{config.labels.plural}</h1>
-        <Link
-          href={\`/admin/collections/\${collection}/create\`}
-          className="rounded bg-black px-3 py-1.5 text-sm text-white"
-        >
-          New {config.labels.singular.toLowerCase()}
-        </Link>
-      </div>
-      <table className="w-full border bg-white text-sm">
-        <thead>
-          <tr className="border-b bg-slate-100 text-left">
-            <th className="px-3 py-2">Title</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {docs.map((doc) => (
-            <tr key={doc.id as string} className="border-b">
-              <td className="px-3 py-2">
-                <Link
-                  className="underline"
-                  href={\`/admin/collections/\${collection}/\${doc.id as string}\`}
-                >
-                  {(doc.title as string) ?? "(untitled)"}
-                </Link>
-              </td>
-              <td className="px-3 py-2">{(doc.status as string) ?? ""}</td>
-              <td className="px-3 py-2 text-slate-500">
-                {(doc.updatedAt as Date)?.toLocaleString?.() ?? ""}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-`;
-}
-
-function adminCollectionCreatePageTemplate(): string {
-  return `"use client";
-
-import { useState, type FormEvent } from "react";
-import { useRouter, useParams } from "next/navigation";
-
-function readCookie(name: string): string | undefined {
-  if (typeof document === "undefined") return undefined;
-  for (const raw of document.cookie.split(";")) {
-    const [k, ...rest] = raw.trim().split("=");
-    if (k === name) return decodeURIComponent(rest.join("="));
-  }
-  return undefined;
-}
-
-export default function CreateDocumentPage() {
-  const router = useRouter();
-  const params = useParams<{ collection: string }>();
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [status, setStatus] = useState("draft");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSaving(true);
-    try {
-      const body = {
-        title,
-        status,
-        content: {
-          root: {
-            type: "root",
-            version: 1,
-            format: "",
-            indent: 0,
-            direction: "ltr",
-            children: [
-              {
-                type: "paragraph",
-                version: 1,
-                format: "",
-                indent: 0,
-                direction: "ltr",
-                children: content ? [{ type: "text", version: 1, format: 0, text: content }] : [],
-              },
-            ],
-          },
-        },
-      };
-      const res = await fetch(\`/api/collections/\${params.collection}\`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": readCookie("nx-csrf") ?? "",
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(payload?.error?.message ?? "Save failed");
-      }
-      const doc = (await res.json()) as { id: string };
-      router.push(\`/admin/collections/\${params.collection}/\${doc.id}\`);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form className="space-y-4 rounded border bg-white p-6" onSubmit={onSubmit}>
-      <h1 className="text-xl font-semibold">New document</h1>
-      <label className="block space-y-1 text-sm">
-        <span>Title</span>
-        <input
-          className="block w-full rounded border px-3 py-2"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-      </label>
-      <label className="block space-y-1 text-sm">
-        <span>Content</span>
-        <textarea
-          className="block h-40 w-full rounded border px-3 py-2"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-        />
-      </label>
-      <label className="block space-y-1 text-sm">
-        <span>Status</span>
-        <select
-          className="block w-full rounded border px-3 py-2"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-        </select>
-      </label>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <button
-        type="submit"
-        disabled={saving}
-        className="rounded bg-black px-4 py-2 text-white disabled:opacity-60"
-      >
-        {saving ? "Saving…" : "Save"}
-      </button>
-    </form>
+    <CollectionEditView
+      config={toClientCollectionConfig(config)}
+      collectionSlug={collection}
+    />
   );
 }
 `;
 }
 
 function adminCollectionEditPageTemplate(): string {
-  return `import Link from "next/link";
-
-import { getDocumentById } from "@nexpress/core";
+  return `import { getCollectionConfig, getDocumentById } from "@nexpress/core";
+import { CollectionEditView } from "@nexpress/admin/client";
+import { toClientCollectionConfig } from "@nexpress/next";
 
 import { ensureCoreServices } from "@/lib/bootstrap";
 
@@ -1091,6 +975,7 @@ interface Props {
 export default async function AdminEditDocument({ params }: Props) {
   ensureCoreServices();
   const { collection, id } = await params;
+  const config = getCollectionConfig(collection);
   const doc = await getDocumentById(collection, id);
 
   if (!doc) {
@@ -1098,19 +983,11 @@ export default async function AdminEditDocument({ params }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <Link className="text-sm underline" href={\`/admin/collections/\${collection}\`}>
-        ← Back
-      </Link>
-      <h1 className="text-2xl font-semibold">{(doc.title as string) ?? "(untitled)"}</h1>
-      <pre className="overflow-auto rounded border bg-slate-50 p-4 text-xs">
-        {JSON.stringify(doc, null, 2)}
-      </pre>
-      <p className="text-sm text-slate-600">
-        Full edit UI ships with the @nexpress/admin package — this scaffold shows the raw
-        document for now.
-      </p>
-    </div>
+    <CollectionEditView
+      config={toClientCollectionConfig(config)}
+      doc={doc}
+      collectionSlug={collection}
+    />
   );
 }
 `;
