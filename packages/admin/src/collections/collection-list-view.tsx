@@ -200,17 +200,34 @@ export function CollectionListView({
                             }
                           }}
                         >
-                          {columns.map((column) => (
-                            <td key={column} className="px-4 py-3 align-middle">
-                              {column === columns[0] && doc.id !== undefined && doc.id !== null ? (
-                                <Link href={href} className="block font-medium text-foreground underline-offset-4 hover:underline">
-                                  {formatCellValue(doc[column])}
-                                </Link>
-                              ) : (
-                                <span className="text-muted-foreground">{formatCellValue(doc[column])}</span>
-                              )}
-                            </td>
-                          ))}
+                          {columns.map((column) => {
+                            const rawValue = doc[column];
+                            const isFirst = column === columns[0];
+                            const isStatus = column === "status" && typeof rawValue === "string";
+                            return (
+                              <td key={column} className="px-4 py-3 align-middle">
+                                {isFirst && doc.id !== undefined && doc.id !== null ? (
+                                  <Link href={href} className="block font-medium text-foreground underline-offset-4 hover:underline">
+                                    {formatCellValue(rawValue)}
+                                  </Link>
+                                ) : isStatus ? (
+                                  <span
+                                    className={
+                                      rawValue === "published"
+                                        ? "inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                                        : rawValue === "draft"
+                                          ? "inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                                    }
+                                  >
+                                    {rawValue}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">{formatCellValue(rawValue)}</span>
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
                       );
                     })

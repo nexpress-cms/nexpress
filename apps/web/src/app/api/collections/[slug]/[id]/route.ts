@@ -1,24 +1,16 @@
-import { NxNotFoundError, NxValidationError } from "@nexpress/core";
+import { NxNotFoundError } from "@nexpress/core";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import {
   deleteCollectionDocument,
+  extractSaveOptions,
   getCollectionDocument,
+  parseBodyRecord,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
-
-function parseBodyRecord(body: unknown): Record<string, unknown> {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NxValidationError("Invalid input", [
-      { field: "body", message: "Request body must be a JSON object" },
-    ]);
-  }
-
-  return body as Record<string, unknown>;
-}
 
 export async function GET(
   request: NextRequest,
@@ -50,8 +42,9 @@ export async function PATCH(
     requireCsrf(request);
 
     const data = parseBodyRecord(await request.json());
+    const saveOptions = extractSaveOptions(data);
     const previous = await getCollectionDocument(slug, id, user);
-    const result = await saveCollectionDocument(slug, id, data, user);
+    const result = await saveCollectionDocument(slug, id, data, user, saveOptions);
 
     revalidateCollection(slug, result.doc);
     if (previous && previous.slug !== result.doc.slug) {

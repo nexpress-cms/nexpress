@@ -355,6 +355,12 @@ export interface NxFindResult<T = Record<string, unknown>> {
   hasPrevPage: boolean;
 }
 
+export type NxDocumentStatus = "draft" | "published" | "archived";
+
+export interface NxSaveOptions {
+  status?: NxDocumentStatus;
+}
+
 export interface NxSaveResult {
   doc: Record<string, unknown>;
   operation: "create" | "update";

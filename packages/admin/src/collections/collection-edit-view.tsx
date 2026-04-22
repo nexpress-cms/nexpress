@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
-import { Eye, Loader2, Save, Trash2 } from "lucide-react";
+import { Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -175,10 +175,12 @@ const isVisibleField = (field: NxFieldConfig): boolean => {
   return !field.hidden;
 };
 
+type SaveStatus = "draft" | "published";
+
 export function CollectionEditView({ config, doc, collectionSlug }: CollectionEditViewProps) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [savingAs, setSavingAs] = useState<SaveStatus | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const schema = useMemo(() => generateZodSchema(config.fields), [config.fields]);
@@ -191,56 +193,65 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
 
   const slugValue = form.watch("slug");
   const previewSlug = typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";
+  const currentStatus = typeof doc?.status === "string" ? doc.status : null;
 
   const visibleFields = config.fields.filter(isVisibleField);
   const sidebarFields = visibleFields.filter(isSidebarField);
   const mainFields = visibleFields.filter((field) => !isSidebarField(field));
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setIsSaving(true);
-    setToast(null);
+  const submitWithStatus = (status: SaveStatus) =>
+    form.handleSubmit(async (values) => {
+      setSavingAs(status);
+      setToast(null);
 
-    try {
-      const method = doc?.id ? "PATCH" : "POST";
-      const endpoint = doc?.id
-        ? `/api/collections/${collectionSlug}/${String(doc.id)}`
-        : `/api/collections/${collectionSlug}`;
+      try {
+        const method = doc?.id ? "PATCH" : "POST";
+        const endpoint = doc?.id
+          ? `/api/collections/${collectionSlug}/${String(doc.id)}`
+          : `/api/collections/${collectionSlug}`;
 
-      const response = await nxFetch(endpoint, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(values),
-      });
+        const response = await nxFetch(endpoint, {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ...values, _status: status }),
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to ${doc?.id ? "update" : "create"} document.`);
+        if (!response.ok) {
+          throw new Error(`Failed to ${doc?.id ? "update" : "create"} document.`);
+        }
+
+        const payload = (await response.json()) as { doc?: Record<string, unknown> };
+        const nextId = payload.doc?.id ?? doc?.id;
+
+        setToast({
+          type: "success",
+          message:
+            status === "published"
+              ? `${config.labels.singular} published.`
+              : `${config.labels.singular} saved as draft.`,
+        });
+
+        if (!doc?.id && nextId !== undefined && nextId !== null) {
+          router.push(`/admin/collections/${collectionSlug}/${String(nextId)}`);
+          return;
+        }
+
+        router.refresh();
+      } catch (error) {
+        setToast({
+          type: "error",
+          message: error instanceof Error ? error.message : "Something went wrong while saving.",
+        });
+      } finally {
+        setSavingAs(null);
       }
+    });
 
-      const payload = (await response.json()) as { doc?: Record<string, unknown> };
-      const nextId = payload.doc?.id ?? doc?.id;
-
-      setToast({
-        type: "success",
-        message: `${config.labels.singular} ${doc?.id ? "updated" : "created"} successfully.`,
-      });
-
-      if (!doc?.id && nextId !== undefined && nextId !== null) {
-        router.push(`/admin/collections/${collectionSlug}/${String(nextId)}`);
-        return;
-      }
-
-      router.refresh();
-    } catch (error) {
-      setToast({
-        type: "error",
-        message: error instanceof Error ? error.message : "Something went wrong while saving.",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  });
+  const handleSaveDraft = submitWithStatus("draft");
+  const handlePublish = submitWithStatus("published");
+  const isSaving = savingAs !== null;
 
   const handleDelete = async () => {
     if (!doc?.id) {
@@ -273,7 +284,7 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
 
   return (
     <Form {...form}>
-      <form onSubmit={onSubmit} className="space-y-6">
+      <form onSubmit={handlePublish} className="space-y-6">
         {toast ? (
           <div
             className={
@@ -288,9 +299,24 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              {doc?.id ? `Edit ${config.labels.singular}` : `Create ${config.labels.singular}`}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight">
+                {doc?.id ? `Edit ${config.labels.singular}` : `Create ${config.labels.singular}`}
+              </h1>
+              {currentStatus ? (
+                <span
+                  className={
+                    currentStatus === "published"
+                      ? "inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                      : currentStatus === "draft"
+                        ? "inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                        : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                  }
+                >
+                  {currentStatus}
+                </span>
+              ) : null}
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">Shape content, metadata, and publishing details in one pass.</p>
           </div>
 
@@ -311,9 +337,14 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
               </Button>
             ) : null}
 
+            <Button type="button" variant="outline" onClick={handleSaveDraft} disabled={isSaving}>
+              {savingAs === "draft" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+              Save as Draft
+            </Button>
+
             <Button type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save
+              {savingAs === "published" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Publish
             </Button>
           </div>
         </div>

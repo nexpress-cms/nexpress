@@ -8,6 +8,7 @@ import {
   type NxCollectionConfig,
   type NxFindOptions,
   type NxFindResult,
+  type NxSaveOptions,
   type NxSaveResult,
   type NxAuthUser,
   type NxCollectionHook,
@@ -88,6 +89,7 @@ export async function saveDocument(
   docId: string | null,
   data: Record<string, unknown>,
   user: NxAuthUser,
+  options?: NxSaveOptions,
 ): Promise<NxSaveResult> {
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
@@ -112,6 +114,9 @@ export async function saveDocument(
   applySlugField(config, hookData, originalDoc);
 
   const prepared = prepareDocumentData(config.fields, hookData);
+  if (options?.status) {
+    prepared.mainData.status = options.status;
+  }
   const now = new Date();
   const searchVector = buildSearchVector(config, hookData);
 
@@ -126,7 +131,9 @@ export async function saveDocument(
     await syncMediaRefsForDocument(tx, collection, persistedDocId, config.fields, hookData);
 
     if (config.versions) {
-      await insertRevision(tx, collection, persistedDocId, operation, hookData, originalDoc, user);
+      const docStatus = persistedDoc.status as string | undefined;
+      const revisionStatus = docStatus === "draft" ? "draft" : "published";
+      await insertRevision(tx, collection, persistedDocId, operation, hookData, originalDoc, user, revisionStatus);
     }
 
     return persistedDoc;
@@ -329,8 +336,8 @@ async function createMainDocument(
 ): Promise<Record<string, unknown>> {
   const values: Record<string, unknown> = {
     id: randomUUID(),
-    ...mainData,
     status: "published",
+    ...mainData,
     createdBy: user.id,
     updatedBy: user.id,
     searchVector,
@@ -480,6 +487,7 @@ async function insertRevision(
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
   user: NxAuthUser,
+  status: string,
 ): Promise<void> {
   const revisionConditions = sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`;
   const [revisionCount] = ((await tx
@@ -491,7 +499,7 @@ async function insertRevision(
     collection,
     documentId,
     version: Number(revisionCount?.total ?? 0) + 1,
-    status: "published",
+    status,
     snapshot: data,
     changedFields: getChangedFields(data, originalDoc, operation),
     authorId: user.id,
