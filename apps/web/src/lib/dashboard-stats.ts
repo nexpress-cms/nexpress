@@ -1,0 +1,142 @@
+import { count, desc, eq, isNull } from "drizzle-orm";
+import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
+import {
+  getAllCollectionSlugs,
+  getCollectionConfig,
+  getCollectionTable,
+  nxMedia,
+} from "@nexpress/core";
+
+import { getDb } from "@/lib/db";
+
+export type DashboardStats = {
+  collections: Array<{ slug: string; label: string; count: number }>;
+  recentActivity: Array<{
+    id: string;
+    collection: string;
+    title: string;
+    action: string;
+    timestamp: string;
+  }>;
+  draftCount: number;
+  mediaCount: number;
+};
+
+const TITLE_CANDIDATES = ["title", "name", "label", "slug"] as const;
+const RECENT_PER_COLLECTION = 5;
+const RECENT_LIMIT = 8;
+
+function getColumn(table: PgTable, key: string): AnyPgColumn | null {
+  const col = (table as unknown as Record<string, unknown>)[key];
+  return col ? (col as AnyPgColumn) : null;
+}
+
+export async function loadDashboardStats(): Promise<DashboardStats> {
+  const db = getDb();
+  const slugs = getAllCollectionSlugs();
+
+  const collectionEntries: DashboardStats["collections"] = [];
+  let draftCount = 0;
+  const activityCandidates: Array<{
+    id: string;
+    collection: string;
+    title: string;
+    action: string;
+    timestamp: Date;
+  }> = [];
+
+  for (const slug of slugs) {
+    const config = getCollectionConfig(slug);
+    const table = getCollectionTable(slug) as PgTable;
+    const label = config.labels.plural;
+
+    const totalRows = (await db.select({ total: count() }).from(table)) as Array<{
+      total: number | string;
+    }>;
+    collectionEntries.push({
+      slug,
+      label,
+      count: Number(totalRows[0]?.total ?? 0),
+    });
+
+    const statusCol = getColumn(table, "_status");
+    if (statusCol) {
+      const draftRows = (await db
+        .select({ total: count() })
+        .from(table)
+        .where(eq(statusCol, "draft"))) as Array<{ total: number | string }>;
+      draftCount += Number(draftRows[0]?.total ?? 0);
+    }
+
+    const updatedAtCol = getColumn(table, "updatedAt");
+    const idCol = getColumn(table, "id");
+    if (!updatedAtCol || !idCol) continue;
+
+    const titleKey = TITLE_CANDIDATES.find((candidate) => getColumn(table, candidate));
+
+    const rows = (await db
+      .select()
+      .from(table)
+      .orderBy(desc(updatedAtCol))
+      .limit(RECENT_PER_COLLECTION)) as Array<Record<string, unknown>>;
+
+    for (const row of rows) {
+      const rowIdValue = row.id;
+      const rowId = typeof rowIdValue === "string" ? rowIdValue : "";
+      if (!rowId) continue;
+
+      const titleValue = titleKey ? row[titleKey] : undefined;
+      const title =
+        typeof titleValue === "string" && titleValue.trim().length > 0
+          ? titleValue
+          : rowId;
+
+      const statusValue = row._status;
+      const action =
+        typeof statusValue === "string" && statusValue.length > 0
+          ? statusValue
+          : "updated";
+
+      const updatedAtValue = row.updatedAt;
+      let timestamp: Date;
+      if (updatedAtValue instanceof Date) {
+        timestamp = updatedAtValue;
+      } else if (typeof updatedAtValue === "string") {
+        timestamp = new Date(updatedAtValue);
+      } else {
+        timestamp = new Date();
+      }
+
+      activityCandidates.push({
+        id: `${slug}:${rowId}`,
+        collection: label,
+        title,
+        action,
+        timestamp,
+      });
+    }
+  }
+
+  const mediaRows = (await db
+    .select({ total: count() })
+    .from(nxMedia)
+    .where(isNull(nxMedia.deletedAt))) as Array<{ total: number | string }>;
+
+  const recentActivity = activityCandidates
+    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    .slice(0, RECENT_LIMIT)
+    .map((item) => ({
+      id: item.id,
+      collection: item.collection,
+      title: item.title,
+      action: item.action,
+      timestamp: item.timestamp.toISOString(),
+    }));
+
+  return {
+    collections: collectionEntries.sort((a, b) => b.count - a.count),
+    recentActivity,
+    draftCount,
+    mediaCount: Number(mediaRows[0]?.total ?? 0),
+  };
+}
