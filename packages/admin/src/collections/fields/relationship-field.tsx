@@ -18,8 +18,18 @@ interface RelationshipFieldProps {
 
 const getRelationSlug = (relationTo: string | string[]): string => (Array.isArray(relationTo) ? relationTo[0] ?? "" : relationTo);
 
+const SYSTEM_ENDPOINTS: Record<string, string> = {
+  users: "/api/users",
+  media: "/api/media",
+};
+
+const getRelationEndpoint = (slug: string, limit: number): string => {
+  const base = SYSTEM_ENDPOINTS[slug] ?? `/api/collections/${slug}`;
+  return `${base}?limit=${limit}`;
+};
+
 const getDocumentLabel = (doc: Record<string, unknown>): string => {
-  const label = doc.title ?? doc.name ?? doc.label ?? doc.slug ?? doc.id;
+  const label = doc.title ?? doc.name ?? doc.label ?? doc.slug ?? doc.email ?? doc.filename ?? doc.id;
   return typeof label === "string" ? label : String(doc.id ?? "Untitled item");
 };
 
@@ -42,14 +52,23 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
       setError(null);
 
       try {
-        const response = await fetch(`/api/collections/${relationSlug}?limit=20`);
+        const response = await fetch(getRelationEndpoint(relationSlug, 20), {
+          credentials: "same-origin",
+        });
 
         if (!response.ok) {
           throw new Error("Failed to load related items.");
         }
 
-        const payload = (await response.json()) as NxFindResult<RelatedDocument>;
-        setItems(payload.docs);
+        const payload = (await response.json()) as
+          | NxFindResult<RelatedDocument>
+          | { docs?: RelatedDocument[]; items?: RelatedDocument[] };
+        const docs = Array.isArray((payload as NxFindResult<RelatedDocument>).docs)
+          ? (payload as NxFindResult<RelatedDocument>).docs
+          : Array.isArray((payload as { items?: RelatedDocument[] }).items)
+            ? (payload as { items: RelatedDocument[] }).items
+            : [];
+        setItems(docs);
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load related items.");
       } finally {
