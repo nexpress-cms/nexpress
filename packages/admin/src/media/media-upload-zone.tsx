@@ -270,8 +270,24 @@ function uploadFile(
     });
 
     request.open("POST", "/api/media/upload");
+    const csrfToken = readCsrfCookie();
+    if (csrfToken) {
+      request.setRequestHeader("X-CSRF-Token", csrfToken);
+    }
+    request.withCredentials = true;
     request.send(formData);
   });
+}
+
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  for (const raw of document.cookie.split(";")) {
+    const [name, ...rest] = raw.trim().split("=");
+    if (name === "nx-csrf") {
+      return decodeURIComponent(rest.join("="));
+    }
+  }
+  return undefined;
 }
 
 function getUploadError(responseText: string) {
