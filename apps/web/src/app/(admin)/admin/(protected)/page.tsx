@@ -1,23 +1,13 @@
 import { DashboardView } from "@nexpress/admin/client";
 import { ensureCoreServices } from "@/lib/init-core";
+import { loadDashboardStats } from "@/lib/dashboard-stats";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   ensureCoreServices();
 
-  const stats = {
-    collections: [] as Array<{ slug: string; label: string; count: number }>,
-    recentActivity: [] as Array<{
-      id: string;
-      collection: string;
-      title: string;
-      action: string;
-      timestamp: string;
-    }>,
-    draftCount: 0,
-    mediaCount: 0,
-  };
+  const stats = await loadDashboardStats();
 
   return <DashboardView stats={stats} />;
 }
