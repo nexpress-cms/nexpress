@@ -167,6 +167,88 @@ function buildSpec(): OpenApiSchema {
         responses: { "204": { description: "Deleted" } },
       },
     };
+
+    if (manifest.versions.drafts) {
+      const revisionSummary: OpenApiSchema = {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          version: { type: "integer" },
+          status: { type: "string", enum: ["draft", "published", "autosave"] },
+          changedFields: { type: "array", items: { type: "string" } },
+          authorId: { type: "string", format: "uuid", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      };
+
+      paths[`/api/collections/${slug}/{id}/revisions`] = {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        get: {
+          summary: `List revisions for a ${manifest.labels.singular.toLowerCase()}`,
+          parameters: [
+            { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
+            { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+          ],
+          responses: {
+            "200": {
+              description: "Paged revisions",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      revisions: { type: "array", items: revisionSummary },
+                      total: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      paths[`/api/collections/${slug}/{id}/revisions/{revisionId}`] = {
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+          { in: "path", name: "revisionId", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        get: {
+          summary: `Get a single revision with snapshot`,
+          responses: {
+            "200": {
+              description: "Revision with full snapshot",
+              content: {
+                "application/json": {
+                  schema: {
+                    allOf: [
+                      revisionSummary,
+                      { type: "object", properties: { snapshot: { type: "object", additionalProperties: true } } },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      paths[`/api/collections/${slug}/{id}/revisions/{revisionId}/restore`] = {
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+          { in: "path", name: "revisionId", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        post: {
+          summary: `Restore a prior revision as the current document`,
+          responses: {
+            "200": {
+              description: "Document after restore",
+              content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } },
+            },
+          },
+        },
+      };
+    }
   }
 
   return {

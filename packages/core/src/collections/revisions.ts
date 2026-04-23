@@ -48,6 +48,18 @@ function normalizeOffset(offset: number | undefined): number {
   return Math.floor(offset);
 }
 
+function assertVersionsEnabled(collection: string): void {
+  const config = getCollectionConfig(collection);
+  if (!config.versions) {
+    throw new NxValidationError("Revisions not enabled", [
+      {
+        field: "collection",
+        message: `Collection "${collection}" has no versions config — enable versions.drafts to persist revisions.`,
+      },
+    ]);
+  }
+}
+
 async function assertReadAccess(
   collection: string,
   user: NxAuthUser | null,
@@ -101,8 +113,7 @@ export async function listRevisions(
   options: NxRevisionListOptions = {},
   user: NxAuthUser | null = null,
 ): Promise<NxRevisionListResult> {
-  // Validates collection exists.
-  getCollectionConfig(collection);
+  assertVersionsEnabled(collection);
   await assertReadAccess(collection, user, null);
 
   const db = getDb() as unknown as DrizzleDb;
@@ -160,7 +171,7 @@ export async function getRevision(
   revisionId: string,
   user: NxAuthUser | null = null,
 ): Promise<NxRevision> {
-  getCollectionConfig(collection);
+  assertVersionsEnabled(collection);
   await assertReadAccess(collection, user, null);
 
   const db = getDb() as unknown as DrizzleDb;
