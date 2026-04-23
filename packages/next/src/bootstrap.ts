@@ -1,14 +1,22 @@
 import {
   createDbConnection,
   createStorageAdapter,
+  listPluginStates,
   loadPlugins,
   registerCollection,
   setDb,
   setMediaDb,
   setStorageAdapter,
   startProducer,
+  syncPluginRegistrations,
   type NxConfig,
+  type NxPluginConfig,
+  type NxResolvedPluginLike,
 } from "@nexpress/core";
+
+function resolvePluginId(plugin: NxPluginConfig | NxResolvedPluginLike): string {
+  return "manifest" in plugin ? plugin.manifest.id : plugin.id;
+}
 
 export type NxDb = ReturnType<typeof createDbConnection>;
 
@@ -131,8 +139,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     if (pluginsLoadingPromise) return pluginsLoadingPromise;
 
     pluginsLoadingPromise = (async () => {
-      getDbInstance();
-      await loadPlugins(config.plugins ?? []);
+      const instance = getDbInstance();
+      const configured = config.plugins ?? [];
+      const configuredIds = configured.map(resolvePluginId);
+
+      await syncPluginRegistrations(instance, configuredIds);
+      const states = await listPluginStates(instance);
+      const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
+
+      const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
+      await loadPlugins(enabled);
       pluginsLoaded = true;
     })();
 
