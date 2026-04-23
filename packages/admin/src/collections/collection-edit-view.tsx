@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { FieldRenderer } from "./field-renderer.js";
+import { RevisionsPanel } from "./revisions-panel.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
@@ -379,6 +380,13 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
                 )}
               </CardContent>
             </Card>
+
+            {doc?.id && config.versions ? (
+              <RevisionsPanel
+                collectionSlug={collectionSlug}
+                documentId={String(doc.id)}
+              />
+            ) : null}
           </div>
         </div>
       </form>

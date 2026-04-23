@@ -75,6 +75,16 @@ export {
   deleteDocument,
   findDocuments,
   getDocumentById,
+  listRevisions,
+  getRevision,
+  restoreRevision,
+} from "./collections/index.js";
+export type {
+  NxRevision,
+  NxRevisionSummary,
+  NxRevisionStatus,
+  NxRevisionListOptions,
+  NxRevisionListResult,
 } from "./collections/index.js";
 
 export {

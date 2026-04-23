@@ -15,6 +15,12 @@ export {
 } from "./collections.js";
 
 export {
+  createRevisionHelpers,
+  type RevisionHelpers,
+  type RevisionHelpersOptions,
+} from "./revisions.js";
+
+export {
   revalidateCollection,
   defaultRevalidationRules,
   type CollectionRevalidationRule,
