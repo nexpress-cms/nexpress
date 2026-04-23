@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -31,6 +32,8 @@ import {
 type EditableNavItem = Pick<NxNavItem, "id" | "label" | "url"> & {
   type: Extract<NxNavItem["type"], "link" | "page">;
 };
+
+const NAV_LOCATION = "main";
 
 export function NavigationEditor() {
   const [items, setItems] = useState<EditableNavItem[]>([]);
@@ -70,10 +73,13 @@ export function NavigationEditor() {
     setMessage(null);
 
     try {
-      const response = await fetch("/api/navigation", {
+      const response = await nxFetch("/api/navigation", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(items),
+        body: JSON.stringify({
+          location: NAV_LOCATION,
+          items: items.map(toNavItem),
+        }),
       });
 
       const payload = (await response.json().catch(() => null)) as unknown;
@@ -257,6 +263,15 @@ export function NavigationEditor() {
   );
 }
 
+function toNavItem(item: EditableNavItem): NxNavItem {
+  return {
+    id: item.id,
+    label: item.label,
+    type: item.type,
+    url: item.url ?? "",
+  };
+}
+
 function normalizeNavItems(payload: unknown): EditableNavItem[] {
   const source = Array.isArray(payload)
     ? payload
@@ -285,8 +300,13 @@ function createId() {
 }
 
 function getErrorMessage(payload: unknown, fallback: string) {
-  if (isRecord(payload) && typeof payload.error === "string") {
-    return payload.error;
+  if (isRecord(payload)) {
+    if (typeof payload.error === "string") {
+      return payload.error;
+    }
+    if (isRecord(payload.error) && typeof payload.error.message === "string") {
+      return payload.error.message;
+    }
   }
 
   return fallback;
