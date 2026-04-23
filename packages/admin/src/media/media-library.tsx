@@ -13,6 +13,7 @@ import {
   Upload,
 } from "lucide-react";
 
+import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -146,7 +147,7 @@ export function MediaLibrary() {
 
     try {
       const results = await Promise.all(
-        selectedItems.map((id) => fetch(`/api/media/${id}`, { method: "DELETE" })),
+        selectedItems.map((id) => nxFetch(`/api/media/${id}`, { method: "DELETE" })),
       );
 
       if (results.some((response) => !response.ok)) {

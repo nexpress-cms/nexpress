@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -67,23 +68,23 @@ export function SettingsView() {
     setMessage(null);
 
     try {
-      const response = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site: {
-            name: settings.siteName,
-            url: settings.siteUrl,
-          },
-          description: settings.description,
-        }),
-      });
+      const updates: Array<{ key: string; value: unknown }> = [
+        { key: "site", value: { name: settings.siteName, url: settings.siteUrl } },
+        { key: "description", value: settings.description },
+      ];
 
-      const payload = (await response.json().catch(() => null)) as unknown;
+      for (const update of updates) {
+        const response = await nxFetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(update),
+        });
 
-      if (!response.ok) {
-        setError(getErrorMessage(payload, "Unable to save settings."));
-        return;
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as unknown;
+          setError(getErrorMessage(payload, "Unable to save settings."));
+          return;
+        }
       }
 
       setMessage("Settings saved.");
@@ -242,8 +243,13 @@ function normalizeSettings(payload: unknown): GeneralSettings {
 }
 
 function getErrorMessage(payload: unknown, fallback: string) {
-  if (isRecord(payload) && typeof payload.error === "string") {
-    return payload.error;
+  if (isRecord(payload)) {
+    if (typeof payload.error === "string") {
+      return payload.error;
+    }
+    if (isRecord(payload.error) && typeof payload.error.message === "string") {
+      return payload.error.message;
+    }
   }
 
   return fallback;
