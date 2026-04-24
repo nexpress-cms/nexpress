@@ -34,6 +34,7 @@ P. [Search](#p-search-hs-7)
 ### F.1 Overview
 
 NexPress uses two editing modes:
+
 1. **Rich Text Editor** — Lexical-based, for long-form content (blog posts, articles)
 2. **Block Page Editor** — Visual block arranger for pages (hero, features, pricing, etc.)
 
@@ -53,8 +54,13 @@ export interface NxEditorConfig {
   features?: NxEditorFeature[];
   /** Custom blocks available inside the editor */
   blocks?: NxEditorBlock[];
-  /** Image upload handler */
-  onUploadImage?: (file: File) => Promise<{ url: string; alt: string }>;
+  /**
+   * Image upload handler.
+   * Returns a media identity immediately after the original is persisted. The
+   * editor inserts a temporary image node and resolves the final URL/variants
+   * when processing completes.
+   */
+  onUploadImage?: (file: File) => Promise<NxEditorImageUploadResult>;
   /** Link resolver (for internal content links) */
   onResolveLink?: (collection: string, id: string) => Promise<{ url: string; title: string }>;
   /** Placeholder text */
@@ -63,36 +69,57 @@ export interface NxEditorConfig {
   readOnly?: boolean;
 }
 
+export interface NxEditorImageUploadResult {
+  /** Media item ID used for persistence and polling */
+  id: string;
+  /** Current media status from the upload API */
+  status: "processing" | "ready" | "error";
+  /** Original URL is available immediately when the storage adapter can serve it */
+  originalUrl?: string;
+  /** Author-provided or filename-derived alt text */
+  alt?: string;
+}
+
 /**
  * Editor features — modular toolbar/behavior plugins.
  */
 export type NxEditorFeature =
-  | "heading"        // H1-H4
+  | "heading" // H1-H4
   | "bold"
   | "italic"
   | "underline"
   | "strikethrough"
-  | "code"           // inline code
-  | "codeBlock"      // fenced code block with language
-  | "link"           // internal + external links
-  | "image"          // inline image upload
-  | "list"           // ordered + unordered
-  | "quote"          // blockquote
+  | "code" // inline code
+  | "codeBlock" // fenced code block with language
+  | "link" // internal + external links
+  | "image" // inline image upload
+  | "list" // ordered + unordered
+  | "quote" // blockquote
   | "horizontalRule"
-  | "table"          // basic table
-  | "alignment"      // text alignment
+  | "table" // basic table
+  | "alignment" // text alignment
   | "indent"
   | "superscript"
   | "subscript"
   | "emoji"
-  | "blocks";        // enable inline block insertion
+  | "blocks"; // enable inline block insertion
 
 /**
  * Default feature set for blog/article editing.
  */
 export const DEFAULT_FEATURES: NxEditorFeature[] = [
-  "heading", "bold", "italic", "underline", "code", "codeBlock",
-  "link", "image", "list", "quote", "horizontalRule", "alignment",
+  "heading",
+  "bold",
+  "italic",
+  "underline",
+  "code",
+  "codeBlock",
+  "link",
+  "image",
+  "list",
+  "quote",
+  "horizontalRule",
+  "alignment",
 ];
 ```
 
@@ -351,6 +378,7 @@ defineCollection({
 ### G.1 Overview
 
 NexPress provides a unified media management system with:
+
 - File upload (images, documents, videos)
 - Image optimization via `sharp`
 - Configurable image sizes (responsive srcset)
@@ -422,34 +450,38 @@ export interface NxListOptions {
 ```typescript
 // Local filesystem adapter (development / simple self-hosted)
 export class LocalStorageAdapter implements NxStorageAdapter {
-  constructor(private config: {
-    /** Base directory for file storage */
-    directory: string; // e.g., "./public/media"
-    /** Base URL for serving files */
-    baseUrl: string;   // e.g., "/media"
-  }) {}
+  constructor(
+    private config: {
+      /** Base directory for file storage */
+      directory: string; // e.g., "./public/media"
+      /** Base URL for serving files */
+      baseUrl: string; // e.g., "/media"
+    },
+  ) {}
   // Files stored at: {directory}/{key}
   // URLs: {baseUrl}/{key}
 }
 
 // S3-compatible adapter (production)
 export class S3StorageAdapter implements NxStorageAdapter {
-  constructor(private config: {
-    /** S3 bucket name */
-    bucket: string;
-    /** AWS region */
-    region: string;
-    /** Custom endpoint (for MinIO, R2, etc.) */
-    endpoint?: string;
-    /** Access credentials */
-    credentials?: { accessKeyId: string; secretAccessKey: string };
-    /** URL prefix for public access */
-    publicUrlPrefix?: string;
-    /** Use pre-signed URLs */
-    useSignedUrls?: boolean;
-    /** Signed URL expiration (seconds) */
-    signedUrlExpiration?: number;
-  }) {}
+  constructor(
+    private config: {
+      /** S3 bucket name */
+      bucket: string;
+      /** AWS region */
+      region: string;
+      /** Custom endpoint (for MinIO, R2, etc.) */
+      endpoint?: string;
+      /** Access credentials */
+      credentials?: { accessKeyId: string; secretAccessKey: string };
+      /** URL prefix for public access */
+      publicUrlPrefix?: string;
+      /** Use pre-signed URLs */
+      useSignedUrls?: boolean;
+      /** Signed URL expiration (seconds) */
+      signedUrlExpiration?: number;
+    },
+  ) {}
   // Uses @aws-sdk/client-s3
 }
 ```
@@ -530,30 +562,37 @@ export const DEFAULT_IMAGE_SIZES: NxImageSize[] = [
 
 ```typescript
 // (Drizzle ORM)
-export const media = pgTable("nx_media", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  filename: text("filename").notNull(),
-  originalFilename: text("original_filename").notNull(),
-  mimeType: text("mime_type").notNull(),
-  filesize: integer("filesize").notNull(),
-  width: integer("width"),
-  height: integer("height"),
-  alt: text("alt"),
-  caption: jsonb("caption").$type<NxRichTextContent>(), // Lexical JSON
-  focalPoint: jsonb("focal_point").$type<{ x: number; y: number }>(),
-  sizes: jsonb("sizes").$type<Record<string, { width: number; height: number; filesize: number }>>(),
-  storageKey: text("storage_key").notNull(), // path in storage adapter
-  hash: text("hash").notNull(),             // sha256 of original file (used for import matching & dedup)
-  status: text("status", { enum: ["processing", "ready", "error"] }).notNull().default("processing"),
-  folderId: uuid("folder_id").references(() => mediaFolders.id),
-  uploadedBy: uuid("uploaded_by").references(() => users.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }), // soft delete — hard-deleted by media:cleanup job after 30 days
-}, (table) => ({
-  hashIdx: index("nx_media_hash").on(table.hash),
-  statusIdx: index("nx_media_status").on(table.status),
-}));
+export const media = pgTable(
+  "nx_media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    filename: text("filename").notNull(),
+    originalFilename: text("original_filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    filesize: integer("filesize").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    alt: text("alt"),
+    caption: jsonb("caption").$type<NxRichTextContent>(), // Lexical JSON
+    focalPoint: jsonb("focal_point").$type<{ x: number; y: number }>(),
+    sizes:
+      jsonb("sizes").$type<Record<string, { width: number; height: number; filesize: number }>>(),
+    storageKey: text("storage_key").notNull(), // path in storage adapter
+    hash: text("hash").notNull(), // sha256 of original file (used for import matching & dedup)
+    status: text("status", { enum: ["processing", "ready", "error"] })
+      .notNull()
+      .default("processing"),
+    folderId: uuid("folder_id").references(() => mediaFolders.id),
+    uploadedBy: uuid("uploaded_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }), // soft delete — hard-deleted by media:cleanup job after 30 days
+  },
+  (table) => ({
+    hashIdx: index("nx_media_hash").on(table.hash),
+    statusIdx: index("nx_media_status").on(table.status),
+  }),
+);
 
 export const mediaFolders = pgTable("nx_media_folders", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -586,7 +625,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // Return media metadata (includes status, sizes when ready)
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const user = await requireAuth(request);
 
   // 1. Check nxMediaRefs for active references (see Section O.3)
@@ -620,31 +662,32 @@ Layer 1: Token Contract — --nx-color-*, --nx-font-*, --nx-radius-*
  */
 export interface NxThemeTokens {
   colors: {
-    primary: string;          // --nx-color-primary
-    primaryForeground: string;// --nx-color-primary-foreground
-    secondary: string;        // --nx-color-secondary
+    primary: string; // --nx-color-primary
+    primaryForeground: string; // --nx-color-primary-foreground
+    secondary: string; // --nx-color-secondary
     secondaryForeground: string;
-    accent: string;           // --nx-color-accent
+    accent: string; // --nx-color-accent
     accentForeground: string;
-    background: string;       // --nx-color-background
-    foreground: string;       // --nx-color-foreground
-    muted: string;            // --nx-color-muted
+    background: string; // --nx-color-background
+    foreground: string; // --nx-color-foreground
+    muted: string; // --nx-color-muted
     mutedForeground: string;
-    border: string;           // --nx-color-border
-    input: string;            // --nx-color-input
-    ring: string;             // --nx-color-ring
-    destructive: string;      // --nx-color-destructive
+    border: string; // --nx-color-border
+    input: string; // --nx-color-input
+    ring: string; // --nx-color-ring
+    destructive: string; // --nx-color-destructive
     destructiveForeground: string;
-    card: string;             // --nx-color-card
+    card: string; // --nx-color-card
     cardForeground: string;
   };
   typography: {
-    headingFont: string;      // --nx-font-heading
-    bodyFont: string;         // --nx-font-body
-    monoFont: string;         // --nx-font-mono
-    baseFontSize: string;     // --nx-font-size-base (e.g., "16px")
-    lineHeight: string;       // --nx-line-height (e.g., "1.6")
-    fontSizeScale: {          // --nx-font-size-sm through --nx-font-size-4xl
+    headingFont: string; // --nx-font-heading
+    bodyFont: string; // --nx-font-body
+    monoFont: string; // --nx-font-mono
+    baseFontSize: string; // --nx-font-size-base (e.g., "16px")
+    lineHeight: string; // --nx-line-height (e.g., "1.6")
+    fontSizeScale: {
+      // --nx-font-size-sm through --nx-font-size-4xl
       sm: string;
       base: string;
       lg: string;
@@ -655,13 +698,13 @@ export interface NxThemeTokens {
     };
   };
   shape: {
-    radiusSm: string;         // --nx-radius-sm
-    radiusMd: string;         // --nx-radius-md
-    radiusLg: string;         // --nx-radius-lg
-    radiusFull: string;       // --nx-radius-full
-    shadowSm: string;         // --nx-shadow-sm
-    shadowMd: string;         // --nx-shadow-md
-    shadowLg: string;         // --nx-shadow-lg
+    radiusSm: string; // --nx-radius-sm
+    radiusMd: string; // --nx-radius-md
+    radiusLg: string; // --nx-radius-lg
+    radiusFull: string; // --nx-radius-full
+    shadowSm: string; // --nx-shadow-sm
+    shadowMd: string; // --nx-shadow-md
+    shadowLg: string; // --nx-shadow-lg
   };
   darkMode?: {
     enabled: boolean;
@@ -870,6 +913,11 @@ export const DEFAULT_THEME: NxThemeTokens = {
 /**
  * Complete site configuration — exportable/importable as a single JSON file.
  * An AI agent can generate this to assemble an entire site.
+ *
+ * This is intentionally distinct from the code-first runtime config. Runtime
+ * collection config may contain executable callbacks for access control, hooks,
+ * validators, admin conditions, and custom components; the site config format
+ * is JSON-safe and may only contain serializable data.
  */
 export interface NxSiteConfig {
   /** Config format version */
@@ -887,8 +935,8 @@ export interface NxSiteConfig {
   /** Theme tokens */
   theme: NxThemeTokens;
 
-  /** Collections (content model definitions) */
-  collections: NxCollectionConfig[];
+  /** Collections (JSON-safe content model definitions) */
+  collections: NxCollectionSpec[];
 
   /** Pages (block tree structures) */
   pages: Array<{
@@ -925,6 +973,35 @@ export interface NxNavItem {
   href: string;
   children?: NxNavItem[];
 }
+
+export interface NxCollectionSpec {
+  slug: string;
+  labels: { singular: string; plural: string };
+  description?: string;
+  fields: NxFieldSchema[];
+  timestamps?: boolean;
+  drafts?: boolean;
+  upload?: NxUploadSpec;
+  admin?: {
+    group?: string;
+    defaultColumns?: string[];
+  };
+}
+
+export interface NxUploadSpec {
+  mimeTypes?: string[];
+  maxFileSize?: number;
+  imageSizes?: Array<{
+    name: string;
+    width: number;
+    height?: number;
+    format?: "webp" | "avif" | "jpeg" | "png";
+  }>;
+}
+
+// Code-only behavior is omitted from NxSiteConfig exports. Importers can map
+// NxCollectionSpec to defineCollection() defaults, but executable policies must
+// be supplied by project code or plugin code.
 ```
 
 ### I.2 Block/Plugin Manifest API
@@ -936,13 +1013,13 @@ export interface BlockManifestResponse {
   blocks: Array<{
     type: string;
     label: string;
-    description: string;       // Natural language for AI agents
-    propsSchema: object;       // JSON Schema
+    description: string; // Natural language for AI agents
+    propsSchema: object; // JSON Schema
     defaultProps: Record<string, unknown>;
     thumbnail?: string;
-    pluginId?: string;         // Which plugin provides this block
-    usesTokens: string[];      // Design tokens used
-    category: string;          // "hero" | "content" | "navigation" | "media" | etc.
+    pluginId?: string; // Which plugin provides this block
+    usesTokens: string[]; // Design tokens used
+    category: string; // "hero" | "content" | "navigation" | "media" | etc.
   }>;
 }
 
@@ -953,7 +1030,7 @@ export interface CollectionManifestResponse {
     slug: string;
     labels: { singular: string; plural: string };
     description: string;
-    fields: NxFieldSchema[];   // Full field descriptions
+    fields: NxFieldSchema[]; // Full field descriptions
     access: { create: boolean; read: boolean; update: boolean; delete: boolean };
     timestamps: boolean;
     drafts: boolean;
@@ -1226,7 +1303,17 @@ export default defineConfig({
 
   /** Editor configuration */
   editor: {
-    features: ["heading", "bold", "italic", "link", "image", "list", "quote", "codeBlock", "blocks"],
+    features: [
+      "heading",
+      "bold",
+      "italic",
+      "link",
+      "image",
+      "list",
+      "quote",
+      "codeBlock",
+      "blocks",
+    ],
   },
 
   /** Image processing */
@@ -1245,10 +1332,10 @@ export default defineConfig({
   /** Authentication */
   auth: {
     secret: process.env.NX_SECRET!,
-    tokenExpiration: 7200,        // 2 hours
+    tokenExpiration: 7200, // 2 hours
     refreshTokenExpiration: 2592000, // 30 days
     maxLoginAttempts: 5,
-    lockoutDuration: 300,          // 5 minutes
+    lockoutDuration: 300, // 5 minutes
   },
 
   /** Plugins */
@@ -1481,10 +1568,12 @@ volumes:
 Collections are code-defined (static), not runtime-defined. This justifies paying the schema-generation cost because a CMS lives on filtering, sorting, relationships, slugs, publish states, uniqueness, and admin queries — all of which are dramatically better with normal SQL columns than JSONB.
 
 JSONB is reserved for two use cases only:
+
 1. **Revisions** — append-only history, queried by document ID / version, not cross-field.
 2. **Opaque payloads** — Lexical rich text content, block page data, plugin settings — things you display but never filter/sort on.
 
 **Migration flow:**
+
 ```
 nexpress.config.ts (collection config)
   → pnpm db:generate (CLI step — deterministic codegen)
@@ -1562,7 +1651,9 @@ export const nxUsers = pgTable("nx_users", {
 // ─── Sessions ────────────────────────────────────────────────────
 export const nxSessions = pgTable("nx_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").notNull().references(() => nxUsers.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => nxUsers.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(), // SHA-256 of the refresh token
   userAgent: text("user_agent"),
   ip: text("ip"),
@@ -1571,26 +1662,30 @@ export const nxSessions = pgTable("nx_sessions", {
 });
 
 // ─── Revisions (single table, JSONB snapshots) ──────────────────
-export const nxRevisions = pgTable("nx_revisions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  collection: text("collection").notNull(),       // e.g., "posts"
-  documentId: uuid("document_id").notNull(),       // FK to any collection's id
-  version: integer("version").notNull(),           // monotonically increasing per document
-  status: text("status", { enum: ["draft", "published", "autosave"] }).notNull(),
-  snapshot: jsonb("snapshot").notNull(),            // full document JSON at this version
-  changedFields: text("changed_fields").array(),   // which fields changed from previous version
-  authorId: uuid("author_id").references(() => nxUsers.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  docVersionIdx: uniqueIndex("nx_rev_doc_version").on(table.documentId, table.version),
-  collectionIdx: index("nx_rev_collection").on(table.collection),
-  docIdx: index("nx_rev_document").on(table.documentId),
-}));
+export const nxRevisions = pgTable(
+  "nx_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collection: text("collection").notNull(), // e.g., "posts"
+    documentId: uuid("document_id").notNull(), // FK to any collection's id
+    version: integer("version").notNull(), // monotonically increasing per document
+    status: text("status", { enum: ["draft", "published", "autosave"] }).notNull(),
+    snapshot: jsonb("snapshot").notNull(), // full document JSON at this version
+    changedFields: text("changed_fields").array(), // which fields changed from previous version
+    authorId: uuid("author_id").references(() => nxUsers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    docVersionIdx: uniqueIndex("nx_rev_doc_version").on(table.documentId, table.version),
+    collectionIdx: index("nx_rev_collection").on(table.collection),
+    docIdx: index("nx_rev_document").on(table.documentId),
+  }),
+);
 
 // ─── Settings (key-value JSON store) ─────────────────────────────
 export const nxSettings = pgTable("nx_settings", {
-  key: text("key").primaryKey(),                   // e.g., "theme", "navigation", "site"
-  value: jsonb("value").notNull(),                 // JSON blob
+  key: text("key").primaryKey(), // e.g., "theme", "navigation", "site"
+  value: jsonb("value").notNull(), // JSON blob
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: uuid("updated_by").references(() => nxUsers.id),
 });
@@ -1598,7 +1693,7 @@ export const nxSettings = pgTable("nx_settings", {
 // ─── Navigation ──────────────────────────────────────────────────
 export const nxNavigation = pgTable("nx_navigation", {
   id: uuid("id").primaryKey().defaultRandom(),
-  location: text("location").notNull().unique(),   // "header" | "footer" | custom
+  location: text("location").notNull().unique(), // "header" | "footer" | custom
   items: jsonb("items").notNull().$type<NxNavItem[]>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: uuid("updated_by").references(() => nxUsers.id),
@@ -1606,7 +1701,7 @@ export const nxNavigation = pgTable("nx_navigation", {
 
 // ─── Plugin State ────────────────────────────────────────────────
 export const nxPlugins = pgTable("nx_plugins", {
-  id: text("id").primaryKey(),                     // plugin manifest id
+  id: text("id").primaryKey(), // plugin manifest id
   enabled: boolean("enabled").notNull().default(true),
   config: jsonb("config").$type<Record<string, unknown>>(),
   installedAt: timestamp("installed_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1636,11 +1731,15 @@ defineCollection({
     { name: "tags", type: "array", fields: [{ name: "tag", type: "text" }] },
     { name: "publishedAt", type: "date" },
     { name: "featured", type: "checkbox", defaultValue: false },
-    { name: "seo", type: "group", fields: [
-      { name: "metaTitle", type: "text" },
-      { name: "metaDescription", type: "textarea" },
-      { name: "ogImage", type: "upload", relationTo: "media" },
-    ]},
+    {
+      name: "seo",
+      type: "group",
+      fields: [
+        { name: "metaTitle", type: "text" },
+        { name: "metaDescription", type: "textarea" },
+        { name: "ogImage", type: "upload", relationTo: "media" },
+      ],
+    },
   ],
 });
 ```
@@ -1650,57 +1749,79 @@ The generator produces:
 ```typescript
 // drizzle/schema.generated.ts (auto-generated — do not edit manually)
 
-export const nxCPosts = pgTable("nx_c_posts", {
-  // ── Base columns ──
-  id: uuid("id").primaryKey().defaultRandom(),
-  status: text("status", { enum: ["draft", "published", "archived"] }).notNull().default("draft"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  createdBy: uuid("created_by").references(() => nxUsers.id),
-  updatedBy: uuid("updated_by").references(() => nxUsers.id),
-  slug: text("slug").notNull().unique(),
-  _status: text("_status", { enum: ["draft", "published"] }).notNull().default("draft"),
+export const nxCPosts = pgTable(
+  "nx_c_posts",
+  {
+    // ── Base columns ──
+    id: uuid("id").primaryKey().defaultRandom(),
+    status: text("status", { enum: ["draft", "published", "archived"] })
+      .notNull()
+      .default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid("created_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    slug: text("slug").notNull().unique(),
+    _status: text("_status", { enum: ["draft", "published"] })
+      .notNull()
+      .default("draft"),
 
-  // ── User-defined scalar fields ──
-  title: text("title").notNull(),
-  excerpt: text("excerpt"),
-  content: jsonb("content").$type<NxRichTextContent>(),  // opaque Lexical JSON
-  coverImage: uuid("cover_image").references(() => nxMedia.id),
-  author: uuid("author").references(() => nxUsers.id),
-  publishedAt: timestamp("published_at", { withTimezone: true }),
-  featured: boolean("featured").notNull().default(false),
+    // ── User-defined scalar fields ──
+    title: text("title").notNull(),
+    excerpt: text("excerpt"),
+    content: jsonb("content").$type<NxRichTextContent>(), // opaque Lexical JSON
+    coverImage: uuid("cover_image").references(() => nxMedia.id),
+    author: uuid("author").references(() => nxUsers.id),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    featured: boolean("featured").notNull().default(false),
 
-  // ── Group fields (flattened with prefix) ──
-  seoMetaTitle: text("seo_meta_title"),
-  seoMetaDescription: text("seo_meta_description"),
-  seoOgImage: uuid("seo_og_image").references(() => nxMedia.id),
-}, (table) => ({
-  statusIdx: index("nx_c_posts_status").on(table.status),
-  slugIdx: index("nx_c_posts_slug").on(table.slug),
-  publishedAtIdx: index("nx_c_posts_published_at").on(table.publishedAt),
-  featuredIdx: index("nx_c_posts_featured").on(table.featured),
-}));
+    // ── Group fields (flattened with prefix) ──
+    seoMetaTitle: text("seo_meta_title"),
+    seoMetaDescription: text("seo_meta_description"),
+    seoOgImage: uuid("seo_og_image").references(() => nxMedia.id),
+  },
+  (table) => ({
+    statusIdx: index("nx_c_posts_status").on(table.status),
+    slugIdx: index("nx_c_posts_slug").on(table.slug),
+    publishedAtIdx: index("nx_c_posts_published_at").on(table.publishedAt),
+    featuredIdx: index("nx_c_posts_featured").on(table.featured),
+  }),
+);
 
 // ── Many-to-many: posts ↔ categories ──
-export const nxCPostsCategories = pgTable("nx_c_posts__categories", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  postId: uuid("post_id").notNull().references(() => nxCPosts.id, { onDelete: "cascade" }),
-  categoryId: uuid("category_id").notNull().references(() => nxCCategories.id, { onDelete: "cascade" }),
-  order: integer("order").notNull().default(0),
-}, (table) => ({
-  postIdx: index("nx_c_posts__categories_post").on(table.postId),
-  uniqueRel: uniqueIndex("nx_c_posts__categories_unique").on(table.postId, table.categoryId),
-}));
+export const nxCPostsCategories = pgTable(
+  "nx_c_posts__categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => nxCPosts.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => nxCCategories.id, { onDelete: "cascade" }),
+    order: integer("order").notNull().default(0),
+  },
+  (table) => ({
+    postIdx: index("nx_c_posts__categories_post").on(table.postId),
+    uniqueRel: uniqueIndex("nx_c_posts__categories_unique").on(table.postId, table.categoryId),
+  }),
+);
 
 // ── Array field: posts.tags ──
-export const nxCPostsTags = pgTable("nx_c_posts__tags", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  parentId: uuid("parent_id").notNull().references(() => nxCPosts.id, { onDelete: "cascade" }),
-  order: integer("order").notNull().default(0),
-  tag: text("tag"),
-}, (table) => ({
-  parentIdx: index("nx_c_posts__tags_parent").on(table.parentId),
-}));
+export const nxCPostsTags = pgTable(
+  "nx_c_posts__tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references(() => nxCPosts.id, { onDelete: "cascade" }),
+    order: integer("order").notNull().default(0),
+    tag: text("tag"),
+  },
+  (table) => ({
+    parentIdx: index("nx_c_posts__tags_parent").on(table.parentId),
+  }),
+);
 
 // ── Drizzle relations ──
 export const nxCPostsRelations = relations(nxCPosts, ({ one, many }) => ({
@@ -1713,25 +1834,25 @@ export const nxCPostsRelations = relations(nxCPosts, ({ one, many }) => ({
 
 ### A.6 Field Type → Column Type Mapping
 
-| Collection Field Type | Drizzle Column Type | Notes |
-|---|---|---|
-| `text` | `text()` | |
-| `textarea` | `text()` | |
-| `number` | `doublePrecision()` or `integer()` | Based on `integerOnly` flag |
-| `richText` | `jsonb().$type<NxRichTextContent>()` | Opaque Lexical JSON |
-| `blocks` | `jsonb().$type<NxBlockInstance[]>()` | Opaque block array |
-| `checkbox` | `boolean()` | |
-| `date` | `timestamp({ withTimezone: true })` | |
-| `upload` | `uuid().references(() => nxMedia.id)` | FK to media |
-| `relationship` (hasOne) | `uuid().references(() => target.id)` | FK to target collection |
-| `relationship` (hasMany) | join table `{slug}__{field}` | Separate table |
-| `select` | `text({ enum: [...] })` | Drizzle pgEnum for reuse |
-| `radio` | `text({ enum: [...] })` | Same as select |
-| `email` | `text()` | Validated at application layer |
-| `json` | `jsonb()` | Arbitrary JSON |
-| `array` | child table `{slug}__{field}` | Repeatable rows |
-| `group` | prefix-flattened columns | `{groupName}{FieldName}` |
-| `row` / `collapsible` | N/A (layout only) | No DB representation |
+| Collection Field Type    | Drizzle Column Type                   | Notes                          |
+| ------------------------ | ------------------------------------- | ------------------------------ |
+| `text`                   | `text()`                              |                                |
+| `textarea`               | `text()`                              |                                |
+| `number`                 | `doublePrecision()` or `integer()`    | Based on `integerOnly` flag    |
+| `richText`               | `jsonb().$type<NxRichTextContent>()`  | Opaque Lexical JSON            |
+| `blocks`                 | `jsonb().$type<NxBlockInstance[]>()`  | Opaque block array             |
+| `checkbox`               | `boolean()`                           |                                |
+| `date`                   | `timestamp({ withTimezone: true })`   |                                |
+| `upload`                 | `uuid().references(() => nxMedia.id)` | FK to media                    |
+| `relationship` (hasOne)  | `uuid().references(() => target.id)`  | FK to target collection        |
+| `relationship` (hasMany) | join table `{slug}__{field}`          | Separate table                 |
+| `select`                 | `text({ enum: [...] })`               | Drizzle pgEnum for reuse       |
+| `radio`                  | `text({ enum: [...] })`               | Same as select                 |
+| `email`                  | `text()`                              | Validated at application layer |
+| `json`                   | `jsonb()`                             | Arbitrary JSON                 |
+| `array`                  | child table `{slug}__{field}`         | Repeatable rows                |
+| `group`                  | prefix-flattened columns              | `{groupName}{FieldName}`       |
+| `row` / `collapsible`    | N/A (layout only)                     | No DB representation           |
 
 ---
 
@@ -1740,6 +1861,7 @@ export const nxCPostsRelations = relations(nxCPosts, ({ one, many }) => ({
 ### B.1 Overview
 
 Collection config is the **single source of truth** for the entire CMS. It drives:
+
 1. Database schema generation (Section A)
 2. Admin UI form rendering (Section E)
 3. API endpoint behavior (Section I)
@@ -1764,12 +1886,14 @@ export interface NxCollectionConfig {
   labels: { singular: string; plural: string };
 
   /** Enable URL slug field */
-  slugField?: boolean | {
-    /** Field to generate slug from */
-    useField?: string; // default: "title"
-    /** Unique within collection */
-    unique?: boolean;  // default: true
-  };
+  slugField?:
+    | boolean
+    | {
+        /** Field to generate slug from */
+        useField?: string; // default: "title"
+        /** Unique within collection */
+        unique?: boolean; // default: true
+      };
 
   /** Field definitions */
   fields: NxFieldConfig[];
@@ -1818,7 +1942,7 @@ export interface NxCollectionConfig {
     description?: string;
     /** Use custom list/edit components (path string references) */
     components?: {
-      listView?: string;  // e.g., "@/components/PostListView"
+      listView?: string; // e.g., "@/components/PostListView"
       editView?: string;
       createView?: string;
     };
@@ -1867,16 +1991,16 @@ export type NxFieldConfig =
  */
 interface NxFieldBase {
   name: string;
-  label?: string;           // defaults to titleCase(name)
+  label?: string; // defaults to titleCase(name)
   required?: boolean;
   defaultValue?: unknown;
-  hidden?: boolean;         // hide from admin UI
+  hidden?: boolean; // hide from admin UI
   admin?: {
     description?: string;
     placeholder?: string;
     readOnly?: boolean;
     condition?: NxFieldCondition; // show/hide based on sibling values
-    width?: string;          // CSS width in form grid
+    width?: string; // CSS width in form grid
   };
   validate?: NxFieldValidator;
 }
@@ -1931,12 +2055,12 @@ interface NxDateField extends NxFieldBase {
 
 interface NxUploadField extends NxFieldBase {
   type: "upload";
-  relationTo: string;  // slug of a collection with upload: true
+  relationTo: string; // slug of a collection with upload: true
 }
 
 interface NxRelationshipField extends NxFieldBase {
   type: "relationship";
-  relationTo: string | string[];  // single or polymorphic
+  relationTo: string | string[]; // single or polymorphic
   hasMany?: boolean;
   /** Restrict selectable documents */
   filterOptions?: Record<string, unknown>;
@@ -1963,25 +2087,25 @@ interface NxJsonField extends NxFieldBase {
 
 interface NxArrayField extends NxFieldBase {
   type: "array";
-  fields: NxFieldConfig[];  // sub-fields for each row
+  fields: NxFieldConfig[]; // sub-fields for each row
   minRows?: number;
   maxRows?: number;
 }
 
 interface NxGroupField extends NxFieldBase {
   type: "group";
-  fields: NxFieldConfig[];  // flattened into parent table with prefix
+  fields: NxFieldConfig[]; // flattened into parent table with prefix
 }
 
 interface NxRowField {
   type: "row";
-  fields: NxFieldConfig[];  // layout-only: side-by-side fields
+  fields: NxFieldConfig[]; // layout-only: side-by-side fields
 }
 
 interface NxCollapsibleField {
   type: "collapsible";
   label: string;
-  fields: NxFieldConfig[];  // layout-only: collapsible section
+  fields: NxFieldConfig[]; // layout-only: collapsible section
 }
 ```
 
@@ -1994,9 +2118,10 @@ interface NxCollapsibleField {
  * Catches config errors before they hit the DB.
  */
 export const collectionConfigSchema = z.object({
-  slug: z.string()
+  slug: z
+    .string()
     .min(1)
-    .max(63)    // PostgreSQL identifier limit
+    .max(63) // PostgreSQL identifier limit
     .regex(/^[a-z][a-z0-9-]*$/, "Slug must be lowercase alphanumeric with hyphens"),
   labels: z.object({
     singular: z.string().min(1),
@@ -2022,9 +2147,7 @@ export const collectionConfigSchema = z.object({
  * Deterministic: same config always produces same output.
  * Pure function: no side effects, no DB access.
  */
-export function generateDrizzleSchema(
-  collections: NxCollectionConfig[],
-): GeneratedSchema {
+export function generateDrizzleSchema(collections: NxCollectionConfig[]): GeneratedSchema {
   const tables: TableDefinition[] = [];
   const relations: RelationDefinition[] = [];
 
@@ -2082,9 +2205,9 @@ export interface Post {
   title: string;
   excerpt: string | null;
   content: NxRichTextContent | null;
-  coverImage: string | null;  // media ID
-  author: string | null;      // user ID
-  categories: string[];       // category IDs
+  coverImage: string | null; // media ID
+  author: string | null; // user ID
+  categories: string[]; // category IDs
   tags: Array<{ tag: string | null }>;
   publishedAt: Date | null;
   featured: boolean;
@@ -2192,10 +2315,7 @@ export async function signToken(
 /**
  * Verify and decode a token.
  */
-export async function verifyToken(
-  token: string,
-  secret: string,
-): Promise<NxTokenPayload> {
+export async function verifyToken(token: string, secret: string): Promise<NxTokenPayload> {
   const secretKey = new TextEncoder().encode(secret);
   const { payload } = await jose.jwtVerify(token, secretKey);
   return payload as unknown as NxTokenPayload;
@@ -2211,7 +2331,7 @@ import { hash, verify } from "@node-rs/argon2";
  * Argon2id configuration — OWASP recommended defaults.
  */
 const ARGON2_OPTIONS = {
-  memoryCost: 19456,   // 19 MiB
+  memoryCost: 19456, // 19 MiB
   timeCost: 2,
   outputLen: 32,
   parallelism: 1,
@@ -2247,17 +2367,18 @@ export async function POST(request: NextRequest) {
   if (!valid) {
     // Increment login attempts
     const attempts = user.loginAttempts + 1;
-    const lockUntil = attempts >= MAX_LOGIN_ATTEMPTS
-      ? new Date(Date.now() + LOCKOUT_DURATION_MS)
-      : null;
-    await db.update(nxUsers)
+    const lockUntil =
+      attempts >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null;
+    await db
+      .update(nxUsers)
       .set({ loginAttempts: attempts, lockUntil })
       .where(eq(nxUsers.id, user.id));
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
   // 4. Reset login attempts on success
-  await db.update(nxUsers)
+  await db
+    .update(nxUsers)
     .set({ loginAttempts: 0, lockUntil: null })
     .where(eq(nxUsers.id, user.id));
 
@@ -2300,8 +2421,7 @@ export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get("nx-refresh")?.value;
   if (refreshToken) {
     // Delete session from DB
-    await db.delete(nxSessions)
-      .where(eq(nxSessions.tokenHash, await sha256(refreshToken)));
+    await db.delete(nxSessions).where(eq(nxSessions.tokenHash, await sha256(refreshToken)));
   }
 
   const response = NextResponse.json({ success: true });
@@ -2385,11 +2505,13 @@ defineCollection({
   slug: "posts",
   access: {
     create: isEditorOrAbove,
-    read: () => true,          // Public read
+    read: () => true, // Public read
     update: isOwnerOrAdmin,
     delete: isAdmin,
   },
-  fields: [/* ... */],
+  fields: [
+    /* ... */
+  ],
 });
 
 /**
@@ -2418,13 +2540,13 @@ export function hasRole(user: NxAuthUser, minRole: NxUserRole): boolean {
 export async function invalidateAllSessions(userId: string): Promise<void> {
   await db.transaction(async (tx) => {
     // 1. Bump token version — makes all existing JWTs invalid
-    await tx.update(nxUsers)
+    await tx
+      .update(nxUsers)
       .set({ tokenVersion: sql`${nxUsers.tokenVersion} + 1` })
       .where(eq(nxUsers.id, userId));
 
     // 2. Delete all session records
-    await tx.delete(nxSessions)
-      .where(eq(nxSessions.userId, userId));
+    await tx.delete(nxSessions).where(eq(nxSessions.userId, userId));
   });
 }
 
@@ -2475,9 +2597,7 @@ export async function PATCH(request: NextRequest) {
 
   // 4. Hash new password and save
   const hashed = await hashPassword(newPassword);
-  await db.update(nxUsers)
-    .set({ password: hashed })
-    .where(eq(nxUsers.id, user.id));
+  await db.update(nxUsers).set({ password: hashed }).where(eq(nxUsers.id, user.id));
 
   // 5. Invalidate all sessions (force re-login everywhere)
   await invalidateAllSessions(user.id);
@@ -2615,7 +2735,7 @@ export async function POST(request: NextRequest) {
 
 // In login/refresh handlers, add after setting session cookies:
 response.cookies.set("nx-csrf", crypto.randomUUID(), {
-  httpOnly: false,  // JS must read this
+  httpOnly: false, // JS must read this
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax",
   path: "/",
@@ -3063,7 +3183,7 @@ export const getPostBySlug = unstable_cache(
 import { revalidateTag } from "next/cache";
 
 export async function onContentUpdate(collection: string, docId: string) {
-  revalidateTag(`nx:${collection}`);     // revalidate all pages using this collection
+  revalidateTag(`nx:${collection}`); // revalidate all pages using this collection
   revalidateTag(`nx:${collection}:${docId}`); // specific document cache
 }
 
@@ -3584,21 +3704,24 @@ export default async function DashboardPage() {
 // .eslintrc.js — enforce admin/site boundary
 module.exports = {
   rules: {
-    "import/no-restricted-paths": ["error", {
-      zones: [
-        // Public site routes cannot import admin components
-        {
-          target: "./app/(site)/**",
-          from: "./node_modules/@nexpress/admin/**",
-          message: "Public site routes must not import admin components (bundle bloat).",
-        },
-        {
-          target: "./app/(site)/**",
-          from: "./app/(admin)/**",
-          message: "Public site routes must not import from admin routes.",
-        },
-      ],
-    }],
+    "import/no-restricted-paths": [
+      "error",
+      {
+        zones: [
+          // Public site routes cannot import admin components
+          {
+            target: "./app/(site)/**",
+            from: "./node_modules/@nexpress/admin/**",
+            message: "Public site routes must not import admin components (bundle bloat).",
+          },
+          {
+            target: "./app/(site)/**",
+            from: "./app/(admin)/**",
+            message: "Public site routes must not import from admin routes.",
+          },
+        ],
+      },
+    ],
   },
 };
 ```
@@ -3615,14 +3738,14 @@ module.exports = {
  * Enforced at build time by the config validator.
  */
 export const NX_RESERVED_PATHS = [
-  "admin",        // Admin UI
-  "api",          // API routes
-  "media",        // Media serving (if local storage)
-  "_next",        // Next.js internals
-  "sitemap.xml",  // SEO
-  "robots.txt",   // SEO
-  "favicon.ico",  // Browser default
-  "manifest.json",// PWA manifest
+  "admin", // Admin UI
+  "api", // API routes
+  "media", // Media serving (if local storage)
+  "_next", // Next.js internals
+  "sitemap.xml", // SEO
+  "robots.txt", // SEO
+  "favicon.ico", // Browser default
+  "manifest.json", // PWA manifest
 ] as const;
 
 // Validated in collectionConfigSchema:
@@ -3640,10 +3763,10 @@ Route resolution order (highest to lowest priority):
    app/sitemap.xml/...    → Sitemap (generated)
    app/robots.txt/...     → Robots (generated)
 
-2. Plugin proxy routes (root-level, via next.config.js rewrites)
+2. Plugin site routes (root-level, via next.config.js rewrites)
    /sitemap.xml   → rewrite to /api/plugins/{plugin-id}/sitemap.xml
    /feed.xml      → rewrite to /api/plugins/{plugin-id}/feed.xml
-   Registered via manifest.routes[].rootPath: true
+   Registered via manifest.routes[].kind: "site"
 
 3. Collection-specific static routes
    app/(site)/blog/[slug] → Blog post pages
@@ -3652,16 +3775,19 @@ Route resolution order (highest to lowest priority):
 4. Catch-all page routes (lowest priority)
    app/(site)/[[...slug]] → Pages collection (optional catch-all)
 
-Collision rule: If a page slug matches a reserved path or static route,
-the page is unreachable. The config validator WARNS at build time.
+Collision rule: If a page slug, collection route, or plugin site route matches
+a reserved path or an existing static route without an explicit built-in
+override, the config validator fails the build. Unreachable content is a hard
+configuration error, not a warning.
 ```
 
 ### K.3 Plugin Root-Level Routes
 
 ```typescript
 /**
- * Plugins that need root-level routes (e.g., /sitemap.xml) declare them
- * in their manifest. The host generates next.config.js rewrites.
+ * Plugins that need root-level routes (e.g., /sitemap.xml) declare site routes
+ * in their manifest. The host validates collisions and generates next.config.js
+ * rewrites for accepted routes.
  */
 
 // In plugin manifest:
@@ -3669,19 +3795,27 @@ routes: [
   {
     path: "/sitemap.xml",
     handler: "handlers/sitemap",
-    rootPath: true,  // serve at site root, not /api/plugins/{id}/
+    kind: "site",
+    exposeAt: "/sitemap.xml",  // serve at site root, not /api/plugins/{id}/
+    overridesBuiltIn: "sitemap.xml",
   },
 ]
 
 // Generated in next.config.js at build time:
 async rewrites() {
   return [
-    // Auto-generated from plugin manifests with rootPath: true
+    // Auto-generated from plugin manifests with kind: "site"
     { source: "/sitemap.xml", destination: "/api/plugins/seo/sitemap.xml" },
     { source: "/feed.xml", destination: "/api/plugins/rss/feed.xml" },
   ];
 }
 ```
+
+Plugin site routes may only replace built-in generated routes such as
+`sitemap.xml` or `robots.txt` when the manifest declares the matching
+`overridesBuiltIn` value. Collisions with admin routes, API routes, media
+serving, Next.js internals, collection static routes, or another plugin site
+route are hard validation errors.
 
 ### K.4 Catch-All Route Fix
 
@@ -3692,7 +3826,7 @@ async rewrites() {
 
 export default async function CatchAllPage({ params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug } = await params;
-  const path = slug?.join("/") || "";  // "" = homepage
+  const path = slug?.join("/") || ""; // "" = homepage
 
   const page = await getPageBySlug(path || "/");
   if (page) return renderBlocks(page.blocks);
@@ -3715,7 +3849,7 @@ export default async function CatchAllPage({ params }: { params: Promise<{ slug?
  */
 export async function saveDocument(
   collection: string,
-  docId: string | null,  // null = create
+  docId: string | null, // null = create
   data: Record<string, unknown>,
   user: NxAuthUser,
 ): Promise<SaveResult> {
@@ -3790,9 +3924,12 @@ export async function saveDocument(
 ```typescript
 // app/api/collections/[collection]/route.ts
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ collection: string }> }) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ collection: string }> },
+) {
   const { collection } = await params;
-  const user = await requireAuth(request);  // Tier 2: verifyTokenFull, throws 401
+  const user = await requireAuth(request); // Tier 2: verifyTokenFull, throws 401
 
   // CSRF check (handled by middleware, but belt-and-suspenders)
   const data = await request.json();
@@ -3807,7 +3944,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ collection: string }> }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ collection: string }> },
+) {
   const { collection } = await params;
   const config = getCollectionConfig(collection);
 
@@ -3868,18 +4008,18 @@ Escalation: Multi-node → separate worker process, shared pg-boss queue.
  */
 export type NxJobType =
   // Content lifecycle
-  | "content:afterSave"      // Post-save hooks, webhooks, cache invalidation, search indexing
-  | "content:afterDelete"    // Post-delete cleanup
+  | "content:afterSave" // Post-save hooks, webhooks, cache invalidation, search indexing
+  | "content:afterDelete" // Post-delete cleanup
 
   // Media processing
-  | "media:processImage"     // Sharp resize pipeline (decoupled from upload request)
-  | "media:cleanup"          // Delete orphaned storage files
+  | "media:processImage" // Sharp resize pipeline (decoupled from upload request)
+  | "media:cleanup" // Delete orphaned storage files
 
   // Plugin
-  | "plugin:scheduledTask"   // Cron-scheduled plugin tasks
+  | "plugin:scheduledTask" // Cron-scheduled plugin tasks
 
   // System
-  | "system:revisionPrune"   // Prune old revisions per retention policy
+  | "system:revisionPrune" // Prune old revisions per retention policy
   | "system:sessionCleanup"; // Delete expired sessions
 
 /**
@@ -3935,6 +4075,22 @@ After:
    (Or: Admin UI shows placeholder until processing completes)
 ```
 
+### M.4 Rich-Text Image Insertion Contract
+
+The editor image feature uses the same async media pipeline as direct media
+uploads. `onUploadImage()` calls `POST /api/media/upload`; the API saves the
+original file, inserts the media row, enqueues processing, and returns `202`
+with `{ id, status: "processing", originalUrl? }`.
+
+The editor persists image nodes by `mediaId`, not by generated variant URL. When
+status is `"processing"`, the node renders a placeholder and may use
+`originalUrl` for an immediate preview if the storage adapter exposes it. The
+admin UI polls `/api/media/{id}` or subscribes to SSE until the media row becomes
+`"ready"`, then updates node metadata with generated `sizes`. Saved rich-text
+content remains valid throughout the processing window because rendering can
+resolve `mediaId` at request time and fall back to the original asset or a
+placeholder when variants are not ready.
+
 ---
 
 ## N. Platform Policies (HS-8, MS-3, MS-7, HS-6, MS-1, MS-2, MS-4, MS-6)
@@ -3948,30 +4104,39 @@ After:
  */
 export interface NxApiError {
   error: {
-    code: string;           // Machine-readable: "VALIDATION_ERROR", "FORBIDDEN", "NOT_FOUND"
-    message: string;        // Human-readable message
-    details?: unknown;      // Zod issues, field-level errors, etc.
+    code: string; // Machine-readable: "VALIDATION_ERROR", "FORBIDDEN", "NOT_FOUND"
+    message: string; // Human-readable message
+    details?: unknown; // Zod issues, field-level errors, etc.
   };
   status: number;
 }
 
 export function nxErrorResponse(error: Error, status: number): NextResponse<NxApiError> {
   if (error instanceof z.ZodError) {
-    return NextResponse.json({
-      error: { code: "VALIDATION_ERROR", message: "Invalid input", details: error.issues },
-      status: 400,
-    }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: { code: "VALIDATION_ERROR", message: "Invalid input", details: error.issues },
+        status: 400,
+      },
+      { status: 400 },
+    );
   }
   if (error instanceof NxForbiddenError) {
-    return NextResponse.json({
-      error: { code: "FORBIDDEN", message: error.message },
-      status: 403,
-    }, { status: 403 });
+    return NextResponse.json(
+      {
+        error: { code: "FORBIDDEN", message: error.message },
+        status: 403,
+      },
+      { status: 403 },
+    );
   }
-  return NextResponse.json({
-    error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },
-    status: 500,
-  }, { status: 500 });
+  return NextResponse.json(
+    {
+      error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },
+      status: 500,
+    },
+    { status: 500 },
+  );
 }
 
 // Standard error codes:
@@ -3992,12 +4157,12 @@ export function nxErrorResponse(error: Error, status: number): NextResponse<NxAp
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "0",  // Rely on CSP instead
+  "X-XSS-Protection": "0", // Rely on CSP instead
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",   // Next.js requires unsafe-inline
-    "style-src 'self' 'unsafe-inline'",     // Tailwind requires unsafe-inline
+    "script-src 'self' 'unsafe-inline'", // Next.js requires unsafe-inline
+    "style-src 'self' 'unsafe-inline'", // Tailwind requires unsafe-inline
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
@@ -4029,11 +4194,11 @@ const SECURITY_HEADERS = {
 function sanitizeTokenValue(value: string): string {
   // Strip anything that could break out of a CSS value context
   return value
-    .replace(/[;{}]/g, "")     // No statement/block terminators
+    .replace(/[;{}]/g, "") // No statement/block terminators
     .replace(/url\s*\(/gi, "") // No url() — prevents resource injection
     .replace(/expression\s*\(/gi, "") // No expression() (legacy IE)
-    .replace(/@import/gi, "")  // No @import
-    .slice(0, 200);            // Length limit
+    .replace(/@import/gi, "") // No @import
+    .slice(0, 200); // Length limit
 }
 
 // Applied in generateThemeCss() for every token value:
@@ -4069,9 +4234,9 @@ This is NOT a v1 blocker — self-hosted CMS default = single Docker container.
  */
 export interface NxRevisionPolicy {
   /** Max published revisions per document (0 = unlimited) */
-  maxPublished: number;  // default: 20
+  maxPublished: number; // default: 20
   /** Max autosave revisions per document */
-  maxAutosave: number;   // default: 5
+  maxAutosave: number; // default: 5
   /** Delete autosaves older than N days */
   autosaveMaxAgeDays: number; // default: 7
 }
@@ -4131,9 +4296,10 @@ export async function getContentBySlug(
 
   // Public content — cached and tagged for revalidation
   return nxCache(
-    async () => db.query[getTableName(collection)].findFirst({
-      where: and(eq(table.slug, slug), eq(table.status, "published")),
-    }),
+    async () =>
+      db.query[getTableName(collection)].findFirst({
+        where: and(eq(table.slug, slug), eq(table.status, "published")),
+      }),
     [collection, slug],
     { tags: [`nx:${collection}`, `nx:${collection}:${slug}`], revalidate: 3600 },
   )();
@@ -4186,10 +4352,14 @@ function buildZodSchema(fields: NxFieldConfig[]): z.ZodObject<Record<string, z.Z
 
     let schema: z.ZodTypeAny;
     switch (field.type) {
-      case "text": case "textarea": case "email":
+      case "text":
+      case "textarea":
+      case "email":
         schema = z.string();
-        if ("minLength" in field && field.minLength) schema = (schema as z.ZodString).min(field.minLength);
-        if ("maxLength" in field && field.maxLength) schema = (schema as z.ZodString).max(field.maxLength);
+        if ("minLength" in field && field.minLength)
+          schema = (schema as z.ZodString).min(field.minLength);
+        if ("maxLength" in field && field.maxLength)
+          schema = (schema as z.ZodString).max(field.maxLength);
         break;
       case "number":
         schema = field.integerOnly ? z.number().int() : z.number();
@@ -4199,7 +4369,8 @@ function buildZodSchema(fields: NxFieldConfig[]): z.ZodObject<Record<string, z.Z
       case "checkbox":
         schema = z.boolean();
         break;
-      case "select": case "radio":
+      case "select":
+      case "radio":
         schema = z.enum(field.options.map((o) => o.value) as [string, ...string[]]);
         break;
       case "relationship":
@@ -4211,7 +4382,9 @@ function buildZodSchema(fields: NxFieldConfig[]): z.ZodObject<Record<string, z.Z
       case "date":
         schema = z.coerce.date();
         break;
-      case "richText": case "blocks": case "json":
+      case "richText":
+      case "blocks":
+      case "json":
         schema = z.unknown(); // Opaque JSON — validated by editor, not by field schema
         break;
       case "group":
@@ -4288,16 +4461,22 @@ All migrations are reviewable SQL files. Developer applies manually.
 // - block props (media references in block data)
 // These are stored in a lightweight reference table:
 
-export const nxMediaRefs = pgTable("nx_media_refs", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  mediaId: uuid("media_id").notNull().references(() => nxMedia.id, { onDelete: "cascade" }),
-  collection: text("collection").notNull(),
-  documentId: uuid("document_id").notNull(),
-  field: text("field").notNull(),
-}, (table) => ({
-  mediaIdx: index("nx_media_refs_media").on(table.mediaId),
-  docIdx: index("nx_media_refs_doc").on(table.documentId),
-}));
+export const nxMediaRefs = pgTable(
+  "nx_media_refs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mediaId: uuid("media_id")
+      .notNull()
+      .references(() => nxMedia.id, { onDelete: "cascade" }),
+    collection: text("collection").notNull(),
+    documentId: uuid("document_id").notNull(),
+    field: text("field").notNull(),
+  },
+  (table) => ({
+    mediaIdx: index("nx_media_refs_media").on(table.mediaId),
+    docIdx: index("nx_media_refs_doc").on(table.documentId),
+  }),
+);
 
 // 2. Deletion policy:
 // DELETE /api/media/{id}:
@@ -4308,9 +4487,9 @@ export const nxMediaRefs = pgTable("nx_media_refs", {
 
 // 3. Upload constraints (configurable in nexpress.config.ts):
 export interface NxUploadConfig {
-  maxFileSize: number;          // bytes, default: 10 * 1024 * 1024 (10MB)
-  allowedMimeTypes: string[];   // default: ["image/*", "application/pdf", "video/*"]
-  imageSizes?: NxImageSize[];   // custom size definitions
+  maxFileSize: number; // bytes, default: 10 * 1024 * 1024 (10MB)
+  allowedMimeTypes: string[]; // default: ["image/*", "application/pdf", "video/*"]
+  imageSizes?: NxImageSize[]; // custom size definitions
 }
 ```
 
@@ -4332,7 +4511,10 @@ export interface NxUploadConfig {
 //    Updated on INSERT/UPDATE via a PostgreSQL trigger or in the write pipeline.
 
 // 2. The search vector is built from text/textarea/richText fields:
-export function buildSearchVector(config: NxCollectionConfig, data: Record<string, unknown>): string {
+export function buildSearchVector(
+  config: NxCollectionConfig,
+  data: Record<string, unknown>,
+): string {
   const parts: string[] = [];
   for (const field of config.fields) {
     if (field.type === "text" || field.type === "textarea") {
@@ -4357,7 +4539,9 @@ export async function findDocuments(collection: string, options: FindOptions) {
     // PostgreSQL full-text search with ranking
     query = query
       .where(sql`${table.searchVector} @@ plainto_tsquery('english', ${options.search})`)
-      .orderBy(sql`ts_rank(${table.searchVector}, plainto_tsquery('english', ${options.search})) DESC`);
+      .orderBy(
+        sql`ts_rank(${table.searchVector}, plainto_tsquery('english', ${options.search})) DESC`,
+      );
   }
 
   // ...pagination, sorting, etc.
@@ -4377,178 +4561,177 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 ### QA-A: Database Schema Generation
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| A1 | `pnpm` CLI | Generate schema from config | 1. Define 3 collections in `nexpress.config.ts` 2. Run `pnpm db:generate` | `drizzle/schema.generated.ts` contains 3 primary tables + join/array tables. File is deterministic (same config → same output). |
-| A2 | `pnpm` CLI + `drizzle-kit` | Add field to existing collection | 1. Add `subtitle: text` field to posts collection 2. Run `pnpm db:generate` | New column in generated schema. `drizzle-kit generate` produces `ALTER TABLE nx_c_posts ADD COLUMN subtitle text` migration. |
-| A3 | `pnpm` CLI | Array field generates child table | 1. Define `tags: array` field in posts config 2. Run `pnpm db:generate` | `nx_c_posts__tags` table in generated schema with `parent_id`, `order`, and `tag` columns. |
-| A4 | `pnpm` CLI | hasMany relationship generates join table | 1. Define `categories: relationship, hasMany: true` 2. Run `pnpm db:generate` | `nx_c_posts__categories` join table with `post_id`, `category_id`, `order` columns and composite unique index. |
-| A5 | `pnpm` CLI | Invalid config fails validation | 1. Set collection slug to `"123invalid"` 2. Run `pnpm db:generate` | CLI exits with non-zero code and validation error: "Slug must be lowercase alphanumeric with hyphens". No schema file written. |
+| #   | Tool                       | Scenario                                  | Steps                                                                         | Expected                                                                                                                        |
+| --- | -------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | `pnpm` CLI                 | Generate schema from config               | 1. Define 3 collections in `nexpress.config.ts` 2. Run `pnpm db:generate`     | `drizzle/schema.generated.ts` contains 3 primary tables + join/array tables. File is deterministic (same config → same output). |
+| A2  | `pnpm` CLI + `drizzle-kit` | Add field to existing collection          | 1. Add `subtitle: text` field to posts collection 2. Run `pnpm db:generate`   | New column in generated schema. `drizzle-kit generate` produces `ALTER TABLE nx_c_posts ADD COLUMN subtitle text` migration.    |
+| A3  | `pnpm` CLI                 | Array field generates child table         | 1. Define `tags: array` field in posts config 2. Run `pnpm db:generate`       | `nx_c_posts__tags` table in generated schema with `parent_id`, `order`, and `tag` columns.                                      |
+| A4  | `pnpm` CLI                 | hasMany relationship generates join table | 1. Define `categories: relationship, hasMany: true` 2. Run `pnpm db:generate` | `nx_c_posts__categories` join table with `post_id`, `category_id`, `order` columns and composite unique index.                  |
+| A5  | `pnpm` CLI                 | Invalid config fails validation           | 1. Set collection slug to `"123invalid"` 2. Run `pnpm db:generate`            | CLI exits with non-zero code and validation error: "Slug must be lowercase alphanumeric with hyphens". No schema file written.  |
 
 ### QA-B: Content Modeling
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| B1 | `tsc` | defineCollection type-checks | 1. Call `defineCollection({...})` with all 16 field types 2. Run `pnpm tsc --noEmit` | Zero type errors. |
-| B2 | `pnpm` CLI | Type generation | 1. Define posts and pages collections 2. Run `pnpm generate:types` | `src/nexpress-types.ts` created with `Post` and `Page` interfaces matching field definitions. |
-| B3 | `pnpm` CLI | Group fields flatten correctly | 1. Define `seo: group` with `metaTitle`, `metaDescription`, `ogImage` sub-fields 2. Run `pnpm db:generate` | Primary table has columns `seo_meta_title`, `seo_meta_description`, `seo_og_image` (no nested table). |
-| B4 | `pnpm` CLI | Config validation catches errors | 1. Set `maxLength: 5` and `minLength: 10` on a text field 2. Run `pnpm db:generate` | CLI exits with error: "maxLength (5) is less than minLength (10)". |
+| #   | Tool       | Scenario                         | Steps                                                                                                      | Expected                                                                                              |
+| --- | ---------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| B1  | `tsc`      | defineCollection type-checks     | 1. Call `defineCollection({...})` with all 16 field types 2. Run `pnpm tsc --noEmit`                       | Zero type errors.                                                                                     |
+| B2  | `pnpm` CLI | Type generation                  | 1. Define posts and pages collections 2. Run `pnpm generate:types`                                         | `src/nexpress-types.ts` created with `Post` and `Page` interfaces matching field definitions.         |
+| B3  | `pnpm` CLI | Group fields flatten correctly   | 1. Define `seo: group` with `metaTitle`, `metaDescription`, `ogImage` sub-fields 2. Run `pnpm db:generate` | Primary table has columns `seo_meta_title`, `seo_meta_description`, `seo_og_image` (no nested table). |
+| B4  | `pnpm` CLI | Config validation catches errors | 1. Set `maxLength: 5` and `minLength: 10` on a text field 2. Run `pnpm db:generate`                        | CLI exits with error: "maxLength (5) is less than minLength (10)".                                    |
 
 ### QA-C: Authentication
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| C1 | `curl` | Successful login | `curl -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@test.com","password":"password"}' -v` | 200 status. Response body contains `user` object. `Set-Cookie` headers include `nx-session` (httpOnly, Secure, SameSite=Lax) and `nx-refresh`. |
-| C2 | `curl` | Failed login increments attempts | 1. Send 3 POSTs to `/api/auth/login` with wrong password 2. Query `nx_users` table | Each returns 401. `login_attempts` column equals 3. |
-| C3 | `curl` + `psql` | Account lockout | 1. Set `maxLoginAttempts=3` in config 2. Send 3 wrong-password requests 3. Send correct password | First 3 return 401. 4th returns 429 with "Account locked". `psql: SELECT lock_until FROM nx_users` shows future timestamp. |
-| C4 | `curl` | Token invalidation on password change | 1. Login (save cookie) 2. PATCH `/api/auth/change-password` 3. GET `/api/auth/me` with old cookie | Step 3 returns 401 (tokenVersion mismatch after password change). |
-| C5 | `curl` | Expired token rejected | 1. Login with `tokenExpiration: 1` (1 second) 2. Wait 2 seconds 3. GET `/api/auth/me` | 401 response. `nx-session` cookie is expired/invalid. |
-| C6 | `curl` | Role-based access denied | 1. Login as user with role "author" 2. `curl -X DELETE /api/collections/posts/{id}` with session cookie | 403 response. Body: `{"error":"Forbidden"}`. |
+| #   | Tool            | Scenario                              | Steps                                                                                                                                            | Expected                                                                                                                                       |
+| --- | --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | `curl`          | Successful login                      | `curl -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@test.com","password":"password"}' -v` | 200 status. Response body contains `user` object. `Set-Cookie` headers include `nx-session` (httpOnly, Secure, SameSite=Lax) and `nx-refresh`. |
+| C2  | `curl`          | Failed login increments attempts      | 1. Send 3 POSTs to `/api/auth/login` with wrong password 2. Query `nx_users` table                                                               | Each returns 401. `login_attempts` column equals 3.                                                                                            |
+| C3  | `curl` + `psql` | Account lockout                       | 1. Set `maxLoginAttempts=3` in config 2. Send 3 wrong-password requests 3. Send correct password                                                 | First 3 return 401. 4th returns 429 with "Account locked". `psql: SELECT lock_until FROM nx_users` shows future timestamp.                     |
+| C4  | `curl`          | Token invalidation on password change | 1. Login (save cookie) 2. PATCH `/api/auth/change-password` 3. GET `/api/auth/me` with old cookie                                                | Step 3 returns 401 (tokenVersion mismatch after password change).                                                                              |
+| C5  | `curl`          | Expired token rejected                | 1. Login with `tokenExpiration: 1` (1 second) 2. Wait 2 seconds 3. GET `/api/auth/me`                                                            | 401 response. `nx-session` cookie is expired/invalid.                                                                                          |
+| C6  | `curl`          | Role-based access denied              | 1. Login as user with role "author" 2. `curl -X DELETE /api/collections/posts/{id}` with session cookie                                          | 403 response. Body: `{"error":"Forbidden"}`.                                                                                                   |
 
 ### QA-D: Rendering Layer
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| D1 | Playwright | Public page renders from blocks | 1. Seed a page with Hero + FeatureGrid blocks 2. `await page.goto('/')` 3. Assert block components visible | `page.locator('[data-block="hero"]')` is visible. `page.locator('[data-block="feature-grid"]')` is visible. Theme CSS custom properties applied. |
-| D2 | Playwright | Blog post renders rich text | 1. Seed a post with Lexical content 2. `await page.goto('/blog/test-post')` 3. Check rendered HTML | `page.locator('article h1')` contains post title. `page.locator('.prose p')` contains paragraph text. No `lexical` JS chunks in network tab. |
-| D3 | Playwright | Draft mode shows unpublished | 1. Login as editor 2. `await page.goto('/api/preview?path=/blog/draft-post')` 3. Check for draft content | `page.locator('[data-draft-banner]')` is visible. Draft post content is rendered. |
-| D4 | `curl` + Playwright | ISR revalidation | 1. Visit `/blog/test-post` (cache) 2. PATCH post title via API 3. Wait 1s 4. Visit `/blog/test-post` again | New title appears. `x-nextjs-cache` header shows `MISS` on second request. |
-| D5 | `next build` + `grep` | Admin components don't leak to public | 1. Run `pnpm build` 2. `grep -r "@nexpress/admin" .next/static/chunks/` | Zero matches. No admin package imports in public site chunks. |
+| #   | Tool                  | Scenario                              | Steps                                                                                                      | Expected                                                                                                                                         |
+| --- | --------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | Playwright            | Public page renders from blocks       | 1. Seed a page with Hero + FeatureGrid blocks 2. `await page.goto('/')` 3. Assert block components visible | `page.locator('[data-block="hero"]')` is visible. `page.locator('[data-block="feature-grid"]')` is visible. Theme CSS custom properties applied. |
+| D2  | Playwright            | Blog post renders rich text           | 1. Seed a post with Lexical content 2. `await page.goto('/blog/test-post')` 3. Check rendered HTML         | `page.locator('article h1')` contains post title. `page.locator('.prose p')` contains paragraph text. No `lexical` JS chunks in network tab.     |
+| D3  | Playwright            | Draft mode shows unpublished          | 1. Login as editor 2. `await page.goto('/api/preview?path=/blog/draft-post')` 3. Check for draft content   | `page.locator('[data-draft-banner]')` is visible. Draft post content is rendered.                                                                |
+| D4  | `curl` + Playwright   | ISR revalidation                      | 1. Visit `/blog/test-post` (cache) 2. PATCH post title via API 3. Wait 1s 4. Visit `/blog/test-post` again | New title appears. `x-nextjs-cache` header shows `MISS` on second request.                                                                       |
+| D5  | `next build` + `grep` | Admin components don't leak to public | 1. Run `pnpm build` 2. `grep -r "@nexpress/admin" .next/static/chunks/`                                    | Zero matches. No admin package imports in public site chunks.                                                                                    |
 
 ### QA-E: Admin UI
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| E1 | Playwright | Unauthenticated access redirects | 1. `await page.goto('/admin')` (no login) | URL changes to `/admin/login?redirect=%2Fadmin`. Login form visible. |
-| E2 | Playwright | Collection list view | 1. Login as admin 2. `await page.goto('/admin/collections/posts')` | DataTable visible with columns matching `config.admin.listColumns`. Pagination controls present. |
-| E3 | Playwright | Create document | 1. Click "Create Post" 2. Fill title, excerpt 3. Click "Save" | URL changes to `/admin/collections/posts/{new-id}`. Toast/flash confirms creation. `psql: SELECT * FROM nx_c_posts` shows new row. |
-| E4 | Playwright + `psql` | Edit document with revision | 1. Navigate to existing post edit view 2. Change title 3. Click "Save" | Title updated in DB. `psql: SELECT * FROM nx_revisions WHERE document_id='{id}'` shows new revision with `version` incremented. |
-| E5 | Playwright | Form auto-generation | 1. Define collection with text, checkbox, select, richText, upload fields 2. Navigate to create view | Each field type renders correct component: `<input>` for text, `<Switch>` for checkbox, `<Select>` for select, Lexical editor for richText, media picker for upload. |
-| E6 | Playwright | Sidebar groups collections | 1. Set `admin.group: "Blog"` on posts and categories 2. Visit `/admin` | Sidebar contains "Blog" group heading. Posts and Categories links are nested under it. |
+| #   | Tool                | Scenario                         | Steps                                                                                                | Expected                                                                                                                                                             |
+| --- | ------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1  | Playwright          | Unauthenticated access redirects | 1. `await page.goto('/admin')` (no login)                                                            | URL changes to `/admin/login?redirect=%2Fadmin`. Login form visible.                                                                                                 |
+| E2  | Playwright          | Collection list view             | 1. Login as admin 2. `await page.goto('/admin/collections/posts')`                                   | DataTable visible with columns matching `config.admin.listColumns`. Pagination controls present.                                                                     |
+| E3  | Playwright          | Create document                  | 1. Click "Create Post" 2. Fill title, excerpt 3. Click "Save"                                        | URL changes to `/admin/collections/posts/{new-id}`. Toast/flash confirms creation. `psql: SELECT * FROM nx_c_posts` shows new row.                                   |
+| E4  | Playwright + `psql` | Edit document with revision      | 1. Navigate to existing post edit view 2. Change title 3. Click "Save"                               | Title updated in DB. `psql: SELECT * FROM nx_revisions WHERE document_id='{id}'` shows new revision with `version` incremented.                                      |
+| E5  | Playwright          | Form auto-generation             | 1. Define collection with text, checkbox, select, richText, upload fields 2. Navigate to create view | Each field type renders correct component: `<input>` for text, `<Switch>` for checkbox, `<Select>` for select, Lexical editor for richText, media picker for upload. |
+| E6  | Playwright          | Sidebar groups collections       | 1. Set `admin.group: "Blog"` on posts and categories 2. Visit `/admin`                               | Sidebar contains "Blog" group heading. Posts and Categories links are nested under it.                                                                               |
 
 ### QA-F: Editor System
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| F1 | Playwright | Rich text editor loads in admin | 1. Login 2. Navigate to create post 3. Click on content field | Lexical editor initializes. Toolbar visible with configured features (bold, italic, heading, link, image, list, quote, code). |
-| F2 | Playwright | Rich text formatting | 1. Type text in editor 2. Select text 3. Click bold button 4. Save | `psql: SELECT content FROM nx_c_posts` returns Lexical JSON with `{ "type": "text", "format": 1 }` (bold). |
-| F3 | Playwright | Block page editor drag-and-drop | 1. Create a page 2. Add Hero and FeatureGrid blocks 3. Drag FeatureGrid above Hero 4. Save | `psql: SELECT blocks FROM nx_c_pages` returns JSON array with FeatureGrid at index 0, Hero at index 1. |
-| F4 | Playwright | Block props editor | 1. Add Hero block to page 2. Click gear icon (⚙) on Hero 3. Edit title prop 4. Save | Block `props.title` updated in DB. |
-| F5 | Vitest | renderRichText SSR correctness | 1. Create Lexical JSON with paragraph, heading, link, image nodes 2. Call `renderRichText(content)` 3. Render to string via `renderToStaticMarkup` | Output HTML contains `<p>`, `<h2>`, `<a href="...">`, `<img>` elements. No Lexical runtime imports. |
-| F6 | Vitest | Block data binding | 1. Create NxBlockInstance with `dataBinding: { collection: "posts", limit: 3 }` 2. Render block server-side | Block receives 3 posts from DB as props. |
+| #   | Tool       | Scenario                        | Steps                                                                                                                                              | Expected                                                                                                                      |
+| --- | ---------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| F1  | Playwright | Rich text editor loads in admin | 1. Login 2. Navigate to create post 3. Click on content field                                                                                      | Lexical editor initializes. Toolbar visible with configured features (bold, italic, heading, link, image, list, quote, code). |
+| F2  | Playwright | Rich text formatting            | 1. Type text in editor 2. Select text 3. Click bold button 4. Save                                                                                 | `psql: SELECT content FROM nx_c_posts` returns Lexical JSON with `{ "type": "text", "format": 1 }` (bold).                    |
+| F3  | Playwright | Block page editor drag-and-drop | 1. Create a page 2. Add Hero and FeatureGrid blocks 3. Drag FeatureGrid above Hero 4. Save                                                         | `psql: SELECT blocks FROM nx_c_pages` returns JSON array with FeatureGrid at index 0, Hero at index 1.                        |
+| F4  | Playwright | Block props editor              | 1. Add Hero block to page 2. Click gear icon (⚙) on Hero 3. Edit title prop 4. Save                                                                | Block `props.title` updated in DB.                                                                                            |
+| F5  | Vitest     | renderRichText SSR correctness  | 1. Create Lexical JSON with paragraph, heading, link, image nodes 2. Call `renderRichText(content)` 3. Render to string via `renderToStaticMarkup` | Output HTML contains `<p>`, `<h2>`, `<a href="...">`, `<img>` elements. No Lexical runtime imports.                           |
+| F6  | Vitest     | Block data binding              | 1. Create NxBlockInstance with `dataBinding: { collection: "posts", limit: 3 }` 2. Render block server-side                                        | Block receives 3 posts from DB as props.                                                                                      |
 
 ### QA-G: Media System
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| G1 | `curl` | Upload image (async) | `curl -X POST http://localhost:3000/api/media/upload -H 'Cookie: nx-session=...' -F 'file=@test.jpg'` | 202 response. Body contains `id`, `filename`, `mimeType`, `status: "processing"`. `sizes` is null (not yet generated). `psql: SELECT status FROM nx_media WHERE id='{id}'` returns `"processing"`. |
-| G2 | `psql` + filesystem | Image variants generated after job | 1. Upload 2000x1500 JPEG (G1) 2. Wait for worker to process job 3. Check storage and DB | `psql: SELECT status, sizes FROM nx_media WHERE id='{id}'` returns `status = "ready"`, `sizes` JSON has thumbnail/small/medium/large/og entries. Files exist: `{id}/original.jpg`, `{id}/thumbnail.webp`, `{id}/small.webp`, `{id}/medium.webp`, `{id}/large.webp`, `{id}/og.webp`. |
-| G3 | `curl` | Unauthenticated upload rejected | `curl -X POST http://localhost:3000/api/media/upload -F 'file=@test.jpg'` (no cookie) | 401 response. No file saved. |
-| G4 | `curl` + `psql` | Delete unreferenced media soft-deletes | 1. Upload image (no content references) 2. `curl -X DELETE /api/media/{id}` 3. Check DB | 200 response `{ deleted: true }`. `psql: SELECT deleted_at FROM nx_media WHERE id='{id}'` shows non-null timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days). |
-| G4b | `curl` | Delete referenced media blocked | 1. Upload image 2. Reference it in a post 3. `curl -X DELETE /api/media/{id}` | 409 response. `{ error: { code: "MEDIA_IN_USE", references: [...] } }`. Media NOT deleted. |
-| G5 | Playwright | Media library UI | 1. Login 2. Navigate to `/admin/media` 3. Upload via drag-drop | Upload progress shown. New thumbnail appears in media grid. Folder navigation works. |
-| G6 | Vitest | Storage adapter interface | 1. Create `LocalStorageAdapter({ directory: "/tmp/test", baseUrl: "/media" })` 2. Call `upload()`, `getUrl()`, `exists()`, `delete()` | Each method executes without error. `exists()` returns true after upload, false after delete. `getUrl()` returns `/media/{key}`. |
+| #   | Tool                | Scenario                               | Steps                                                                                                                                 | Expected                                                                                                                                                                                                                                                                            |
+| --- | ------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | `curl`              | Upload image (async)                   | `curl -X POST http://localhost:3000/api/media/upload -H 'Cookie: nx-session=...' -F 'file=@test.jpg'`                                 | 202 response. Body contains `id`, `filename`, `mimeType`, `status: "processing"`. `sizes` is null (not yet generated). `psql: SELECT status FROM nx_media WHERE id='{id}'` returns `"processing"`.                                                                                  |
+| G2  | `psql` + filesystem | Image variants generated after job     | 1. Upload 2000x1500 JPEG (G1) 2. Wait for worker to process job 3. Check storage and DB                                               | `psql: SELECT status, sizes FROM nx_media WHERE id='{id}'` returns `status = "ready"`, `sizes` JSON has thumbnail/small/medium/large/og entries. Files exist: `{id}/original.jpg`, `{id}/thumbnail.webp`, `{id}/small.webp`, `{id}/medium.webp`, `{id}/large.webp`, `{id}/og.webp`. |
+| G3  | `curl`              | Unauthenticated upload rejected        | `curl -X POST http://localhost:3000/api/media/upload -F 'file=@test.jpg'` (no cookie)                                                 | 401 response. No file saved.                                                                                                                                                                                                                                                        |
+| G4  | `curl` + `psql`     | Delete unreferenced media soft-deletes | 1. Upload image (no content references) 2. `curl -X DELETE /api/media/{id}` 3. Check DB                                               | 200 response `{ deleted: true }`. `psql: SELECT deleted_at FROM nx_media WHERE id='{id}'` shows non-null timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).                                                                                          |
+| G4b | `curl`              | Delete referenced media blocked        | 1. Upload image 2. Reference it in a post 3. `curl -X DELETE /api/media/{id}`                                                         | 409 response. `{ error: { code: "MEDIA_IN_USE", references: [...] } }`. Media NOT deleted.                                                                                                                                                                                          |
+| G5  | Playwright          | Media library UI                       | 1. Login 2. Navigate to `/admin/media` 3. Upload via drag-drop                                                                        | Upload progress shown. New thumbnail appears in media grid. Folder navigation works.                                                                                                                                                                                                |
+| G6  | Vitest              | Storage adapter interface              | 1. Create `LocalStorageAdapter({ directory: "/tmp/test", baseUrl: "/media" })` 2. Call `upload()`, `getUrl()`, `exists()`, `delete()` | Each method executes without error. `exists()` returns true after upload, false after delete. `getUrl()` returns `/media/{key}`.                                                                                                                                                    |
 
 ### QA-H: Theme Engine
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| H1 | Vitest | Theme JSON → CSS conversion | 1. Call `generateThemeCss(DEFAULT_THEME)` | Output string contains `@layer nx-theme { :root { --nx-color-primary: oklch(0.55 0.20 250); ... } }`. All token keys present. |
-| H2 | Vitest | Dark mode CSS | 1. Call `generateThemeCss(DEFAULT_THEME)` with `darkMode.enabled: true` | Output contains `[data-theme="dark"] { --nx-color-background: oklch(0.15 0.02 260); ... }`. |
-| H3 | Playwright | Theme changes apply live | 1. Login 2. Navigate to `/admin/settings/theme` 3. Change primary color 4. Save 5. Open public site in new tab | Public site `<style>` tag contains updated `--nx-color-primary` value. |
-| H4 | Playwright | Tailwind v4 uses NexPress tokens | 1. Add `className="bg-primary text-primary-foreground"` to a block 2. Visit public page | Element has background color matching `--nx-color-primary` and text color matching `--nx-color-primary-foreground`. |
-| H5 | Vitest | NxThemeStyle is server-only | 1. Import `NxThemeStyle` 2. Render via `renderToStaticMarkup` | Returns a `<style>` tag with CSS. No `"use client"` directive in source. Zero client JS. |
+| #   | Tool       | Scenario                         | Steps                                                                                                          | Expected                                                                                                                      |
+| --- | ---------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| H1  | Vitest     | Theme JSON → CSS conversion      | 1. Call `generateThemeCss(DEFAULT_THEME)`                                                                      | Output string contains `@layer nx-theme { :root { --nx-color-primary: oklch(0.55 0.20 250); ... } }`. All token keys present. |
+| H2  | Vitest     | Dark mode CSS                    | 1. Call `generateThemeCss(DEFAULT_THEME)` with `darkMode.enabled: true`                                        | Output contains `[data-theme="dark"] { --nx-color-background: oklch(0.15 0.02 260); ... }`.                                   |
+| H3  | Playwright | Theme changes apply live         | 1. Login 2. Navigate to `/admin/settings/theme` 3. Change primary color 4. Save 5. Open public site in new tab | Public site `<style>` tag contains updated `--nx-color-primary` value.                                                        |
+| H4  | Playwright | Tailwind v4 uses NexPress tokens | 1. Add `className="bg-primary text-primary-foreground"` to a block 2. Visit public page                        | Element has background color matching `--nx-color-primary` and text color matching `--nx-color-primary-foreground`.           |
+| H5  | Vitest     | NxThemeStyle is server-only      | 1. Import `NxThemeStyle` 2. Render via `renderToStaticMarkup`                                                  | Returns a `<style>` tag with CSS. No `"use client"` directive in source. Zero client JS.                                      |
 
 ### QA-I: Agent Interface
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| I1 | `curl` | Block manifest API | `curl http://localhost:3000/api/manifest/blocks` | 200 response. JSON array of blocks, each with `type`, `label`, `description`, `propsSchema` (valid JSON Schema), `defaultProps`, `category`. |
-| I2 | `curl` | Collection manifest API | `curl http://localhost:3000/api/manifest/collections` | 200 response. JSON array of collections, each with `slug`, `labels`, `fields` (schema descriptions), `access` booleans. |
-| I3 | `curl` | OpenAPI spec generated | `curl http://localhost:3000/api/openapi.json` | Valid OpenAPI 3.1 JSON. Contains CRUD paths for each collection (`/api/collections/{slug}`), auth endpoints, media endpoints, manifest endpoints. |
-| I4 | `curl` | Import preflight rejects unknown blocks | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d '{"pages":[{"slug":"test","blocks":[{"type":"nonexistent"}]}]}'` | 422 response. Body: `{ error: { code: "IMPORT_PREFLIGHT_FAILED", details: ["Unknown block type: nonexistent"] } }`. No data written. |
-| I5 | `curl` | Import succeeds with valid payload | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d @site-export.json` | 200 response. Body: `{ "success": true, "created": N, "updated": M, "skipped": [], "warnings": [] }`. Pages, navigation, theme, plugin configs applied. |
-| I6 | `curl` | Export site config | `curl /api/export -H 'Cookie: nx-session=...'` | 200 response. Body matches `NxSiteConfig` schema. Contains collection schemas, pages, theme, navigation, plugins, settings. Media refs include `{ id, filename, hash }`. Excludes passwords and API keys. |
-| I7 | Vitest | NxSiteConfig round-trip | 1. Export config 2. Reset DB 3. Import exported config 4. Export again | Second export matches first export (modulo timestamps, UUIDs). Slug-based upsert produces identical content. |
-| I8 | `curl` + `psql` | Import is transactional | 1. Send import with valid theme + page referencing nonexistent media 2. Check DB | 200 response with `warnings` listing unresolved media ref. Theme AND page both written (media ref nullified). If payload has structural error mid-write, entire import rolls back — `psql` confirms no partial data. |
-| I9 | `curl` | Import is idempotent | 1. POST same import payload twice | Both return 200. Second run: `created: 0, updated: N`. No duplicate pages or settings. |
-| I10 | `curl` | Non-admin import rejected | 1. Login as "author" role 2. POST `/api/import` | 403 response. `{ error: { code: "FORBIDDEN" } }`. |
+| #   | Tool            | Scenario                                | Steps                                                                                                                     | Expected                                                                                                                                                                                                             |
+| --- | --------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I1  | `curl`          | Block manifest API                      | `curl http://localhost:3000/api/manifest/blocks`                                                                          | 200 response. JSON array of blocks, each with `type`, `label`, `description`, `propsSchema` (valid JSON Schema), `defaultProps`, `category`.                                                                         |
+| I2  | `curl`          | Collection manifest API                 | `curl http://localhost:3000/api/manifest/collections`                                                                     | 200 response. JSON array of collections, each with `slug`, `labels`, `fields` (schema descriptions), `access` booleans.                                                                                              |
+| I3  | `curl`          | OpenAPI spec generated                  | `curl http://localhost:3000/api/openapi.json`                                                                             | Valid OpenAPI 3.1 JSON. Contains CRUD paths for each collection (`/api/collections/{slug}`), auth endpoints, media endpoints, manifest endpoints.                                                                    |
+| I4  | `curl`          | Import preflight rejects unknown blocks | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d '{"pages":[{"slug":"test","blocks":[{"type":"nonexistent"}]}]}'` | 422 response. Body: `{ error: { code: "IMPORT_PREFLIGHT_FAILED", details: ["Unknown block type: nonexistent"] } }`. No data written.                                                                                 |
+| I5  | `curl`          | Import succeeds with valid payload      | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d @site-export.json`                                               | 200 response. Body: `{ "success": true, "created": N, "updated": M, "skipped": [], "warnings": [] }`. Pages, navigation, theme, plugin configs applied.                                                              |
+| I6  | `curl`          | Export site config                      | `curl /api/export -H 'Cookie: nx-session=...'`                                                                            | 200 response. Body matches `NxSiteConfig` schema. Contains collection schemas, pages, theme, navigation, plugins, settings. Media refs include `{ id, filename, hash }`. Excludes passwords and API keys.            |
+| I7  | Vitest          | NxSiteConfig round-trip                 | 1. Export config 2. Reset DB 3. Import exported config 4. Export again                                                    | Second export matches first export (modulo timestamps, UUIDs). Slug-based upsert produces identical content.                                                                                                         |
+| I8  | `curl` + `psql` | Import is transactional                 | 1. Send import with valid theme + page referencing nonexistent media 2. Check DB                                          | 200 response with `warnings` listing unresolved media ref. Theme AND page both written (media ref nullified). If payload has structural error mid-write, entire import rolls back — `psql` confirms no partial data. |
+| I9  | `curl`          | Import is idempotent                    | 1. POST same import payload twice                                                                                         | Both return 200. Second run: `created: 0, updated: N`. No duplicate pages or settings.                                                                                                                               |
+| I10 | `curl`          | Non-admin import rejected               | 1. Login as "author" role 2. POST `/api/import`                                                                           | 403 response. `{ error: { code: "FORBIDDEN" } }`.                                                                                                                                                                    |
 
 ### QA-J: CLI & Project Structure
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| J1 | `npx` CLI | create-nexpress scaffolds project | `npx create-nexpress test-site --yes` (non-interactive defaults) | Directory `test-site/` created. Contains `src/collections/`, `src/blocks/`, `src/app/`, `src/nexpress.config.ts`, `docker/`, `package.json`, `.env.example`. |
-| J2 | `pnpm` CLI | Scaffolded project builds | 1. `cd test-site` 2. `pnpm install` 3. `pnpm build` | Exit code 0. `.next/` directory created. No type errors. |
-| J3 | `docker compose` | Docker compose starts full stack | 1. `cd test-site` 2. `docker compose up -d` 3. Wait for health checks | `nexpress` and `db` services running. `curl http://localhost:3000` returns 200. `docker compose exec db pg_isready` succeeds. |
-| J4 | `pnpm` CLI | Turbo pipeline order | 1. Run `pnpm build` from monorepo root | Packages build in dependency order: core → admin/editor/theme/blocks → cli → apps/web. No circular dependency errors. |
-| J5 | `pnpm` CLI | DB migration flow | 1. `pnpm db:generate` 2. `pnpm db:migrate` 3. `psql -c "\dt nx_*"` | Migration file created in `drizzle/migrations/`. Tables `nx_users`, `nx_sessions`, `nx_revisions`, `nx_settings`, `nx_navigation`, `nx_plugins`, `nx_media`, `nx_media_folders`, `nx_c_posts`, etc. all exist. |
-| J6 | `pnpm` CLI | Dev server starts | 1. `pnpm dev` 2. Wait for "Ready" message 3. `curl http://localhost:3000` | Dev server starts. Hot reload works. Public site and `/admin` routes both accessible. |
+| #   | Tool             | Scenario                          | Steps                                                                     | Expected                                                                                                                                                                                                       |
+| --- | ---------------- | --------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J1  | `npx` CLI        | create-nexpress scaffolds project | `npx create-nexpress test-site --yes` (non-interactive defaults)          | Directory `test-site/` created. Contains `src/collections/`, `src/blocks/`, `src/app/`, `src/nexpress.config.ts`, `docker/`, `package.json`, `.env.example`.                                                   |
+| J2  | `pnpm` CLI       | Scaffolded project builds         | 1. `cd test-site` 2. `pnpm install` 3. `pnpm build`                       | Exit code 0. `.next/` directory created. No type errors.                                                                                                                                                       |
+| J3  | `docker compose` | Docker compose starts full stack  | 1. `cd test-site` 2. `docker compose up -d` 3. Wait for health checks     | `nexpress` and `db` services running. `curl http://localhost:3000` returns 200. `docker compose exec db pg_isready` succeeds.                                                                                  |
+| J4  | `pnpm` CLI       | Turbo pipeline order              | 1. Run `pnpm build` from monorepo root                                    | Packages build in dependency order: core → admin/editor/theme/blocks → cli → apps/web. No circular dependency errors.                                                                                          |
+| J5  | `pnpm` CLI       | DB migration flow                 | 1. `pnpm db:generate` 2. `pnpm db:migrate` 3. `psql -c "\dt nx_*"`        | Migration file created in `drizzle/migrations/`. Tables `nx_users`, `nx_sessions`, `nx_revisions`, `nx_settings`, `nx_navigation`, `nx_plugins`, `nx_media`, `nx_media_folders`, `nx_c_posts`, etc. all exist. |
+| J6  | `pnpm` CLI       | Dev server starts                 | 1. `pnpm dev` 2. Wait for "Ready" message 3. `curl http://localhost:3000` | Dev server starts. Hot reload works. Public site and `/admin` routes both accessible.                                                                                                                          |
 
 ### QA-K: Routing Contract
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| K1 | `pnpm` CLI | Reserved path rejected as slug | 1. Set collection slug to `"admin"` in config 2. Run `pnpm db:generate` | CLI exits with error: "Slug 'admin' conflicts with reserved path". No schema generated. |
-| K2 | `pnpm` CLI | Page slug collision warned | 1. Create a page with slug `"blog"` 2. Have a collection with dedicated `/blog/[slug]` route 3. Run `pnpm build` | Build succeeds with WARNING: "Page slug 'blog' collides with static route /blog/[slug]. Page will be unreachable via catch-all." |
-| K3 | Playwright | Homepage matches optional catch-all | 1. Create page with slug `"/"` 2. `await page.goto('/')` | Homepage renders from `[[...slug]]` catch-all. Page content visible. No 404. |
-| K4 | Playwright | Nested page path resolves | 1. Create page with slug `"about/team"` 2. `await page.goto('/about/team')` | Page renders correctly via `[[...slug]]` catch-all. `slug` param is `["about", "team"]`. |
-| K5 | `curl` | Plugin root-level rewrite works | 1. Install SEO plugin with `rootPath: true` on `/sitemap.xml` 2. `pnpm build` 3. `curl http://localhost:3000/sitemap.xml` | Response is valid sitemap XML. Request was rewritten to `/api/plugins/seo/sitemap.xml` internally. |
-| K6 | `pnpm` CLI | Static routes take priority over catch-all | 1. Create page with slug `"api"` 2. `curl http://localhost:3000/api` | API route handler responds (not the page). Reserved path has higher priority. Config validator warned at build time. |
+| #   | Tool       | Scenario                                   | Steps                                                                                                                                | Expected                                                                                                             |
+| --- | ---------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| K1  | `pnpm` CLI | Reserved path rejected as slug             | 1. Set collection slug to `"admin"` in config 2. Run `pnpm db:generate`                                                              | CLI exits with error: "Slug 'admin' conflicts with reserved path". No schema generated.                              |
+| K2  | `pnpm` CLI | Page slug collision rejected               | 1. Create a page with slug `"blog"` 2. Have a collection with dedicated `/blog/[slug]` route 3. Run `pnpm build`                     | Build fails with error: "Page slug 'blog' collides with static route /blog/[slug]. Page would be unreachable."       |
+| K3  | Playwright | Homepage matches optional catch-all        | 1. Create page with slug `"/"` 2. `await page.goto('/')`                                                                             | Homepage renders from `[[...slug]]` catch-all. Page content visible. No 404.                                         |
+| K4  | Playwright | Nested page path resolves                  | 1. Create page with slug `"about/team"` 2. `await page.goto('/about/team')`                                                          | Page renders correctly via `[[...slug]]` catch-all. `slug` param is `["about", "team"]`.                             |
+| K5  | `curl`     | Plugin root-level rewrite works            | 1. Install SEO plugin with `kind: "site"` and `exposeAt: "/sitemap.xml"` 2. `pnpm build` 3. `curl http://localhost:3000/sitemap.xml` | Response is valid sitemap XML. Request was rewritten to `/api/plugins/seo/sitemap.xml` internally.                   |
+| K6  | `pnpm` CLI | Static routes take priority over catch-all | 1. Create page with slug `"api"` 2. `curl http://localhost:3000/api`                                                                 | API route handler responds (not the page). Reserved path has higher priority. Config validator warned at build time. |
 
 ### QA-L: Write Pipeline & Access Control
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| L1 | `curl` + `psql` | saveDocument atomic transaction | 1. POST to create a post with a `hasMany` relationship 2. Intentionally trigger a constraint violation on the join table (e.g., nonexistent category ID) 3. `psql: SELECT * FROM nx_c_posts` | Post row NOT created (entire transaction rolled back). No orphan rows in join tables. |
-| L2 | `curl` | Zod validation rejects invalid input | `curl -X POST /api/collections/posts -d '{"title": 123}'` with auth | 400 response. Body: `{ error: { code: "VALIDATION_ERROR", details: [{ path: ["title"], message: "Expected string" }] } }`. No document created. |
-| L3 | `curl` | Access control denies unauthorized create | 1. Configure posts access: `create: ({ user }) => user.role === "admin"` 2. Login as author 3. POST to create post | 403 response. `{ error: { code: "FORBIDDEN" } }`. No document created in DB. |
-| L4 | `curl` + `psql` | Before hook can modify data | 1. Add `beforeCreate` hook that sets `slug` from `title` 2. POST with title "Hello World" (no slug) | Document created with `slug: "hello-world"`. Hook transformation applied before DB write. |
-| L5 | `curl` + `psql` | After hooks run via job queue | 1. Add `afterCreate` hook that logs to a test table 2. POST to create a post 3. Wait 2s 4. Check test table | Post created immediately (201 response). After-hook side effect appears in test table within 2s (job queue processed). |
-| L6 | `curl` | Read access can be public or gated | 1. Set posts `access.read` to `() => true` (public) 2. GET `/api/collections/posts` without auth | 200 response. Public data returned. No auth cookie needed. |
+| #   | Tool            | Scenario                                  | Steps                                                                                                                                                                                        | Expected                                                                                                                                        |
+| --- | --------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1  | `curl` + `psql` | saveDocument atomic transaction           | 1. POST to create a post with a `hasMany` relationship 2. Intentionally trigger a constraint violation on the join table (e.g., nonexistent category ID) 3. `psql: SELECT * FROM nx_c_posts` | Post row NOT created (entire transaction rolled back). No orphan rows in join tables.                                                           |
+| L2  | `curl`          | Zod validation rejects invalid input      | `curl -X POST /api/collections/posts -d '{"title": 123}'` with auth                                                                                                                          | 400 response. Body: `{ error: { code: "VALIDATION_ERROR", details: [{ path: ["title"], message: "Expected string" }] } }`. No document created. |
+| L3  | `curl`          | Access control denies unauthorized create | 1. Configure posts access: `create: ({ user }) => user.role === "admin"` 2. Login as author 3. POST to create post                                                                           | 403 response. `{ error: { code: "FORBIDDEN" } }`. No document created in DB.                                                                    |
+| L4  | `curl` + `psql` | Before hook can modify data               | 1. Add `beforeCreate` hook that sets `slug` from `title` 2. POST with title "Hello World" (no slug)                                                                                          | Document created with `slug: "hello-world"`. Hook transformation applied before DB write.                                                       |
+| L5  | `curl` + `psql` | After hooks run via job queue             | 1. Add `afterCreate` hook that logs to a test table 2. POST to create a post 3. Wait 2s 4. Check test table                                                                                  | Post created immediately (201 response). After-hook side effect appears in test table within 2s (job queue processed).                          |
+| L6  | `curl`          | Read access can be public or gated        | 1. Set posts `access.read` to `() => true` (public) 2. GET `/api/collections/posts` without auth                                                                                             | 200 response. Public data returned. No auth cookie needed.                                                                                      |
 
 ### QA-M: Background Jobs & Worker
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| M1 | `curl` + `psql` | Media upload returns 202 and enqueues job | 1. POST `/api/media/upload` with a 5MB JPEG 2. Check response 3. `psql: SELECT status FROM nx_media WHERE id='{id}'` | 202 response with `{ id, status: "processing" }`. DB row has `status = "processing"`. Original file saved to storage. |
-| M2 | `psql` | Image processing job completes | 1. Upload image (M1) 2. Wait for worker 3. `psql: SELECT status, sizes FROM nx_media WHERE id='{id}'` | `status = "ready"`. `sizes` JSON contains thumbnail, small, medium, large, og entries with dimensions. Storage has all variant files. |
-| M3 | `psql` | Revision pruning job cleans old revisions | 1. Create 30 revisions for a single post 2. Run `system:revisionPrune` job (or wait for daily cron) 3. `psql: SELECT count(*) FROM nx_revisions WHERE document_id='{id}'` | Count ≤ `maxPublished` (default 20). Latest revision preserved. Oldest excess revisions deleted. |
-| M4 | `psql` | Session cleanup job | 1. Insert expired session rows (past `expires_at`) 2. Run `system:sessionCleanup` job 3. `psql: SELECT count(*) FROM nx_sessions WHERE expires_at < now()` | Count = 0. Expired sessions purged. Valid sessions untouched. |
-| M5 | `curl` + `psql` | Content save triggers cache invalidation job | 1. GET a cached page (ISR) 2. PATCH the post via API 3. Wait 2s for job 4. GET same page again | Updated content appears. `content:afterSave` job ran `revalidateTag`. Second request shows fresh data. |
+| #   | Tool            | Scenario                                     | Steps                                                                                                                                                                     | Expected                                                                                                                              |
+| --- | --------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| M1  | `curl` + `psql` | Media upload returns 202 and enqueues job    | 1. POST `/api/media/upload` with a 5MB JPEG 2. Check response 3. `psql: SELECT status FROM nx_media WHERE id='{id}'`                                                      | 202 response with `{ id, status: "processing" }`. DB row has `status = "processing"`. Original file saved to storage.                 |
+| M2  | `psql`          | Image processing job completes               | 1. Upload image (M1) 2. Wait for worker 3. `psql: SELECT status, sizes FROM nx_media WHERE id='{id}'`                                                                     | `status = "ready"`. `sizes` JSON contains thumbnail, small, medium, large, og entries with dimensions. Storage has all variant files. |
+| M3  | `psql`          | Revision pruning job cleans old revisions    | 1. Create 30 revisions for a single post 2. Run `system:revisionPrune` job (or wait for daily cron) 3. `psql: SELECT count(*) FROM nx_revisions WHERE document_id='{id}'` | Count ≤ `maxPublished` (default 20). Latest revision preserved. Oldest excess revisions deleted.                                      |
+| M4  | `psql`          | Session cleanup job                          | 1. Insert expired session rows (past `expires_at`) 2. Run `system:sessionCleanup` job 3. `psql: SELECT count(*) FROM nx_sessions WHERE expires_at < now()`                | Count = 0. Expired sessions purged. Valid sessions untouched.                                                                         |
+| M5  | `curl` + `psql` | Content save triggers cache invalidation job | 1. GET a cached page (ISR) 2. PATCH the post via API 3. Wait 2s for job 4. GET same page again                                                                            | Updated content appears. `content:afterSave` job ran `revalidateTag`. Second request shows fresh data.                                |
 
 ### QA-N: Platform Policies
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| N1 | `curl` | API errors follow NxApiError format | 1. GET `/api/collections/nonexistent` | 404 response. Body matches `{ error: { code: "NOT_FOUND", message: "..." }, status: 404 }`. No ad-hoc error format. |
-| N2 | `curl` | Security headers present | `curl -I http://localhost:3000/` | Response headers include: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy` with `frame-ancestors 'none'`. |
-| N3 | `curl` | Auth endpoint rate limited | 1. Send 11 rapid POST requests to `/api/auth/login` from same IP | First 10 return 401 (wrong password). 11th returns 429 `{ error: { code: "RATE_LIMITED" } }`. |
-| N4 | Vitest | CSS sanitization strips injection | 1. Call `sanitizeTokenValue("red; } body { background: url(evil)")` | Returns `"red  body { background evil"` (semicolons stripped, url() stripped, block terminators stripped). Length ≤ 200 chars. |
-| N5 | Vitest | nxCache wraps unstable_cache | 1. Mock `unstable_cache` 2. Call `nxCache(fn, ["key"], { tags: ["t1"] })` 3. Check mock was called | `unstable_cache` called with same arguments. Abstraction is pass-through. |
-| N6 | `curl` | Draft content not cached | 1. Enter draft mode (`/api/preview?path=/blog/draft`) 2. GET draft page 3. Check response headers | `Cache-Control: no-store` header present. Draft content served fresh from DB, not from ISR cache. |
-| N7 | `pnpm` CLI | Local storage multi-node warning | 1. Set `NX_MULTI_NODE=true` in env 2. Set storage adapter to "local" 3. Start server | Console output includes WARNING: "LocalStorageAdapter is not compatible with multi-node deployments. Use S3." |
+| #   | Tool       | Scenario                            | Steps                                                                                              | Expected                                                                                                                                                                                           |
+| --- | ---------- | ----------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| N1  | `curl`     | API errors follow NxApiError format | 1. GET `/api/collections/nonexistent`                                                              | 404 response. Body matches `{ error: { code: "NOT_FOUND", message: "..." }, status: 404 }`. No ad-hoc error format.                                                                                |
+| N2  | `curl`     | Security headers present            | `curl -I http://localhost:3000/`                                                                   | Response headers include: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy` with `frame-ancestors 'none'`. |
+| N3  | `curl`     | Auth endpoint rate limited          | 1. Send 11 rapid POST requests to `/api/auth/login` from same IP                                   | First 10 return 401 (wrong password). 11th returns 429 `{ error: { code: "RATE_LIMITED" } }`.                                                                                                      |
+| N4  | Vitest     | CSS sanitization strips injection   | 1. Call `sanitizeTokenValue("red; } body { background: url(evil)")`                                | Returns `"red  body { background evil"` (semicolons stripped, url() stripped, block terminators stripped). Length ≤ 200 chars.                                                                     |
+| N5  | Vitest     | nxCache wraps unstable_cache        | 1. Mock `unstable_cache` 2. Call `nxCache(fn, ["key"], { tags: ["t1"] })` 3. Check mock was called | `unstable_cache` called with same arguments. Abstraction is pass-through.                                                                                                                          |
+| N6  | `curl`     | Draft content not cached            | 1. Enter draft mode (`/api/preview?path=/blog/draft`) 2. GET draft page 3. Check response headers  | `Cache-Control: no-store` header present. Draft content served fresh from DB, not from ISR cache.                                                                                                  |
+| N7  | `pnpm` CLI | Local storage multi-node warning    | 1. Set `NX_MULTI_NODE=true` in env 2. Set storage adapter to "local" 3. Start server               | Console output includes WARNING: "LocalStorageAdapter is not compatible with multi-node deployments. Use S3."                                                                                      |
 
 ### QA-O: Schema Evolution & Validation
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| O1 | `curl` | Runtime Zod validation rejects invalid data | 1. POST `/api/collections/posts` with `{ title: null }` where title is `required: true` | 400 response. `{ error: { code: "VALIDATION_ERROR", details: [{ path: ["title"] }] } }`. |
-| O2 | `curl` | Runtime Zod validates field constraints | 1. Define text field with `minLength: 5` 2. POST with `{ title: "Hi" }` | 400 response. Zod error includes "String must contain at least 5 character(s)". |
-| O3 | `pnpm` CLI | Add field generates safe migration | 1. Add `subtitle: text` field 2. Run `pnpm db:generate` | Migration SQL: `ALTER TABLE ADD COLUMN subtitle text`. Column is nullable. No data loss. |
-| O4 | `pnpm` CLI | Remove field warns about data loss | 1. Remove `subtitle` field from config 2. Run `pnpm db:generate` | CLI prints WARNING: "Field 'subtitle' removed from 'posts'. This will drop data." Migration file generated but NOT auto-applied. |
-| O5 | `pnpm` CLI | Type change requires manual migration | 1. Change field type from `text` to `number` 2. Run `pnpm db:generate` | CLI prints ERROR: "Type change on field. Manual migration required." Developer must write custom migration with CAST. |
-| O6 | `curl` + `psql` | Media ref tracking on save | 1. Create a post with an upload field referencing media ID `{mid}` 2. `psql: SELECT * FROM nx_media_refs WHERE media_id='{mid}'` | Row exists with `collection: "posts"`, `document_id: "{pid}"`, `field: "image"`. |
-| O7 | `curl` | Delete media blocked when in use | 1. Upload media 2. Reference it in a post 3. `DELETE /api/media/{id}` | 409 response. `{ error: { code: "MEDIA_IN_USE", references: [{ collection: "posts", documentId: "..." }] } }`. Media not deleted. |
-| O8 | `curl` + `psql` | Delete unreferenced media soft-deletes | 1. Upload media (no references) 2. `DELETE /api/media/{id}` 3. `psql: SELECT deleted_at FROM nx_media WHERE id='{id}'` | 200 response. `deleted_at` is set to current timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days). |
+| #   | Tool            | Scenario                                    | Steps                                                                                                                            | Expected                                                                                                                          |
+| --- | --------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| O1  | `curl`          | Runtime Zod validation rejects invalid data | 1. POST `/api/collections/posts` with `{ title: null }` where title is `required: true`                                          | 400 response. `{ error: { code: "VALIDATION_ERROR", details: [{ path: ["title"] }] } }`.                                          |
+| O2  | `curl`          | Runtime Zod validates field constraints     | 1. Define text field with `minLength: 5` 2. POST with `{ title: "Hi" }`                                                          | 400 response. Zod error includes "String must contain at least 5 character(s)".                                                   |
+| O3  | `pnpm` CLI      | Add field generates safe migration          | 1. Add `subtitle: text` field 2. Run `pnpm db:generate`                                                                          | Migration SQL: `ALTER TABLE ADD COLUMN subtitle text`. Column is nullable. No data loss.                                          |
+| O4  | `pnpm` CLI      | Remove field warns about data loss          | 1. Remove `subtitle` field from config 2. Run `pnpm db:generate`                                                                 | CLI prints WARNING: "Field 'subtitle' removed from 'posts'. This will drop data." Migration file generated but NOT auto-applied.  |
+| O5  | `pnpm` CLI      | Type change requires manual migration       | 1. Change field type from `text` to `number` 2. Run `pnpm db:generate`                                                           | CLI prints ERROR: "Type change on field. Manual migration required." Developer must write custom migration with CAST.             |
+| O6  | `curl` + `psql` | Media ref tracking on save                  | 1. Create a post with an upload field referencing media ID `{mid}` 2. `psql: SELECT * FROM nx_media_refs WHERE media_id='{mid}'` | Row exists with `collection: "posts"`, `document_id: "{pid}"`, `field: "image"`.                                                  |
+| O7  | `curl`          | Delete media blocked when in use            | 1. Upload media 2. Reference it in a post 3. `DELETE /api/media/{id}`                                                            | 409 response. `{ error: { code: "MEDIA_IN_USE", references: [{ collection: "posts", documentId: "..." }] } }`. Media not deleted. |
+| O8  | `curl` + `psql` | Delete unreferenced media soft-deletes      | 1. Upload media (no references) 2. `DELETE /api/media/{id}` 3. `psql: SELECT deleted_at FROM nx_media WHERE id='{id}'`           | 200 response. `deleted_at` is set to current timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).    |
 
 ### QA-P: Search
 
-| # | Tool | Scenario | Steps | Expected |
-|---|---|---|---|---|
-| P1 | `curl` | Full-text search returns ranked results | 1. Seed 3 posts: "TypeScript Guide", "JavaScript Tips", "TypeScript Advanced" 2. `GET /api/collections/posts?search=TypeScript` | 200 response. Results contain 2 posts. Ordered by relevance (ts_rank). "TypeScript Guide" and "TypeScript Advanced" returned, "JavaScript Tips" excluded. |
-| P2 | `curl` | Search works across rich text content | 1. Create a post with title "Intro" and rich text body containing "PostgreSQL optimization" 2. `GET /api/collections/posts?search=PostgreSQL` | 200 response. Post returned — search vector includes text extracted from Lexical rich text JSON. |
-| P3 | `psql` | Search vector auto-populated | 1. Create a post via API 2. `psql: SELECT search_vector FROM nx_c_posts WHERE id='{id}'` | `search_vector` column is NOT NULL. Contains tsvector tokens from title, excerpt, and rich text content fields. |
-| P4 | `curl` | Empty search returns all documents | `GET /api/collections/posts` (no `search` param) | 200 response. Returns paginated results sorted by `-createdAt` (default). No FTS filtering applied. |
-| P5 | `psql` | GIN index exists on search_vector | `psql: SELECT indexname FROM pg_indexes WHERE tablename='nx_c_posts' AND indexdef LIKE '%gin%'` | At least one GIN index on `search_vector` column. |
-
+| #   | Tool   | Scenario                                | Steps                                                                                                                                         | Expected                                                                                                                                                  |
+| --- | ------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | `curl` | Full-text search returns ranked results | 1. Seed 3 posts: "TypeScript Guide", "JavaScript Tips", "TypeScript Advanced" 2. `GET /api/collections/posts?search=TypeScript`               | 200 response. Results contain 2 posts. Ordered by relevance (ts_rank). "TypeScript Guide" and "TypeScript Advanced" returned, "JavaScript Tips" excluded. |
+| P2  | `curl` | Search works across rich text content   | 1. Create a post with title "Intro" and rich text body containing "PostgreSQL optimization" 2. `GET /api/collections/posts?search=PostgreSQL` | 200 response. Post returned — search vector includes text extracted from Lexical rich text JSON.                                                          |
+| P3  | `psql` | Search vector auto-populated            | 1. Create a post via API 2. `psql: SELECT search_vector FROM nx_c_posts WHERE id='{id}'`                                                      | `search_vector` column is NOT NULL. Contains tsvector tokens from title, excerpt, and rich text content fields.                                           |
+| P4  | `curl` | Empty search returns all documents      | `GET /api/collections/posts` (no `search` param)                                                                                              | 200 response. Returns paginated results sorted by `-createdAt` (default). No FTS filtering applied.                                                       |
+| P5  | `psql` | GIN index exists on search_vector       | `psql: SELECT indexname FROM pg_indexes WHERE tablename='nx_c_posts' AND indexdef LIKE '%gin%'`                                               | At least one GIN index on `search_vector` column.                                                                                                         |
