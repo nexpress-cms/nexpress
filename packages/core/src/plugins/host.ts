@@ -71,6 +71,26 @@ export interface PluginAdminExtension {
     rowsActionId: string;
     emptyMessage?: string;
   }>;
+  collectionTabs?: Array<{
+    id: string;
+    label: string;
+    collections: string[] | "*";
+    widgets?: Array<{
+      id: string;
+      label: string;
+      kind: "metric" | "status";
+      actionId: string;
+      description?: string;
+    }>;
+    actions?: Array<{
+      id: string;
+      label: string;
+      actionId: string;
+      confirm?: string;
+      description?: string;
+    }>;
+    description?: string;
+  }>;
 }
 
 interface PluginRegistration {
@@ -366,6 +386,51 @@ export function getAllPluginIds(): string[] {
 
 export function getPluginAdminExtension(pluginId: string): PluginAdminExtension | undefined {
   return pluginRegistry.get(pluginId)?.admin;
+}
+
+/**
+ * Resolved collection-tab descriptor for the admin collection edit view.
+ * Each entry carries pluginId + pluginName so the client component can
+ * dispatch actions and label cards per-plugin.
+ */
+export interface ResolvedCollectionTab {
+  pluginId: string;
+  pluginName: string;
+  id: string;
+  label: string;
+  widgets?: NonNullable<PluginAdminExtension["collectionTabs"]>[number]["widgets"];
+  actions?: NonNullable<PluginAdminExtension["collectionTabs"]>[number]["actions"];
+  description?: string;
+}
+
+/**
+ * Collects all `collectionTabs` entries declared by loaded plugins whose
+ * `collections` filter matches the given slug (either `"*"` or includes it).
+ * The returned array is already flattened and annotated with the source
+ * plugin, ready to pass into the admin edit view.
+ */
+export function getCollectionTabsForSlug(collectionSlug: string): ResolvedCollectionTab[] {
+  const result: ResolvedCollectionTab[] = [];
+  for (const registration of pluginRegistry.values()) {
+    const tabs = registration.admin?.collectionTabs;
+    if (!tabs || tabs.length === 0) continue;
+    for (const tab of tabs) {
+      const matches =
+        tab.collections === "*" ||
+        (Array.isArray(tab.collections) && tab.collections.includes(collectionSlug));
+      if (!matches) continue;
+      result.push({
+        pluginId: registration.id,
+        pluginName: registration.name,
+        id: tab.id,
+        label: tab.label,
+        widgets: tab.widgets,
+        actions: tab.actions,
+        description: tab.description,
+      });
+    }
+  }
+  return result;
 }
 
 /**

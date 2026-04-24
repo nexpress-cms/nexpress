@@ -170,11 +170,30 @@ export interface NxAdminTableExtension {
   emptyMessage?: string;
 }
 
+/**
+ * Per-document sidebar Card injected into the collection edit view.
+ * Reuses the widget / action kinds from the plugin admin page but scoped
+ * to the currently-edited document — admin passes `{ collection, documentId }`
+ * in the action dispatch body so plugins can compute per-doc metrics or
+ * act on the current doc.
+ *
+ * `collections: "*"` shows the tab on every collection. Use sparingly.
+ */
+export interface NxCollectionTabExtension {
+  id: string;
+  label: string;
+  collections: string[] | "*";
+  widgets?: NxAdminWidgetExtension[];
+  actions?: NxAdminActionExtension[];
+  description?: string;
+}
+
 export interface NxAdminExtension {
   settings?: NxAdminSettingsExtension;
   widgets?: NxAdminWidgetExtension[];
   actions?: NxAdminActionExtension[];
   tables?: NxAdminTableExtension[];
+  collectionTabs?: NxCollectionTabExtension[];
 }
 
 export interface NxContentFilterOperator {

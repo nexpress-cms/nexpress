@@ -231,7 +231,7 @@ export const seoAuditPlugin = definePlugin({
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    capabilities: ["hooks:content", "api:route"],
+    capabilities: ["hooks:content", "api:route", "content:read", "admin:collection-tab"],
     allowedHosts: [],
     provides: {
       blocks: [],
@@ -321,6 +321,31 @@ export const seoAuditPlugin = definePlugin({
         description: "Demo action — runs the audit against a synthetic payload.",
       },
     ],
+    collectionTabs: [
+      {
+        id: "seo",
+        label: "SEO audit",
+        collections: ["posts"],
+        description:
+          "Live-audits the post you are editing. Widget shows the score; action re-runs the audit on demand.",
+        widgets: [
+          {
+            id: "doc-score",
+            label: "SEO score",
+            kind: "metric",
+            actionId: "auditDocument",
+          },
+        ],
+        actions: [
+          {
+            id: "rescan-doc",
+            label: "Re-scan this post",
+            actionId: "auditDocument",
+            description: "Re-audit the current post and return an updated score.",
+          },
+        ],
+      },
+    ],
   },
   setup: async (ctx) => {
     // These demo handlers prove the declarative admin surface end-to-end.
@@ -339,6 +364,30 @@ export const seoAuditPlugin = definePlugin({
       return {
         ok: true,
         data: `Score: ${sample.score}, issues: ${sample.issues.length}`,
+      };
+    });
+
+    // Powers the per-document collection tab: widget shows the score, action
+    // re-runs the audit on demand. Both share the same handler — widget reads
+    // `{ value, delta }`; action displays a success toast.
+    ctx.actions.register("auditDocument", async (payload) => {
+      const data = payload && typeof payload === "object" ? (payload as JsonRecord) : {};
+      const collection = typeof data.collection === "string" ? data.collection : "";
+      const documentId = typeof data.documentId === "string" ? data.documentId : "";
+      if (!collection || !documentId) {
+        return { ok: false, error: "auditDocument requires { collection, documentId }" };
+      }
+      const doc = (await ctx.content.findOne(collection, documentId)) as JsonRecord | null;
+      if (!doc) {
+        return { ok: false, error: `Document ${collection}/${documentId} not found` };
+      }
+      const result = auditSeo(extractInputFromDocument(doc));
+      return {
+        ok: true,
+        data: {
+          value: result.score,
+          delta: `${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}`,
+        },
       };
     });
   },

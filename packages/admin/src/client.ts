@@ -3,6 +3,12 @@ export { AdminTopbar } from "./layout/admin-topbar.js";
 
 export { CollectionListView } from "./collections/collection-list-view.js";
 export { CollectionEditView } from "./collections/collection-edit-view.js";
+export { CollectionTabs } from "./collections/collection-tabs.js";
+export type {
+  CollectionTabDescriptor,
+  CollectionTabWidget,
+  CollectionTabAction,
+} from "./collections/collection-tabs.js";
 export { FieldRenderer } from "./collections/field-renderer.js";
 export { RevisionsPanel } from "./collections/revisions-panel.js";
 

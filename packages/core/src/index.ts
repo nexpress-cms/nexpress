@@ -197,6 +197,7 @@ export {
   getPluginRegistration,
   getAllPluginIds,
   getPluginAdminExtension,
+  getCollectionTabsForSlug,
   dispatchPluginAction,
   schedulePluginTask,
   resetPlugins,
@@ -211,6 +212,7 @@ export type {
   PluginRouteRequest,
   PluginRouteResponse,
   PluginAdminExtension,
+  ResolvedCollectionTab,
   NxPluginState,
   NxPluginStateUpdate,
 } from "./plugins/index.js";

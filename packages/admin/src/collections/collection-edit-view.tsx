@@ -9,6 +9,7 @@ import { Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
 import { FieldRenderer } from "./field-renderer.js";
 import { RevisionsPanel } from "./revisions-panel.js";
 import { Button } from "../ui/button.js";
@@ -20,6 +21,7 @@ interface CollectionEditViewProps {
   config: NxCollectionConfig;
   doc?: Record<string, unknown>;
   collectionSlug: string;
+  collectionTabs?: CollectionTabDescriptor[];
 }
 
 type ToastState = {
@@ -178,7 +180,7 @@ const isVisibleField = (field: NxFieldConfig): boolean => {
 
 type SaveStatus = "draft" | "published";
 
-export function CollectionEditView({ config, doc, collectionSlug }: CollectionEditViewProps) {
+export function CollectionEditView({ config, doc, collectionSlug, collectionTabs }: CollectionEditViewProps) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
   const [savingAs, setSavingAs] = useState<SaveStatus | null>(null);
@@ -395,6 +397,14 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
             {doc?.id && config.versions ? (
               <RevisionsPanel
                 collectionSlug={collectionSlug}
+                documentId={String(doc.id)}
+              />
+            ) : null}
+
+            {doc?.id && collectionTabs && collectionTabs.length > 0 ? (
+              <CollectionTabs
+                tabs={collectionTabs}
+                collection={collectionSlug}
                 documentId={String(doc.id)}
               />
             ) : null}
