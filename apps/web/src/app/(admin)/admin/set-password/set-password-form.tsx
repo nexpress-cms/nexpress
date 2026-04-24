@@ -54,9 +54,7 @@ export function SetPasswordForm() {
       // or a resurrected back-button can't re-submit it. The token is already
       // single-use and has been cleared from the DB by reset-password, but
       // defence in depth.
-      if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", "/admin/set-password");
-      }
+      window.history.replaceState(null, "", "/admin/set-password");
 
       setStatus("done");
     } catch {

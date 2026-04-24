@@ -23,6 +23,18 @@ const VALID_ROLES: readonly NxUserRole[] = ["admin", "editor", "author", "viewer
 // 7 days to complete initial password setup.
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
+// Invited users never log in with the placeholder password — they set their
+// own via the reset link before the hash is ever verified. Compute one
+// unrecoverable Argon2 hash per process and reuse it instead of paying
+// ~100ms on every invite for a hash that nobody will ever verify against.
+let invitePlaceholderHashPromise: Promise<string> | null = null;
+function getInvitePlaceholderHash(): Promise<string> {
+  if (!invitePlaceholderHashPromise) {
+    invitePlaceholderHashPromise = hashPassword(randomBytes(32).toString("hex"));
+  }
+  return invitePlaceholderHashPromise;
+}
+
 function buildResetUrl(request: NextRequest, token: string): string {
   const configured = process.env.SITE_URL;
   const base = configured ? new URL(configured) : new URL(request.url);
@@ -61,11 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    // Placeholder password — the invitee overwrites it via the reset link. Use
-    // argon2 over a throwaway secret so the column constraint holds without
-    // leaving a guessable hash.
-    const placeholder = randomBytes(32).toString("hex");
-    const hashed = await hashPassword(placeholder);
+    const hashed = await getInvitePlaceholderHash();
 
     let created: { id: string; email: string; name: string; role: NxUserRole };
     try {
