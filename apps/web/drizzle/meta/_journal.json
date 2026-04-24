@@ -22,6 +22,13 @@
       "when": 1777000001584,
       "tag": "0002_cool_turbo",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777008112856,
+      "tag": "0003_overconfident_iron_fist",
+      "breakpoints": true
     }
   ]
 }
