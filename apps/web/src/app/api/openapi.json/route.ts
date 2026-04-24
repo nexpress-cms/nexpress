@@ -80,7 +80,37 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
 
 function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
-  const schemas: Record<string, OpenApiSchema> = {};
+  const schemas: Record<string, OpenApiSchema> = {
+    plugin_item: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        version: { type: "string", nullable: true },
+        description: { type: "string", nullable: true },
+        capabilities: { type: "array", items: { type: "string" } },
+        hooks: { type: "array", items: { type: "string" } },
+        routes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              method: { type: "string" },
+              path: { type: "string" },
+            },
+          },
+        },
+        enabled: { type: "boolean" },
+        config: { type: "object", additionalProperties: true },
+        installedAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        loaded: {
+          type: "boolean",
+          description: "True when the plugin is currently registered in this process (may lag the DB flag until restart).",
+        },
+      },
+    },
+  };
   const paths: Record<string, OpenApiSchema> = {
     "/api/auth/login": {
       post: {
@@ -192,6 +222,68 @@ function buildSpec(): OpenApiSchema {
         },
       },
     },
+    "/api/plugins": {
+      get: {
+        summary: "List installed plugins with enabled state + registry info (admin only)",
+        responses: {
+          "200": {
+            description: "Plugin list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    items: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/plugin_item" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not an admin" },
+        },
+      },
+    },
+    "/api/plugins/{pluginId}": {
+      parameters: [{ in: "path", name: "pluginId", required: true, schema: { type: "string" } }],
+      get: {
+        summary: "Get a single plugin (admin only)",
+        responses: {
+          "200": {
+            description: "Plugin detail",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } } },
+          },
+          "404": { description: "Plugin id unknown" },
+        },
+      },
+      patch: {
+        summary: "Enable/disable a plugin or update its config (admin only)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  enabled: { type: "boolean" },
+                  config: { type: "object", additionalProperties: true },
+                },
+                description: "At least one of `enabled` or `config` must be provided.",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated plugin",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } } },
+          },
+          "404": { description: "Plugin id unknown" },
+        },
+      },
+    },
   };
 
   for (const slug of slugs) {
@@ -257,6 +349,88 @@ function buildSpec(): OpenApiSchema {
         responses: { "204": { description: "Deleted" } },
       },
     };
+
+    if (manifest.versions.drafts) {
+      const revisionSummary: OpenApiSchema = {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          version: { type: "integer" },
+          status: { type: "string", enum: ["draft", "published", "autosave"] },
+          changedFields: { type: "array", items: { type: "string" } },
+          authorId: { type: "string", format: "uuid", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      };
+
+      paths[`/api/collections/${slug}/{id}/revisions`] = {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        get: {
+          summary: `List revisions for a ${manifest.labels.singular.toLowerCase()}`,
+          parameters: [
+            { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
+            { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+          ],
+          responses: {
+            "200": {
+              description: "Paged revisions",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      revisions: { type: "array", items: revisionSummary },
+                      total: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      paths[`/api/collections/${slug}/{id}/revisions/{revisionId}`] = {
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+          { in: "path", name: "revisionId", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        get: {
+          summary: `Get a single revision with snapshot`,
+          responses: {
+            "200": {
+              description: "Revision with full snapshot",
+              content: {
+                "application/json": {
+                  schema: {
+                    allOf: [
+                      revisionSummary,
+                      { type: "object", properties: { snapshot: { type: "object", additionalProperties: true } } },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      paths[`/api/collections/${slug}/{id}/revisions/{revisionId}/restore`] = {
+        parameters: [
+          { in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } },
+          { in: "path", name: "revisionId", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        post: {
+          summary: `Restore a prior revision as the current document`,
+          responses: {
+            "200": {
+              description: "Document after restore",
+              content: { "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } } },
+            },
+          },
+        },
+      };
+    }
   }
 
   return {

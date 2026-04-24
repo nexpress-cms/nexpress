@@ -75,6 +75,16 @@ export {
   deleteDocument,
   findDocuments,
   getDocumentById,
+  listRevisions,
+  getRevision,
+  restoreRevision,
+} from "./collections/index.js";
+export type {
+  NxRevision,
+  NxRevisionSummary,
+  NxRevisionStatus,
+  NxRevisionListOptions,
+  NxRevisionListResult,
 } from "./collections/index.js";
 
 export {
@@ -169,10 +179,16 @@ export {
   getAllPluginIds,
   schedulePluginTask,
   resetPlugins,
+  listPluginStates,
+  getPluginState,
+  syncPluginRegistrations,
+  updatePluginState,
 } from "./plugins/index.js";
 export type {
   PluginHookHandler,
   PluginRouteHandler,
   PluginRouteRequest,
   PluginRouteResponse,
+  NxPluginState,
+  NxPluginStateUpdate,
 } from "./plugins/index.js";

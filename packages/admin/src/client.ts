@@ -4,6 +4,7 @@ export { AdminTopbar } from "./layout/admin-topbar.js";
 export { CollectionListView } from "./collections/collection-list-view.js";
 export { CollectionEditView } from "./collections/collection-edit-view.js";
 export { FieldRenderer } from "./collections/field-renderer.js";
+export { RevisionsPanel } from "./collections/revisions-panel.js";
 
 export { DashboardView } from "./dashboard/dashboard-view.js";
 
@@ -14,6 +15,7 @@ export { SettingsView } from "./settings/settings-view.js";
 export { ThemeEditor } from "./settings/theme-editor.js";
 export { NavigationEditor } from "./settings/navigation-editor.js";
 export { UserManagement } from "./settings/user-management.js";
+export { PluginsManager } from "./settings/plugins-manager.js";
 
 export { Button } from "./ui/button.js";
 export { Input } from "./ui/input.js";
