@@ -26,6 +26,8 @@ npx create-nexpress my-site
 cd my-site
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db
+cp .env.example .env
+pnpm build
 pnpm dev
 ```
 
@@ -59,21 +61,23 @@ pnpm dev
 
 Prerequisites: Node >=20, pnpm, Turborepo.
 
+> This monorepo uses `pnpm@10.33.0` and Node 20+.
+
 ## Tech Stack
 
-| Layer | Technology |
-| --- | --- |
-| Framework | Next.js 15 (App Router) |
-| Language | TypeScript (strict) |
-| Database | PostgreSQL + Drizzle ORM |
-| Editor | Lexical |
-| UI | React 19 + Tailwind CSS v4 + Radix UI |
-| Block DnD | @dnd-kit |
-| Auth | JWT + Argon2 |
-| Jobs | pg-boss |
-| Media | sharp |
-| Build | pnpm + Turborepo + tsup |
-| Deploy | Docker (standalone) |
+| Layer     | Technology                            |
+| --------- | ------------------------------------- |
+| Framework | Next.js 15 (App Router)               |
+| Language  | TypeScript (strict)                   |
+| Database  | PostgreSQL + Drizzle ORM              |
+| Editor    | Lexical                               |
+| UI        | React 19 + Tailwind CSS v4 + Radix UI |
+| Block DnD | @dnd-kit                              |
+| Auth      | JWT + Argon2                          |
+| Jobs      | pg-boss                               |
+| Media     | sharp                                 |
+| Build     | pnpm + Turborepo + tsup               |
+| Deploy    | Docker (standalone)                   |
 
 ## Plugin Development
 
@@ -125,16 +129,23 @@ my-site/
 
 ## Scripts
 
-| Script | Description |
-| --- | --- |
-| `pnpm build` | Build all packages and applications |
-| `pnpm dev` | Start development servers for all packages |
-| `pnpm lint` | Run ESLint across the monorepo |
-| `pnpm typecheck` | Run TypeScript compiler checks |
-| `pnpm test` | Execute test suites |
-| `pnpm db:generate` | Generate Drizzle migrations |
-| `pnpm db:migrate` | Apply database migrations |
-| `pnpm clean` | Remove build artifacts and node_modules |
+| Script             | Description                                               |
+| ------------------ | --------------------------------------------------------- |
+| `pnpm build`       | Build all packages and applications                       |
+| `pnpm dev`         | Start development servers for all packages                |
+| `pnpm lint`        | Run root ESLint (type-aware lint rules)                   |
+| `pnpm typecheck`   | Run workspace `tsc --noEmit` via Turbo (`turbo run lint`) |
+| `pnpm test`        | Run workspace test scripts (`turbo run test`)             |
+| `pnpm db:generate` | Generate Drizzle migrations                               |
+| `pnpm db:migrate`  | Apply database migrations                                 |
+| `pnpm clean`       | Remove build artifacts and node_modules                   |
+
+## Monorepo Notes (Important)
+
+- Run `pnpm build` once before `pnpm dev` in a fresh clone. Workspace packages resolve from `dist/`.
+- Workspace TypeScript uses `moduleResolution: NodeNext`; relative imports in `.ts` files must use `.js` extensions.
+- `@nexpress/core` is server-only. Do not import it from client components.
+- `pnpm lint` (ESLint) and `pnpm typecheck` (Turbo + `tsc --noEmit`) are different commands by design.
 
 ## License
 
