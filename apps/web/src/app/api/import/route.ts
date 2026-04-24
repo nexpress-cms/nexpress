@@ -3,6 +3,7 @@ import {
   NxValidationError,
   hasRole,
   nxMedia,
+  nxPlugins,
   nxSettings,
   nxNavigation,
   getAllCollectionSlugs,
@@ -11,6 +12,8 @@ import {
 import type { NxNavItem } from "@nexpress/core";
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
+
+const SUPPORTED_EXPORT_VERSION = "1";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -27,7 +30,14 @@ interface ImportMedia {
   hash?: string;
 }
 
+interface ImportPlugin {
+  id: string;
+  enabled?: boolean;
+  config?: unknown;
+}
+
 interface ImportPayload {
+  version?: string;
   theme?: Record<string, unknown>;
   settings?: Record<string, unknown>;
   navigation?:
@@ -35,12 +45,26 @@ interface ImportPayload {
     | Array<{ location?: string; items: NxNavItem[] }>;
   collections?: Record<string, Record<string, unknown>[]>;
   media?: ImportMedia[];
+  plugins?: ImportPlugin[];
 }
 
 function validatePayload(body: unknown): ImportPayload {
   if (!isRecord(body)) {
     throw new NxValidationError("Invalid input", [
       { field: "body", message: "Request body must be a JSON object" },
+    ]);
+  }
+
+  if (body.version !== undefined && body.version !== SUPPORTED_EXPORT_VERSION) {
+    const supplied =
+      typeof body.version === "string" || typeof body.version === "number"
+        ? String(body.version)
+        : "unknown";
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "version",
+        message: `Unsupported export version "${supplied}" (expected "${SUPPORTED_EXPORT_VERSION}")`,
+      },
     ]);
   }
 
@@ -83,6 +107,21 @@ function validatePayload(body: unknown): ImportPayload {
       if (!isRecord(entry) || typeof entry.id !== "string") {
         throw new NxValidationError("Invalid input", [
           { field: `media.${i}`, message: "Each media item must include an id" },
+        ]);
+      }
+    }
+  }
+
+  if (body.plugins !== undefined) {
+    if (!Array.isArray(body.plugins)) {
+      throw new NxValidationError("Invalid input", [
+        { field: "plugins", message: "plugins must be an array" },
+      ]);
+    }
+    for (const [i, entry] of body.plugins.entries()) {
+      if (!isRecord(entry) || typeof entry.id !== "string") {
+        throw new NxValidationError("Invalid input", [
+          { field: `plugins.${i}.id`, message: "Each plugin must include an id" },
         ]);
       }
     }
@@ -246,6 +285,44 @@ export async function POST(request: NextRequest) {
               `Failed to import doc in '${slug}': ${err instanceof Error ? err.message : "unknown"}`,
             );
           }
+        }
+      }
+    }
+
+    if (payload.plugins) {
+      for (const plugin of payload.plugins) {
+        // Only update rows that already exist (the plugin itself has to be
+        // installed via nexpress.config.ts — importing never registers new
+        // plugin code). Missing plugins are warned but not error.
+        const [existing] = await db
+          .select({ id: nxPlugins.id })
+          .from(nxPlugins)
+          .where(eq(nxPlugins.id, plugin.id))
+          .limit(1);
+        if (!existing) {
+          warnings.push(
+            `Plugin '${plugin.id}' state not imported — plugin is not installed on this instance.`,
+          );
+          continue;
+        }
+
+        const updateValues: Record<string, unknown> = { updatedAt: new Date() };
+        if (plugin.enabled !== undefined) {
+          if (typeof plugin.enabled !== "boolean") {
+            warnings.push(`Plugin '${plugin.id}' enabled ignored — must be a boolean.`);
+          } else {
+            updateValues.enabled = plugin.enabled;
+          }
+        }
+        if (plugin.config !== undefined) {
+          if (!isRecord(plugin.config)) {
+            warnings.push(`Plugin '${plugin.id}' config ignored — must be an object.`);
+          } else {
+            updateValues.config = plugin.config;
+          }
+        }
+        if (Object.keys(updateValues).length > 1) {
+          await db.update(nxPlugins).set(updateValues).where(eq(nxPlugins.id, plugin.id));
         }
       }
     }
