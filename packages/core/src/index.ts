@@ -78,6 +78,8 @@ export {
   listRevisions,
   getRevision,
   restoreRevision,
+  searchCollections,
+  reindexCollection,
 } from "./collections/index.js";
 export type {
   NxRevision,
@@ -85,6 +87,10 @@ export type {
   NxRevisionStatus,
   NxRevisionListOptions,
   NxRevisionListResult,
+  SearchCollectionsOptions,
+  SearchResult,
+  SearchResultItem,
+  ReindexResult,
 } from "./collections/index.js";
 
 export {
