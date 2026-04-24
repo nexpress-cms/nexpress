@@ -237,6 +237,7 @@ export const seoAuditPlugin = definePlugin({
       "api:route",
       "content:read",
       "admin:collection-tab",
+      "admin:dashboard",
     ],
     allowedHosts: [],
     provides: {
@@ -366,6 +367,16 @@ export const seoAuditPlugin = definePlugin({
         label: "Re-scan latest post",
         actionId: "rescanLatest",
         description: "Demo action — runs the audit against a synthetic payload.",
+      },
+    ],
+    dashboardWidgets: [
+      {
+        id: "site-seo-score",
+        label: "Avg. SEO score",
+        kind: "metric",
+        actionId: "lastAuditScore",
+        description: "Rolling average across recent posts.",
+        priority: 10,
       },
     ],
     collectionTabs: [

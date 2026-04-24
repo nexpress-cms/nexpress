@@ -20,6 +20,10 @@ import {
   CardTitle,
 } from "../ui/card.js";
 import { cn } from "../ui/utils.js";
+import {
+  DashboardPluginWidgets,
+  type DashboardPluginWidget,
+} from "./plugin-widgets.js";
 
 type DashboardStats = {
   collections: Array<{ slug: string; label: string; count: number }>;
@@ -36,6 +40,7 @@ type DashboardStats = {
 
 interface DashboardViewProps {
   stats: DashboardStats;
+  pluginWidgets?: DashboardPluginWidget[];
 }
 
 const formatter = new Intl.DateTimeFormat("en", {
@@ -43,7 +48,7 @@ const formatter = new Intl.DateTimeFormat("en", {
   timeStyle: "short",
 });
 
-export function DashboardView({ stats }: DashboardViewProps) {
+export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
   const router = useRouter();
 
   const totalContent = stats.collections.reduce(
@@ -133,6 +138,10 @@ export function DashboardView({ stats }: DashboardViewProps) {
           </Card>
         ))}
       </div>
+
+      {pluginWidgets && pluginWidgets.length > 0 ? (
+        <DashboardPluginWidgets widgets={pluginWidgets} />
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <Card className="border-border/70 bg-card/80 shadow-sm">
