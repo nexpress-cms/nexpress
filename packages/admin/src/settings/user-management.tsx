@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { NxUserRole } from "@nexpress/core";
-import { Plus } from "lucide-react";
+import { MailPlus, Plus } from "lucide-react";
 
 import { nxFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
@@ -53,6 +53,16 @@ export function UserManagement() {
     password: string;
     role: NxUserRole;
   }>({ name: "", email: "", password: "", role: "author" });
+
+  const [emailInviteOpen, setEmailInviteOpen] = useState(false);
+  const [emailInviteSubmitting, setEmailInviteSubmitting] = useState(false);
+  const [emailInviteError, setEmailInviteError] = useState<string | null>(null);
+  const [emailInviteToast, setEmailInviteToast] = useState<string | null>(null);
+  const [emailInviteForm, setEmailInviteForm] = useState<{
+    name: string;
+    email: string;
+    role: NxUserRole;
+  }>({ name: "", email: "", role: "author" });
 
   useEffect(() => {
     void fetchUsers();
@@ -111,16 +121,66 @@ export function UserManagement() {
     }
   }
 
+  async function submitEmailInvite() {
+    setEmailInviteSubmitting(true);
+    setEmailInviteError(null);
+
+    try {
+      const response = await nxFetch("/api/users/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailInviteForm),
+      });
+
+      const payload = (await response.json().catch(() => null)) as unknown;
+
+      if (!response.ok) {
+        setEmailInviteError(getErrorMessage(payload, "Unable to send invite."));
+        return;
+      }
+
+      setEmailInviteOpen(false);
+      setEmailInviteToast(
+        `Invite sent to ${emailInviteForm.email}. They can set their password via the email link.`,
+      );
+      setEmailInviteForm({ name: "", email: "", role: "author" });
+      await fetchUsers();
+    } catch {
+      setEmailInviteError("Unable to send invite.");
+    } finally {
+      setEmailInviteSubmitting(false);
+    }
+  }
+
   return (
     <Card className="border-border/70 bg-card/80 shadow-sm">
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>User management</CardTitle>
-        <Button onClick={() => setInviteOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New user
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setEmailInviteOpen(true)}>
+            <MailPlus className="mr-2 h-4 w-4" />
+            Invite user
+          </Button>
+          <Button variant="outline" onClick={() => setInviteOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create with password
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {emailInviteToast ? (
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <span>{emailInviteToast}</span>
+            <button
+              type="button"
+              className="text-xs uppercase tracking-wide text-emerald-700 hover:text-emerald-900"
+              onClick={() => setEmailInviteToast(null)}
+            >
+              dismiss
+            </button>
+          </div>
+        ) : null}
+
         {error ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error}
@@ -247,6 +307,83 @@ export function UserManagement() {
             </Button>
             <Button onClick={() => void submitInvite()} disabled={inviteSubmitting}>
               {inviteSubmitting ? "Creating..." : "Create user"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emailInviteOpen} onOpenChange={setEmailInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite user</DialogTitle>
+            <DialogDescription>
+              Send an email invitation. The user sets their own password via the link — valid
+              for 7 days.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {emailInviteError ? (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {emailInviteError}
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label htmlFor="invite-user-name">Name</Label>
+              <Input
+                id="invite-user-name"
+                value={emailInviteForm.name}
+                onChange={(event) =>
+                  setEmailInviteForm((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="invite-user-email">Email</Label>
+              <Input
+                id="invite-user-email"
+                type="email"
+                value={emailInviteForm.email}
+                onChange={(event) =>
+                  setEmailInviteForm((current) => ({ ...current, email: event.target.value }))
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select
+                value={emailInviteForm.role}
+                onValueChange={(value) =>
+                  setEmailInviteForm((current) => ({ ...current, role: value as NxUserRole }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEmailInviteOpen(false)}
+              disabled={emailInviteSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void submitEmailInvite()} disabled={emailInviteSubmitting}>
+              {emailInviteSubmitting ? "Sending..." : "Send invite"}
             </Button>
           </DialogFooter>
         </DialogContent>

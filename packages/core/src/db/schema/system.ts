@@ -37,6 +37,11 @@ type NxRevisionSnapshot = Record<string, unknown> & {
   content?: NxRichTextContent;
 };
 
+export const nxPasswordResetPurposeEnum = pgEnum("nx_password_reset_purpose", [
+  "invite",
+  "reset",
+]);
+
 export const nxUsers = pgTable("nx_users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
@@ -47,6 +52,12 @@ export const nxUsers = pgTable("nx_users", {
   loginAttempts: integer("login_attempts").default(0).notNull(),
   lockUntil: timestamp("lock_until", { withTimezone: true, mode: "date" }),
   tokenVersion: integer("token_version").default(0).notNull(),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at", {
+    withTimezone: true,
+    mode: "date",
+  }),
+  passwordResetPurpose: nxPasswordResetPurposeEnum("password_reset_purpose"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .defaultNow()
     .notNull(),

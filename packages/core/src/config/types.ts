@@ -335,7 +335,8 @@ export type NxJobType =
   | "media:cleanup"
   | "plugin:scheduledTask"
   | "system:revisionPrune"
-  | "system:sessionCleanup";
+  | "system:sessionCleanup"
+  | "auth:sendPasswordReset";
 
 export interface NxFindOptions {
   page?: number;
