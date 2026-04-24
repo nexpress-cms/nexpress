@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -191,6 +191,13 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
     resolver: zodResolver(schema),
     defaultValues,
   });
+
+  // Sync form inputs with server state after saves, revision restores, or any
+  // other refresh that swaps the `doc` prop — react-hook-form's defaultValues
+  // is consumed only on mount, so the form would otherwise show stale values.
+  useEffect(() => {
+    form.reset(defaultValues);
+  }, [defaultValues, form]);
 
   const slugValue = form.watch("slug");
   const previewSlug = typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";

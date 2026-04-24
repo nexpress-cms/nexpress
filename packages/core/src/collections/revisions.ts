@@ -78,25 +78,6 @@ async function assertReadAccess(
   }
 }
 
-async function assertUpdateAccess(
-  collection: string,
-  user: NxAuthUser,
-  doc: Record<string, unknown> | null,
-  data: Record<string, unknown>,
-): Promise<void> {
-  const config = getCollectionConfig(collection);
-
-  if (!config.access?.update) {
-    return;
-  }
-
-  const allowed = await config.access.update({ user, doc: doc ?? undefined, data });
-
-  if (!allowed) {
-    throw new NxForbiddenError(collection, "update");
-  }
-}
-
 function toRevisionSnapshot(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new NxValidationError("Invalid revision snapshot", [
@@ -222,9 +203,8 @@ export async function restoreRevision(
   user: NxAuthUser,
 ): Promise<NxSaveResult> {
   const revision = await getRevision(collection, documentId, revisionId, user);
-  await assertUpdateAccess(collection, user, null, revision.snapshot);
 
   return saveDocument(collection, documentId, revision.snapshot, user, {
-    status: revision.status === "draft" ? "draft" : "published",
+    status: revision.status === "published" ? "published" : "draft",
   });
 }
