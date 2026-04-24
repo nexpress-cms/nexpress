@@ -19,6 +19,10 @@ export {
   getRevision,
   restoreRevision,
 } from "./revisions.js";
+export {
+  publishScheduledDocuments,
+} from "./scheduled.js";
+export type { PublishScheduledResult } from "./scheduled.js";
 export type {
   NxRevision,
   NxRevisionSummary,

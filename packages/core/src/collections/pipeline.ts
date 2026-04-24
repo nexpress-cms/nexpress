@@ -118,6 +118,17 @@ export async function saveDocument(
     prepared.mainData.status = options.status;
   }
   const now = new Date();
+
+  // Scheduled publishing: if the caller wants status=published but publishedAt
+  // is in the future, demote to "scheduled" so the public site doesn't render
+  // it until the scheduler flips it back. Works on any collection whose
+  // generated table has a publishedAt column (opt-in by field presence).
+  const desiredStatus = prepared.mainData.status as string | undefined;
+  const publishedAtValue = prepared.mainData.publishedAt;
+  if (desiredStatus === "published" && publishedAtValue instanceof Date && publishedAtValue > now) {
+    prepared.mainData.status = "scheduled";
+  }
+
   const searchVector = buildSearchVector(config, hookData);
 
   // Compute publish-transition so we can fire before/afterPublish + beforeUnpublish
@@ -168,7 +179,9 @@ export async function saveDocument(
 
     if (config.versions) {
       const docStatus = persistedDoc.status as string | undefined;
-      const revisionStatus = docStatus === "draft" ? "draft" : "published";
+      // "scheduled" documents haven't actually gone live yet — treat their
+      // revisions as drafts (they map to the pre-publish snapshot).
+      const revisionStatus = docStatus === "published" ? "published" : "draft";
       await insertRevision(tx, collection, persistedDocId, operation, hookData, originalDoc, user, revisionStatus);
     }
 

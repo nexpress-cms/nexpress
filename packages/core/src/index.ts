@@ -78,6 +78,7 @@ export {
   listRevisions,
   getRevision,
   restoreRevision,
+  publishScheduledDocuments,
 } from "./collections/index.js";
 export type {
   NxRevision,
@@ -85,6 +86,7 @@ export type {
   NxRevisionStatus,
   NxRevisionListOptions,
   NxRevisionListResult,
+  PublishScheduledResult,
 } from "./collections/index.js";
 
 export {
