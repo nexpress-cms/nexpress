@@ -164,6 +164,32 @@ function resolveNavEntries(
   return Object.entries(navigation).map(([location, items]) => ({ location, items }));
 }
 
+/**
+ * Parses `?collections=a,b` — when present, only those collection slugs
+ * are imported AND theme/settings/navigation/plugins are skipped entirely.
+ * Mirrors the export filter contract so a partial export/import round-trip
+ * works symmetrically.
+ */
+function parseCollectionsFilter(
+  request: NextRequest,
+  registered: ReadonlySet<string>,
+): Set<string> | null {
+  const raw = request.nextUrl.searchParams.get("collections");
+  if (!raw) return null;
+  const slugs = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (slugs.length === 0) return null;
+  const unknown = slugs.filter((slug) => !registered.has(slug));
+  if (unknown.length > 0) {
+    throw new NxValidationError("Invalid input", [
+      { field: "collections", message: `Unknown collection(s): ${unknown.join(", ")}` },
+    ]);
+  }
+  return new Set(slugs);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
@@ -177,6 +203,11 @@ export async function POST(request: NextRequest) {
 
     const payload = validatePayload(await request.json());
     const db = getDb();
+    const dryRun = request.nextUrl.searchParams.get("dryRun") === "true";
+    const registeredSlugs = new Set(getAllCollectionSlugs());
+    const filter = parseCollectionsFilter(request, registeredSlugs);
+    const partial = filter !== null;
+
     const warnings: string[] = [];
     const imported = {
       theme: 0,
@@ -184,10 +215,14 @@ export async function POST(request: NextRequest) {
       navigation: 0,
       pages: 0,
       mediaMatched: 0,
+      pluginsUpdated: 0,
     };
 
     const mediaMap = new Map<string, string | null>();
 
+    // Media resolution is read-only — safe to run unchanged in dry-run mode.
+    // The resulting `mediaMap` feeds the per-doc `replaceMediaRefs` call so
+    // the dry-run report accurately mirrors what the write path would do.
     if (payload.media) {
       for (const m of payload.media) {
         if (m.hash) {
@@ -224,51 +259,66 @@ export async function POST(request: NextRequest) {
       imported.mediaMatched = [...mediaMap.values()].filter(Boolean).length;
     }
 
-    await db.transaction(async (tx) => {
-      const now = new Date();
-
-      if (payload.theme) {
-        await tx
-          .insert(nxSettings)
-          .values({ key: "theme", value: payload.theme, updatedAt: now, updatedBy: user.id })
-          .onConflictDoUpdate({
-            target: nxSettings.key,
-            set: { value: payload.theme, updatedAt: now, updatedBy: user.id },
-          });
-        imported.theme = 1;
-      }
-
-      if (payload.settings) {
-        for (const [key, value] of Object.entries(payload.settings)) {
-          if (key === "theme") continue;
-
-          await tx
-            .insert(nxSettings)
-            .values({ key, value, updatedAt: now, updatedBy: user.id })
-            .onConflictDoUpdate({
-              target: nxSettings.key,
-              set: { value, updatedAt: now, updatedBy: user.id },
-            });
-          imported.settings++;
+    if (!partial) {
+      if (dryRun) {
+        if (payload.theme) imported.theme = 1;
+        if (payload.settings) {
+          imported.settings = Object.keys(payload.settings).filter((k) => k !== "theme").length;
         }
-      }
+        imported.navigation = resolveNavEntries(payload.navigation).length;
+      } else {
+        await db.transaction(async (tx) => {
+          const now = new Date();
 
-      for (const { location, items } of resolveNavEntries(payload.navigation)) {
-        await tx
-          .insert(nxNavigation)
-          .values({ location, items, updatedAt: now, updatedBy: user.id })
-          .onConflictDoUpdate({
-            target: nxNavigation.location,
-            set: { items, updatedAt: now, updatedBy: user.id },
-          });
-        imported.navigation++;
-      }
-    });
+          if (payload.theme) {
+            await tx
+              .insert(nxSettings)
+              .values({ key: "theme", value: payload.theme, updatedAt: now, updatedBy: user.id })
+              .onConflictDoUpdate({
+                target: nxSettings.key,
+                set: { value: payload.theme, updatedAt: now, updatedBy: user.id },
+              });
+            imported.theme = 1;
+          }
 
-    const registeredSlugs = new Set(getAllCollectionSlugs());
+          if (payload.settings) {
+            for (const [key, value] of Object.entries(payload.settings)) {
+              if (key === "theme") continue;
+
+              await tx
+                .insert(nxSettings)
+                .values({ key, value, updatedAt: now, updatedBy: user.id })
+                .onConflictDoUpdate({
+                  target: nxSettings.key,
+                  set: { value, updatedAt: now, updatedBy: user.id },
+                });
+              imported.settings++;
+            }
+          }
+
+          for (const { location, items } of resolveNavEntries(payload.navigation)) {
+            await tx
+              .insert(nxNavigation)
+              .values({ location, items, updatedAt: now, updatedBy: user.id })
+              .onConflictDoUpdate({
+                target: nxNavigation.location,
+                set: { items, updatedAt: now, updatedBy: user.id },
+              });
+            imported.navigation++;
+          }
+        });
+      }
+    } else if (payload.theme || payload.settings || payload.navigation || payload.plugins) {
+      warnings.push(
+        "Partial import (collections filter) — theme/settings/navigation/plugins in payload are ignored.",
+      );
+    }
 
     if (payload.collections) {
       for (const [slug, docs] of Object.entries(payload.collections)) {
+        if (partial && !filter!.has(slug)) {
+          continue;
+        }
         if (!registeredSlugs.has(slug)) {
           warnings.push(`Collection '${slug}' not registered, skipped`);
           continue;
@@ -276,6 +326,14 @@ export async function POST(request: NextRequest) {
 
         for (const doc of docs) {
           const transformed = replaceMediaRefs(doc, mediaMap) as Record<string, unknown>;
+
+          if (dryRun) {
+            // Pipeline validation is the source of truth, but we can't run
+            // it without writing. Report the count optimistically — errors
+            // that only surface at write time will show up on the real run.
+            imported.pages++;
+            continue;
+          }
 
           try {
             await saveDocument(slug, null, transformed, user);
@@ -289,7 +347,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (payload.plugins) {
+    if (!partial && payload.plugins) {
       for (const plugin of payload.plugins) {
         // Only update rows that already exist (the plugin itself has to be
         // installed via nexpress.config.ts — importing never registers new
@@ -322,12 +380,15 @@ export async function POST(request: NextRequest) {
           }
         }
         if (Object.keys(updateValues).length > 1) {
-          await db.update(nxPlugins).set(updateValues).where(eq(nxPlugins.id, plugin.id));
+          if (!dryRun) {
+            await db.update(nxPlugins).set(updateValues).where(eq(nxPlugins.id, plugin.id));
+          }
+          imported.pluginsUpdated++;
         }
       }
     }
 
-    return nxSuccessResponse({ imported, warnings });
+    return nxSuccessResponse({ imported, warnings, dryRun, partial });
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
