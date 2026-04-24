@@ -100,7 +100,7 @@ export {
 } from "./content/index.js";
 export { buildZodSchema, getCollectionZodSchema } from "./collections/validation.js";
 
-export { collectionConfigSchema } from "./config/validation.js";
+export { collectionConfigSchema, nxConfigSchema } from "./config/validation.js";
 
 export { createDbConnection } from "./db/connection.js";
 export * from "./db/schema/index.js";
