@@ -12,6 +12,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensurePluginsLoaded } from "@/lib/init-core";
 
@@ -80,7 +81,7 @@ export async function PATCH(
     requireCsrf(request);
 
     const { pluginId } = await params;
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = parseBodyRecord(await request.json());
     const patch: NxPluginStateUpdate = {};
 
     if (body.enabled !== undefined) {

@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { nxPlugins } from "../db/schema/system.js";
@@ -82,6 +82,9 @@ export async function getPluginState(
  * Ensures every known plugin id has a row in `nx_plugins`. Missing rows are
  * inserted with `enabled=true` and an empty config. Existing rows are never
  * touched — this is called on boot and must not clobber operator edits.
+ *
+ * Uses a single INSERT … ON CONFLICT DO NOTHING so concurrent boots (multi-
+ * process deployments) can all race safely without unique-key violations.
  */
 export async function syncPluginRegistrations(
   db: NodePgDatabase<Record<string, unknown>>,
@@ -89,25 +92,19 @@ export async function syncPluginRegistrations(
 ): Promise<void> {
   if (pluginIds.length === 0) return;
 
-  const existing = (await (db as unknown as DrizzleDb)
-    .select({ id: nxPlugins.id })
-    .from(nxPlugins)
-    .where(inArray(nxPlugins.id, [...pluginIds]))) as Array<{ id: string }>;
-
-  const existingIds = new Set(existing.map((row) => row.id));
-  const missing = pluginIds.filter((id) => !existingIds.has(id));
-  if (missing.length === 0) return;
-
   const now = new Date();
-  await (db as unknown as DrizzleDb).insert(nxPlugins).values(
-    missing.map((id) => ({
-      id,
-      enabled: true,
-      config: {},
-      installedAt: now,
-      updatedAt: now,
-    })),
-  );
+  await db
+    .insert(nxPlugins)
+    .values(
+      pluginIds.map((id) => ({
+        id,
+        enabled: true,
+        config: {},
+        installedAt: now,
+        updatedAt: now,
+      })),
+    )
+    .onConflictDoNothing({ target: nxPlugins.id });
 }
 
 export async function updatePluginState(
