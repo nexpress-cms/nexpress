@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
 
 // Browser typically completes password recovery within the hour.
 const RESET_TTL_MS = 1000 * 60 * 60;
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         token: result.issued.token,
         purpose: result.issued.purpose,
         resetUrl: buildResetUrl(request, result.issued.token),
+        siteName: nexpressConfig.site.name,
       });
     }
 

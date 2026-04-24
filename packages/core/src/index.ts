@@ -153,6 +153,17 @@ export { LocalStorageAdapter } from "./storage/local.js";
 export { S3StorageAdapter } from "./storage/s3.js";
 export { createStorageAdapter } from "./storage/index.js";
 
+export type { NxEmailAdapter, NxEmailMessage, NxEmailTemplate, NxPasswordResetTemplateData, SmtpEmailAdapterOptions } from "./email/index.js";
+export {
+  NoopEmailAdapter,
+  SmtpEmailAdapter,
+  getEmailAdapter,
+  setEmailAdapter,
+  resetEmailAdapter,
+  buildInviteEmail,
+  buildResetEmail,
+} from "./email/index.js";
+
 export {
   setStorageAdapter,
   getStorageAdapter,
