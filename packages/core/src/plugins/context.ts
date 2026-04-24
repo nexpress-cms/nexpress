@@ -1,5 +1,5 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull, like, or } from "drizzle-orm";
 
 import type { NxAuthUser, NxFindOptions } from "../config/types.js";
 import { NxError, NxForbiddenError } from "../errors.js";
@@ -15,7 +15,7 @@ import {
   getStorageAdapter,
 } from "../media/service.js";
 import { getDb } from "../collections/pipeline.js";
-import { nxPlugins, nxSettings } from "../db/schema/system.js";
+import { nxPluginStorage, nxPlugins, nxSettings } from "../db/schema/system.js";
 
 /**
  * Plugin principal used when plugin-initiated operations need an NxAuthUser.
@@ -38,9 +38,21 @@ interface RegistrationLike {
 interface BuildContextOptions {
   pluginId: string;
   capabilities: readonly string[];
+  allowedHosts: readonly string[];
   config: Record<string, unknown>;
   registration: RegistrationLike;
   lookupRegistration: (pluginId: string) => RegistrationLike | undefined;
+}
+
+/**
+ * Per-process in-memory cache for `ctx.cache.*`. Keyed by `pluginId:key`,
+ * each entry carries its expiry (ms) so `get()` lazily evicts stale entries.
+ * Lost on process restart — use `ctx.storage` for durable state.
+ */
+const pluginCache = new Map<string, { value: unknown; expiresAt: number | null }>();
+
+function cacheKey(pluginId: string, key: string): string {
+  return `${pluginId}:${key}`;
 }
 
 function assertCap(pluginId: string, capabilities: readonly string[], required: string): void {
@@ -96,7 +108,7 @@ async function loadOptionalNextCache(): Promise<
 export function createPluginRuntimeContext(
   options: BuildContextOptions,
 ): Record<string, unknown> {
-  const { pluginId, capabilities, config, registration, lookupRegistration } = options;
+  const { pluginId, capabilities, allowedHosts, config, registration, lookupRegistration } = options;
   const db = (): NodePgDatabase<Record<string, unknown>> => getDb();
   const principal = pluginPrincipal(pluginId);
 
@@ -170,35 +182,110 @@ export function createPluginRuntimeContext(
     },
 
     storage: {
-      get() {
-        notImplemented(pluginId, "storage.get");
+      async get<T = unknown>(key: string): Promise<T | null> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        const now = new Date();
+        const rows = await db()
+          .select()
+          .from(nxPluginStorage)
+          .where(
+            and(
+              eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.key, key),
+              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+            ),
+          )
+          .limit(1);
+        const row = rows[0] as { value?: unknown } | undefined;
+        return (row?.value as T | undefined) ?? null;
       },
-      set() {
-        notImplemented(pluginId, "storage.set");
+      async set(key: string, value: unknown, opts?: { ttl?: number }): Promise<void> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        const expiresAt =
+          opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
+        await db()
+          .insert(nxPluginStorage)
+          .values({
+            pluginId,
+            key,
+            value,
+            expiresAt,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [nxPluginStorage.pluginId, nxPluginStorage.key],
+            set: { value, expiresAt, updatedAt: new Date() },
+          });
       },
-      delete() {
-        notImplemented(pluginId, "storage.delete");
+      async delete(key: string): Promise<void> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        await db()
+          .delete(nxPluginStorage)
+          .where(
+            and(eq(nxPluginStorage.pluginId, pluginId), eq(nxPluginStorage.key, key)),
+          );
       },
-      list() {
-        notImplemented(pluginId, "storage.list");
+      async list(prefix?: string): Promise<string[]> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        const now = new Date();
+        const where = prefix
+          ? and(
+              eq(nxPluginStorage.pluginId, pluginId),
+              like(nxPluginStorage.key, `${prefix}%`),
+              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+            )
+          : and(
+              eq(nxPluginStorage.pluginId, pluginId),
+              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+            );
+        const rows = (await db()
+          .select({ key: nxPluginStorage.key })
+          .from(nxPluginStorage)
+          .where(where)) as Array<{ key: string }>;
+        return rows.map((row) => row.key);
       },
-      has() {
-        notImplemented(pluginId, "storage.has");
+      async has(key: string): Promise<boolean> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        const now = new Date();
+        const rows = await db()
+          .select({ key: nxPluginStorage.key })
+          .from(nxPluginStorage)
+          .where(
+            and(
+              eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.key, key),
+              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+            ),
+          )
+          .limit(1);
+        return rows.length > 0;
       },
     },
 
     cache: {
-      get() {
-        notImplemented(pluginId, "cache.get");
+      async get<T = unknown>(key: string): Promise<T | null> {
+        const entry = pluginCache.get(cacheKey(pluginId, key));
+        if (!entry) return null;
+        if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
+          pluginCache.delete(cacheKey(pluginId, key));
+          return null;
+        }
+        return entry.value as T;
       },
-      set() {
-        notImplemented(pluginId, "cache.set");
+      async set(key: string, value: unknown, ttl?: number): Promise<void> {
+        pluginCache.set(cacheKey(pluginId, key), {
+          value,
+          expiresAt: ttl && ttl > 0 ? Date.now() + ttl * 1000 : null,
+        });
       },
-      invalidate() {
-        notImplemented(pluginId, "cache.invalidate");
+      async invalidate(key: string): Promise<void> {
+        pluginCache.delete(cacheKey(pluginId, key));
       },
-      invalidateAll() {
-        notImplemented(pluginId, "cache.invalidateAll");
+      async invalidateAll(): Promise<void> {
+        const prefix = `${pluginId}:`;
+        for (const key of pluginCache.keys()) {
+          if (key.startsWith(prefix)) pluginCache.delete(key);
+        }
       },
     },
 
@@ -229,17 +316,107 @@ export function createPluginRuntimeContext(
     },
 
     theme: {
-      getTokens() {
-        notImplemented(pluginId, "theme.getTokens");
+      async getTokens(): Promise<Record<string, unknown>> {
+        assertCap(pluginId, capabilities, "theme:read");
+        const rows = await db().select().from(nxSettings).where(eq(nxSettings.key, "theme"));
+        const row = rows[0] as { value?: unknown } | undefined;
+        if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
+          return {};
+        }
+        return row.value as Record<string, unknown>;
       },
-      setTokens() {
-        notImplemented(pluginId, "theme.setTokens");
+      async setTokens(partial: Record<string, unknown>): Promise<void> {
+        assertCap(pluginId, capabilities, "theme:write");
+        const rows = await db().select().from(nxSettings).where(eq(nxSettings.key, "theme"));
+        const existing =
+          rows[0] && (rows[0] as { value?: unknown }).value &&
+          typeof (rows[0] as { value?: unknown }).value === "object" &&
+          !Array.isArray((rows[0] as { value?: unknown }).value)
+            ? ((rows[0] as { value: unknown }).value as Record<string, unknown>)
+            : {};
+        const merged = { ...existing, ...partial };
+        await db()
+          .insert(nxSettings)
+          .values({ key: "theme", value: merged, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: nxSettings.key,
+            set: { value: merged, updatedAt: new Date() },
+          });
       },
     },
 
     http: {
-      fetch() {
-        notImplemented(pluginId, "http.fetch");
+      async fetch(
+        url: string,
+        opts?: {
+          method?: string;
+          headers?: Record<string, string>;
+          body?: unknown;
+          timeoutMs?: number;
+        },
+      ): Promise<{ ok: boolean; status: number; headers: Record<string, string>; body?: unknown }> {
+        assertCap(pluginId, capabilities, "network:fetch");
+        // Allowed-host check: manifest.allowedHosts gates every fetch. Empty
+        // list means the plugin declared network:fetch but didn't scope it
+        // — refuse rather than allow anything.
+        let target: URL;
+        try {
+          target = new URL(url);
+        } catch {
+          throw new NxError(`[plugin:${pluginId}] http.fetch: invalid URL "${url}"`, "INVALID_URL", 400);
+        }
+        const hostMatches = allowedHosts.some((pattern) => {
+          if (pattern === target.hostname) return true;
+          if (pattern.startsWith("*.") && target.hostname.endsWith(pattern.slice(1))) return true;
+          return false;
+        });
+        if (!hostMatches) {
+          throw new NxForbiddenError(
+            `plugin:${pluginId}`,
+            `http.fetch to "${target.hostname}" blocked; add it to manifest.allowedHosts`,
+          );
+        }
+
+        const timeoutMs = opts?.timeoutMs ?? 10_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          let body: BodyInit | undefined;
+          if (opts?.body !== undefined && opts.body !== null) {
+            if (typeof opts.body === "string") {
+              body = opts.body;
+            } else if (opts.body instanceof Uint8Array) {
+              body = opts.body;
+            } else {
+              body = JSON.stringify(opts.body);
+            }
+          }
+          const response = await globalThis.fetch(url, {
+            method: opts?.method ?? (body !== undefined ? "POST" : "GET"),
+            headers: opts?.headers,
+            body,
+            signal: controller.signal,
+          });
+          const headers: Record<string, string> = {};
+          response.headers.forEach((v, k) => {
+            headers[k] = v;
+          });
+          const contentType = response.headers.get("content-type") ?? "";
+          let parsedBody: unknown = undefined;
+          if (contentType.includes("application/json")) {
+            parsedBody = await response.json().catch(() => undefined);
+          } else if (contentType.startsWith("text/")) {
+            parsedBody = await response.text();
+          }
+          return {
+            ok: response.ok,
+            status: response.status,
+            headers,
+            body: parsedBody,
+          };
+        } finally {
+          clearTimeout(timeout);
+        }
       },
     },
 

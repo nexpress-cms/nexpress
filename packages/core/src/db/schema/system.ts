@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -135,3 +136,20 @@ export const nxPlugins = pgTable("nx_plugins", {
     .defaultNow()
     .notNull(),
 });
+
+export const nxPluginStorage = pgTable(
+  "nx_plugin_storage",
+  {
+    pluginId: text("plugin_id").notNull(),
+    key: text("key").notNull(),
+    value: jsonb("value").$type<unknown>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.pluginId, table.key] }),
+    pluginIdx: index("nx_plugin_storage_plugin_id_idx").on(table.pluginId),
+  }),
+);
