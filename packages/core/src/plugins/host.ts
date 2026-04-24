@@ -1,4 +1,9 @@
+import { eq } from "drizzle-orm";
+
 import type { NxPluginConfig, NxPluginContext } from "../config/types.js";
+import { nxPlugins } from "../db/schema/system.js";
+import { getDb } from "../collections/pipeline.js";
+import { createPluginRuntimeContext } from "./context.js";
 
 export interface PluginHookHandler {
   pluginId: string;
@@ -103,9 +108,46 @@ type ResolvedHookFn = (ctx: {
   hook: string;
   data: Record<string, unknown>;
   collection?: string;
+  ctx: Record<string, unknown>;
 }) => void | Promise<void>;
 
-type ResolvedRouteFn = (req: PluginRouteRequest) => Promise<PluginRouteResponse>;
+type ResolvedRouteFn = (
+  req: PluginRouteRequest,
+  ctx: Record<string, unknown>,
+) => Promise<PluginRouteResponse>;
+
+async function loadPluginConfig(pluginId: string): Promise<Record<string, unknown>> {
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({ config: nxPlugins.config })
+      .from(nxPlugins)
+      .where(eq(nxPlugins.id, pluginId))
+      .limit(1);
+    const row = rows[0] as { config?: unknown } | undefined;
+    if (row && row.config && typeof row.config === "object" && !Array.isArray(row.config)) {
+      return row.config as Record<string, unknown>;
+    }
+  } catch {
+    // DB not ready or row missing — fall through to empty config.
+  }
+  return {};
+}
+
+async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
+  const registration = pluginRegistry.get(pluginId);
+  if (!registration) {
+    throw new Error(`[plugin:${pluginId}] attempted to build ctx before registration.`);
+  }
+  const config = await loadPluginConfig(pluginId);
+  return createPluginRuntimeContext({
+    pluginId,
+    capabilities: registration.capabilities,
+    config,
+    registration,
+    lookupRegistration: (id) => pluginRegistry.get(id),
+  });
+}
 
 function isResolvedPlugin(value: unknown): value is ResolvedPluginLike {
   if (!value || typeof value !== "object") return false;
@@ -192,7 +234,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       pluginId: manifest.id,
       handler: async (data) => {
         const collection = typeof data.collection === "string" ? data.collection : undefined;
-        await handler({ hook: hookName, data, collection });
+        const ctx = await buildCtxFor(manifest.id);
+        await handler({ hook: hookName, data, collection, ctx });
       },
     });
   }
@@ -202,14 +245,28 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
 
     assertCapability(manifest.id, "api:route", registration.capabilities);
 
+    const userHandler = route.handler as ResolvedRouteFn;
+    const wrapped: (req: PluginRouteRequest) => Promise<PluginRouteResponse> = async (req) => {
+      const ctx = await buildCtxFor(manifest.id);
+      return userHandler(req, ctx);
+    };
+
     const entry: PluginRouteHandler = {
       pluginId: manifest.id,
       path: route.path,
       method: route.method.toUpperCase(),
-      handler: route.handler as ResolvedRouteFn,
+      handler: wrapped,
     };
     registration.routes.push(entry);
     globalRoutes.push(entry);
+  }
+
+  // Invoke optional setup() after hooks + routes are registered so setup can
+  // call ctx.actions.register(…) and have it visible to subsequent dispatches.
+  const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> }).setup;
+  if (typeof setup === "function") {
+    const ctx = await buildCtxFor(manifest.id);
+    await setup(ctx);
   }
 }
 
