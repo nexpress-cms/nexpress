@@ -12,14 +12,28 @@ covers the three entrypoints an agent needs: the **OpenAPI spec**, the
 `GET /api/openapi.json` returns an OpenAPI 3.1 document rebuilt on every
 request (no cache) covering:
 
-- Core auth routes (`/api/auth/login`, `/logout`, `/me`, `/forgot-password`,
-  `/reset-password`).
+- Core auth routes (`/api/auth/login`, `/logout`, `/me`, `/refresh`,
+  `/forgot-password`, `/reset-password`, `/change-password`).
+- User management (`/api/users`, `/api/users/invite`).
 - Every registered collection: `GET|POST /api/collections/{slug}` and
   `GET|PATCH|DELETE /api/collections/{slug}/{id}`.
 - Revision history per versioned collection.
-- Plugin management (`/api/plugins`, `/api/plugins/{id}`).
-- Every plugin-defined route under `/api/plugins/{pluginId}{path}`, tagged
-  with `plugin:{pluginId}` so agents can scope to one plugin.
+- Media (`/api/media`, `/api/media/upload`, `/api/media/{id}`) and folders
+  (`/api/media/folders`, `/api/media/folders/{id}`).
+- Settings + navigation + theme (`/api/settings`, `/api/settings/theme`,
+  `/api/navigation`).
+- Plugin management (`/api/plugins`, `/api/plugins/{id}`), plugin action
+  dispatch (`POST /api/plugins/{id}/actions/{actionId}`), and every
+  plugin-defined route under `/api/plugins/{pluginId}{path}`, tagged with
+  `plugin:{pluginId}` so agents can scope to one plugin.
+- Import / export (`/api/import`, `/api/export`).
+- Public discovery (`/api/meta/blocks`, `/api/meta/collections`,
+  `/api/meta/plugins`) and search (`/api/search`).
+- Draft mode entrypoints (`/api/preview`, `/api/preview/exit`) and
+  liveness (`/api/health`).
+
+Internal endpoints under `/api/internal/*` (scheduled publish worker,
+search reindex) are omitted by design.
 
 The spec is the single source of truth for paths, request/response schemas,
 and auth requirements. Agents should fetch it once per session and cache.

@@ -110,6 +110,58 @@ function buildSpec(): OpenApiSchema {
         },
       },
     },
+    user_item: {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        email: { type: "string", format: "email" },
+        name: { type: "string" },
+        role: { type: "string", enum: ["admin", "editor", "author", "viewer"] },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+    media_item: {
+      type: "object",
+      description:
+        "Media record. Shape depends on the mime type — image variants (thumb/medium/large/og) live on `sizes`.",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        filename: { type: "string" },
+        mimeType: { type: "string" },
+        width: { type: "integer", nullable: true },
+        height: { type: "integer", nullable: true },
+        hash: { type: "string", nullable: true, description: "Content SHA used for dedup on import." },
+        folderId: { type: "string", format: "uuid", nullable: true },
+        storageKey: { type: "string" },
+        sizes: { type: "object", additionalProperties: true, nullable: true },
+        status: { type: "string", enum: ["pending", "ready", "failed"] },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    },
+    media_folder: {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        name: { type: "string" },
+        parentId: { type: "string", format: "uuid", nullable: true },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    },
+    error_response: {
+      type: "object",
+      properties: {
+        error: {
+          type: "object",
+          properties: {
+            code: { type: "string" },
+            message: { type: "string" },
+            details: { type: "object", additionalProperties: true },
+          },
+        },
+        status: { type: "integer" },
+      },
+    },
   };
   const paths: Record<string, OpenApiSchema> = {
     "/api/auth/login": {
@@ -132,6 +184,44 @@ function buildSpec(): OpenApiSchema {
     },
     "/api/auth/logout": { post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } } },
     "/api/auth/me": { get: { summary: "Current authenticated user", responses: { "200": { description: "User object" } } } },
+    "/api/auth/refresh": {
+      post: {
+        summary: "Exchange refresh token for a new session",
+        description:
+          "Reads the `nx-refresh` cookie and, on success, rotates `nx-session` / `nx-refresh` / `nx-csrf`.",
+        responses: {
+          "200": { description: "Fresh session + CSRF cookie; body contains user + tokens" },
+          "401": { description: "Refresh cookie missing, expired, or revoked" },
+        },
+      },
+    },
+    "/api/auth/change-password": {
+      patch: {
+        summary: "Change the current user's password",
+        description:
+          "Requires session cookie + CSRF header. Bumps `tokenVersion` so existing JWTs are invalidated; auth cookies are cleared on success — the client must log in again.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["currentPassword", "newPassword"],
+                properties: {
+                  currentPassword: { type: "string" },
+                  newPassword: { type: "string", minLength: 8 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Password changed" },
+          "401": { description: "Current password incorrect" },
+          "422": { description: "Validation error" },
+        },
+      },
+    },
     "/api/auth/forgot-password": {
       post: {
         summary: "Request a password-reset email",
@@ -219,6 +309,595 @@ function buildSpec(): OpenApiSchema {
           },
           "400": { description: "Validation or duplicate email" },
           "403": { description: "Caller is not an admin" },
+        },
+      },
+    },
+    "/api/users": {
+      get: {
+        summary: "List users (editor+)",
+        parameters: [
+          { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
+          { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { in: "query", name: "search", schema: { type: "string" }, description: "Matches against email and name." },
+        ],
+        responses: {
+          "200": {
+            description: "Paged user list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    docs: { type: "array", items: { $ref: "#/components/schemas/user_item" } },
+                    totalDocs: { type: "integer" },
+                    totalPages: { type: "integer" },
+                    page: { type: "integer" },
+                    limit: { type: "integer" },
+                    hasNextPage: { type: "boolean" },
+                    hasPrevPage: { type: "boolean" },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not editor or above" },
+        },
+      },
+      post: {
+        summary: "Create a user directly with a password (admin only)",
+        description:
+          "For inviting by email instead, use `POST /api/users/invite`. This endpoint takes a pre-set password and does not send a welcome email.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "name", "password", "role"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  name: { type: "string" },
+                  password: { type: "string", minLength: 8 },
+                  role: { type: "string", enum: ["admin", "editor", "author", "viewer"] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Created user", content: { "application/json": { schema: { $ref: "#/components/schemas/user_item" } } } },
+          "409": { description: "Email already registered" },
+          "422": { description: "Validation error" },
+        },
+      },
+    },
+    "/api/navigation": {
+      get: {
+        summary: "Get a navigation tree by location",
+        parameters: [
+          { in: "query", name: "location", schema: { type: "string" }, description: "Defaults to `main`." },
+        ],
+        responses: {
+          "200": {
+            description: "Navigation payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    location: { type: "string" },
+                    items: { type: "array", items: { type: "object", additionalProperties: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      put: {
+        summary: "Replace a navigation tree (admin only)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["items"],
+                properties: {
+                  location: { type: "string", description: "Defaults to `main`." },
+                  items: { type: "array", items: { type: "object", additionalProperties: true } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Updated navigation payload" },
+          "403": { description: "Caller is not an admin" },
+          "422": { description: "Invalid items structure" },
+        },
+      },
+    },
+    "/api/settings": {
+      get: {
+        summary: "Site settings map (admin only)",
+        responses: {
+          "200": {
+            description: "Flattened `key → value` map across every settings row except `theme`.",
+            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+          },
+          "403": { description: "Caller is not an admin" },
+        },
+      },
+      put: {
+        summary: "Upsert a single setting key (admin only)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["key", "value"],
+                properties: { key: { type: "string" }, value: {} },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated setting row",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string" },
+                    value: {},
+                    updatedAt: { type: "string", format: "date-time" },
+                    updatedBy: { type: "string", format: "uuid", nullable: true },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not an admin" },
+          "422": { description: "key or value missing" },
+        },
+      },
+    },
+    "/api/settings/theme": {
+      get: {
+        summary: "Active theme tokens",
+        description: "Public endpoint — returns `DEFAULT_THEME` when no theme has been persisted yet.",
+        responses: {
+          "200": {
+            description: "Theme tokens",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    colors: { type: "object", additionalProperties: true },
+                    typography: { type: "object", additionalProperties: true },
+                    shape: { type: "object", additionalProperties: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      put: {
+        summary: "Replace the theme tokens (admin only)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["colors", "typography", "shape"],
+                properties: {
+                  colors: { type: "object", additionalProperties: true },
+                  typography: { type: "object", additionalProperties: true },
+                  shape: { type: "object", additionalProperties: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Updated theme; triggers public-site revalidation." },
+          "403": { description: "Caller is not an admin" },
+          "422": { description: "Theme token structure invalid" },
+        },
+      },
+      patch: {
+        summary: "Alias of PUT — replace the theme tokens (admin only)",
+        responses: { "200": { description: "Updated theme" } },
+      },
+    },
+    "/api/media": {
+      get: {
+        summary: "List media",
+        parameters: [
+          { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
+          { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { in: "query", name: "folderId", schema: { type: "string", format: "uuid" } },
+          { in: "query", name: "mimeType", schema: { type: "string" }, description: "Prefix match, e.g. `image/`." },
+        ],
+        responses: {
+          "200": {
+            description: "Paged media list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    docs: { type: "array", items: { $ref: "#/components/schemas/media_item" } },
+                    totalDocs: { type: "integer" },
+                    totalPages: { type: "integer" },
+                    page: { type: "integer" },
+                    limit: { type: "integer" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/media/upload": {
+      post: {
+        summary: "Upload a file (editor+)",
+        description:
+          "Multipart form upload. Images are transcoded asynchronously — expect 202 while variants are generated. Max 10MB.",
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: {
+                  file: { type: "string", format: "binary" },
+                  folderId: { type: "string", format: "uuid" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Non-image upload completed synchronously" },
+          "202": { description: "Image accepted; variant generation running in a job" },
+          "403": { description: "Caller is not editor or above" },
+          "422": { description: "Unsupported MIME / file too large / folder not found" },
+        },
+      },
+    },
+    "/api/media/{id}": {
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      get: {
+        summary: "Get a single media record",
+        responses: {
+          "200": { description: "Media record", content: { "application/json": { schema: { $ref: "#/components/schemas/media_item" } } } },
+          "404": { description: "Media not found" },
+        },
+      },
+      delete: {
+        summary: "Delete a media record (admin only)",
+        responses: {
+          "200": { description: "Deleted", content: { "application/json": { schema: { type: "object", properties: { id: { type: "string" }, deleted: { type: "boolean" } } } } } },
+          "404": { description: "Media not found" },
+          "409": { description: "Media is referenced by a document — clear refs first." },
+        },
+      },
+    },
+    "/api/media/folders": {
+      get: {
+        summary: "List media folders",
+        parameters: [
+          { in: "query", name: "parentId", schema: { type: "string", format: "uuid" }, description: "Omit to list top-level folders." },
+        ],
+        responses: {
+          "200": { description: "Folder array", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/media_folder" } } } } },
+        },
+      },
+      post: {
+        summary: "Create a folder (editor+)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["name"],
+                properties: {
+                  name: { type: "string" },
+                  parentId: { type: "string", format: "uuid" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Created folder", content: { "application/json": { schema: { $ref: "#/components/schemas/media_folder" } } } },
+          "404": { description: "Parent folder not found" },
+          "422": { description: "name missing" },
+        },
+      },
+    },
+    "/api/media/folders/{id}": {
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      patch: {
+        summary: "Rename a folder (editor+)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Updated folder", content: { "application/json": { schema: { $ref: "#/components/schemas/media_folder" } } } },
+          "404": { description: "Folder not found" },
+        },
+      },
+      delete: {
+        summary: "Delete a folder (admin only)",
+        responses: {
+          "204": { description: "Deleted" },
+          "404": { description: "Folder not found" },
+          "409": { description: "Folder has media or child folders" },
+        },
+      },
+    },
+    "/api/meta/blocks": {
+      get: {
+        summary: "Block manifests registered in this instance",
+        description: "Public discovery endpoint — each block declares `type`, `label`, `propsSchema`, etc.",
+        responses: {
+          "200": {
+            description: "Block manifest list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    items: { type: "array", items: { type: "object", additionalProperties: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/meta/collections": {
+      get: {
+        summary: "Collection manifests registered in this instance",
+        description: "Public discovery endpoint. Mirrors collection definitions with fields, access rules, and labels.",
+        responses: {
+          "200": {
+            description: "Collection manifest list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    items: { type: "array", items: { type: "object", additionalProperties: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/meta/plugins": {
+      get: {
+        summary: "Plugin manifests loaded in this process",
+        description: "Public surface — capabilities, hooks, routes, and agent metadata.",
+        responses: {
+          "200": {
+            description: "Plugin manifest list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    items: { type: "array", items: { type: "object", additionalProperties: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/preview": {
+      get: {
+        summary: "Enable Next.js draft mode and redirect (editor+)",
+        parameters: [
+          { in: "query", name: "path", schema: { type: "string" }, description: "Where to redirect once draft mode is enabled. Defaults to `/`." },
+        ],
+        responses: {
+          "307": { description: "Redirect to the target path with draft cookies set" },
+          "403": { description: "Caller is not editor or above" },
+        },
+      },
+    },
+    "/api/preview/exit": {
+      get: {
+        summary: "Disable draft mode and redirect to /",
+        responses: { "307": { description: "Redirect" } },
+      },
+    },
+    "/api/plugins/{pluginId}/actions/{actionId}": {
+      parameters: [
+        { in: "path", name: "pluginId", required: true, schema: { type: "string" } },
+        { in: "path", name: "actionId", required: true, schema: { type: "string" } },
+      ],
+      post: {
+        summary: "Dispatch a plugin action (admin only)",
+        description:
+          "Invokes the action registered by the plugin via `ctx.actions.register(actionId, handler)`. Body is forwarded to the handler; widget/action shapes pass `{ collection, documentId }` for collection tabs, or an empty body for global widgets.",
+        requestBody: {
+          required: false,
+          content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+        },
+        responses: {
+          "200": {
+            description: "Handler result",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    ok: { type: "boolean" },
+                    data: {},
+                    error: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not an admin" },
+          "404": { description: "Plugin or action not found" },
+        },
+      },
+    },
+    "/api/health": {
+      get: {
+        summary: "Liveness probe",
+        responses: {
+          "200": {
+            description: "Always-on health payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    status: { type: "string", enum: ["ok"] },
+                    timestamp: { type: "integer" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/export": {
+      get: {
+        summary: "Export all content + settings as a single JSON document (admin only)",
+        description:
+          "Inverse of `POST /api/import`. Includes theme, settings, navigation, every collection's documents, media references (id + hash + filename — not the binary), and plugin enabled/config state.",
+        responses: {
+          "200": {
+            description: "Export payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    version: { type: "string", enum: ["1"] },
+                    exportedAt: { type: "string", format: "date-time" },
+                    theme: { type: "object", additionalProperties: true, nullable: true },
+                    settings: { type: "object", additionalProperties: true },
+                    navigation: { type: "object", additionalProperties: true },
+                    collections: { type: "object", additionalProperties: { type: "array", items: { type: "object", additionalProperties: true } } },
+                    media: { type: "array", items: { $ref: "#/components/schemas/media_item" } },
+                    plugins: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string" },
+                          enabled: { type: "boolean" },
+                          config: { type: "object", additionalProperties: true },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not an admin" },
+        },
+      },
+    },
+    "/api/import": {
+      post: {
+        summary: "Import a prior `/api/export` payload (admin only)",
+        description:
+          "Idempotency: media records are matched by hash (then filename as fallback) before collection docs are written, so re-running on a fresh DB after uploading media produces a consistent result. Plugin code itself is not imported — the plugin must already be registered in `nexpress.config.ts`.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  version: { type: "string", enum: ["1"] },
+                  theme: { type: "object", additionalProperties: true },
+                  settings: { type: "object", additionalProperties: true },
+                  navigation: { type: "object", additionalProperties: true },
+                  collections: { type: "object", additionalProperties: { type: "array", items: { type: "object", additionalProperties: true } } },
+                  media: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        filename: { type: "string" },
+                        hash: { type: "string" },
+                      },
+                    },
+                  },
+                  plugins: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        enabled: { type: "boolean" },
+                        config: { type: "object", additionalProperties: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Import report",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    imported: {
+                      type: "object",
+                      properties: {
+                        theme: { type: "integer" },
+                        settings: { type: "integer" },
+                        navigation: { type: "integer" },
+                        pages: { type: "integer" },
+                        mediaMatched: { type: "integer" },
+                      },
+                    },
+                    warnings: { type: "array", items: { type: "string" } },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not an admin" },
+          "422": { description: "Invalid payload shape or unsupported version" },
         },
       },
     },
@@ -503,7 +1182,8 @@ function buildSpec(): OpenApiSchema {
     info: {
       title: "NexPress API",
       version: "0.1.0",
-      description: "Auto-generated from registered collections plus the core auth routes.",
+      description:
+        "Auto-generated from registered collections, media, settings, navigation, plugins, and the core auth / discovery routes. Internal endpoints under `/api/internal/*` are intentionally omitted.",
     },
     servers: [{ url: process.env.SITE_URL ?? "http://localhost:3000" }],
     components: {
