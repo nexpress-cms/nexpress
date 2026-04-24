@@ -89,7 +89,9 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 });
 ```
 
-### Current integration coverage (30 tests)
+### Current integration coverage
+
+**Core pipeline (30 tests, `packages/core/src/integration/`):**
 
 | File | Covers |
 |------|--------|
@@ -99,6 +101,23 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 | `pipeline.integration.test.ts` (4) | saveDocument create/update, revision versioning, findDocuments round-trip, deleteDocument |
 | `scheduled.integration.test.ts` (4) | pipeline coerces published+future → scheduled; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with full doc, idempotent |
 | `ctx-settings.integration.test.ts` (6) | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate |
+
+**API routes (14 tests, `apps/web/tests/`):**
+
+| File | Covers |
+|------|--------|
+| `health.integration.test.ts` (1) | `/api/health` smoke (no DB) |
+| `auth.integration.test.ts` (3) | `/api/auth/me` with valid/missing/tampered session cookie |
+| `collections.integration.test.ts` (3) | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth |
+| `import-export.integration.test.ts` (7) | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug |
+
+Run the API suite with the same `TEST_DATABASE_URL` — `pnpm test`
+from the repo root fans out to every workspace, including `apps/web`.
+The harness lives at `apps/web/tests/harness.ts` and reuses the same
+core setup (`ensureMigrated`, `truncateAll`) plus app-side helpers
+(`seedUser`, `buildRequest`, `readJson`). Route handlers are invoked
+directly with synthetic `NextRequest` objects rather than through a
+running server.
 
 The pipeline/scheduled tests reuse `apps/web`'s `posts` collection via a
 test-only fixture (`src/integration/fixtures.ts`). Core's main tsconfig

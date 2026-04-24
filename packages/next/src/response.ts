@@ -53,6 +53,11 @@ export function nxErrorResponse(error: Error): NextResponse<NxApiError> {
     );
   }
 
+  // Unexpected errors are opaque to the client (no stack leak), but they
+  // should still surface in logs so an operator can debug the cause.
+  // eslint-disable-next-line no-console
+  console.error("[nxErrorResponse] unhandled error:", error);
+
   return NextResponse.json(
     {
       error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },
