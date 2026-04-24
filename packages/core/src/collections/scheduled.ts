@@ -2,6 +2,7 @@ import { and, eq, lt } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import type { NxFieldConfig } from "../config/types.js";
+import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import {
   getAllCollectionSlugs,
@@ -64,22 +65,41 @@ export async function publishScheduledDocuments(
     const idCol = getTableColumn(table, "id");
 
     const db = getDb();
+    // `.returning()` without args gives every column so plugin hooks get the
+    // full doc they'd see from a normal update, not just { id }.
     const rows = (await db
       .update(table)
       .set({ status: "published", updatedAt: atTime })
       .where(and(eq(statusCol, "scheduled"), lt(publishedAtCol, atTime)))
-      .returning({ id: idCol })) as Array<{ id: string }>;
+      .returning()) as Array<Record<string, unknown>>;
 
-    const ids = rows.map((row) => row.id);
+    const ids = rows.map((row) => row.id as string);
     byCollection[slug] = ids;
     published += ids.length;
 
-    for (const id of ids) {
-      await runHook("content:afterPublish", {
+    for (const row of rows) {
+      const docId = row.id as string;
+      // Fire every hook a plugin would have seen if the user had clicked
+      // Publish directly: afterUpdate (content changed), afterPublish
+      // (status transitioned), and the afterSave job so revalidation +
+      // collection-level afterUpdate hooks run too.
+      await runHook("content:afterUpdate", {
         collection: slug,
-        doc: { id },
+        doc: row,
         operation: "update",
         scheduled: true,
+      });
+      await runHook("content:afterPublish", {
+        collection: slug,
+        doc: row,
+        operation: "update",
+        scheduled: true,
+      });
+      await enqueueJob("content:afterSave", {
+        collection: slug,
+        documentId: docId,
+        operation: "update",
+        userId: "scheduler",
       });
     }
   }

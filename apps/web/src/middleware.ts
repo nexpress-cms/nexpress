@@ -37,6 +37,9 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   { pattern: /^\/api\/plugins(?:\/|$)/, limit: 60, windowMs: 60_000 },
   { pattern: /^\/api\/users(?:\/|$)/, limit: 30, windowMs: 60_000 },
   { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000 },
+  // Bearer-token-protected cron triggers. Rate-limit on top of the token so
+  // a leaked token can't be used to DoS the DB (e.g. reindex in a loop).
+  { pattern: /^\/api\/internal\//, limit: 10, windowMs: 60_000 },
 ];
 
 function getClientIp(request: NextRequest): string {
