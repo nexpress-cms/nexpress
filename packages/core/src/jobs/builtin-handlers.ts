@@ -44,6 +44,7 @@ interface BuiltinJobContext {
   runScheduledPluginTask?: (data: unknown) => Promise<void> | void;
   pruneRevisions?: () => Promise<void> | void;
   cleanupSessions?: () => Promise<void> | void;
+  sendPasswordReset?: (data: unknown) => Promise<void> | void;
 }
 
 const builtinJobContext: BuiltinJobContext = {};
@@ -60,6 +61,7 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask);
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
   registerJobHandler("system:sessionCleanup", handleSessionCleanup);
+  registerJobHandler("auth:sendPasswordReset", handleAuthSendPasswordReset);
 }
 
 async function handleContentAfterSave(data: unknown): Promise<void> {
@@ -122,6 +124,56 @@ async function handleRevisionPrune(_: unknown): Promise<void> {
 
 async function handleSessionCleanup(_: unknown): Promise<void> {
   await builtinJobContext.cleanupSessions?.();
+}
+
+interface PasswordResetJobData {
+  email: string;
+  name: string;
+  token: string;
+  purpose: "invite" | "reset";
+  resetUrl: string;
+}
+
+/**
+ * Default handler for password-reset / invite emails. Logs the reset URL
+ * with a stub warning — real SMTP delivery is expected to replace this via
+ * `registerJobHandler("auth:sendPasswordReset", yourHandler)` in the app.
+ */
+async function handleAuthSendPasswordReset(data: unknown): Promise<void> {
+  if (builtinJobContext.sendPasswordReset) {
+    await builtinJobContext.sendPasswordReset(data);
+    return;
+  }
+
+  const payload = asPasswordResetJobData(data);
+  const action = payload.purpose === "invite" ? "invite" : "reset";
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[nexpress] auth:sendPasswordReset is a stub — no mailer wired. ` +
+      `Deliver this link to ${payload.email} (${payload.name}) [${action}]:\n  ${payload.resetUrl}`,
+  );
+}
+
+function asPasswordResetJobData(data: unknown): PasswordResetJobData {
+  if (!isRecord(data)) {
+    throw new Error("Invalid auth:sendPasswordReset job payload.");
+  }
+
+  return {
+    email: asString(data.email, "email"),
+    name: asString(data.name, "name"),
+    token: asString(data.token, "token"),
+    purpose: asResetPurpose(data.purpose),
+    resetUrl: asString(data.resetUrl, "resetUrl"),
+  };
+}
+
+function asResetPurpose(value: unknown): "invite" | "reset" {
+  if (value === "invite" || value === "reset") {
+    return value;
+  }
+
+  throw new Error("Invalid password reset purpose.");
 }
 
 async function runCollectionHooks(

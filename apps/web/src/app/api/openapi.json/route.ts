@@ -132,6 +132,96 @@ function buildSpec(): OpenApiSchema {
     },
     "/api/auth/logout": { post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } } },
     "/api/auth/me": { get: { summary: "Current authenticated user", responses: { "200": { description: "User object" } } } },
+    "/api/auth/forgot-password": {
+      post: {
+        summary: "Request a password-reset email",
+        description:
+          "Returns 200 regardless of whether the email matches a user — response is deliberately constant to avoid enumeration.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email"],
+                properties: { email: { type: "string", format: "email" } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Enqueued (may or may not have matched a user)" },
+        },
+      },
+    },
+    "/api/auth/reset-password": {
+      post: {
+        summary: "Consume a reset token and set a new password",
+        description:
+          "Bumps the user's tokenVersion and deletes all sessions so existing JWTs are invalidated.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["token", "password"],
+                properties: {
+                  token: { type: "string" },
+                  password: { type: "string", minLength: 8 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Password updated" },
+          "400": { description: "Token invalid, expired, or password too short" },
+        },
+      },
+    },
+    "/api/users/invite": {
+      post: {
+        summary: "Create a new user and send them an invite link (admin only)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "name", "role"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  name: { type: "string" },
+                  role: { type: "string", enum: ["admin", "editor", "author", "viewer"] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "User created; invite job enqueued",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", format: "uuid" },
+                    email: { type: "string" },
+                    name: { type: "string" },
+                    role: { type: "string" },
+                    inviteExpiresAt: { type: "string", format: "date-time" },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Validation or duplicate email" },
+          "403": { description: "Caller is not an admin" },
+        },
+      },
+    },
     "/api/plugins": {
       get: {
         summary: "List installed plugins with enabled state + registry info (admin only)",
