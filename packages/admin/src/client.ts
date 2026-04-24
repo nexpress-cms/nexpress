@@ -16,6 +16,7 @@ export { ThemeEditor } from "./settings/theme-editor.js";
 export { NavigationEditor } from "./settings/navigation-editor.js";
 export { UserManagement } from "./settings/user-management.js";
 export { PluginsManager } from "./settings/plugins-manager.js";
+export { PluginAdminPage } from "./settings/plugin-admin-page.js";
 
 export { Button } from "./ui/button.js";
 export { Input } from "./ui/input.js";

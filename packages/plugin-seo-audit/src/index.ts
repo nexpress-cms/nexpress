@@ -272,6 +272,76 @@ export const seoAuditPlugin = definePlugin({
       );
     },
   },
+  admin: {
+    settings: {
+      title: "Audit rules",
+      description: "Tune the thresholds the audit applies to post title, description, and body.",
+      fields: [
+        {
+          type: "number",
+          name: "minBodyWords",
+          label: "Minimum body words",
+          defaultValue: MIN_BODY_WORDS,
+          admin: { description: "Shorter posts trigger a low-word-count warning." },
+        },
+        {
+          type: "number",
+          name: "titleMin",
+          label: "Minimum title length",
+          defaultValue: TITLE_MIN,
+        },
+        {
+          type: "number",
+          name: "titleMax",
+          label: "Maximum title length",
+          defaultValue: TITLE_MAX,
+        },
+        {
+          type: "checkbox",
+          name: "includeDescription",
+          label: "Also audit meta description",
+          defaultValue: true,
+        },
+      ],
+    },
+    widgets: [
+      {
+        id: "last-audit",
+        label: "Last audit score",
+        kind: "metric",
+        actionId: "lastAuditScore",
+        description: "Demo metric — returns a static sample value for now.",
+      },
+    ],
+    actions: [
+      {
+        id: "rescan",
+        label: "Re-scan latest post",
+        actionId: "rescanLatest",
+        description: "Demo action — runs the audit against a synthetic payload.",
+      },
+    ],
+  },
+  setup: async (ctx) => {
+    // These demo handlers prove the declarative admin surface end-to-end.
+    // Real implementations would use ctx.content.find() to iterate posts
+    // and store results somewhere the widget can read.
+    ctx.actions.register("lastAuditScore", async () => ({
+      ok: true,
+      data: { value: 87, delta: "+3 vs last week" },
+    }));
+    ctx.actions.register("rescanLatest", async () => {
+      const sample = buildAuditResponse({
+        title: "Example post title that is long enough",
+        description: "A reasonable meta description that describes the content well.",
+        content: "This is a demo. ".repeat(40),
+      });
+      return {
+        ok: true,
+        data: `Score: ${sample.score}, issues: ${sample.issues.length}`,
+      };
+    });
+  },
   routes: [
     {
       method: "GET",

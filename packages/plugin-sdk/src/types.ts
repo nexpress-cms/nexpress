@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import type { NxFieldConfig } from "@nexpress/core";
 
 import type { NxPluginManifest } from "./manifest.js";
 
@@ -101,40 +102,79 @@ export interface NxFieldRegistration {
   schema: Record<string, unknown>;
 }
 
-export interface NxAdminPanelExtension {
-  id: string;
-  label: string;
-  component: string;
-  icon?: string;
-  position?: "top" | "bottom";
+/**
+ * Declarative admin extension surface for plugins. Plugins describe what
+ * they want shown — a settings form, a metric, a button, a table — and
+ * the core admin renders it using its own UI primitives. Plugins never
+ * ship UI code, so there's no framework coupling, no bundle bloat, and
+ * no sandbox problem.
+ *
+ * Custom / bespoke UI (dashboards, visual editors, live charts) is an
+ * explicit non-goal of this API — plugins that need that should serve
+ * their own admin page at `/api/plugins/:id/...` and link to it.
+ */
+
+/**
+ * Plugin settings form. Reuses the same `NxFieldConfig` shape the
+ * collection editor renders, so the admin primitives can be used directly
+ * via FieldRenderer. Values round-trip through `GET /api/plugins/:id` and
+ * `PATCH /api/plugins/:id`.
+ */
+export interface NxAdminSettingsExtension {
+  title?: string;
+  description?: string;
+  /** Reuses the collection field system — renders via FieldRenderer. */
+  fields: NxFieldConfig[];
 }
 
-export interface NxDashboardWidgetExtension {
+/**
+ * Dashboard widget. Admin calls the referenced plugin action and renders
+ * the returned value using the `kind`-specific primitive.
+ *
+ *  - `"metric"`: action returns `{ value: string | number, delta?: string }`.
+ *  - `"status"`: action returns `{ level: "ok" | "warn" | "error", message: string }`.
+ */
+export interface NxAdminWidgetExtension {
   id: string;
   label: string;
-  component: string;
-  size?: "small" | "medium" | "large";
+  kind: "metric" | "status";
+  /** The action id the plugin registered via `ctx.actions.register(actionId, …)`. */
+  actionId: string;
+  /** Optional help text shown under the widget label. */
+  description?: string;
 }
 
-export interface NxCollectionTabExtension {
+/**
+ * Button that triggers a plugin action. Optional confirm message; result is
+ * surfaced as a toast.
+ */
+export interface NxAdminActionExtension {
   id: string;
   label: string;
-  component: string;
-  collections: string[] | "*";
+  actionId: string;
+  /** Shown in a confirmation dialog before dispatch. Omit to skip confirm. */
+  confirm?: string;
+  description?: string;
 }
 
-export interface NxAdminInjectionPoints {
-  beforeDashboard?: string[];
-  afterDashboard?: string[];
-  beforeLogin?: string[];
-  afterLogin?: string[];
+/**
+ * Read-only data table. Admin calls the action to populate rows; the action
+ * returns `{ rows, total }` where each row matches the column keys.
+ */
+export interface NxAdminTableExtension {
+  id: string;
+  label: string;
+  columns: Array<{ name: string; label: string }>;
+  /** Action that returns `{ rows: Record<string, unknown>[], total: number }`. */
+  rowsActionId: string;
+  emptyMessage?: string;
 }
 
 export interface NxAdminExtension {
-  panels?: NxAdminPanelExtension[];
-  dashboardWidgets?: NxDashboardWidgetExtension[];
-  collectionTabs?: NxCollectionTabExtension[];
-  injections?: NxAdminInjectionPoints;
+  settings?: NxAdminSettingsExtension;
+  widgets?: NxAdminWidgetExtension[];
+  actions?: NxAdminActionExtension[];
+  tables?: NxAdminTableExtension[];
 }
 
 export interface NxContentFilterOperator {

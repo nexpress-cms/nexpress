@@ -1,0 +1,442 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { NxFieldConfig } from "@nexpress/core";
+import { AlertTriangle, CheckCircle2, Loader2, Play } from "lucide-react";
+
+import { FieldRenderer } from "../collections/field-renderer.js";
+import { nxFetch } from "../lib/api-client.js";
+import { Badge } from "../ui/badge.js";
+import { Button } from "../ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Form } from "../ui/form.js";
+import { useForm } from "react-hook-form";
+
+interface ColumnDef {
+  name: string;
+  label: string;
+}
+
+interface WidgetDef {
+  id: string;
+  label: string;
+  kind: "metric" | "status";
+  actionId: string;
+  description?: string;
+}
+
+interface ActionDef {
+  id: string;
+  label: string;
+  actionId: string;
+  confirm?: string;
+  description?: string;
+}
+
+interface TableDef {
+  id: string;
+  label: string;
+  columns: ColumnDef[];
+  rowsActionId: string;
+  emptyMessage?: string;
+}
+
+interface AdminExtension {
+  settings?: {
+    title?: string;
+    description?: string;
+    fields: NxFieldConfig[];
+  };
+  widgets?: WidgetDef[];
+  actions?: ActionDef[];
+  tables?: TableDef[];
+}
+
+interface PluginAdminPageProps {
+  pluginId: string;
+  pluginName: string;
+  admin: AdminExtension;
+  initialConfig: Record<string, unknown>;
+}
+
+type ActionResult = { ok: boolean; data?: unknown; error?: string };
+
+async function dispatch(pluginId: string, actionId: string, payload?: unknown): Promise<ActionResult> {
+  const response = await nxFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload === undefined ? "" : JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    return { ok: false, error: `HTTP ${response.status}` };
+  }
+  const body = (await response.json().catch(() => null)) as ActionResult | null;
+  return body ?? { ok: false, error: "Empty response" };
+}
+
+export function PluginAdminPage({
+  pluginId,
+  pluginName,
+  admin,
+  initialConfig,
+}: PluginAdminPageProps) {
+  const sections: Array<"settings" | "widgets" | "actions" | "tables"> = [];
+  if (admin.settings) sections.push("settings");
+  if (admin.widgets?.length) sections.push("widgets");
+  if (admin.actions?.length) sections.push("actions");
+  if (admin.tables?.length) sections.push("tables");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight">{pluginName}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Plugin admin surface. Settings save to the plugin&rsquo;s DB config;
+          widgets and actions dispatch the plugin&rsquo;s registered handlers.
+        </p>
+      </div>
+
+      {admin.widgets && admin.widgets.length > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {admin.widgets.map((widget) => (
+            <WidgetCard key={widget.id} pluginId={pluginId} widget={widget} />
+          ))}
+        </div>
+      ) : null}
+
+      {admin.settings ? (
+        <SettingsCard
+          pluginId={pluginId}
+          settings={admin.settings}
+          initialConfig={initialConfig}
+        />
+      ) : null}
+
+      {admin.actions && admin.actions.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {admin.actions.map((action) => (
+              <ActionRow key={action.id} pluginId={pluginId} action={action} />
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {admin.tables?.map((table) => (
+        <TableCard key={table.id} pluginId={pluginId} table={table} />
+      ))}
+
+      {sections.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            This plugin doesn&rsquo;t declare any admin extensions.
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Sub-components
+// ────────────────────────────────────────────────────────────────────────
+
+function SettingsCard({
+  pluginId,
+  settings,
+  initialConfig,
+}: {
+  pluginId: string;
+  settings: NonNullable<AdminExtension["settings"]>;
+  initialConfig: Record<string, unknown>;
+}) {
+  const defaultValues = useMemo(() => {
+    const result: Record<string, unknown> = { ...initialConfig };
+    for (const field of settings.fields) {
+      if (field.type === "row" || field.type === "collapsible") continue;
+      if (result[field.name] === undefined && field.defaultValue !== undefined) {
+        result[field.name] = field.defaultValue;
+      }
+    }
+    return result;
+  }, [settings.fields, initialConfig]);
+
+  const form = useForm<Record<string, unknown>>({ defaultValues });
+
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    setSaving(true);
+    setToast(null);
+    try {
+      const response = await nxFetch(`/api/plugins/${pluginId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: values }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setToast({ type: "error", message: payload?.error?.message ?? "Failed to save settings." });
+        return;
+      }
+      setToast({ type: "success", message: "Settings saved." });
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to save settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{settings.title ?? "Settings"}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {settings.description ? (
+          <p className="mb-4 text-sm text-muted-foreground">{settings.description}</p>
+        ) : null}
+        {toast ? (
+          <div
+            className={
+              toast.type === "success"
+                ? "mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700"
+                : "mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700"
+            }
+          >
+            {toast.message}
+          </div>
+        ) : null}
+        <Form {...form}>
+          <form
+            onSubmit={(e) => {
+              void onSubmit(e);
+            }}
+            className="space-y-4"
+          >
+            {settings.fields.map((field, index) => (
+              <FieldRenderer
+                key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}
+                field={field}
+                control={form.control}
+              />
+            ))}
+            <Button type="submit" disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save settings
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef }) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "metric"; value: string; delta?: string }
+    | { kind: "status"; level: "ok" | "warn" | "error"; message: string }
+    | { kind: "error"; message: string }
+  >({ kind: "loading" });
+
+  const load = useCallback(async () => {
+    setState({ kind: "loading" });
+    const result = await dispatch(pluginId, widget.actionId);
+    if (!result.ok || !result.data) {
+      setState({ kind: "error", message: result.error ?? "No data returned" });
+      return;
+    }
+    const data = result.data as Record<string, unknown>;
+    if (widget.kind === "metric") {
+      setState({
+        kind: "metric",
+        value: typeof data.value === "string" || typeof data.value === "number" ? String(data.value) : "—",
+        delta: typeof data.delta === "string" ? data.delta : undefined,
+      });
+    } else {
+      const level = data.level === "ok" || data.level === "warn" || data.level === "error" ? data.level : "warn";
+      setState({
+        kind: "status",
+        level,
+        message: typeof data.message === "string" ? data.message : "",
+      });
+    }
+  }, [pluginId, widget]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{widget.label}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {state.kind === "loading" ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : state.kind === "metric" ? (
+          <div>
+            <div className="text-2xl font-semibold">{state.value}</div>
+            {state.delta ? <div className="text-xs text-muted-foreground">{state.delta}</div> : null}
+          </div>
+        ) : state.kind === "status" ? (
+          <div className="flex items-center gap-2">
+            {state.level === "ok" ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            ) : state.level === "warn" ? (
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            ) : (
+              <AlertTriangle className="h-5 w-5 text-rose-600" />
+            )}
+            <span className="text-sm">{state.message}</span>
+          </div>
+        ) : (
+          <div className="text-xs text-rose-600">{state.message}</div>
+        )}
+        {widget.description ? (
+          <p className="mt-2 text-xs text-muted-foreground">{widget.description}</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }) {
+  const [running, setRunning] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const run = useCallback(async () => {
+    if (action.confirm && !window.confirm(action.confirm)) return;
+    setRunning(true);
+    setToast(null);
+    const result = await dispatch(pluginId, action.actionId);
+    setRunning(false);
+    if (!result.ok) {
+      setToast({ type: "error", message: result.error ?? "Action failed." });
+      return;
+    }
+    setToast({
+      type: "success",
+      message: typeof result.data === "string" ? result.data : `${action.label}: done.`,
+    });
+  }, [pluginId, action]);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="text-sm font-medium">{action.label}</div>
+        {action.description ? (
+          <div className="text-xs text-muted-foreground">{action.description}</div>
+        ) : null}
+        {toast ? (
+          <div
+            className={
+              toast.type === "success"
+                ? "mt-2 text-xs text-emerald-700"
+                : "mt-2 text-xs text-rose-700"
+            }
+          >
+            {toast.message}
+          </div>
+        ) : null}
+      </div>
+      <Button type="button" variant="outline" onClick={() => void run()} disabled={running}>
+        {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+        Run
+      </Button>
+    </div>
+  );
+}
+
+function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "ready"; rows: Array<Record<string, unknown>>; total: number }
+    | { kind: "error"; message: string }
+  >({ kind: "loading" });
+
+  const load = useCallback(async () => {
+    setState({ kind: "loading" });
+    const result = await dispatch(pluginId, table.rowsActionId);
+    if (!result.ok || !result.data) {
+      setState({ kind: "error", message: result.error ?? "No data" });
+      return;
+    }
+    const data = result.data as { rows?: unknown; total?: unknown };
+    const rows = Array.isArray(data.rows) ? (data.rows as Array<Record<string, unknown>>) : [];
+    const total = typeof data.total === "number" ? data.total : rows.length;
+    setState({ kind: "ready", rows, total });
+  }, [pluginId, table]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle>{table.label}</CardTitle>
+        {state.kind === "ready" ? (
+          <Badge variant="secondary">{state.total}</Badge>
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        {state.kind === "loading" ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : state.kind === "error" ? (
+          <p className="text-sm text-rose-600">{state.message}</p>
+        ) : state.rows.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            {table.emptyMessage ?? "No rows."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  {table.columns.map((col) => (
+                    <th key={col.name} className="py-2 pr-4 font-medium">
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {state.rows.map((row, index) => (
+                  <tr key={String(row.id ?? index)} className="border-b last:border-b-0">
+                    {table.columns.map((col) => (
+                      <td key={col.name} className="py-2 pr-4 align-top">
+                        {renderCell(row[col.name])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function renderCell(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}

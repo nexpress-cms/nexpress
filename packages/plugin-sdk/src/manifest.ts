@@ -69,3 +69,52 @@ export type NxPluginManifest = z.input<typeof nxPluginManifestSchema>;
 
 /** Parsed manifest with all defaults resolved. Use in host/registry code. */
 export type NxPluginManifestResolved = z.output<typeof nxPluginManifestSchema>;
+
+// ────────────────────────────────────────────────────────────────────────
+// Admin extension schema — validated by definePlugin.
+// Fields inside NxAdminSettingsExtension reuse the collection field shape
+// (NxFieldConfig from @nexpress/core), but plugin-sdk can't import core
+// without a cycle, so accept them as opaque objects here. The admin
+// renderer does the structural validation at render time.
+// ────────────────────────────────────────────────────────────────────────
+
+const adminFieldOpaqueSchema = z.record(z.string(), z.unknown());
+
+export const nxAdminSettingsSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  fields: z.array(adminFieldOpaqueSchema).min(1),
+});
+
+export const nxAdminWidgetSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  kind: z.enum(["metric", "status"]),
+  actionId: z.string().min(1),
+  description: z.string().optional(),
+});
+
+export const nxAdminActionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  actionId: z.string().min(1),
+  confirm: z.string().optional(),
+  description: z.string().optional(),
+});
+
+export const nxAdminTableSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  columns: z
+    .array(z.object({ name: z.string().min(1), label: z.string().min(1) }))
+    .min(1),
+  rowsActionId: z.string().min(1),
+  emptyMessage: z.string().optional(),
+});
+
+export const nxAdminExtensionSchema = z.object({
+  settings: nxAdminSettingsSchema.optional(),
+  widgets: z.array(nxAdminWidgetSchema).optional(),
+  actions: z.array(nxAdminActionSchema).optional(),
+  tables: z.array(nxAdminTableSchema).optional(),
+});

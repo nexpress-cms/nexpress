@@ -37,6 +37,7 @@ function toDetail(state: {
           path: route.path,
         }))
       : [],
+    admin: reg?.admin ?? null,
     enabled: state.enabled,
     config: state.config,
     installedAt: state.installedAt,
