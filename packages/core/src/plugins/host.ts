@@ -44,6 +44,7 @@ interface PluginRegistration {
   version?: string;
   description?: string;
   capabilities: readonly string[];
+  allowedHosts: readonly string[];
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
@@ -93,6 +94,7 @@ export interface ResolvedPluginLike {
     version?: string;
     description?: string;
     capabilities: readonly string[];
+    allowedHosts?: readonly string[];
   };
   hooks?: Record<string, unknown>;
   routes?: ReadonlyArray<{
@@ -143,6 +145,7 @@ async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
   return createPluginRuntimeContext({
     pluginId,
     capabilities: registration.capabilities,
+    allowedHosts: registration.allowedHosts,
     config,
     registration,
     lookupRegistration: (id) => pluginRegistry.get(id),
@@ -214,6 +217,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     version: manifest.version,
     description: manifest.description,
     capabilities: [...manifest.capabilities],
+    allowedHosts: [...(manifest.allowedHosts ?? [])],
     hooks: new Map(),
     routes: [],
     actions: new Map(),
@@ -275,6 +279,7 @@ async function loadLegacyPlugin(plugin: NxPluginConfig): Promise<void> {
     id: plugin.id,
     name: plugin.name,
     capabilities: ["hooks:content"],
+    allowedHosts: [],
     hooks: new Map(),
     routes: [],
     actions: new Map(),
