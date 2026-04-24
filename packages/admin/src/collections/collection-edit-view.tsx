@@ -318,10 +318,14 @@ export function CollectionEditView({ config, doc, collectionSlug }: CollectionEd
                       ? "inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
                       : currentStatus === "draft"
                         ? "inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
-                        : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                        : currentStatus === "scheduled"
+                          ? "inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
                   }
                 >
-                  {currentStatus}
+                  {currentStatus === "scheduled" && doc?.publishedAt
+                    ? `scheduled · ${new Date(String(doc.publishedAt)).toLocaleString()}`
+                    : currentStatus}
                 </span>
               ) : null}
             </div>

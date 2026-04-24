@@ -331,6 +331,7 @@ export interface NxConfig {
 export type NxJobType =
   | "content:afterSave"
   | "content:afterDelete"
+  | "content:publishScheduled"
   | "media:processImage"
   | "media:cleanup"
   | "plugin:scheduledTask"
@@ -356,7 +357,7 @@ export interface NxFindResult<T = Record<string, unknown>> {
   hasPrevPage: boolean;
 }
 
-export type NxDocumentStatus = "draft" | "published" | "archived";
+export type NxDocumentStatus = "draft" | "scheduled" | "published" | "archived";
 
 export interface NxSaveOptions {
   status?: NxDocumentStatus;
