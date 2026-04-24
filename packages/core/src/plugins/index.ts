@@ -5,6 +5,7 @@ export {
   getPluginRegistration,
   getAllPluginIds,
   getPluginAdminExtension,
+  getCollectionTabsForSlug,
   dispatchPluginAction,
   schedulePluginTask,
   resetPlugins,
@@ -16,6 +17,7 @@ export type {
   PluginRouteRequest,
   PluginRouteResponse,
   PluginAdminExtension,
+  ResolvedCollectionTab,
 } from "./host.js";
 
 export {

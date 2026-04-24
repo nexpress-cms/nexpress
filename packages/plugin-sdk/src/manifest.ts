@@ -112,9 +112,33 @@ export const nxAdminTableSchema = z.object({
   emptyMessage: z.string().optional(),
 });
 
+export const nxCollectionTabSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    collections: z.union([z.array(z.string().min(1)).min(1), z.literal("*")]),
+    widgets: z.array(nxAdminWidgetSchema).optional(),
+    actions: z.array(nxAdminActionSchema).optional(),
+    description: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    // A tab with neither widgets nor actions renders as an empty card —
+    // almost certainly a plugin-author mistake. Force at least one.
+    const widgetCount = value.widgets?.length ?? 0;
+    const actionCount = value.actions?.length ?? 0;
+    if (widgetCount === 0 && actionCount === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "collectionTabs entry must declare at least one widget or action",
+        path: [],
+      });
+    }
+  });
+
 export const nxAdminExtensionSchema = z.object({
   settings: nxAdminSettingsSchema.optional(),
   widgets: z.array(nxAdminWidgetSchema).optional(),
   actions: z.array(nxAdminActionSchema).optional(),
   tables: z.array(nxAdminTableSchema).optional(),
+  collectionTabs: z.array(nxCollectionTabSchema).optional(),
 });

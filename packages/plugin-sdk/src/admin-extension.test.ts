@@ -6,6 +6,7 @@ import {
   nxAdminSettingsSchema,
   nxAdminTableSchema,
   nxAdminWidgetSchema,
+  nxCollectionTabSchema,
 } from "./manifest.js";
 
 describe("nxAdminSettingsSchema", () => {
@@ -137,5 +138,68 @@ describe("nxAdminExtensionSchema", () => {
         widgets: [{ id: "", label: "W", kind: "metric", actionId: "x" }],
       }),
     ).toThrow();
+  });
+});
+
+describe("nxCollectionTabSchema", () => {
+  it("accepts a tab scoped to a specific collection with at least one widget", () => {
+    expect(() =>
+      nxCollectionTabSchema.parse({
+        id: "seo",
+        label: "SEO",
+        collections: ["posts"],
+        widgets: [{ id: "score", label: "Score", kind: "metric", actionId: "getScore" }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts `*` as a match-any-collection token", () => {
+    expect(() =>
+      nxCollectionTabSchema.parse({
+        id: "readingTime",
+        label: "Reading time",
+        collections: "*",
+        widgets: [
+          { id: "wc", label: "Words", kind: "metric", actionId: "countWords" },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects an empty collections array", () => {
+    expect(() =>
+      nxCollectionTabSchema.parse({
+        id: "x",
+        label: "X",
+        collections: [],
+        actions: [{ id: "a", label: "A", actionId: "z" }],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects tabs with neither widgets nor actions", () => {
+    expect(() =>
+      nxCollectionTabSchema.parse({
+        id: "empty",
+        label: "Empty",
+        collections: "*",
+      }),
+    ).toThrow(/widget or action/);
+  });
+
+  it("nxAdminExtensionSchema accepts collectionTabs alongside other sections", () => {
+    expect(() =>
+      nxAdminExtensionSchema.parse({
+        widgets: [{ id: "w", label: "W", kind: "metric", actionId: "a" }],
+        collectionTabs: [
+          {
+            id: "seo",
+            label: "SEO",
+            collections: ["posts"],
+            widgets: [{ id: "score", label: "Score", kind: "metric", actionId: "getScore" }],
+          },
+        ],
+      }),
+    ).not.toThrow();
   });
 });
