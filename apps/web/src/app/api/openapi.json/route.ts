@@ -1,7 +1,7 @@
-import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
+import { getAllCollectionSlugs, getCollectionConfig, getPluginRoutes } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 import { collectionToManifest, type NxFieldManifest } from "@/lib/manifest";
 
 type OpenApiSchema = Record<string, unknown>;
@@ -433,6 +433,27 @@ function buildSpec(): OpenApiSchema {
     }
   }
 
+  // Plugin-provided routes. These are resolved from the in-process registry,
+  // so the spec only lists plugins that actually loaded (enabled + no errors).
+  for (const route of getPluginRoutes()) {
+    const fullPath = `/api/plugins/${route.pluginId}${route.path}`;
+    const method = route.method.toLowerCase();
+    const existing = (paths[fullPath] as Record<string, unknown> | undefined) ?? {};
+
+    paths[fullPath] = {
+      ...existing,
+      [method]: {
+        summary: `Plugin route: ${route.method.toUpperCase()} ${route.path}`,
+        tags: [`plugin:${route.pluginId}`],
+        description: `Exposed by plugin \`${route.pluginId}\`.`,
+        responses: {
+          "200": { description: "Plugin response (shape depends on the plugin)" },
+          "404": { description: "Plugin or route not found" },
+        },
+      },
+    };
+  }
+
   return {
     openapi: "3.1.0",
     info: {
@@ -453,8 +474,9 @@ function buildSpec(): OpenApiSchema {
   };
 }
 
-export function GET() {
+export async function GET() {
   ensureCoreServices();
+  await ensurePluginsLoaded();
 
   return NextResponse.json(buildSpec(), {
     headers: { "Cache-Control": "no-store" },

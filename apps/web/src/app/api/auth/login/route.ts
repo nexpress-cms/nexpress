@@ -3,6 +3,7 @@ import {
   NxError,
   type NxUserRole,
   NxValidationError,
+  runHook,
   signToken,
   verifyPassword,
 } from "@nexpress/core";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
+import { ensurePluginsLoaded } from "@/lib/init-core";
 
 interface LoginUserRow extends Record<string, unknown> {
   id: string;
@@ -110,6 +112,15 @@ export async function POST(request: NextRequest) {
       access,
       refresh,
       csrf: crypto.randomUUID(),
+    });
+
+    await ensurePluginsLoaded();
+    await runHook("auth:afterLogin", {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
     });
 
     return response;
