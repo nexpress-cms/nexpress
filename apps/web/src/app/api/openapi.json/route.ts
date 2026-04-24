@@ -80,7 +80,37 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
 
 function buildSpec(): OpenApiSchema {
   const slugs = getAllCollectionSlugs();
-  const schemas: Record<string, OpenApiSchema> = {};
+  const schemas: Record<string, OpenApiSchema> = {
+    plugin_item: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        version: { type: "string", nullable: true },
+        description: { type: "string", nullable: true },
+        capabilities: { type: "array", items: { type: "string" } },
+        hooks: { type: "array", items: { type: "string" } },
+        routes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              method: { type: "string" },
+              path: { type: "string" },
+            },
+          },
+        },
+        enabled: { type: "boolean" },
+        config: { type: "object", additionalProperties: true },
+        installedAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        loaded: {
+          type: "boolean",
+          description: "True when the plugin is currently registered in this process (may lag the DB flag until restart).",
+        },
+      },
+    },
+  };
   const paths: Record<string, OpenApiSchema> = {
     "/api/auth/login": {
       post: {
@@ -102,6 +132,68 @@ function buildSpec(): OpenApiSchema {
     },
     "/api/auth/logout": { post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } } },
     "/api/auth/me": { get: { summary: "Current authenticated user", responses: { "200": { description: "User object" } } } },
+    "/api/plugins": {
+      get: {
+        summary: "List installed plugins with enabled state + registry info (admin only)",
+        responses: {
+          "200": {
+            description: "Plugin list",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    items: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/plugin_item" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "403": { description: "Caller is not an admin" },
+        },
+      },
+    },
+    "/api/plugins/{pluginId}": {
+      parameters: [{ in: "path", name: "pluginId", required: true, schema: { type: "string" } }],
+      get: {
+        summary: "Get a single plugin (admin only)",
+        responses: {
+          "200": {
+            description: "Plugin detail",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } } },
+          },
+          "404": { description: "Plugin id unknown" },
+        },
+      },
+      patch: {
+        summary: "Enable/disable a plugin or update its config (admin only)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  enabled: { type: "boolean" },
+                  config: { type: "object", additionalProperties: true },
+                },
+                description: "At least one of `enabled` or `config` must be provided.",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Updated plugin",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/plugin_item" } } },
+          },
+          "404": { description: "Plugin id unknown" },
+        },
+      },
+    },
   };
 
   for (const slug of slugs) {
