@@ -14,3 +14,12 @@ export type {
   PluginRouteRequest,
   PluginRouteResponse,
 } from "./host.js";
+
+export {
+  listPluginStates,
+  getPluginState,
+  syncPluginRegistrations,
+  updatePluginState,
+} from "./persistence.js";
+
+export type { NxPluginState, NxPluginStateUpdate } from "./persistence.js";
