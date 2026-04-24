@@ -377,7 +377,7 @@ function getBaseColumns(collection: NxCollectionConfig): string[] {
   const columns = ['id: uuid("id").defaultRandom().primaryKey()'];
 
   columns.push(
-    'status: text("status", { enum: ["draft", "published", "archived"] }).default("draft").notNull()',
+    'status: text("status", { enum: ["draft", "scheduled", "published", "archived"] }).default("draft").notNull()',
   );
 
   columns.push('createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()');

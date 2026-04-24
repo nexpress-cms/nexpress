@@ -13,7 +13,12 @@ export const {
   ensureReady: ensureWriteReady,
 });
 
-const VALID_STATUSES: readonly NxDocumentStatus[] = ["draft", "published", "archived"];
+const VALID_STATUSES: readonly NxDocumentStatus[] = [
+  "draft",
+  "scheduled",
+  "published",
+  "archived",
+];
 
 export function parseBodyRecord(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
