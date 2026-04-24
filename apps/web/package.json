@@ -29,6 +29,7 @@
     "@nexpress/theme": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "next": "^15.3.0",
+    "nodemailer": "^7.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
