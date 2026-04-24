@@ -89,22 +89,30 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 });
 ```
 
-### Current integration coverage
+### Current integration coverage (30 tests)
 
 | File | Covers |
 |------|--------|
-| `plugin-storage.integration.test.ts` | ctx.storage set/get/delete/list/has + TTL expiry via `nx_plugin_storage` |
-| `plugin-persistence.integration.test.ts` | syncPluginRegistrations / updatePluginState upsert + idempotence |
-| `reset-token.integration.test.ts` | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete |
+| `plugin-storage.integration.test.ts` (6) | ctx.storage set/get/delete/list/has + TTL expiry via `nx_plugin_storage` |
+| `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence |
+| `reset-token.integration.test.ts` (5) | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete |
+| `pipeline.integration.test.ts` (4) | saveDocument create/update, revision versioning, findDocuments round-trip, deleteDocument |
+| `scheduled.integration.test.ts` (4) | pipeline coerces published+future → scheduled; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with full doc, idempotent |
+| `ctx-settings.integration.test.ts` (6) | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate |
+
+The pipeline/scheduled tests reuse `apps/web`'s `posts` collection via a
+test-only fixture (`src/integration/fixtures.ts`). Core's main tsconfig
+excludes `src/integration/` so the cross-directory import doesn't trip
+`tsc --noEmit`; vitest handles the TS resolution at test run time.
 
 ### Not yet covered (follow-ups)
 
-- `publishScheduledDocuments` — needs a test collection with a `publishedAt`
-  date field. Requires either a fixture collection with generated drizzle
-  schema or a harness that runs `pnpm db:generate` against the test DB.
-- Full `saveDocument` pipeline including revisions + media refs.
-- SMTP adapter against a real relay (use a mail-capturing service for this
-  class of test).
+- **SMTP adapter against a real relay** — use a mail-capturing service
+  (Mailtrap, Ethereal, or a local MailHog) rather than a production SMTP.
+- **Search vector ranking** — would need seeded docs with varied
+  full-text content and `ts_rank` assertions.
+- **pg-boss queue** — add a test that enqueues a job, waits for the
+  worker to pick it up, and asserts the handler ran.
 
 ## CI
 
