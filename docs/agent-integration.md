@@ -26,7 +26,9 @@ request (no cache) covering:
   dispatch (`POST /api/plugins/{id}/actions/{actionId}`), and every
   plugin-defined route under `/api/plugins/{pluginId}{path}`, tagged with
   `plugin:{pluginId}` so agents can scope to one plugin.
-- Import / export (`/api/import`, `/api/export`).
+- Import / export (`/api/import`, `/api/export`). Both accept
+  `?collections=a,b` to scope to a subset; import also accepts
+  `?dryRun=true` to validate a payload without writing.
 - Public discovery (`/api/meta/blocks`, `/api/meta/collections`,
   `/api/meta/plugins`) and search (`/api/search`).
 - Draft mode entrypoints (`/api/preview`, `/api/preview/exit`) and
@@ -118,8 +120,8 @@ Match the agent's role to its scope (e.g. a content-importer agent =
   - `"draft"` / `"published"` — as you'd expect.
   - `"scheduled"` — save with a future `publishedAt`; NexPress coerces
     published→scheduled when `publishedAt > now`. See
-    [Scheduled publishing](./scheduled-publishing.md) (if present) or the
-    `/api/internal/publish-scheduled` description in OpenAPI.
+    [Scheduled publishing](./scheduled-publishing.md) for the sweep
+    endpoint and how to wire cron.
 
 ### Revisions
 
