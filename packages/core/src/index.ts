@@ -110,6 +110,19 @@ export type { NxTokenPayload } from "./auth/token.js";
 export { hashPassword, verifyPassword, ARGON2_OPTIONS } from "./auth/password.js";
 export { verifyCsrf } from "./auth/csrf.js";
 export { sha256, verifyTokenFull, invalidateAllSessions } from "./auth/session.js";
+export {
+  createPasswordResetToken,
+  requestPasswordReset,
+  consumePasswordResetToken,
+} from "./auth/reset-token.js";
+export type {
+  NxPasswordResetPurpose,
+  NxIssuedResetToken,
+  NxCreateResetTokenOptions,
+  NxResetRequestResult,
+  NxConsumeResetTokenOptions,
+  NxConsumeResetTokenResult,
+} from "./auth/reset-token.js";
 
 export {
   registerJobHandler,
