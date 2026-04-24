@@ -96,7 +96,7 @@ export default definePlugin({
 
 ---
 
-## The four extension kinds
+## The five extension kinds
 
 ### `settings` — configuration form
 
@@ -130,6 +130,41 @@ is surfaced as a toast. Optional `confirm` shows a dialog before dispatch
 Action returns `{ rows: Array<Record>, total: number }`. Admin renders
 using its built-in table primitive. Columns are declared up front; cells
 render via `JSON.stringify` for object values, `String(...)` for scalars.
+
+### `collectionTabs` — per-document widgets + actions
+
+Injects widgets and actions into the **collection edit view** sidebar
+(below the Revisions panel). Each tab declares which collections it
+targets — either a list of slugs or `"*"` for every collection:
+
+```ts
+admin: {
+  collectionTabs: [
+    {
+      id: "seo",
+      label: "SEO audit",
+      collections: ["posts"],
+      description: "Live-audits the post you are editing.",
+      widgets: [
+        { id: "score", label: "SEO score", kind: "metric", actionId: "auditDocument" },
+      ],
+      actions: [
+        { id: "rescan", label: "Re-scan this post", actionId: "auditDocument" },
+      ],
+    },
+  ],
+},
+```
+
+Each widget / action receives `{ collection, documentId }` as its payload,
+so the handler can fetch the current doc via `ctx.content.findOne()` and
+return a live score, status, or per-document action result. The same
+`actionId` can back a widget and an action: the widget reads the metric
+shape, the action shows a success toast.
+
+A tab must declare at least one widget or action — an empty tab
+renders as an empty card and is almost certainly an authoring mistake
+(enforced by `definePlugin` at build time).
 
 ---
 

@@ -1,8 +1,9 @@
-import { getCollectionConfig, getDocumentById } from "@nexpress/core";
+import { getCollectionConfig, getCollectionTabsForSlug, getDocumentById } from "@nexpress/core";
 import { CollectionEditView } from "@nexpress/admin/client";
+import type { CollectionTabDescriptor } from "@nexpress/admin";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { notFound } from "next/navigation";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ interface Props {
 
 export default async function EditPage({ params }: Props) {
   ensureCoreServices();
+  await ensurePluginsLoaded();
 
   const { collection, id } = await params;
   const config = getCollectionConfig(collection);
@@ -20,11 +22,22 @@ export default async function EditPage({ params }: Props) {
   const doc = await getDocumentById(collection, id);
   if (!doc) notFound();
 
+  const tabs: CollectionTabDescriptor[] = getCollectionTabsForSlug(collection).map((tab) => ({
+    pluginId: tab.pluginId,
+    pluginName: tab.pluginName,
+    id: tab.id,
+    label: tab.label,
+    widgets: tab.widgets,
+    actions: tab.actions,
+    description: tab.description,
+  }));
+
   return (
     <CollectionEditView
       config={toClientCollectionConfig(config)}
       doc={doc}
       collectionSlug={collection}
+      collectionTabs={tabs}
     />
   );
 }
