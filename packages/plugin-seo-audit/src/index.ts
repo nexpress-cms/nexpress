@@ -231,7 +231,13 @@ export const seoAuditPlugin = definePlugin({
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    capabilities: ["hooks:content", "api:route", "content:read", "admin:collection-tab"],
+    capabilities: [
+      "hooks:content",
+      "hooks:render",
+      "api:route",
+      "content:read",
+      "admin:collection-tab",
+    ],
     allowedHosts: [],
     provides: {
       blocks: [],
@@ -239,7 +245,7 @@ export const seoAuditPlugin = definePlugin({
       collections: [],
       adminExtensions: [],
       apiRoutes: ["/analyze"],
-      hooks: ["content:afterCreate", "content:afterUpdate"],
+      hooks: ["content:afterCreate", "content:afterUpdate", "render:beforePage"],
     },
     agent: {
       description:
@@ -270,6 +276,47 @@ export const seoAuditPlugin = definePlugin({
         `[seo-audit] (updated) ${collection}/${String(doc.id ?? "?")} ` +
           `score=${result.score} words=${result.wordCount} issues=${result.issues.length}`,
       );
+    },
+    "render:beforePage": ({ data }) => {
+      const doc = (data.document ?? {}) as JsonRecord;
+      const input = extractInputFromDocument(doc);
+      const head: Array<
+        | { tag: "meta"; attrs: Record<string, string> }
+        | { tag: "link"; attrs: Record<string, string> }
+      > = [];
+
+      if (input.description) {
+        head.push({
+          tag: "meta",
+          attrs: { name: "description", content: input.description },
+        });
+        head.push({
+          tag: "meta",
+          attrs: { property: "og:description", content: input.description },
+        });
+      }
+      if (input.title) {
+        head.push({
+          tag: "meta",
+          attrs: { property: "og:title", content: input.title },
+        });
+      }
+      head.push({
+        tag: "meta",
+        attrs: {
+          property: "og:type",
+          content: data.collection === "posts" ? "article" : "website",
+        },
+      });
+
+      const canonicalSlug = typeof doc.slug === "string" ? doc.slug : String(data.slug ?? "");
+      if (canonicalSlug) {
+        const path =
+          data.collection === "posts" ? `/blog/${canonicalSlug}` : `/${canonicalSlug}`;
+        head.push({ tag: "link", attrs: { rel: "canonical", href: path } });
+      }
+
+      return head.length > 0 ? { head } : undefined;
     },
   },
   admin: {

@@ -196,6 +196,51 @@ export interface NxAdminExtension {
   collectionTabs?: NxCollectionTabExtension[];
 }
 
+/**
+ * Declarative page-render contribution returned by a `render:beforePage`
+ * hook. The host collects contributions from every plugin that handles
+ * the hook, flattens them, and renders the tags as real DOM elements via
+ * React 19 head hoisting. Plugins don't render React directly — they
+ * describe what should appear, and the host emits it.
+ *
+ * Use cases: SEO meta tags, canonical URLs, JSON-LD, analytics scripts,
+ * third-party widget loaders. For anything richer (inline components,
+ * interactive widgets), plugins should ship a block instead.
+ *
+ * SECURITY NOTE: `attrs` values and `children` are rendered into markup
+ * with React's default escaping for attributes/text, but `<script>`
+ * `children` is injected as an inline script body. Plugins are trusted
+ * code in v1 — review them before installing.
+ */
+export interface NxRenderContribution {
+  /** Tags hoisted into `<head>` — meta, link, script, style. */
+  head?: NxHeadEntry[];
+  /** Tags appended just before `</body>` — typically analytics scripts. */
+  bodyEnd?: NxBodyEntry[];
+}
+
+export type NxHeadEntry =
+  | { tag: "meta"; attrs: Record<string, string> }
+  | { tag: "link"; attrs: Record<string, string> }
+  | { tag: "script"; attrs?: Record<string, string>; children?: string }
+  | { tag: "style"; attrs?: Record<string, string>; children: string };
+
+export type NxBodyEntry =
+  | { tag: "script"; attrs?: Record<string, string>; children?: string }
+  | { tag: "noscript"; children: string };
+
+/**
+ * Data passed to `render:beforePage` handlers. `document` is the resolved
+ * page/post record the request is about to render. `collection` is the
+ * registered collection slug (e.g. `"pages"`, `"posts"`). `slug` is the
+ * URL path slug the renderer resolved it from.
+ */
+export interface NxRenderHookData {
+  collection: string;
+  slug: string;
+  document: Record<string, unknown>;
+}
+
 export interface NxContentFilterOperator {
   equals?: unknown;
   notEquals?: unknown;
@@ -426,7 +471,7 @@ export interface NxHookContext<TConfig = Record<string, unknown>> {
 }
 
 export type NxHookHandler<TConfig = Record<string, unknown>> =
-  | ((ctx: NxHookContext<TConfig>) => void | Promise<void>)
+  | ((ctx: NxHookContext<TConfig>) => unknown | Promise<unknown>)
   | string;
 
 export type NxHookRegistration<TConfig = Record<string, unknown>> = Partial<
