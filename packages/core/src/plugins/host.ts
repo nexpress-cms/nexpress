@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import type { NxPluginConfig, NxPluginContext } from "../config/types.js";
+import type { NxFieldConfig, NxPluginConfig, NxPluginContext } from "../config/types.js";
 import { nxPlugins } from "../db/schema/system.js";
 import { getDb } from "../collections/pipeline.js";
 import { createPluginRuntimeContext } from "./context.js";
@@ -38,6 +38,41 @@ export interface PluginCapabilityRequirement {
   declared: readonly string[];
 }
 
+/**
+ * Declarative admin extension snapshot stored per registration. Shape mirrors
+ * `@nexpress/plugin-sdk`'s `NxAdminExtension` but kept structural here to
+ * avoid a plugin-sdk → core cycle. The admin UI reads this via
+ * `getPluginAdminExtension(id)` and renders it with its own primitives.
+ */
+export interface PluginAdminExtension {
+  settings?: {
+    title?: string;
+    description?: string;
+    fields: NxFieldConfig[];
+  };
+  widgets?: Array<{
+    id: string;
+    label: string;
+    kind: "metric" | "status";
+    actionId: string;
+    description?: string;
+  }>;
+  actions?: Array<{
+    id: string;
+    label: string;
+    actionId: string;
+    confirm?: string;
+    description?: string;
+  }>;
+  tables?: Array<{
+    id: string;
+    label: string;
+    columns: Array<{ name: string; label: string }>;
+    rowsActionId: string;
+    emptyMessage?: string;
+  }>;
+}
+
 interface PluginRegistration {
   id: string;
   name: string;
@@ -45,6 +80,7 @@ interface PluginRegistration {
   description?: string;
   capabilities: readonly string[];
   allowedHosts: readonly string[];
+  admin?: PluginAdminExtension;
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
@@ -104,6 +140,7 @@ export interface ResolvedPluginLike {
     description?: string;
     auth?: boolean;
   }>;
+  admin?: PluginAdminExtension;
 }
 
 type ResolvedHookFn = (ctx: {
@@ -218,6 +255,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     description: manifest.description,
     capabilities: [...manifest.capabilities],
     allowedHosts: [...(manifest.allowedHosts ?? [])],
+    admin: plugin.admin,
     hooks: new Map(),
     routes: [],
     actions: new Map(),
@@ -324,6 +362,32 @@ export function getPluginRegistration(pluginId: string): PluginRegistration | un
 
 export function getAllPluginIds(): string[] {
   return [...pluginRegistry.keys()];
+}
+
+export function getPluginAdminExtension(pluginId: string): PluginAdminExtension | undefined {
+  return pluginRegistry.get(pluginId)?.admin;
+}
+
+/**
+ * Dispatches a named action registered by the plugin via
+ * `ctx.actions.register(actionId, handler)`. Admin widgets / actions / tables
+ * call this via POST /api/plugins/:id/actions/:actionId — the handler is
+ * responsible for returning `{ ok, data?, error? }`.
+ */
+export async function dispatchPluginAction(
+  pluginId: string,
+  actionId: string,
+  data?: unknown,
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  const registration = pluginRegistry.get(pluginId);
+  if (!registration) {
+    return { ok: false, error: `Plugin "${pluginId}" is not registered` };
+  }
+  const handler = registration.actions.get(actionId);
+  if (!handler) {
+    return { ok: false, error: `Action "${actionId}" not found on plugin "${pluginId}"` };
+  }
+  return handler(data);
 }
 
 export async function schedulePluginTask(pluginId: string, taskId: string): Promise<void> {
