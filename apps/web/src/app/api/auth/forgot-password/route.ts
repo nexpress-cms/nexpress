@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
 
     const result = await requestPasswordReset(getDb(), email, RESET_TTL_MS);
 
-    if (result.issued) {
+    if (result.issued && result.email && result.name) {
       await enqueueJob("auth:sendPasswordReset", {
-        email: email.trim().toLowerCase(),
-        name: email.trim().toLowerCase(),
+        email: result.email,
+        name: result.name,
         token: result.issued.token,
         purpose: result.issued.purpose,
         resetUrl: buildResetUrl(request, result.issued.token),

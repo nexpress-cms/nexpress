@@ -14,6 +14,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady } from "@/lib/init-core";
 
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     await ensureWriteReady();
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = parseBodyRecord(await request.json());
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const role = typeof body.role === "string" ? (body.role as NxUserRole) : "author";

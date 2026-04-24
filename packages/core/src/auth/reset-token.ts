@@ -61,13 +61,16 @@ export async function createPasswordResetToken(
 
 export interface NxResetRequestResult {
   userId: string | null;
+  name: string | null;
+  email: string | null;
   issued: NxIssuedResetToken | null;
 }
 
 /**
  * Handles the "forgot password" flow. If the email matches a user, issues a
- * reset token. If not, silently returns `{ userId: null, issued: null }` so
- * callers can respond with a constant message and avoid email enumeration.
+ * reset token and returns their name so the mailer can personalise the email.
+ * If not, silently returns nulls so callers can respond with a constant
+ * message and avoid email enumeration.
  */
 export async function requestPasswordReset(
   db: NodePgDatabase<Record<string, unknown>>,
@@ -76,13 +79,17 @@ export async function requestPasswordReset(
 ): Promise<NxResetRequestResult> {
   const normalizedEmail = email.trim().toLowerCase();
   const [user] = await db
-    .select({ id: nxUsers.id })
+    .select({
+      id: nxUsers.id,
+      email: nxUsers.email,
+      name: nxUsers.name,
+    })
     .from(nxUsers)
     .where(eq(nxUsers.email, normalizedEmail))
     .limit(1);
 
   if (!user) {
-    return { userId: null, issued: null };
+    return { userId: null, name: null, email: null, issued: null };
   }
 
   const issued = await createPasswordResetToken(db, {
@@ -91,7 +98,7 @@ export async function requestPasswordReset(
     ttlMs,
   });
 
-  return { userId: user.id, issued };
+  return { userId: user.id, name: user.name, email: user.email, issued };
 }
 
 export interface NxConsumeResetTokenOptions {
@@ -160,6 +167,11 @@ export async function consumePasswordResetToken(
 
   const newPasswordHash = await hashPassword(options.newPassword);
 
+  // We inline the tokenVersion bump + session delete instead of calling
+  // invalidateAllSessions because we need them to land in the same
+  // transaction as the password write + reset-column clear. Splitting into
+  // two transactions could leave the user with a new password but still-
+  // valid old JWTs if the second call failed.
   await db.transaction(async (tx) => {
     await tx
       .update(nxUsers)
