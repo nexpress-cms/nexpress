@@ -4,6 +4,8 @@ export {
   getPluginRoutes,
   getPluginRegistration,
   getAllPluginIds,
+  getPluginAdminExtension,
+  dispatchPluginAction,
   schedulePluginTask,
   resetPlugins,
 } from "./host.js";
@@ -13,6 +15,7 @@ export type {
   PluginRouteHandler,
   PluginRouteRequest,
   PluginRouteResponse,
+  PluginAdminExtension,
 } from "./host.js";
 
 export {

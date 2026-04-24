@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
                 path: route.path,
               }))
             : [],
+          hasAdmin: reg?.admin !== undefined,
           enabled: state.enabled,
           config: state.config,
           installedAt: state.installedAt,

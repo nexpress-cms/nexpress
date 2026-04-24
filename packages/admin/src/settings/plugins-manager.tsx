@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Settings2 } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Loader2, Settings2 } from "lucide-react";
 
 import { nxFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
@@ -27,6 +28,7 @@ interface PluginItem {
   capabilities: string[];
   hooks: string[];
   routes: Array<{ method: string; path: string }>;
+  hasAdmin?: boolean;
   enabled: boolean;
   config: Record<string, unknown>;
   installedAt: string;
@@ -240,6 +242,14 @@ export function PluginsManager() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  {plugin.hasAdmin ? (
+                    <Button type="button" variant="outline" size="sm" asChild>
+                      <Link href={`/admin/plugins/${plugin.id}`}>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Open admin
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
