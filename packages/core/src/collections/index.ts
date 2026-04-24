@@ -30,5 +30,15 @@ export type {
   NxRevisionListOptions,
   NxRevisionListResult,
 } from "./revisions.js";
+export {
+  searchCollections,
+  reindexCollection,
+} from "./search-api.js";
+export type {
+  SearchCollectionsOptions,
+  SearchResult,
+  SearchResultItem,
+  ReindexResult,
+} from "./search-api.js";
 export { buildZodSchema, getCollectionZodSchema } from "./validation.js";
 export { slugify, applySlugField } from "./slug.js";

@@ -36,6 +36,7 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   { pattern: /^\/api\/collections\//, limit: 100, windowMs: 60_000 },
   { pattern: /^\/api\/plugins(?:\/|$)/, limit: 60, windowMs: 60_000 },
   { pattern: /^\/api\/users(?:\/|$)/, limit: 30, windowMs: 60_000 },
+  { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000 },
 ];
 
 function getClientIp(request: NextRequest): string {
