@@ -182,7 +182,21 @@ export async function saveDocument(
       // "scheduled" documents haven't actually gone live yet — treat their
       // revisions as drafts (they map to the pre-publish snapshot).
       const revisionStatus = docStatus === "published" ? "published" : "draft";
-      await insertRevision(tx, collection, persistedDocId, operation, hookData, originalDoc, user, revisionStatus);
+      const maxRevisions =
+        typeof config.versions === "object" && config.versions.max !== undefined
+          ? config.versions.max
+          : undefined;
+      await insertRevision(
+        tx,
+        collection,
+        persistedDocId,
+        operation,
+        hookData,
+        originalDoc,
+        user,
+        revisionStatus,
+        maxRevisions,
+      );
     }
 
     return persistedDoc;
@@ -551,6 +565,7 @@ async function insertRevision(
   originalDoc: Record<string, unknown> | null,
   user: NxAuthUser,
   status: string,
+  maxRevisions?: number,
 ): Promise<void> {
   const revisionConditions = sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`;
   const [revisionCount] = ((await tx
@@ -568,6 +583,32 @@ async function insertRevision(
     authorId: user.id,
     createdAt: new Date(),
   });
+
+  // Enforce versions.max: drop the oldest revisions so this doc never
+  // accumulates more than `maxRevisions` rows. Runs in the same tx as the
+  // insert so the row count is stable against races.
+  if (maxRevisions !== undefined && maxRevisions > 0) {
+    const currentCount = Number(revisionCount?.total ?? 0) + 1;
+    const overflow = currentCount - maxRevisions;
+    if (overflow > 0) {
+      // Select the oldest `overflow` revision ids and delete them. Postgres
+      // doesn't support DELETE with LIMIT directly but `id IN (subquery)`
+      // works fine.
+      const toDelete = (await tx
+        .select({ id: nxRevisions.id })
+        .from(nxRevisions)
+        .where(revisionConditions)
+        .orderBy(asc(nxRevisions.version))
+        .limit(overflow)) as Array<{ id: string }>;
+
+      if (toDelete.length > 0) {
+        const ids = toDelete.map((r) => r.id);
+        await tx
+          .delete(nxRevisions)
+          .where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
+      }
+    }
+  }
 }
 
 function buildQueryConditions(table: PgTable, options: NxFindOptions): QueryCondition[] {
