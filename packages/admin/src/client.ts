@@ -4,6 +4,7 @@ export { AdminTopbar } from "./layout/admin-topbar.js";
 export { CollectionListView } from "./collections/collection-list-view.js";
 export { CollectionEditView } from "./collections/collection-edit-view.js";
 export { FieldRenderer } from "./collections/field-renderer.js";
+export { RevisionsPanel } from "./collections/revisions-panel.js";
 
 export { DashboardView } from "./dashboard/dashboard-view.js";
 
