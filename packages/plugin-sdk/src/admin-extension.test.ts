@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   nxAdminActionSchema,
+  nxAdminDashboardWidgetSchema,
   nxAdminExtensionSchema,
   nxAdminSettingsSchema,
   nxAdminTableSchema,
@@ -198,6 +199,42 @@ describe("nxCollectionTabSchema", () => {
             collections: ["posts"],
             widgets: [{ id: "score", label: "Score", kind: "metric", actionId: "getScore" }],
           },
+        ],
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("nxAdminDashboardWidgetSchema", () => {
+  it("accepts a widget with an optional priority", () => {
+    expect(() =>
+      nxAdminDashboardWidgetSchema.parse({
+        id: "quota",
+        label: "Quota",
+        kind: "metric",
+        actionId: "getQuota",
+        priority: 10,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a non-integer priority", () => {
+    expect(() =>
+      nxAdminDashboardWidgetSchema.parse({
+        id: "quota",
+        label: "Quota",
+        kind: "metric",
+        actionId: "getQuota",
+        priority: 1.5,
+      }),
+    ).toThrow();
+  });
+
+  it("nxAdminExtensionSchema accepts dashboardWidgets", () => {
+    expect(() =>
+      nxAdminExtensionSchema.parse({
+        dashboardWidgets: [
+          { id: "q", label: "Q", kind: "metric", actionId: "getQuota" },
         ],
       }),
     ).not.toThrow();

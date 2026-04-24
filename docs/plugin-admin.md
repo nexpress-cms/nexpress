@@ -96,7 +96,7 @@ export default definePlugin({
 
 ---
 
-## The five extension kinds
+## The six extension kinds
 
 ### `settings` — configuration form
 
@@ -165,6 +165,33 @@ shape, the action shows a success toast.
 A tab must declare at least one widget or action — an empty tab
 renders as an empty card and is almost certainly an authoring mistake
 (enforced by `definePlugin` at build time).
+
+### `dashboardWidgets` — widgets on `/admin`
+
+Widgets shown on the main admin dashboard, aggregated across every
+installed plugin:
+
+```ts
+admin: {
+  dashboardWidgets: [
+    {
+      id: "site-seo-score",
+      label: "Avg. SEO score",
+      kind: "metric",
+      actionId: "lastAuditScore",
+      description: "Rolling average across recent posts.",
+      priority: 10,
+    },
+  ],
+},
+```
+
+Same widget contract as the per-plugin page (`metric` / `status`), but
+the referenced action is dispatched with an empty payload — dashboard
+widgets are global, not per-document. Use `priority` to hint render
+order (lower first); untyped widgets render last in registration order.
+
+Requires the `admin:dashboard` capability.
 
 ---
 

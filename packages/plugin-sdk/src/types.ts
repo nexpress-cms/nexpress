@@ -10,8 +10,6 @@ export const nxPluginCapabilities = [
   "media:read",
   "media:write",
   "media:delete",
-  "users:read",
-  "users:write",
   "settings:read",
   "settings:write",
   "theme:read",
@@ -188,12 +186,30 @@ export interface NxCollectionTabExtension {
   description?: string;
 }
 
+/**
+ * Widget surfaced on the global `/admin` dashboard. Same shape as a plugin
+ * admin page widget, but the admin aggregates `dashboardWidgets` from every
+ * registered plugin into one strip. The referenced action is dispatched with
+ * an empty payload — dashboard widgets are global, not per-document.
+ *
+ * Requires the `admin:dashboard` capability.
+ */
+export interface NxAdminDashboardWidgetExtension extends NxAdminWidgetExtension {
+  /**
+   * Optional ordering hint when multiple plugins contribute widgets. Lower
+   * numbers render first. Plugins without a priority fall to the end in
+   * registration order.
+   */
+  priority?: number;
+}
+
 export interface NxAdminExtension {
   settings?: NxAdminSettingsExtension;
   widgets?: NxAdminWidgetExtension[];
   actions?: NxAdminActionExtension[];
   tables?: NxAdminTableExtension[];
   collectionTabs?: NxCollectionTabExtension[];
+  dashboardWidgets?: NxAdminDashboardWidgetExtension[];
 }
 
 /**

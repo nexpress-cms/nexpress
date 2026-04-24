@@ -67,6 +67,7 @@
 **Trust model**: v1 plugins run **in-process with full Node.js access**. A trusted plugin is equivalent to arbitrary code execution in your CMS process. This is the same model as Payload CMS, WordPress, and most self-hosted CMS platforms. Stage 2/3 (capability enforcement, isolated-vm) mitigate this for untrusted plugins — but v1 does not promise sandboxing.
 
 **User-facing security warning** (MUST appear in plugin installation docs and Admin UI plugin page):
+
 > ⚠️ **v1 plugins run with the same permissions as the NexPress core.** Only install plugins from authors you trust. A malicious plugin can read your database, access environment variables, and execute arbitrary code. Third-party plugin sandboxing is planned for a future release.
 
 ### 1.2 Capability Enum
@@ -80,47 +81,47 @@
  */
 export type NxPluginCapability =
   // Content operations
-  | "content:read"           // Read content from collections
-  | "content:write"          // Create/update content
-  | "content:delete"         // Delete content
+  | "content:read" // Read content from collections
+  | "content:write" // Create/update content
+  | "content:delete" // Delete content
 
   // Media operations
-  | "media:read"             // Read/list media files
-  | "media:write"            // Upload media
-  | "media:delete"           // Delete media
+  | "media:read" // Read/list media files
+  | "media:write" // Upload media
+  | "media:delete" // Delete media
 
   // User operations (sensitive)
-  | "users:read"             // Read user profiles
-  | "users:write"            // Modify user data
+  | "users:read" // Read user profiles
+  | "users:write" // Modify user data
 
   // Site settings
-  | "settings:read"          // Read site configuration
-  | "settings:write"         // Modify site configuration
+  | "settings:read" // Read site configuration
+  | "settings:write" // Modify site configuration
 
   // Theme
-  | "theme:read"             // Read design tokens
-  | "theme:write"            // Modify design tokens
+  | "theme:read" // Read design tokens
+  | "theme:write" // Modify design tokens
 
   // Admin UI extension
-  | "admin:panel"            // Register admin sidebar panels
-  | "admin:dashboard"        // Add dashboard widgets
-  | "admin:collection-tab"   // Add tabs to collection edit views
+  | "admin:panel" // Register admin sidebar panels
+  | "admin:dashboard" // Add dashboard widgets
+  | "admin:collection-tab" // Add tabs to collection edit views
 
   // Routing
-  | "api:route"              // Register API route handlers
-  | "site:route"             // Register public site routes
+  | "api:route" // Register API route handlers
+  | "site:route" // Register public site routes
 
   // Network
-  | "network:fetch"          // Make outbound HTTP requests
+  | "network:fetch" // Make outbound HTTP requests
 
   // Plugin-scoped storage
-  | "storage:kv"             // Key-value storage for plugin state
+  | "storage:kv" // Key-value storage for plugin state
 
   // Lifecycle hooks
-  | "hooks:content"          // Content lifecycle hooks (beforeCreate, afterPublish, etc.)
-  | "hooks:auth"             // Auth lifecycle hooks (afterLogin, beforeLogout, etc.)
-  | "hooks:render"           // Render pipeline hooks (beforeRender, afterRender)
-  | "hooks:scheduled"        // Cron/scheduled task hooks
+  | "hooks:content" // Content lifecycle hooks (beforeCreate, afterPublish, etc.)
+  | "hooks:auth" // Auth lifecycle hooks (afterLogin, beforeLogout, etc.)
+  | "hooks:render" // Render pipeline hooks (beforeRender, afterRender)
+  | "hooks:scheduled"; // Cron/scheduled task hooks
 ```
 
 ### 1.3 Plugin Manifest Schema
@@ -164,37 +165,56 @@ export const nxPluginManifestSchema = z.object({
   }),
 
   /** Required capabilities */
-  capabilities: z.array(z.enum([
-    "content:read", "content:write", "content:delete",
-    "media:read", "media:write", "media:delete",
-    "users:read", "users:write",
-    "settings:read", "settings:write",
-    "theme:read", "theme:write",
-    "admin:panel", "admin:dashboard", "admin:collection-tab",
-    "api:route", "site:route",
-    "network:fetch",
-    "storage:kv",
-    "hooks:content", "hooks:auth", "hooks:render", "hooks:scheduled",
-  ])),
+  capabilities: z.array(
+    z.enum([
+      "content:read",
+      "content:write",
+      "content:delete",
+      "media:read",
+      "media:write",
+      "media:delete",
+      "users:read",
+      "users:write",
+      "settings:read",
+      "settings:write",
+      "theme:read",
+      "theme:write",
+      "admin:panel",
+      "admin:dashboard",
+      "admin:collection-tab",
+      "api:route",
+      "site:route",
+      "network:fetch",
+      "storage:kv",
+      "hooks:content",
+      "hooks:auth",
+      "hooks:render",
+      "hooks:scheduled",
+    ]),
+  ),
 
   /** Allowed external hosts for network:fetch (wildcards: *.example.com) */
   allowedHosts: z.array(z.string()).default([]),
 
   /** What this plugin provides (for registry/discovery) */
-  provides: z.object({
-    /** Block type IDs */
-    blocks: z.array(z.string()).default([]),
-    /** Custom field type IDs */
-    fields: z.array(z.string()).default([]),
-    /** Collection slugs this plugin creates */
-    collections: z.array(z.string()).default([]),
-    /** Admin panel extension IDs */
-    adminExtensions: z.array(z.string()).default([]),
-    /** API route paths */
-    apiRoutes: z.array(z.string()).default([]),
-    /** Hook names this plugin listens to */
-    hooks: z.array(z.string()).default([]),
-  }).default({}),
+  provides: z
+    .object({
+      /** Block type IDs */
+      blocks: z.array(z.string()).default([]),
+      /** Custom field type IDs */
+      fields: z.array(z.string()).default([]),
+      /** Collection slugs this plugin creates */
+      collections: z.array(z.string()).default([]),
+      /** Admin panel extension IDs */
+      adminExtensions: z.array(z.string()).default([]),
+      /** API route paths */
+      apiRoutes: z.array(z.string()).default([]),
+      /** Root-level site route paths exposed through generated rewrites */
+      siteRoutes: z.array(z.string()).default([]),
+      /** Hook names this plugin listens to */
+      hooks: z.array(z.string()).default([]),
+    })
+    .default({}),
 
   /** Agent-readable metadata */
   agent: z.object({
@@ -202,9 +222,21 @@ export const nxPluginManifestSchema = z.object({
     description: z.string(),
     /** Plugin category */
     category: z.enum([
-      "seo", "analytics", "ecommerce", "forms", "social",
-      "media", "security", "performance", "i18n", "email",
-      "integration", "content", "layout", "navigation", "utility",
+      "seo",
+      "analytics",
+      "ecommerce",
+      "forms",
+      "social",
+      "media",
+      "security",
+      "performance",
+      "i18n",
+      "email",
+      "integration",
+      "content",
+      "layout",
+      "navigation",
+      "utility",
     ]),
     /** Searchable tags */
     tags: z.array(z.string()).default([]),
@@ -235,7 +267,7 @@ export type NxPluginManifest = z.infer<typeof nxPluginManifestSchema>;
  *   export default definePlugin({ ... });
  */
 export function definePlugin<TConfig = Record<string, unknown>>(
-  definition: NxPluginDefinition<TConfig>
+  definition: NxPluginDefinition<TConfig>,
 ): NxResolvedPlugin<TConfig>;
 
 /**
@@ -275,8 +307,9 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
   hooks?: NxHookRegistration;
 
   /**
-   * API route handlers.
-   * Mounted at /api/plugins/{pluginId}/...
+   * Plugin route handlers.
+   * API routes mount at /api/plugins/{pluginId}/...
+   * Site routes are validated and exposed through root-level rewrites.
    */
   routes?: NxRouteRegistration[];
 
@@ -428,9 +461,7 @@ export interface NxHookRegistration {
 /**
  * Hook handler — function in Stage 1, path string in Stage 3.
  */
-export type NxHookHandler =
-  | ((ctx: NxHookContext) => void | Promise<void>)
-  | string; // path to handler file (for isolation)
+export type NxHookHandler = ((ctx: NxHookContext) => void | Promise<void>) | string; // path to handler file (for isolation)
 
 export interface NxHookContext {
   /** Hook name */
@@ -447,8 +478,10 @@ export interface NxHookContext {
 
 // ─── Route Registration ────────────────────────────────────
 
-export interface NxRouteRegistration {
-  /** Route path (relative to /api/plugins/{pluginId}/) */
+export type NxRouteRegistration = NxApiRouteRegistration | NxSiteRouteRegistration;
+
+export interface NxBaseRouteRegistration {
+  /** Route path handled by the plugin API mount */
   path: string;
   /** HTTP method */
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -460,7 +493,27 @@ export interface NxRouteRegistration {
   auth?: boolean;
 }
 
-export type NxRouteHandler = (req: NxRouteRequest, ctx: NxPluginContext) => Promise<NxRouteResponse>;
+export interface NxApiRouteRegistration extends NxBaseRouteRegistration {
+  /** API routes are mounted at /api/plugins/{pluginId}/{path} */
+  kind?: "api";
+}
+
+export interface NxSiteRouteRegistration extends NxBaseRouteRegistration {
+  /** Site routes are exposed at the site root through generated rewrites */
+  kind: "site";
+  /** Absolute public path, for example /sitemap.xml */
+  exposeAt: `/${string}`;
+  /**
+   * Required when replacing a NexPress built-in generated route.
+   * Other reserved paths cannot be overridden.
+   */
+  overridesBuiltIn?: "sitemap.xml" | "robots.txt";
+}
+
+export type NxRouteHandler = (
+  req: NxRouteRequest,
+  ctx: NxPluginContext,
+) => Promise<NxRouteResponse>;
 
 export interface NxRouteRequest {
   method: string;
@@ -491,6 +544,14 @@ export interface NxScheduledTask {
   description?: string;
 }
 ```
+
+API routes require the `api:route` capability and are always reachable through
+the namespaced plugin mount. Site routes require the `site:route` capability and
+must also be declared in `manifest.provides.siteRoutes`. During build, the host
+rejects any site route that collides with admin/API/media routes, Next.js
+internals, collection static routes, content pages, or another plugin site route.
+Replacing `sitemap.xml` or `robots.txt` is allowed only when the matching
+`overridesBuiltIn` value is present.
 
 ### 1.5 PluginContext Interface
 
@@ -648,10 +709,7 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
  * Action handler function.
  * Receives action data + plugin context, returns serializable result.
  */
-export type NxActionHandler = (
-  data: unknown,
-  ctx: NxPluginContext
-) => Promise<NxActionResult>;
+export type NxActionHandler = (data: unknown, ctx: NxPluginContext) => Promise<NxActionResult>;
 
 /**
  * Action result — must be JSON-serializable (crosses server/client boundary).
@@ -727,6 +785,7 @@ export default definePlugin({
       "settings:read",
       "hooks:content",
       "api:route",
+      "site:route",
       "storage:kv",
     ],
     allowedHosts: [],
@@ -735,6 +794,7 @@ export default definePlugin({
       fields: ["seo-meta"],
       adminExtensions: ["seo-settings", "seo-collection-tab"],
       apiRoutes: ["/sitemap.xml"],
+      siteRoutes: ["/sitemap.xml"],
       hooks: ["content:afterPublish", "content:afterUpdate"],
     },
     agent: {
@@ -827,6 +887,9 @@ export default definePlugin({
   routes: [
     {
       path: "/sitemap.xml",
+      kind: "site",
+      exposeAt: "/sitemap.xml",
+      overridesBuiltIn: "sitemap.xml",
       method: "GET",
       description: "XML sitemap for search engines",
       auth: false,
@@ -836,8 +899,12 @@ export default definePlugin({
           return { status: 200, body: cached, headers: { "Content-Type": "application/xml" } };
         }
         // Generate sitemap from all published content
-        const posts = await ctx.content.find("posts", { where: { status: { equals: "published" } } });
-        const pages = await ctx.content.find("pages", { where: { status: { equals: "published" } } });
+        const posts = await ctx.content.find("posts", {
+          where: { status: { equals: "published" } },
+        });
+        const pages = await ctx.content.find("pages", {
+          where: { status: { equals: "published" } },
+        });
         const xml = generateSitemapXml([...posts.docs, ...pages.docs], ctx.config);
         await ctx.cache.set("sitemap-xml", xml, 3600);
         return { status: 200, body: xml, headers: { "Content-Type": "application/xml" } };
@@ -850,7 +917,9 @@ export default definePlugin({
 
     // Register actions callable from admin UI and NxWidgets
     ctx.actions.register("generate-sitemap", async (data, actCtx) => {
-      const posts = await actCtx.content.find("posts", { where: { status: { equals: "published" } } });
+      const posts = await actCtx.content.find("posts", {
+        where: { status: { equals: "published" } },
+      });
       const xml = generateSitemapXml(posts.docs, actCtx.config);
       await actCtx.cache.set("sitemap-xml", xml, 3600);
       return { ok: true, data: { pages: posts.docs.length } };
@@ -858,8 +927,12 @@ export default definePlugin({
   },
 });
 
-function calculateSeoScore(meta: Record<string, unknown>): number { /* ... */ }
-function generateSitemapXml(items: unknown[], config: unknown): string { /* ... */ }
+function calculateSeoScore(meta: Record<string, unknown>): number {
+  /* ... */
+}
+function generateSitemapXml(items: unknown[], config: unknown): string {
+  /* ... */
+}
 ```
 
 ---
@@ -870,17 +943,17 @@ function generateSitemapXml(items: unknown[], config: unknown): string { /* ... 
 
 ### 2.1 Technology Comparison Matrix
 
-| Aspect | isolated-vm | Worker Threads + vm | SES/Compartments | Wasm (Extism) | child_process |
-|--------|------------|--------------------|--------------------|---------------|---------------|
-| **Security Boundary** | True V8 isolate (separate heap, no shared references) | Thread isolation + namespace restriction (vm.createContext is NOT a security mechanism) | Language-level (frozen prototypes, attenuated globals) | Memory-safe (separate linear memory) | Full process isolation |
-| **Overhead per plugin** | ~4MB RAM, <1ms call | ~5-10MB RAM, 5-50ms spawn | Minimal (same process) | ~1-5MB RAM, 10-100ms boundary | ~30MB RAM, 50-100ms fork |
-| **Node.js API Access** | None (must bridge every API) | Controllable (whitelist globals in vm context) | Controllable (Compartment globals) | None (must bridge) | Full (separate process) |
-| **Async I/O** | Via Reference/callback bridge (complex) | Native via MessagePort | Native | Via host functions | Via IPC |
-| **DX for Plugin Authors** | Write JS, but no built-in APIs | Write JS, limited APIs | Write JS, some frozen APIs | Multi-lang supported, but compilation step | Write JS normally |
-| **Production Users** | Backstage, NocoBase, GrowthBook, Jitsu | OwnPilot | MetaMask (LavaMoat) | Shopify Functions, Fermyon | Common (basic) |
-| **Maturity** | Stable, active maintenance | Node.js built-in (stable) | TC39 Stage 2 (pre-standard) | Active but young for JS plugins | Node.js built-in |
-| **Node.js Compat** | Requires `--no-node-snapshot` on Node 20+ | All versions | Shim required | WASI, Extism | All versions |
-| **Can Run TypeScript?** | Pre-compiled JS only | Pre-compiled JS only | Pre-compiled JS only | Via AssemblyScript/Javy | Yes |
+| Aspect                    | isolated-vm                                           | Worker Threads + vm                                                                     | SES/Compartments                                       | Wasm (Extism)                              | child_process            |
+| ------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ | ------------------------ |
+| **Security Boundary**     | True V8 isolate (separate heap, no shared references) | Thread isolation + namespace restriction (vm.createContext is NOT a security mechanism) | Language-level (frozen prototypes, attenuated globals) | Memory-safe (separate linear memory)       | Full process isolation   |
+| **Overhead per plugin**   | ~4MB RAM, <1ms call                                   | ~5-10MB RAM, 5-50ms spawn                                                               | Minimal (same process)                                 | ~1-5MB RAM, 10-100ms boundary              | ~30MB RAM, 50-100ms fork |
+| **Node.js API Access**    | None (must bridge every API)                          | Controllable (whitelist globals in vm context)                                          | Controllable (Compartment globals)                     | None (must bridge)                         | Full (separate process)  |
+| **Async I/O**             | Via Reference/callback bridge (complex)               | Native via MessagePort                                                                  | Native                                                 | Via host functions                         | Via IPC                  |
+| **DX for Plugin Authors** | Write JS, but no built-in APIs                        | Write JS, limited APIs                                                                  | Write JS, some frozen APIs                             | Multi-lang supported, but compilation step | Write JS normally        |
+| **Production Users**      | Backstage, NocoBase, GrowthBook, Jitsu                | OwnPilot                                                                                | MetaMask (LavaMoat)                                    | Shopify Functions, Fermyon                 | Common (basic)           |
+| **Maturity**              | Stable, active maintenance                            | Node.js built-in (stable)                                                               | TC39 Stage 2 (pre-standard)                            | Active but young for JS plugins            | Node.js built-in         |
+| **Node.js Compat**        | Requires `--no-node-snapshot` on Node 20+             | All versions                                                                            | Shim required                                          | WASI, Extism                               | All versions             |
+| **Can Run TypeScript?**   | Pre-compiled JS only                                  | Pre-compiled JS only                                                                    | Pre-compiled JS only                                   | Via AssemblyScript/Javy                    | Yes                      |
 
 ### 2.2 Stage-by-Stage Recommendation
 
@@ -892,7 +965,7 @@ Mechanism: **Proxy-based capability enforcement on PluginContext**
 // Stage 2 implementation sketch
 function createCapabilityProxy(
   ctx: NxPluginContextInternal,
-  capabilities: NxPluginCapability[]
+  capabilities: NxPluginCapability[],
 ): NxPluginContext {
   return new Proxy(ctx, {
     get(target, prop) {
@@ -901,18 +974,19 @@ function createCapabilityProxy(
       if (requiredCap && !capabilities.includes(requiredCap)) {
         throw new NxCapabilityError(
           `Plugin "${target.pluginId}" lacks capability "${requiredCap}" ` +
-          `required to access "${String(prop)}"`
+            `required to access "${String(prop)}"`,
         );
       }
       return target[prop as keyof NxPluginContextInternal];
-    }
+    },
   });
 }
 ```
 
 This is sufficient for Stage 2 because:
+
 - Plugin code runs in the same process (trusted npm packages)
-- The goal is preventing *accidental* overreach, not *malicious* escape
+- The goal is preventing _accidental_ overreach, not _malicious_ escape
 - Zero overhead — just property access interception
 
 **Stage 3 (Full Isolation) — `isolated-vm` (Oracle-recommended)**
@@ -920,6 +994,7 @@ This is sufficient for Stage 2 because:
 Winner: **`isolated-vm`** — V8 isolates in-process, separate heap, no shared references.
 
 Why isolated-vm over Worker Threads + vm:
+
 - `vm.createContext` is NOT a security mechanism (Node.js docs are explicit about this)
 - Worker Threads give thread isolation but still expose full Node.js APIs unless you also use vm (double layering, still not secure)
 - `isolated-vm` provides a true V8 isolate with separate heap — no prototype chain escape, no shared references
@@ -929,10 +1004,12 @@ Why isolated-vm over Worker Threads + vm:
 Key implementation decisions (from Oracle):
 
 1. **Single bridge function**: Inject exactly ONE host reference into the isolate:
+
    ```typescript
    // Inside the isolate, plugins call:
    const result = await host.call({ op: "content.find", args: ["posts", { limit: 10 }] });
    ```
+
    The Plugin SDK generates the ergonomic API (`ctx.content.find(...)`) on top of this single call.
 
 2. **Plain data only**: All data crossing the boundary must be structured-cloneable (JSON-safe).
@@ -957,7 +1034,10 @@ class NxIsolatedPluginRunner {
   private isolate: Isolate;
   private context: Context;
 
-  constructor(private pluginId: string, private capabilities: Set<NxPluginCapability>) {
+  constructor(
+    private pluginId: string,
+    private capabilities: Set<NxPluginCapability>,
+  ) {
     this.isolate = new Isolate({ memoryLimit: 128 }); // MB
   }
 
@@ -966,23 +1046,26 @@ class NxIsolatedPluginRunner {
     const jail = this.context.global;
 
     // Inject the ONE bridge function
-    await jail.set("__host_call__", new Reference(async (opJson: string) => {
-      const { op, args } = JSON.parse(opJson);
-      // 1. Parse operation (e.g., "content.find" → service="content", method="find")
-      const [service, method] = op.split(".");
-      // 2. Check capability
-      const cap = serviceMethodToCapability(service, method);
-      if (!this.capabilities.has(cap)) {
-        return JSON.stringify({ ok: false, error: `Missing capability: ${cap}` });
-      }
-      // 3. Execute against host service
-      try {
-        const result = await hostServices[service][method](...args);
-        return JSON.stringify({ ok: true, result });
-      } catch (e) {
-        return JSON.stringify({ ok: false, error: e.message });
-      }
-    }));
+    await jail.set(
+      "__host_call__",
+      new Reference(async (opJson: string) => {
+        const { op, args } = JSON.parse(opJson);
+        // 1. Parse operation (e.g., "content.find" → service="content", method="find")
+        const [service, method] = op.split(".");
+        // 2. Check capability
+        const cap = serviceMethodToCapability(service, method);
+        if (!this.capabilities.has(cap)) {
+          return JSON.stringify({ ok: false, error: `Missing capability: ${cap}` });
+        }
+        // 3. Execute against host service
+        try {
+          const result = await hostServices[service][method](...args);
+          return JSON.stringify({ ok: true, result });
+        } catch (e) {
+          return JSON.stringify({ ok: false, error: e.message });
+        }
+      }),
+    );
 
     // Inject minimal globals
     await jail.set("JSON", new Reference(JSON));
@@ -1044,6 +1127,7 @@ function generateSdkShim(): string {
 ```
 
 **Escalation triggers** (when to move beyond isolated-vm):
+
 - If plugins need arbitrary npm packages or complex native async I/O → add a Worker/process runner alongside isolated-vm
 - If SES becomes standardized and adopted in Node.js → revisit as backend option for the same capability API
 
@@ -1053,11 +1137,12 @@ function generateSdkShim(): string {
 
 **child_process**: 30MB+ per plugin process. A CMS with 10-20 plugins would need 300-600MB just for plugin processes. Unacceptable for self-hosted Docker deployments targeting 512MB-1GB containers.
 
-**vm module alone**: Node.js documentation explicitly states `vm.createContext` is NOT a security mechanism. Prototype chain escapes are well-documented. Only acceptable as a namespace restriction layer *inside* a Worker Thread (as OwnPilot does), never as a standalone isolation boundary.
+**vm module alone**: Node.js documentation explicitly states `vm.createContext` is NOT a security mechanism. Prototype chain escapes are well-documented. Only acceptable as a namespace restriction layer _inside_ a Worker Thread (as OwnPilot does), never as a standalone isolation boundary.
 
 ### 2.4 SES/Compartments — Future Watch
 
 Keep the `NxPluginContext` API shape compatible with SES-style Compartments, but do NOT put SES on the roadmap. Rationale:
+
 - TC39 Stage 2 — not yet standardized
 - Node.js doesn't ship SES natively; requires Agoric shim (`ses` package)
 - LavaMoat (MetaMask) uses it, but for supply-chain defense, not plugin sandboxing
@@ -1081,13 +1166,14 @@ async function afterPublish(hookCtx: NxHookContext) {
 
 What changes between stages is **transport only**:
 
-| Stage | `ctx.storage.set()` becomes... |
-|-------|-------------------------------|
-| 1 | Direct function call: `storageService.set(pluginId, key, value)` |
-| 2 | Proxy-checked call: `checkCapability("storage:kv") → storageService.set(...)` |
-| 3 | Serialized RPC: `JSON.stringify({op:"storage.set",args}) → isolate boundary → host.call → storageService.set(...)` |
+| Stage | `ctx.storage.set()` becomes...                                                                                     |
+| ----- | ------------------------------------------------------------------------------------------------------------------ |
+| 1     | Direct function call: `storageService.set(pluginId, key, value)`                                                   |
+| 2     | Proxy-checked call: `checkCapability("storage:kv") → storageService.set(...)`                                      |
+| 3     | Serialized RPC: `JSON.stringify({op:"storage.set",args}) → isolate boundary → host.call → storageService.set(...)` |
 
 This means:
+
 - Plugin migration from trusted (Stage 1) to sandboxed (Stage 3) requires **zero code changes**
 - Plugin SDK (`@nexpress/plugin-sdk`) is the same package across all stages
 - The only difference is host-side wiring, invisible to plugin authors
@@ -1103,6 +1189,7 @@ The core insight from EmDash analysis: **the Bridge is a capability-gated RPC ga
 In EmDash (Cloudflare), the bridge is a `WorkerEntrypoint` — RPC is free because Cloudflare Workers communicate via structured cloning over bindings.
 
 In NexPress (Node.js), the bridge must adapt to:
+
 1. **App Router / RSC** — server components can't use client-side APIs
 2. **'use client' boundary** — plugin interactive components need explicit client boundaries
 3. **Server Actions** — plugin server mutations should go through Next.js server action mechanism
@@ -1287,7 +1374,7 @@ export class NxPluginBridge {
   constructor(
     pluginId: string,
     capabilities: NxPluginCapability[],
-    isolationType: "isolated-vm" | "worker-thread"
+    isolationType: "isolated-vm" | "worker-thread",
   ) {
     this.capabilities = new Set(capabilities);
     // Initialize isolation runtime
@@ -1345,6 +1432,7 @@ export class NxPluginBridge {
 Sandboxed plugins (Stage 3) cannot render React components in the host tree. They need a way to describe admin UI that the host renders on their behalf.
 
 For trusted plugins (Stage 1-2), this is **optional** — they can use real React components. But the Widget Kit is recommended because:
+
 - Agent-friendly (JSON-serializable UI descriptions)
 - Standardizes common admin patterns
 - Makes future sandbox migration painless
@@ -1402,14 +1490,14 @@ export type NxWidget =
 interface NxStackWidget {
   type: "stack";
   direction: "horizontal" | "vertical";
-  gap?: number;       // in tailwind spacing units (1 = 0.25rem)
+  gap?: number; // in tailwind spacing units (1 = 0.25rem)
   align?: "start" | "center" | "end" | "stretch";
   children: NxWidget[];
 }
 
 interface NxGridWidget {
   type: "grid";
-  columns: number;    // 1-4
+  columns: number; // 1-4
   gap?: number;
   children: NxWidget[];
 }
@@ -1529,11 +1617,13 @@ interface NxImageWidget {
   height?: number;
 }
 
-interface NxDividerWidget { type: "divider"; }
+interface NxDividerWidget {
+  type: "divider";
+}
 
 interface NxProgressWidget {
   type: "progress";
-  value: number;        // 0-100
+  value: number; // 0-100
   label?: string;
 }
 
@@ -1684,9 +1774,24 @@ export function getSettingsPanel(): NxWidget {
             columns: 3,
             gap: 4,
             children: [
-              { type: "stat", label: "Page Views (24h)", value: "1,234", trend: { direction: "up", value: "+12%" } },
-              { type: "stat", label: "Unique Visitors", value: "567", trend: { direction: "up", value: "+5%" } },
-              { type: "stat", label: "Bounce Rate", value: "32%", trend: { direction: "down", value: "-3%" } },
+              {
+                type: "stat",
+                label: "Page Views (24h)",
+                value: "1,234",
+                trend: { direction: "up", value: "+12%" },
+              },
+              {
+                type: "stat",
+                label: "Unique Visitors",
+                value: "567",
+                trend: { direction: "up", value: "+5%" },
+              },
+              {
+                type: "stat",
+                label: "Bounce Rate",
+                value: "32%",
+                trend: { direction: "down", value: "-3%" },
+              },
             ],
           },
           {
@@ -1713,6 +1818,7 @@ export function getSettingsPanel(): NxWidget {
 ### 5.1 Overview
 
 `@nexpress/plugin-sdk` includes a set of ESLint rules and build-time validators that enforce plugin conventions. These run at:
+
 - **Development time**: ESLint rules in IDE
 - **Build time**: SDK build command validates before publish
 - **Install time**: NexPress validates manifest on plugin installation
@@ -1723,45 +1829,45 @@ Package: `eslint-plugin-nexpress`
 
 #### Theme Contract Rules
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| `nexpress/no-hardcoded-colors` | error | Forbid hex, rgb, hsl, oklch color literals in CSS/JSX style. Must use `var(--nx-color-*)` |
-| `nexpress/no-hardcoded-fonts` | error | Forbid `font-family` declarations. Must use `var(--nx-font-*)` |
-| `nexpress/no-important` | error | Forbid `!important` in CSS (breaks theme cascade) |
-| `nexpress/no-layer-escape` | warning | Plugin CSS must be in `@layer nx-blocks` |
-| `nexpress/no-global-selectors` | error | Forbid selectors targeting `body`, `html`, `*`, `:root` |
-| `nexpress/no-tailwind-color-classes` | warning | Warn on Tailwind color utilities like `text-blue-500` (should use token-based classes) |
+| Rule                                 | Severity | Description                                                                               |
+| ------------------------------------ | -------- | ----------------------------------------------------------------------------------------- |
+| `nexpress/no-hardcoded-colors`       | error    | Forbid hex, rgb, hsl, oklch color literals in CSS/JSX style. Must use `var(--nx-color-*)` |
+| `nexpress/no-hardcoded-fonts`        | error    | Forbid `font-family` declarations. Must use `var(--nx-font-*)`                            |
+| `nexpress/no-important`              | error    | Forbid `!important` in CSS (breaks theme cascade)                                         |
+| `nexpress/no-layer-escape`           | warning  | Plugin CSS must be in `@layer nx-blocks`                                                  |
+| `nexpress/no-global-selectors`       | error    | Forbid selectors targeting `body`, `html`, `*`, `:root`                                   |
+| `nexpress/no-tailwind-color-classes` | warning  | Warn on Tailwind color utilities like `text-blue-500` (should use token-based classes)    |
 
 #### Security Rules
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| `nexpress/no-dangerous-apis` | error | Forbid `eval()`, `Function()`, `new Function()` |
-| `nexpress/no-direct-fs` | warning | Warn on `fs`, `child_process`, `net` imports (should use ctx services) |
-| `nexpress/no-direct-db` | error | Forbid direct `pg`, `drizzle-orm`, `prisma` imports (must use `ctx.content`) |
-| `nexpress/no-env-access` | warning | Warn on `process.env` access (should use `ctx.config`) |
-| `nexpress/no-dynamic-require` | error | Forbid `require()` and dynamic `import()` of non-plugin paths |
-| `nexpress/no-prototype-pollution` | warning | Warn on `Object.defineProperty`, `__proto__`, `constructor.prototype` |
+| Rule                              | Severity | Description                                                                  |
+| --------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `nexpress/no-dangerous-apis`      | error    | Forbid `eval()`, `Function()`, `new Function()`                              |
+| `nexpress/no-direct-fs`           | warning  | Warn on `fs`, `child_process`, `net` imports (should use ctx services)       |
+| `nexpress/no-direct-db`           | error    | Forbid direct `pg`, `drizzle-orm`, `prisma` imports (must use `ctx.content`) |
+| `nexpress/no-env-access`          | warning  | Warn on `process.env` access (should use `ctx.config`)                       |
+| `nexpress/no-dynamic-require`     | error    | Forbid `require()` and dynamic `import()` of non-plugin paths                |
+| `nexpress/no-prototype-pollution` | warning  | Warn on `Object.defineProperty`, `__proto__`, `constructor.prototype`        |
 
 #### Manifest Integrity Rules
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| `nexpress/manifest-required-fields` | error | Manifest must have id, version, name, capabilities, agent |
-| `nexpress/manifest-capability-match` | warning | Capabilities should match actual API usage in code |
-| `nexpress/manifest-version-semver` | error | Version must be valid semver |
-| `nexpress/manifest-nexpress-compat` | warning | minVersion should match installed NexPress version |
-| `nexpress/manifest-routes-declared` | warning | Routes in code should be listed in `manifest.provides.apiRoutes` |
-| `nexpress/manifest-hooks-declared` | warning | Hooks in code should be listed in `manifest.provides.hooks` |
+| Rule                                 | Severity | Description                                                                                        |
+| ------------------------------------ | -------- | -------------------------------------------------------------------------------------------------- |
+| `nexpress/manifest-required-fields`  | error    | Manifest must have id, version, name, capabilities, agent                                          |
+| `nexpress/manifest-capability-match` | warning  | Capabilities should match actual API usage in code                                                 |
+| `nexpress/manifest-version-semver`   | error    | Version must be valid semver                                                                       |
+| `nexpress/manifest-nexpress-compat`  | warning  | minVersion should match installed NexPress version                                                 |
+| `nexpress/manifest-routes-declared`  | warning  | Routes in code should be listed in `manifest.provides.apiRoutes` or `manifest.provides.siteRoutes` |
+| `nexpress/manifest-hooks-declared`   | warning  | Hooks in code should be listed in `manifest.provides.hooks`                                        |
 
 #### Component Rules
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| `nexpress/block-tokens-declared` | warning | `--nx-*` CSS vars used in block should be in `usesTokens` |
-| `nexpress/no-react-version-pin` | error | Don't pin React/Next.js versions in peerDependencies (core controls) |
-| `nexpress/prefer-rsc-blocks` | info | Blocks without interactivity should be Server Components |
-| `nexpress/no-server-only-in-client` | error | Don't import `server-only` code in client components |
+| Rule                                | Severity | Description                                                          |
+| ----------------------------------- | -------- | -------------------------------------------------------------------- |
+| `nexpress/block-tokens-declared`    | warning  | `--nx-*` CSS vars used in block should be in `usesTokens`            |
+| `nexpress/no-react-version-pin`     | error    | Don't pin React/Next.js versions in peerDependencies (core controls) |
+| `nexpress/prefer-rsc-blocks`        | info     | Blocks without interactivity should be Server Components             |
+| `nexpress/no-server-only-in-client` | error    | Don't import `server-only` code in client components                 |
 
 ### 5.3 Build-time Validators
 
@@ -1834,17 +1940,17 @@ module.exports = {
 
 ## Appendix A: Key Design Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Plugin packaging | npm packages | Leverages existing ecosystem, versioning, publishing |
-| Manifest format | Zod schema | Runtime validation + TypeScript types + JSON Schema generation for agents |
-| Component reference | Path strings (Payload pattern) | Enables code splitting, no build-time coupling |
-| Hook execution | Pipeline (ordered, sequential) | Predictable, debuggable; concurrent would need careful design |
-| Plugin routes | Namespaced under `/api/plugins/{id}/` | Prevents route collision |
-| Plugin storage | KV prefixed with `nx:plugin:{id}:` | Namespace isolation at DB level |
-| Plugin CSS | `@layer nx-blocks` required | Cascade layer ensures theme > plugin precedence |
-| Server Actions | Host dispatcher, not direct plugin actions | Security: prevents arbitrary server-side execution |
-| Declarative UI | Optional NxWidget system | Agent-friendly, sandbox-ready, but not required for trusted plugins |
+| Decision            | Choice                                                                                                        | Rationale                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Plugin packaging    | npm packages                                                                                                  | Leverages existing ecosystem, versioning, publishing                           |
+| Manifest format     | Zod schema                                                                                                    | Runtime validation + TypeScript types + JSON Schema generation for agents      |
+| Component reference | Path strings (Payload pattern)                                                                                | Enables code splitting, no build-time coupling                                 |
+| Hook execution      | Pipeline (ordered, sequential)                                                                                | Predictable, debuggable; concurrent would need careful design                  |
+| Plugin routes       | API routes are namespaced under `/api/plugins/{id}/`; site routes require `site:route` and generated rewrites | Prevents accidental collisions while allowing explicit root-level integrations |
+| Plugin storage      | KV prefixed with `nx:plugin:{id}:`                                                                            | Namespace isolation at DB level                                                |
+| Plugin CSS          | `@layer nx-blocks` required                                                                                   | Cascade layer ensures theme > plugin precedence                                |
+| Server Actions      | Host dispatcher, not direct plugin actions                                                                    | Security: prevents arbitrary server-side execution                             |
+| Declarative UI      | Optional NxWidget system                                                                                      | Agent-friendly, sandbox-ready, but not required for trusted plugins            |
 
 ## Appendix B: Migration Path (Stage 1 → 2 → 3)
 
@@ -1884,6 +1990,7 @@ Each section below defines concrete, executable verification steps. These run ag
 ### QA: Section 1 — Plugin Contract
 
 **QA-1.1: Manifest validation (unit test)**
+
 ```bash
 # Tool: vitest
 # File: packages/plugin-sdk/src/__tests__/manifest.test.ts
@@ -1901,6 +2008,7 @@ pnpm --filter @nexpress/plugin-sdk test -- --run manifest.test
 ```
 
 **QA-1.2: definePlugin() type safety (tsc)**
+
 ```bash
 # Tool: tsc --noEmit
 # File: packages/plugin-sdk/src/__tests__/type-check/
@@ -1917,6 +2025,7 @@ pnpm --filter @nexpress/plugin-sdk exec tsc --noEmit --project tsconfig.test.jso
 ```
 
 **QA-1.3: PluginContext capability enforcement (integration test)**
+
 ```bash
 # Tool: vitest
 # File: packages/core/src/__tests__/plugin-context.test.ts
@@ -1933,6 +2042,7 @@ pnpm --filter @nexpress/core test -- --run plugin-context.test
 ```
 
 **QA-1.4: Example plugin loads correctly (e2e)**
+
 ```bash
 # Tool: vitest (integration)
 # File: packages/core/src/__tests__/plugin-loader.test.ts
@@ -1943,7 +2053,8 @@ pnpm --filter @nexpress/core test -- --run plugin-loader.test
 #   ✓ @nexpress/plugin-seo manifest validates
 #   ✓ plugin registers in Block Registry (seo-preview block)
 #   ✓ plugin registers in Hook Pipeline (content:afterPublish)
-#   ✓ plugin routes mount at /api/plugins/@nexpress/seo/sitemap.xml
+#   ✓ plugin API routes mount at /api/plugins/@nexpress/seo/sitemap.xml
+#   ✓ plugin site routes rewrite /sitemap.xml to the namespaced API route
 #   ✓ plugin setup() runs and actions register
 #   ✓ plugin sitemap route returns XML with Content-Type header
 ```
@@ -1951,6 +2062,7 @@ pnpm --filter @nexpress/core test -- --run plugin-loader.test
 ### QA: Section 2 — Isolation Technology
 
 **QA-2.1: Stage 2 Proxy enforcement (unit test)**
+
 ```bash
 # Tool: vitest
 # File: packages/core/src/__tests__/capability-proxy.test.ts
@@ -1965,6 +2077,7 @@ pnpm --filter @nexpress/core test -- --run capability-proxy.test
 ```
 
 **QA-2.2: Stage 3 isolated-vm smoke test (integration test)**
+
 ```bash
 # Tool: vitest
 # File: packages/core/src/__tests__/isolated-runner.test.ts
@@ -1983,6 +2096,7 @@ pnpm --filter @nexpress/core test -- --run isolated-runner.test
 ```
 
 **QA-2.3: Docker --no-node-snapshot (deployment check)**
+
 ```bash
 # Tool: docker build + run
 docker build -t nexpress-test .
@@ -1995,6 +2109,7 @@ docker run --rm nexpress-test node -e "require('isolated-vm')"
 ### QA: Section 3 — Bridge Pattern / Next.js RSC
 
 **QA-3.1: Catch-all route resolves plugin blocks (e2e)**
+
 ```bash
 # Tool: Playwright
 # File: apps/web/e2e/plugin-blocks.spec.ts
@@ -2009,6 +2124,7 @@ pnpm --filter web exec playwright test plugin-blocks.spec.ts
 ```
 
 **QA-3.2: Plugin admin panel loads via path string (e2e)**
+
 ```bash
 # Tool: Playwright
 # File: apps/web/e2e/plugin-admin.spec.ts
@@ -2025,6 +2141,7 @@ pnpm --filter web exec playwright test plugin-admin.spec.ts
 ```
 
 **QA-3.3: Server action dispatcher security (integration test)**
+
 ```bash
 # Tool: vitest
 # File: packages/core/src/__tests__/action-dispatcher.test.ts
@@ -2042,6 +2159,7 @@ pnpm --filter @nexpress/core test -- --run action-dispatcher.test
 ### QA: Section 4 — Declarative UI (NxWidget)
 
 **QA-4.1: NxWidgetRenderer renders all widget types (component test)**
+
 ```bash
 # Tool: vitest + @testing-library/react
 # File: packages/admin/src/__tests__/widget-renderer.test.tsx
@@ -2060,6 +2178,7 @@ pnpm --filter @nexpress/admin test -- --run widget-renderer.test
 ```
 
 **QA-4.2: Widget action integration (e2e)**
+
 ```bash
 # Tool: Playwright
 # File: apps/web/e2e/widget-actions.spec.ts
@@ -2077,6 +2196,7 @@ pnpm --filter web exec playwright test widget-actions.spec.ts
 ### QA: Section 5 — Static Analysis
 
 **QA-5.1: ESLint rules catch violations (unit test)**
+
 ```bash
 # Tool: vitest + eslint RuleTester
 # File: packages/plugin-sdk/src/__tests__/eslint-rules.test.ts
@@ -2095,6 +2215,7 @@ pnpm --filter @nexpress/plugin-sdk test -- --run eslint-rules.test
 ```
 
 **QA-5.2: SDK build validates example plugin (integration test)**
+
 ```bash
 # Tool: nexpress-sdk CLI
 # Working directory: packages/plugins/nexpress-plugin-seo/
@@ -2111,6 +2232,7 @@ npx nexpress-sdk build
 ```
 
 **QA-5.3: SDK build rejects invalid plugin (integration test)**
+
 ```bash
 # Tool: nexpress-sdk CLI
 # Working directory: test fixture with violations

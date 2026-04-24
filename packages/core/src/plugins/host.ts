@@ -96,6 +96,14 @@ export interface PluginAdminExtension {
     }>;
     description?: string;
   }>;
+  dashboardWidgets?: Array<{
+    id: string;
+    label: string;
+    kind: "metric" | "status";
+    actionId: string;
+    description?: string;
+    priority?: number;
+  }>;
 }
 
 interface PluginRegistration {
@@ -463,6 +471,57 @@ export function getCollectionTabsForSlug(collectionSlug: string): ResolvedCollec
     }
   }
   return result;
+}
+
+/**
+ * Dashboard widget descriptor annotated with its source plugin. The admin
+ * dashboard dispatches the widget's action with an empty payload — dashboard
+ * widgets are global, not per-document.
+ */
+export interface ResolvedDashboardWidget {
+  pluginId: string;
+  pluginName: string;
+  id: string;
+  label: string;
+  kind: "metric" | "status";
+  actionId: string;
+  description?: string;
+  priority?: number;
+}
+
+/**
+ * Collects `dashboardWidgets` declared by every loaded plugin and returns
+ * them in render order: `priority` asc (missing priority = Infinity, i.e.
+ * rendered last), ties broken by plugin registration order.
+ */
+export function getDashboardWidgetsFromPlugins(): ResolvedDashboardWidget[] {
+  const result: ResolvedDashboardWidget[] = [];
+  for (const registration of pluginRegistry.values()) {
+    const widgets = registration.admin?.dashboardWidgets;
+    if (!widgets || widgets.length === 0) continue;
+    for (const widget of widgets) {
+      result.push({
+        pluginId: registration.id,
+        pluginName: registration.name,
+        id: widget.id,
+        label: widget.label,
+        kind: widget.kind,
+        actionId: widget.actionId,
+        description: widget.description,
+        priority: widget.priority,
+      });
+    }
+  }
+  // Stable sort: items keep registration order when priorities tie.
+  return result
+    .map((widget, index) => ({ widget, index }))
+    .sort((a, b) => {
+      const ap = a.widget.priority ?? Number.POSITIVE_INFINITY;
+      const bp = b.widget.priority ?? Number.POSITIVE_INFINITY;
+      if (ap !== bp) return ap - bp;
+      return a.index - b.index;
+    })
+    .map(({ widget }) => widget);
 }
 
 /**
