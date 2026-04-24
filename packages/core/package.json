@@ -34,6 +34,14 @@
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
   },
+  "peerDependencies": {
+    "nodemailer": "^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "nodemailer": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.840.0",
     "@node-rs/argon2": "^2.0.2",

@@ -17,7 +17,7 @@ import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
 
 const VALID_ROLES: readonly NxUserRole[] = ["admin", "editor", "author", "viewer"];
 
@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
       token: issued.token,
       purpose: "invite",
       resetUrl: buildResetUrl(request, issued.token),
+      siteName: nexpressConfig.site.name,
     });
 
     await runHook("auth:afterRegister", {

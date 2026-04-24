@@ -4,6 +4,8 @@ import {
   type NxCollectionHook,
   type NxJobType,
 } from "../config/types.js";
+import { getEmailAdapter } from "../email/service.js";
+import { buildInviteEmail, buildResetEmail } from "../email/templates.js";
 import { registerJobHandler } from "./handlers.js";
 
 interface ContentJobData {
@@ -145,12 +147,16 @@ interface PasswordResetJobData {
   token: string;
   purpose: "invite" | "reset";
   resetUrl: string;
+  /** Optional — producer may pass a site-display name for the template. */
+  siteName?: string;
 }
 
 /**
- * Default handler for password-reset / invite emails. Logs the reset URL
- * with a stub warning — real SMTP delivery is expected to replace this via
- * `registerJobHandler("auth:sendPasswordReset", yourHandler)` in the app.
+ * Default handler for password-reset / invite emails. Routes the message
+ * through the configured email adapter (noop by default — see
+ * `NoopEmailAdapter`). Apps override either by installing a real adapter
+ * (`setEmailAdapter(new SmtpEmailAdapter(...))`) or by providing a fully
+ * custom handler via `configureBuiltinJobContext({ sendPasswordReset })`.
  */
 async function handleAuthSendPasswordReset(data: unknown): Promise<void> {
   if (builtinJobContext.sendPasswordReset) {
@@ -159,12 +165,22 @@ async function handleAuthSendPasswordReset(data: unknown): Promise<void> {
   }
 
   const payload = asPasswordResetJobData(data);
-  const action = payload.purpose === "invite" ? "invite" : "reset";
-  // eslint-disable-next-line no-console
-  console.warn(
-    `[nexpress] auth:sendPasswordReset is a stub — no mailer wired. ` +
-      `Deliver this link to ${payload.email} (${payload.name}) [${action}]:\n  ${payload.resetUrl}`,
-  );
+  const templateData = {
+    siteName: payload.siteName ?? "your site",
+    name: payload.name,
+    resetUrl: payload.resetUrl,
+  };
+  const template =
+    payload.purpose === "invite"
+      ? buildInviteEmail(templateData)
+      : buildResetEmail(templateData);
+
+  await getEmailAdapter().send({
+    to: payload.email,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+  });
 }
 
 function asPasswordResetJobData(data: unknown): PasswordResetJobData {
@@ -176,6 +192,7 @@ function asPasswordResetJobData(data: unknown): PasswordResetJobData {
     email: asString(data.email, "email"),
     name: asString(data.name, "name"),
     token: asString(data.token, "token"),
+    siteName: typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
     purpose: asResetPurpose(data.purpose),
     resetUrl: asString(data.resetUrl, "resetUrl"),
   };

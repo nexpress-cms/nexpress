@@ -1,0 +1,176 @@
+# Email delivery
+
+NexPress uses a pluggable adapter for transactional email. Password-reset
+and invite flows enqueue a job (`auth:sendPasswordReset`) which the
+builtin handler forwards to whichever adapter you've installed. The
+default adapter is a **no-op that logs the reset URL to stdout** — safe
+for development, unusable for real deployments.
+
+---
+
+## Built-in SMTP adapter (recommended)
+
+Works with any SMTP-speaking provider (Resend, SES, Mailgun, Postmark,
+Gmail, Zoho, a custom relay). Enable it by setting:
+
+```dotenv
+NX_EMAIL_ADAPTER=smtp
+NX_SMTP_HOST=smtp.resend.com
+NX_SMTP_PORT=587
+NX_SMTP_USER=resend
+NX_SMTP_PASS=<api-key-or-password>
+NX_SMTP_FROM="NexPress <noreply@yourdomain.com>"
+NX_SMTP_SECURE=false
+```
+
+`NX_SMTP_SECURE=true` for implicit-TLS ports (465). Leave it `false` for
+STARTTLS ports (587 / 25). Apps using the adapter must include
+`nodemailer` in their dependencies — it's an optional peer of
+`@nexpress/core`.
+
+### Provider examples
+
+**Resend**
+
+```dotenv
+NX_SMTP_HOST=smtp.resend.com
+NX_SMTP_PORT=465
+NX_SMTP_USER=resend
+NX_SMTP_PASS=re_your_api_key
+NX_SMTP_FROM="NexPress <onboarding@resend.dev>"
+NX_SMTP_SECURE=true
+```
+
+**AWS SES (SMTP interface)**
+
+```dotenv
+NX_SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+NX_SMTP_PORT=587
+NX_SMTP_USER=<SES SMTP Username>
+NX_SMTP_PASS=<SES SMTP Password>
+NX_SMTP_FROM="NexPress <noreply@yourdomain.com>"
+NX_SMTP_SECURE=false
+```
+
+**Mailgun**
+
+```dotenv
+NX_SMTP_HOST=smtp.mailgun.org
+NX_SMTP_PORT=587
+NX_SMTP_USER=postmaster@mg.yourdomain.com
+NX_SMTP_PASS=<mailgun-smtp-password>
+NX_SMTP_FROM="NexPress <noreply@mg.yourdomain.com>"
+NX_SMTP_SECURE=false
+```
+
+**Gmail** (app passwords; not for production volume)
+
+```dotenv
+NX_SMTP_HOST=smtp.gmail.com
+NX_SMTP_PORT=465
+NX_SMTP_USER=you@gmail.com
+NX_SMTP_PASS=<app-password>
+NX_SMTP_FROM="NexPress <you@gmail.com>"
+NX_SMTP_SECURE=true
+```
+
+---
+
+## Custom adapters
+
+Any adapter implementing `NxEmailAdapter` works. Use this when your
+provider has a native HTTP SDK (Resend, SendGrid, Postmark) that you'd
+rather call directly than go through SMTP.
+
+```ts
+// apps/web/src/lib/init-core.ts
+import { setEmailAdapter, type NxEmailAdapter, type NxEmailMessage } from "@nexpress/core";
+import { Resend } from "resend";
+
+class ResendAdapter implements NxEmailAdapter {
+  readonly kind = "resend";
+  private client: Resend;
+  private from: string;
+
+  constructor(apiKey: string, from: string) {
+    this.client = new Resend(apiKey);
+    this.from = from;
+  }
+
+  async send(msg: NxEmailMessage) {
+    await this.client.emails.send({
+      from: msg.from ?? this.from,
+      to: msg.to,
+      subject: msg.subject,
+      text: msg.text,
+      html: msg.html,
+    });
+  }
+}
+
+if (process.env.RESEND_API_KEY) {
+  setEmailAdapter(
+    new ResendAdapter(process.env.RESEND_API_KEY, "noreply@yourdomain.com"),
+  );
+}
+```
+
+Call `setEmailAdapter` **before** the first password-reset / invite
+request — the easiest place is inside `ensureWriteReady()` or any
+module-scope init that runs on boot.
+
+---
+
+## Templates
+
+The handler calls `buildInviteEmail` / `buildResetEmail` from
+`@nexpress/core` to construct `{ subject, text, html }`. Both use an
+inline HTML shell that renders reliably in most webmail clients and
+takes three variables:
+
+- `siteName` — populated from `NxConfig.site.name`.
+- `name` — the recipient's display name.
+- `resetUrl` — the full URL including the one-time token.
+
+Override the copy by replacing the handler entirely:
+
+```ts
+import { configureBuiltinJobContext } from "@nexpress/core";
+
+configureBuiltinJobContext({
+  sendPasswordReset: async (data) => {
+    // Your own template rendering + adapter call. Throw on failure so
+    // pg-boss retries per its configured policy.
+  },
+});
+```
+
+---
+
+## Local development
+
+Leave `NX_EMAIL_ADAPTER` unset and the handler falls back to
+`NoopEmailAdapter`, which prints:
+
+```
+[nexpress] email (noop adapter) — not actually delivered.
+  to:      alice@example.com
+  subject: Reset your NexPress Reference password
+  text:
+    Hi alice@example.com,
+    ...
+```
+
+Copy the URL from the log and complete the flow manually. No SMTP
+credentials needed.
+
+---
+
+## Deliverability
+
+- Set up SPF + DKIM on your sending domain. Providers have their own
+  records — follow their docs.
+- Use a dedicated subdomain (e.g. `mail.yoursite.com`) to isolate
+  transactional reputation from marketing.
+- Monitor bounces / complaints at the provider; repeated bounces can
+  throttle future sends.
