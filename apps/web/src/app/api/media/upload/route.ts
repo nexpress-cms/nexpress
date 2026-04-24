@@ -7,6 +7,7 @@ import {
   hasRole,
   nxMedia,
   nxMediaFolders,
+  runHook,
   uploadMedia,
   getStorageAdapter,
 } from "@nexpress/core";
@@ -83,12 +84,27 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
+    await runHook("media:beforeUpload", {
+      user: { id: user.id, email: user.email, role: user.role },
+      file: {
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+      },
+      folderId,
+    });
+
     if (file.type.startsWith("image/")) {
       const result = await uploadMedia(
         { buffer, originalFilename: file.name, mimeType: file.type },
         user.id,
         folderId,
       );
+
+      await runHook("media:afterUpload", {
+        user: { id: user.id, email: user.email, role: user.role },
+        media: result,
+      });
 
       return nxSuccessResponse(result, { status: 202 });
     }
@@ -117,6 +133,17 @@ export async function POST(request: NextRequest) {
       uploadedBy: user.id,
       createdAt: now,
       updatedAt: now,
+    });
+
+    await runHook("media:afterUpload", {
+      user: { id: user.id, email: user.email, role: user.role },
+      media: {
+        id,
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+        storageKey,
+      },
     });
 
     return nxSuccessResponse({ id, status: "ready" }, { status: 201 });
