@@ -1,5 +1,6 @@
 import {
   NxForbiddenError,
+  NxValidationError,
   hasRole,
   nxMedia,
   nxMediaRefs,
@@ -7,6 +8,7 @@ import {
   nxSettings,
   nxNavigation,
   getAllCollectionSlugs,
+  getPluginRegistration,
   findDocuments,
 } from "@nexpress/core";
 import { and, inArray, isNull } from "drizzle-orm";
@@ -19,7 +21,31 @@ const EXPORT_VERSION = "1" as const;
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+
+/**
+ * Comma-separated list in `?collections=a,b` restricts the export to just
+ * those collection slugs — and drops theme/settings/navigation/plugins so
+ * the payload stays focused on content migration. Empty / missing param =
+ * full export.
+ */
+function parseCollectionsFilter(request: NextRequest): string[] | null {
+  const raw = request.nextUrl.searchParams.get("collections");
+  if (!raw) return null;
+  const slugs = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (slugs.length === 0) return null;
+  const registered = new Set(getAllCollectionSlugs());
+  const unknown = slugs.filter((slug) => !registered.has(slug));
+  if (unknown.length > 0) {
+    throw new NxValidationError("Invalid input", [
+      { field: "collections", message: `Unknown collection(s): ${unknown.join(", ")}` },
+    ]);
+  }
+  return slugs;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,10 +56,13 @@ export async function GET(request: NextRequest) {
     }
 
     ensureCoreServices();
+    await ensurePluginsLoaded();
     const db = getDb();
+    const collectionsFilter = parseCollectionsFilter(request);
+    const partial = collectionsFilter !== null;
 
-    const settingsRows = await db.select().from(nxSettings);
-    const navRows = await db.select().from(nxNavigation);
+    const settingsRows = partial ? [] : await db.select().from(nxSettings);
+    const navRows = partial ? [] : await db.select().from(nxNavigation);
 
     const theme = settingsRows.find((r) => r.key === "theme")?.value;
     const settings = Object.fromEntries(
@@ -43,9 +72,9 @@ export async function GET(request: NextRequest) {
       navRows.map((r) => [r.location, r.items]),
     );
 
+    const exportSlugs = collectionsFilter ?? getAllCollectionSlugs();
     const collections: Record<string, Record<string, unknown>[]> = {};
-
-    for (const slug of getAllCollectionSlugs()) {
+    for (const slug of exportSlugs) {
       const result = await findDocuments(slug, { limit: 10000 }, undefined);
       collections[slug] = result.docs;
     }
@@ -70,23 +99,29 @@ export async function GET(request: NextRequest) {
 
     // Plugin registrations + per-plugin config/enabled flags so a re-import
     // lands in the same state. We export what's in the DB — plugin code
-    // itself is managed via nexpress.config.ts.
-    const pluginRows = await db.select().from(nxPlugins);
-    const plugins = pluginRows.map((row) => ({
-      id: row.id,
-      enabled: row.enabled,
-      config: row.config,
-    }));
+    // itself is managed via nexpress.config.ts. Skipped entirely when a
+    // collection filter is active (partial export = content only).
+    const pluginRows = partial ? [] : await db.select().from(nxPlugins);
+    const plugins = pluginRows.map((row) => {
+      const registration = getPluginRegistration(row.id);
+      return {
+        id: row.id,
+        enabled: row.enabled,
+        config: row.config,
+        manifestVersion: registration?.version ?? null,
+      };
+    });
 
     return nxSuccessResponse({
       version: EXPORT_VERSION,
       exportedAt: new Date().toISOString(),
-      theme,
-      settings,
-      navigation,
+      siteUrl: process.env.SITE_URL ?? null,
+      partial,
+      collectionsExported: exportSlugs,
+      ...(partial ? {} : { theme, settings, navigation }),
       collections,
       media,
-      plugins,
+      ...(partial ? {} : { plugins }),
     });
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

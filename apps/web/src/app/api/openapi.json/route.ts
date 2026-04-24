@@ -792,7 +792,16 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Export all content + settings as a single JSON document (admin only)",
         description:
-          "Inverse of `POST /api/import`. Includes theme, settings, navigation, every collection's documents, media references (id + hash + filename — not the binary), and plugin enabled/config state.",
+          "Inverse of `POST /api/import`. Full export includes theme, settings, navigation, every collection's documents, media references (id + hash + filename — not the binary), and plugin enabled/config state. Pass `?collections=posts,pages` to scope the payload to content only (theme / settings / navigation / plugins are omitted).",
+        parameters: [
+          {
+            in: "query",
+            name: "collections",
+            schema: { type: "string" },
+            description:
+              "Comma-separated slug list. When present, only these collections export and the non-content sections (theme/settings/navigation/plugins) are skipped.",
+          },
+        ],
         responses: {
           "200": {
             description: "Export payload",
@@ -803,6 +812,9 @@ function buildSpec(): OpenApiSchema {
                   properties: {
                     version: { type: "string", enum: ["1"] },
                     exportedAt: { type: "string", format: "date-time" },
+                    siteUrl: { type: "string", nullable: true, description: "SITE_URL env at export time, useful for downstream URL rewrites." },
+                    partial: { type: "boolean", description: "True when the `collections` filter was applied." },
+                    collectionsExported: { type: "array", items: { type: "string" } },
                     theme: { type: "object", additionalProperties: true, nullable: true },
                     settings: { type: "object", additionalProperties: true },
                     navigation: { type: "object", additionalProperties: true },
@@ -816,6 +828,7 @@ function buildSpec(): OpenApiSchema {
                           id: { type: "string" },
                           enabled: { type: "boolean" },
                           config: { type: "object", additionalProperties: true },
+                          manifestVersion: { type: "string", nullable: true },
                         },
                       },
                     },
@@ -825,6 +838,7 @@ function buildSpec(): OpenApiSchema {
             },
           },
           "403": { description: "Caller is not an admin" },
+          "422": { description: "Unknown collection slug in filter" },
         },
       },
     },
@@ -832,7 +846,22 @@ function buildSpec(): OpenApiSchema {
       post: {
         summary: "Import a prior `/api/export` payload (admin only)",
         description:
-          "Idempotency: media records are matched by hash (then filename as fallback) before collection docs are written, so re-running on a fresh DB after uploading media produces a consistent result. Plugin code itself is not imported — the plugin must already be registered in `nexpress.config.ts`.",
+          "Idempotency: media records are matched by hash (then filename as fallback) before collection docs are written, so re-running on a fresh DB after uploading media produces a consistent result. Plugin code itself is not imported — the plugin must already be registered in `nexpress.config.ts`.\n\nPass `?dryRun=true` to validate the payload without writing — the response returns the same `imported` counts and `warnings` a real run would produce, plus `dryRun: true`. Pass `?collections=a,b` to restrict the import to just those slugs (theme / settings / navigation / plugins in the payload are then ignored with a warning).",
+        parameters: [
+          {
+            in: "query",
+            name: "dryRun",
+            schema: { type: "boolean" },
+            description: "When `true`, skip all writes and return the report that would have been generated.",
+          },
+          {
+            in: "query",
+            name: "collections",
+            schema: { type: "string" },
+            description:
+              "Comma-separated slug list. When present, only these collections import and theme/settings/navigation/plugins are skipped.",
+          },
+        ],
         requestBody: {
           required: true,
           content: {
@@ -888,16 +917,19 @@ function buildSpec(): OpenApiSchema {
                         navigation: { type: "integer" },
                         pages: { type: "integer" },
                         mediaMatched: { type: "integer" },
+                        pluginsUpdated: { type: "integer" },
                       },
                     },
                     warnings: { type: "array", items: { type: "string" } },
+                    dryRun: { type: "boolean" },
+                    partial: { type: "boolean" },
                   },
                 },
               },
             },
           },
           "403": { description: "Caller is not an admin" },
-          "422": { description: "Invalid payload shape or unsupported version" },
+          "422": { description: "Invalid payload shape, unsupported version, or unknown collection in filter" },
         },
       },
     },
