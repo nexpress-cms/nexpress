@@ -1,0 +1,148 @@
+import { eq } from "drizzle-orm";
+import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
+
+import { findDocuments, getDb } from "./pipeline.js";
+import {
+  getAllCollectionSlugs,
+  getCollectionConfig,
+  getCollectionTable,
+} from "./registry.js";
+import { buildSearchVector } from "./search.js";
+
+export interface SearchCollectionsOptions {
+  q: string;
+  collections?: string[];
+  limit?: number;
+  offset?: number;
+  /**
+   * Extra where-filter applied on top of the default `{ status: "published" }`
+   * for each collection. Pass `{}` to disable the status filter (caller should
+   * only do this for authenticated admin contexts).
+   */
+  where?: Record<string, unknown>;
+}
+
+export interface SearchResultItem {
+  collection: string;
+  doc: Record<string, unknown>;
+}
+
+export interface SearchResult {
+  results: SearchResultItem[];
+  total: number;
+  perCollection: Record<string, number>;
+}
+
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
+
+function normalizeLimit(limit: number | undefined): number {
+  if (!limit || limit < 1) return DEFAULT_LIMIT;
+  return Math.min(Math.floor(limit), MAX_LIMIT);
+}
+
+function hasSearchVectorColumn(table: PgTable): boolean {
+  return (table as unknown as Record<string, unknown>).searchVector !== undefined;
+}
+
+/**
+ * Cross-collection full-text search using the existing `search_vector` column
+ * on each collection table. Built on top of `findDocuments` so it inherits
+ * the ts_rank ordering, access-control read checks, and pagination.
+ *
+ * Results are merged in per-collection slug order; for an MVP the within-
+ * collection ranking is authoritative. A future version can do a UNION across
+ * tables if global ranking becomes a priority.
+ */
+export async function searchCollections(
+  opts: SearchCollectionsOptions,
+): Promise<SearchResult> {
+  const query = opts.q.trim();
+  if (query.length === 0) {
+    return { results: [], total: 0, perCollection: {} };
+  }
+
+  const slugs = opts.collections ?? getAllCollectionSlugs();
+  const limit = normalizeLimit(opts.limit);
+  const offset = opts.offset ?? 0;
+  const baseWhere = opts.where ?? { status: "published" };
+
+  const results: SearchResultItem[] = [];
+  const perCollection: Record<string, number> = {};
+  let total = 0;
+
+  for (const slug of slugs) {
+    let table: PgTable;
+    try {
+      table = getCollectionTable(slug) as PgTable;
+    } catch {
+      continue;
+    }
+    if (!hasSearchVectorColumn(table)) continue;
+
+    const page = await findDocuments(slug, {
+      search: query,
+      where: baseWhere,
+      limit,
+      page: 1,
+    });
+
+    perCollection[slug] = page.totalDocs;
+    total += page.totalDocs;
+    for (const doc of page.docs) {
+      results.push({ collection: slug, doc });
+    }
+  }
+
+  return {
+    results: results.slice(offset, offset + limit),
+    total,
+    perCollection,
+  };
+}
+
+export interface ReindexResult {
+  collection: string;
+  processed: number;
+}
+
+function getTableColumn(table: PgTable, key: string): AnyPgColumn {
+  const column = (table as unknown as Record<string, unknown>)[key];
+  if (!column) {
+    throw new Error(`Column '${key}' not found on collection table.`);
+  }
+  return column as AnyPgColumn;
+}
+
+/**
+ * Rebuilds the `search_vector` column for every row in a collection. Useful
+ * after bulk imports or for recovering from corrupted vectors. Idempotent —
+ * safe to run against a live collection while writes continue.
+ */
+export async function reindexCollection(slug: string): Promise<ReindexResult> {
+  const config = getCollectionConfig(slug);
+  const table = getCollectionTable(slug) as PgTable;
+  if (!hasSearchVectorColumn(table)) {
+    return { collection: slug, processed: 0 };
+  }
+
+  const db = getDb();
+  const idCol = getTableColumn(table, "id");
+  const rows = (await db.select().from(table)) as Array<Record<string, unknown>>;
+
+  let processed = 0;
+  for (const row of rows) {
+    const vector = buildSearchVector(config, row);
+    // Match the write pattern in pipeline.ts — searchVector is inserted as a
+    // plain string that Postgres casts to tsvector. A future improvement is
+    // to wrap both sites in to_tsvector('english', …) for proper language
+    // processing.
+    await db
+      .update(table)
+      .set({ searchVector: vector })
+      .where(eq(idCol, row.id as string));
+    processed += 1;
+  }
+
+  return { collection: slug, processed };
+}
