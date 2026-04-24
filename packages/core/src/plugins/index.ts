@@ -1,6 +1,7 @@
 export {
   loadPlugins,
   runHook,
+  runHookAndCollect,
   getPluginRoutes,
   getPluginRegistration,
   getAllPluginIds,

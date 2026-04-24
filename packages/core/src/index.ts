@@ -193,6 +193,7 @@ export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 export {
   loadPlugins,
   runHook,
+  runHookAndCollect,
   getPluginRoutes,
   getPluginRegistration,
   getAllPluginIds,

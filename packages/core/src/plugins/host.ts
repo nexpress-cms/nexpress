@@ -7,7 +7,12 @@ import { createPluginRuntimeContext } from "./context.js";
 
 export interface PluginHookHandler {
   pluginId: string;
-  handler: (data: Record<string, unknown>) => void | Promise<void>;
+  /**
+   * Returns `void` for fire-and-forget hooks (most of them). Render / extension
+   * hooks may return a value; `runHookAndCollect` gathers those, while
+   * `runHook` ignores returns.
+   */
+  handler: (data: Record<string, unknown>) => unknown | Promise<unknown>;
 }
 
 export interface PluginRouteHandler {
@@ -168,7 +173,7 @@ type ResolvedHookFn = (ctx: {
   data: Record<string, unknown>;
   collection?: string;
   ctx: Record<string, unknown>;
-}) => void | Promise<void>;
+}) => unknown | Promise<unknown>;
 
 type ResolvedRouteFn = (
   req: PluginRouteRequest,
@@ -297,7 +302,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       handler: async (data) => {
         const collection = typeof data.collection === "string" ? data.collection : undefined;
         const ctx = await buildCtxFor(manifest.id);
-        await handler({ hook: hookName, data, collection, ctx });
+        return await handler({ hook: hookName, data, collection, ctx });
       },
     });
   }
@@ -370,6 +375,33 @@ export async function runHook(hookName: string, data: Record<string, unknown>): 
   for (const handler of handlers) {
     await handler.handler(data);
   }
+}
+
+/**
+ * Like `runHook`, but collects every non-null/undefined return value from
+ * registered handlers. Used by render extension points (`render:beforePage`,
+ * etc.) where each plugin contributes structured data — head tags, scripts —
+ * that the renderer aggregates into a single output.
+ *
+ * Handlers that throw propagate the error: a broken plugin taking down the
+ * page is preferable to a silent miss for SEO/analytics output. Catch at the
+ * call site if a specific hook should be tolerant.
+ */
+export async function runHookAndCollect<T>(
+  hookName: string,
+  data: Record<string, unknown>,
+): Promise<T[]> {
+  const handlers = globalHooks.get(hookName);
+  if (!handlers || handlers.length === 0) return [];
+
+  const results: T[] = [];
+  for (const handler of handlers) {
+    const value = await handler.handler(data);
+    if (value !== undefined && value !== null) {
+      results.push(value as T);
+    }
+  }
+  return results;
 }
 
 export function getPluginRoutes(): PluginRouteHandler[] {

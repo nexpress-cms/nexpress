@@ -7,6 +7,7 @@ import {
   loadPlugins,
   resetPlugins,
   runHook,
+  runHookAndCollect,
 } from "./index.js";
 import type { NxPluginConfig } from "../config/types.js";
 
@@ -25,7 +26,7 @@ function resolvedPlugin(
       hook: string;
       data: Record<string, unknown>;
       collection?: string;
-    }) => void | Promise<void>>;
+    }) => unknown | Promise<unknown>>;
     routes?: Array<{ method: string; path: string; handler: () => Promise<{ status: number }> }>;
   } = {},
 ): {
@@ -204,6 +205,78 @@ describe("plugin host", () => {
 
     it("is a no-op for unknown hooks", async () => {
       await expect(runHook("content:neverFires", {})).resolves.toBeUndefined();
+    });
+  });
+
+  describe("runHookAndCollect", () => {
+    it("collects non-null return values from every handler", async () => {
+      await loadPlugins([
+        resolvedPlugin("a", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => ({ head: [{ tag: "meta", attrs: { name: "a" } }] }),
+          },
+        }),
+        resolvedPlugin("b", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => ({ head: [{ tag: "meta", attrs: { name: "b" } }] }),
+          },
+        }),
+      ]);
+
+      const results = await runHookAndCollect<{ head: Array<{ tag: string; attrs: Record<string, string> }> }>(
+        "render:beforePage",
+        { collection: "posts", slug: "hello", document: {} },
+      );
+
+      expect(results).toHaveLength(2);
+      expect(results.flatMap((r) => r.head.map((h) => h.attrs.name))).toEqual(["a", "b"]);
+    });
+
+    it("skips handlers that return undefined or null", async () => {
+      await loadPlugins([
+        resolvedPlugin("contributes", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => ({ head: [{ tag: "meta", attrs: { name: "x" } }] }),
+          },
+        }),
+        resolvedPlugin("opts-out", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => undefined,
+          },
+        }),
+        resolvedPlugin("returns-null", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => null,
+          },
+        }),
+      ]);
+
+      const results = await runHookAndCollect<{ head: unknown[] }>("render:beforePage", {});
+      expect(results).toHaveLength(1);
+    });
+
+    it("returns [] when no handler is registered", async () => {
+      await expect(runHookAndCollect("render:neverFires", {})).resolves.toEqual([]);
+    });
+
+    it("propagates handler errors", async () => {
+      await loadPlugins([
+        resolvedPlugin("boom", {
+          capabilities: ["hooks:render"],
+          hooks: {
+            "render:beforePage": () => {
+              throw new Error("broken plugin");
+            },
+          },
+        }),
+      ]);
+
+      await expect(runHookAndCollect("render:beforePage", {})).rejects.toThrow(/broken plugin/);
     });
   });
 });

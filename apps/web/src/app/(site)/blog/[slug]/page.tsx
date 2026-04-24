@@ -3,7 +3,12 @@ import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import { NxImage, getMediaUrl } from "@/components/nx-image";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import {
+  RenderBodyEnd,
+  RenderHead,
+  collectRenderContributions,
+} from "@/components/render-contributions";
 import type { Metadata } from "next";
 import type { NxRichTextContent } from "@nexpress/editor";
 
@@ -13,6 +18,7 @@ interface PostPageProps {
 
 export default async function PostPage({ params }: PostPageProps) {
   ensureCoreServices();
+  await ensurePluginsLoaded();
   const { slug } = await params;
   const { isEnabled: isDraft } = await draftMode();
   const post = await getPostBySlug(slug, { draft: isDraft });
@@ -20,8 +26,15 @@ export default async function PostPage({ params }: PostPageProps) {
 
   const content = post.content as NxRichTextContent | undefined;
 
+  const { head, bodyEnd } = await collectRenderContributions({
+    collection: "posts",
+    slug,
+    document: post,
+  });
+
   return (
     <article className="nx-post">
+      <RenderHead entries={head} />
       {isDraft ? (
         <div className="nx-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
           Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
@@ -45,6 +58,7 @@ export default async function PostPage({ params }: PostPageProps) {
           {renderRichText(content)}
         </div>
       )}
+      <RenderBodyEnd entries={bodyEnd} />
     </article>
   );
 }
