@@ -5,3 +5,4 @@ export type {
   CollectionTabWidget,
   CollectionTabAction,
 } from "./collections/collection-tabs.js";
+export type { DashboardPluginWidget } from "./dashboard/plugin-widgets.js";

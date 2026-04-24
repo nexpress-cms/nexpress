@@ -135,10 +135,15 @@ export const nxCollectionTabSchema = z
     }
   });
 
+export const nxAdminDashboardWidgetSchema = nxAdminWidgetSchema.extend({
+  priority: z.number().int().optional(),
+});
+
 export const nxAdminExtensionSchema = z.object({
   settings: nxAdminSettingsSchema.optional(),
   widgets: z.array(nxAdminWidgetSchema).optional(),
   actions: z.array(nxAdminActionSchema).optional(),
   tables: z.array(nxAdminTableSchema).optional(),
   collectionTabs: z.array(nxCollectionTabSchema).optional(),
+  dashboardWidgets: z.array(nxAdminDashboardWidgetSchema).optional(),
 });
