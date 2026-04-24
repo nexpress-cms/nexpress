@@ -153,12 +153,17 @@ export function createPluginRuntimeContext(
     },
 
     media: {
-      async list(query?: { page?: number; limit?: number; search?: string; folder?: string }) {
+      async list(query?: {
+        page?: number;
+        limit?: number;
+        mimeType?: string;
+        folder?: string;
+      }) {
         assertCap(pluginId, capabilities, "media:read");
         return coreListMedia({
           page: query?.page,
           limit: query?.limit,
-          search: query?.search,
+          mimeType: query?.mimeType,
           folderId: query?.folder,
         });
       },
@@ -169,7 +174,7 @@ export function createPluginRuntimeContext(
       async getUrl(id: string) {
         assertCap(pluginId, capabilities, "media:read");
         const media = await coreGetMediaById(id);
-        if (!media) return "";
+        if (!media || typeof media.storageKey !== "string") return "";
         const adapter = getStorageAdapter();
         return adapter.getUrl(media.storageKey);
       },
@@ -381,7 +386,10 @@ export function createPluginRuntimeContext(
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          let body: BodyInit | undefined;
+          // `BodyInit` isn't in @types/node's global scope even with lib.dom
+          // off, so keep the local union narrow enough for fetch() while
+          // staying portable across runtimes.
+          let body: string | Uint8Array | undefined;
           if (opts?.body !== undefined && opts.body !== null) {
             if (typeof opts.body === "string") {
               body = opts.body;

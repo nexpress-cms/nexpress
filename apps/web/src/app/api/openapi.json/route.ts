@@ -50,7 +50,7 @@ function fieldToSchema(field: NxFieldManifest): OpenApiSchema {
 function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): OpenApiSchema {
   const properties: Record<string, OpenApiSchema> = {
     id: { type: "string", format: "uuid", readOnly: true },
-    status: { type: "string", enum: ["draft", "published", "archived"] },
+    status: { type: "string", enum: ["draft", "scheduled", "published", "archived"] },
     createdAt: { type: "string", format: "date-time", readOnly: true },
     updatedAt: { type: "string", format: "date-time", readOnly: true },
   };
@@ -219,6 +219,50 @@ function buildSpec(): OpenApiSchema {
           },
           "400": { description: "Validation or duplicate email" },
           "403": { description: "Caller is not an admin" },
+        },
+      },
+    },
+    "/api/search": {
+      get: {
+        summary: "Full-text search across published documents in every collection",
+        description:
+          "Public endpoint. Uses each collection's search_vector column; results are filtered to status=\"published\" automatically.",
+        parameters: [
+          { in: "query", name: "q", required: true, schema: { type: "string" } },
+          {
+            in: "query",
+            name: "collections",
+            schema: { type: "string" },
+            description: "Comma-separated collection slugs. Omit to search every collection with a search_vector column.",
+          },
+          { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 50 } },
+          { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+        ],
+        responses: {
+          "200": {
+            description: "Search results ranked by ts_rank within each collection.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    results: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          collection: { type: "string" },
+                          doc: { type: "object", additionalProperties: true },
+                        },
+                      },
+                    },
+                    total: { type: "integer" },
+                    perCollection: { type: "object", additionalProperties: { type: "integer" } },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },

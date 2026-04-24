@@ -8,6 +8,7 @@ import {
   hasRole,
   hashPassword,
   nxUsers,
+  runHook,
   type NxUserRole,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
@@ -121,6 +122,15 @@ export async function POST(request: NextRequest) {
       token: issued.token,
       purpose: "invite",
       resetUrl: buildResetUrl(request, issued.token),
+    });
+
+    await runHook("auth:afterRegister", {
+      user: {
+        id: created.id,
+        email: created.email,
+        role: created.role,
+      },
+      origin: "invite",
     });
 
     return nxSuccessResponse(
