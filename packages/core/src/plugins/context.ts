@@ -12,6 +12,8 @@ import {
 import {
   listMedia as coreListMedia,
   getMediaById as coreGetMediaById,
+  deleteMedia as coreDeleteMedia,
+  uploadMedia as coreUploadMedia,
   getStorageAdapter,
 } from "../media/service.js";
 import { getDb } from "../collections/pipeline.js";
@@ -62,15 +64,6 @@ function assertCap(pluginId: string, capabilities: readonly string[], required: 
       `capability "${required}" not declared in manifest`,
     );
   }
-}
-
-function notImplemented(pluginId: string, area: string): never {
-  throw new NxError(
-    `[plugin:${pluginId}] ctx.${area} is not implemented in this release. ` +
-      `See docs/plugin-system-design.md for the roadmap.`,
-    "NOT_IMPLEMENTED",
-    501,
-  );
 }
 
 async function loadOptionalNextCache(): Promise<
@@ -178,11 +171,37 @@ export function createPluginRuntimeContext(
         const adapter = getStorageAdapter();
         return adapter.getUrl(media.storageKey);
       },
-      upload() {
-        notImplemented(pluginId, "media.upload");
+      async upload(
+        file: Uint8Array | ArrayBuffer,
+        metadata: { filename: string; mimeType: string; folder?: string },
+      ) {
+        assertCap(pluginId, capabilities, "media:write");
+        const buffer = Buffer.from(
+          file instanceof ArrayBuffer ? new Uint8Array(file) : file,
+        );
+        return coreUploadMedia(
+          {
+            buffer,
+            originalFilename: metadata.filename,
+            mimeType: metadata.mimeType,
+          },
+          // Plugin principal id is synthetic so uploads are traceable back to
+          // the plugin via the `uploaded_by` column (even though no real user
+          // row with that id exists).
+          `plugin:${pluginId}`,
+          metadata.folder,
+        );
       },
-      delete() {
-        notImplemented(pluginId, "media.delete");
+      async delete(id: string) {
+        assertCap(pluginId, capabilities, "media:delete");
+        const result = await coreDeleteMedia(id);
+        if (!result.deleted && result.references && result.references.length > 0) {
+          throw new NxError(
+            `[plugin:${pluginId}] media.delete: ${id} is referenced by ${result.references.length} document(s).`,
+            "CONFLICT",
+            409,
+          );
+        }
       },
     },
 
