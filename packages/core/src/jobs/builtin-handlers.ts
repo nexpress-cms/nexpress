@@ -56,12 +56,25 @@ export function configureBuiltinJobContext(context: Partial<BuiltinJobContext>):
 export function registerBuiltinHandlers(): void {
   registerJobHandler("content:afterSave", handleContentAfterSave);
   registerJobHandler("content:afterDelete", handleContentAfterDelete);
+  registerJobHandler("content:publishScheduled", handleContentPublishScheduled);
   registerJobHandler("media:processImage", handleMediaProcessImage);
   registerJobHandler("media:cleanup", handleMediaCleanup);
   registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask);
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
   registerJobHandler("system:sessionCleanup", handleSessionCleanup);
   registerJobHandler("auth:sendPasswordReset", handleAuthSendPasswordReset);
+}
+
+async function handleContentPublishScheduled(_: unknown): Promise<void> {
+  const { publishScheduledDocuments } = await import("../collections/scheduled.js");
+  const result = await publishScheduledDocuments();
+  if (result.published > 0) {
+    // eslint-disable-next-line no-console
+    console.info(
+      `[nexpress] content:publishScheduled flipped ${result.published} document(s)`,
+      result.byCollection,
+    );
+  }
 }
 
 async function handleContentAfterSave(data: unknown): Promise<void> {

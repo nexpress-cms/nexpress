@@ -4,6 +4,7 @@ import {
   hasRole,
   hashPassword,
   nxUsers,
+  runHook,
   type NxUserRole,
 } from "@nexpress/core";
 import { asc, count, ilike, or } from "drizzle-orm";
@@ -12,6 +13,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
+import { ensurePluginsLoaded } from "@/lib/init-core";
 
 const VALID_ROLES: readonly NxUserRole[] = ["admin", "editor", "author", "viewer"];
 
@@ -131,6 +133,18 @@ export async function POST(request: NextRequest) {
         createdAt: nxUsers.createdAt,
         updatedAt: nxUsers.updatedAt,
       });
+
+    if (created) {
+      await ensurePluginsLoaded();
+      await runHook("auth:afterRegister", {
+        user: {
+          id: created.id,
+          email: created.email,
+          role: created.role,
+        },
+        origin: "admin",
+      });
+    }
 
     return nxSuccessResponse(created, { status: 201 });
   } catch (error) {

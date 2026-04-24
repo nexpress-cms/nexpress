@@ -78,6 +78,7 @@ export {
   listRevisions,
   getRevision,
   restoreRevision,
+  publishScheduledDocuments,
   searchCollections,
   reindexCollection,
 } from "./collections/index.js";
@@ -87,6 +88,7 @@ export type {
   NxRevisionStatus,
   NxRevisionListOptions,
   NxRevisionListResult,
+  PublishScheduledResult,
   SearchCollectionsOptions,
   SearchResult,
   SearchResultItem,
@@ -104,7 +106,7 @@ export {
 } from "./content/index.js";
 export { buildZodSchema, getCollectionZodSchema } from "./collections/validation.js";
 
-export { collectionConfigSchema } from "./config/validation.js";
+export { collectionConfigSchema, nxConfigSchema } from "./config/validation.js";
 
 export { createDbConnection } from "./db/connection.js";
 export * from "./db/schema/index.js";

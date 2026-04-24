@@ -118,7 +118,54 @@ export async function saveDocument(
     prepared.mainData.status = options.status;
   }
   const now = new Date();
+
+  // Scheduled publishing: if the caller wants status=published but publishedAt
+  // is in the future, demote to "scheduled" so the public site doesn't render
+  // it until the scheduler flips it back. Works on any collection whose
+  // generated table has a publishedAt column (opt-in by field presence).
+  const desiredStatus = prepared.mainData.status as string | undefined;
+  const publishedAtValue = prepared.mainData.publishedAt;
+  if (desiredStatus === "published" && publishedAtValue instanceof Date && publishedAtValue > now) {
+    prepared.mainData.status = "scheduled";
+  }
+
   const searchVector = buildSearchVector(config, hookData);
+
+  // Compute publish-transition so we can fire before/afterPublish + beforeUnpublish
+  // around the write. Status precedence: explicit mainData.status > original doc
+  // (on update) > "published" default (on create).
+  const nextStatus =
+    (prepared.mainData.status as string | undefined) ??
+    (operation === "update" ? ((originalDoc?.status as string | undefined) ?? "published") : "published");
+  const previousStatus = originalDoc?.status as string | undefined;
+  const wasPublished = previousStatus === "published";
+  const willBePublished = nextStatus === "published";
+  const publishTransition = !wasPublished && willBePublished;
+  const unpublishTransition = wasPublished && !willBePublished;
+
+  await runHook(operation === "create" ? "content:beforeCreate" : "content:beforeUpdate", {
+    collection,
+    data: hookData,
+    originalDoc,
+    user,
+    operation,
+  });
+  if (publishTransition) {
+    await runHook("content:beforePublish", {
+      collection,
+      data: hookData,
+      originalDoc,
+      user,
+    });
+  }
+  if (unpublishTransition) {
+    await runHook("content:beforeUnpublish", {
+      collection,
+      data: hookData,
+      originalDoc,
+      user,
+    });
+  }
 
   const savedDoc = (await db.transaction(async (tx) => {
     const persistedDoc: Record<string, unknown> = operation === "update"
@@ -132,7 +179,9 @@ export async function saveDocument(
 
     if (config.versions) {
       const docStatus = persistedDoc.status as string | undefined;
-      const revisionStatus = docStatus === "draft" ? "draft" : "published";
+      // "scheduled" documents haven't actually gone live yet — treat their
+      // revisions as drafts (they map to the pre-publish snapshot).
+      const revisionStatus = docStatus === "published" ? "published" : "draft";
       await insertRevision(tx, collection, persistedDocId, operation, hookData, originalDoc, user, revisionStatus);
     }
 
@@ -154,6 +203,14 @@ export async function saveDocument(
     operation,
     user,
   });
+  if (publishTransition) {
+    await runHook("content:afterPublish", {
+      collection,
+      doc: savedDoc,
+      operation,
+      user,
+    });
+  }
 
   return {
     doc: savedDoc,
@@ -184,6 +241,12 @@ export async function deleteDocument(
     user,
     collection,
     originalDoc,
+  });
+
+  await runHook("content:beforeDelete", {
+    collection,
+    doc: originalDoc,
+    user,
   });
 
   await db.transaction(async (tx) => {

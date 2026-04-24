@@ -118,6 +118,76 @@ const fieldSchema: z.ZodType = z.lazy(() =>
   ]),
 );
 
+const imageSizeSchema = z.object({
+  name: z.string().min(1),
+  width: z.number().positive(),
+  height: z.number().positive().optional(),
+  crop: z.enum(["center", "top", "bottom", "left", "right"]).optional(),
+});
+
+const storageSchema = z.object({
+  adapter: z.enum(["local", "s3"]),
+  local: z
+    .object({
+      directory: z.string().min(1),
+      baseUrl: z.string().min(1),
+    })
+    .optional(),
+  s3: z
+    .object({
+      bucket: z.string().min(1),
+      region: z.string().min(1),
+      endpoint: z.string().url().optional(),
+    })
+    .optional(),
+});
+
+// Plugins are a mix of legacy NxPluginConfig (object with optional init fn)
+// and SDK-built NxResolvedPluginLike (object with manifest). Parse with
+// `z.unknown()` — deeper validation happens when loadPlugins() runs.
+const pluginEntrySchema = z.unknown();
+
+export const nxConfigSchema = z.object({
+  site: z.object({
+    name: z.string().min(1),
+    url: z.string().url(),
+  }),
+  db: z.object({
+    connectionString: z.string(),
+    pool: z
+      .object({
+        max: z.number().int().positive().optional(),
+      })
+      .optional(),
+  }),
+  storage: storageSchema.optional(),
+  collections: z.array(z.lazy((): z.ZodType => collectionConfigSchema)),
+  blocks: z.array(z.unknown()).optional(),
+  editor: z
+    .object({
+      features: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  images: z
+    .object({
+      sizes: z.array(imageSizeSchema).optional(),
+      format: z.enum(["webp", "avif", "jpeg", "png"]).optional(),
+      quality: z.number().int().min(1).max(100).optional(),
+    })
+    .optional(),
+  auth: z
+    .object({
+      secret: z.string().min(1),
+      tokenExpiration: z.number().int().positive().optional(),
+      refreshTokenExpiration: z.number().int().positive().optional(),
+      maxLoginAttempts: z.number().int().positive().optional(),
+      lockoutDuration: z.number().int().positive().optional(),
+    })
+    .optional(),
+  plugins: z.array(pluginEntrySchema).optional(),
+  typescript: z.unknown().optional(),
+});
+
 export const collectionConfigSchema = z.object({
   slug: z.string().min(1).max(63).regex(/^[a-z][a-z0-9-]*$/),
   labels: z.object({
