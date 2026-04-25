@@ -129,7 +129,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 | Add editor toolbar features                      | `packages/editor/src/toolbar-plugin.tsx`                | Client-only; exports via `./client`                |
 | Add admin UI field type                          | `packages/admin/src/collections/field-renderer.tsx`     | Add component in `fields/`, update renderer switch |
 | Add admin UI primitive                           | `packages/admin/src/ui/`                                | shadcn pattern: Radix + cva + cn()                 |
-| Write a plugin                                   | Copy `packages/plugin-reading-time/src/index.ts`        | Use `definePlugin()` from `@nexpress/plugin-sdk`   |
+| Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`       | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin). |
 | Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts` | JWT sign/verify in core; cookie helpers in next    |
 | Change middleware (rate limits, CSP)             | `apps/web/src/middleware.ts`                            | In-memory rate limiter, security headers           |
 | Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory        |

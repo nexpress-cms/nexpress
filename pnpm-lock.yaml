@@ -64,16 +64,16 @@ importers:
         version: link:../../packages/next
       '@nexpress/plugin-forum':
         specifier: workspace:*
-        version: link:../../packages/plugin-forum
+        version: link:../../packages/plugins/forum
       '@nexpress/plugin-reading-time':
         specifier: workspace:*
-        version: link:../../packages/plugin-reading-time
+        version: link:../../packages/plugins/reading-time
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
       '@nexpress/plugin-seo-audit':
         specifier: workspace:*
-        version: link:../../packages/plugin-seo-audit
+        version: link:../../packages/plugins/seo-audit
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../../packages/theme
@@ -376,41 +376,6 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/plugin-forum:
-    dependencies:
-      '@nexpress/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nexpress/plugin-sdk':
-        specifier: workspace:*
-        version: link:../plugin-sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.17
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.8.0
-        version: 5.9.3
-
-  packages/plugin-reading-time:
-    dependencies:
-      '@nexpress/plugin-sdk':
-        specifier: workspace:*
-        version: link:../plugin-sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.17
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.8.0
-        version: 5.9.3
-
   packages/plugin-sdk:
     dependencies:
       '@nexpress/core':
@@ -427,11 +392,46 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/plugin-seo-audit:
+  packages/plugins/forum:
+    dependencies:
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@nexpress/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/plugins/reading-time:
     dependencies:
       '@nexpress/plugin-sdk':
         specifier: workspace:*
-        version: link:../plugin-sdk
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/plugins/seo-audit:
+    dependencies:
+      '@nexpress/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
