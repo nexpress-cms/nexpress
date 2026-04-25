@@ -1,11 +1,11 @@
 import {
+  getLogger,
   getOAuthProvider,
   resolveOAuthLogin,
   signToken,
   verifyOAuthState,
 } from "@nexpress/core";
 import { NextResponse, type NextRequest } from "next/server";
-import crypto from "node:crypto";
 
 import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
 import { ensurePluginsLoaded } from "@/lib/init-core";
@@ -85,18 +85,32 @@ export async function GET(
       state: stateParam,
       redirectUri: buildRedirectUri(request, providerId),
     });
-  } catch {
+  } catch (err) {
+    // Surface the provider error in logs — without it, a misconfigured
+    // OAuth client (wrong secret, redirect-URI mismatch) hits the user
+    // as a generic `oauth_error=exchange_failed` with no operator
+    // breadcrumb. Provider error text is NOT echoed to the response.
+    getLogger().error("oauth exchange failed", {
+      provider: providerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return failResponse(request, "exchange_failed");
   }
 
   if (!profile?.providerUserId) {
+    getLogger().error("oauth exchange returned no providerUserId", { provider: providerId });
     return failResponse(request, "exchange_failed");
   }
 
   let resolved;
   try {
     resolved = await resolveOAuthLogin({ provider: providerId, profile });
-  } catch {
+  } catch (err) {
+    getLogger().error("oauth identity resolve failed", {
+      provider: providerId,
+      providerUserId: profile.providerUserId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return failResponse(request, "resolve_failed");
   }
 
