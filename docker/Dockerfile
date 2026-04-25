@@ -22,6 +22,11 @@ ENV CI=true \
     HUSKY=0 \
     NEXT_TELEMETRY_DISABLED=1
 COPY . .
+# `apps/web/public/` is optional — fresh scaffolds may not have it.
+# Ensure it exists in the builder stage so the runner-stage COPY
+# always has a source path to read (Docker's COPY does NOT treat
+# unmatched glob sources as zero-match). (#68)
+RUN mkdir -p apps/web/public
 # `--config.confirmModulesPurge=false` keeps pnpm from prompting the
 # (non-existent) TTY when the workspace shape changes between rebuilds.
 RUN pnpm install --frozen-lockfile --config.confirmModulesPurge=false
@@ -48,10 +53,7 @@ RUN addgroup -S nexpress && adduser -S nexpress -G nexpress \
 
 COPY --from=builder --chown=nexpress:nexpress /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nexpress:nexpress /app/apps/web/.next/static ./apps/web/.next/static
-# `apps/web/public/` is optional — only copy it when present so a fresh
-# scaffold without static assets doesn't fail the build. Glob lets the
-# COPY succeed with zero matches.
-COPY --from=builder --chown=nexpress:nexpress /app/apps/web/publi[c] ./apps/web/public/
+COPY --from=builder --chown=nexpress:nexpress /app/apps/web/public ./apps/web/public
 
 USER nexpress
 EXPOSE 3000

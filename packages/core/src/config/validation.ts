@@ -125,22 +125,28 @@ const imageSizeSchema = z.object({
   crop: z.enum(["center", "top", "bottom", "left", "right"]).optional(),
 });
 
-const storageSchema = z.object({
-  adapter: z.enum(["local", "s3"]),
-  local: z
-    .object({
+// Discriminated union ties `adapter` to its required backend block —
+// previously both `local` and `s3` were optional regardless of the
+// adapter choice, so a config with `{ adapter: "s3" }` and no `s3`
+// block passed validation and only blew up at runtime when the storage
+// factory tried to read the missing block. (#64)
+const storageSchema = z.discriminatedUnion("adapter", [
+  z.object({
+    adapter: z.literal("local"),
+    local: z.object({
       directory: z.string().min(1),
       baseUrl: z.string().min(1),
-    })
-    .optional(),
-  s3: z
-    .object({
+    }),
+  }),
+  z.object({
+    adapter: z.literal("s3"),
+    s3: z.object({
       bucket: z.string().min(1),
       region: z.string().min(1),
       endpoint: z.string().url().optional(),
-    })
-    .optional(),
-});
+    }),
+  }),
+]);
 
 // Plugins are a mix of legacy NxPluginConfig (object with optional init fn)
 // and SDK-built NxResolvedPluginLike (object with manifest). Parse with
