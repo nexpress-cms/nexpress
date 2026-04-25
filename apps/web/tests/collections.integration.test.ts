@@ -119,4 +119,68 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("scheduled publish: future publishedAt + _status=published lands as status=scheduled", async () => {
+    const session = await seedUser({ role: "editor" });
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Scheduled",
+          slug: "scheduled",
+          content: { root: { type: "root", children: [] } },
+          publishedAt: futureIso,
+          _status: "published",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const created = await readJson<{ id: string; status: string; publishedAt: string }>(createRes);
+    expect(created.status).toBe(201);
+    // Pipeline coerces published+future → scheduled.
+    expect(created.body.status).toBe("scheduled");
+    expect(new Date(created.body.publishedAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("cancel schedule: PATCH _status=draft + publishedAt=null returns to draft", async () => {
+    const session = await seedUser({ role: "editor" });
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Will-cancel",
+          slug: "will-cancel",
+          content: { root: { type: "root", children: [] } },
+          publishedAt: futureIso,
+          _status: "published",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string; status: string }>(createRes);
+    expect(created.status).toBe("scheduled");
+
+    const cancelRes = await idPATCH(
+      buildRequest(`/api/collections/posts/${created.id}`, {
+        method: "PATCH",
+        session,
+        body: {
+          title: "Will-cancel",
+          slug: "will-cancel",
+          content: { root: { type: "root", children: [] } },
+          publishedAt: null,
+          _status: "draft",
+        },
+      }),
+      idParams("posts", created.id),
+    );
+    const cancelled = await readJson<{ status: string; publishedAt: string | null }>(cancelRes);
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.status).toBe("draft");
+  });
 });
