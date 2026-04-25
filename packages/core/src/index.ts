@@ -118,6 +118,26 @@ export { signToken, verifyToken } from "./auth/token.js";
 export type { NxTokenPayload } from "./auth/token.js";
 export { hashPassword, verifyPassword, ARGON2_OPTIONS } from "./auth/password.js";
 export { verifyCsrf } from "./auth/csrf.js";
+export {
+  registerOAuthProvider,
+  getOAuthProvider,
+  listOAuthProviders,
+  resetOAuthProviders,
+} from "./auth/oauth-providers.js";
+export type {
+  OAuthProvider,
+  OAuthProfile,
+  OAuthAuthorizeParams,
+  OAuthExchangeParams,
+} from "./auth/oauth-providers.js";
+export { resolveOAuthLogin } from "./auth/oauth-resolve.js";
+export { issueOAuthState, verifyOAuthState } from "./auth/oauth-state.js";
+export type { OAuthStatePayload, VerifyOAuthStateResult } from "./auth/oauth-state.js";
+export type {
+  ResolveOAuthLoginInput,
+  ResolveOAuthLoginResult,
+  ResolvedOAuthUser,
+} from "./auth/oauth-resolve.js";
 export { sha256, verifyTokenFull, invalidateAllSessions } from "./auth/session.js";
 export {
   createPasswordResetToken,

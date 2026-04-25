@@ -113,6 +113,7 @@ export async function truncateAll(): Promise<void> {
     "nx_media_refs",
     "nx_media",
     "nx_media_folders",
+    "nx_user_oauth_identities",
     "nx_users",
     // Community tables (Phase 9.1a+). Order doesn't matter under CASCADE
     // — listing them keeps RESTART IDENTITY consistent and the test DB
