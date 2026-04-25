@@ -19,6 +19,10 @@ export interface PluginRouteHandler {
   pluginId: string;
   path: string;
   method: string;
+  /** When true, the dispatcher must verify a staff session before
+   *  invoking `handler` and pass the resolved user as `req.user`.
+   *  When false (default), the route is publicly reachable. */
+  auth: boolean;
   handler: (req: PluginRouteRequest) => Promise<PluginRouteResponse>;
 }
 
@@ -330,6 +334,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       pluginId: manifest.id,
       path: route.path,
       method: route.method.toUpperCase(),
+      auth: route.auth === true,
       handler: wrapped,
     };
     registration.routes.push(entry);
