@@ -233,6 +233,100 @@ export const nxComments = pgTable(
   ],
 );
 
+/**
+ * Polymorphic reactions. `target_type` is the surface (`'comment'` for
+ * 9.3; `'thread'` / `'reply'` land alongside the forum tables in 9.4).
+ * `kind` is configurable per site — default vocabulary in v1 is just
+ * `'like'`. The unique constraint enforces "one reaction-of-kind per
+ * member per target," so toggling a like is an upsert / delete.
+ */
+export const nxReactions = pgTable(
+  "nx_reactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    targetType: text("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => nxMembers.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("nx_reactions_target_idx").on(table.targetType, table.targetId),
+    unique("nx_reactions_unique").on(
+      table.targetType,
+      table.targetId,
+      table.memberId,
+      table.kind,
+    ),
+  ],
+);
+
+/**
+ * Follow graph. Polymorphic over what's being followed:
+ *  - `member` — target_id is `nx_members.id` as a string
+ *  - `thread` — target_id is `nx_threads.id` (lands in 9.4)
+ *  - `tag`    — target_id is the tag slug (no FK; tags are strings)
+ *
+ * `target_id` is `text` rather than `uuid` so all three kinds share
+ * one column. Cascading on a polymorphic id isn't possible in plain
+ * SQL; the soft-delete pattern on `nx_members` keeps follows pointing
+ * at a still-valid (if anonymised) row.
+ */
+export const nxFollows = pgTable(
+  "nx_follows",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    followerId: uuid("follower_id")
+      .notNull()
+      .references(() => nxMembers.id, { onDelete: "cascade" }),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("nx_follows_target_idx").on(table.targetType, table.targetId),
+    unique("nx_follows_unique").on(table.followerId, table.targetType, table.targetId),
+  ],
+);
+
+/**
+ * Per-member notification inbox. `kind` is a free-form discriminator
+ * (e.g. `'comment.reply'`, `'reaction.received'`, `'follow.received'`)
+ * paired with a `payload` whose shape depends on the kind — the
+ * recipient's UI renders based on those.
+ *
+ * Indexed on `(member_id, read_at, created_at)` to cover both the
+ * unread-count probe and the recent-list paging that an inbox UI uses.
+ */
+export const nxNotifications = pgTable(
+  "nx_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => nxMembers.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+    readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("nx_notifications_inbox_idx").on(
+      table.memberId,
+      table.readAt,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const nxBans = pgTable(
   "nx_bans",
   {
