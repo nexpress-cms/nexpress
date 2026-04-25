@@ -418,6 +418,14 @@ export async function deleteDocument(
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const originalDoc = await getDocumentByIdInternal(db, table, collection, docId);
 
+  // Without this guard the call returns success for non-existent ids:
+  // hooks fire with `originalDoc = null`, the DELETE matches zero rows,
+  // and the route returns 204. Bulk delete then records phantom ids as
+  // succeeded. (#59)
+  if (!originalDoc) {
+    throw new NxNotFoundError(collection, docId);
+  }
+
   if (config.access?.delete) {
     const allowed = await config.access.delete({ user, doc: originalDoc });
     if (!allowed) {
