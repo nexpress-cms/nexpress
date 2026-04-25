@@ -1,5 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+
+import { NxForbiddenError } from "../errors.js";
 
 import { getDb } from "../collections/pipeline.js";
 import { nxBans, nxMemberRoles } from "../db/schema/community.js";
@@ -8,6 +10,70 @@ import {
   type CommunityScope,
   getCommunityRole,
 } from "./roles.js";
+
+/**
+ * Active-ban probe shared by `memberCan` and direct write-path
+ * callers. The community write services (`createComment`,
+ * `addReaction`, `fileReport`, `follow`) call `assertNotBanned`
+ * straight away — they never went through `memberCan`, so without
+ * this gate banned members could still write community content
+ * even though their bans were recorded. (#53)
+ *
+ * Ban-match rules:
+ *  - `site` ban → blocks every write.
+ *  - `category` / `collection` ban → blocks when the action's scope
+ *    chain contains the matching scope.
+ *
+ * The `or()` helper is required for the `expires_at IS NULL OR
+ * expires_at > now` clause; the previous raw `sql` template let
+ * Postgres' AND-binds-tighter-than-OR rule re-associate and leak
+ * other members' bans (same precedence trap as #006 in 9.5
+ * postmortem).
+ */
+export async function isMemberBanned(
+  memberId: string,
+  scopes: ReadonlyArray<{ type: CommunityScope; id: string }> = [],
+  db?: NodePgDatabase<Record<string, unknown>>,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const handle = db ?? (getDb() as unknown as NodePgDatabase<Record<string, unknown>>);
+  const bans = (await handle
+    .select({
+      scopeType: nxBans.scopeType,
+      scopeId: nxBans.scopeId,
+    })
+    .from(nxBans)
+    .where(
+      and(
+        eq(nxBans.memberId, memberId),
+        or(isNull(nxBans.expiresAt), gt(nxBans.expiresAt, now)),
+      ),
+    )) as Array<{
+    scopeType: "site" | "category" | "collection";
+    scopeId: string | null;
+  }>;
+
+  return bans.some((ban) => {
+    if (ban.scopeType === "site") return true;
+    return scopes.some((s) => s.type === ban.scopeType && s.id === ban.scopeId);
+  });
+}
+
+/**
+ * Throws `NxForbiddenError` if the member is currently banned for any
+ * scope in the chain. Used at the top of community write services
+ * before any DB mutation. Pre-existing `memberCan` enforces the same
+ * rule for permission-based actions; this helper is the catch-all
+ * for write paths that don't go through capability checks.
+ */
+export async function assertNotBanned(
+  memberId: string,
+  scopes: ReadonlyArray<{ type: CommunityScope; id: string }> = [],
+): Promise<void> {
+  if (await isMemberBanned(memberId, scopes)) {
+    throw new NxForbiddenError("community", "banned");
+  }
+}
 
 /**
  * Action a member is attempting. Most actions are real
@@ -77,28 +143,7 @@ export async function memberCan(
 
   // Step 1: ban check. Site-wide bans always apply; scoped bans match
   // when the target's scope chain contains the ban's scope.
-  const bans = (await db
-    .select({
-      scopeType: nxBans.scopeType,
-      scopeId: nxBans.scopeId,
-      expiresAt: nxBans.expiresAt,
-    })
-    .from(nxBans)
-    .where(
-      and(
-        eq(nxBans.memberId, memberId),
-        sql`${nxBans.expiresAt} is null or ${nxBans.expiresAt} > ${now}`,
-      ),
-    )) as Array<{
-    scopeType: "site" | "category" | "collection";
-    scopeId: string | null;
-    expiresAt: Date | null;
-  }>;
-
-  const isBanned = bans.some((ban) => {
-    if (ban.scopeType === "site") return true;
-    return scopes.some((s) => s.type === ban.scopeType && s.id === ban.scopeId);
-  });
+  const isBanned = await isMemberBanned(memberId, scopes, db, now);
   if (isBanned) return false;
 
   // Step 2: ownership shortcut for own-content actions.
@@ -120,7 +165,7 @@ export async function memberCan(
     .where(
       and(
         eq(nxMemberRoles.memberId, memberId),
-        sql`${nxMemberRoles.expiresAt} is null or ${nxMemberRoles.expiresAt} > ${now}`,
+        or(isNull(nxMemberRoles.expiresAt), gt(nxMemberRoles.expiresAt, now)),
       ),
     )) as Array<{
     role: string;

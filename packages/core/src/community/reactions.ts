@@ -5,6 +5,7 @@ import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxReactions } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
 
+import { assertNotBanned } from "./can.js";
 import { createNotification } from "./notifications.js";
 
 /**
@@ -53,6 +54,13 @@ function validateKind(kind: string): void {
  */
 export async function addReaction(input: NxReactToInput): Promise<NxReactionRow> {
   validateKind(input.kind);
+
+  // Banned members can't react. We don't know the target's collection
+  // from a polymorphic reaction, so site-wide bans are the only scope
+  // that applies here — collection-scoped bans on reactions need
+  // future plumbing to thread the collection slug into this call. (#53)
+  await assertNotBanned(input.memberId);
+
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
   // Idempotent insert via ON CONFLICT. The previous select-then-insert
