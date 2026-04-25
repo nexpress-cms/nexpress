@@ -5,6 +5,7 @@ import { getDb } from "../collections/pipeline.js";
 import { nxFollows, nxMembers } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
 
+import { assertNotBanned } from "./can.js";
 import { createNotification } from "./notifications.js";
 
 /**
@@ -44,6 +45,8 @@ function assertSupportedTarget(targetType: string): asserts targetType is Follow
 
 export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
   assertSupportedTarget(input.targetType);
+  // Banned members can't grow their follow graph (#53).
+  await assertNotBanned(input.followerId);
   if (input.targetType === "member" && input.targetId === input.followerId) {
     throw new NxValidationError("Invalid input", [
       { field: "targetId", message: "Members can't follow themselves." },

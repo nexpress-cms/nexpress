@@ -6,6 +6,7 @@ import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
 
 import { recordAuditEvent } from "./audit.js";
+import { assertNotBanned } from "./can.js";
 import type { Principal } from "./principal.js";
 
 const MAX_REASON_LENGTH = 1000;
@@ -67,6 +68,12 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
       { field: "reason", message: `Reason must be ≤ ${MAX_REASON_LENGTH} characters` },
     ]);
   }
+
+  // Banned members can't file reports — site-wide bans block every
+  // community write, including the report queue (#53). We don't have
+  // an obvious scope chain for a polymorphic report target, so just
+  // check site-wide.
+  await assertNotBanned(input.reporterId);
 
   // Verify the target actually exists. Without this, members can fill
   // the moderation queue with reports against UUIDs that point at
