@@ -238,6 +238,11 @@ export const collectionConfigSchema = z.object({
       max: z.number().int().positive().optional(),
     })
     .optional(),
+  community: z
+    .object({
+      comments: z.boolean().optional(),
+    })
+    .optional(),
   timestamps: z.boolean().optional(),
   admin: z
     .object({

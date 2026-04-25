@@ -216,6 +216,15 @@ export interface NxCollectionConfig {
     drafts?: boolean | { autosave?: boolean; autosaveInterval?: number };
     max?: number;
   };
+  /**
+   * Community features opt-in per collection. Comments are off by
+   * default; flip `comments: true` to let members post comments
+   * underneath this collection's documents. Reactions / threading
+   * land in 9.3 + 9.4 and gain their own toggles here.
+   */
+  community?: {
+    comments?: boolean;
+  };
   timestamps?: boolean;
   admin?: {
     listColumns?: string[];

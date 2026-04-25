@@ -11,6 +11,7 @@ export const postsCollection = defineCollection({
     description: "Blog posts — long-form rich-text content.",
   },
   versions: { drafts: { autosave: true }, max: 20 },
+  community: { comments: true },
   access: {
     read: () => true,
     create: isEditorOrAbove,
