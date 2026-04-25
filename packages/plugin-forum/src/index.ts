@@ -150,7 +150,11 @@ export const forumPlugin = definePlugin({
       blocks: [],
       fields: [],
       collections: [],
-      adminExtensions: ["dashboardWidgets"],
+      // Existing plugins (reading-time, seo-audit) keep this empty
+      // even when populating `admin.*` extensions — the field is
+      // informational and doesn't gate runtime registration. Match
+      // their convention.
+      adminExtensions: [],
       apiRoutes: [],
       hooks: [],
     },
