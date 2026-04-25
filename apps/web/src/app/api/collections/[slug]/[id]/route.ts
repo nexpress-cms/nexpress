@@ -1,4 +1,4 @@
-import { NxNotFoundError } from "@nexpress/core";
+import { NxNotFoundError, getCollectionConfig } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -11,6 +11,7 @@ import {
   parseBodyRecord,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
+import { ensureCoreServices } from "@/lib/init-core";
 import { revalidateCollection } from "@/lib/revalidate";
 
 export async function GET(
@@ -24,6 +25,17 @@ export async function GET(
 
     if (!document) {
       throw new NxNotFoundError(slug, id);
+    }
+
+    // Anonymous callers must not see non-published rows for collections
+    // that opt into draft workflows (#56). 404 on draft / scheduled /
+    // archived to keep enumeration consistent with the listing route.
+    if (!user) {
+      ensureCoreServices();
+      const config = getCollectionConfig(slug);
+      if (config.versions?.drafts && document.status !== "published") {
+        throw new NxNotFoundError(slug, id);
+      }
     }
 
     return nxSuccessResponse(document);

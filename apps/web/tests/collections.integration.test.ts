@@ -291,8 +291,10 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     expect(auto.body.reused).toBe(false);
 
     // The main doc must be unchanged — autosave persists into nx_revisions only.
+    // Anonymous reads now hide drafts (#56), so re-fetch with the
+    // staff session so we can verify the unchanged main row.
     const after = await idGET(
-      buildRequest(`/api/collections/posts/${created.id}`),
+      buildRequest(`/api/collections/posts/${created.id}`, { session }),
       idParams("posts", created.id),
     );
     const fetched = await readJson<{ title: string }>(after);

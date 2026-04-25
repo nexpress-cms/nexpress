@@ -8,7 +8,7 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureCoreServices } from "@/lib/init-core";
 
@@ -18,7 +18,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await optionalAuth(request);
+    // Admin-library detail. The public site reads media by id
+    // server-side via `getMediaById`; anonymous clients don't need the
+    // raw metadata. Require an editor session — symmetric with the
+    // list endpoint (#73).
+    const user = await requireAuth(request);
+    if (!hasRole(user, "editor")) {
+      throw new NxForbiddenError("media", "read");
+    }
     ensureCoreServices();
 
     const media = await getMediaById(id);
