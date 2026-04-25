@@ -1,4 +1,4 @@
-import { NxError, NxValidationError } from "@nexpress/core";
+import { NxError, NxValidationError, getLogger, reportError } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
 export interface NxApiError {
@@ -54,9 +54,16 @@ export function nxErrorResponse(error: Error): NextResponse<NxApiError> {
   }
 
   // Unexpected errors are opaque to the client (no stack leak), but they
-  // should still surface in logs so an operator can debug the cause.
-  // eslint-disable-next-line no-console
-  console.error("[nxErrorResponse] unhandled error:", error);
+  // should still surface in logs and to the configured error reporter so
+  // an operator can debug the cause.
+  getLogger().error("Unhandled error in API route", {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  });
+  // Fire-and-forget: reportError swallows reporter failures, and we
+  // don't want to block the response on a Sentry/Datadog round-trip.
+  void reportError(error, { tags: { source: "api" } });
 
   return NextResponse.json(
     {

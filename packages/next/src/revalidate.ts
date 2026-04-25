@@ -1,3 +1,4 @@
+import { getLogger } from "@nexpress/core";
 import { revalidatePath } from "next/cache";
 
 export interface CollectionRevalidationRule {
@@ -52,8 +53,10 @@ export function revalidateCollection(
       // skip — real request traffic already ran it via the route that
       // produced the write; the worker path can invalidate on its own.
       if (process.env.NODE_ENV !== "test") {
-        // eslint-disable-next-line no-console
-        console.warn(`[revalidateCollection] ${target} skipped:`, error);
+        getLogger().warn("revalidateCollection skipped (no Next context)", {
+          target,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }

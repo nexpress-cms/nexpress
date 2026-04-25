@@ -219,3 +219,22 @@ export type {
   NxPluginState,
   NxPluginStateUpdate,
 } from "./plugins/index.js";
+
+export {
+  consoleLogger,
+  getLogger,
+  getScopedLogger,
+  resetLogger,
+  setLogger,
+  getErrorReporter,
+  noopErrorReporter,
+  reportError,
+  resetErrorReporter,
+  setErrorReporter,
+} from "./observability/index.js";
+export type {
+  NxLogLevel,
+  NxLogger,
+  NxErrorReporter,
+  NxErrorReportContext,
+} from "./observability/index.js";
