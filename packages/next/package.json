@@ -15,7 +15,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch",
+    "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "vitest run",
