@@ -13,7 +13,7 @@ import { eq, sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { nxErrorResponse } from "@/lib/api-response";
 import { setMemberAuthCookies, getMemberAuthRuntimeConfig } from "@/lib/member-auth-helpers";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady } from "@/lib/init-core";

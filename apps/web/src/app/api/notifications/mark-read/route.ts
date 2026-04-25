@@ -36,8 +36,7 @@ export async function POST(request: NextRequest) {
         { field: "ids", message: "ids must be a string[] (or pass `all: true`)" },
       ]);
     }
-    const ids = idsRaw as string[];
-    const count = await markNotificationsRead({ memberId: member.id, notificationIds: ids });
+    const count = await markNotificationsRead({ memberId: member.id, notificationIds: idsRaw });
     return nxSuccessResponse({ marked: count });
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
