@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -232,6 +232,21 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
     | { kind: "error"; message: string }
   >({ kind: "idle" });
 
+  // Hold the pending debounce handle in a ref so each keystroke can clear
+  // the previous timer — react-hook-form's `watch` callback ignores any
+  // value its subscriber returns, so a `return () => clearTimeout(...)`
+  // inside the callback would be silently dropped. Without this ref the
+  // user's first edit queues a timeout, the second queues another, and so
+  // on; after the debounce window every queued timer fires and floods the
+  // endpoint. The server dedups, but the network spam is wasteful.
+  const autosaveTimer = useRef<number | null>(null);
+  // `savingAs` is read inside the timer callback below; capture it via a
+  // ref so we don't have to re-subscribe form.watch every time it changes.
+  const savingAsRef = useRef(savingAs);
+  useEffect(() => {
+    savingAsRef.current = savingAs;
+  }, [savingAs]);
+
   useEffect(() => {
     if (!autosaveEnabled || !doc?.id) return;
 
@@ -242,10 +257,14 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
       const documentId = String(doc.id);
       const snapshot = JSON.parse(JSON.stringify(values)) as Record<string, unknown>;
 
-      const handle = window.setTimeout(async () => {
+      if (autosaveTimer.current !== null) {
+        window.clearTimeout(autosaveTimer.current);
+      }
+      autosaveTimer.current = window.setTimeout(async () => {
+        autosaveTimer.current = null;
         // Skip when a manual Draft/Publish/Schedule save is in flight —
         // they'll write a real revision themselves.
-        if (savingAs !== null) return;
+        if (savingAsRef.current !== null) return;
         try {
           setAutosaveStatus({ kind: "saving" });
           const response = await nxFetch(
@@ -270,12 +289,16 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           });
         }
       }, autosaveInterval);
-
-      return () => window.clearTimeout(handle);
     });
 
-    return () => subscription.unsubscribe();
-  }, [autosaveEnabled, autosaveInterval, collectionSlug, doc?.id, form, savingAs]);
+    return () => {
+      subscription.unsubscribe();
+      if (autosaveTimer.current !== null) {
+        window.clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
+    };
+  }, [autosaveEnabled, autosaveInterval, collectionSlug, doc?.id, form]);
 
   // Tick once per second so the "saved Xs ago" label refreshes without a re-save.
   const [, setTickNow] = useState(0);
