@@ -10,7 +10,7 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --concurrency=20",
     "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint .",
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
     "typecheck": "turbo run lint",
