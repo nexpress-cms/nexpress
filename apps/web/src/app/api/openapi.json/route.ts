@@ -1712,6 +1712,21 @@ function buildSpec(): OpenApiSchema {
       responses: { "200": { description: "Removed" }, "401": { description: "Member auth required" } },
     },
   };
+  paths["/api/follows/check"] = {
+    get: {
+      summary: "Probe whether the authenticated member follows a single target",
+      description:
+        "Single-target probe used by site UI follow buttons. The bulk `/api/follows` returns the caller's full follow list, which is the wrong shape for one-button use.",
+      parameters: [
+        { in: "query", name: "targetType", required: true, schema: { type: "string", enum: ["member", "thread", "tag"] } },
+        { in: "query", name: "targetId", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        "200": { description: "{ following: boolean }" },
+        "401": { description: "Member auth required" },
+      },
+    },
+  };
   paths["/api/notifications"] = {
     get: {
       summary: "Authenticated member's notification inbox",
