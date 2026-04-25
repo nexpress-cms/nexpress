@@ -78,6 +78,10 @@ export async function POST(request: NextRequest) {
         const parsed = new Date(expiresAtRaw);
         if (Number.isNaN(parsed.getTime())) {
           errors.push({ field: "expiresAt", message: "expiresAt must be a valid ISO timestamp" });
+        } else if (parsed.getTime() <= Date.now()) {
+          // Reads filter by `expires_at > now`, so a past timestamp would
+          // create a ban that is invisible the moment it lands.
+          errors.push({ field: "expiresAt", message: "expiresAt must be in the future" });
         } else {
           expiresAt = parsed;
         }

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
@@ -104,6 +104,9 @@ export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Active bans only — expired/revoked rows aren't shown by default.
   // Staff who want to see history can hit the audit log.
+  // The `or()` helper wraps its branches in parens; a raw `sql` template
+  // would let Postgres' AND-binds-tighter-than-OR rule re-associate
+  // the predicate and leak active temp bans across members.
   const now = new Date();
   return (await db
     .select()
@@ -111,7 +114,7 @@ export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
     .where(
       and(
         eq(nxBans.memberId, memberId),
-        sql`${nxBans.expiresAt} is null or ${nxBans.expiresAt} > ${now}`,
+        or(isNull(nxBans.expiresAt), gt(nxBans.expiresAt, now)),
       ),
     )
     .orderBy(desc(nxBans.createdAt))) as NxBanRow[];

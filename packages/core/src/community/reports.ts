@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
@@ -50,6 +50,12 @@ function validateTargetType(value: string): asserts value is ReportTarget {
  */
 export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
   validateTargetType(input.targetType);
+  const targetId = input.targetId.trim();
+  if (targetId.length === 0) {
+    throw new NxValidationError("Invalid input", [
+      { field: "targetId", message: "targetId required" },
+    ]);
+  }
   const reason = input.reason.trim();
   if (reason.length === 0) {
     throw new NxValidationError("Invalid input", [
@@ -68,7 +74,7 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
     .values({
       reporterId: input.reporterId,
       targetType: input.targetType,
-      targetId: input.targetId,
+      targetId,
       reason,
     })
     .returning()) as NxReportRow[];
@@ -78,7 +84,7 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
     actor: { kind: "member", memberId: input.reporterId },
     action: "report.filed",
     targetType: input.targetType,
-    targetId: input.targetId,
+    targetId,
     payload: { reportId: row.id, reason },
   });
 
@@ -123,12 +129,12 @@ export async function listReports(
     .limit(limit)
     .offset(offset)) as NxReportRow[];
 
-  // Cheap total — re-run the where without limit/offset.
-  const all = (await db.select({ id: nxReports.id }).from(nxReports).where(where)) as Array<{
-    id: string;
-  }>;
+  const [totalRow] = (await db
+    .select({ total: count() })
+    .from(nxReports)
+    .where(where)) as Array<{ total: number }>;
 
-  return { reports, totalDocs: all.length };
+  return { reports, totalDocs: Number(totalRow?.total ?? 0) };
 }
 
 export interface ResolveReportInput {
@@ -196,9 +202,9 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
 /** Cheap "is anything in the queue?" probe for the admin badge. */
 export async function unresolvedReportCount(): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const all = (await db
-    .select({ id: nxReports.id })
+  const [row] = (await db
+    .select({ total: count() })
     .from(nxReports)
-    .where(isNull(nxReports.resolvedAt))) as Array<{ id: string }>;
-  return all.length;
+    .where(isNull(nxReports.resolvedAt))) as Array<{ total: number }>;
+  return Number(row?.total ?? 0);
 }

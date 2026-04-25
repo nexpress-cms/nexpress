@@ -390,4 +390,163 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     );
     expect(second.status).toBe(400);
   });
+
+  // Regression: SQL operator precedence in listBansForMember had `AND`
+  // bind tighter than `OR`, leaking other members' active temp bans.
+  it("listBansForMember scopes results by member (no cross-member leak)", async () => {
+    const staff = await seedUser({ role: "admin" });
+    const memberA = await seedActiveMember("member-a", "member-a@example.com", "password-12");
+    const memberB = await seedActiveMember("member-b", "member-b@example.com", "password-12");
+
+    // Permanent ban on A.
+    await bansPOST(
+      staffRequest("/api/admin/community/bans", staff, {
+        method: "POST",
+        body: JSON.stringify({
+          memberId: memberA.memberId,
+          scopeType: "site",
+          kind: "permanent",
+          reason: "permanent-on-A",
+        }),
+      }),
+    );
+    // Active temp ban on B.
+    const oneHour = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await bansPOST(
+      staffRequest("/api/admin/community/bans", staff, {
+        method: "POST",
+        body: JSON.stringify({
+          memberId: memberB.memberId,
+          scopeType: "site",
+          kind: "temporary",
+          expiresAt: oneHour,
+          reason: "temp-on-B",
+        }),
+      }),
+    );
+
+    // Querying A must NOT return B's ban — that was the precedence bug.
+    const resA = await bansGET(
+      staffRequest(`/api/admin/community/bans?memberId=${memberA.memberId}`, staff),
+    );
+    const bodyA = await readJson<{ docs: Array<{ memberId: string; reason: string }> }>(resA);
+    expect(bodyA.body.docs).toHaveLength(1);
+    expect(bodyA.body.docs[0]?.memberId).toBe(memberA.memberId);
+    expect(bodyA.body.docs[0]?.reason).toBe("permanent-on-A");
+
+    const resB = await bansGET(
+      staffRequest(`/api/admin/community/bans?memberId=${memberB.memberId}`, staff),
+    );
+    const bodyB = await readJson<{ docs: Array<{ memberId: string; reason: string }> }>(resB);
+    expect(bodyB.body.docs).toHaveLength(1);
+    expect(bodyB.body.docs[0]?.memberId).toBe(memberB.memberId);
+    expect(bodyB.body.docs[0]?.reason).toBe("temp-on-B");
+  });
+
+  it("temporary ban with past expiresAt is rejected", async () => {
+    const staff = await seedUser({ role: "admin" });
+    const target = await seedActiveMember("target-past", "target-past@example.com", "password-12");
+
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const res = await bansPOST(
+      staffRequest("/api/admin/community/bans", staff, {
+        method: "POST",
+        body: JSON.stringify({
+          memberId: target.memberId,
+          scopeType: "site",
+          kind: "temporary",
+          expiresAt: past,
+        }),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("staff hide/restore/delete on a non-existent comment returns 404", async () => {
+    const staff = await seedUser({ role: "moderator" });
+    const ghostId = "00000000-0000-0000-0000-000000000000";
+
+    const hide = await staffHidePOST(
+      staffRequest(`/api/admin/community/comments/${ghostId}/hide`, staff, {
+        method: "POST",
+        body: JSON.stringify({ reason: "ghost" }),
+      }),
+      { params: Promise.resolve({ id: ghostId }) },
+    );
+    expect(hide.status).toBe(404);
+
+    const restore = await staffRestorePOST(
+      staffRequest(`/api/admin/community/comments/${ghostId}/restore`, staff, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: ghostId }) },
+    );
+    expect(restore.status).toBe(404);
+
+    const del = await staffDeleteDELETE(
+      staffRequest(`/api/admin/community/comments/${ghostId}`, staff, { method: "DELETE" }),
+      { params: Promise.resolve({ id: ghostId }) },
+    );
+    expect(del.status).toBe(404);
+
+    // None of the failed ops wrote phantom audit rows.
+    const audit = await auditGET(
+      staffRequest(`/api/admin/audit?targetType=comment&targetId=${ghostId}`, staff),
+    );
+    const auditBody = await readJson<{ totalDocs: number }>(audit);
+    expect(auditBody.body.totalDocs).toBe(0);
+  });
+
+  it("staff restore rejects a comment that was deleted (would surface empty body)", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const mod = await seedUser({ role: "moderator" });
+    const postId = await seedStaffPost(editor);
+    const author = await seedActiveMember("rd-author", "rd-author@example.com", "password-12");
+
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "delete-me" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: commentId } = await readJson<{ id: string }>(created).then((r) => r.body);
+
+    const del = await staffDeleteDELETE(
+      staffRequest(`/api/admin/community/comments/${commentId}`, mod, { method: "DELETE" }),
+      { params: Promise.resolve({ id: commentId }) },
+    );
+    expect(del.status).toBe(200);
+
+    // Restoring a deleted row would surface a ghost comment (empty body
+    // but original author / timestamp). Service must refuse.
+    const restore = await staffRestorePOST(
+      staffRequest(`/api/admin/community/comments/${commentId}/restore`, mod, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: commentId }) },
+    );
+    expect(restore.status).toBe(400);
+  });
+
+  it("file report rejects empty targetId", async () => {
+    const reporter = await seedActiveMember(
+      "empty-reporter",
+      "empty@example.com",
+      "password-12",
+    );
+
+    const res = await reportPOST(
+      jsonRequest("/api/reports", {
+        method: "POST",
+        cookies: [`nx-mb-session=${reporter.sessionCookie}`, `nx-mb-csrf=${reporter.csrfCookie}`],
+        headers: { "x-csrf-token": reporter.csrfCookie },
+        // targetId omitted on purpose — route coerces to "" and forwards.
+        body: JSON.stringify({ targetType: "comment", reason: "spam" }),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
 });

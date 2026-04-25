@@ -373,11 +373,23 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
  * sufficient role (admin/editor/moderator). No `memberId` required;
  * the action is always allowed.
  */
+async function loadCommentForStaffOp(commentId: string): Promise<NxCommentRow> {
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const [existing] = (await db
+    .select()
+    .from(nxComments)
+    .where(eq(nxComments.id, commentId))
+    .limit(1)) as NxCommentRow[];
+  if (!existing) throw new NxNotFoundError("comment", commentId);
+  return existing;
+}
+
 export async function staffHideComment(
   commentId: string,
   staffUserId: string,
   reason?: string | null,
 ): Promise<void> {
+  await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -401,6 +413,19 @@ export async function staffRestoreComment(
   commentId: string,
   staffUserId: string,
 ): Promise<void> {
+  const existing = await loadCommentForStaffOp(commentId);
+  // A "deleted" comment had its body wiped — flipping it back to visible
+  // would surface a ghost row (author + timestamp intact, body empty).
+  // Only `hidden` is reversible; member-side `restoreComment` enforces
+  // the same invariant.
+  if (existing.status !== "hidden") {
+    throw new NxValidationError("Invalid state", [
+      {
+        field: "status",
+        message: `Comment is "${existing.status}", not "hidden"`,
+      },
+    ]);
+  }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -424,6 +449,7 @@ export async function staffDeleteComment(
   commentId: string,
   staffUserId: string,
 ): Promise<void> {
+  await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)

@@ -1,8 +1,9 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
 import { nxAuditEvents } from "../db/schema/community.js";
+import { getLogger } from "../observability/logger.js";
 
 /**
  * Append-only moderation audit log. Every hide / restore / ban /
@@ -56,9 +57,16 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
       targetId: input.targetId ?? null,
       payload: input.payload ?? {},
     });
-  } catch {
-    // Audit failures shouldn't block the underlying action. The caller
-    // is responsible for the moderation effect; this is just bookkeeping.
+  } catch (err) {
+    // Audit failures must not block the underlying mod action — but
+    // they MUST surface, otherwise gaps in the forensic record go
+    // unnoticed (column drift, FK violation, transient pg blip).
+    getLogger().error("audit insert failed", {
+      error: err instanceof Error ? err.message : String(err),
+      action: input.action,
+      targetType: input.targetType ?? null,
+      targetId: input.targetId ?? null,
+    });
   }
 }
 
@@ -96,15 +104,10 @@ export async function listAuditEvents(
     .limit(limit)
     .offset(offset)) as AuditEventRow[];
 
-  // For total count, run a coarser query — Postgres planner uses the
-  // matching partial index when the same filters apply.
-  let totalDocs = rows.length;
-  if (rows.length === limit) {
-    const all = (await db
-      .select()
-      .from(nxAuditEvents)
-      .where(where)) as Array<unknown>;
-    totalDocs = all.length;
-  }
+  const [totalRow] = (await db
+    .select({ total: count() })
+    .from(nxAuditEvents)
+    .where(where)) as Array<{ total: number }>;
+  const totalDocs = Number(totalRow?.total ?? 0);
   return { events: rows, totalDocs };
 }
