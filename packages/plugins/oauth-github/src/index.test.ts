@@ -152,6 +152,31 @@ describe("createGitHubOAuthProvider", () => {
     ).rejects.toThrow(/nope/);
   });
 
+  it("exchange() returns email=null when /user/emails returns 200 but malformed JSON (soft-fail)", async () => {
+    const responses = new Map<string, Response | (() => Response)>([
+      ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],
+      [
+        "https://api.github.com/user",
+        jsonResponse({ id: 9, login: "private", name: null, email: null }),
+      ],
+      [
+        "https://api.github.com/user/emails",
+        new Response("not actually json", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ],
+    ]);
+    const { fetch: stubFetch } = makeFetch(responses);
+    const profile = await provider({ fetch: stubFetch }).exchange({
+      code: "abc",
+      state: "s",
+      redirectUri: "https://site.example/cb",
+    });
+    expect(profile.email).toBeNull();
+    expect(profile.providerUserId).toBe("9");
+  });
+
   it("exchange() throws on non-2xx /user", async () => {
     const responses = new Map<string, Response | (() => Response)>([
       ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],

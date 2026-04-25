@@ -91,9 +91,6 @@ export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthPro
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("state", state);
       url.searchParams.set("scope", options.scope ?? DEFAULT_SCOPE);
-      // Ask GitHub to always show the picker so a previously-signed-in
-      // user on a shared machine doesn't get auto-linked silently.
-      url.searchParams.set("allow_signup", "true");
       return url.toString();
     },
     async exchange({ code, redirectUri }): Promise<OAuthProfile> {
@@ -140,25 +137,32 @@ export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthPro
       // Step 3: GitHub's `email` on /user is null when the user kept
       // their primary address private. Fall back to /user/emails which
       // returns every verified address attached to the account.
+      //
+      // Wrapped in try/catch — the email lookup is best-effort. If
+      // /user/emails returns a non-2xx, malformed body, or errors at
+      // the network level, we keep `email = null` and let the
+      // framework synthesize a placeholder. The user signed in fine;
+      // missing email is recoverable later via profile editing.
       let email = user.email ?? null;
       if (!email) {
-        const emailsRes = await fetchImpl(EMAILS_URL, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: "application/vnd.github+json",
-            "User-Agent": "nexpress-oauth-github",
-          },
-        });
-        if (emailsRes.ok) {
-          const emails = (await emailsRes.json()) as GitHubEmail[];
-          const primary =
-            emails.find((entry) => entry.primary && entry.verified) ??
-            emails.find((entry) => entry.verified);
-          email = primary?.email ?? null;
+        try {
+          const emailsRes = await fetchImpl(EMAILS_URL, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "User-Agent": "nexpress-oauth-github",
+            },
+          });
+          if (emailsRes.ok) {
+            const emails = (await emailsRes.json()) as GitHubEmail[];
+            const primary =
+              emails.find((entry) => entry.primary && entry.verified) ??
+              emails.find((entry) => entry.verified);
+            email = primary?.email ?? null;
+          }
+        } catch {
+          // Soft-fail per the comment above — leave email null.
         }
-        // Don't fail if we can't resolve email — the framework will
-        // synthesize a placeholder from the GitHub user id. The user
-        // can update it later from the profile page.
       }
 
       return {
