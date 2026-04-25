@@ -6,6 +6,7 @@ import {
   listBansForMember,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       throw new NxForbiddenError("bans", "create");
     }
 
-    const body = (await request.json()) as BanBody | null;
+    const body = (await readJsonBody(request)) as BanBody | null;
     const memberId = typeof body?.memberId === "string" ? body.memberId : "";
     const scopeTypeRaw = typeof body?.scopeType === "string" ? body.scopeType : "";
     const scopeId = typeof body?.scopeId === "string" ? body.scopeId : null;

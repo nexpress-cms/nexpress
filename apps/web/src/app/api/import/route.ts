@@ -10,6 +10,7 @@ import {
   saveDocument,
 } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -201,7 +202,7 @@ export async function POST(request: NextRequest) {
 
     await ensureWriteReady();
 
-    const payload = validatePayload(await request.json());
+    const payload = validatePayload(await readJsonBody(request));
     const db = getDb();
     const dryRun = request.nextUrl.searchParams.get("dryRun") === "true";
     const registeredSlugs = new Set(getAllCollectionSlugs());

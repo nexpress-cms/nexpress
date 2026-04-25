@@ -1,4 +1,5 @@
 import { NxForbiddenError, isStaffMod, resolveReport } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -22,7 +23,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const body = (await request.json().catch(() => null)) as ResolveBody | null;
+    const body = (await readJsonBody(request).catch(() => null)) as ResolveBody | null;
     const resolution = typeof body?.resolution === "string" ? body.resolution : "";
 
     const row = await resolveReport({

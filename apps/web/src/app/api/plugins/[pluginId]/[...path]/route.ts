@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getPluginRoutes } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ async function handlePluginRoute(
   if (method !== "GET" && method !== "HEAD") {
     const contentType = request.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
-      body = await request.json();
+      body = await readJsonBody(request);
     }
   }
 

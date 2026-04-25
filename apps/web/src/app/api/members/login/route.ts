@@ -11,6 +11,7 @@ import {
 } from "@nexpress/core";
 import { eq, sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 import { NextResponse } from "next/server";
 
 import { nxErrorResponse } from "@/lib/api-response";
@@ -43,7 +44,7 @@ function validate(raw: unknown): LoginBody {
 export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
-    const { email, password } = validate(await request.json());
+    const { email, password } = validate(await readJsonBody(request));
     const db = getDb();
 
     const [member] = await db

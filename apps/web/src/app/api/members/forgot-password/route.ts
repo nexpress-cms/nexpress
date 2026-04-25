@@ -4,6 +4,7 @@ import {
   requestMemberPasswordReset,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
@@ -21,7 +22,7 @@ function buildResetUrl(request: NextRequest, token: string): string {
 export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
-    const body = (await request.json()) as { email?: unknown } | null;
+    const body = (await readJsonBody(request)) as { email?: unknown } | null;
     const email = typeof body?.email === "string" ? body.email : "";
     if (!email.includes("@")) {
       throw new NxValidationError("Invalid input", [

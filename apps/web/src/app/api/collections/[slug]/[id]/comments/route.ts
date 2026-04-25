@@ -1,4 +1,5 @@
 import { createComment, listComments } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -54,7 +55,7 @@ export async function POST(
     requireMemberCsrf(request);
 
     const { slug, id } = await params;
-    const body = (await request.json()) as
+    const body = (await readJsonBody(request)) as
       | { bodyMd?: unknown; parentId?: unknown }
       | null;
     const bodyMd = typeof body?.bodyMd === "string" ? body.bodyMd : "";

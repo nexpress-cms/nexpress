@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -40,7 +41,7 @@ export async function POST(
 
     requireCsrf(request);
 
-    const data = parseBodyRecord(await request.json());
+    const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
     const result = await saveCollectionDocument(slug, null, data, user, saveOptions);
 

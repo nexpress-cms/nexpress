@@ -5,6 +5,7 @@ import {
   nxNavigation,
 } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -55,7 +56,7 @@ export async function PUT(request: NextRequest) {
       throw new NxForbiddenError("navigation", "update");
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = (await readJsonBody(request)) as Record<string, unknown>;
     const items = body.items;
     const location =
       typeof body.location === "string" && body.location.trim()

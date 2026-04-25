@@ -8,6 +8,7 @@ import {
   verifyPassword,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import {
   getAuthRuntimeConfig,
@@ -54,7 +55,7 @@ function validateLoginBody(body: unknown): { email: string; password: string } {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = validateLoginBody(await request.json());
+    const { email, password } = validateLoginBody(await readJsonBody(request));
     const db = getDb();
     const config = getAuthRuntimeConfig();
     const result = await db.$client.query<LoginUserRow>(

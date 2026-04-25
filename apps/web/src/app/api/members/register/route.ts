@@ -7,6 +7,7 @@ import {
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
 
-    const body = validate(await request.json());
+    const body = validate(await readJsonBody(request));
     const db = getDb();
 
     const [existingByEmail] = await db

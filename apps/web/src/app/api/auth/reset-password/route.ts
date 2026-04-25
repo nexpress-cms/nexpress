@@ -1,4 +1,5 @@
 import { NxValidationError, consumePasswordResetToken } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -32,7 +33,7 @@ function validateBody(body: unknown): { token: string; password: string } {
 export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
-    const { token, password } = validateBody(await request.json());
+    const { token, password } = validateBody(await readJsonBody(request));
 
     const result = await consumePasswordResetToken(getDb(), {
       token,

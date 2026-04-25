@@ -1,4 +1,5 @@
 import { consumeMemberEmailVerifyToken } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -8,7 +9,7 @@ import { ensureWriteReady } from "@/lib/init-core";
 export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
-    const body = (await request.json()) as { token?: unknown } | null;
+    const body = (await readJsonBody(request)) as { token?: unknown } | null;
     const token = typeof body?.token === "string" ? body.token : "";
     const result = await consumeMemberEmailVerifyToken(getDb(), token);
     return nxSuccessResponse({
