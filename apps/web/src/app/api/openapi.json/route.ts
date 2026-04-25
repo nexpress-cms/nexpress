@@ -1475,7 +1475,139 @@ function buildSpec(): OpenApiSchema {
         },
       };
     }
+
+    // Comment routes — only listed when the collection opted in.
+    if (getCollectionConfig(slug).community?.comments) {
+      paths[`/api/collections/${slug}/{id}/comments`] = {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        get: {
+          summary: `List comments under a ${manifest.labels.singular.toLowerCase()}`,
+          parameters: [
+            { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
+            { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+            { in: "query", name: "order", schema: { type: "string", enum: ["newest", "oldest"] } },
+            {
+              in: "query",
+              name: "includeHidden",
+              schema: { type: "string", enum: ["1"] },
+              description: "Include hidden comments (mod-only; require an active member session).",
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Paged comment list",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      comments: {
+                        type: "array",
+                        items: { type: "object", additionalProperties: true },
+                      },
+                      totalDocs: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        post: {
+          summary: `Post a comment on a ${manifest.labels.singular.toLowerCase()}`,
+          description:
+            "Member auth + CSRF required. Body is markdown (limited subset — bold, italic, inline + fenced code, allow-listed http(s)/mailto links). Server stores both the markdown source and the rendered HTML.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["bodyMd"],
+                  properties: {
+                    bodyMd: { type: "string", maxLength: 5000 },
+                    parentId: { type: "string", format: "uuid", nullable: true },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "201": { description: "Created comment" },
+            "400": { description: "Comments disabled for this collection or invalid body" },
+            "401": { description: "Member auth required" },
+            "404": { description: "parentId not found or doesn't belong to this document" },
+          },
+        },
+      };
+    }
   }
+
+  // Per-comment endpoints (live regardless of collection — comment id
+  // already carries the target context).
+  paths[`/api/comments/{id}`] = {
+    parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+    patch: {
+      summary: "Edit a comment (own or with edit-any-comment grant)",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["bodyMd"],
+              properties: { bodyMd: { type: "string", maxLength: 5000 } },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": { description: "Updated comment" },
+        "401": { description: "Member auth required" },
+        "403": { description: "No permission" },
+      },
+    },
+    delete: {
+      summary: "Soft-delete a comment (own or with delete-any-comment grant)",
+      responses: {
+        "200": { description: "Deleted (status='deleted', body cleared)" },
+        "401": { description: "Member auth required" },
+        "403": { description: "No permission" },
+      },
+    },
+  };
+  paths["/api/comments/{id}/hide"] = {
+    parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+    post: {
+      summary: "Hide a comment (mod-only)",
+      requestBody: {
+        required: false,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: { reason: { type: "string", nullable: true } },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": { description: "Hidden" },
+        "403": { description: "Caller lacks hide-comment for this scope" },
+      },
+    },
+  };
+  paths["/api/comments/{id}/restore"] = {
+    parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+    post: {
+      summary: "Restore a hidden comment (mod-only)",
+      responses: {
+        "200": { description: "Visible again" },
+        "400": { description: "Comment is not hidden" },
+        "403": { description: "Caller lacks restore-comment for this scope" },
+      },
+    },
+  };
 
   // Plugin-provided routes. These are resolved from the in-process registry,
   // so the spec only lists plugins that actually loaded (enabled + no errors).
