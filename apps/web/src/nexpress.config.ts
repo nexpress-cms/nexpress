@@ -1,9 +1,22 @@
 import { defineConfig } from "@nexpress/core";
+import {
+  defineDiscussionsCollection,
+  forumPlugin,
+} from "@nexpress/plugin-forum";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
+
+const discussionsCollection = defineDiscussionsCollection({
+  categories: [
+    { label: "General", value: "general" },
+    { label: "Announcements", value: "announcements" },
+    { label: "Q&A", value: "qa" },
+    { label: "Show & Tell", value: "show-and-tell" },
+  ],
+});
 
 export default defineConfig({
   site: {
@@ -30,8 +43,8 @@ export default defineConfig({
             baseUrl: process.env.NX_STORAGE_URL ?? "/uploads",
           },
         },
-  collections: [postsCollection, pagesCollection],
-  plugins: [readingTimePlugin, seoAuditPlugin],
+  collections: [postsCollection, pagesCollection, discussionsCollection],
+  plugins: [readingTimePlugin, seoAuditPlugin, forumPlugin],
   auth: {
     secret: process.env.NX_SECRET ?? "",
   },
