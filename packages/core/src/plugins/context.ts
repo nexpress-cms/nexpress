@@ -187,10 +187,13 @@ export function createPluginRuntimeContext(
             originalFilename: metadata.filename,
             mimeType: metadata.mimeType,
           },
-          // Plugin principal id is synthetic so uploads are traceable back to
-          // the plugin via the `uploaded_by` column (even though no real user
-          // row with that id exists).
-          `plugin:${pluginId}`,
+          // `uploaded_by` is a nullable FK to `nx_users.id`. The
+          // previous `plugin:<id>` synthetic value violated the FK
+          // and threw at insert time, leaving the storage object
+          // orphaned. (#62) Plugin attribution lives in the audit
+          // log + plugin-storage layer; the uploader column is for
+          // staff-user provenance only.
+          null,
           metadata.folder,
         );
       },

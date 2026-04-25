@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getPluginRoutes } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
+import { optionalAuth } from "@/lib/auth-helpers";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,18 @@ async function handlePluginRoute(
     );
   }
 
+  // Honor the route's `auth: true` declaration. Previously the flag
+  // was accepted at registration but dropped in the dispatcher, so
+  // plugins that put diagnostics, settings, or webhooks behind
+  // `auth: true` were still publicly reachable. (#61)
+  const sessionUser = await optionalAuth(request);
+  if (matched.auth && !sessionUser) {
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "Authentication required" }, status: 401 },
+      { status: 401 },
+    );
+  }
+
   const url = new URL(request.url);
   const query: Record<string, string> = {};
   url.searchParams.forEach((v, k) => { query[k] = v; });
@@ -53,6 +66,9 @@ async function handlePluginRoute(
     query,
     body,
     headers,
+    user: sessionUser
+      ? { id: sessionUser.id, email: sessionUser.email, role: sessionUser.role }
+      : undefined,
   });
 
   return NextResponse.json(result.body ?? null, {

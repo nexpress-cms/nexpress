@@ -95,7 +95,14 @@ export function getMediaDb(): NodePgDatabase<Record<string, unknown>> {
 
 export async function uploadMedia(
   file: { buffer: Buffer; originalFilename: string; mimeType: string },
-  userId: string,
+  /**
+   * Author of the upload. Pass a real `nx_users.id` UUID for staff
+   * uploads, or `null` when the upload originated outside the
+   * staff-user pool (e.g. a plugin's `ctx.media.upload`). The
+   * column is a nullable FK; passing a non-UUID string used to fail
+   * with a Postgres FK error and orphan the storage object. (#62)
+   */
+  userId: string | null,
   folderId?: string,
 ): Promise<{ id: string; status: string }> {
   const adapter = getStorageAdapter();
