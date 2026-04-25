@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
-import { Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
+import { CalendarClock, Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
 import { FieldRenderer } from "./field-renderer.js";
 import { RevisionsPanel } from "./revisions-panel.js";
+import { ScheduleDialog } from "./schedule-dialog.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
@@ -178,13 +179,14 @@ const isVisibleField = (field: NxFieldConfig): boolean => {
   return !field.hidden;
 };
 
-type SaveStatus = "draft" | "published";
+type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
 
 export function CollectionEditView({ config, doc, collectionSlug, collectionTabs }: CollectionEditViewProps) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
   const [savingAs, setSavingAs] = useState<SaveStatus | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const schema = useMemo(() => generateZodSchema(config.fields), [config.fields]);
   const defaultValues = useMemo(() => buildDefaultValues(config.fields, doc ?? {}), [config.fields, doc]);
@@ -209,7 +211,21 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
   const sidebarFields = visibleFields.filter(isSidebarField);
   const mainFields = visibleFields.filter((field) => !isSidebarField(field));
 
-  const submitWithStatus = (status: SaveStatus) =>
+  const successMessage = (status: SaveStatus, publishedAt?: string): string => {
+    if (status === "scheduled" && publishedAt) {
+      return `${config.labels.singular} scheduled for ${new Date(publishedAt).toLocaleString()}.`;
+    }
+    if (status === "published") return `${config.labels.singular} published.`;
+    if (status === "unschedule") return `${config.labels.singular} schedule cancelled — back to draft.`;
+    return `${config.labels.singular} saved as draft.`;
+  };
+
+  /**
+   * `status` controls the wire payload's `_status` and the toast copy.
+   * Scheduling is just `_status: "published"` + a future `publishedAt` —
+   * the pipeline coerces that to `status: "scheduled"` server-side.
+   */
+  const submitWithStatus = (status: SaveStatus, publishedAtOverride?: string) =>
     form.handleSubmit(async (values) => {
       setSavingAs(status);
       setToast(null);
@@ -220,12 +236,22 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           ? `/api/collections/${collectionSlug}/${String(doc.id)}`
           : `/api/collections/${collectionSlug}`;
 
+        const wireStatus = status === "scheduled" ? "published" : status === "unschedule" ? "draft" : status;
+        const body: Record<string, unknown> = { ...values, _status: wireStatus };
+        if (status === "scheduled" && publishedAtOverride) {
+          body.publishedAt = publishedAtOverride;
+        }
+        if (status === "unschedule") {
+          // Clear the future timestamp so the doc returns to plain draft.
+          body.publishedAt = null;
+        }
+
         const response = await nxFetch(endpoint, {
           method,
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ ...values, _status: status }),
+          body: JSON.stringify(body),
         });
 
         if (!response.ok) {
@@ -237,11 +263,11 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
 
         setToast({
           type: "success",
-          message:
-            status === "published"
-              ? `${config.labels.singular} published.`
-              : `${config.labels.singular} saved as draft.`,
+          message: successMessage(status, publishedAtOverride),
         });
+        if (status === "scheduled" || status === "unschedule") {
+          setScheduleOpen(false);
+        }
 
         if (!doc?.id && nextId !== undefined && nextId !== null) {
           router.push(`/admin/collections/${collectionSlug}/${String(nextId)}`);
@@ -261,7 +287,14 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
 
   const handleSaveDraft = submitWithStatus("draft");
   const handlePublish = submitWithStatus("published");
+  const handleSchedule = (publishedAtIso: string) => {
+    void submitWithStatus("scheduled", publishedAtIso)();
+  };
+  const handleCancelSchedule = () => {
+    void submitWithStatus("unschedule")();
+  };
   const isSaving = savingAs !== null;
+  const isScheduled = currentStatus === "scheduled";
 
   const handleDelete = async () => {
     if (!doc?.id) {
@@ -356,12 +389,35 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               Save as Draft
             </Button>
 
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setScheduleOpen(true)}
+              disabled={isSaving}
+            >
+              {savingAs === "scheduled" || savingAs === "unschedule" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CalendarClock className="mr-2 h-4 w-4" />
+              )}
+              {isScheduled ? "Reschedule" : "Schedule"}
+            </Button>
+
             <Button type="submit" disabled={isSaving}>
               {savingAs === "published" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Publish
+              {isScheduled ? "Publish now" : "Publish"}
             </Button>
           </div>
         </div>
+
+        <ScheduleDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          initialPublishedAt={typeof doc?.publishedAt === "string" ? doc.publishedAt : undefined}
+          busy={savingAs === "scheduled" || savingAs === "unschedule"}
+          onSchedule={handleSchedule}
+          onCancelSchedule={isScheduled ? handleCancelSchedule : undefined}
+        />
 
         <div className="grid gap-6 xl:grid-cols-12">
           <div className="space-y-6 xl:col-span-8">
