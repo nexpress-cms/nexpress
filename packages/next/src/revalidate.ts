@@ -43,7 +43,19 @@ export function revalidateCollection(
 
   for (const raw of rule.paths) {
     const target = substitute(raw, documentSlug);
-    if (target) revalidatePath(target);
+    if (!target) continue;
+    try {
+      revalidatePath(target);
+    } catch (error) {
+      // revalidatePath throws outside a Next request context (unit tests,
+      // background workers, admin actions invoked via `pg-boss`). Silent
+      // skip — real request traffic already ran it via the route that
+      // produced the write; the worker path can invalidate on its own.
+      if (process.env.NODE_ENV !== "test") {
+        // eslint-disable-next-line no-console
+        console.warn(`[revalidateCollection] ${target} skipped:`, error);
+      }
+    }
   }
 }
 
