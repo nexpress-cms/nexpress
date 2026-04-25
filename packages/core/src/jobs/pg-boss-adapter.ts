@@ -1,5 +1,7 @@
 import { PgBoss, type ConstructorOptions, type Job } from "pg-boss";
 import { type NxJobType } from "../config/types.js";
+import { getLogger } from "../observability/logger.js";
+import { reportError } from "../observability/error-reporter.js";
 import { getAllJobHandlers } from "./handlers.js";
 import { type NxJobQueue } from "./queue.js";
 
@@ -51,7 +53,24 @@ export class PgBossAdapter implements NxJobQueue {
       await this.boss.createQueue(queueName);
       await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
         for (const job of jobs) {
-          await handler(job.data);
+          try {
+            await handler(job.data);
+          } catch (error) {
+            // Surface job failures to logs + the configured error reporter.
+            // Re-throw so pg-boss applies its retry/dead-letter policy.
+            const err = error instanceof Error ? error : new Error(String(error));
+            getLogger().error("Job handler threw", {
+              type,
+              jobId: job.id,
+              error: err.message,
+              stack: err.stack,
+            });
+            void reportError(err, {
+              tags: { source: "worker", jobType: type },
+              extra: { jobId: job.id },
+            });
+            throw err;
+          }
         }
       });
     }

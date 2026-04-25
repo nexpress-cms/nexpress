@@ -18,6 +18,7 @@ import {
 } from "../media/service.js";
 import { getDb } from "../collections/pipeline.js";
 import { nxPluginStorage, nxPlugins, nxSettings } from "../db/schema/system.js";
+import { getScopedLogger } from "../observability/logger.js";
 
 /**
  * Plugin principal used when plugin-initiated operations need an NxAuthUser.
@@ -105,9 +106,10 @@ export function createPluginRuntimeContext(
   const db = (): NodePgDatabase<Record<string, unknown>> => getDb();
   const principal = pluginPrincipal(pluginId);
 
-  function prefix(level: string, message: string): string {
-    return `[plugin:${pluginId}] ${level} ${message}`;
-  }
+  // Plugin logs flow through the global logger (`setLogger` at app boot)
+  // with `pluginId` bound, so operators can filter / route / aggregate
+  // plugin output without each plugin reaching for `console.*`.
+  const pluginLog = getScopedLogger({ pluginId });
 
   return {
     pluginId,
@@ -449,20 +451,16 @@ export function createPluginRuntimeContext(
 
     log: {
       debug(message: string, data?: Record<string, unknown>): void {
-        // eslint-disable-next-line no-console
-        console.debug(prefix("debug", message), data ?? "");
+        pluginLog.debug(message, data);
       },
       info(message: string, data?: Record<string, unknown>): void {
-        // eslint-disable-next-line no-console
-        console.info(prefix("info", message), data ?? "");
+        pluginLog.info(message, data);
       },
       warn(message: string, data?: Record<string, unknown>): void {
-        // eslint-disable-next-line no-console
-        console.warn(prefix("warn", message), data ?? "");
+        pluginLog.warn(message, data);
       },
       error(message: string, data?: Record<string, unknown>): void {
-        // eslint-disable-next-line no-console
-        console.error(prefix("error", message), data ?? "");
+        pluginLog.error(message, data);
       },
     },
 
