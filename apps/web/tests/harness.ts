@@ -42,7 +42,7 @@ export {
 export interface TestUserSession {
   userId: string;
   email: string;
-  role: "admin" | "editor" | "author" | "viewer";
+  role: "admin" | "editor" | "moderator" | "author" | "viewer";
   accessToken: string;
   csrfToken: string;
 }

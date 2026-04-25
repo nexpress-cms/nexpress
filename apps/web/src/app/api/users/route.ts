@@ -15,7 +15,13 @@ import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensurePluginsLoaded } from "@/lib/init-core";
 
-const VALID_ROLES: readonly NxUserRole[] = ["admin", "editor", "author", "viewer"];
+const VALID_ROLES: readonly NxUserRole[] = [
+  "admin",
+  "editor",
+  "moderator",
+  "author",
+  "viewer",
+];
 
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   if (!value) return fallback;

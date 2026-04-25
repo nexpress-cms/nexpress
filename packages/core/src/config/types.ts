@@ -1,4 +1,4 @@
-export type NxUserRole = "admin" | "editor" | "author" | "viewer";
+export type NxUserRole = "admin" | "editor" | "moderator" | "author" | "viewer";
 
 export interface NxAuthUser {
   id: string;
@@ -379,13 +379,35 @@ export interface NxSaveResult {
   operation: "create" | "update";
 }
 
+/**
+ * Linear content-editing hierarchy. `moderator` is intentionally absent
+ * — a moderator handles community moderation (comments / reports /
+ * bans) but does not have content-authoring powers. Community-mod
+ * paths check the role explicitly via `principalCan()` instead of
+ * sitting on this comparison.
+ *
+ * For the `hasRole` callsites that need "moderator counts as elevated
+ * staff," check `user.role === "moderator"` alongside `hasRole(user,
+ * "editor")`.
+ */
 export const ROLE_HIERARCHY: Record<NxUserRole, number> = {
   viewer: 0,
   author: 1,
+  moderator: 1, // parallel track — same elevation as author for non-mod paths
   editor: 2,
   admin: 3,
 };
 
 export function hasRole(user: NxAuthUser, minRole: NxUserRole): boolean {
   return ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY[minRole];
+}
+
+/**
+ * Returns true when the principal is a staff user with elevated
+ * community-moderation authority: admin, editor, or moderator. Used
+ * by every API route that gates moderation actions before falling
+ * through to the member-side `memberCan()` resolver.
+ */
+export function isStaffMod(user: NxAuthUser): boolean {
+  return user.role === "admin" || user.role === "editor" || user.role === "moderator";
 }

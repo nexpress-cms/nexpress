@@ -327,6 +327,76 @@ export const nxNotifications = pgTable(
   ],
 );
 
+/**
+ * Member-filed reports against community content. `target_type` is
+ * `'comment' | 'thread' | 'reply' | 'member'` — anything a member can
+ * report. `resolved_at` flags closed cases; the unresolved index
+ * powers the moderation queue's "unread first" view.
+ *
+ * `resolved_by_user_id` and `resolved_by_member_id` are mutually
+ * exclusive — staff resolutions populate the user, member-mod
+ * resolutions populate the member.
+ */
+export const nxReports = pgTable(
+  "nx_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => nxMembers.id, { onDelete: "cascade" }),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    reason: text("reason").notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
+    resolvedByUserId: uuid("resolved_by_user_id").references(() => nxUsers.id),
+    resolvedByMemberId: uuid("resolved_by_member_id").references(
+      (): AnyPgColumn => nxMembers.id,
+    ),
+    resolution: text("resolution"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("nx_reports_queue_idx").on(table.resolvedAt, table.createdAt),
+    index("nx_reports_target_idx").on(table.targetType, table.targetId),
+  ],
+);
+
+/**
+ * Append-only moderation audit log. Every hide / restore / ban / role
+ * grant write should append a row so an admin can answer "who took
+ * this action and when?" without diffing logs.
+ *
+ * `actor_kind` distinguishes staff / member-mod / system writes
+ * (e.g. an automated revocation when a member soft-deletes their
+ * account). `target_id` is `text` because some actions target string
+ * ids — like `"posts"` for a `collection-mod` grant scope.
+ */
+export const nxAuditEvents = pgTable(
+  "nx_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorKind: text("actor_kind").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => nxUsers.id),
+    actorMemberId: uuid("actor_member_id").references(
+      (): AnyPgColumn => nxMembers.id,
+    ),
+    action: text("action").notNull(),
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("nx_audit_target_idx").on(table.targetType, table.targetId, table.createdAt),
+    index("nx_audit_actor_user_idx").on(table.actorUserId, table.createdAt),
+    index("nx_audit_actor_member_idx").on(table.actorMemberId, table.createdAt),
+  ],
+);
+
 export const nxBans = pgTable(
   "nx_bans",
   {

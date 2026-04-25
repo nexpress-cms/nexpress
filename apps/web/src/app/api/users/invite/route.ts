@@ -19,7 +19,13 @@ import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
 
-const VALID_ROLES: readonly NxUserRole[] = ["admin", "editor", "author", "viewer"];
+const VALID_ROLES: readonly NxUserRole[] = [
+  "admin",
+  "editor",
+  "moderator",
+  "author",
+  "viewer",
+];
 
 // 7 days to complete initial password setup.
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
