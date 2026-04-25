@@ -38,7 +38,6 @@ const DEFAULT_SCOPES = ["openid", "email", "profile"];
 export interface GoogleOAuthOptions {
   clientId: string;
   clientSecret: string;
-  redirectUri: string;
   scopes?: string[];
   fetch?: typeof fetch;
 }
@@ -104,15 +103,17 @@ export function createGoogleOAuthProvider(options: GoogleOAuthOptions): OAuthPro
     );
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
-  const google = new Google(options.clientId, options.clientSecret, options.redirectUri);
 
-  return fromArctic(google, {
-    id: "google",
-    label: "Google",
-    pkce: true,
-    scopes: options.scopes ?? DEFAULT_SCOPES,
-    fetchProfile: (accessToken) => fetchGoogleProfile(accessToken, fetchImpl),
-  });
+  return fromArctic(
+    (redirectUri) => new Google(options.clientId, options.clientSecret, redirectUri),
+    {
+      id: "google",
+      label: "Google",
+      pkce: true,
+      scopes: options.scopes ?? DEFAULT_SCOPES,
+      fetchProfile: (accessToken) => fetchGoogleProfile(accessToken, fetchImpl),
+    },
+  );
 }
 
 export const googleOAuthPlugin = definePlugin({
@@ -157,11 +158,10 @@ export const googleOAuthPlugin = definePlugin({
       );
       return;
     }
-    const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
-    const redirectUri = `${siteUrl.replace(/\/$/, "")}/api/auth/oauth/google/callback`;
-    registerOAuthProvider(
-      createGoogleOAuthProvider({ clientId, clientSecret, redirectUri }),
-    );
+    // The redirectUri is resolved per-request by the framework (so
+    // dev port shifts don't cause Google's redirect_uri_mismatch);
+    // the factory inside `createGoogleOAuthProvider` receives it.
+    registerOAuthProvider(createGoogleOAuthProvider({ clientId, clientSecret }));
     ctx.log.info("Google OAuth provider registered");
   },
 });

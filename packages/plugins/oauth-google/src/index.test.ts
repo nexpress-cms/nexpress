@@ -23,7 +23,7 @@ function makeFetch(responses: Map<string, Response | (() => Response)>) {
 describe("createGoogleOAuthProvider (factory guards)", () => {
   it("requires clientId and clientSecret", () => {
     expect(() =>
-      createGoogleOAuthProvider({ clientId: "", clientSecret: "", redirectUri: "x" }),
+      createGoogleOAuthProvider({ clientId: "", clientSecret: "" }),
     ).toThrow(/clientId and clientSecret/);
   });
 
@@ -31,7 +31,6 @@ describe("createGoogleOAuthProvider (factory guards)", () => {
     const provider = createGoogleOAuthProvider({
       clientId: "client.apps.googleusercontent.com",
       clientSecret: "secret",
-      redirectUri: "https://x/cb",
     });
     expect(provider.id).toBe("google");
     expect(provider.label).toBe("Google");

@@ -17,17 +17,22 @@ import type { OAuthProfile, OAuthProvider } from "./oauth-providers.js";
  *   import { Apple } from "arctic";
  *   import { fromArctic, registerOAuthProvider } from "@nexpress/core";
  *
- *   const apple = new Apple(clientId, teamId, keyId, privateKey, redirectUri);
- *   registerOAuthProvider(fromArctic(apple, {
- *     id: "apple",
- *     scopes: ["name", "email"],
- *     fetchProfile: async (accessToken, tokens) => {
- *       // Apple returns the user payload INSIDE the token response
- *       // (not a separate userinfo endpoint) — pull it from
- *       // `tokens.idToken()` here and parse the JWT body.
- *       return { providerUserId: parseAppleSub(tokens.idToken()), email: null };
+ *   registerOAuthProvider(fromArctic(
+ *     // Factory: framework calls this each request with the freshly-
+ *     // resolved redirectUri (matters in dev when Next.js may bind a
+ *     // non-default port).
+ *     (redirectUri) => new Apple(clientId, teamId, keyId, privateKey, redirectUri),
+ *     {
+ *       id: "apple",
+ *       scopes: ["name", "email"],
+ *       fetchProfile: async (accessToken, tokens) => {
+ *         // Apple returns the user payload INSIDE the token response
+ *         // (not a separate userinfo endpoint) — pull it from
+ *         // `tokens.idToken()` here and parse the JWT body.
+ *         return { providerUserId: parseAppleSub(tokens.idToken()), email: null };
+ *       },
  *     },
- *   }));
+ *   ));
  */
 
 /**
@@ -83,11 +88,17 @@ export interface FromArcticOptions {
 /**
  * Wraps an arctic provider into the framework's `OAuthProvider`
  * shape. The framework calls `authorize` and `exchange`; this adapter
- * forwards to arctic, then delegates the profile fetch to `opts
- * .fetchProfile`.
+ * builds a fresh arctic instance per request via `factory(redirectUri)`
+ * so the redirect URI always matches what the framework computed for
+ * THIS request — critical in dev where Next.js may fall back to a
+ * non-3000 port and a setup-time-frozen redirectUri would diverge.
+ *
+ * Arctic provider classes are cheap to construct (just hold the three
+ * credential strings), so the per-request factory call has no
+ * meaningful cost.
  */
 export function fromArctic(
-  arctic: ArcticLikeProvider,
+  factory: (redirectUri: string) => ArcticLikeProvider,
   opts: FromArcticOptions,
 ): OAuthProvider {
   const usePkce = opts.pkce !== false;
@@ -96,7 +107,8 @@ export function fromArctic(
   return {
     id: opts.id,
     label: opts.label,
-    authorize({ state, codeVerifier }) {
+    authorize({ state, redirectUri, codeVerifier }) {
+      const arctic = factory(redirectUri);
       // Arctic's signatures vary: `(state, scopes)` for non-PKCE,
       // `(state, codeVerifier, scopes)` for PKCE. The structural type
       // hides this; do the dispatch here so plugin code stays clean.
@@ -112,7 +124,8 @@ export function fromArctic(
           ) => URL)(state, scopes);
       return url.toString();
     },
-    async exchange({ code, codeVerifier }) {
+    async exchange({ code, redirectUri, codeVerifier }) {
+      const arctic = factory(redirectUri);
       const tokens = usePkce
         ? await (arctic.validateAuthorizationCode as unknown as (
             code: string,

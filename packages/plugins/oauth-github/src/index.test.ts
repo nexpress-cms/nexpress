@@ -27,7 +27,7 @@ function makeFetch(responses: Map<string, Response | (() => Response)>) {
 describe("createGitHubOAuthProvider (factory guards)", () => {
   it("requires clientId and clientSecret", () => {
     expect(() =>
-      createGitHubOAuthProvider({ clientId: "", clientSecret: "", redirectUri: "x" }),
+      createGitHubOAuthProvider({ clientId: "", clientSecret: "" }),
     ).toThrow(/clientId and clientSecret/);
   });
 
@@ -35,7 +35,6 @@ describe("createGitHubOAuthProvider (factory guards)", () => {
     const provider = createGitHubOAuthProvider({
       clientId: "id",
       clientSecret: "secret",
-      redirectUri: "https://x/cb",
     });
     expect(provider.id).toBe("github");
     expect(provider.label).toBe("GitHub");

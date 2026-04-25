@@ -42,11 +42,6 @@ const DEFAULT_SCOPES = ["read:user", "user:email"];
 export interface GitHubOAuthOptions {
   clientId: string;
   clientSecret: string;
-  /** Defaults to `${SITE_URL}/api/auth/oauth/github/callback`. The
-   *  framework-side route uses this same path; passing it here keeps
-   *  arctic's redirect-URI binding aligned with what the start route
-   *  emits. */
-  redirectUri: string;
   /** Defaults to `["read:user", "user:email"]`. */
   scopes?: string[];
   /** Override fetch (used by tests). */
@@ -140,15 +135,17 @@ export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthPro
     );
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
-  const github = new GitHub(options.clientId, options.clientSecret, options.redirectUri);
 
-  return fromArctic(github, {
-    id: "github",
-    label: "GitHub",
-    pkce: false,
-    scopes: options.scopes ?? DEFAULT_SCOPES,
-    fetchProfile: (accessToken) => fetchGitHubProfile(accessToken, fetchImpl),
-  });
+  return fromArctic(
+    (redirectUri) => new GitHub(options.clientId, options.clientSecret, redirectUri),
+    {
+      id: "github",
+      label: "GitHub",
+      pkce: false,
+      scopes: options.scopes ?? DEFAULT_SCOPES,
+      fetchProfile: (accessToken) => fetchGitHubProfile(accessToken, fetchImpl),
+    },
+  );
 }
 
 export const githubOAuthPlugin = definePlugin({
@@ -189,11 +186,11 @@ export const githubOAuthPlugin = definePlugin({
       );
       return;
     }
-    const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
-    const redirectUri = `${siteUrl.replace(/\/$/, "")}/api/auth/oauth/github/callback`;
-    registerOAuthProvider(
-      createGitHubOAuthProvider({ clientId, clientSecret, redirectUri }),
-    );
+    // The redirectUri is resolved per-request by the framework start
+    // route (matches whatever Next.js bound), so we don't compute one
+    // here — the factory inside `createGitHubOAuthProvider` receives it
+    // from the framework on each call.
+    registerOAuthProvider(createGitHubOAuthProvider({ clientId, clientSecret }));
     ctx.log.info("GitHub OAuth provider registered");
   },
 });
