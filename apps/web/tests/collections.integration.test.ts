@@ -17,6 +17,7 @@ import {
   GET as idGET,
   PATCH as idPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
+import { POST as bulkPOST } from "@/app/api/collections/[slug]/bulk/route";
 
 describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
   beforeAll(async () => {
@@ -143,6 +144,110 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     // Pipeline coerces published+future → scheduled.
     expect(created.body.status).toBe("scheduled");
     expect(new Date(created.body.publishedAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("bulk publish: flips multiple drafts to published in one call", async () => {
+    const session = await seedUser({ role: "editor" });
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await listPOST(
+        buildRequest("/api/collections/posts", {
+          method: "POST",
+          session,
+          body: {
+            title: `Bulk ${i}`,
+            slug: `bulk-${i}`,
+            content: { root: { type: "root", children: [] } },
+            _status: "draft",
+          },
+        }),
+        slugParams("posts"),
+      );
+      const { body } = await readJson<{ id: string }>(res);
+      ids.push(body.id);
+    }
+
+    const bulkRes = await bulkPOST(
+      buildRequest("/api/collections/posts/bulk", {
+        method: "POST",
+        session,
+        body: { action: "publish", ids },
+      }),
+      slugParams("posts"),
+    );
+    const { status, body: bulkBody } = await readJson<{
+      succeeded: string[];
+      failed: Array<{ id: string; error: string }>;
+    }>(bulkRes);
+    expect(status).toBe(200);
+    expect(bulkBody.succeeded).toHaveLength(3);
+    expect(bulkBody.failed).toHaveLength(0);
+
+    const firstAfter = await idGET(
+      buildRequest(`/api/collections/posts/${ids[0]}`),
+      idParams("posts", ids[0]!),
+    );
+    const after = await readJson<{ status: string }>(firstAfter);
+    expect(after.body.status).toBe("published");
+  });
+
+  it("bulk delete: removes selected docs, reports unknown ids as failed", async () => {
+    const session = await seedUser({ role: "admin" });
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Will be deleted",
+          slug: "will-be-deleted",
+          content: { root: { type: "root", children: [] } },
+          _status: "draft",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string }>(createRes);
+
+    const bulkRes = await bulkPOST(
+      buildRequest("/api/collections/posts/bulk", {
+        method: "POST",
+        session,
+        body: {
+          action: "delete",
+          ids: [created.id, "00000000-0000-0000-0000-000000000000"],
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body } = await readJson<{
+      succeeded: string[];
+      failed: Array<{ id: string; error: string }>;
+    }>(bulkRes);
+    expect(body.succeeded).toContain(created.id);
+    expect(body.failed.some((f) => f.id === "00000000-0000-0000-0000-000000000000")).toBe(true);
+  });
+
+  it("bulk: rejects empty ids and unknown actions", async () => {
+    const session = await seedUser({ role: "editor" });
+    const emptyRes = await bulkPOST(
+      buildRequest("/api/collections/posts/bulk", {
+        method: "POST",
+        session,
+        body: { action: "publish", ids: [] },
+      }),
+      slugParams("posts"),
+    );
+    expect(emptyRes.status).toBe(400);
+
+    const badActionRes = await bulkPOST(
+      buildRequest("/api/collections/posts/bulk", {
+        method: "POST",
+        session,
+        body: { action: "nuke", ids: ["00000000-0000-0000-0000-000000000000"] },
+      }),
+      slugParams("posts"),
+    );
+    expect(badActionRes.status).toBe(400);
   });
 
   it("cancel schedule: PATCH _status=draft + publishedAt=null returns to draft", async () => {
