@@ -9,6 +9,7 @@ import {
   RenderHead,
   collectRenderContributions,
 } from "@/components/render-contributions";
+import { Comments } from "@/components/comments";
 import type { Metadata } from "next";
 import type { NxRichTextContent } from "@nexpress/editor";
 
@@ -58,6 +59,7 @@ export default async function PostPage({ params }: PostPageProps) {
           {renderRichText(content)}
         </div>
       )}
+      <Comments collectionSlug="posts" documentId={String(post.id)} />
       <RenderBodyEnd entries={bodyEnd} />
     </article>
   );
