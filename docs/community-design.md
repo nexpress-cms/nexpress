@@ -266,39 +266,49 @@ nx_comments
   index (member_id, created_at)
 ```
 
-#### Threads (lightweight forum)
+#### Forum / threads — **as a collection + plugin, not a dedicated subsystem**
 
+The original draft proposed `nx_threads` / `nx_thread_categories` /
+`nx_thread_replies` as separate tables. We dropped that — collections
+already give us typed tables, drafts/publish, search, slugs, admin UI,
+and `community.comments=true` already provides `parent_id`-threaded
+replies via `nx_comments`. Re-implementing those as parallel tables
+would have been duplication.
+
+The replacement is the built-in **`@nexpress/plugin-forum`** package:
+
+```ts
+// nexpress.config.ts
+import { defineDiscussionsCollection, forumPlugin } from "@nexpress/plugin-forum";
+
+const discussions = defineDiscussionsCollection({
+  categories: [
+    { label: "General", value: "general" },
+    { label: "Announcements", value: "announcements" },
+  ],
+});
+
+export default defineConfig({
+  collections: [postsCollection, pagesCollection, discussions],
+  plugins: [forumPlugin],
+});
 ```
-nx_threads
-  id            uuid pk
-  category_id   uuid → nx_thread_categories not null
-  member_id     uuid → nx_members not null
-  title         text not null
-  slug          text unique not null
-  body_md       text, body_html text
-  status        enum('open','closed','locked','hidden','deleted')
-  pinned        bool default false
-  locked_at     timestamptz (null)
-  reply_count   int default 0
-  last_reply_at timestamptz (null)
-  views         int default 0
-  created_at, edited_at
 
-nx_thread_categories
-  id, slug, name, description, position int, members_only bool
+`pnpm db:generate && pnpm db:migrate` adds `nx_c_discussions`. Members
+comment under each discussion via the existing `/api/collections/
+discussions/{id}/comments` endpoint; reactions and follow-the-thread
+all come for free from 9.2 + 9.3.
 
-nx_thread_replies
-  id, thread_id → nx_threads, parent_reply_id → nx_thread_replies (null)
-  member_id, body_md, body_html
-  status, hidden_by, hidden_reason
-  edited_at, created_at
-  index (thread_id, created_at)
-```
+**Operating model** (v1): staff curates discussions (announcements,
+topics, Q&A prompts); members converse in the comment system.
+Member-authored top-level threads (Reddit-style) require a
+"member-writable collection" path that doesn't exist yet — when it
+lands, the plugin's collection definition flips `access.create` from
+`isEditorOrAbove` to "any active member" without a schema change.
 
-Reply nesting is **one level deep**: a reply can target either the
-thread (`parent_reply_id IS NULL`) or another reply (`parent_reply_id
-IS NOT NULL`). The renderer flattens deep chains into a single visual
-indent, which keeps long arguments readable without infinite trees.
+`thread-author` capability and the `thread` scope on
+`nx_member_roles` remain in the schema but go unused until member-
+writable collections ship — the registry is forward-compatible.
 
 #### Reactions (polymorphic)
 
@@ -401,8 +411,10 @@ New admin sections (gated by `moderator` role or higher):
   activity, force email re-verify, force password reset.
 - **Community → Reports** — paged queue of unresolved reports with
   per-target preview + "hide" / "dismiss" / "ban author" actions.
-- **Community → Threads** — same list view as a collection but on
-  `nx_threads`; pin/lock/hide actions.
+- **Discussions list** — once `@nexpress/plugin-forum` is enabled,
+  the `discussions` collection appears in the standard collection
+  list view with `pinned` / `locked` / `status` columns. No bespoke
+  table is needed.
 - **Community → Settings** — registration policy, allowed reaction
   kinds, default category for new threads, email/notification
   defaults.
@@ -441,7 +453,7 @@ The whole thing is too big to ship in one PR. Suggested order:
 | **9.1** | Member identity | `nx_members`, `nx_member_sessions`, `nx_member_roles` (table + permission resolver), member auth helpers, registration + login + me + reset, public profile read, /u/{handle} route, admin Members list (no moderation actions yet — but `memberCan()` lands here so 9.2+ can call it from day one). |
 | **9.2** | Comments on existing collections | `nx_comments`, list/post/edit/delete API, render under each `(site)` post page, comments tab in admin edit view, basic hide action, `collection-mod` capability matrix wired (so a member promoted in 9.1 can hide comments on `posts` from day one). |
 | **9.3** | Reactions + follows + notifications | `nx_reactions`, `nx_follows`, `nx_notifications`, mark-read API, in-admin notification preview. |
-| **9.4** | Threads / forum | `nx_threads`, `nx_thread_replies`, `nx_thread_categories`, `(site)/forum` routes, admin thread listing. |
+| **9.4** | Forum (built-in plugin) | `@nexpress/plugin-forum` package: `defineDiscussionsCollection({ slug, categories })` returns a ready-to-spread collection config; `forumPlugin` exposes a discussions stats dashboard widget. apps/web demo registers a `discussions` collection. **No new community-only tables** — comments, reactions, follows all come from 9.2/9.3. Member-authored top-level threads (Reddit-style) await a separate "member-writable collections" feature. |
 | **9.5** | Moderation | `nx_reports`, `nx_bans` (scoped), staff `moderator` role, member role grant UI (promote member → category-mod, etc.), reports queue UI, ban flow, audit trail. |
 | **9.6** | Pluggable bits | SSO adapter, anti-spam adapter, reputation rules, community settings page. |
 
@@ -491,9 +503,13 @@ implementation surfaces as questionable.
    markdown (server-rendered, sanitized). Alternatives: a stripped
    Lexical editor, plain text only.
 
-7. **Forum included in 9.x at all, or split into Phase 10?** Some
-   teams need only comments, never threads. The threading slice is
-   a sizable chunk on its own.
+7. **Forum subsystem.** Resolved: **dropped as a dedicated
+   subsystem**, replaced by `@nexpress/plugin-forum` shipping a
+   collection scaffold. Comments + replies + reactions + follows
+   from 9.2/9.3 carry the threading + voting load — re-implementing
+   them as `nx_threads*` was duplication. Member-authored top-level
+   threads remain a separate framework feature (member-writable
+   collections); the plugin's `access.create` flips when that lands.
 
 8. **Notification email delivery cadence.** Per-event vs. digest
    (hourly / daily). Draft assumes per-event; digest can come later.

@@ -64,3 +64,29 @@ export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
   createdByUser: one(nxUsers, { fields: [pagesTable.createdBy], references: [nxUsers.id] }),
   updatedByUser: one(nxUsers, { fields: [pagesTable.updatedBy], references: [nxUsers.id] }),
 }));
+
+export const discussionsTable = pgTable(
+  "nx_c_discussions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived"] }).default("draft").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    title: text("title").notNull(),
+    body: jsonb("body"),
+    category: text("category"),
+    pinned: boolean("pinned"),
+    locked: boolean("locked"),
+    slug: text("slug").notNull(),
+    _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [index("nx_c_discussions_status_idx").on(table.status), uniqueIndex("nx_c_discussions_slug_idx").on(table.slug)],
+);
+
+export const discussionsTableRelations = relations(discussionsTable, ({ many, one }) => ({
+  createdByUser: one(nxUsers, { fields: [discussionsTable.createdBy], references: [nxUsers.id] }),
+  updatedByUser: one(nxUsers, { fields: [discussionsTable.updatedBy], references: [nxUsers.id] }),
+}));
