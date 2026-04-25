@@ -10,6 +10,7 @@ export {
   setDb,
   getDb,
   saveDocument,
+  autosaveRevision,
   deleteDocument,
   findDocuments,
   getDocumentById,

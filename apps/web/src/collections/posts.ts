@@ -10,7 +10,7 @@ export const postsCollection = defineCollection({
     defaultSort: "-publishedAt",
     description: "Blog posts — long-form rich-text content.",
   },
-  versions: { drafts: true, max: 20 },
+  versions: { drafts: { autosave: true }, max: 20 },
   access: {
     read: () => true,
     create: isEditorOrAbove,
