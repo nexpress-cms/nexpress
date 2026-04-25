@@ -41,9 +41,10 @@ export function FollowButton({ memberId }: FollowButtonProps) {
       .then(async (res) => {
         if (cancelled) return;
         if (res.ok) {
-          const body = (await res.json()) as { id?: string };
-          setViewerId(body.id ?? null);
-          if (body.id && body.id !== memberId) {
+          const body = (await res.json()) as { member?: { id?: string } };
+          const id = body.member?.id ?? null;
+          setViewerId(id);
+          if (id && id !== memberId) {
             void loadFollowState();
           }
         } else {

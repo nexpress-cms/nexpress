@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 interface CommentRow {
   id: string;
@@ -214,6 +214,7 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
   const [count, setCount] = useState(0);
   const [mine, setMine] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({
@@ -238,32 +239,42 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
   const toggle = async () => {
     if (memberKnown !== true || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const csrf = readCookie("nx-mb-csrf");
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),
       };
+      let res: Response;
       if (mine) {
         const params = new URLSearchParams({
           targetType: "comment",
           targetId: commentId,
           kind: "like",
         });
-        await fetch(`/api/reactions?${params.toString()}`, {
+        res = await fetch(`/api/reactions?${params.toString()}`, {
           method: "DELETE",
           credentials: "include",
           headers,
         });
       } else {
-        await fetch(`/api/reactions`, {
+        res = await fetch(`/api/reactions`, {
           method: "POST",
           credentials: "include",
           headers,
           body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
         });
       }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
       await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reaction failed");
     } finally {
       setBusy(false);
     }
@@ -271,27 +282,32 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
 
   const disabled = memberKnown !== true || busy;
   return (
-    <button
-      type="button"
-      onClick={() => {
-        void toggle();
-      }}
-      disabled={disabled}
-      aria-pressed={mine}
-      title={memberKnown === true ? (mine ? "Unlike" : "Like") : "Log in to react"}
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: 999,
-        padding: "0.2rem 0.6rem",
-        background: mine ? "#fef3c7" : "#fff",
-        color: mine ? "#854d0e" : "#475569",
-        cursor: disabled ? "default" : "pointer",
-        fontSize: "0.85rem",
-        opacity: disabled && memberKnown !== true ? 0.7 : 1,
-      }}
-    >
-      👍 {count}
-    </button>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+      <button
+        type="button"
+        onClick={() => {
+          void toggle();
+        }}
+        disabled={disabled}
+        aria-pressed={mine}
+        title={memberKnown === true ? (mine ? "Unlike" : "Like") : "Log in to react"}
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 999,
+          padding: "0.2rem 0.6rem",
+          background: mine ? "#fef3c7" : "#fff",
+          color: mine ? "#854d0e" : "#475569",
+          cursor: disabled ? "default" : "pointer",
+          fontSize: "0.85rem",
+          opacity: disabled && memberKnown !== true ? 0.7 : 1,
+        }}
+      >
+        👍 {count}
+      </button>
+      {error ? (
+        <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span>
+      ) : null}
+    </span>
   );
 }
 
@@ -306,6 +322,23 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleId = useId();
+
+  // Esc to close + lock body scroll while open. Initial focus → textarea.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    textareaRef.current?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
 
   const submit = async () => {
     if (!reason.trim()) return;
@@ -338,6 +371,7 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
     <div
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       style={{
         position: "fixed",
         inset: 0,
@@ -360,7 +394,9 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
           boxShadow: "0 12px 40px rgba(15, 23, 42, 0.2)",
         }}
       >
-        <h3 style={{ margin: 0, fontSize: "1rem" }}>Report this {targetType}</h3>
+        <h3 id={titleId} style={{ margin: 0, fontSize: "1rem" }}>
+          Report this {targetType}
+        </h3>
         {done ? (
           <>
             <p style={{ margin: 0, color: "#475569", fontSize: "0.9rem" }}>
@@ -389,6 +425,7 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
               Tell us briefly what's wrong. Moderators see this verbatim.
             </p>
             <textarea
+              ref={textareaRef}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               rows={4}
