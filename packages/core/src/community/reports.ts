@@ -2,7 +2,7 @@ import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
-import { nxReports } from "../db/schema/community.js";
+import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
 
 import { recordAuditEvent } from "./audit.js";
@@ -67,6 +67,12 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
       { field: "reason", message: `Reason must be ≤ ${MAX_REASON_LENGTH} characters` },
     ]);
   }
+
+  // Verify the target actually exists. Without this, members can fill
+  // the moderation queue with reports against UUIDs that point at
+  // nothing — and the audit log captures the phantom target id too,
+  // making forensic review noisy. (#52)
+  await assertReportTargetExists(input.targetType, targetId);
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
@@ -197,6 +203,47 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
   });
 
   return updated;
+}
+
+/**
+ * Verify the report's target row actually exists. Comment / member
+ * targets get a direct-table lookup; thread/reply targets are deferred
+ * — the design doc carves out separate tables for those that don't
+ * exist yet, so the safest behavior is to reject until they do.
+ */
+async function assertReportTargetExists(
+  targetType: string,
+  targetId: string,
+): Promise<void> {
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  if (targetType === "comment") {
+    const [row] = (await db
+      .select({ id: nxComments.id })
+      .from(nxComments)
+      .where(eq(nxComments.id, targetId))
+      .limit(1)) as Array<{ id: string }>;
+    if (!row) throw new NxNotFoundError("comment", targetId);
+    return;
+  }
+  if (targetType === "member") {
+    const [row] = (await db
+      .select({ id: nxMembers.id })
+      .from(nxMembers)
+      .where(eq(nxMembers.id, targetId))
+      .limit(1)) as Array<{ id: string }>;
+    if (!row) throw new NxNotFoundError("member", targetId);
+    return;
+  }
+  // `thread` / `reply` targets — those tables aren't in the v1 schema
+  // (the forum plugin reuses the comments table for replies). Until we
+  // add dedicated thread/reply storage, refuse rather than letting
+  // members file reports against UUIDs that can never resolve.
+  throw new NxValidationError("Invalid input", [
+    {
+      field: "targetType",
+      message: `Reports against "${targetType}" are not supported yet`,
+    },
+  ]);
 }
 
 /** Cheap "is anything in the queue?" probe for the admin badge. */

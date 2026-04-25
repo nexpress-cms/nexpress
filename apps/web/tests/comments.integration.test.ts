@@ -358,7 +358,10 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     const { id: parentId } = await readJson<{ id: string }>(created).then((r) => r.body);
 
     // Try to reply with parentId pointing at postA's comment from a
-    // *different* doc id — should fail.
+    // *different* doc id. After #49 the missing target document is
+    // detected first → 404 (NotFound). Before #49 the cross-doc
+    // parent check returned 400 because the target was treated as
+    // legitimate. Either way the smuggle is rejected.
     const reply = await commentsPOST(
       jsonRequest(`/api/collections/posts/00000000-0000-0000-0000-000000000000/comments`, {
         method: "POST",
@@ -373,6 +376,6 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
         }),
       },
     );
-    expect(reply.status).toBe(400);
+    expect(reply.status).toBe(404);
   });
 });
