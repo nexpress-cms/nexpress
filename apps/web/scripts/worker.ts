@@ -17,14 +17,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../../../.env") });
 loadEnv({ path: resolve(here, "../.env"), override: false });
 
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
-  process.exit(1);
-}
-
 async function main(): Promise<void> {
+  // Read + narrow inside main() so the type carries through to
+  // startWorker(databaseUrl) — TS won't propagate top-level narrowings
+  // into nested function scopes.
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
+    process.exit(1);
+  }
+
   ensureCoreServices();
   await ensurePluginsLoaded();
 
