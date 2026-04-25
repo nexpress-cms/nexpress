@@ -20,6 +20,11 @@ export type { DashboardPluginWidget } from "./dashboard/plugin-widgets.js";
 export { MembersListView } from "./members/members-list-view.js";
 export type { MemberListRow } from "./members/members-list-view.js";
 
+export { ReportsQueueView } from "./community/reports-queue-view.js";
+export type { ReportRow } from "./community/reports-queue-view.js";
+export { AuditLogView } from "./community/audit-log-view.js";
+export type { AuditEventRow } from "./community/audit-log-view.js";
+
 export { MediaLibrary } from "./media/media-library.js";
 export { MediaUploadZone } from "./media/media-upload-zone.js";
 

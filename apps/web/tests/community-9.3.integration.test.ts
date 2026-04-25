@@ -25,6 +25,7 @@ import {
   POST as followsPOST,
   DELETE as followsDELETE,
 } from "@/app/api/follows/route";
+import { GET as followsCheckGET } from "@/app/api/follows/check/route";
 import { GET as notificationsGET } from "@/app/api/notifications/route";
 import { POST as markReadPOST } from "@/app/api/notifications/mark-read/route";
 
@@ -341,6 +342,40 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     );
     const afterBody = await readJson<{ follows: unknown[] }>(after);
     expect(afterBody.body.follows).toHaveLength(0);
+  });
+
+  it("/api/follows/check returns boolean for the current viewer's follow state", async () => {
+    const viewer = await seedActiveMember("vic", "vic@example.com");
+    const target = await seedActiveMember("tina", "tina@example.com");
+
+    // Initially not following.
+    const before = await followsCheckGET(
+      jsonRequest(
+        `/api/follows/check?targetType=member&targetId=${target.memberId}`,
+        { cookies: [`nx-mb-session=${viewer.sessionCookie}`] },
+      ),
+    );
+    const beforeBody = await readJson<{ following: boolean }>(before);
+    expect(before.status).toBe(200);
+    expect(beforeBody.body.following).toBe(false);
+
+    await followsPOST(
+      jsonRequest("/api/follows", {
+        method: "POST",
+        cookies: [`nx-mb-session=${viewer.sessionCookie}`, `nx-mb-csrf=${viewer.csrfCookie}`],
+        headers: { "x-csrf-token": viewer.csrfCookie },
+        body: JSON.stringify({ targetType: "member", targetId: target.memberId }),
+      }),
+    );
+
+    const after = await followsCheckGET(
+      jsonRequest(
+        `/api/follows/check?targetType=member&targetId=${target.memberId}`,
+        { cookies: [`nx-mb-session=${viewer.sessionCookie}`] },
+      ),
+    );
+    const afterBody = await readJson<{ following: boolean }>(after);
+    expect(afterBody.body.following).toBe(true);
   });
 
   it("self-follow is rejected", async () => {
