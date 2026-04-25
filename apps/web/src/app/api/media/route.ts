@@ -1,7 +1,7 @@
-import { NxValidationError, listMedia } from "@nexpress/core";
+import { NxForbiddenError, NxValidationError, hasRole, listMedia } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { optionalAuth } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureCoreServices } from "@/lib/init-core";
 
@@ -32,7 +32,15 @@ function parsePositiveInt(
 
 export async function GET(request: NextRequest) {
   try {
-    await optionalAuth(request);
+    // Library metadata (storage keys, hashes, original filenames,
+    // uploader linkage) was readable anonymously via `optionalAuth`
+    // (#73). The public site uses `getMediaById` server-side and
+    // serves storage URLs directly; no anonymous client needs the
+    // admin-library shape. Require at least an editor session.
+    const user = await requireAuth(request);
+    if (!hasRole(user, "editor")) {
+      throw new NxForbiddenError("media", "list");
+    }
     ensureCoreServices();
 
     const params = request.nextUrl.searchParams;

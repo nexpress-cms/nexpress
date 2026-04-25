@@ -75,7 +75,11 @@ export async function GET(request: NextRequest) {
     const exportSlugs = collectionsFilter ?? getAllCollectionSlugs();
     const collections: Record<string, Record<string, unknown>[]> = {};
     for (const slug of exportSlugs) {
-      const result = await findDocuments(slug, { limit: 10000 }, undefined);
+      // Pass the authenticated admin user so collections with custom
+      // `access.read` get evaluated against the real principal — not
+      // the anonymous/public path. Without this an admin backup
+      // silently dropped private collections (#66).
+      const result = await findDocuments(slug, { limit: 10000 }, user);
       collections[slug] = result.docs;
     }
 
