@@ -55,24 +55,17 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
   validateKind(input.kind);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
-  // Check existing first — avoids the duplicate-insert error path AND
-  // keeps the "should I send a notification?" decision deterministic
-  // (only on the first insert per member-target-kind).
-  const [existing] = (await db
-    .select()
-    .from(nxReactions)
-    .where(
-      and(
-        eq(nxReactions.targetType, input.targetType),
-        eq(nxReactions.targetId, input.targetId),
-        eq(nxReactions.memberId, input.memberId),
-        eq(nxReactions.kind, input.kind),
-      ),
-    )
-    .limit(1)) as NxReactionRow[];
-  if (existing) return existing;
-
-  const [row] = (await db
+  // Idempotent insert via ON CONFLICT. The previous select-then-insert
+  // pattern lost a race when two identical clicks arrived in parallel —
+  // both selects found nothing, both inserts ran, one hit the unique
+  // constraint with a 23505 surface as 500. (#48)
+  //
+  // `onConflictDoNothing` returns nothing for the conflict, so we
+  // re-select the existing row when our insert was the loser. The
+  // `inserted` flag tells us which path won — the notification only
+  // fires when our insert actually created a new reaction, keeping
+  // the "first-time only" semantic.
+  const inserted = (await db
     .insert(nxReactions)
     .values({
       targetType: input.targetType,
@@ -80,8 +73,28 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
       memberId: input.memberId,
       kind: input.kind,
     })
+    .onConflictDoNothing()
     .returning()) as NxReactionRow[];
-  if (!row) throw new Error("Reaction insert returned no row");
+
+  let row: NxReactionRow;
+  if (inserted.length > 0) {
+    row = inserted[0]!;
+  } else {
+    const [existing] = (await db
+      .select()
+      .from(nxReactions)
+      .where(
+        and(
+          eq(nxReactions.targetType, input.targetType),
+          eq(nxReactions.targetId, input.targetId),
+          eq(nxReactions.memberId, input.memberId),
+          eq(nxReactions.kind, input.kind),
+        ),
+      )
+      .limit(1)) as NxReactionRow[];
+    if (!existing) throw new Error("Reaction conflict but row not found");
+    return existing;
+  }
 
   // Fan out a notification to the comment author (skip self-reactions).
   if (input.targetType === "comment") {
