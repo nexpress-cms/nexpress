@@ -53,8 +53,10 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
   // Validate the target exists so a typo doesn't quietly insert a
-  // dangling follow row. Only `member` has a checkable target in 9.3
-  // (thread / tag come later).
+  // dangling follow row. `thread` / `tag` targets had no validation
+  // path because those subjects don't exist yet — that meant members
+  // could spam the follow graph with arbitrary strings (#75). Until
+  // those surfaces ship, refuse follows for them.
   if (input.targetType === "member") {
     const [target] = (await db
       .select({ id: nxMembers.id, status: nxMembers.status })
@@ -67,6 +69,13 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
         { field: "targetId", message: "Cannot follow a non-active member." },
       ]);
     }
+  } else {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "targetType",
+        message: `Following ${input.targetType} targets is not supported yet`,
+      },
+    ]);
   }
 
   // Idempotent: if the follow already exists, return it.

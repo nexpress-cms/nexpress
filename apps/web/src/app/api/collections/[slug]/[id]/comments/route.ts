@@ -1,4 +1,4 @@
-import { createComment, listComments } from "@nexpress/core";
+import { createComment, listComments, memberCan } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
@@ -26,12 +26,19 @@ export async function GET(
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
     const order = url.searchParams.get("order") === "oldest" ? "oldest" : "newest";
 
-    // Hidden rows are visible to mods + staff. For 9.2 we don't have
-    // staff bypass yet, so just check member's mod grants. The list
-    // endpoint with `?includeHidden=1` is gated to members who have
-    // `restore-comment` capability somewhere in scope.
-    const includeHidden =
-      url.searchParams.get("includeHidden") === "1" && Boolean(member);
+    // Hidden rows are mod-only. The original guard only checked
+    // "is any member logged in?", which leaked hidden/deleted/pending
+    // rows to ordinary members (#46). Now we require an actual
+    // `restore-comment` capability in the collection scope, the same
+    // permission a mod needs to un-hide a comment.
+    let includeHidden = false;
+    if (url.searchParams.get("includeHidden") === "1" && member) {
+      includeHidden = await memberCan(member.id, "restore-comment", {
+        type: "comment-list",
+        id,
+        scopes: [{ type: "collection", id: slug }],
+      });
+    }
 
     const result = await listComments(slug, id, {
       limit: Number.isFinite(limit) ? limit : undefined,

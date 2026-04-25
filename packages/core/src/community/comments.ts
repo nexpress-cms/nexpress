@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getCollectionConfig } from "../collections/registry.js";
-import { getDb } from "../collections/pipeline.js";
+import { getDb, getDocumentById } from "../collections/pipeline.js";
 import { nxComments } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
@@ -83,6 +83,28 @@ function commentScopes(row: { targetType: string }): Array<{ type: "collection";
 export async function createComment(input: NxCommentCreateInput): Promise<NxCommentRow> {
   validateBody(input.bodyMd);
   assertCollectionAcceptsComments(input.targetType);
+
+  // Target document must actually exist. Without this guard, members
+  // could insert orphan comment rows under random UUIDs for any
+  // comment-enabled collection (#49). We use the public read path
+  // (`undefined` user = anonymous) so the comment-creation surface
+  // matches what's publicly visible — comments under a draft would
+  // be filtered out of the rendered site anyway.
+  const targetDoc = await getDocumentById(input.targetType, input.targetId);
+  if (!targetDoc) {
+    throw new NxNotFoundError(input.targetType, input.targetId);
+  }
+
+  // Forum-style "locked" guard: collections that opted into a `locked`
+  // checkbox on their schema (e.g. `defineDiscussionsCollection`) flip
+  // it to true to prevent new comments. The flag lives at the document
+  // level, not the collection level — different threads in the same
+  // collection can be locked independently. (#47)
+  if (targetDoc.locked === true) {
+    throw new NxValidationError("Invalid input", [
+      { field: "targetId", message: "This thread is locked and does not accept new comments." },
+    ]);
+  }
 
   // Parent thread sanity: if `parentId` is set, the parent must exist
   // and target the same collection + document. Cross-doc replies are
@@ -209,6 +231,16 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
     .where(eq(nxComments.id, input.commentId))
     .limit(1)) as NxCommentRow[];
   if (!existing) throw new NxNotFoundError("comment", input.commentId);
+
+  // Reject edits to soft-deleted comments. `deleteComment` clears
+  // `bodyMd`/`bodyHtml` to honor erasure expectations; allowing the
+  // owner to edit-back content would defeat that and let moderation
+  // views surface text the user expected to disappear. (#50)
+  if (existing.status === "deleted") {
+    throw new NxValidationError("Invalid state", [
+      { field: "comment", message: "Cannot edit a deleted comment" },
+    ]);
+  }
 
   // Owner edits via `edit-own`; mods via `edit-any-comment`.
   const ownerCan = await memberCan(input.memberId, "edit-own", {
