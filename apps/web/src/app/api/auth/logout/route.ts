@@ -1,11 +1,23 @@
-import { invalidateAllSessions, runHook } from "@nexpress/core";
+import { runHook } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { clearAuthCookies, optionalAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
 import { ensurePluginsLoaded } from "@/lib/init-core";
 
+/**
+ * Per-device logout. Clears the current `nx-session` / `nx-refresh` /
+ * `nx-csrf` cookies. Previously this also called
+ * `invalidateAllSessions(user.id)`, which bumped `nx_users.tokenVersion`
+ * and forcibly logged the user out of every other device they had —
+ * routine logout had global side effects. (#74)
+ *
+ * Global logout (kill every session for this user) should be a
+ * separate explicit "log out everywhere" endpoint when we add one;
+ * the staff JWTs already expire at their natural TTL, and any
+ * compromised-token recovery flow can bump tokenVersion via the
+ * password change / reset paths that already do it.
+ */
 export async function POST(request: NextRequest) {
   try {
     const user = await optionalAuth(request);
@@ -19,7 +31,6 @@ export async function POST(request: NextRequest) {
           role: user.role,
         },
       });
-      await invalidateAllSessions(user.id, getDb());
     }
 
     const response = nxSuccessResponse({ success: true });
