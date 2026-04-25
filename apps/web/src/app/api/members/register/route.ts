@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import {
   NxValidationError,
   createMemberEmailVerifyToken,
@@ -104,9 +102,6 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await hashPassword(body.password);
-    // Generate a CSRF token alongside the email verify token. We don't
-    // set the session yet — that happens on first login post-verify.
-    const csrfToken = randomBytes(16).toString("hex");
 
     const [created] = await db
       .insert(nxMembers)
@@ -132,10 +127,6 @@ export async function POST(request: NextRequest) {
       verifyUrl: buildVerifyUrl(request, issued.token),
       siteName: nexpressConfig.site.name,
     });
-    // CSRF reference is unused at register time; produced for parity
-    // with login so future flows can read a `nx-mb-csrf-pending`
-    // cookie if we add a pre-login flow. Suppress unused warning.
-    void csrfToken;
 
     return nxSuccessResponse({ ok: true });
   } catch (error) {
