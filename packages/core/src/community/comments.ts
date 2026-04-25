@@ -7,7 +7,7 @@ import { nxComments } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
 import { recordAuditEvent } from "./audit.js";
-import { memberCan } from "./can.js";
+import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { createNotification } from "./notifications.js";
 
@@ -83,6 +83,14 @@ function commentScopes(row: { targetType: string }): Array<{ type: "collection";
 export async function createComment(input: NxCommentCreateInput): Promise<NxCommentRow> {
   validateBody(input.bodyMd);
   assertCollectionAcceptsComments(input.targetType);
+
+  // Reject banned members before any IO. Site-wide bans block every
+  // comment; collection-scoped bans block writes to that collection.
+  // (#53 — without this, banned members kept commenting because
+  // `createComment` never went through `memberCan`.)
+  await assertNotBanned(input.memberId, [
+    { type: "collection", id: input.targetType },
+  ]);
 
   // Target document must actually exist. Without this guard, members
   // could insert orphan comment rows under random UUIDs for any
