@@ -239,3 +239,18 @@ export type {
   NxErrorReporter,
   NxErrorReportContext,
 } from "./observability/index.js";
+
+export {
+  getCommunityRole,
+  listCommunityRoles,
+  registerCommunityRole,
+  resetCommunityRoles,
+  memberCan,
+} from "./community/index.js";
+export type {
+  CommunityCapability,
+  CommunityRoleDefinition,
+  CommunityScope,
+  MemberAction,
+  MemberCanTarget,
+} from "./community/index.js";
