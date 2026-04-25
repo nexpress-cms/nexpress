@@ -6,6 +6,14 @@ export {
   type CreateAuthHelpersOptions,
 } from "./auth.js";
 
+export {
+  createMemberAuthHelpers,
+  type MemberAuthCookieTokens,
+  type MemberAuthHelpers,
+  type MemberAuthRuntimeConfig,
+  type CreateMemberAuthHelpersOptions,
+} from "./member-auth.js";
+
 export { nxSuccessResponse, nxErrorResponse, type NxApiError } from "./response.js";
 
 export {

@@ -17,6 +17,9 @@ export { DashboardView } from "./dashboard/dashboard-view.js";
 export { DashboardPluginWidgets } from "./dashboard/plugin-widgets.js";
 export type { DashboardPluginWidget } from "./dashboard/plugin-widgets.js";
 
+export { MembersListView } from "./members/members-list-view.js";
+export type { MemberListRow } from "./members/members-list-view.js";
+
 export { MediaLibrary } from "./media/media-library.js";
 export { MediaUploadZone } from "./media/media-upload-zone.js";
 
