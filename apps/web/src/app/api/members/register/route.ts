@@ -104,19 +104,37 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(body.password);
 
-    const [created] = await db
-      .insert(nxMembers)
-      .values({
-        email: body.email,
-        password: passwordHash,
-        handle: body.handle,
-        displayName: body.displayName,
-        // Members start `pending` until email verify; login refuses
-        // pending accounts. Suspended is mod-only territory; deleted
-        // is the soft-delete sink.
-        status: "pending",
-      })
-      .returning({ id: nxMembers.id });
+    let created: { id: string } | undefined;
+    try {
+      [created] = await db
+        .insert(nxMembers)
+        .values({
+          email: body.email,
+          password: passwordHash,
+          handle: body.handle,
+          displayName: body.displayName,
+          // Members start `pending` until email verify; login refuses
+          // pending accounts. Suspended is mod-only territory; deleted
+          // is the soft-delete sink.
+          status: "pending",
+        })
+        .returning({ id: nxMembers.id });
+    } catch (err) {
+      // Two concurrent registrations for the same email/handle could
+      // both pass the preflight select; one insert wins, the other
+      // hits a unique violation (Postgres SQLSTATE 23505). Without
+      // catching it the loser leaks the collision via a 500.
+      // Constant-time anti-enumeration response: same `{ ok: true }`
+      // shape as the preflight collision branch. (#51)
+      if (
+        err instanceof Error &&
+        "code" in err &&
+        (err as { code?: string }).code === "23505"
+      ) {
+        return nxSuccessResponse({ ok: true });
+      }
+      throw err;
+    }
 
     if (!created) throw new Error("Failed to create member");
 
