@@ -66,3 +66,38 @@ export type {
   NxNotificationListResult,
   MarkReadInput,
 } from "./notifications.js";
+
+export { principalCan } from "./principal.js";
+export type { Principal } from "./principal.js";
+
+export { recordAuditEvent, listAuditEvents } from "./audit.js";
+export type {
+  AuditActor,
+  AuditActorKind,
+  AuditEventRow,
+  RecordAuditEventInput,
+  ListAuditOptions,
+} from "./audit.js";
+
+export {
+  fileReport,
+  listReports,
+  resolveReport,
+  unresolvedReportCount,
+} from "./reports.js";
+export type {
+  NxReportRow,
+  FileReportInput,
+  ListReportsOptions,
+  ListReportsResult,
+  ResolveReportInput,
+} from "./reports.js";
+
+export { issueBan, listBansForMember, revokeBan } from "./bans.js";
+export type {
+  NxBanRow,
+  BanScope,
+  BanKind,
+  IssueBanInput,
+  RevokeBanInput,
+} from "./bans.js";

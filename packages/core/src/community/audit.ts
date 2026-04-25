@@ -1,0 +1,110 @@
+import { and, desc, eq } from "drizzle-orm";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+
+import { getDb } from "../collections/pipeline.js";
+import { nxAuditEvents } from "../db/schema/community.js";
+
+/**
+ * Append-only moderation audit log. Every hide / restore / ban /
+ * role-grant write goes through here so admins can later answer
+ * "who took this action and when?" without diffing application logs.
+ *
+ * Writes are best-effort: a failed audit insert MUST NOT prevent the
+ * underlying mod action from succeeding (logged via the observability
+ * hooks instead). Reads are paginated and indexed by target.
+ */
+
+export type AuditActorKind = "staff" | "member" | "system";
+
+export interface AuditActor {
+  kind: AuditActorKind;
+  /** Set only for `kind: "staff"`. */
+  userId?: string;
+  /** Set only for `kind: "member"`. */
+  memberId?: string;
+}
+
+export interface RecordAuditEventInput {
+  actor: AuditActor;
+  action: string;
+  targetType?: string;
+  targetId?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface AuditEventRow {
+  id: string;
+  actorKind: AuditActorKind;
+  actorUserId: string | null;
+  actorMemberId: string | null;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export async function recordAuditEvent(input: RecordAuditEventInput): Promise<void> {
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  try {
+    await db.insert(nxAuditEvents).values({
+      actorKind: input.actor.kind,
+      actorUserId: input.actor.userId ?? null,
+      actorMemberId: input.actor.memberId ?? null,
+      action: input.action,
+      targetType: input.targetType ?? null,
+      targetId: input.targetId ?? null,
+      payload: input.payload ?? {},
+    });
+  } catch {
+    // Audit failures shouldn't block the underlying action. The caller
+    // is responsible for the moderation effect; this is just bookkeeping.
+  }
+}
+
+export interface ListAuditOptions {
+  /** Filter to audit events targeting one specific row. */
+  targetType?: string;
+  targetId?: string;
+  /** Filter to events caused by a specific actor. */
+  actorUserId?: string;
+  actorMemberId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listAuditEvents(
+  options: ListAuditOptions = {},
+): Promise<{ events: AuditEventRow[]; totalDocs: number }> {
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const offset = Math.max(options.offset ?? 0, 0);
+
+  const filters = [];
+  if (options.targetType) filters.push(eq(nxAuditEvents.targetType, options.targetType));
+  if (options.targetId) filters.push(eq(nxAuditEvents.targetId, options.targetId));
+  if (options.actorUserId) filters.push(eq(nxAuditEvents.actorUserId, options.actorUserId));
+  if (options.actorMemberId) filters.push(eq(nxAuditEvents.actorMemberId, options.actorMemberId));
+
+  const where = filters.length > 0 ? and(...filters) : undefined;
+
+  const rows = (await db
+    .select()
+    .from(nxAuditEvents)
+    .where(where)
+    .orderBy(desc(nxAuditEvents.createdAt))
+    .limit(limit)
+    .offset(offset)) as AuditEventRow[];
+
+  // For total count, run a coarser query — Postgres planner uses the
+  // matching partial index when the same filters apply.
+  let totalDocs = rows.length;
+  if (rows.length === limit) {
+    const all = (await db
+      .select()
+      .from(nxAuditEvents)
+      .where(where)) as Array<unknown>;
+    totalDocs = all.length;
+  }
+  return { events: rows, totalDocs };
+}

@@ -43,7 +43,7 @@ export type {
   NxDocumentStatus,
 } from "./config/types.js";
 
-export { ROLE_HIERARCHY, hasRole } from "./config/types.js";
+export { ROLE_HIERARCHY, hasRole, isStaffMod } from "./config/types.js";
 export { defineConfig } from "./config/define-config.js";
 export { defineCollection } from "./config/define-collection.js";
 export {
@@ -291,6 +291,16 @@ export {
   markNotificationsRead,
   markAllNotificationsRead,
   assertOwnsNotification,
+  principalCan,
+  recordAuditEvent,
+  listAuditEvents,
+  fileReport,
+  listReports,
+  resolveReport,
+  unresolvedReportCount,
+  issueBan,
+  listBansForMember,
+  revokeBan,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -316,4 +326,20 @@ export type {
   ListNotificationsOptions,
   NxNotificationListResult,
   MarkReadInput,
+  Principal,
+  AuditActor,
+  AuditActorKind,
+  AuditEventRow,
+  RecordAuditEventInput,
+  ListAuditOptions,
+  NxReportRow,
+  FileReportInput,
+  ListReportsOptions,
+  ListReportsResult,
+  ResolveReportInput,
+  NxBanRow,
+  BanScope,
+  BanKind,
+  IssueBanInput,
+  RevokeBanInput,
 } from "./community/index.js";

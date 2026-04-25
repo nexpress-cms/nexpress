@@ -117,6 +117,8 @@ export async function truncateAll(): Promise<void> {
     // Community tables (Phase 9.1a+). Order doesn't matter under CASCADE
     // — listing them keeps RESTART IDENTITY consistent and the test DB
     // wipes cleanly between cases.
+    "nx_audit_events",
+    "nx_reports",
     "nx_notifications",
     "nx_follows",
     "nx_reactions",

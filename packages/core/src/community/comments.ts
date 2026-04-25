@@ -6,6 +6,7 @@ import { getDb } from "../collections/pipeline.js";
 import { nxComments } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
+import { recordAuditEvent } from "./audit.js";
 import { memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { createNotification } from "./notifications.js";
@@ -310,6 +311,14 @@ export async function hideComment(input: NxCommentHideInput): Promise<void> {
       hiddenReason: input.reason ?? null,
     })
     .where(eq(nxComments.id, input.commentId));
+
+  await recordAuditEvent({
+    actor: { kind: "member", memberId: input.memberId },
+    action: "comment.hide",
+    targetType: "comment",
+    targetId: existing.id,
+    payload: { reason: input.reason ?? null, collection: existing.targetType },
+  });
 }
 
 export interface NxCommentRestoreInput {
@@ -348,6 +357,14 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
       hiddenReason: null,
     })
     .where(eq(nxComments.id, input.commentId));
+
+  await recordAuditEvent({
+    actor: { kind: "member", memberId: input.memberId },
+    action: "comment.restore",
+    targetType: "comment",
+    targetId: existing.id,
+    payload: { collection: existing.targetType },
+  });
 }
 
 /**
@@ -371,9 +388,19 @@ export async function staffHideComment(
       hiddenReason: reason ?? null,
     })
     .where(eq(nxComments.id, commentId));
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "comment.hide",
+    targetType: "comment",
+    targetId: commentId,
+    payload: { reason: reason ?? null, byStaff: true },
+  });
 }
 
-export async function staffRestoreComment(commentId: string): Promise<void> {
+export async function staffRestoreComment(
+  commentId: string,
+  staffUserId: string,
+): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -384,12 +411,29 @@ export async function staffRestoreComment(commentId: string): Promise<void> {
       hiddenReason: null,
     })
     .where(eq(nxComments.id, commentId));
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "comment.restore",
+    targetType: "comment",
+    targetId: commentId,
+    payload: { byStaff: true },
+  });
 }
 
-export async function staffDeleteComment(commentId: string): Promise<void> {
+export async function staffDeleteComment(
+  commentId: string,
+  staffUserId: string,
+): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "" })
     .where(eq(nxComments.id, commentId));
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "comment.delete",
+    targetType: "comment",
+    targetId: commentId,
+    payload: { byStaff: true },
+  });
 }

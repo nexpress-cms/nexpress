@@ -116,7 +116,7 @@ function buildSpec(): OpenApiSchema {
         id: { type: "string", format: "uuid" },
         email: { type: "string", format: "email" },
         name: { type: "string" },
-        role: { type: "string", enum: ["admin", "editor", "author", "viewer"] },
+        role: { type: "string", enum: ["admin", "editor", "moderator", "author", "viewer"] },
         createdAt: { type: "string", format: "date-time" },
         updatedAt: { type: "string", format: "date-time" },
       },
@@ -283,7 +283,7 @@ function buildSpec(): OpenApiSchema {
                 properties: {
                   email: { type: "string", format: "email" },
                   name: { type: "string" },
-                  role: { type: "string", enum: ["admin", "editor", "author", "viewer"] },
+                  role: { type: "string", enum: ["admin", "editor", "moderator", "author", "viewer"] },
                 },
               },
             },
@@ -554,7 +554,7 @@ function buildSpec(): OpenApiSchema {
                   email: { type: "string", format: "email" },
                   name: { type: "string" },
                   password: { type: "string", minLength: 8 },
-                  role: { type: "string", enum: ["admin", "editor", "author", "viewer"] },
+                  role: { type: "string", enum: ["admin", "editor", "moderator", "author", "viewer"] },
                 },
               },
             },
@@ -1749,6 +1749,181 @@ function buildSpec(): OpenApiSchema {
       responses: {
         "200": { description: "{ marked: number, all?: boolean }" },
         "400": { description: "Validation error" },
+      },
+    },
+  };
+
+  paths["/api/reports"] = {
+    post: {
+      summary: "File a community report",
+      description:
+        "Members report a comment, thread, reply, or another member. The report enters the moderation queue (`/api/admin/community/reports`). One row per submission — duplicate filings are not deduped.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["targetType", "targetId", "reason"],
+              properties: {
+                targetType: { type: "string", enum: ["comment", "thread", "reply", "member"] },
+                targetId: { type: "string", format: "uuid" },
+                reason: { type: "string", maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "201": { description: "Report row" },
+        "400": { description: "Validation error" },
+        "401": { description: "Member auth required" },
+      },
+    },
+  };
+  paths["/api/admin/community/reports"] = {
+    get: {
+      summary: "List moderation reports (staff/mod only)",
+      parameters: [
+        { in: "query", name: "status", schema: { type: "string", enum: ["unresolved", "resolved", "all"] }, description: "Default: `unresolved`." },
+        { in: "query", name: "targetType", schema: { type: "string", enum: ["comment", "thread", "reply", "member"] } },
+        { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
+        { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
+      ],
+      responses: {
+        "200": { description: "Paginated report list" },
+        "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+  };
+  paths["/api/admin/community/reports/{id}/resolve"] = {
+    post: {
+      summary: "Resolve a moderation report",
+      description:
+        "Marks the report resolved with a free-form `resolution` label (e.g. `\"hidden\"`, `\"banned\"`, `\"dismissed\"`). The actual moderation action (hide / ban / etc.) is a separate call.",
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["resolution"],
+              properties: { resolution: { type: "string" } },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": { description: "Updated report row" },
+        "400": { description: "Already resolved or validation error" },
+        "403": { description: "Requires admin / editor / moderator role" },
+        "404": { description: "Report not found" },
+      },
+    },
+  };
+  paths["/api/admin/community/bans"] = {
+    get: {
+      summary: "List active bans for a member",
+      parameters: [
+        { in: "query", name: "memberId", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      responses: {
+        "200": { description: "Active ban rows for the member" },
+        "400": { description: "memberId required" },
+        "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+    post: {
+      summary: "Issue a ban",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["memberId", "scopeType"],
+              properties: {
+                memberId: { type: "string", format: "uuid" },
+                scopeType: { type: "string", enum: ["site", "category", "collection"] },
+                scopeId: { type: "string", nullable: true, description: "Required for non-site scopes." },
+                kind: { type: "string", enum: ["temporary", "permanent"] },
+                expiresAt: { type: "string", format: "date-time", description: "Required when kind=temporary." },
+                reason: { type: "string", nullable: true },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "201": { description: "Ban row" },
+        "400": { description: "Validation error" },
+        "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+  };
+  paths["/api/admin/community/bans/{id}"] = {
+    delete: {
+      summary: "Revoke a ban",
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: {
+        "200": { description: "{ ok: true }" },
+        "403": { description: "Requires admin / editor / moderator role" },
+        "404": { description: "Ban not found" },
+      },
+    },
+  };
+  paths["/api/admin/community/comments/{id}"] = {
+    delete: {
+      summary: "Staff delete a comment",
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: {
+        "200": { description: "{ ok: true }" },
+        "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+  };
+  paths["/api/admin/community/comments/{id}/hide"] = {
+    post: {
+      summary: "Staff hide a comment",
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: { type: "object", properties: { reason: { type: "string" } } },
+          },
+        },
+      },
+      responses: {
+        "200": { description: "{ ok: true }" },
+        "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+  };
+  paths["/api/admin/community/comments/{id}/restore"] = {
+    post: {
+      summary: "Staff restore a comment",
+      parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: {
+        "200": { description: "{ ok: true }" },
+        "403": { description: "Requires admin / editor / moderator role" },
+      },
+    },
+  };
+  paths["/api/admin/audit"] = {
+    get: {
+      summary: "Read the moderation audit log",
+      parameters: [
+        { in: "query", name: "targetType", schema: { type: "string" } },
+        { in: "query", name: "targetId", schema: { type: "string", format: "uuid" } },
+        { in: "query", name: "actorUserId", schema: { type: "string", format: "uuid" } },
+        { in: "query", name: "actorMemberId", schema: { type: "string", format: "uuid" } },
+        { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
+        { in: "query", name: "page", schema: { type: "integer", minimum: 1 } },
+      ],
+      responses: {
+        "200": { description: "Paginated audit-event list" },
+        "403": { description: "Requires admin / editor / moderator role" },
       },
     },
   };
