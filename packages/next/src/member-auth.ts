@@ -70,7 +70,14 @@ export function createMemberAuthHelpers<DB>(
     if (!token) return null;
     try {
       const payload = await verifyMemberToken(token, readSecret());
-      const member = await getMemberFromTokenPayload(options.getDb() as never, payload);
+      // Pass the raw access token so the resolver can verify a live
+      // row exists in nx_member_sessions — that's what makes
+      // `/api/members/logout` actually revoke the token. (#45)
+      const member = await getMemberFromTokenPayload(
+        options.getDb() as never,
+        payload,
+        token,
+      );
       // Suspended / deleted members lose their session immediately —
       // their JWT may still be cryptographically valid, but the row
       // they reference is no longer allowed to act.
