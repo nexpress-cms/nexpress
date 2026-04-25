@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+import { FollowButton } from "@/components/follow-button";
 import { ensureCoreServices } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 
@@ -16,6 +17,7 @@ async function loadActiveMember(handle: string) {
   ensureCoreServices();
   const [row] = await getDb()
     .select({
+      id: nxMembers.id,
       handle: nxMembers.handle,
       displayName: nxMembers.displayName,
       bio: nxMembers.bio,
@@ -63,10 +65,11 @@ export default async function PublicProfilePage({ params }: ProfilePageProps) {
         >
           {member.displayName.slice(0, 1).toUpperCase()}
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <h1 style={{ margin: 0, fontSize: "1.5rem" }}>{member.displayName}</h1>
           <p style={{ margin: 0, color: "#64748b" }}>@{member.handle}</p>
         </div>
+        <FollowButton memberId={member.id} />
       </header>
       {member.bio ? <p style={{ marginTop: "1.5rem", lineHeight: 1.6 }}>{member.bio}</p> : null}
       <p style={{ marginTop: "1.5rem", color: "#64748b", fontSize: "0.875rem" }}>

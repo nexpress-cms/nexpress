@@ -7,12 +7,20 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Flag,
+  History,
   Image,
   LayoutDashboard,
   Puzzle,
   Settings,
+  Users,
 } from "lucide-react";
 import type { NxAuthUser, NxCollectionConfig } from "@nexpress/core";
+
+// Inlined to keep `@nexpress/core` (server-only) out of the client bundle.
+// Mirrors `isStaffMod` / `hasRole(user, "editor")` from core/config/types.ts.
+const STAFF_MOD_ROLES = new Set(["admin", "editor", "moderator"]);
+const EDITOR_OR_ABOVE = new Set(["admin", "editor"]);
 
 import { AdminTopbar } from "./admin-topbar.js";
 import { Button } from "../ui/button.js";
@@ -101,6 +109,18 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
     { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 
+  const communityItems = React.useMemo<NavItem[]>(() => {
+    const items: NavItem[] = [];
+    if (EDITOR_OR_ABOVE.has(user.role)) {
+      items.push({ href: "/admin/members", label: "Members", icon: Users });
+    }
+    if (STAFF_MOD_ROLES.has(user.role)) {
+      items.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
+      items.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
+    }
+    return items;
+  }, [user.role]);
+
   return (
     <TooltipProvider delayDuration={120}>
       <div className="flex min-h-screen bg-neutral-100 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
@@ -163,6 +183,26 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
                   </div>
                 </div>
               ))}
+
+              {communityItems.length > 0 ? (
+                <div className="space-y-2">
+                  {!collapsed ? (
+                    <p className="px-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Community</p>
+                  ) : null}
+                  <div className="space-y-1">
+                    {communityItems.map((item) => (
+                      <NavLink
+                        key={item.href}
+                        collapsed={collapsed}
+                        href={item.href}
+                        icon={item.icon}
+                        label={item.label}
+                        pathname={pathname}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 {!collapsed ? (
