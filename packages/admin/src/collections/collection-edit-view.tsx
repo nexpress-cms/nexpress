@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -181,6 +181,16 @@ const isVisibleField = (field: NxFieldConfig): boolean => {
 
 type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
 
+function formatRelative(timestamp: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
+}
+
 export function CollectionEditView({ config, doc, collectionSlug, collectionTabs }: CollectionEditViewProps) {
   const router = useRouter();
   const [toast, setToast] = useState<ToastState>(null);
@@ -206,6 +216,97 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
   const slugValue = form.watch("slug");
   const previewSlug = typeof slugValue === "string" ? slugValue : typeof doc?.slug === "string" ? doc.slug : "";
   const currentStatus = typeof doc?.status === "string" ? doc.status : null;
+
+  // Autosave wiring — enabled only when the collection opts in via
+  // versions.drafts.autosave === true. Reads optional autosaveInterval too.
+  const autosaveEnabled =
+    typeof config.versions?.drafts === "object" && config.versions.drafts.autosave === true;
+  const autosaveInterval =
+    typeof config.versions?.drafts === "object" && typeof config.versions.drafts.autosaveInterval === "number"
+      ? config.versions.drafts.autosaveInterval
+      : 5_000;
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "saving" }
+    | { kind: "saved"; at: number }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
+  // Hold the pending debounce handle in a ref so each keystroke can clear
+  // the previous timer — react-hook-form's `watch` callback ignores any
+  // value its subscriber returns, so a `return () => clearTimeout(...)`
+  // inside the callback would be silently dropped. Without this ref the
+  // user's first edit queues a timeout, the second queues another, and so
+  // on; after the debounce window every queued timer fires and floods the
+  // endpoint. The server dedups, but the network spam is wasteful.
+  const autosaveTimer = useRef<number | null>(null);
+  // `savingAs` is read inside the timer callback below; capture it via a
+  // ref so we don't have to re-subscribe form.watch every time it changes.
+  const savingAsRef = useRef(savingAs);
+  useEffect(() => {
+    savingAsRef.current = savingAs;
+  }, [savingAs]);
+
+  useEffect(() => {
+    if (!autosaveEnabled || !doc?.id) return;
+
+    const subscription = form.watch((values, { type }) => {
+      // Only react to user edits — `reset()` after a real save would
+      // otherwise re-trigger autosave with the same data we just persisted.
+      if (type !== "change") return;
+      const documentId = String(doc.id);
+      const snapshot = JSON.parse(JSON.stringify(values)) as Record<string, unknown>;
+
+      if (autosaveTimer.current !== null) {
+        window.clearTimeout(autosaveTimer.current);
+      }
+      autosaveTimer.current = window.setTimeout(async () => {
+        autosaveTimer.current = null;
+        // Skip when a manual Draft/Publish/Schedule save is in flight —
+        // they'll write a real revision themselves.
+        if (savingAsRef.current !== null) return;
+        try {
+          setAutosaveStatus({ kind: "saving" });
+          const response = await nxFetch(
+            `/api/collections/${collectionSlug}/${documentId}/autosave`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(snapshot),
+            },
+          );
+          if (!response.ok) {
+            const body = (await response.json().catch(() => null)) as
+              | { error?: { message?: string } }
+              | null;
+            throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
+          }
+          setAutosaveStatus({ kind: "saved", at: Date.now() });
+        } catch (error) {
+          setAutosaveStatus({
+            kind: "error",
+            message: error instanceof Error ? error.message : "Autosave failed",
+          });
+        }
+      }, autosaveInterval);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (autosaveTimer.current !== null) {
+        window.clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
+    };
+  }, [autosaveEnabled, autosaveInterval, collectionSlug, doc?.id, form]);
+
+  // Tick once per second so the "saved Xs ago" label refreshes without a re-save.
+  const [, setTickNow] = useState(0);
+  useEffect(() => {
+    if (autosaveStatus.kind !== "saved") return;
+    const handle = window.setInterval(() => setTickNow(Date.now()), 1_000);
+    return () => window.clearInterval(handle);
+  }, [autosaveStatus.kind]);
 
   const visibleFields = config.fields.filter(isVisibleField);
   const sidebarFields = visibleFields.filter(isSidebarField);
@@ -365,6 +466,17 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               ) : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">Shape content, metadata, and publishing details in one pass.</p>
+            {autosaveEnabled && doc?.id ? (
+              <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+                {autosaveStatus.kind === "saving"
+                  ? "Autosaving…"
+                  : autosaveStatus.kind === "saved"
+                    ? `Autosaved ${formatRelative(autosaveStatus.at)}`
+                    : autosaveStatus.kind === "error"
+                      ? <span className="text-rose-600">Autosave error: {autosaveStatus.message}</span>
+                      : "Autosave on"}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

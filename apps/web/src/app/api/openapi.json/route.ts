@@ -1163,6 +1163,42 @@ function buildSpec(): OpenApiSchema {
     };
 
     if (manifest.versions.drafts) {
+      paths[`/api/collections/${slug}/{id}/autosave`] = {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string", format: "uuid" } }],
+        post: {
+          summary: `Autosave a ${manifest.labels.singular.toLowerCase()} draft`,
+          description:
+            "Persists the request body as a `status=autosave` revision without touching the main document row. Editor clients call this on a debounce so a crash mid-edit can be recovered from the revisions panel. Requires `versions.drafts.autosave === true` on the collection.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": { schema: { type: "object", additionalProperties: true } },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Revision summary (or the existing one when the snapshot was a no-op duplicate).",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string", format: "uuid" },
+                      version: { type: "integer" },
+                      status: { type: "string", enum: ["autosave"] },
+                      createdAt: { type: "string", format: "date-time" },
+                      reused: { type: "boolean" },
+                    },
+                  },
+                },
+              },
+            },
+            "400": { description: "Autosave not configured for this collection" },
+            "404": { description: "Document not found" },
+          },
+        },
+      };
+
       const revisionSummary: OpenApiSchema = {
         type: "object",
         properties: {

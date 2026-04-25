@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { eq, sql, desc, asc, count } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
@@ -14,7 +14,7 @@ import {
   type NxCollectionHook,
   type NxFieldConfig,
 } from "../config/types.js";
-import { NxForbiddenError, NxNotFoundError } from "../errors.js";
+import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 import { applySlugField } from "./slug.js";
 import { getCollectionZodSchema } from "./validation.js";
 import {
@@ -230,6 +230,181 @@ export async function saveDocument(
     doc: savedDoc,
     operation,
   };
+}
+
+/**
+ * Persist an in-flight editor snapshot as a revision **without** touching
+ * the main document row. Designed for client-side autosave loops: the
+ * editor sends every few seconds while the user types, and a crash mid-
+ * edit can be recovered by restoring the latest autosave revision.
+ *
+ *  - Requires `versions.drafts` to be enabled on the collection.
+ *  - Optionally gated by `versions.drafts.autosave === true` (when
+ *    `versions` is the object form). Throws `NxValidationError` otherwise
+ *    so the API can return a tidy 4xx instead of silently writing.
+ *  - Skips the full zod validation that `saveDocument` runs — autosave
+ *    payloads may be temporarily incomplete (the user is still typing).
+ *  - Skips hooks, jobs, and revalidation: nothing is "saved" yet.
+ *  - Deduplicates against the most recent autosave: if the snapshot is
+ *    byte-identical to the previous autosave row, returns the existing
+ *    summary instead of writing a new one. Avoids unbounded autosave
+ *    rows during long idle edit sessions where react-hook-form fires
+ *    spurious "change" events.
+ */
+export async function autosaveRevision(
+  collection: string,
+  documentId: string,
+  data: Record<string, unknown>,
+  user: NxAuthUser,
+): Promise<{
+  id: string;
+  version: number;
+  status: "autosave";
+  createdAt: Date;
+  reused: boolean;
+}> {
+  const config = getCollectionConfig(collection);
+  const registration = getCollectionRegistration(collection);
+  const table = getCollectionTable(collection) as PgTable;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+
+  const drafts = config.versions?.drafts;
+  if (!drafts) {
+    throw new NxValidationError("Autosave not available", [
+      {
+        field: "collection",
+        message: `Collection "${collection}" has versions.drafts disabled — autosave is unavailable.`,
+      },
+    ]);
+  }
+  // `drafts: true` opts in to drafts but stays silent on autosave; we
+  // require an explicit `{ autosave: true }` to avoid surprising existing
+  // collections with extra DB writes per keystroke.
+  const autosaveEnabled = typeof drafts === "object" && drafts.autosave === true;
+  if (!autosaveEnabled) {
+    throw new NxValidationError("Autosave disabled", [
+      {
+        field: "collection",
+        message: `Autosave is not enabled for "${collection}" — set versions.drafts.autosave = true.`,
+      },
+    ]);
+  }
+
+  const originalDoc = await getDocumentByIdInternal(db, table, collection, documentId);
+  if (!originalDoc) {
+    throw new NxNotFoundError(collection, documentId);
+  }
+
+  // Reuse the same access gate `saveDocument` runs for an update — autosave
+  // is a write, even if it only lands in nx_revisions.
+  await assertWriteAccess(config, collection, "update", user, data, originalDoc);
+
+  // Dedup against the latest autosave for this doc.
+  const [latestAutosave] = (await db
+    .select({
+      id: nxRevisions.id,
+      version: nxRevisions.version,
+      snapshot: nxRevisions.snapshot,
+      createdAt: nxRevisions.createdAt,
+    })
+    .from(nxRevisions)
+    .where(
+      sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)} and ${eq(nxRevisions.status, "autosave")}`,
+    )
+    .orderBy(desc(nxRevisions.version))
+    .limit(1)) as Array<{
+    id: string;
+    version: number;
+    snapshot: Record<string, unknown> | null;
+    createdAt: Date;
+  }>;
+  if (latestAutosave && stableJson(latestAutosave.snapshot) === stableJson(data)) {
+    return {
+      id: latestAutosave.id,
+      version: latestAutosave.version,
+      status: "autosave",
+      createdAt: latestAutosave.createdAt,
+      reused: true,
+    };
+  }
+
+  const maxRevisions =
+    typeof config.versions === "object" && config.versions.max !== undefined
+      ? config.versions.max
+      : undefined;
+
+  const inserted = await db.transaction(async (tx) => {
+    const [revisionCount] = (await tx
+      .select({ total: count() })
+      .from(nxRevisions)
+      .where(
+        sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`,
+      )) as Array<{ total: number | string }>;
+    const nextVersion = Number(revisionCount?.total ?? 0) + 1;
+    const createdAt = new Date();
+
+    await tx.insert(nxRevisions).values({
+      collection,
+      documentId,
+      version: nextVersion,
+      status: "autosave",
+      snapshot: data,
+      changedFields: getChangedFields(data, originalDoc, "update"),
+      authorId: user.id,
+      createdAt,
+    });
+
+    if (maxRevisions !== undefined && maxRevisions > 0 && nextVersion > maxRevisions) {
+      const overflow = nextVersion - maxRevisions;
+      const toDelete = (await tx
+        .select({ id: nxRevisions.id })
+        .from(nxRevisions)
+        .where(
+          sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`,
+        )
+        .orderBy(asc(nxRevisions.version))
+        .limit(overflow)) as Array<{ id: string }>;
+      if (toDelete.length > 0) {
+        const ids = toDelete.map((r) => r.id);
+        await tx
+          .delete(nxRevisions)
+          .where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
+      }
+    }
+
+    // Read back the row we just inserted to get its generated id —
+    // `tx.insert(...).returning(...)` isn't part of our Drizzle adapter
+    // interface, so a follow-up SELECT is the simplest portable path.
+    const [row] = (await tx
+      .select({ id: nxRevisions.id })
+      .from(nxRevisions)
+      .where(
+        sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)} and ${eq(nxRevisions.version, nextVersion)}`,
+      )
+      .limit(1)) as Array<{ id: string }>;
+
+    return { id: row?.id ?? "", version: nextVersion, createdAt };
+  });
+  // `registration` reference silences the unused-binding lint; we keep
+  // the lookup early so misconfigured collections fail fast.
+  void registration;
+
+  return { ...inserted, status: "autosave", reused: false };
+}
+
+function stableJson(value: unknown): string {
+  // JSON.stringify with deterministic key ordering is enough for dedup —
+  // autosave payloads are user-edited records, not arbitrary structures.
+  return JSON.stringify(value, (_key, val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(val).sort()) {
+        sorted[k] = (val as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return val;
+  });
 }
 
 export async function deleteDocument(
