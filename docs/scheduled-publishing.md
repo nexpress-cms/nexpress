@@ -60,6 +60,20 @@ every request so production deploys can't accidentally leave it open.
 
 ---
 
+## Using it from the admin
+
+The collection edit view ships a **Schedule** button next to **Publish**.
+It opens a date/time picker that submits the document with
+`_status: "published"` plus a future `publishedAt` — the pipeline coerces
+that to `status: "scheduled"` server-side, so the workflow is symmetric
+whether you use the UI or the API.
+
+When the document is already scheduled, the button reads **Reschedule**
+and the dialog gains a **Cancel schedule** action that switches the doc
+back to `draft` (and clears `publishedAt`). The header **Publish**
+button also relabels to **Publish now** so editors can ship the
+in-flight schedule immediately.
+
 ## Using it from an agent
 
 Agents usually care about two operations:

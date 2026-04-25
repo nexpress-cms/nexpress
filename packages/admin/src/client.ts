@@ -11,6 +11,7 @@ export type {
 } from "./collections/collection-tabs.js";
 export { FieldRenderer } from "./collections/field-renderer.js";
 export { RevisionsPanel } from "./collections/revisions-panel.js";
+export { ScheduleDialog } from "./collections/schedule-dialog.js";
 
 export { DashboardView } from "./dashboard/dashboard-view.js";
 export { DashboardPluginWidgets } from "./dashboard/plugin-widgets.js";
