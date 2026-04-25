@@ -38,7 +38,7 @@ type UserRow = {
   role: NxUserRole;
 };
 
-const ROLE_OPTIONS: NxUserRole[] = ["admin", "editor", "author", "viewer"];
+const ROLE_OPTIONS: NxUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
 
 export function UserManagement() {
   const [users, setUsers] = useState<UserRow[]>([]);

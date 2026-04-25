@@ -23,6 +23,13 @@ import {
 export const nxUserRoleEnum = pgEnum("nx_user_role", [
   "admin",
   "editor",
+  // 9.5: community moderator. Sits OUTSIDE the linear content-edit
+  // hierarchy — a moderator handles community moderation (hide
+  // comments, resolve reports, issue bans) but cannot author or edit
+  // collection content. ROLE_HIERARCHY in config/types.ts intentionally
+  // does not list this role; community-moderation paths check the role
+  // explicitly via `principalCan()`.
+  "moderator",
   "author",
   "viewer",
 ]);

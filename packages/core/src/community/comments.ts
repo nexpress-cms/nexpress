@@ -6,6 +6,7 @@ import { getDb } from "../collections/pipeline.js";
 import { nxComments } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
+import { recordAuditEvent } from "./audit.js";
 import { memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { createNotification } from "./notifications.js";
@@ -310,6 +311,14 @@ export async function hideComment(input: NxCommentHideInput): Promise<void> {
       hiddenReason: input.reason ?? null,
     })
     .where(eq(nxComments.id, input.commentId));
+
+  await recordAuditEvent({
+    actor: { kind: "member", memberId: input.memberId },
+    action: "comment.hide",
+    targetType: "comment",
+    targetId: existing.id,
+    payload: { reason: input.reason ?? null, collection: existing.targetType },
+  });
 }
 
 export interface NxCommentRestoreInput {
@@ -348,6 +357,14 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
       hiddenReason: null,
     })
     .where(eq(nxComments.id, input.commentId));
+
+  await recordAuditEvent({
+    actor: { kind: "member", memberId: input.memberId },
+    action: "comment.restore",
+    targetType: "comment",
+    targetId: existing.id,
+    payload: { collection: existing.targetType },
+  });
 }
 
 /**
@@ -356,11 +373,23 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
  * sufficient role (admin/editor/moderator). No `memberId` required;
  * the action is always allowed.
  */
+async function loadCommentForStaffOp(commentId: string): Promise<NxCommentRow> {
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const [existing] = (await db
+    .select()
+    .from(nxComments)
+    .where(eq(nxComments.id, commentId))
+    .limit(1)) as NxCommentRow[];
+  if (!existing) throw new NxNotFoundError("comment", commentId);
+  return existing;
+}
+
 export async function staffHideComment(
   commentId: string,
   staffUserId: string,
   reason?: string | null,
 ): Promise<void> {
+  await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -371,9 +400,32 @@ export async function staffHideComment(
       hiddenReason: reason ?? null,
     })
     .where(eq(nxComments.id, commentId));
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "comment.hide",
+    targetType: "comment",
+    targetId: commentId,
+    payload: { reason: reason ?? null, byStaff: true },
+  });
 }
 
-export async function staffRestoreComment(commentId: string): Promise<void> {
+export async function staffRestoreComment(
+  commentId: string,
+  staffUserId: string,
+): Promise<void> {
+  const existing = await loadCommentForStaffOp(commentId);
+  // A "deleted" comment had its body wiped — flipping it back to visible
+  // would surface a ghost row (author + timestamp intact, body empty).
+  // Only `hidden` is reversible; member-side `restoreComment` enforces
+  // the same invariant.
+  if (existing.status !== "hidden") {
+    throw new NxValidationError("Invalid state", [
+      {
+        field: "status",
+        message: `Comment is "${existing.status}", not "hidden"`,
+      },
+    ]);
+  }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -384,12 +436,30 @@ export async function staffRestoreComment(commentId: string): Promise<void> {
       hiddenReason: null,
     })
     .where(eq(nxComments.id, commentId));
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "comment.restore",
+    targetType: "comment",
+    targetId: commentId,
+    payload: { byStaff: true },
+  });
 }
 
-export async function staffDeleteComment(commentId: string): Promise<void> {
+export async function staffDeleteComment(
+  commentId: string,
+  staffUserId: string,
+): Promise<void> {
+  await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "" })
     .where(eq(nxComments.id, commentId));
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "comment.delete",
+    targetType: "comment",
+    targetId: commentId,
+    payload: { byStaff: true },
+  });
 }
