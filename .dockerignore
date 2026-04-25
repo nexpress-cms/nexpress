@@ -1,0 +1,40 @@
+# Without this file the Docker build context balloons to several GB
+# (node_modules + .next + uploads + .git). Keep it tight.
+
+# Dependencies — re-installed inside the image
+**/node_modules
+.pnpm-store
+
+# Build artifacts — re-built inside the image
+**/.next
+**/dist
+**/.turbo
+
+# Local-only state
+**/.env
+**/.env.local
+.env.production
+uploads
+.cache
+coverage
+*.log
+
+# Editor / VCS noise
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+**/*.tsbuildinfo
+
+# Tests + docs (not needed in the production image)
+docs
+**/*.test.ts
+**/*.integration.test.ts
+**/tests
+packages/**/src/**/__tests__
+
+# Existing image / compose config — copying the whole docker/ dir back
+# inside the image is pointless
+docker
