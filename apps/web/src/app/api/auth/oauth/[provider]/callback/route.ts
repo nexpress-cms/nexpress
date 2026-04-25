@@ -74,7 +74,7 @@ export async function GET(
 
   const { secret } = getAuthRuntimeConfig();
   const verification = verifyOAuthState(stateCookie, providerId, secret);
-  if (!verification.ok) {
+  if (!verification.ok || !verification.payload) {
     return failResponse(request, `state_${verification.reason ?? "invalid"}`);
   }
 
@@ -84,6 +84,7 @@ export async function GET(
       code,
       state: stateParam,
       redirectUri: buildRedirectUri(request, providerId),
+      codeVerifier: verification.payload.codeVerifier,
     });
   } catch (err) {
     // Surface the provider error in logs — without it, a misconfigured

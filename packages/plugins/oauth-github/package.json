@@ -12,7 +12,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch --no-clean",
@@ -23,7 +25,8 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*"
+    "@nexpress/plugin-sdk": "workspace:*",
+    "arctic": "^3.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
