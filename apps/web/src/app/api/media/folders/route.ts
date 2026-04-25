@@ -9,13 +9,18 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    await optionalAuth(request);
+    // Folder structure is admin-library state — same gate as the
+    // media listing (#73).
+    const user = await requireAuth(request);
+    if (!hasRole(user, "editor")) {
+      throw new NxForbiddenError("media-folders", "list");
+    }
 
     const parentId = request.nextUrl.searchParams.get("parentId");
     const db = getDb();

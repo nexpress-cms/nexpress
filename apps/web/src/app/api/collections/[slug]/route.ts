@@ -1,3 +1,4 @@
+import { getCollectionConfig } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
@@ -10,6 +11,7 @@ import {
   parseFindOptions,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
+import { ensureCoreServices } from "@/lib/init-core";
 import { revalidateCollection } from "@/lib/revalidate";
 
 export async function GET(
@@ -19,11 +21,24 @@ export async function GET(
   try {
     const { slug } = await params;
     const user = await optionalAuth(request);
-    const result = await findCollectionDocuments(
-      slug,
-      parseFindOptions(request.nextUrl.searchParams),
-      user,
-    );
+    const findOptions = parseFindOptions(request.nextUrl.searchParams);
+
+    // Anonymous callers must not see drafts / scheduled / archived rows
+    // — that's the rendered-site invariant. The public REST surface
+    // was previously leaking them because the route applied no default
+    // status filter (#56). For collections that opt into draft
+    // workflows, force `where.status = "published"` for unauthenticated
+    // requests. Authenticated callers (any staff role) can still
+    // filter all statuses explicitly via `?where=`.
+    if (!user) {
+      ensureCoreServices();
+      const config = getCollectionConfig(slug);
+      if (config.versions?.drafts) {
+        findOptions.where = { ...(findOptions.where ?? {}), status: "published" };
+      }
+    }
+
+    const result = await findCollectionDocuments(slug, findOptions, user);
 
     return nxSuccessResponse(result);
   } catch (error) {

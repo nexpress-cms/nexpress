@@ -1,9 +1,17 @@
-import { getCollectionConfig, getCollectionTabsForSlug, getDocumentById } from "@nexpress/core";
+import {
+  getCollectionConfig,
+  getCollectionTabsForSlug,
+  getDocumentById,
+  verifyTokenFull,
+} from "@nexpress/core";
 import { CollectionEditView } from "@nexpress/admin/client";
 import type { CollectionTabDescriptor } from "@nexpress/admin";
 import { toClientCollectionConfig } from "@nexpress/next";
-import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
+import { notFound, redirect } from "next/navigation";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
+import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +27,18 @@ export default async function EditPage({ params }: Props) {
   const config = getCollectionConfig(collection);
   if (!config) notFound();
 
-  const doc = await getDocumentById(collection, id);
+  // Pass the authenticated staff user into `getDocumentById` so the
+  // collection's `access.read` is evaluated against the actual session
+  // (#57). Previously the SSR fetch ran anonymous and returned data for
+  // collections whose access function should have refused it.
+  const cookieStore = await cookies();
+  const token = cookieStore.get("nx-session")?.value;
+  if (!token) redirect("/admin/login");
+  const { secret } = getAuthRuntimeConfig();
+  const user = await verifyTokenFull(token, secret, getDb());
+  if (!user) redirect("/admin/login");
+
+  const doc = await getDocumentById(collection, id, user);
   if (!doc) notFound();
 
   const tabs: CollectionTabDescriptor[] = getCollectionTabsForSlug(collection).map((tab) => ({

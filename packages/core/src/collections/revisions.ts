@@ -5,7 +5,7 @@ import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.
 import { nxRevisions } from "../db/schema/system.js";
 import type { NxAuthUser, NxSaveResult } from "../config/types.js";
 import { getCollectionConfig } from "./registry.js";
-import { getDb, saveDocument } from "./pipeline.js";
+import { getDb, getDocumentById, saveDocument } from "./pipeline.js";
 
 export type NxRevisionStatus = "draft" | "published" | "autosave";
 
@@ -60,21 +60,41 @@ function assertVersionsEnabled(collection: string): void {
   }
 }
 
+/**
+ * Revisions can include draft / autosave snapshots that the public
+ * site never serves. Authorizing revision reads with `access.read`
+ * was leaking those to any user who could read the published
+ * document — for `posts`/`pages` that's anyone, including a
+ * logged-in viewer account. (#58)
+ *
+ * Switch the gate to `access.update`: only users who could PUBLISH
+ * the document get to peek at its history. When the collection
+ * doesn't define `access.update`, fall back to a hard staff-role
+ * floor so we never silently relax the check.
+ */
 async function assertReadAccess(
   collection: string,
   user: NxAuthUser | null,
   doc: Record<string, unknown> | null,
 ): Promise<void> {
   const config = getCollectionConfig(collection);
+  if (!user) {
+    throw new NxForbiddenError(collection, "read-revision");
+  }
 
-  if (!config.access?.read) {
+  if (config.access?.update) {
+    const allowed = await config.access.update({ user, doc: doc ?? undefined });
+    if (!allowed) {
+      throw new NxForbiddenError(collection, "read-revision");
+    }
     return;
   }
 
-  const allowed = await config.access.read({ user, doc: doc ?? undefined });
-
-  if (!allowed) {
-    throw new NxForbiddenError(collection, "read");
+  // No update gate defined — require admin/editor (the staff roles that
+  // can author content). `viewer`/`author` are stricter than `access
+  // .read` would have been.
+  if (user.role !== "admin" && user.role !== "editor") {
+    throw new NxForbiddenError(collection, "read-revision");
   }
 }
 
@@ -95,7 +115,11 @@ export async function listRevisions(
   user: NxAuthUser | null = null,
 ): Promise<NxRevisionListResult> {
   assertVersionsEnabled(collection);
-  await assertReadAccess(collection, user, null);
+  // Load the doc so `access.update` (per #58) gets the actual row
+  // instead of `null`. Collections that gate access by ownership /
+  // category need the doc to make a sensible decision.
+  const targetDoc = await getDocumentById(collection, documentId, user ?? undefined);
+  await assertReadAccess(collection, user, targetDoc);
 
   const db = getDb() as unknown as DrizzleDb;
   const limit = normalizeLimit(options.limit);
@@ -153,7 +177,9 @@ export async function getRevision(
   user: NxAuthUser | null = null,
 ): Promise<NxRevision> {
   assertVersionsEnabled(collection);
-  await assertReadAccess(collection, user, null);
+  // Load the doc so `access.update` (per #58) gets the actual row.
+  const targetDoc = await getDocumentById(collection, documentId, user ?? undefined);
+  await assertReadAccess(collection, user, targetDoc);
 
   const db = getDb() as unknown as DrizzleDb;
 
