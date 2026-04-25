@@ -46,10 +46,14 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
   // Probe `/api/members/me` once on mount to show or hide the form. The
   // probe is cheap (single DB read by id) and avoids prop-drilling
   // session state into every page that mounts the comment block.
+  // The lint rule wants external-system sync; this is a fetch-on-mount
+  // → setState pattern, which is the canonical client-component shape
+  // until we move to Suspense + a data layer.
   useEffect(() => {
     fetch("/api/members/me", { credentials: "include" })
       .then((res) => setMemberKnown(res.ok))
       .catch(() => setMemberKnown(false));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
@@ -233,6 +237,7 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
   }, [commentId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

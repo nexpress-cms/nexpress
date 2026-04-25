@@ -91,7 +91,7 @@ export async function POST(
           createdBy: _createdBy,
           updatedBy: _updatedBy,
           ...rest
-        } = existing as Record<string, unknown>;
+        } = existing;
         await saveDocument(slug, id, rest, user, {
           status: action === "publish" ? "published" : "draft",
         });
