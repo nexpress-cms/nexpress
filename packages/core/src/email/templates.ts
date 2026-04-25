@@ -63,6 +63,40 @@ export function buildInviteEmail(data: NxPasswordResetTemplateData): NxEmailTemp
   return { subject, text, html };
 }
 
+export interface NxMemberVerifyTemplateData {
+  siteName: string;
+  displayName: string;
+  verifyUrl: string;
+}
+
+/**
+ * Email a brand-new member to confirm their address. Different copy
+ * from the staff invite (members self-register, no admin invited them)
+ * but reuses the same wrapper styling.
+ */
+export function buildMemberVerifyEmail(data: NxMemberVerifyTemplateData): NxEmailTemplate {
+  const subject = `Confirm your ${data.siteName} account`;
+  const text =
+    `Hi ${data.displayName},\n\n` +
+    `Welcome to ${data.siteName}. Confirm your email so we can activate your account:\n\n` +
+    `${data.verifyUrl}\n\n` +
+    `This link expires in 24 hours. If you didn't sign up, you can ignore this email.`;
+
+  const html = wrap(
+    data.siteName,
+    `
+    <p style="margin:0 0 16px;">Hi ${escapeHtml(data.displayName)},</p>
+    <p style="margin:0 0 24px;">Welcome to ${escapeHtml(data.siteName)}. Confirm your email so we can activate your account:</p>
+    <p style="margin:0 0 24px;"><a href="${escapeHtml(data.verifyUrl)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:500;">Confirm my email</a></p>
+    <p style="margin:0 0 8px;font-size:13px;color:#555;">Or copy the link:</p>
+    <p style="margin:0;font-size:13px;color:#555;word-break:break-all;">${escapeHtml(data.verifyUrl)}</p>
+    <p style="margin-top:24px;font-size:13px;color:#555;">This link expires in 24 hours. If you didn't sign up, you can ignore this email.</p>
+    `,
+  );
+
+  return { subject, text, html };
+}
+
 export function buildResetEmail(data: NxPasswordResetTemplateData): NxEmailTemplate {
   const subject = `Reset your ${data.siteName} password`;
   const text =

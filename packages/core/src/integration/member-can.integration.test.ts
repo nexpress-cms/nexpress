@@ -67,15 +67,7 @@ describe.skipIf(skipIfNoTestDb())("memberCan (integration)", () => {
     await ensureMigrated();
   });
   beforeEach(async () => {
-    // truncateAll() doesn't list community tables (added in 9.1a). Run an
-    // explicit cascading wipe of the new tables here so each test starts
-    // clean. Once 9.5 lands and the harness gets updated, this can move
-    // back into truncateAll.
     await truncateAll();
-    const db = await getTestDb();
-    await db.execute(
-      "truncate table nx_bans, nx_member_roles, nx_member_identities, nx_member_sessions, nx_members restart identity cascade" as never,
-    );
   });
   afterAll(async () => {
     await closeTestDb();

@@ -114,6 +114,14 @@ export async function truncateAll(): Promise<void> {
     "nx_media",
     "nx_media_folders",
     "nx_users",
+    // Community tables (Phase 9.1a+). Order doesn't matter under CASCADE
+    // — listing them keeps RESTART IDENTITY consistent and the test DB
+    // wipes cleanly between cases.
+    "nx_bans",
+    "nx_member_roles",
+    "nx_member_identities",
+    "nx_member_sessions",
+    "nx_members",
   ];
   const list = tables.map((t) => `"${t}"`).join(", ");
   // CASCADE handles any FK holdouts. RESTART IDENTITY resets any sequences

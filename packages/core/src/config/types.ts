@@ -337,7 +337,9 @@ export type NxJobType =
   | "plugin:scheduledTask"
   | "system:revisionPrune"
   | "system:sessionCleanup"
-  | "auth:sendPasswordReset";
+  | "auth:sendPasswordReset"
+  | "members:sendVerifyEmail"
+  | "members:sendPasswordReset";
 
 export interface NxFindOptions {
   page?: number;
