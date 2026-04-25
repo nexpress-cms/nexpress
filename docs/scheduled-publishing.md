@@ -109,6 +109,39 @@ await fetch(`/api/collections/posts/${id}`, {
 
 ---
 
+## Autosave
+
+Long-form editing benefits from a recovery snapshot in case the
+browser crashes mid-edit. Opt in per-collection:
+
+```ts
+defineCollection({
+  // ...
+  versions: { drafts: { autosave: true, autosaveInterval: 5_000 }, max: 50 },
+});
+```
+
+When `versions.drafts.autosave === true`:
+
+- The admin edit view watches form changes via react-hook-form, debounces
+  by `autosaveInterval` (default 5s), and POSTs the in-flight payload to
+  `POST /api/collections/{slug}/{id}/autosave`.
+- The endpoint writes a row into `nx_revisions` with `status="autosave"`
+  **without** touching the main document table. The doc's `status` and
+  `updatedAt` stay untouched, so plugins hooking on writes don't fire on
+  every keystroke.
+- Identical consecutive snapshots dedup at the server: the response
+  carries `reused: true` and reuses the previous revision's id/version.
+- Autosave revisions count toward `versions.max` and rotate out the
+  oldest revisions (drafts + published + autosave) when the cap is hit.
+
+The revisions panel surfaces autosave entries with a distinct chip;
+restoring one writes a new draft revision via the normal restore path.
+
+The header shows a small **Autosaved 12s ago** label; transitions to
+**Autosaving…** while a request is in flight and **Autosave error: …**
+if the request fails (most often a 401 after the session cookie expires).
+
 ## Status taxonomy
 
 | `_status` sent | `status` persisted | Notes |

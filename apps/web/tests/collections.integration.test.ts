@@ -18,6 +18,7 @@ import {
   PATCH as idPATCH,
 } from "@/app/api/collections/[slug]/[id]/route";
 import { POST as bulkPOST } from "@/app/api/collections/[slug]/bulk/route";
+import { POST as autosavePOST } from "@/app/api/collections/[slug]/[id]/autosave/route";
 
 describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
   beforeAll(async () => {
@@ -248,6 +249,101 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
       slugParams("posts"),
     );
     expect(badActionRes.status).toBe(400);
+  });
+
+  it("autosave: writes a status=autosave revision without touching the main doc", async () => {
+    const session = await seedUser({ role: "editor" });
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Autosave seed",
+          slug: "autosave-seed",
+          content: { root: { type: "root", children: [] } },
+          _status: "draft",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string; updatedAt: string }>(createRes);
+
+    const autosaveRes = await autosavePOST(
+      buildRequest(`/api/collections/posts/${created.id}/autosave`, {
+        method: "POST",
+        session,
+        body: {
+          title: "Autosave draft typing in progress",
+          slug: "autosave-seed",
+          content: { root: { type: "root", children: [] } },
+        },
+      }),
+      { params: Promise.resolve({ slug: "posts", id: created.id }) },
+    );
+    const auto = await readJson<{
+      id: string;
+      version: number;
+      status: string;
+      reused: boolean;
+    }>(autosaveRes);
+    expect(auto.status).toBe(200);
+    expect(auto.body.status).toBe("autosave");
+    expect(auto.body.reused).toBe(false);
+
+    // The main doc must be unchanged — autosave persists into nx_revisions only.
+    const after = await idGET(
+      buildRequest(`/api/collections/posts/${created.id}`),
+      idParams("posts", created.id),
+    );
+    const fetched = await readJson<{ title: string }>(after);
+    expect(fetched.body.title).toBe("Autosave seed");
+  });
+
+  it("autosave: dedup returns reused=true when the snapshot is unchanged", async () => {
+    const session = await seedUser({ role: "editor" });
+    const createRes = await listPOST(
+      buildRequest("/api/collections/posts", {
+        method: "POST",
+        session,
+        body: {
+          title: "Dedup",
+          slug: "dedup",
+          content: { root: { type: "root", children: [] } },
+          _status: "draft",
+        },
+      }),
+      slugParams("posts"),
+    );
+    const { body: created } = await readJson<{ id: string }>(createRes);
+
+    const snapshot = {
+      title: "Dedup typing",
+      slug: "dedup",
+      content: { root: { type: "root", children: [] } },
+    };
+    const ctx = { params: Promise.resolve({ slug: "posts", id: created.id }) };
+    const first = await autosavePOST(
+      buildRequest(`/api/collections/posts/${created.id}/autosave`, {
+        method: "POST",
+        session,
+        body: snapshot,
+      }),
+      ctx,
+    );
+    const firstBody = await readJson<{ reused: boolean; version: number }>(first);
+    expect(firstBody.body.reused).toBe(false);
+
+    const second = await autosavePOST(
+      buildRequest(`/api/collections/posts/${created.id}/autosave`, {
+        method: "POST",
+        session,
+        body: snapshot,
+      }),
+      ctx,
+    );
+    const secondBody = await readJson<{ reused: boolean; version: number }>(second);
+    expect(secondBody.body.reused).toBe(true);
+    expect(secondBody.body.version).toBe(firstBody.body.version);
   });
 
   it("cancel schedule: PATCH _status=draft + publishedAt=null returns to draft", async () => {
