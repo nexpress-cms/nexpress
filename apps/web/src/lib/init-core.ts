@@ -24,6 +24,14 @@ function configureEmailAdapter(): void {
     return;
   }
 
+  // Only forward `secure` when the operator explicitly set it. Passing
+  // `false` for an unset env var disabled the adapter's `port === 465
+  // → secure` default, so SMTPS configurations failed in the field
+  // (#63). With `undefined` the SMTP adapter applies its documented
+  // default.
+  const secureRaw = process.env.NX_SMTP_SECURE;
+  const secure = secureRaw === undefined ? undefined : secureRaw === "true";
+
   setEmailAdapter(
     new SmtpEmailAdapter({
       host,
@@ -31,7 +39,7 @@ function configureEmailAdapter(): void {
       user: process.env.NX_SMTP_USER,
       pass: process.env.NX_SMTP_PASS,
       from,
-      secure: process.env.NX_SMTP_SECURE === "true",
+      ...(secure !== undefined ? { secure } : {}),
     }),
   );
 }

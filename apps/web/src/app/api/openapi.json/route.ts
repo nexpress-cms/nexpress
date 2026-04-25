@@ -135,7 +135,7 @@ function buildSpec(): OpenApiSchema {
         folderId: { type: "string", format: "uuid", nullable: true },
         storageKey: { type: "string" },
         sizes: { type: "object", additionalProperties: true, nullable: true },
-        status: { type: "string", enum: ["pending", "ready", "failed"] },
+        status: { type: "string", enum: ["processing", "ready", "error"] },
         createdAt: { type: "string", format: "date-time" },
       },
     },
