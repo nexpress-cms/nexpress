@@ -132,7 +132,17 @@ export type {
 } from "./auth/oauth-providers.js";
 export { resolveOAuthLogin } from "./auth/oauth-resolve.js";
 export { issueOAuthState, verifyOAuthState } from "./auth/oauth-state.js";
-export type { OAuthStatePayload, VerifyOAuthStateResult } from "./auth/oauth-state.js";
+export type {
+  IssuedOAuthState,
+  OAuthStatePayload,
+  VerifyOAuthStateResult,
+} from "./auth/oauth-state.js";
+export { fromArctic } from "./auth/oauth-arctic.js";
+export type {
+  ArcticLikeProvider,
+  ArcticLikeTokens,
+  FromArcticOptions,
+} from "./auth/oauth-arctic.js";
 export type {
   ResolveOAuthLoginInput,
   ResolveOAuthLoginResult,

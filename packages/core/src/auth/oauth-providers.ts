@@ -42,12 +42,22 @@ export interface OAuthProfile {
 export interface OAuthAuthorizeParams {
   state: string;
   redirectUri: string;
+  /**
+   * PKCE code verifier (32+ char URL-safe random). The framework
+   * generates one for every login and threads it through the state
+   * cookie. Providers that don't support PKCE (e.g. GitHub) ignore it;
+   * providers that require it (e.g. Google) hash it into the
+   * `code_challenge` query param.
+   */
+  codeVerifier: string;
 }
 
 export interface OAuthExchangeParams {
   code: string;
   state: string;
   redirectUri: string;
+  /** Same verifier minted at /start, recovered from the state cookie. */
+  codeVerifier: string;
 }
 
 export interface OAuthProvider {

@@ -1,60 +1,46 @@
 import {
+  fromArctic,
   registerOAuthProvider,
-  type OAuthProvider,
   type OAuthProfile,
+  type OAuthProvider,
 } from "@nexpress/core";
 import { definePlugin } from "@nexpress/plugin-sdk";
+import { Google } from "arctic";
 
 /**
  * @nexpress/plugin-oauth-google — adds "Sign in with Google" for the
  * staff (`/api/auth/oauth/google/{start,callback}`) login flow.
  *
- * Differences from the GitHub plugin worth noting:
- *  - Google's token endpoint expects an `application/x-www-form-
- *    urlencoded` body (GitHub accepts JSON; Google does not).
- *  - The userinfo response uses OpenID Connect field names: `sub`
- *    (durable subject), `email_verified` (boolean), `picture`
- *    (avatar URL). We only set `email` on the profile when
- *    `email_verified === true` — taking unverified Google addresses
- *    would let an attacker who controls a misconfigured Google
- *    domain link to a NexPress account by email match.
- *  - We pass `prompt=select_account` so a shared workstation always
- *    shows the account picker. Google supports this; GitHub does
- *    not.
+ * Implementation sits on `arctic`'s `Google` class which handles
+ * PKCE + token exchange. This file owns:
+ *
+ *   1. Plugin manifest + env-driven setup.
+ *   2. `fetchGoogleProfile()` — turns an access token into a
+ *      normalized `OAuthProfile`. Critically, it honors
+ *      `email_verified` strictly: if Google's userinfo claims
+ *      `email_verified: true` the email goes through, otherwise it's
+ *      dropped. Without this, an attacker controlling a misconfigured
+ *      Google Workspace could link to an existing NexPress user via
+ *      the email-match path in `resolveOAuthLogin`.
  *
  * Credentials come from env, NOT `nx_plugins.config`:
  *
  *   NX_OAUTH_GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
  *   NX_OAUTH_GOOGLE_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxx
  *
- * The redirect URI registered in the Google Cloud Console must be
- * exactly `${SITE_URL}/api/auth/oauth/google/callback`.
+ * The redirect URI registered in Google Cloud Console must be exactly
+ * `${SITE_URL}/api/auth/oauth/google/callback`.
  */
 
-const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
-
-const DEFAULT_SCOPE = "openid email profile";
-const PROVIDER_ID = "google";
+const DEFAULT_SCOPES = ["openid", "email", "profile"];
 
 export interface GoogleOAuthOptions {
   clientId: string;
   clientSecret: string;
-  /** Defaults to `"openid email profile"`. */
-  scope?: string;
-  /** Override fetch (used by tests). */
+  redirectUri: string;
+  scopes?: string[];
   fetch?: typeof fetch;
-}
-
-interface TokenResponse {
-  access_token?: string;
-  id_token?: string;
-  expires_in?: number;
-  scope?: string;
-  token_type?: string;
-  error?: string;
-  error_description?: string;
 }
 
 interface GoogleUserInfo {
@@ -67,104 +53,75 @@ interface GoogleUserInfo {
   picture?: string;
 }
 
+/**
+ * Hits the Google OIDC userinfo endpoint and normalizes the response.
+ * Exported so tests can exercise the email-verification logic without
+ * going through arctic's token exchange.
+ */
+export async function fetchGoogleProfile(
+  accessToken: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<OAuthProfile> {
+  const userRes = await fetchImpl(USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    },
+  });
+  if (!userRes.ok) {
+    throw new Error(`google userinfo fetch failed: HTTP ${userRes.status}`);
+  }
+  const user = (await userRes.json()) as GoogleUserInfo;
+  if (!user.sub) {
+    throw new Error("google userinfo payload missing sub");
+  }
+
+  // Strict `=== true` check: missing field, falsy, or stringified
+  // "true" all drop the email. Without this guard the framework's
+  // email-match path would silently link unverified Google addresses.
+  const verifiedEmail = user.email && user.email_verified === true ? user.email : null;
+  const fallbackName =
+    user.name && user.name.trim().length > 0
+      ? user.name
+      : [user.given_name, user.family_name].filter(Boolean).join(" ").trim();
+
+  return {
+    providerUserId: user.sub,
+    email: verifiedEmail,
+    name: fallbackName.length > 0 ? fallbackName : null,
+    avatarUrl: user.picture ?? null,
+    metadata: {
+      sub: user.sub,
+      email_verified: user.email_verified ?? false,
+    },
+  };
+}
+
 export function createGoogleOAuthProvider(options: GoogleOAuthOptions): OAuthProvider {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
   if (!options.clientId || !options.clientSecret) {
     throw new Error(
       "createGoogleOAuthProvider: clientId and clientSecret are required",
     );
   }
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const google = new Google(options.clientId, options.clientSecret, options.redirectUri);
 
-  return {
-    id: PROVIDER_ID,
+  return fromArctic(google, {
+    id: "google",
     label: "Google",
-    authorize({ state, redirectUri }) {
-      const url = new URL(AUTHORIZE_URL);
-      url.searchParams.set("client_id", options.clientId);
-      url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("response_type", "code");
-      url.searchParams.set("state", state);
-      url.searchParams.set("scope", options.scope ?? DEFAULT_SCOPE);
-      // Always show the account picker so a shared workstation never
-      // silently re-uses the previous Google session. Google's
-      // standard prompt parameter; GitHub has no equivalent.
-      url.searchParams.set("prompt", "select_account");
-      return url.toString();
-    },
-    async exchange({ code, redirectUri }): Promise<OAuthProfile> {
-      // Step 1: token exchange. Google's token endpoint REQUIRES
-      // form-encoded; sending JSON returns invalid_request.
-      const tokenBody = new URLSearchParams({
-        client_id: options.clientId,
-        client_secret: options.clientSecret,
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: redirectUri,
-      });
-      const tokenRes = await fetchImpl(TOKEN_URL, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: tokenBody.toString(),
-      });
-      if (!tokenRes.ok) {
-        throw new Error(`google token exchange failed: HTTP ${tokenRes.status}`);
-      }
-      const tokenJson = (await tokenRes.json()) as TokenResponse;
-      if (!tokenJson.access_token) {
-        const reason = tokenJson.error_description ?? tokenJson.error ?? "no access_token";
-        throw new Error(`google token exchange failed: ${reason}`);
-      }
-
-      // Step 2: userinfo. The OIDC userinfo endpoint returns the
-      // standard claim set, including `email_verified` which we MUST
-      // honor — picking up an unverified Google address would
-      // silently link to a NexPress user via email-match in
-      // `resolveOAuthLogin`.
-      const userRes = await fetchImpl(USERINFO_URL, {
-        headers: {
-          Authorization: `Bearer ${tokenJson.access_token}`,
-          Accept: "application/json",
-        },
-      });
-      if (!userRes.ok) {
-        throw new Error(`google userinfo fetch failed: HTTP ${userRes.status}`);
-      }
-      const user = (await userRes.json()) as GoogleUserInfo;
-      if (!user.sub) {
-        throw new Error("google userinfo payload missing sub");
-      }
-
-      const verifiedEmail = user.email && user.email_verified === true ? user.email : null;
-      const fallbackName =
-        user.name && user.name.trim().length > 0
-          ? user.name
-          : [user.given_name, user.family_name].filter(Boolean).join(" ").trim();
-
-      return {
-        providerUserId: user.sub,
-        email: verifiedEmail,
-        name: fallbackName.length > 0 ? fallbackName : null,
-        avatarUrl: user.picture ?? null,
-        metadata: {
-          sub: user.sub,
-          email_verified: user.email_verified ?? false,
-          scope: tokenJson.scope ?? options.scope ?? DEFAULT_SCOPE,
-        },
-      };
-    },
-  };
+    pkce: true,
+    scopes: options.scopes ?? DEFAULT_SCOPES,
+    fetchProfile: (accessToken) => fetchGoogleProfile(accessToken, fetchImpl),
+  });
 }
 
 export const googleOAuthPlugin = definePlugin({
   manifest: {
     id: "oauth-google",
-    version: "0.1.0",
+    version: "0.2.0",
     name: "Google OAuth",
     description:
-      "Adds 'Sign in with Google' for staff users. Reads NX_OAUTH_GOOGLE_CLIENT_ID + NX_OAUTH_GOOGLE_CLIENT_SECRET; logs a warning and registers nothing if either is unset.",
+      "Adds 'Sign in with Google' for staff users. Honors email_verified strictly. Reads NX_OAUTH_GOOGLE_CLIENT_ID + NX_OAUTH_GOOGLE_CLIENT_SECRET; logs a warning and registers nothing if either is unset.",
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
@@ -184,7 +141,7 @@ export const googleOAuthPlugin = definePlugin({
     },
     agent: {
       description:
-        "Wires Google as a staff-side OAuth provider. Honors email_verified — never links unverified Google addresses to existing NexPress users by email.",
+        "Wires Google as a staff-side OAuth provider on top of arctic. Honors email_verified — never links unverified Google addresses to existing NexPress users by email.",
       category: "security",
       tags: ["oauth", "sso", "google", "auth"],
     },
@@ -200,7 +157,11 @@ export const googleOAuthPlugin = definePlugin({
       );
       return;
     }
-    registerOAuthProvider(createGoogleOAuthProvider({ clientId, clientSecret }));
+    const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
+    const redirectUri = `${siteUrl.replace(/\/$/, "")}/api/auth/oauth/google/callback`;
+    registerOAuthProvider(
+      createGoogleOAuthProvider({ clientId, clientSecret, redirectUri }),
+    );
     ctx.log.info("Google OAuth provider registered");
   },
 });

@@ -41,14 +41,18 @@ export async function GET(
   }
 
   const { secret, secureCookies } = getAuthRuntimeConfig();
-  const state = issueOAuthState(providerId, secret);
+  const { token, codeVerifier } = issueOAuthState(providerId, secret);
   const redirectUri = buildRedirectUri(request, providerId);
-  const authorizeUrl = await provider.authorize({ state, redirectUri });
+  const authorizeUrl = await provider.authorize({
+    state: token,
+    redirectUri,
+    codeVerifier,
+  });
 
   const response = NextResponse.redirect(authorizeUrl);
   response.cookies.set({
     name: STATE_COOKIE,
-    value: state,
+    value: token,
     httpOnly: true,
     secure: secureCookies,
     sameSite: "lax",

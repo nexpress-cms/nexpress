@@ -1,58 +1,56 @@
 import {
+  fromArctic,
   registerOAuthProvider,
-  type OAuthProvider,
   type OAuthProfile,
+  type OAuthProvider,
 } from "@nexpress/core";
 import { definePlugin } from "@nexpress/plugin-sdk";
+import { GitHub } from "arctic";
 
 /**
  * @nexpress/plugin-oauth-github — adds "Sign in with GitHub" for the
- * staff (`/api/auth/oauth/github/{start,callback}`) login flow built
- * into Phase 9.6a.
+ * staff (`/api/auth/oauth/github/{start,callback}`) login flow.
  *
- * Pattern: this plugin is a thin adapter. The framework owns the state
- * cookie, identity ↔ user resolution, and session minting; this file
- * just speaks GitHub's OAuth dialect (build the authorize URL, swap a
- * code for a token, fetch the user + verified email).
+ * Implementation pattern (this file is a useful template for any new
+ * provider sitting on top of arctic):
  *
- * The plugin reads its credentials from env vars at `setup()` time —
- * **not** from `nx_plugins.config`. Secrets shouldn't sit in DB rows
- * that get backed up alongside content. When the env vars are unset
- * the plugin logs a warning and registers nothing, so the rest of the
- * site keeps working.
+ *   1. Construct the arctic provider with credentials.
+ *   2. Pass it to `fromArctic()` along with a `fetchProfile()` that
+ *      hits the provider's userinfo / profile endpoint with the
+ *      arctic-resolved access token and returns a normalized
+ *      `OAuthProfile`.
+ *   3. Register the result via `registerOAuthProvider`.
+ *
+ * Arctic owns the OAuth dance (token endpoint POST, error parsing,
+ * refresh-token plumbing). The framework owns state cookies, identity
+ * resolution, and session minting. This file only owns the
+ * GitHub-specific profile shape.
+ *
+ * Credentials come from env, NOT `nx_plugins.config`:
  *
  *   NX_OAUTH_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxx
  *   NX_OAUTH_GITHUB_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
  *
- * The redirect URI registered in the GitHub OAuth app must match
- * `${SITE_URL}/api/auth/oauth/github/callback` exactly.
+ * The Authorization callback URL registered in the GitHub OAuth app
+ * must be exactly `${SITE_URL}/api/auth/oauth/github/callback`.
  */
 
-const AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
-const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const USER_URL = "https://api.github.com/user";
 const EMAILS_URL = "https://api.github.com/user/emails";
-
-const DEFAULT_SCOPE = "read:user user:email";
-const PROVIDER_ID = "github";
+const DEFAULT_SCOPES = ["read:user", "user:email"];
 
 export interface GitHubOAuthOptions {
   clientId: string;
   clientSecret: string;
-  /** OAuth scope. Defaults to `"read:user user:email"`. */
-  scope?: string;
-  /**
-   * Override fetch (used by tests). Signature matches `globalThis.fetch`.
-   */
+  /** Defaults to `${SITE_URL}/api/auth/oauth/github/callback`. The
+   *  framework-side route uses this same path; passing it here keeps
+   *  arctic's redirect-URI binding aligned with what the start route
+   *  emits. */
+  redirectUri: string;
+  /** Defaults to `["read:user", "user:email"]`. */
+  scopes?: string[];
+  /** Override fetch (used by tests). */
   fetch?: typeof fetch;
-}
-
-interface TokenResponse {
-  access_token?: string;
-  token_type?: string;
-  scope?: string;
-  error?: string;
-  error_description?: string;
 }
 
 interface GitHubUser {
@@ -70,119 +68,93 @@ interface GitHubEmail {
 }
 
 /**
- * Builds an `OAuthProvider` for GitHub. Pure factory — does not touch
- * the registry. Tests instantiate this directly and inject a stub
- * `fetch`.
+ * Hits `/user` (and `/user/emails` when needed) and normalizes the
+ * response into an `OAuthProfile`. Exported so tests can exercise the
+ * GitHub-specific logic without going through the arctic token
+ * exchange layer (which uses its own internal fetch).
  */
-export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthProvider {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
-  if (!options.clientId || !options.clientSecret) {
-    throw new Error(
-      "createGitHubOAuthProvider: clientId and clientSecret are required",
-    );
+export async function fetchGitHubProfile(
+  accessToken: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<OAuthProfile> {
+  const userRes = await fetchImpl(USER_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "nexpress-oauth-github",
+    },
+  });
+  if (!userRes.ok) {
+    throw new Error(`github user fetch failed: HTTP ${userRes.status}`);
+  }
+  const user = (await userRes.json()) as GitHubUser;
+  if (typeof user.id !== "number") {
+    throw new Error("github user payload missing id");
   }
 
-  return {
-    id: PROVIDER_ID,
-    label: "GitHub",
-    authorize({ state, redirectUri }) {
-      const url = new URL(AUTHORIZE_URL);
-      url.searchParams.set("client_id", options.clientId);
-      url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("state", state);
-      url.searchParams.set("scope", options.scope ?? DEFAULT_SCOPE);
-      return url.toString();
-    },
-    async exchange({ code, redirectUri }): Promise<OAuthProfile> {
-      // Step 1: exchange the code for an access token.
-      const tokenRes = await fetchImpl(TOKEN_URL, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          client_id: options.clientId,
-          client_secret: options.clientSecret,
-          code,
-          redirect_uri: redirectUri,
-        }),
-      });
-      if (!tokenRes.ok) {
-        throw new Error(`github token exchange failed: HTTP ${tokenRes.status}`);
-      }
-      const tokenJson = (await tokenRes.json()) as TokenResponse;
-      if (!tokenJson.access_token) {
-        const reason = tokenJson.error_description ?? tokenJson.error ?? "no access_token";
-        throw new Error(`github token exchange failed: ${reason}`);
-      }
-      const accessToken = tokenJson.access_token;
-
-      // Step 2: fetch the basic profile.
-      const userRes = await fetchImpl(USER_URL, {
+  // GitHub returns null on /user.email when the user keeps their
+  // primary address private. Fall back to /user/emails — soft-fail
+  // (try/catch) per the framework contract: missing email is fine,
+  // a synthetic placeholder gets used.
+  let email = user.email ?? null;
+  if (!email) {
+    try {
+      const emailsRes = await fetchImpl(EMAILS_URL, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/vnd.github+json",
           "User-Agent": "nexpress-oauth-github",
         },
       });
-      if (!userRes.ok) {
-        throw new Error(`github user fetch failed: HTTP ${userRes.status}`);
+      if (emailsRes.ok) {
+        const emails = (await emailsRes.json()) as GitHubEmail[];
+        const primary =
+          emails.find((entry) => entry.primary && entry.verified) ??
+          emails.find((entry) => entry.verified);
+        email = primary?.email ?? null;
       }
-      const user = (await userRes.json()) as GitHubUser;
-      if (typeof user.id !== "number") {
-        throw new Error("github user payload missing id");
-      }
+    } catch {
+      // soft-fail
+    }
+  }
 
-      // Step 3: GitHub's `email` on /user is null when the user kept
-      // their primary address private. Fall back to /user/emails which
-      // returns every verified address attached to the account.
-      //
-      // Wrapped in try/catch — the email lookup is best-effort. If
-      // /user/emails returns a non-2xx, malformed body, or errors at
-      // the network level, we keep `email = null` and let the
-      // framework synthesize a placeholder. The user signed in fine;
-      // missing email is recoverable later via profile editing.
-      let email = user.email ?? null;
-      if (!email) {
-        try {
-          const emailsRes = await fetchImpl(EMAILS_URL, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              Accept: "application/vnd.github+json",
-              "User-Agent": "nexpress-oauth-github",
-            },
-          });
-          if (emailsRes.ok) {
-            const emails = (await emailsRes.json()) as GitHubEmail[];
-            const primary =
-              emails.find((entry) => entry.primary && entry.verified) ??
-              emails.find((entry) => entry.verified);
-            email = primary?.email ?? null;
-          }
-        } catch {
-          // Soft-fail per the comment above — leave email null.
-        }
-      }
-
-      return {
-        providerUserId: String(user.id),
-        email,
-        name: user.name && user.name.trim().length > 0 ? user.name : user.login,
-        avatarUrl: user.avatar_url ?? null,
-        metadata: {
-          login: user.login,
-          scope: tokenJson.scope ?? options.scope ?? DEFAULT_SCOPE,
-        },
-      };
-    },
+  return {
+    providerUserId: String(user.id),
+    email,
+    name: user.name && user.name.trim().length > 0 ? user.name : user.login,
+    avatarUrl: user.avatar_url ?? null,
+    metadata: { login: user.login },
   };
+}
+
+/**
+ * Pure factory — wraps an arctic `GitHub` instance as an
+ * `OAuthProvider`. Production code path: framework calls `authorize`
+ * → arctic builds the URL → callback → arctic exchanges token →
+ * `fetchGitHubProfile` normalizes the user.
+ */
+export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthProvider {
+  if (!options.clientId || !options.clientSecret) {
+    throw new Error(
+      "createGitHubOAuthProvider: clientId and clientSecret are required",
+    );
+  }
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const github = new GitHub(options.clientId, options.clientSecret, options.redirectUri);
+
+  return fromArctic(github, {
+    id: "github",
+    label: "GitHub",
+    pkce: false,
+    scopes: options.scopes ?? DEFAULT_SCOPES,
+    fetchProfile: (accessToken) => fetchGitHubProfile(accessToken, fetchImpl),
+  });
 }
 
 export const githubOAuthPlugin = definePlugin({
   manifest: {
     id: "oauth-github",
-    version: "0.1.0",
+    version: "0.2.0",
     name: "GitHub OAuth",
     description:
       "Adds 'Sign in with GitHub' for staff users. Reads NX_OAUTH_GITHUB_CLIENT_ID + NX_OAUTH_GITHUB_CLIENT_SECRET; logs a warning and registers nothing if either is unset.",
@@ -201,7 +173,7 @@ export const githubOAuthPlugin = definePlugin({
     },
     agent: {
       description:
-        "Wires GitHub as a staff-side OAuth provider on top of the framework's /api/auth/oauth/{provider}/{start,callback} routes.",
+        "Wires GitHub as a staff-side OAuth provider on top of arctic + the framework's /api/auth/oauth/{provider}/{start,callback} routes.",
       category: "security",
       tags: ["oauth", "sso", "github", "auth"],
     },
@@ -217,7 +189,11 @@ export const githubOAuthPlugin = definePlugin({
       );
       return;
     }
-    registerOAuthProvider(createGitHubOAuthProvider({ clientId, clientSecret }));
+    const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
+    const redirectUri = `${siteUrl.replace(/\/$/, "")}/api/auth/oauth/github/callback`;
+    registerOAuthProvider(
+      createGitHubOAuthProvider({ clientId, clientSecret, redirectUri }),
+    );
     ctx.log.info("GitHub OAuth provider registered");
   },
 });

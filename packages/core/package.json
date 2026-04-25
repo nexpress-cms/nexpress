@@ -46,6 +46,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.840.0",
     "@node-rs/argon2": "^2.0.2",
+    "arctic": "^3.7.0",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.2",
     "pg": "^8.20.0",
