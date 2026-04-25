@@ -1,0 +1,101 @@
+/**
+ * OAuth provider registry — extension point for SSO. A provider plugin
+ * (e.g. `@nexpress/plugin-oauth-github`) registers itself at startup
+ * via `registerOAuthProvider()`; the framework's `/api/auth/oauth/{id}`
+ * routes look it up by id.
+ *
+ * The provider is responsible for:
+ *  - Building the authorize URL (`authorize`).
+ *  - Exchanging the callback code for a normalized profile (`exchange`).
+ *
+ * The framework owns state-cookie signing, identity ↔ user resolution,
+ * session minting, and audit. Providers must NOT touch cookies, the DB,
+ * or response objects directly.
+ */
+
+/**
+ * Profile returned from a successful `exchange()`. The framework uses
+ * `providerUserId` as the durable identifier — `email` may change at the
+ * provider but `providerUserId` should not. If the provider doesn't
+ * surface `email`, the framework falls back to creating a synthetic
+ * placeholder (`<providerUserId>@<provider>.oauth.local`) so the
+ * `nx_users.email NOT NULL UNIQUE` constraint is still satisfied.
+ */
+export interface OAuthProfile {
+  /** Stable per-user id from the provider. Required. */
+  providerUserId: string;
+  /** Optional — falls back to synthetic if missing. */
+  email?: string | null;
+  /** Optional — defaults to email local-part on user creation. */
+  name?: string | null;
+  /** Optional — written into `nx_user_oauth_identities.metadata`. */
+  avatarUrl?: string | null;
+  /** Optional — full payload the provider wants to remember (e.g. scopes). */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Inputs the provider receives at the two callback boundaries. The
+ * framework picks `redirectUri` from `SITE_URL` (or the request origin
+ * in dev) so the provider doesn't have to know its own deployment URL.
+ */
+export interface OAuthAuthorizeParams {
+  state: string;
+  redirectUri: string;
+}
+
+export interface OAuthExchangeParams {
+  code: string;
+  state: string;
+  redirectUri: string;
+}
+
+export interface OAuthProvider {
+  /** Stable id used in route paths and `nx_user_oauth_identities.provider`. */
+  id: string;
+  /** Human-readable label for admin UI / login buttons. */
+  label?: string;
+  /**
+   * Returns a fully-qualified URL the framework should redirect the
+   * browser to. Async to allow providers that need to mint per-request
+   * client credentials.
+   */
+  authorize(params: OAuthAuthorizeParams): Promise<string> | string;
+  /**
+   * Validates the callback and returns the normalized profile.
+   * Throwing here aborts the login with `OAUTH_EXCHANGE_FAILED`.
+   */
+  exchange(params: OAuthExchangeParams): Promise<OAuthProfile>;
+}
+
+const providers = new Map<string, OAuthProvider>();
+
+/**
+ * Register a provider. Idempotent: re-registering with the same id
+ * overwrites — useful in dev when a plugin's `setup()` runs again on
+ * reload.
+ */
+export function registerOAuthProvider(provider: OAuthProvider): void {
+  if (!provider.id || typeof provider.id !== "string") {
+    throw new Error("OAuth provider must have a non-empty string id");
+  }
+  if (typeof provider.authorize !== "function" || typeof provider.exchange !== "function") {
+    throw new Error(
+      `OAuth provider "${provider.id}" must implement authorize() and exchange()`,
+    );
+  }
+  providers.set(provider.id, provider);
+}
+
+export function getOAuthProvider(id: string): OAuthProvider | undefined {
+  return providers.get(id);
+}
+
+export function listOAuthProviders(): OAuthProvider[] {
+  return Array.from(providers.values());
+}
+
+/** Reset the registry — tests use this between cases. Not for runtime use. */
+export function resetOAuthProviders(): void {
+  providers.clear();
+}

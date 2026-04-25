@@ -74,6 +74,45 @@ export const nxUsers = pgTable("nx_users", {
     .notNull(),
 });
 
+/**
+ * Per-user OAuth identity links. A user can have one identity per provider
+ * (composite unique on `(provider, providerUserId)` AND on `(userId,
+ * provider)`). The first identity is created either when the OAuth
+ * callback finds an existing user with the same email, or when a brand-
+ * new user is auto-created from the OAuth profile (default role
+ * `viewer`).
+ */
+export const nxUserOAuthIdentities = pgTable(
+  "nx_user_oauth_identities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => nxUsers.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerUserId: text("provider_user_id").notNull(),
+    /** Free-form per-provider metadata (avatar URL, scopes granted, etc.). */
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    providerSubjectUnique: unique("nx_user_oauth_identities_provider_subject_unique").on(
+      table.provider,
+      table.providerUserId,
+    ),
+    userProviderUnique: unique("nx_user_oauth_identities_user_provider_unique").on(
+      table.userId,
+      table.provider,
+    ),
+    userIdx: index("nx_user_oauth_identities_user_idx").on(table.userId),
+  }),
+);
+
 export const nxSessions = pgTable("nx_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")

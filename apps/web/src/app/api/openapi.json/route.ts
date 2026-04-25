@@ -184,6 +184,33 @@ function buildSpec(): OpenApiSchema {
     },
     "/api/auth/logout": { post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } } },
     "/api/auth/me": { get: { summary: "Current authenticated user", responses: { "200": { description: "User object" } } } },
+    "/api/auth/oauth/{provider}/start": {
+      get: {
+        summary: "Begin an OAuth login (staff side)",
+        description:
+          "Mints a signed `nx-oauth-state` cookie and 302s the browser to the provider's authorize URL. Provider must be registered in-process via `registerOAuthProvider({ id, authorize, exchange })` from `@nexpress/core` — typically by a plugin's `setup()`.",
+        parameters: [{ in: "path", name: "provider", required: true, schema: { type: "string" } }],
+        responses: {
+          "307": { description: "Redirect to provider authorize URL" },
+          "404": { description: "Provider not registered" },
+        },
+      },
+    },
+    "/api/auth/oauth/{provider}/callback": {
+      get: {
+        summary: "Finish an OAuth login",
+        description:
+          "Validates the state cookie, calls the provider's `exchange()` for the normalized profile, then resolves the matching `nx_users` row in this order: (1) durable `(provider, providerUserId)` link, (2) email-match link, (3) auto-provision new user with role `viewer`. On success sets `nx-session` / `nx-refresh` / `nx-csrf` cookies and 302s to `/admin`. Failures redirect to `/admin/login?oauth_error=…` — never expose provider error text.",
+        parameters: [
+          { in: "path", name: "provider", required: true, schema: { type: "string" } },
+          { in: "query", name: "code", required: true, schema: { type: "string" } },
+          { in: "query", name: "state", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          "307": { description: "Redirect — `/admin` on success or `/admin/login?oauth_error=…` on failure" },
+        },
+      },
+    },
     "/api/auth/refresh": {
       post: {
         summary: "Exchange refresh token for a new session",
