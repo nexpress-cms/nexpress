@@ -4,6 +4,7 @@ import {
   forumPlugin,
 } from "@nexpress/plugin-forum";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
+import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 
@@ -45,7 +46,13 @@ export default defineConfig({
           },
         },
   collections: [postsCollection, pagesCollection, discussionsCollection],
-  plugins: [readingTimePlugin, seoAuditPlugin, forumPlugin, githubOAuthPlugin],
+  plugins: [
+    readingTimePlugin,
+    seoAuditPlugin,
+    forumPlugin,
+    githubOAuthPlugin,
+    googleOAuthPlugin,
+  ],
   auth: {
     secret: process.env.NX_SECRET ?? "",
   },
