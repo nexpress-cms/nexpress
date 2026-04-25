@@ -1105,6 +1105,63 @@ function buildSpec(): OpenApiSchema {
       },
     };
 
+    paths[`/api/collections/${slug}/bulk`] = {
+      post: {
+        summary: `Bulk publish / unpublish / delete ${manifest.labels.plural.toLowerCase()}`,
+        description:
+          "Loops the requested action over each id, returning a per-id success/failure list so the caller can surface partial failures. Capped at 100 ids per request.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["action", "ids"],
+                properties: {
+                  action: { type: "string", enum: ["publish", "unpublish", "delete"] },
+                  ids: {
+                    type: "array",
+                    items: { type: "string", format: "uuid" },
+                    minItems: 1,
+                    maxItems: 100,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Per-id outcome",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    action: { type: "string" },
+                    succeeded: { type: "array", items: { type: "string", format: "uuid" } },
+                    failed: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string", format: "uuid" },
+                          error: { type: "string" },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": { description: "Invalid action, empty/oversized ids array, or non-UUID id" },
+          "401": { description: "Caller not authenticated" },
+          "403": { description: "Caller lacks permission for the action on this collection" },
+        },
+      },
+    };
+
     if (manifest.versions.drafts) {
       const revisionSummary: OpenApiSchema = {
         type: "object",
