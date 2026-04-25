@@ -18,7 +18,6 @@ function configureEmailAdapter(): void {
   const from = process.env.NX_SMTP_FROM;
 
   if (!host || !from) {
-    // eslint-disable-next-line no-console
     console.warn(
       "[nexpress] NX_EMAIL_ADAPTER=smtp but NX_SMTP_HOST / NX_SMTP_FROM are unset — email adapter not installed.",
     );

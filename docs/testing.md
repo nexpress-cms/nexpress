@@ -18,10 +18,21 @@ Current count: **112 tests** across `@nexpress/core` and `@nexpress/next`.
 
 ## Integration tests (`pnpm test:integration`)
 
-Live under `packages/core/src/integration/` as `<name>.integration.test.ts`
-and run against a **real Postgres** so they can exercise code paths that
-unit tests can't fake — drizzle SQL, multi-statement transactions, pg-boss
-wiring, etc.
+Live under `packages/core/src/integration/` and `apps/web/tests/` as
+`<name>.integration.test.ts` and run against a **real Postgres** so they
+can exercise code paths that unit tests can't fake — drizzle SQL,
+multi-statement transactions, pg-boss wiring, route-handler request /
+response shape, etc.
+
+Integration tests truncate every shared table in `beforeEach`, so the
+root `pnpm test:integration` runs packages **sequentially**
+(`--concurrency=1`) to avoid different packages wiping each other's
+data mid-test. Each package internally serialises files via vitest's
+`singleFork` (core) or `fileParallelism: false` (apps/web).
+
+The default `pnpm test` excludes `*.integration.test.ts` from the core
+package so unit tests stay parallel and fast — run integration suites
+with `pnpm test:integration` (or per-package `pnpm test:integration`).
 
 ### One-time setup
 

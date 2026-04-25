@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf .next",
     "test": "vitest run",
+    "test:integration": "vitest run",
     "test:watch": "vitest",
     "schema:gen": "tsx scripts/generate-schema.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
