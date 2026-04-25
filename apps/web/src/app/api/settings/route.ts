@@ -5,6 +5,7 @@ import {
   nxSettings,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -37,7 +38,7 @@ export async function PUT(request: NextRequest) {
       throw new NxForbiddenError("settings", "update");
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = (await readJsonBody(request)) as Record<string, unknown>;
     const key = typeof body.key === "string" ? body.key.trim() : "";
 
     if (!key) {

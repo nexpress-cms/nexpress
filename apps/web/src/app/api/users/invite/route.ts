@@ -12,6 +12,7 @@ import {
   type NxUserRole,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     await ensureWriteReady();
-    const body = parseBodyRecord(await request.json());
+    const body = parseBodyRecord(await readJsonBody(request));
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const role = typeof body.role === "string" ? (body.role as NxUserRole) : "author";

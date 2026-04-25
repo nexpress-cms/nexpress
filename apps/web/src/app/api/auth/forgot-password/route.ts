@@ -1,4 +1,5 @@
 import { NxValidationError, enqueueJob, requestPasswordReset } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -36,7 +37,7 @@ function buildResetUrl(request: NextRequest, token: string): string {
 export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
-    const { email } = validateBody(await request.json());
+    const { email } = validateBody(await readJsonBody(request));
 
     const result = await requestPasswordReset(getDb(), email, RESET_TTL_MS);
 

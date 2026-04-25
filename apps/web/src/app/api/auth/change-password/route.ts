@@ -6,6 +6,7 @@ import {
   verifyPassword,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { clearAuthCookies, requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -50,7 +51,7 @@ export async function PATCH(request: NextRequest) {
 
     requireCsrf(request);
 
-    const { currentPassword, newPassword } = validateChangePasswordBody(await request.json());
+    const { currentPassword, newPassword } = validateChangePasswordBody(await readJsonBody(request));
     const db = getDb();
     const result = await db.$client.query<PasswordRow>(
       "select password from nx_users where id = $1 limit 1",

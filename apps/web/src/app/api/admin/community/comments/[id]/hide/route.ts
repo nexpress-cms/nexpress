@@ -1,4 +1,5 @@
 import { NxForbiddenError, isStaffMod, staffHideComment } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -18,7 +19,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const body = (await request.json().catch(() => null)) as { reason?: unknown } | null;
+    const body = (await readJsonBody(request).catch(() => null)) as { reason?: unknown } | null;
     const reason = typeof body?.reason === "string" ? body.reason : null;
     await staffHideComment(id, user.id, reason);
     return nxSuccessResponse({ ok: true });

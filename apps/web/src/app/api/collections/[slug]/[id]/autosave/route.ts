@@ -1,4 +1,5 @@
-import { autosaveRevision } from "@nexpress/core";
+import { NxValidationError, autosaveRevision } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
@@ -24,10 +25,13 @@ export async function POST(
     await ensureWriteReady();
 
     const { slug, id } = await params;
-    const raw = (await request.json()) as Record<string, unknown> | null;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      return nxErrorResponse(new Error("Body must be a JSON object"));
+    const parsed = await readJsonBody(request);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new NxValidationError("Invalid input", [
+        { field: "body", message: "Body must be a JSON object" },
+      ]);
     }
+    const raw = parsed as Record<string, unknown>;
     // Strip the API-layer status sentinel — autosave is its own status.
     const { _status: _ignored, ...data } = raw;
     void _ignored;

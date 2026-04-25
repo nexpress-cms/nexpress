@@ -1,4 +1,5 @@
 import { deleteComment, updateComment } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -14,7 +15,7 @@ export async function PATCH(
     const member = await requireMember(request);
     requireMemberCsrf(request);
     const { id } = await params;
-    const body = (await request.json()) as { bodyMd?: unknown } | null;
+    const body = (await readJsonBody(request)) as { bodyMd?: unknown } | null;
     const bodyMd = typeof body?.bodyMd === "string" ? body.bodyMd : "";
 
     const updated = await updateComment({ commentId: id, memberId: member.id, bodyMd });

@@ -9,6 +9,7 @@ import {
 } from "@nexpress/core";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
@@ -28,7 +29,7 @@ export async function PATCH(
       throw new NxForbiddenError("media-folders", "update");
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = (await readJsonBody(request)) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
 
     if (!name) {

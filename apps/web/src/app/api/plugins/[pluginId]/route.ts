@@ -9,6 +9,7 @@ import {
   type NxPluginStateUpdate,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -82,7 +83,7 @@ export async function PATCH(
     requireCsrf(request);
 
     const { pluginId } = await params;
-    const body = parseBodyRecord(await request.json());
+    const body = parseBodyRecord(await readJsonBody(request));
     const patch: NxPluginStateUpdate = {};
 
     if (body.enabled !== undefined) {

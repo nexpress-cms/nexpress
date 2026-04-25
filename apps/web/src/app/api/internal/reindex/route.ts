@@ -1,4 +1,5 @@
-import { getAllCollectionSlugs, reindexCollection } from "@nexpress/core";
+import { NxAuthError, getAllCollectionSlugs, reindexCollection } from "@nexpress/core";
+import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -16,15 +17,24 @@ export async function POST(request: NextRequest) {
   try {
     const expected = process.env.NX_SCHEDULER_TOKEN;
     if (!expected) {
-      return nxErrorResponse(
-        new Error("Internal trigger token not configured (set NX_SCHEDULER_TOKEN)."),
+      // Misconfiguration on the operator side — distinguish from server
+      // failure (500) so monitors can alert correctly.
+      return NextResponse.json(
+        {
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Internal trigger token not configured (set NX_SCHEDULER_TOKEN).",
+          },
+          status: 503,
+        },
+        { status: 503 },
       );
     }
 
     const header = request.headers.get("authorization") ?? "";
     const supplied = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     if (!supplied || supplied !== expected) {
-      return nxErrorResponse(new Error("Unauthorized"));
+      throw new NxAuthError("Unauthorized");
     }
 
     await ensureWriteReady();

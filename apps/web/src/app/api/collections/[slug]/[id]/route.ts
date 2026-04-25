@@ -1,4 +1,5 @@
 import { NxNotFoundError } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
@@ -41,7 +42,7 @@ export async function PATCH(
 
     requireCsrf(request);
 
-    const data = parseBodyRecord(await request.json());
+    const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
     const previous = await getCollectionDocument(slug, id, user);
     const result = await saveCollectionDocument(slug, id, data, user, saveOptions);

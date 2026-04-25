@@ -7,6 +7,7 @@ import {
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 import { NextResponse } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -102,7 +103,7 @@ export async function PATCH(request: NextRequest) {
     await ensureWriteReady();
     const member = await requireMember(request);
     requireMemberCsrf(request);
-    const patch = validatePatch(await request.json());
+    const patch = validatePatch(await readJsonBody(request));
     const db = getDb();
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };

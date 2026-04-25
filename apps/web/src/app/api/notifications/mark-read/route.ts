@@ -4,6 +4,7 @@ import {
   markNotificationsRead,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
     await ensureWriteReady();
     const member = await requireMember(request);
     requireMemberCsrf(request);
-    const body = (await request.json().catch(() => null)) as
+    const body = (await readJsonBody(request).catch(() => null)) as
       | { all?: unknown; ids?: unknown }
       | null;
 

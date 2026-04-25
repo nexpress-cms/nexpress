@@ -39,3 +39,4 @@ public/media/
 CLAUDE.md
 
 *.tsbuildinfo
+/.claude/

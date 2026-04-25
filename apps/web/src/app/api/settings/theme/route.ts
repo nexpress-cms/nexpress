@@ -6,6 +6,7 @@ import {
   DEFAULT_THEME,
 } from "@nexpress/core";
 import type { NxThemeTokens } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -45,7 +46,7 @@ export async function PUT(request: NextRequest) {
       throw new NxForbiddenError("settings/theme", "update");
     }
 
-    const theme = await request.json();
+    const theme = await readJsonBody(request);
 
     if (!isValidTheme(theme)) {
       throw new NxValidationError("Invalid input", [
