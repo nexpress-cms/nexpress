@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createGitHubOAuthProvider } from "./index.js";
+import { createGitHubOAuthProvider, fetchGitHubProfile } from "./index.js";
 
 type FetchCall = { url: string; init?: RequestInit };
 
@@ -17,50 +17,37 @@ function makeFetch(responses: Map<string, Response | (() => Response)>) {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init: init ?? undefined });
     const matcher = [...responses.entries()].find(([prefix]) => url.startsWith(prefix));
-    if (!matcher) {
-      throw new Error(`unexpected fetch ${url}`);
-    }
+    if (!matcher) throw new Error(`unexpected fetch ${url}`);
     const value = matcher[1];
     return Promise.resolve(typeof value === "function" ? value() : value);
   };
   return { fetch: fn, calls };
 }
 
-describe("createGitHubOAuthProvider", () => {
-  const provider = (overrides?: Partial<Parameters<typeof createGitHubOAuthProvider>[0]>) =>
-    createGitHubOAuthProvider({
-      clientId: "client-x",
-      clientSecret: "secret-x",
-      fetch: () => Promise.resolve(jsonResponse({})),
-      ...overrides,
-    });
-
+describe("createGitHubOAuthProvider (factory guards)", () => {
   it("requires clientId and clientSecret", () => {
     expect(() =>
-      // @ts-expect-error — testing the runtime guard
       createGitHubOAuthProvider({ clientId: "", clientSecret: "" }),
     ).toThrow(/clientId and clientSecret/);
   });
 
-  it("authorize() builds the GitHub URL with state, redirect_uri, and default scope", () => {
-    const url = new URL(
-      provider().authorize({
-        state: "STATE-1",
-        redirectUri: "https://site.example/api/auth/oauth/github/callback",
-      }) as string,
-    );
-    expect(url.origin + url.pathname).toBe("https://github.com/login/oauth/authorize");
-    expect(url.searchParams.get("client_id")).toBe("client-x");
-    expect(url.searchParams.get("state")).toBe("STATE-1");
-    expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://site.example/api/auth/oauth/github/callback",
-    );
-    expect(url.searchParams.get("scope")).toBe("read:user user:email");
+  it("returns an OAuthProvider with id='github'", () => {
+    const provider = createGitHubOAuthProvider({
+      clientId: "id",
+      clientSecret: "secret",
+    });
+    expect(provider.id).toBe("github");
+    expect(provider.label).toBe("GitHub");
   });
+});
 
-  it("exchange() returns a normalized profile from /user (email present)", async () => {
+// Profile fetching is the GitHub-specific logic worth covering here.
+// The token exchange + URL building live in `arctic` and are exercised
+// by arctic's own test suite; mocking arctic's internal fetch would
+// duplicate that without adding signal.
+describe("fetchGitHubProfile", () => {
+  it("returns a normalized profile when /user.email is set", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],
       [
         "https://api.github.com/user",
         jsonResponse({
@@ -73,25 +60,19 @@ describe("createGitHubOAuthProvider", () => {
       ],
     ]);
     const { fetch: stubFetch, calls } = makeFetch(responses);
-    const profile = await provider({ fetch: stubFetch }).exchange({
-      code: "abc",
-      state: "s",
-      redirectUri: "https://site.example/cb",
-    });
+    const profile = await fetchGitHubProfile("tok", stubFetch);
     expect(profile).toEqual({
       providerUserId: "4242",
       email: "octo@example.com",
       name: "Octo Cat",
       avatarUrl: "https://avatars.githubusercontent.com/u/4242",
-      metadata: { login: "octo", scope: "read:user user:email" },
+      metadata: { login: "octo" },
     });
-    // Should NOT have hit /user/emails — email was on /user.
     expect(calls.some((c) => c.url.startsWith("https://api.github.com/user/emails"))).toBe(false);
   });
 
-  it("exchange() falls back to /user/emails when /user.email is null, picks the verified primary", async () => {
+  it("falls back to /user/emails for the verified primary when /user.email is null", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],
       [
         "https://api.github.com/user/emails",
         jsonResponse([
@@ -106,20 +87,14 @@ describe("createGitHubOAuthProvider", () => {
       ],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
-    const profile = await provider({ fetch: stubFetch }).exchange({
-      code: "abc",
-      state: "s",
-      redirectUri: "https://site.example/cb",
-    });
+    const profile = await fetchGitHubProfile("tok", stubFetch);
     expect(profile.email).toBe("primary@x.com");
     expect(profile.providerUserId).toBe("7");
-    // Falls back to login when name is missing.
-    expect(profile.name).toBe("ghost");
+    expect(profile.name).toBe("ghost"); // fallback to login when name is null
   });
 
-  it("exchange() leaves email=null when /user.email is missing AND /user/emails fails", async () => {
+  it("leaves email=null when /user.email is missing AND /user/emails errors", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],
       ["https://api.github.com/user/emails", new Response("nope", { status: 403 })],
       [
         "https://api.github.com/user",
@@ -127,38 +102,12 @@ describe("createGitHubOAuthProvider", () => {
       ],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
-    const profile = await provider({ fetch: stubFetch }).exchange({
-      code: "abc",
-      state: "s",
-      redirectUri: "https://site.example/cb",
-    });
+    const profile = await fetchGitHubProfile("tok", stubFetch);
     expect(profile.email).toBeNull();
   });
 
-  it("exchange() throws when token endpoint returns an error payload", async () => {
+  it("soft-fails when /user/emails returns 200 but malformed body", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      [
-        "https://github.com/login/oauth/access_token",
-        jsonResponse({ error: "bad_verification_code", error_description: "nope" }),
-      ],
-    ]);
-    const { fetch: stubFetch } = makeFetch(responses);
-    await expect(
-      provider({ fetch: stubFetch }).exchange({
-        code: "abc",
-        state: "s",
-        redirectUri: "https://site.example/cb",
-      }),
-    ).rejects.toThrow(/nope/);
-  });
-
-  it("exchange() returns email=null when /user/emails returns 200 but malformed JSON (soft-fail)", async () => {
-    const responses = new Map<string, Response | (() => Response)>([
-      ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],
-      [
-        "https://api.github.com/user",
-        jsonResponse({ id: 9, login: "private", name: null, email: null }),
-      ],
       [
         "https://api.github.com/user/emails",
         new Response("not actually json", {
@@ -166,29 +115,33 @@ describe("createGitHubOAuthProvider", () => {
           headers: { "content-type": "application/json" },
         }),
       ],
+      [
+        "https://api.github.com/user",
+        jsonResponse({ id: 9, login: "x", name: null, email: null }),
+      ],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
-    const profile = await provider({ fetch: stubFetch }).exchange({
-      code: "abc",
-      state: "s",
-      redirectUri: "https://site.example/cb",
-    });
+    const profile = await fetchGitHubProfile("tok", stubFetch);
     expect(profile.email).toBeNull();
     expect(profile.providerUserId).toBe("9");
   });
 
-  it("exchange() throws on non-2xx /user", async () => {
+  it("throws on non-2xx /user", async () => {
     const responses = new Map<string, Response | (() => Response)>([
-      ["https://github.com/login/oauth/access_token", jsonResponse({ access_token: "tok" })],
       ["https://api.github.com/user", new Response("denied", { status: 401 })],
     ]);
     const { fetch: stubFetch } = makeFetch(responses);
-    await expect(
-      provider({ fetch: stubFetch }).exchange({
-        code: "abc",
-        state: "s",
-        redirectUri: "https://site.example/cb",
-      }),
-    ).rejects.toThrow(/HTTP 401/);
+    await expect(fetchGitHubProfile("tok", stubFetch)).rejects.toThrow(/HTTP 401/);
+  });
+
+  it("throws when /user payload is missing id (contract violation)", async () => {
+    const responses = new Map<string, Response | (() => Response)>([
+      [
+        "https://api.github.com/user",
+        jsonResponse({ login: "no-id", email: "x@example.com" }),
+      ],
+    ]);
+    const { fetch: stubFetch } = makeFetch(responses);
+    await expect(fetchGitHubProfile("tok", stubFetch)).rejects.toThrow(/missing id/);
   });
 });

@@ -6,5 +6,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ["@nexpress/core", "@nexpress/plugin-sdk"],
+  external: ["@nexpress/core", "@nexpress/plugin-sdk", "arctic"],
 });
