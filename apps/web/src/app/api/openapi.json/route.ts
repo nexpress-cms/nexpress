@@ -1609,6 +1609,150 @@ function buildSpec(): OpenApiSchema {
     },
   };
 
+  paths["/api/reactions"] = {
+    get: {
+      summary: "Reaction summary for a target",
+      parameters: [
+        { in: "query", name: "targetType", required: true, schema: { type: "string" }, description: "Today: `comment`. `thread`/`reply` land in 9.4." },
+        { in: "query", name: "targetId", required: true, schema: { type: "string", format: "uuid" } },
+        { in: "query", name: "kind", schema: { type: "string" }, description: "Defaults to `like`." },
+      ],
+      responses: {
+        "200": {
+          description: "{counts: { kind: count }, mine: kinds[]}",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  counts: { type: "object", additionalProperties: { type: "integer" } },
+                  mine: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    post: {
+      summary: "React to a target (idempotent)",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["targetType", "targetId"],
+              properties: {
+                targetType: { type: "string" },
+                targetId: { type: "string", format: "uuid" },
+                kind: { type: "string", description: "Defaults to `like`." },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "201": { description: "Created (or returned existing if duplicate)" },
+        "400": { description: "Unsupported targetType / unknown comment" },
+        "401": { description: "Member auth required" },
+      },
+    },
+    delete: {
+      summary: "Remove a reaction",
+      parameters: [
+        { in: "query", name: "targetType", required: true, schema: { type: "string" } },
+        { in: "query", name: "targetId", required: true, schema: { type: "string", format: "uuid" } },
+        { in: "query", name: "kind", schema: { type: "string" } },
+      ],
+      responses: {
+        "200": { description: "Reaction removed (no-op if it didn't exist)" },
+        "401": { description: "Member auth required" },
+      },
+    },
+  };
+  paths["/api/follows"] = {
+    get: {
+      summary: "List the authenticated member's follows",
+      parameters: [
+        { in: "query", name: "targetType", schema: { type: "string", enum: ["member", "thread", "tag"] } },
+        { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
+        { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+      ],
+      responses: { "200": { description: "Follow rows" }, "401": { description: "Member auth required" } },
+    },
+    post: {
+      summary: "Follow a member / thread / tag",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["targetType", "targetId"],
+              properties: {
+                targetType: { type: "string", enum: ["member", "thread", "tag"] },
+                targetId: { type: "string", description: "UUID for member/thread; slug for tag." },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "201": { description: "Followed (or existing follow returned on duplicate)" },
+        "400": { description: "Self-follow / unknown target / unsupported type" },
+      },
+    },
+    delete: {
+      summary: "Unfollow",
+      parameters: [
+        { in: "query", name: "targetType", required: true, schema: { type: "string" } },
+        { in: "query", name: "targetId", required: true, schema: { type: "string" } },
+      ],
+      responses: { "200": { description: "Removed" }, "401": { description: "Member auth required" } },
+    },
+  };
+  paths["/api/notifications"] = {
+    get: {
+      summary: "Authenticated member's notification inbox",
+      parameters: [
+        { in: "query", name: "count", schema: { type: "string", enum: ["1"] }, description: "Lightweight badge probe — returns just `{ unread }`." },
+        { in: "query", name: "unread", schema: { type: "string", enum: ["1"] }, description: "Filter the list to unread rows." },
+        { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 200 } },
+        { in: "query", name: "offset", schema: { type: "integer", minimum: 0 } },
+      ],
+      responses: {
+        "200": { description: "Notification list + unread count" },
+        "401": { description: "Member auth required" },
+      },
+    },
+  };
+  paths["/api/notifications/mark-read"] = {
+    post: {
+      summary: "Mark notifications read",
+      description:
+        "Two modes: `{ all: true }` marks every unread row read; `{ ids: [...] }` (≤ 200) marks the listed ids only. Ids that don't belong to the caller silently no-op.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                all: { type: "boolean" },
+                ids: { type: "array", items: { type: "string", format: "uuid" }, maxItems: 200 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": { description: "{ marked: number, all?: boolean }" },
+        "400": { description: "Validation error" },
+      },
+    },
+  };
+
   // Plugin-provided routes. These are resolved from the in-process registry,
   // so the spec only lists plugins that actually loaded (enabled + no errors).
   for (const route of getPluginRoutes()) {

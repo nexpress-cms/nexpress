@@ -37,3 +37,32 @@ export type {
   NxCommentHideInput,
   NxCommentRestoreInput,
 } from "./comments.js";
+
+export {
+  DEFAULT_REACTION_KINDS,
+  addReaction,
+  removeReaction,
+  countReactions,
+  listMemberReactions,
+  assertReactableExists,
+} from "./reactions.js";
+export type { NxReactionRow, NxReactToInput } from "./reactions.js";
+
+export { follow, unfollow, isFollowing, listFollowing } from "./follows.js";
+export type { NxFollowRow, NxFollowInput } from "./follows.js";
+
+export {
+  createNotification,
+  listNotifications,
+  unreadNotificationCount,
+  markNotificationsRead,
+  markAllNotificationsRead,
+  assertOwnsNotification,
+} from "./notifications.js";
+export type {
+  NxNotificationRow,
+  CreateNotificationInput,
+  ListNotificationsOptions,
+  NxNotificationListResult,
+  MarkReadInput,
+} from "./notifications.js";

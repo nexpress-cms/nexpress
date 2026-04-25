@@ -43,6 +43,13 @@
       "when": 1777105661059,
       "tag": "0005_clever_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777117629668,
+      "tag": "0006_skinny_gambit",
+      "breakpoints": true
     }
   ]
 }
