@@ -1,5 +1,5 @@
 {
-  "id": "2ffba16e-2673-4901-961e-5da903d22f8f",
+  "id": "f81987e6-a1da-494c-a154-4a758f36eb62",
   "prevId": "cd46a1b4-7894-4bb9-b51b-ce9e9a20cfe1",
   "version": "7",
   "dialect": "postgresql",
@@ -701,7 +701,7 @@
       "uniqueConstraints": {
         "nx_member_roles_grant_uq": {
           "name": "nx_member_roles_grant_uq",
-          "nullsNotDistinct": false,
+          "nullsNotDistinct": true,
           "columns": [
             "member_id",
             "role",

@@ -150,15 +150,15 @@ export const nxMemberRoles = pgTable(
     // do?" (memberId scan) and "who mods this scope?" (scope scan).
     index("nx_member_roles_member_idx").on(table.memberId),
     index("nx_member_roles_scope_idx").on(table.scopeType, table.scopeId),
-    // Drizzle doesn't directly support partial / nulls-distinct unique
-    // constraints, so we model uniqueness as a regular composite unique.
-    // The migration adds the actual partial unique with NULL handling.
-    unique("nx_member_roles_grant_uq").on(
-      table.memberId,
-      table.role,
-      table.scopeType,
-      table.scopeId,
-    ),
+    // `scope_id` is null for site-wide grants. Postgres treats NULL as
+    // distinct from NULL in a unique constraint by default, which would
+    // let a member be granted `community-mod` (site) twice. NULLS NOT
+    // DISTINCT (Postgres 15+) makes the two NULL rows collide so the
+    // unique constraint actually enforces "one grant per (member, role,
+    // scope)" the way the design intends.
+    unique("nx_member_roles_grant_uq")
+      .on(table.memberId, table.role, table.scopeType, table.scopeId)
+      .nullsNotDistinct(),
   ],
 );
 

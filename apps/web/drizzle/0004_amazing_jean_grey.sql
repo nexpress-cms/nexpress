@@ -34,7 +34,7 @@ CREATE TABLE "nx_member_roles" (
 	"granted_by" uuid,
 	"granted_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"expires_at" timestamp with time zone,
-	CONSTRAINT "nx_member_roles_grant_uq" UNIQUE("member_id","role","scope_type","scope_id")
+	CONSTRAINT "nx_member_roles_grant_uq" UNIQUE NULLS NOT DISTINCT("member_id","role","scope_type","scope_id")
 );
 --> statement-breakpoint
 CREATE TABLE "nx_member_sessions" (
