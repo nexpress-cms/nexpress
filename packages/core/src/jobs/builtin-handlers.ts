@@ -5,7 +5,11 @@ import {
   type NxJobType,
 } from "../config/types.js";
 import { getEmailAdapter } from "../email/service.js";
-import { buildInviteEmail, buildResetEmail } from "../email/templates.js";
+import {
+  buildInviteEmail,
+  buildMemberVerifyEmail,
+  buildResetEmail,
+} from "../email/templates.js";
 import { registerJobHandler } from "./handlers.js";
 
 interface ContentJobData {
@@ -47,6 +51,8 @@ interface BuiltinJobContext {
   pruneRevisions?: () => Promise<void> | void;
   cleanupSessions?: () => Promise<void> | void;
   sendPasswordReset?: (data: unknown) => Promise<void> | void;
+  sendMemberVerifyEmail?: (data: unknown) => Promise<void> | void;
+  sendMemberPasswordReset?: (data: unknown) => Promise<void> | void;
 }
 
 const builtinJobContext: BuiltinJobContext = {};
@@ -65,6 +71,8 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
   registerJobHandler("system:sessionCleanup", handleSessionCleanup);
   registerJobHandler("auth:sendPasswordReset", handleAuthSendPasswordReset);
+  registerJobHandler("members:sendVerifyEmail", handleMemberSendVerifyEmail);
+  registerJobHandler("members:sendPasswordReset", handleMemberSendPasswordReset);
 }
 
 async function handleContentPublishScheduled(_: unknown): Promise<void> {
@@ -304,6 +312,79 @@ function asString(value: unknown, fieldName: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+interface MemberVerifyJobData {
+  email: string;
+  displayName: string;
+  verifyUrl: string;
+  siteName?: string;
+}
+
+interface MemberResetJobData {
+  email: string;
+  displayName: string;
+  resetUrl: string;
+  siteName?: string;
+}
+
+async function handleMemberSendVerifyEmail(data: unknown): Promise<void> {
+  if (builtinJobContext.sendMemberVerifyEmail) {
+    await builtinJobContext.sendMemberVerifyEmail(data);
+    return;
+  }
+  if (!isRecord(data)) throw new Error("Invalid members:sendVerifyEmail job payload.");
+  const payload: MemberVerifyJobData = {
+    email: asString(data.email, "email"),
+    displayName: asString(data.displayName, "displayName"),
+    verifyUrl: asString(data.verifyUrl, "verifyUrl"),
+    siteName:
+      typeof data.siteName === "string" && data.siteName.length > 0
+        ? data.siteName
+        : undefined,
+  };
+  const template = buildMemberVerifyEmail({
+    siteName: payload.siteName ?? "your site",
+    displayName: payload.displayName,
+    verifyUrl: payload.verifyUrl,
+  });
+  await getEmailAdapter().send({
+    to: payload.email,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+  });
+}
+
+async function handleMemberSendPasswordReset(data: unknown): Promise<void> {
+  if (builtinJobContext.sendMemberPasswordReset) {
+    await builtinJobContext.sendMemberPasswordReset(data);
+    return;
+  }
+  if (!isRecord(data)) throw new Error("Invalid members:sendPasswordReset job payload.");
+  const payload: MemberResetJobData = {
+    email: asString(data.email, "email"),
+    displayName: asString(data.displayName, "displayName"),
+    resetUrl: asString(data.resetUrl, "resetUrl"),
+    siteName:
+      typeof data.siteName === "string" && data.siteName.length > 0
+        ? data.siteName
+        : undefined,
+  };
+  // Reuse the staff `buildResetEmail` template — copy is identical from
+  // the user's POV ("reset your <site> password"). When templating
+  // diverges we'll fork the function, not the dispatcher.
+  const template = buildResetEmail({
+    siteName: payload.siteName ?? "your site",
+    name: payload.displayName,
+    resetUrl: payload.resetUrl,
+  });
+  await getEmailAdapter().send({
+    to: payload.email,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+  });
 }
 
 export type { BuiltinJobContext, ContentDeleteJobData, ContentJobData, NxJobType };

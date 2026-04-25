@@ -124,6 +124,25 @@ export {
   requestPasswordReset,
   consumePasswordResetToken,
 } from "./auth/reset-token.js";
+export { signMemberToken, verifyMemberToken } from "./auth/member-token.js";
+export type { NxMemberTokenPayload } from "./auth/member-token.js";
+export {
+  getMemberFromTokenPayload,
+  invalidateAllMemberSessions,
+} from "./auth/member-session.js";
+export type { NxMemberAuthRow } from "./auth/member-session.js";
+export {
+  createMemberEmailVerifyToken,
+  consumeMemberEmailVerifyToken,
+  requestMemberPasswordReset,
+  consumeMemberPasswordReset,
+} from "./auth/member-credentials.js";
+export type {
+  NxIssuedMemberToken,
+  NxConsumeMemberEmailVerifyResult,
+  NxMemberResetRequestResult,
+  NxConsumeMemberResetResult,
+} from "./auth/member-credentials.js";
 export type {
   NxPasswordResetPurpose,
   NxIssuedResetToken,

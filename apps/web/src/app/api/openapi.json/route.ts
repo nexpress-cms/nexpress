@@ -312,6 +312,202 @@ function buildSpec(): OpenApiSchema {
         },
       },
     },
+    "/api/members/register": {
+      post: {
+        summary: "Self-register a public site member",
+        description:
+          "Creates a `pending` member, mints a 24h email verification token, and enqueues a verify email. Login refuses pending accounts until the token is consumed via `/api/members/verify`. Response is constant on success regardless of email/handle collision (anti-enumeration).",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password", "handle", "displayName"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string", minLength: 8 },
+                  handle: {
+                    type: "string",
+                    minLength: 3,
+                    maxLength: 30,
+                    pattern: "^[a-z0-9][a-z0-9_-]+$",
+                  },
+                  displayName: { type: "string", minLength: 1, maxLength: 80 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Acknowledged. Email sent if the registration was new." },
+          "400": { description: "Validation error" },
+        },
+      },
+    },
+    "/api/members/verify": {
+      post: {
+        summary: "Consume a member email verification token",
+        description: "Flips a pending member to active. Token comes from the registration email.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["token"],
+                properties: { token: { type: "string" } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Verified" },
+          "400": { description: "Invalid or expired token" },
+        },
+      },
+    },
+    "/api/members/login": {
+      post: {
+        summary: "Member login",
+        description:
+          "Sets `nx-mb-session` / `nx-mb-refresh` / `nx-mb-csrf` cookies. Refuses login for non-active members (pending / suspended / deleted) with the same generic 401 used for wrong passwords (anti-enumeration).",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Logged in. Member object in body, cookies set." },
+          "401": { description: "Invalid credentials" },
+        },
+      },
+    },
+    "/api/members/refresh": {
+      post: {
+        summary: "Rotate member session",
+        description: "Reads `nx-mb-refresh`; on success rotates session + refresh + CSRF cookies.",
+        responses: {
+          "200": { description: "Fresh tokens" },
+          "401": { description: "Refresh cookie missing or invalid" },
+        },
+      },
+    },
+    "/api/members/logout": {
+      post: {
+        summary: "Member logout",
+        description: "Revokes the matching session row and clears `nx-mb-*` cookies.",
+        responses: { "200": { description: "Logged out" } },
+      },
+    },
+    "/api/members/me": {
+      get: {
+        summary: "Authenticated member profile",
+        description: "Returns the full self-profile, including email and verification state.",
+        responses: {
+          "200": { description: "Member self-profile" },
+          "401": { description: "Not authenticated" },
+        },
+      },
+      patch: {
+        summary: "Update member profile",
+        description:
+          "Editable fields: `displayName`, `bio`, `avatar`. Including `newPassword` requires `currentPassword`; on success the response carries `mustReauth: true` and clears auth cookies.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  displayName: { type: "string", minLength: 1, maxLength: 80 },
+                  bio: { type: "string", nullable: true, maxLength: 500 },
+                  avatar: { type: "string", format: "uuid", nullable: true },
+                  newPassword: { type: "string", minLength: 8 },
+                  currentPassword: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Updated" },
+          "400": { description: "Validation error" },
+          "401": { description: "Not authenticated" },
+        },
+      },
+      delete: {
+        summary: "Soft-delete the authenticated member",
+        description:
+          "Sets `status='deleted'` and anonymises identifying columns (display_name, email, handle) so the row's unique constraints free up the originals. Sessions revoked, password nulled, cookies cleared.",
+        responses: {
+          "200": { description: "Deleted" },
+          "401": { description: "Not authenticated" },
+        },
+      },
+    },
+    "/api/members/forgot-password": {
+      post: {
+        summary: "Request a member password reset email",
+        description: "Constant 200 regardless of whether the email matched a member.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email"],
+                properties: { email: { type: "string", format: "email" } },
+              },
+            },
+          },
+        },
+        responses: { "200": { description: "Acknowledged" }, "400": { description: "Validation error" } },
+      },
+    },
+    "/api/members/reset-password": {
+      post: {
+        summary: "Consume a member reset token + set a new password",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["token", "password"],
+                properties: { token: { type: "string" }, password: { type: "string", minLength: 8 } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Password updated" },
+          "400": { description: "Token invalid, expired, or password too short" },
+        },
+      },
+    },
+    "/api/members/{handle}": {
+      parameters: [{ in: "path", name: "handle", required: true, schema: { type: "string" } }],
+      get: {
+        summary: "Public member profile by handle",
+        description:
+          "Returns only public-safe columns (display_name, avatar, bio, reputation, joined). 404 for pending / suspended / deleted handles.",
+        responses: {
+          "200": { description: "Public profile" },
+          "404": { description: "No active member with that handle" },
+        },
+      },
+    },
     "/api/users": {
       get: {
         summary: "List users (editor+)",
