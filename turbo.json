@@ -1,5 +1,32 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "NX_SECRET",
+    "NX_AUTH_SECRET",
+    "AUTH_SECRET",
+    "DATABASE_URL",
+    "SITE_URL",
+    "NX_STORAGE_ADAPTER",
+    "NX_STORAGE_DIR",
+    "NX_STORAGE_URL",
+    "NX_S3_BUCKET",
+    "NX_S3_REGION",
+    "NX_S3_ENDPOINT",
+    "NX_EMAIL_ADAPTER",
+    "NX_SMTP_HOST",
+    "NX_SMTP_PORT",
+    "NX_SMTP_USER",
+    "NX_SMTP_PASS",
+    "NX_SMTP_FROM",
+    "NX_SMTP_SECURE",
+    "NX_ENABLE_JOBS",
+    "NX_SCHEDULER_TOKEN",
+    "NX_TOKEN_EXPIRATION",
+    "NX_REFRESH_TOKEN_EXPIRATION",
+    "NX_MAX_LOGIN_ATTEMPTS",
+    "NX_LOCKOUT_DURATION",
+    "TEST_DATABASE_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -15,6 +42,11 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": []
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
     },
     "clean": {
       "cache": false

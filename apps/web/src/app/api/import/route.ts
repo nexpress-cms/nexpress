@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
 
     if (payload.collections) {
       for (const [slug, docs] of Object.entries(payload.collections)) {
-        if (partial && !filter!.has(slug)) {
+        if (filter && !filter.has(slug)) {
           continue;
         }
         if (!registeredSlugs.has(slug)) {

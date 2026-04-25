@@ -15,7 +15,7 @@
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
     "typecheck": "turbo run lint",
     "test": "turbo run test",
-    "test:integration": "pnpm --filter @nexpress/core test:integration",
+    "test:integration": "turbo run test:integration --concurrency=1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "turbo run db:generate",
