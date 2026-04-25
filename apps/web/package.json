@@ -27,6 +27,7 @@
     "@nexpress/editor": "workspace:*",
     "@nexpress/next": "workspace:*",
     "@nexpress/plugin-forum": "workspace:*",
+    "@nexpress/plugin-oauth-github": "workspace:*",
     "@nexpress/plugin-reading-time": "workspace:*",
     "@nexpress/plugin-seo-audit": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
