@@ -7,6 +7,7 @@ import {
   removeReaction,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
     await ensureWriteReady();
     const member = await requireMember(request);
     requireMemberCsrf(request);
-    const target = readTargetFromBody(await request.json());
+    const target = readTargetFromBody(await readJsonBody(request));
     await assertReactableExists(target.targetType, target.targetId);
     const row = await addReaction({
       targetType: target.targetType,

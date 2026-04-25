@@ -7,6 +7,7 @@ import {
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       throw new NxForbiddenError("media-folders", "create");
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = (await readJsonBody(request)) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const parentId =
       typeof body.parentId === "string" && body.parentId.trim()

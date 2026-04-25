@@ -1,4 +1,5 @@
 import { NxValidationError, follow, listFollowing, unfollow } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     await ensureWriteReady();
     const member = await requireMember(request);
     requireMemberCsrf(request);
-    const { targetType, targetId } = readTarget(await request.json());
+    const { targetType, targetId } = readTarget(await readJsonBody(request));
     const row = await follow({ followerId: member.id, targetType, targetId });
     return nxSuccessResponse(row, { status: 201 });
   } catch (error) {

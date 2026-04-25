@@ -1,4 +1,5 @@
 import { fileReport } from "@nexpress/core";
+import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     await ensureWriteReady();
     const member = await requireMember(request);
     requireMemberCsrf(request);
-    const body = (await request.json()) as ReportBody | null;
+    const body = (await readJsonBody(request)) as ReportBody | null;
     const targetType = typeof body?.targetType === "string" ? body.targetType : "";
     const targetId = typeof body?.targetId === "string" ? body.targetId : "";
     const reason = typeof body?.reason === "string" ? body.reason : "";

@@ -9,6 +9,7 @@ import {
 } from "@nexpress/core";
 import { asc, count, ilike, or } from "drizzle-orm";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
       throw new NxForbiddenError("users", "create");
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = (await readJsonBody(request)) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";

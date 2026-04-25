@@ -5,6 +5,7 @@ import {
   saveDocument,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
+import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -60,7 +61,7 @@ export async function POST(
     await ensureWriteReady();
 
     const { slug } = await params;
-    const { action, ids } = validateBody(await request.json());
+    const { action, ids } = validateBody(await readJsonBody(request));
 
     const succeeded: string[] = [];
     const failed: Array<{ id: string; error: string }> = [];
