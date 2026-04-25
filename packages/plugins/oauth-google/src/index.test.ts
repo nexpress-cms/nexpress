@@ -122,6 +122,68 @@ describe("createGoogleOAuthProvider", () => {
     expect(profile.providerUserId).toBe("sub-X");
   });
 
+  // The strict `email_verified === true` check is a security invariant
+  // — without it, the framework's email-match path in resolveOAuthLogin
+  // would silently link unverified Google addresses to existing
+  // NexPress users. Cover the failure modes explicitly: missing field,
+  // truthy-but-not-true (e.g. "true" string), and missing email.
+  it("exchange() drops email when email_verified is missing entirely", async () => {
+    const responses = new Map<string, Response | (() => Response)>([
+      ["https://oauth2.googleapis.com/token", jsonResponse({ access_token: "tok" })],
+      [
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        jsonResponse({ sub: "no-flag", email: "x@example.com", name: "X" }),
+      ],
+    ]);
+    const { fetch: stubFetch } = makeFetch(responses);
+    const profile = await provider({ fetch: stubFetch }).exchange({
+      code: "abc",
+      state: "s",
+      redirectUri: "https://site.example/cb",
+    });
+    expect(profile.email).toBeNull();
+  });
+
+  it("exchange() drops email when email_verified is the string 'true' (not boolean)", async () => {
+    const responses = new Map<string, Response | (() => Response)>([
+      ["https://oauth2.googleapis.com/token", jsonResponse({ access_token: "tok" })],
+      [
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        jsonResponse({
+          sub: "string-flag",
+          email: "x@example.com",
+          email_verified: "true",
+          name: "X",
+        }),
+      ],
+    ]);
+    const { fetch: stubFetch } = makeFetch(responses);
+    const profile = await provider({ fetch: stubFetch }).exchange({
+      code: "abc",
+      state: "s",
+      redirectUri: "https://site.example/cb",
+    });
+    expect(profile.email).toBeNull();
+  });
+
+  it("exchange() returns email=null when userinfo omits email entirely (limited scope)", async () => {
+    const responses = new Map<string, Response | (() => Response)>([
+      ["https://oauth2.googleapis.com/token", jsonResponse({ access_token: "tok" })],
+      [
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        jsonResponse({ sub: "no-email", name: "Anon" }),
+      ],
+    ]);
+    const { fetch: stubFetch } = makeFetch(responses);
+    const profile = await provider({ fetch: stubFetch }).exchange({
+      code: "abc",
+      state: "s",
+      redirectUri: "https://site.example/cb",
+    });
+    expect(profile.email).toBeNull();
+    expect(profile.providerUserId).toBe("no-email");
+  });
+
   it("exchange() falls back to given_name + family_name when name is missing", async () => {
     const responses = new Map<string, Response | (() => Response)>([
       ["https://oauth2.googleapis.com/token", jsonResponse({ access_token: "tok" })],
