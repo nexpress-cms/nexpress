@@ -8,6 +8,7 @@ import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.
 
 import { memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
+import { createNotification } from "./notifications.js";
 
 /**
  * Service layer for `nx_comments`. Routes call into here so the
@@ -86,16 +87,23 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   // and target the same collection + document. Cross-doc replies are
   // disallowed so a reply can't smuggle itself into a different thread.
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  let parentAuthorId: string | null = null;
   if (input.parentId) {
     const [parent] = (await db
       .select({
         id: nxComments.id,
         targetType: nxComments.targetType,
         targetId: nxComments.targetId,
+        memberId: nxComments.memberId,
       })
       .from(nxComments)
       .where(eq(nxComments.id, input.parentId))
-      .limit(1)) as Array<{ id: string; targetType: string; targetId: string }>;
+      .limit(1)) as Array<{
+      id: string;
+      targetType: string;
+      targetId: string;
+      memberId: string;
+    }>;
     if (!parent) {
       throw new NxNotFoundError("comment", input.parentId);
     }
@@ -104,6 +112,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
         { field: "parentId", message: "Parent comment belongs to a different document" },
       ]);
     }
+    parentAuthorId = parent.memberId;
   }
 
   const html = renderCommentMarkdown(input.bodyMd);
@@ -120,6 +129,21 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     })
     .returning()) as Array<NxCommentRow>;
   if (!row) throw new Error("Comment insert returned no row");
+
+  // Reply notification — fire-and-forget. Self-replies don't notify.
+  if (parentAuthorId && parentAuthorId !== input.memberId) {
+    await createNotification({
+      memberId: parentAuthorId,
+      kind: "comment.reply",
+      payload: {
+        commentId: row.id,
+        replyAuthorId: input.memberId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+      },
+    });
+  }
+
   return row;
 }
 
