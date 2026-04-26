@@ -61,6 +61,7 @@ export {
   NxValidationError,
   NxAuthError,
   NxConflictError,
+  NxRateLimitError,
 } from "./errors.js";
 
 export { buildSearchVector } from "./collections/search.js";
@@ -394,6 +395,7 @@ export type {
   NxReputationAdapter,
   NxReputationEvent,
   NxCommunitySettings,
+  NxMemberUploadQuota,
   CommentStatus,
   NxCommentRow,
   NxCommentCreateInput,
