@@ -24,6 +24,8 @@ export { ReportsQueueView } from "./community/reports-queue-view.js";
 export type { ReportRow } from "./community/reports-queue-view.js";
 export { AuditLogView } from "./community/audit-log-view.js";
 export type { AuditEventRow } from "./community/audit-log-view.js";
+export { PendingQueueView } from "./community/pending-queue-view.js";
+export type { PendingDocRow } from "./community/pending-queue-view.js";
 export { CommunitySettingsView } from "./community/community-settings-view.js";
 export type { CommunitySettings } from "./community/community-settings-view.js";
 
