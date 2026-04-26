@@ -99,8 +99,11 @@ export async function POST(request: NextRequest) {
       .where(eq(nxMembers.id, member.id));
 
     const { secret, tokenExpiration, refreshTokenExpiration } = getMemberAuthRuntimeConfig();
-    const access = await signMemberToken(member, secret, tokenExpiration);
-    const refresh = await signMemberToken(member, secret, refreshTokenExpiration);
+    // Tokens carry a `use` claim so the auth middleware refuses a
+    // refresh JWT presented as a session cookie (#91) and the refresh
+    // endpoint refuses an access JWT as a rotation trigger.
+    const access = await signMemberToken(member, secret, tokenExpiration, "access");
+    const refresh = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
     const csrf = randomBytes(16).toString("hex");
 
     // Persist a session row per token so logout can revoke both server-

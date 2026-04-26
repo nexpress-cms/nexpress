@@ -345,6 +345,48 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     );
     expect(refreshAfterLogout.status).toBe(401);
   });
+
+  // Regression for #91: a refresh JWT must not be usable as a session
+  // cookie. Without the `use` claim check the refresh token's hash row
+  // in `nx_member_sessions` was indistinguishable from an access row
+  // and authenticated normal member endpoints.
+  it("refresh JWT is rejected when presented as the session cookie (#91)", async () => {
+    await registerAndVerify("usemix", "usemix@example.com", "password123");
+    const login = await loginPOST(
+      jsonRequest("/api/members/login", {
+        method: "POST",
+        body: JSON.stringify({ email: "usemix@example.com", password: "password123" }),
+      }),
+    );
+    const cookies = login.headers.get("set-cookie");
+    const sessionCookie = cookieValue(cookies, "nx-mb-session");
+    const refreshCookie = cookieValue(cookies, "nx-mb-refresh");
+    expect(sessionCookie).toBeDefined();
+    expect(refreshCookie).toBeDefined();
+
+    // Sanity: real session cookie works on /me.
+    const okMe = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${sessionCookie}`] }),
+    );
+    expect(okMe.status).toBe(200);
+
+    // Attack: smuggle the refresh JWT into the session cookie name.
+    // The refresh row is still in `nx_member_sessions`, so without
+    // the `use` claim check this returned 200.
+    const smuggle = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${refreshCookie}`] }),
+    );
+    expect(smuggle.status).toBe(401);
+
+    // Symmetric: presenting an access JWT to /refresh must also fail.
+    const wrongRotation = await refreshPOST(
+      jsonRequest("/api/members/refresh", {
+        method: "POST",
+        cookies: [`nx-mb-refresh=${sessionCookie}`],
+      }),
+    );
+    expect(wrongRotation.status).toBe(401);
+  });
 });
 
 // ── helpers ───────────────────────────────────────────────────────────

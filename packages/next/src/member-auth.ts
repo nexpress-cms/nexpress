@@ -69,7 +69,11 @@ export function createMemberAuthHelpers<DB>(
     const token = request.cookies.get("nx-mb-session")?.value;
     if (!token) return null;
     try {
-      const payload = await verifyMemberToken(token, readSecret());
+      // Refuse refresh tokens presented in the session cookie — without
+      // this check a leaked refresh JWT was indistinguishable from an
+      // access JWT to the auth path because both kinds were stored as
+      // fungible rows in `nx_member_sessions` (#91).
+      const payload = await verifyMemberToken(token, readSecret(), "access");
       // Pass the raw access token so the resolver can verify a live
       // row exists in nx_member_sessions — that's what makes
       // `/api/members/logout` actually revoke the token. (#45)

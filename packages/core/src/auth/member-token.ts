@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT, type JWTPayload } from "jose";
 
+import { NxAuthError } from "../errors.js";
+
 /**
  * Member-side JWT helpers. Mirrors `signToken` / `verifyToken` for
  * staff but adds a fixed `aud: "member"` claim so a forged JWT signed
@@ -15,11 +17,21 @@ import { jwtVerify, SignJWT, type JWTPayload } from "jose";
  * needed for refresh-token rotation: without it, the rotated token
  * hash would collide with the prior token hash and revocation by
  * tokenHash would still resolve the rotated row.
+ *
+ * `use: "access" | "refresh"` separates the two token purposes. A
+ * refresh JWT cannot be presented as the `nx-mb-session` cookie and
+ * a session JWT cannot drive the rotation endpoint — without this
+ * separation a leaked refresh token effectively became a long-lived
+ * bearer access token because both kinds were stored as fungible
+ * rows in `nx_member_sessions` with no row-level kind column.
  */
+export type NxMemberTokenUse = "access" | "refresh";
+
 export interface NxMemberTokenPayload {
   sub: string;
   aud: "member";
   ver: number;
+  use: NxMemberTokenUse;
   /** Optional in the type so legacy tokens minted before the
    *  jti-claim addition still validate; new tokens always carry one. */
   jti?: string;
@@ -34,9 +46,10 @@ export async function signMemberToken(
   member: { id: string; tokenVersion: number },
   secret: string,
   expirationSeconds: number = 7200,
+  tokenUse: NxMemberTokenUse = "access",
 ): Promise<string> {
   const secretKey = textEncoder.encode(secret);
-  return new SignJWT({ sub: member.id, ver: member.tokenVersion })
+  return new SignJWT({ sub: member.id, ver: member.tokenVersion, use: tokenUse })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(MEMBER_AUDIENCE)
     .setJti(randomBytes(16).toString("base64url"))
@@ -45,9 +58,22 @@ export async function signMemberToken(
     .sign(secretKey);
 }
 
+/**
+ * Verify a member JWT and return the parsed payload. When
+ * `expectedUse` is provided, refuses tokens whose `use` claim doesn't
+ * match — that's how `getSessionMember` rejects a refresh token used
+ * as a session cookie and how the refresh route rejects an access
+ * token as a refresh trigger.
+ *
+ * Tokens minted before the `use` claim landed (which would have
+ * `use === undefined`) are treated as `access` for backward compat
+ * — this only matters during the rolling deploy window when the
+ * tokens issued by the previous build are still in flight.
+ */
 export async function verifyMemberToken(
   token: string,
   secret: string,
+  expectedUse?: NxMemberTokenUse,
 ): Promise<NxMemberTokenPayload> {
   const secretKey = textEncoder.encode(secret);
   const { payload } = await jwtVerify(token, secretKey, { audience: MEMBER_AUDIENCE });
@@ -58,6 +84,15 @@ export async function verifyMemberToken(
     ver: number;
     iat: number;
     exp: number;
+    use?: NxMemberTokenUse;
   };
-  return { ...typed, aud: MEMBER_AUDIENCE };
+  const use: NxMemberTokenUse = typed.use === "refresh" ? "refresh" : "access";
+  if (expectedUse && use !== expectedUse) {
+    // Throw `NxAuthError` so the response mapper emits 401 instead of
+    // a plain 500 — this is an auth failure, not a server failure.
+    throw new NxAuthError(
+      `Member token use mismatch: expected ${expectedUse}, got ${use}`,
+    );
+  }
+  return { ...typed, aud: MEMBER_AUDIENCE, use };
 }
