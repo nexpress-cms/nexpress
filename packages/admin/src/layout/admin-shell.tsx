@@ -117,6 +117,7 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
     if (STAFF_MOD_ROLES.has(user.role)) {
       items.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
       items.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
+      items.push({ href: "/admin/community/settings", label: "Community settings", icon: Settings });
     }
     return items;
   }, [user.role]);
