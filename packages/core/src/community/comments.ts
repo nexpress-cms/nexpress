@@ -10,6 +10,7 @@ import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { createNotification } from "./notifications.js";
+import { getSpamAdapter } from "./spam-adapter.js";
 
 /**
  * Service layer for `nx_comments`. Routes call into here so the
@@ -146,6 +147,29 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     parentAuthorId = parent.memberId;
   }
 
+  // Run the registered spam adapter (default: pass-through). Sites
+  // that install Akismet / OpenAI moderation / a custom classifier
+  // via `setSpamAdapter()` get their verdict here:
+  //   - `"pass"`   → status = "visible" (existing behavior)
+  //   - `"flag"`   → status = "pending"; mods see the row, public list
+  //                  does not; the audit log captures the verdict
+  //   - `"reject"` → throw NxValidationError, no row written
+  const verdict = await getSpamAdapter().check(input.bodyMd, {
+    memberId: input.memberId,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    parentId: input.parentId ?? null,
+  });
+  if (verdict.kind === "reject") {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "bodyMd",
+        message: verdict.reason ?? "Comment was rejected by the site's spam filter",
+      },
+    ]);
+  }
+  const initialStatus: CommentStatus = verdict.kind === "flag" ? "pending" : "visible";
+
   const html = renderCommentMarkdown(input.bodyMd);
   const [row] = (await db
     .insert(nxComments)
@@ -156,13 +180,38 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
       memberId: input.memberId,
       bodyMd: input.bodyMd,
       bodyHtml: html,
-      status: "visible",
+      status: initialStatus,
     })
     .returning()) as Array<NxCommentRow>;
   if (!row) throw new Error("Comment insert returned no row");
 
+  if (verdict.kind === "flag") {
+    // Surface flagged content in the audit log so mods can triage.
+    // Recorded as a member-actor event so it threads with other
+    // member-originated audit entries on the comment.
+    await recordAuditEvent({
+      actor: { kind: "member", memberId: input.memberId },
+      action: "comment.flag",
+      targetType: "comment",
+      targetId: row.id,
+      payload: {
+        reason: verdict.reason ?? null,
+        adapter: verdict.metadata ?? null,
+      },
+    });
+  }
+
   // Reply notification — fire-and-forget. Self-replies don't notify.
-  if (parentAuthorId && parentAuthorId !== input.memberId) {
+  // Pending (spam-flagged) comments don't notify either: surfacing a
+  // notification for content the public list won't render is just
+  // confusing. If a mod later restores the row to visible, that's
+  // when it makes sense to notify; the moderation surface owns that
+  // decision.
+  if (
+    initialStatus === "visible" &&
+    parentAuthorId &&
+    parentAuthorId !== input.memberId
+  ) {
     await createNotification({
       memberId: parentAuthorId,
       kind: "comment.reply",
