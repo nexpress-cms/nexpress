@@ -1,9 +1,9 @@
 import {
   buildPageMetadata,
   buildWebSiteJsonLd,
-  getActiveTheme,
   getPageBySlug,
 } from "@nexpress/core";
+import { getActiveTheme } from "@nexpress/theme";
 import { renderBlocks } from "@nexpress/blocks";
 import type { ComponentType } from "react";
 import type { Metadata } from "next";
@@ -133,16 +133,10 @@ async function resolvePageTemplate(
 ): Promise<ComponentType<{ doc: Record<string, unknown> }> | null> {
   const active = await getActiveTheme();
   if (!active) return null;
-  const impl = active.impl as {
-    templates?: Record<
-      string,
-      Record<string, { component?: ComponentType<{ doc: Record<string, unknown> }> }>
-    >;
-  };
-  const set = impl.templates?.pages;
+  const set = active.impl.templates?.pages;
   if (!set) return null;
   const chosen = templateId
     ? (set[templateId]?.component ?? set.default?.component)
     : set.default?.component;
-  return chosen ?? null;
+  return (chosen as ComponentType<{ doc: Record<string, unknown> }>) ?? null;
 }
