@@ -32,6 +32,9 @@ export default async function MemberLoginPage({ searchParams }: LoginPageProps) 
       ) : null}
       <LoginForm next={safeNext(next)} />
       <p className="nx-members-auth-alt">
+        <Link href="/members/forgot-password">Forgot your password?</Link>
+      </p>
+      <p className="nx-members-auth-alt">
         Don&apos;t have an account?{" "}
         <Link href={`/members/register${nextQuery(next)}`}>Create one</Link>
       </p>
