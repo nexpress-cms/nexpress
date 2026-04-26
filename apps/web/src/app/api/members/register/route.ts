@@ -1,7 +1,9 @@
 import {
+  NxForbiddenError,
   NxValidationError,
   createMemberEmailVerifyToken,
   enqueueJob,
+  getCommunitySettings,
   hashPassword,
   nxMembers,
 } from "@nexpress/core";
@@ -81,6 +83,15 @@ function buildVerifyUrl(request: NextRequest, token: string): string {
 export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
+
+    // Registration gate. Sites that run invite-only flip
+    // `community.registrationEnabled` to false in the admin
+    // settings page; we surface a 403 here. Existing members can
+    // still sign in — the gate is on /register only.
+    const settings = await getCommunitySettings();
+    if (!settings.registrationEnabled) {
+      throw new NxForbiddenError("members", "register");
+    }
 
     const body = validate(await readJsonBody(request));
     const db = getDb();
