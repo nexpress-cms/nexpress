@@ -120,9 +120,19 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     ]);
   }
 
-  // Parent thread sanity: if `parentId` is set, the parent must exist
-  // and target the same collection + document. Cross-doc replies are
-  // disallowed so a reply can't smuggle itself into a different thread.
+  // Parent thread sanity: if `parentId` is set, the parent must exist,
+  // target the same collection + document, and BE VISIBLE. Cross-doc
+  // replies are disallowed so a reply can't smuggle itself into a
+  // different thread; replies under non-visible parents are
+  // disallowed because:
+  //   - hidden    — a mod took the parent down; new replies under
+  //     it would resurrect the thread on the public list
+  //   - deleted   — the body was erased; threading children below
+  //     a tombstone leaks the parent's deletion to readers
+  //   - pending   — the parent itself is awaiting moderation; the
+  //     reply would publish under content the site hasn't accepted
+  //     yet (and would fire a `comment.reply` notification to an
+  //     author whose own comment is still pending) — see #127
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   let parentAuthorId: string | null = null;
   if (input.parentId) {
@@ -132,6 +142,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
         targetType: nxComments.targetType,
         targetId: nxComments.targetId,
         memberId: nxComments.memberId,
+        status: nxComments.status,
       })
       .from(nxComments)
       .where(eq(nxComments.id, input.parentId))
@@ -140,6 +151,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
       targetType: string;
       targetId: string;
       memberId: string;
+      status: CommentStatus;
     }>;
     if (!parent) {
       throw new NxNotFoundError("comment", input.parentId);
@@ -147,6 +159,14 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     if (parent.targetType !== input.targetType || parent.targetId !== input.targetId) {
       throw new NxValidationError("Invalid input", [
         { field: "parentId", message: "Parent comment belongs to a different document" },
+      ]);
+    }
+    if (parent.status !== "visible") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "parentId",
+          message: `Cannot reply to a comment with status '${parent.status}'`,
+        },
       ]);
     }
     parentAuthorId = parent.memberId;

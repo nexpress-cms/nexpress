@@ -378,4 +378,180 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     );
     expect(reply.status).toBe(404);
   });
+
+  // Issue #127 — `createComment` validated parent existence and
+  // same-doc, but never checked the parent's status. Replies under
+  // hidden / deleted / pending parents could land as visible
+  // children, surfacing publicly even though the parent wasn't.
+  // Now the parent status must be `visible`.
+  it("rejects replies under a hidden parent (#127)", async () => {
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember(
+      "parent-hidden",
+      "parent-hidden@example.com",
+      "password-12",
+    );
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "parent" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: parentId } = await readJson<{ id: string }>(created).then(
+      (r) => r.body,
+    );
+
+    // Hide the parent directly in the DB — mirrors the on-disk
+    // state after a mod-hide flow without needing a staff session
+    // or another seeded user.
+    const db = await getTestDb();
+    const { nxComments } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(nxComments)
+      .set({ status: "hidden" })
+      .where(eq(nxComments.id, parentId));
+
+    // Reply attempt — should be rejected with the parent-status
+    // check.
+    const replier = await seedActiveMember(
+      "parent-hidden-replier",
+      "parent-hidden-replier@example.com",
+      "password-12",
+    );
+    const reply = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${replier.sessionCookie}`,
+          `nx-mb-csrf=${replier.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": replier.csrfCookie },
+        body: JSON.stringify({ bodyMd: "no", parentId }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect(reply.status).toBe(400);
+    const body = await readJson<{
+      error?: { details?: Array<{ field?: string; message?: string }> };
+    }>(reply);
+    expect(body.body.error?.details?.[0]?.field).toBe("parentId");
+    expect(body.body.error?.details?.[0]?.message).toContain("hidden");
+  });
+
+  it("rejects replies under a deleted parent (#127)", async () => {
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember(
+      "parent-del",
+      "parent-del@example.com",
+      "password-12",
+    );
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "parent" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: parentId } = await readJson<{ id: string }>(created).then(
+      (r) => r.body,
+    );
+
+    const { deleteComment } = await import("@nexpress/core");
+    await deleteComment({ commentId: parentId, memberId: author.memberId });
+
+    const replier = await seedActiveMember(
+      "parent-del-replier",
+      "parent-del-replier@example.com",
+      "password-12",
+    );
+    const reply = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${replier.sessionCookie}`,
+          `nx-mb-csrf=${replier.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": replier.csrfCookie },
+        body: JSON.stringify({ bodyMd: "no", parentId }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect(reply.status).toBe(400);
+    const body = await readJson<{
+      error?: { details?: Array<{ field?: string; message?: string }> };
+    }>(reply);
+    expect(body.body.error?.details?.[0]?.message).toContain("deleted");
+  });
+
+  it("rejects replies under a pending parent (#127)", async () => {
+    const core = await import("@nexpress/core");
+    core.setSpamAdapter({ check: () => ({ kind: "flag" }) });
+
+    const postId = await seedStaffPost();
+    const flaggedAuthor = await seedActiveMember(
+      "parent-pend",
+      "parent-pend@example.com",
+      "password-12",
+    );
+    // The parent comment lands `pending` because the spam adapter
+    // flagged it.
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${flaggedAuthor.sessionCookie}`,
+          `nx-mb-csrf=${flaggedAuthor.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": flaggedAuthor.csrfCookie },
+        body: JSON.stringify({ bodyMd: "sus" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: parentId, status } = await readJson<{
+      id: string;
+      status: string;
+    }>(created).then((r) => r.body);
+    expect(status).toBe("pending");
+
+    // Reply attempt by ANOTHER member — they shouldn't even know
+    // the parent exists in a public list, but a guessed id must
+    // also be rejected.
+    core.setSpamAdapter({ check: () => ({ kind: "pass" }) });
+    const replier = await seedActiveMember(
+      "parent-pend-replier",
+      "parent-pend-replier@example.com",
+      "password-12",
+    );
+    const reply = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${replier.sessionCookie}`,
+          `nx-mb-csrf=${replier.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": replier.csrfCookie },
+        body: JSON.stringify({ bodyMd: "no", parentId }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect(reply.status).toBe(400);
+    const body = await readJson<{
+      error?: { details?: Array<{ field?: string; message?: string }> };
+    }>(reply);
+    expect(body.body.error?.details?.[0]?.message).toContain("pending");
+
+    core.resetSpamAdapter();
+  });
 });
