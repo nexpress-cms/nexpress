@@ -28,6 +28,12 @@ export {
   publishScheduledDocuments,
 } from "./scheduled.js";
 export type { PublishScheduledResult } from "./scheduled.js";
+export { listPendingMemberDocs } from "./pending-queue.js";
+export type {
+  NxPendingDocSummary,
+  NxListPendingDocsOptions,
+  NxListPendingDocsResult,
+} from "./pending-queue.js";
 export type {
   NxRevision,
   NxRevisionSummary,
