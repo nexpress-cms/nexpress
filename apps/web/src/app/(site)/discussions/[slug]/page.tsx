@@ -1,0 +1,119 @@
+import { findDocuments, nxMembers } from "@nexpress/core";
+import { renderRichText } from "@nexpress/editor/server";
+import { eq } from "drizzle-orm";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { Comments } from "@/components/comments";
+import { DiscussionAuthorActions } from "@/components/discussion-author-actions";
+import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { getDb } from "@/lib/db";
+import { getSiteMember } from "@/lib/site-member";
+import type { NxRichTextContent } from "@nexpress/editor";
+
+interface DiscussionDetailPageProps {
+  params: Promise<{ slug: string }>;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending review",
+  draft: "Draft",
+  archived: "Archived",
+};
+
+export default async function DiscussionDetailPage({ params }: DiscussionDetailPageProps) {
+  ensureCoreServices();
+  await ensurePluginsLoaded();
+  const { slug } = await params;
+  const member = await getSiteMember();
+
+  // findDocuments by slug. v1 doesn't have a `getDiscussionBySlug`
+  // helper — pages call findDocuments with a slug filter directly.
+  // The slug is unique per the collection's `slugField`.
+  const result = await findDocuments("discussions", {
+    where: { slug },
+    limit: 1,
+  });
+  const doc = result.docs[0];
+  if (!doc) notFound();
+
+  const status = doc.status as string;
+  const memberAuthorId = (doc.memberAuthorId as string | null) ?? null;
+  const isOwner = member !== null && memberAuthorId === member.id;
+
+  // Visibility rule: only the author (and staff, who'd use admin)
+  // can see non-published rows. Render 404 to anyone else so a
+  // pending discussion's URL doesn't leak the title to the public.
+  if (status !== "published" && !isOwner) {
+    notFound();
+  }
+
+  // Resolve the author handle for display.
+  let author: { id: string; handle: string; displayName: string } | null = null;
+  if (memberAuthorId) {
+    const [row] = (await getDb()
+      .select({
+        id: nxMembers.id,
+        handle: nxMembers.handle,
+        displayName: nxMembers.displayName,
+      })
+      .from(nxMembers)
+      .where(eq(nxMembers.id, memberAuthorId))
+      .limit(1)) as Array<{ id: string; handle: string; displayName: string }>;
+    if (row) author = row;
+  }
+
+  const body = (doc.body as NxRichTextContent | undefined) ?? null;
+
+  return (
+    <article className="nx-discussion">
+      <header className="nx-discussion-header">
+        <Link href="/discussions" className="nx-tab">
+          ← Back to discussions
+        </Link>
+        <h1>{doc.title as string}</h1>
+        <div className="nx-discussion-meta">
+          {author ? (
+            <Link href={`/u/${author.handle}`} className="nx-discussion-author">
+              @{author.handle}
+            </Link>
+          ) : (
+            <span className="nx-discussion-author">staff</span>
+          )}
+          <span aria-hidden="true">·</span>
+          <time dateTime={(doc.createdAt as Date).toISOString()}>
+            {(doc.createdAt as Date).toLocaleDateString()}
+          </time>
+          {status !== "published" ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="nx-discussions-status-badge">
+                {STATUS_LABELS[status] ?? status}
+              </span>
+            </>
+          ) : null}
+        </div>
+        {isOwner ? (
+          <DiscussionAuthorActions docId={doc.id as string} slug={slug} />
+        ) : null}
+      </header>
+
+      {body ? (
+        <div className="nx-discussion-body prose">{renderRichText(body)}</div>
+      ) : (
+        <p className="nx-discussion-body-empty">(no body)</p>
+      )}
+
+      {/* Comments work against any collection that has
+          `community.comments: true` — discussions opted in via the
+          forum plugin. Pending discussions skip comments because
+          they aren't public yet (the comment form would 404). */}
+      {status === "published" ? (
+        <section className="nx-discussion-comments">
+          <h2>Comments</h2>
+          <Comments collectionSlug="discussions" documentId={doc.id as string} />
+        </section>
+      ) : null}
+    </article>
+  );
+}
