@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Suspense, lazy, useState, type ComponentType } from "react";
 import type { NxRichTextContent } from "@nexpress/editor";
 
 interface DiscussionFormProps {
@@ -47,19 +47,35 @@ function extractMessage(body: unknown): string | null {
 }
 
 /**
- * Member-side discussion create / edit form. v1 keeps the body as a
- * plain text field that we wrap in a minimal Lexical-shaped JSON
- * payload — the rich-text editor (`@nexpress/editor/client`) would
- * be heavier than this MVP needs. The server pipeline accepts the
- * shape because `body` is a `richText` field with no required
- * structure constraints.
+ * Lazy-load the rich-text editor. Mirrors the admin field renderer
+ * pattern (see `packages/admin/src/collections/field-renderer.tsx`):
+ * the Lexical bundle is heavy, and a member browsing /discussions
+ * shouldn't pay for it until they actually click "New discussion".
+ */
+const LazyRichTextEditor = lazy(async () => {
+  const module = await import("@nexpress/editor/client");
+  return {
+    default: module.NxRichTextEditor as ComponentType<{
+      value: NxRichTextContent | null;
+      onChange: (value: unknown) => void;
+      config?: unknown;
+    }>,
+  };
+});
+
+/**
+ * Member-side discussion create / edit form. The body field uses
+ * the same `NxRichTextEditor` the admin uses for staff-authored
+ * posts — paragraphs, headings, bold/italic/underline, lists, links,
+ * code, quotes. No image upload yet (would need member-side media
+ * permissions; deferred). The editor produces Lexical-shaped JSON
+ * directly, so the API body just passes it through to the
+ * `richText` field on `discussions`.
  */
 export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [bodyText, setBodyText] = useState(() =>
-    initial?.body ? extractPlainText(initial.body) : "",
-  );
+  const [body, setBody] = useState<NxRichTextContent | null>(initial?.body ?? null);
   // `slug` is only editable on create — server pipeline uses the
   // configured slugField (derives from title) when the body omits
   // slug. We pre-fill from title so the user sees what their URL
@@ -79,10 +95,13 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),
       };
       const finalSlug = (slug || slugify(title)).trim();
-      const body = {
+      const payload = {
         title: title.trim(),
         slug: finalSlug || slugify(title),
-        body: textToRichText(bodyText),
+        // The editor either returns Lexical JSON or stays null when
+        // empty. Submit an empty-paragraph shell when null so the
+        // server-side renderer has a valid root to walk.
+        body: body ?? emptyRichText(),
       };
       const url =
         mode === "create"
@@ -93,7 +112,7 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
         method,
         credentials: "include",
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
       const json = (await res.json().catch(() => null)) as
         | { id?: string; slug?: string; status?: string; error?: unknown }
@@ -177,16 +196,27 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
         </label>
       ) : null}
 
-      <label className="nx-form-field">
+      <div className="nx-form-field">
         <span className="nx-form-label">Body</span>
-        <textarea
-          rows={10}
-          value={bodyText}
-          onChange={(e) => setBodyText(e.target.value)}
-          disabled={submitting}
-          className="nx-form-textarea"
-        />
-      </label>
+        <Suspense
+          fallback={
+            <div className="nx-form-editor-loading" role="status">
+              Loading editor…
+            </div>
+          }
+        >
+          <LazyRichTextEditor
+            value={body}
+            onChange={(value) => {
+              // The editor's onChange signature is `(value: unknown)`
+              // because the admin field-renderer uses `react-hook-form`
+              // and accepts whatever the editor emits. Here we know
+              // the shape — Lexical JSON or null — so we narrow.
+              setBody(isRichTextContent(value) ? value : null);
+            }}
+          />
+        </Suspense>
+      </div>
 
       <div className="nx-form-actions">
         <button type="submit" className="nx-button-primary" disabled={submitting || !title.trim()}>
@@ -203,44 +233,28 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
   );
 }
 
+function isRichTextContent(value: unknown): value is NxRichTextContent {
+  if (typeof value !== "object" || value === null) return false;
+  const root = (value as { root?: unknown }).root;
+  return typeof root === "object" && root !== null;
+}
+
 /**
- * Wrap a plain text string in a minimal Lexical-shaped JSON tree so
- * the rich-text field accepts it. Splits on blank lines into
- * paragraphs. The full editor lands in 9.7g.
+ * The editor returns null when the user hasn't typed anything; the
+ * `richText` server renderer expects a `{ root: { children: [...] } }`
+ * shape. Submit a single empty paragraph so the row has a valid
+ * structure on the way to render.
  */
-function textToRichText(text: string): NxRichTextContent {
-  const paragraphs = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+function emptyRichText(): NxRichTextContent {
   return {
     root: {
       type: "root",
-      children: paragraphs.map((p) => ({
-        type: "paragraph",
-        children: [{ type: "text", text: p }],
-      })),
+      children: [
+        {
+          type: "paragraph",
+          children: [],
+        },
+      ],
     },
   } as unknown as NxRichTextContent;
-}
-
-interface RichTextNode {
-  type?: string;
-  text?: string;
-  children?: RichTextNode[];
-}
-
-function extractPlainText(content: NxRichTextContent | null): string {
-  if (!content) return "";
-  const root = (content as unknown as { root?: RichTextNode }).root;
-  if (!root) return "";
-  const collect = (node: RichTextNode): string => {
-    if (typeof node.text === "string") return node.text;
-    if (Array.isArray(node.children)) {
-      return node.children.map(collect).join(node.type === "paragraph" ? "\n\n" : "");
-    }
-    return "";
-  };
-  // Walk the root's children with paragraph separators.
-  if (Array.isArray(root.children)) {
-    return root.children.map(collect).filter(Boolean).join("\n\n");
-  }
-  return collect(root);
 }
