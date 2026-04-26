@@ -228,6 +228,34 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     expect(listBody.body.totalDocs).toBe(0);
   });
 
+  // Fail-open: an adapter that throws (Akismet 5xx, OpenAI timeout,
+  // etc.) must not block legitimate comment writes. Sites that want
+  // fail-closed wrap their adapter in try/catch and return `reject`.
+  it("adapter that throws is treated as pass (fail-open)", async () => {
+    const core = await import("@nexpress/core");
+    core.setSpamAdapter({
+      check: () => {
+        throw new Error("upstream unavailable");
+      },
+    });
+
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember("flo", "flo@example.com", "password-12");
+
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "Genuine comment" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const body = await readJson<{ id: string; status: string }>(created);
+    expect(body.status).toBe(201);
+    expect(body.body.status).toBe("visible");
+  });
+
   it("`flag` verdict skips parent reply notification (avoids leaking pending content)", async () => {
     const postId = await seedStaffPost();
     const parentAuthor = await seedActiveMember("dora", "dora@example.com", "password-12");

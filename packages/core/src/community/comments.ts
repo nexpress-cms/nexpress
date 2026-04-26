@@ -6,6 +6,8 @@ import { getDb, getDocumentById } from "../collections/pipeline.js";
 import { nxComments } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
+import { getLogger } from "../observability/logger.js";
+
 import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
@@ -154,12 +156,27 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   //   - `"flag"`   → status = "pending"; mods see the row, public list
   //                  does not; the audit log captures the verdict
   //   - `"reject"` → throw NxValidationError, no row written
-  const verdict = await getSpamAdapter().check(input.bodyMd, {
-    memberId: input.memberId,
-    targetType: input.targetType,
-    targetId: input.targetId,
-    parentId: input.parentId ?? null,
-  });
+  //
+  // Fail-open: if the adapter throws (network blip, timeout, 5xx
+  // from the upstream service), log via the observability hook and
+  // treat the verdict as `pass`. Sites that prefer fail-closed wrap
+  // their own adapter in a try/catch and return `reject` on errors.
+  let verdict;
+  try {
+    verdict = await getSpamAdapter().check(input.bodyMd, {
+      memberId: input.memberId,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      parentId: input.parentId ?? null,
+    });
+  } catch (err) {
+    getLogger().warn("spam adapter threw — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
+      targetType: input.targetType,
+      targetId: input.targetId,
+    });
+    verdict = { kind: "pass" as const };
+  }
   if (verdict.kind === "reject") {
     throw new NxValidationError("Invalid input", [
       {

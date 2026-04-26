@@ -42,12 +42,18 @@ export interface NxSpamCheckContext {
   /** Member id of the author. Adapters may use this to weight by
    *  reputation or recent infraction history. */
   memberId: string;
-  /** Polymorphic target type — `"comment" | "thread" | "reply"`. */
+  /**
+   * Collection slug that owns the document the comment is attached
+   * to (`"posts"`, `"discussions"`, etc.) — same value as
+   * `nx_comments.target_type`. The schema is polymorphic over
+   * collection, so this is the collection identifier, not a
+   * "comment vs thread" classifier.
+   */
   targetType: string;
-  /** Polymorphic target id — the document the comment attaches to,
-   *  the parent thread, etc. */
+  /** Document id within `targetType` — the post / discussion the
+   *  comment is attached to. */
   targetId: string;
-  /** Optional parent comment id when replying to an existing thread. */
+  /** Parent comment id when this is a reply, otherwise null. */
   parentId?: string | null;
 }
 
