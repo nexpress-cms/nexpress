@@ -32,6 +32,24 @@ export default async function SiteLayout({
               </li>
             ))}
           </ul>
+          <form
+            action="/search"
+            method="GET"
+            role="search"
+            className="nx-site-search"
+          >
+            <label className="sr-only" htmlFor="nx-site-search-input">
+              Search
+            </label>
+            <input
+              id="nx-site-search-input"
+              type="search"
+              name="q"
+              placeholder="Search…"
+              autoComplete="off"
+              className="nx-site-search-input"
+            />
+          </form>
           <MemberStatusWidget />
         </nav>
       </header>
