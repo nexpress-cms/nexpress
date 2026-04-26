@@ -120,6 +120,9 @@ export {
   listPendingMemberDocs,
   searchCollections,
   reindexCollection,
+  getSearchAdapter,
+  resetSearchAdapter,
+  setSearchAdapter,
 } from "./collections/index.js";
 export type {
   NxRevision,
@@ -135,6 +138,8 @@ export type {
   SearchResult,
   SearchResultItem,
   ReindexResult,
+  NxSearchAdapter,
+  NxSearchAdapterContext,
 } from "./collections/index.js";
 
 export {
