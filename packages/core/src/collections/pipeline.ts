@@ -136,19 +136,40 @@ export async function createMemberDocument(
   memberId: string,
   options?: NxSaveOptions,
 ): Promise<NxSaveResult> {
+  // Members can't author drafts / archive / schedule in v1 — those
+  // status transitions are admin-side affordances. Force `published`
+  // even if the caller passed something else; otherwise the API
+  // body's `_status` would let a member create rows that bypass
+  // public-list filtering or pre-stage future content. Moderation
+  // gates (status=pending) land in 9.7b alongside the spam adapter
+  // running on doc creates.
+  const memberOptions: NxSaveOptions = { ...(options ?? {}), status: "published" };
   const result = await saveDocumentImpl(
     collection,
     null,
     data,
     { kind: "member", memberId },
-    options,
+    memberOptions,
   );
   // Defer-load to avoid the `community` ↔ `collections` import cycle.
   const { applyReputation } = await import("../community/reputation.js");
+  const { recordAuditEvent } = await import("../community/audit.js");
+  const documentId = getRecordId(result.doc);
+  // Audit before reputation: reputation is fail-soft, audit is the
+  // canonical record of who authored what (used by mods to trace
+  // member-authored content back to the member without a dedicated
+  // author column on the doc table — that lands in 9.7b).
+  await recordAuditEvent({
+    actor: { kind: "member", memberId },
+    action: "document.create",
+    targetType: collection,
+    targetId: documentId,
+    payload: { collectionSlug: collection },
+  });
   await applyReputation(memberId, {
     kind: "document.created",
     collectionSlug: collection,
-    documentId: getRecordId(result.doc),
+    documentId,
     memberId,
   });
   return result;

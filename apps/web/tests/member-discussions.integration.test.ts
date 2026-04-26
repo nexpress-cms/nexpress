@@ -333,6 +333,66 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     expect(res.status).toBe(401);
   });
 
+  // Regression: a member can't sneak `_status: "draft"` or
+  // `"archived"` into the body to bypass public-list filtering.
+  // createMemberDocument forces status=published.
+  it("member-supplied `_status` is overridden to `published`", async () => {
+    const member = await seedActiveMember("statussneak");
+    const create = await collectionPOST(
+      memberRequest("/api/collections/discussions", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Draft attempt",
+          slug: "draft-attempt",
+          body: { root: { type: "root", children: [] } },
+          _status: "draft",
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const body = await readJson<{ status: string }>(create);
+    expect(body.status).toBe(201);
+    expect(body.body.status).toBe("published");
+  });
+
+  it("audit log records `document.create` with member actor + collection target", async () => {
+    const member = await seedActiveMember("auditme");
+    const create = await collectionPOST(
+      memberRequest("/api/collections/discussions", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Audited",
+          slug: "audited",
+          body: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const { id: docId } = await readJson<{ id: string }>(create).then((r) => r.body);
+
+    const db = await getTestDb();
+    const { nxAuditEvents } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const audits = (await db
+      .select()
+      .from(nxAuditEvents)
+      .where(eq(nxAuditEvents.action, "document.create"))) as Array<{
+      actorKind: string;
+      actorMemberId: string | null;
+      actorUserId: string | null;
+      targetType: string | null;
+      targetId: string | null;
+      payload: Record<string, unknown>;
+    }>;
+    expect(audits).toHaveLength(1);
+    expect(audits[0].actorKind).toBe("member");
+    expect(audits[0].actorMemberId).toBe(member.memberId);
+    expect(audits[0].actorUserId).toBeNull();
+    expect(audits[0].targetType).toBe("discussions");
+    expect(audits[0].targetId).toBe(docId);
+    expect(audits[0].payload.collectionSlug).toBe("discussions");
+  });
+
   it("staff path still works on the same endpoint when both auths absent", async () => {
     const staff = await seedUser({ role: "editor" });
     const create = await collectionPOST(
