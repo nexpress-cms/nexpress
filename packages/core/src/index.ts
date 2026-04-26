@@ -376,6 +376,9 @@ export {
   issueBan,
   listBansForMember,
   revokeBan,
+  grantMemberRole,
+  listMemberRoleGrants,
+  revokeMemberRole,
   purgeMemberContent,
 } from "./community/index.js";
 export type {
@@ -430,5 +433,8 @@ export type {
   BanKind,
   IssueBanInput,
   RevokeBanInput,
+  NxMemberRoleGrantRow,
+  GrantMemberRoleInput,
+  RevokeMemberRoleInput,
   NxMemberPurgeResult,
 } from "./community/index.js";
