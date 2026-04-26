@@ -4,6 +4,7 @@ import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import type { NxPageBlocks } from "@nexpress/blocks";
 
+import { DefaultHomePage } from "@/components/default-home-page";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 import {
   RenderBodyEnd,
@@ -23,7 +24,18 @@ export default async function CatchAllPage({ params }: PageProps) {
   const { isEnabled: isDraft } = await draftMode();
 
   const page = await getPageBySlug(path, { draft: isDraft });
-  if (!page) notFound();
+  if (!page) {
+    // The site root is special: a fresh install with no pages
+    // would 404 on `/` and look broken. Surface a default landing
+    // page that confirms NexPress is running and points the
+    // operator at /admin. Once an admin publishes a real
+    // `pages` row with slug `/`, the lookup above succeeds and
+    // this branch never runs.
+    if (path === "/") {
+      return <DefaultHomePage />;
+    }
+    notFound();
+  }
 
   const pageBlocks = page.blocks as NxPageBlocks | undefined;
 
