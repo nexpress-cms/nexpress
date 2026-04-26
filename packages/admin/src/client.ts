@@ -28,6 +28,8 @@ export { PendingQueueView } from "./community/pending-queue-view.js";
 export type { PendingDocRow } from "./community/pending-queue-view.js";
 export { MemberPurgePanel } from "./community/member-purge-panel.js";
 export type { MemberPurgeResult } from "./community/member-purge-panel.js";
+export { MemberBansPanel } from "./community/member-bans-panel.js";
+export type { BanRow } from "./community/member-bans-panel.js";
 export { CommunitySettingsView } from "./community/community-settings-view.js";
 export type { CommunitySettings } from "./community/community-settings-view.js";
 

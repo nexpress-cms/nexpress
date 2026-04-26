@@ -2,10 +2,15 @@ import {
   NxForbiddenError,
   NxNotFoundError,
   hasRole,
+  isStaffMod,
   nxMembers,
   verifyTokenFull,
 } from "@nexpress/core";
-import { LinkedIdentitiesPanel, MemberPurgePanel } from "@nexpress/admin/client";
+import {
+  LinkedIdentitiesPanel,
+  MemberBansPanel,
+  MemberPurgePanel,
+} from "@nexpress/admin/client";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -80,6 +85,17 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         subjectKind="member"
         subjectId={row.id}
         canRevoke={hasRole(user, "admin")}
+      />
+
+      {/*
+        Bans panel is staff-mod gated to match the API; the panel
+        renders the active ban list read-only for non-mods (none of
+        whom land on this page today, since editor is the floor).
+      */}
+      <MemberBansPanel
+        memberId={row.id}
+        memberHandle={row.handle}
+        canModify={isStaffMod(user)}
       />
 
       {/*
