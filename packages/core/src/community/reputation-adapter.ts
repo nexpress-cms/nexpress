@@ -78,6 +78,18 @@ export type NxReputationEvent =
       collectionSlug: string;
       documentId: string;
       memberId: string;
+    }
+  /** Author deleted their own document (`memberWrite.delete`,
+   *  Phase 9.7b). Symmetric to `document.created`; adapters
+   *  typically debit the original credit so a member can't farm
+   *  reputation by churn-creating and deleting threads. Mod-side
+   *  deletes are NOT covered here — those go through the staff
+   *  path which doesn't emit this event. */
+  | {
+      kind: "document.deleted";
+      collectionSlug: string;
+      documentId: string;
+      memberId: string;
     };
 
 export interface NxReputationAdapter {

@@ -16,6 +16,10 @@ function renderCollectionInterface(collection: NxCollectionConfig): string {
     'updatedBy: string | null;',
   ];
 
+  if (collection.community?.memberWrite?.create) {
+    fields.push('memberAuthorId: string | null;');
+  }
+
   if (collection.slugField) {
     fields.push("slug: string;");
   }

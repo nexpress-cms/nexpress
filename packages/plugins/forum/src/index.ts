@@ -111,11 +111,12 @@ export function defineDiscussionsCollection(
     versions: { drafts: true, max: 30 },
     community: {
       comments: true,
-      // 9.7a: members can create discussion threads. Update / delete
-      // for member-authored threads land in 9.7b — until then a
-      // member can only create; the staff `update`/`delete` access
-      // gates apply unchanged.
-      memberWrite: { create: true },
+      // Phase 9.7a: members create their own threads.
+      // Phase 9.7b: owner-only edit + delete (the row's
+      // `member_author_id` must match the caller). Staff
+      // `update` / `delete` access gates still apply on the
+      // staff path.
+      memberWrite: { create: true, update: true, delete: true },
     },
     access: {
       read: () => true,

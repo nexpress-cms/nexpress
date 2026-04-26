@@ -81,6 +81,29 @@ export function generateDrizzleSchema(
       },
     ];
 
+    // Phase 9.7b: collections that opt into member-write track the
+    // member-author on the row itself so update/delete can perform
+    // the owner check without a separate audit-log lookup. Nullable
+    // because staff-authored docs in the same table leave it null;
+    // the FK to nx_members keeps the column safe under member
+    // deletes (cascade).
+    const memberAuthored = Boolean(collection.community?.memberWrite?.create);
+    if (memberAuthored) {
+      columns.push(
+        'memberAuthorId: uuid("member_author_id").references(() => nxMembers.id, { onDelete: "set null" })',
+      );
+      indexes.push(
+        `index("${tableName}_member_author_idx").on(table.memberAuthorId)`,
+      );
+      relations.push({
+        key: "memberAuthor",
+        kind: "one",
+        targetIdentifier: "nxMembers",
+        fields: ["memberAuthorId"],
+        references: ["id"],
+      });
+    }
+
     const scalarResult = collectScalarColumns(collection.fields, [], collectionTables);
     columns.push(...scalarResult.columns);
     relations.push(...scalarResult.relations);
@@ -122,11 +145,13 @@ export function generateDrizzleSchema(
   }
 
   const body = tables.map(renderTable).join("\n\n");
+  const usesMembers = collections.some((c) => c.community?.memberWrite?.create);
+  const schemaImports = ["nxMedia", "nxUsers", ...(usesMembers ? ["nxMembers"] : [])];
 
   return [
     'import { relations } from "drizzle-orm";',
     'import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";',
-    `import { nxMedia, nxUsers } from "${schemaImport}";`,
+    `import { ${schemaImports.join(", ")} } from "${schemaImport}";`,
     '',
     'const tsvector = customType<{ data: string }>({',
     '  dataType() {',

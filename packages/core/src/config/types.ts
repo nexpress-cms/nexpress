@@ -224,16 +224,24 @@ export interface NxCollectionConfig {
    *
    * `memberWrite.create` (9.7a) lets logged-in members create
    * documents in this collection without needing a staff role.
-   * The staff `access.create` function is bypassed in that path —
-   * gating is `assertNotBanned(memberId)` plus this opt-in flag,
-   * not the staff access tree. Member-authored docs default to
-   * `_status = "published"` (no moderation gate yet — that lands
-   * in 9.7b alongside `memberWrite.update`/`delete`).
+   * `memberWrite.update` / `memberWrite.delete` (9.7b) extend the
+   * member-write surface with owner-only edit / delete (the row's
+   * `member_author_id` must match the caller). The staff
+   * `access.create` / `access.delete` functions are bypassed on
+   * the member path — gating is `assertNotBanned(memberId)` plus
+   * the opt-in flag plus the ownership check, not the staff
+   * access tree. Member-authored docs default to
+   * `_status = "published"` and members CANNOT change status via
+   * update; those transitions remain admin-side affordances
+   * (a configurable default-status / moderation gate lands in a
+   * follow-up).
    */
   community?: {
     comments?: boolean;
     memberWrite?: {
       create?: boolean;
+      update?: boolean;
+      delete?: boolean;
     };
   };
   timestamps?: boolean;
