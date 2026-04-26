@@ -749,18 +749,34 @@ export async function promoteMemberDocument(
     ]);
   }
 
+  // Conditional UPDATE on `status = 'pending'`. Two mods racing to
+  // promote the same row would each pass the read-side check above
+  // and each fire the audit + reputation events; conditioning on
+  // status here means the second UPDATE returns zero rows and we
+  // surface that as 400 — the row already moved on, no second
+  // event-fire. Same pattern protects against an interleaved staff
+  // PATCH that ran between our read and our write.
   const now = new Date();
-  const [updated] = await db
+  const updated = (await db
     .update(table)
     .set({ status: "published", updatedAt: now, updatedBy: staffUserId })
-    .where(eq(getTableColumn(table, "id"), docId))
-    .returning();
-  if (!updated) {
-    // Lost a race with delete — surface as 404 to mirror staff
-    // delete semantics.
-    throw new NxNotFoundError(collection, docId);
+    .where(
+      sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")}`,
+    )
+    .returning()) as Array<Record<string, unknown>>;
+  if (updated.length === 0) {
+    // Either a concurrent promote already flipped this row, or
+    // staff edited it out of `pending` between our read and our
+    // write. Surface as a validation error — the caller should
+    // re-fetch and retry only if they still want to act.
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "status",
+        message: "Cannot promote: row is no longer pending (concurrent change)",
+      },
+    ]);
   }
-  const persistedDoc = toRecord(updated);
+  const persistedDoc = toRecord(updated[0]);
 
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");

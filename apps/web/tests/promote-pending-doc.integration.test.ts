@@ -382,6 +382,68 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
     expect(afterRow[0].reputation).toBe(5);
   });
 
+  // Regression: two concurrent promote calls on the same pending
+  // row must NOT both fire `document.promote` + `document.created`.
+  // Conditional UPDATE on `status='pending'` (via .where) means the
+  // second call's UPDATE returns zero rows; we surface that as 400.
+  // Without that guard, two clicks on the admin "Approve" button
+  // (or two mods racing) would double-credit reputation.
+  it("concurrent promote calls — only one fires audit + reputation", async () => {
+    const core = await import("@nexpress/core");
+    const events: NxReputationEvent[] = [];
+    core.setReputationAdapter({
+      apply: (event) => {
+        events.push(event);
+        return event.kind === "document.created" ? 5 : 0;
+      },
+    });
+
+    const mod = await seedUser({ role: "moderator" });
+    const member = await seedActiveMember("promo-race");
+    const { id: docId } = await seedPendingDoc(member, "promo-race-slug");
+
+    const [r1, r2] = await Promise.all([
+      promotePOST(
+        staffRequest(`/api/admin/collections/discussions/${docId}/promote`, mod, {
+          method: "POST",
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      ),
+      promotePOST(
+        staffRequest(`/api/admin/collections/discussions/${docId}/promote`, mod, {
+          method: "POST",
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      ),
+    ]);
+
+    // Exactly one 200, exactly one 400 (or 200 + 400 in either
+    // order). The conditional UPDATE serializes them — whichever
+    // pg session committed the row update first wins; the other
+    // sees zero rows and 400s.
+    const statuses = [r1.status, r2.status].sort();
+    expect(statuses).toEqual([200, 400]);
+
+    // Reputation event fires exactly once.
+    const created = events.filter((e) => e.kind === "document.created");
+    expect(created).toHaveLength(1);
+
+    // Audit `document.promote` recorded exactly once.
+    const db = await getTestDb();
+    const { nxAuditEvents } = await import("@nexpress/core");
+    const { and, eq } = await import("drizzle-orm");
+    const audits = (await db
+      .select()
+      .from(nxAuditEvents)
+      .where(
+        and(
+          eq(nxAuditEvents.action, "document.promote"),
+          eq(nxAuditEvents.targetId, docId),
+        ),
+      )) as Array<unknown>;
+    expect(audits).toHaveLength(1);
+  });
+
   it("records `document.promote` audit event with staff actor + previousStatus", async () => {
     const mod = await seedUser({ role: "moderator" });
     const member = await seedActiveMember("promo-audit");
