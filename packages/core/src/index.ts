@@ -371,6 +371,7 @@ export {
   issueBan,
   listBansForMember,
   revokeBan,
+  purgeMemberContent,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -419,4 +420,5 @@ export type {
   BanKind,
   IssueBanInput,
   RevokeBanInput,
+  NxMemberPurgeResult,
 } from "./community/index.js";
