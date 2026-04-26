@@ -116,11 +116,17 @@ export async function GET(
   }
 
   const config = getAuthRuntimeConfig();
-  const access = await signToken(resolved.user, config.secret, config.tokenExpiration);
+  const access = await signToken(
+    resolved.user,
+    config.secret,
+    config.tokenExpiration,
+    "access",
+  );
   const refresh = await signToken(
     resolved.user,
     config.secret,
     config.refreshTokenExpiration,
+    "refresh",
   );
 
   const target = new URL(SUCCESS_REDIRECT, siteUrl(request));

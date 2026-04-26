@@ -15,7 +15,11 @@ export async function POST(request: NextRequest) {
 
     const db = getDb();
     const config = getAuthRuntimeConfig();
-    const user = await verifyTokenFull(refreshToken, config.secret, db);
+    // Require `use: "refresh"`. An access JWT presented here gets
+    // rejected — without this, a session cookie value would
+    // successfully drive rotation and extend its own life
+    // indefinitely.
+    const user = await verifyTokenFull(refreshToken, config.secret, db, "refresh");
 
     if (!user) {
       throw new NxAuthError();
@@ -31,8 +35,8 @@ export async function POST(request: NextRequest) {
     });
 
     setAuthCookies(response, {
-      access: await signToken(user, config.secret, config.tokenExpiration),
-      refresh: await signToken(user, config.secret, config.refreshTokenExpiration),
+      access: await signToken(user, config.secret, config.tokenExpiration, "access"),
+      refresh: await signToken(user, config.secret, config.refreshTokenExpiration, "refresh"),
       csrf: crypto.randomUUID(),
     });
 
