@@ -432,6 +432,52 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
     expect(res.status).toBe(404);
   });
 
+  // Regression: `purgeMemberContent` must pass the FULL staff user
+  // (incl. `role`) to `deleteDocument` so the collection's
+  // `access.delete` function (e.g. `isOwnerOrAdmin`, which reads
+  // `user.role`) gets enough info to authorize. An earlier draft
+  // narrowed staffUser to `Pick<NxAuthUser, "id">`, which silently
+  // 403'd every doc deletion against real access policies. The
+  // other tests in this file strip `access` for convenience, so
+  // re-register discussions WITH the access tree intact for this
+  // case.
+  it("admin purge respects collection access functions (passes full staff user)", async () => {
+    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { registerCollection } = await import("@nexpress/core");
+    const { discussionsTable } = await import("@/db/generated/collections");
+    const realConfig = defineDiscussionsCollection();
+    registerCollection(
+      "discussions",
+      discussionsTable as never,
+      { ...realConfig, hooks: undefined },
+    );
+
+    const admin = await seedUser({ role: "admin" });
+    const target = await seedActiveMember("real-acl");
+    await memberDiscussion(target, "real-acl-disc");
+
+    const res = await purgePOST(
+      staffRequest(`/api/admin/members/${target.memberId}/purge-content`, admin, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: target.memberId }) },
+    );
+    const body = await readJson<{ documents: Record<string, number> }>(res);
+    expect(body.status).toBe(200);
+    // The discussion got deleted — admin role satisfies
+    // `isOwnerOrAdmin`. With a staff user lacking `role`, this
+    // would have been 0 and the assertion would have failed.
+    expect(body.body.documents.discussions).toBe(1);
+
+    // Restore the test fixture (no access) for the rest of the
+    // suite. truncateAll doesn't reset registrations.
+    registerCollection(
+      "discussions",
+      discussionsTable as never,
+      { ...realConfig, access: undefined, hooks: undefined },
+    );
+  });
+
   it("records `member.content.purge` audit event with the count payload", async () => {
     const admin = await seedUser({ role: "admin" });
     const editor = await seedUser({ role: "editor", email: "ed3@example.com" });

@@ -54,7 +54,7 @@ export interface NxMemberPurgeResult {
  */
 export async function purgeMemberContent(
   memberId: string,
-  staffUser: Pick<NxAuthUser, "id">,
+  staffUser: NxAuthUser,
 ): Promise<NxMemberPurgeResult> {
   // Refuse to act on a member that doesn't exist — saves the
   // operator a confusing zero-count response when the id is a
@@ -118,7 +118,7 @@ export async function purgeMemberContent(
     let perCollection = 0;
     for (const row of rows) {
       try {
-        await deleteDocument(slug, row.id, staffUser as NxAuthUser);
+        await deleteDocument(slug, row.id, staffUser);
         perCollection += 1;
       } catch (err) {
         if (err instanceof NxNotFoundError) continue;

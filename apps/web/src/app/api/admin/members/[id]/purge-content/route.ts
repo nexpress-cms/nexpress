@@ -33,7 +33,7 @@ export async function POST(
     }
     requireCsrf(request);
     const { id } = await context.params;
-    const result = await purgeMemberContent(id, { id: user.id });
+    const result = await purgeMemberContent(id, user);
     return nxSuccessResponse(result);
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
