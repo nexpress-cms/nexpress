@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import {
+  NxForbiddenError,
   getLogger,
   getOAuthProvider,
   nxMemberSessions,
@@ -117,6 +118,16 @@ export async function GET(
   try {
     resolved = await resolveMemberOAuthLogin({ provider: providerId, profile });
   } catch (err) {
+    // The resolver throws `NxForbiddenError` when
+    // `community.registrationEnabled === false` and the OAuth
+    // identity would have auto-provisioned a brand-new member.
+    // Distinguish that case so the redirect surfaces a useful
+    // reason ("registration_disabled") rather than a generic
+    // "resolve_failed" — operators flipping the kill-switch want
+    // visibility into the rejected attempts.
+    if (err instanceof NxForbiddenError) {
+      return failResponse(request, "registration_disabled");
+    }
     getLogger().error("member oauth identity resolve failed", {
       provider: providerId,
       providerUserId: profile.providerUserId,

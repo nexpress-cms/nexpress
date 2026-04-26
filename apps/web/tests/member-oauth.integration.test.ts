@@ -359,4 +359,101 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       .where(eq(nxMemberIdentities.provider, id))) as Array<unknown>;
     expect(links).toHaveLength(1);
   });
+
+  // Issue #118 — `community.registrationEnabled = false` gates the
+  // password registration endpoint, but the OAuth resolver's
+  // auto-provision branch was a parallel back door. Invite-only
+  // sites that disable self-registration should refuse OAuth
+  // sign-ups for new emails too. Existing-member logins
+  // (durable link or email match against an active member) still
+  // work — those aren't new registrations.
+  it("auto-provisioning new member is refused when registrationEnabled=false (#118)", async () => {
+    const { updateCommunitySettings, nxMembers } = await import(
+      "@nexpress/core"
+    );
+    await updateCommunitySettings({ registrationEnabled: false }, null);
+
+    const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
+    const id = await registerStub(bookkeeping, {
+      profileEmail: "stranger@example.com",
+    });
+
+    const start = await oauthStartGET(
+      jsonRequest(`/api/members/oauth/${id}/start`),
+      { params: Promise.resolve({ provider: id }) },
+    );
+    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+
+    const cb = await oauthCallbackGET(
+      jsonRequest(
+        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
+        { cookies: [`nx-mb-oauth-state=${state}`] },
+      ),
+      { params: Promise.resolve({ provider: id }) },
+    );
+    expect(cb.status).toBe(307);
+    expect(cb.headers.get("location") ?? "").toContain(
+      "oauth_error=registration_disabled",
+    );
+
+    const db = await getTestDb();
+    const { eq } = await import("drizzle-orm");
+    const created = (await db
+      .select()
+      .from(nxMembers)
+      .where(eq(nxMembers.email, "stranger@example.com"))) as Array<unknown>;
+    expect(created).toHaveLength(0);
+  });
+
+  it("existing-member email match still works when registrationEnabled=false (#118)", async () => {
+    // Sanity check: the gate must not break the normal "existing
+    // member signs in via OAuth" path. Disabling registration
+    // refuses NEW accounts, not pre-existing logins.
+    const {
+      updateCommunitySettings,
+      hashPassword,
+      nxMembers,
+      nxMemberIdentities,
+    } = await import("@nexpress/core");
+    const db = await getTestDb();
+    const password = await hashPassword("password-12");
+    await db.insert(nxMembers).values({
+      email: "preexisting@example.com",
+      password,
+      handle: "preexisting",
+      displayName: "Pre-existing",
+      status: "active",
+    });
+
+    await updateCommunitySettings({ registrationEnabled: false }, null);
+
+    const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
+    const id = await registerStub(bookkeeping, {
+      profileEmail: "preexisting@example.com",
+    });
+
+    const start = await oauthStartGET(
+      jsonRequest(`/api/members/oauth/${id}/start`),
+      { params: Promise.resolve({ provider: id }) },
+    );
+    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const cb = await oauthCallbackGET(
+      jsonRequest(
+        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
+        { cookies: [`nx-mb-oauth-state=${state}`] },
+      ),
+      { params: Promise.resolve({ provider: id }) },
+    );
+    expect(cb.status).toBe(307);
+    // Successful login redirects to the site root, not the
+    // failure URL.
+    expect(cb.headers.get("location") ?? "").not.toContain("oauth_error");
+
+    const { eq } = await import("drizzle-orm");
+    const links = (await db
+      .select()
+      .from(nxMemberIdentities)
+      .where(eq(nxMemberIdentities.provider, id))) as Array<unknown>;
+    expect(links).toHaveLength(1);
+  });
 });
