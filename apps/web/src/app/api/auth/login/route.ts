@@ -98,8 +98,8 @@ export async function POST(request: NextRequest) {
       [now, user.id],
     );
 
-    const access = await signToken(user, config.secret, config.tokenExpiration);
-    const refresh = await signToken(user, config.secret, config.refreshTokenExpiration);
+    const access = await signToken(user, config.secret, config.tokenExpiration, "access");
+    const refresh = await signToken(user, config.secret, config.refreshTokenExpiration, "refresh");
     const response = nxSuccessResponse({
       user: {
         id: user.id,
