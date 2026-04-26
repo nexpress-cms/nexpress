@@ -18,6 +18,7 @@ import {
   GET as commentsGET,
   POST as commentsPOST,
 } from "@/app/api/collections/[slug]/[id]/comments/route";
+import { PATCH as commentPATCH } from "@/app/api/comments/[id]/route";
 
 import { NextRequest } from "next/server";
 
@@ -312,5 +313,129 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       .from(nxNotifications)
       .where(eq(nxNotifications.memberId, parentAuthor.memberId))) as Array<unknown>;
     expect(inbox).toHaveLength(0);
+  });
+
+  // Issue #123 — `updateComment` skipped moderation entirely.
+  // Member could land a clean visible comment then PATCH to spam
+  // / banned language and the row stayed visible. Now the edit
+  // path runs the same profanity → spam chain.
+  it("clean create then flagged edit demotes the comment to pending (#123)", async () => {
+    const core = await import("@nexpress/core");
+    core.setSpamAdapter({ check: () => ({ kind: "pass" }) });
+
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember("edit-flag", "edit-flag@example.com", "password-12");
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "Clean original" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: commentId, status: createdStatus } = await readJson<{
+      id: string;
+      status: string;
+    }>(created).then((r) => r.body);
+    expect(createdStatus).toBe("visible");
+
+    core.setSpamAdapter({
+      check: () => ({ kind: "flag", reason: "low rep" }),
+    });
+
+    const patch = await commentPATCH(
+      new NextRequest(`http://localhost:3000/api/comments/${commentId}`, {
+        method: "PATCH",
+        headers: {
+          cookie: `nx-mb-session=${author.sessionCookie}; nx-mb-csrf=${author.csrfCookie}`,
+          "x-csrf-token": author.csrfCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ bodyMd: "Now flagged content" }),
+      }),
+      { params: Promise.resolve({ id: commentId }) },
+    );
+    expect(patch.status).toBe(200);
+    const patched = await readJson<{ status: string }>(patch);
+    expect(patched.body.status).toBe("pending");
+
+    // Audit row carries `event: "update"` so mods scanning
+    // `comment.flag` rows can tell create-flags from edit-flags.
+    const db = await getTestDb();
+    const { nxAuditEvents } = await import("@nexpress/core");
+    const { and, eq } = await import("drizzle-orm");
+    const audits = (await db
+      .select()
+      .from(nxAuditEvents)
+      .where(
+        and(
+          eq(nxAuditEvents.action, "comment.flag"),
+          eq(nxAuditEvents.targetId, commentId),
+        ),
+      )) as Array<{ payload: Record<string, unknown> }>;
+    expect(audits).toHaveLength(1);
+    expect(audits[0].payload.event).toBe("update");
+    expect(audits[0].payload.sources).toEqual(["spam"]);
+  });
+
+  it("comment edit reject verdict refuses the patch (#123)", async () => {
+    const core = await import("@nexpress/core");
+    core.setSpamAdapter({ check: () => ({ kind: "pass" }) });
+
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember(
+      "edit-reject",
+      "edit-reject@example.com",
+      "password-12",
+    );
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "Clean" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: commentId } = await readJson<{ id: string }>(created).then(
+      (r) => r.body,
+    );
+
+    core.setSpamAdapter({
+      check: () => ({ kind: "reject", reason: "Detected as spam" }),
+    });
+
+    const patch = await commentPATCH(
+      new NextRequest(`http://localhost:3000/api/comments/${commentId}`, {
+        method: "PATCH",
+        headers: {
+          cookie: `nx-mb-session=${author.sessionCookie}; nx-mb-csrf=${author.csrfCookie}`,
+          "x-csrf-token": author.csrfCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ bodyMd: "Spam edit" }),
+      }),
+      { params: Promise.resolve({ id: commentId }) },
+    );
+    expect(patch.status).toBe(400);
+
+    // Body wasn't updated — the reject throws before the UPDATE runs.
+    const db = await getTestDb();
+    const { nxComments } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const [row] = (await db
+      .select({ bodyMd: nxComments.bodyMd, status: nxComments.status })
+      .from(nxComments)
+      .where(eq(nxComments.id, commentId))
+      .limit(1)) as Array<{ bodyMd: string; status: string }>;
+    expect(row.bodyMd).toBe("Clean");
+    expect(row.status).toBe("visible");
   });
 });
