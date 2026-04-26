@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { RegisterForm } from "@/components/member-register-form";
 import { ensureCoreServices } from "@/lib/init-core";
+import { nextQuery, safeNext } from "@/lib/safe-next";
 import { getSiteMember } from "@/lib/site-member";
 
 interface RegisterPageProps {
@@ -27,16 +28,4 @@ export default async function MemberRegisterPage({ searchParams }: RegisterPageP
       </p>
     </div>
   );
-}
-
-function safeNext(next: string | undefined): string {
-  if (!next || typeof next !== "string") return "/";
-  if (!next.startsWith("/") || next.startsWith("//")) return "/";
-  return next;
-}
-
-function nextQuery(next: string | undefined): string {
-  const safe = safeNext(next);
-  if (safe === "/") return "";
-  return `?next=${encodeURIComponent(safe)}`;
 }

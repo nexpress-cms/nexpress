@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/member-login-form";
 import { ensureCoreServices } from "@/lib/init-core";
+import { nextQuery, safeNext } from "@/lib/safe-next";
 import { getSiteMember } from "@/lib/site-member";
 
 interface LoginPageProps {
@@ -36,22 +37,4 @@ export default async function MemberLoginPage({ searchParams }: LoginPageProps) 
       </p>
     </div>
   );
-}
-
-/**
- * `next` is read from the URL — we can't trust it. Reject anything
- * that isn't a same-site relative path so an attacker can't craft
- * `?next=https://evil.example.com` and bounce the user off-site
- * after auth.
- */
-function safeNext(next: string | undefined): string {
-  if (!next || typeof next !== "string") return "/";
-  if (!next.startsWith("/") || next.startsWith("//")) return "/";
-  return next;
-}
-
-function nextQuery(next: string | undefined): string {
-  const safe = safeNext(next);
-  if (safe === "/") return "";
-  return `?next=${encodeURIComponent(safe)}`;
 }
