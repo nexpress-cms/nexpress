@@ -103,15 +103,28 @@ export async function POST(request: NextRequest) {
     const refresh = await signMemberToken(member, secret, refreshTokenExpiration);
     const csrf = randomBytes(16).toString("hex");
 
-    // Persist a session row so logout can revoke server-side. Token hash
-    // matches the staff session contract.
-    await db.insert(nxMemberSessions).values({
-      memberId: member.id,
-      tokenHash: await sha256(access),
-      userAgent: request.headers.get("user-agent") ?? null,
-      ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-      expiresAt: new Date(Date.now() + tokenExpiration * 1000),
-    });
+    // Persist a session row per token so logout can revoke both server-
+    // side. Without the refresh row, a stolen refresh JWT could mint
+    // new access tokens until refresh-JWT expiry even after logout
+    // (#45 reopened follow-up).
+    const userAgent = request.headers.get("user-agent") ?? null;
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    await db.insert(nxMemberSessions).values([
+      {
+        memberId: member.id,
+        tokenHash: await sha256(access),
+        userAgent,
+        ip,
+        expiresAt: new Date(Date.now() + tokenExpiration * 1000),
+      },
+      {
+        memberId: member.id,
+        tokenHash: await sha256(refresh),
+        userAgent,
+        ip,
+        expiresAt: new Date(Date.now() + refreshTokenExpiration * 1000),
+      },
+    ]);
 
     const response = NextResponse.json(
       {

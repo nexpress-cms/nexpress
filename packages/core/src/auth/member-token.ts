@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT, type JWTPayload } from "jose";
 
 /**
@@ -8,11 +9,20 @@ import { jwtVerify, SignJWT, type JWTPayload } from "jose";
  *
  * The signing secret is the same `NX_SECRET`; rotating it invalidates
  * both staff and member sessions, which is the desired behavior.
+ *
+ * Every token gets a random `jti` so two tokens minted within the
+ * same second for the same member produce DIFFERENT JWT strings —
+ * needed for refresh-token rotation: without it, the rotated token
+ * hash would collide with the prior token hash and revocation by
+ * tokenHash would still resolve the rotated row.
  */
 export interface NxMemberTokenPayload {
   sub: string;
   aud: "member";
   ver: number;
+  /** Optional in the type so legacy tokens minted before the
+   *  jti-claim addition still validate; new tokens always carry one. */
+  jti?: string;
   iat: number;
   exp: number;
 }
@@ -29,6 +39,7 @@ export async function signMemberToken(
   return new SignJWT({ sub: member.id, ver: member.tokenVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(MEMBER_AUDIENCE)
+    .setJti(randomBytes(16).toString("base64url"))
     .setIssuedAt()
     .setExpirationTime(Math.floor(Date.now() / 1000) + expirationSeconds)
     .sign(secretKey);

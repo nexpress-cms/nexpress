@@ -13,6 +13,7 @@ import { POST as registerPOST } from "@/app/api/members/register/route";
 import { POST as verifyPOST } from "@/app/api/members/verify/route";
 import { POST as loginPOST } from "@/app/api/members/login/route";
 import { POST as logoutPOST } from "@/app/api/members/logout/route";
+import { POST as refreshPOST } from "@/app/api/members/refresh/route";
 import { POST as forgotPOST } from "@/app/api/members/forgot-password/route";
 import { POST as resetPOST } from "@/app/api/members/reset-password/route";
 import {
@@ -288,6 +289,61 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(logout.status).toBe(200);
     const cleared = cookieValue(logout.headers.get("set-cookie"), "nx-mb-session");
     expect(cleared === "" || cleared === undefined).toBe(true);
+  });
+
+  // Regression for #45 (reopened): logout must invalidate the refresh
+  // JWT server-side, not just the access token.
+  it("refresh after logout is rejected even if the refresh JWT is still valid", async () => {
+    await registerAndVerify("rev", "rev@example.com", "password123");
+    const login = await loginPOST(
+      jsonRequest("/api/members/login", {
+        method: "POST",
+        body: JSON.stringify({ email: "rev@example.com", password: "password123" }),
+      }),
+    );
+    const cookies = login.headers.get("set-cookie");
+    const sessionCookie = cookieValue(cookies, "nx-mb-session");
+    const refreshCookie = cookieValue(cookies, "nx-mb-refresh");
+    expect(sessionCookie).toBeDefined();
+    expect(refreshCookie).toBeDefined();
+
+    // Refresh succeeds while logged in.
+    const refreshOk = await refreshPOST(
+      jsonRequest("/api/members/refresh", {
+        method: "POST",
+        cookies: [`nx-mb-refresh=${refreshCookie}`],
+      }),
+    );
+    expect(refreshOk.status).toBe(200);
+    const rotatedRefresh = cookieValue(refreshOk.headers.get("set-cookie"), "nx-mb-refresh");
+    expect(rotatedRefresh).toBeDefined();
+    // After rotation, the original refresh token is no longer valid —
+    // its session row was deleted as part of the rotation.
+    const replayOldRefresh = await refreshPOST(
+      jsonRequest("/api/members/refresh", {
+        method: "POST",
+        cookies: [`nx-mb-refresh=${refreshCookie}`],
+      }),
+    );
+    expect(replayOldRefresh.status).toBe(401);
+
+    // Logout invalidates the rotated refresh token too.
+    await logoutPOST(
+      jsonRequest("/api/members/logout", {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${sessionCookie}`,
+          `nx-mb-refresh=${rotatedRefresh}`,
+        ],
+      }),
+    );
+    const refreshAfterLogout = await refreshPOST(
+      jsonRequest("/api/members/refresh", {
+        method: "POST",
+        cookies: [`nx-mb-refresh=${rotatedRefresh}`],
+      }),
+    );
+    expect(refreshAfterLogout.status).toBe(401);
   });
 });
 
