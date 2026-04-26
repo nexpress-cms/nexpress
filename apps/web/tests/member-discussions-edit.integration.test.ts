@@ -476,6 +476,61 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       expect(row.reputation).toBe(0);
     });
 
+    // Issue #126 — `document.deleted` reputation event was fired
+    // unconditionally on member delete. But a pending row never
+    // earned the `document.created` credit (the create path
+    // withholds it for non-published rows; promote backfills it).
+    // Debiting on delete without a matching credit drove the
+    // member's reputation negative for retracting their own
+    // not-yet-visible content.
+    it("pending doc delete does NOT debit reputation (#126)", async () => {
+      const core = await import("@nexpress/core");
+      const events: NxReputationEvent[] = [];
+      core.setReputationAdapter({
+        apply: (event) => {
+          events.push(event);
+          if (event.kind === "document.created") return 5;
+          if (event.kind === "document.deleted") return -5;
+          return 0;
+        },
+      });
+      // Spam adapter flags every create → row lands `pending` →
+      // create-path withholds `document.created` per the existing
+      // 9.7c policy. Same setup the moderation tests use.
+      core.setSpamAdapter({ check: () => ({ kind: "flag" }) });
+
+      const member = await seedActiveMember("rep-pend-del");
+      const docId = await seedMemberDiscussion(member, "Awaits", "pend-del-1");
+
+      const del = await collectionDELETE(
+        memberRequest(`/api/collections/discussions/${docId}`, member, {
+          method: "DELETE",
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(del.status).toBe(204);
+
+      // Neither `document.created` (withheld at create) nor
+      // `document.deleted` (withheld at delete because the row
+      // was never credited) should have fired.
+      const kinds = events.map((e) => e.kind);
+      expect(kinds).not.toContain("document.created");
+      expect(kinds).not.toContain("document.deleted");
+
+      const db = await getTestDb();
+      const { nxMembers } = await import("@nexpress/core");
+      const { eq } = await import("drizzle-orm");
+      const [row] = (await db
+        .select({ reputation: nxMembers.reputation })
+        .from(nxMembers)
+        .where(eq(nxMembers.id, member.memberId))
+        .limit(1)) as Array<{ reputation: number }>;
+      // No credit, no debit — net zero from the create+delete pair.
+      expect(row.reputation).toBe(0);
+
+      core.resetSpamAdapter();
+    });
+
     it("records `document.delete` audit event with member actor", async () => {
       const member = await seedActiveMember("delaudit");
       const docId = await seedMemberDiscussion(member, "Doomed", "audit-del");
