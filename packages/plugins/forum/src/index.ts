@@ -127,6 +127,14 @@ export function defineDiscussionsCollection(
       update: isOwnerOrAdmin,
       delete: isOwnerOrAdmin,
     },
+    seo: {
+      urlPath: (doc) => {
+        const docSlug = typeof doc.slug === "string" ? doc.slug : null;
+        return docSlug ? `/${slug}/${docSlug}` : null;
+      },
+      changefreq: "daily",
+      priority: 0.6,
+    },
     fields,
   });
 }

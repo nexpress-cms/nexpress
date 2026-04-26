@@ -17,6 +17,20 @@ export const pagesCollection = defineCollection({
     update: isOwnerOrAdmin,
     delete: isOwnerOrAdmin,
   },
+  seo: {
+    urlPath: (doc) => {
+      const slug = typeof doc.slug === "string" ? doc.slug : null;
+      if (!slug) return null;
+      // Pages use the catch-all `(site)/[[...slug]]` route. The
+      // home page slug is "/" and maps to "/", every other slug
+      // maps to "/{slug}". A leading slash on a non-root slug is
+      // a data quirk we tolerate by stripping it.
+      if (slug === "/") return "/";
+      return `/${slug.replace(/^\/+/, "")}`;
+    },
+    changefreq: "weekly",
+    priority: 0.8,
+  },
   fields: [
     {
       type: "text",

@@ -18,6 +18,14 @@ export const postsCollection = defineCollection({
     update: isOwnerOrAdmin,
     delete: isOwnerOrAdmin,
   },
+  seo: {
+    urlPath: (doc) => {
+      const slug = typeof doc.slug === "string" ? doc.slug : null;
+      return slug ? `/blog/${slug}` : null;
+    },
+    changefreq: "weekly",
+    priority: 0.7,
+  },
   fields: [
     {
       type: "text",
