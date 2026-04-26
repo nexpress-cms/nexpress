@@ -5,6 +5,10 @@ declare module "@nexpress/core" {
     NxThemeTokens,
     NxThemeTypography,
   } from "../../../core/src/theme/types.js";
+  export type {
+    NxThemeManifest,
+    NxRegisteredTheme,
+  } from "../../../core/src/config/types.js";
   export { DEFAULT_THEME } from "../../../core/src/theme/defaults.js";
   export { sanitizeTokenValue } from "../../../core/src/theme/sanitize.js";
 }

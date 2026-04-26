@@ -83,6 +83,9 @@ importers:
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../../packages/theme
+      '@nexpress/theme-default':
+        specifier: workspace:*
+        version: link:../../packages/theme-default
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
@@ -507,6 +510,34 @@ importers:
       '@nexpress/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.14)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.5(react@19.2.5)
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/theme-default:
+    dependencies:
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nexpress/theme':
+        specifier: workspace:*
+        version: link:../theme
     devDependencies:
       '@types/react':
         specifier: ^19.0.0

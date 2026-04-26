@@ -4,6 +4,7 @@ import {
   listPluginStates,
   loadPlugins,
   registerCollection,
+  registerThemes,
   setDb,
   setMediaDb,
   setStorageAdapter,
@@ -120,6 +121,14 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         resolveTable(generatedSchema, collection.slug),
         collection,
       );
+    }
+
+    // Phase 11.1 — register themes alongside collections so the
+    // theme registry is populated by the time any layout runs.
+    // Idempotent on the registry side; calling again on hot
+    // reload just overwrites entries by id.
+    if (config.themes && config.themes.length > 0) {
+      registerThemes(config.themes);
     }
 
     collectionsRegistered = true;
