@@ -68,6 +68,18 @@ export { buildSearchVector } from "./collections/search.js";
 export { buildSitemap, renderSitemapXml } from "./seo/sitemap.js";
 export type { NxSitemapEntry, BuildSitemapOptions } from "./seo/sitemap.js";
 export {
+  DEFAULT_SITE_SEO_SETTINGS,
+  buildPageMetadata,
+  getSiteSeoSettings,
+  validateSeoSettingsPatch,
+} from "./seo/page-metadata.js";
+export type {
+  NxSiteSeoSettings,
+  NxPageMetadata,
+  NxPageMetadataInput,
+  NxSeoSettingsPatch,
+} from "./seo/page-metadata.js";
+export {
   registerCollection,
   getCollectionConfig,
   getCollectionTable,
