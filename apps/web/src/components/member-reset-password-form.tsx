@@ -64,9 +64,12 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         );
         return;
       }
-      // Token is invalidated server-side; any new sessions belong
-      // to the new password. Send the user to login with a banner.
-      router.push("/members/login?verified=1");
+      // Token is invalidated server-side and existing sessions are
+      // killed (tokenVersion bumped + nx_member_sessions wiped).
+      // Send the user to login with the password-reset banner —
+      // distinct flag from `?verified=1` so the banner copy is
+      // honest about which flow they came from.
+      router.push("/members/login?reset=1");
     } catch {
       setError("Network error. Please try again.");
     } finally {
