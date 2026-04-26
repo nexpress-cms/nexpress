@@ -22,6 +22,519 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /*
+   * Site (public-facing) styles. The `(site)` route group's
+   * components reference these `nx-*` classes; the design system
+   * was sketched out before stylesheet rules existed, so without
+   * these definitions auth/register/discussion pages rendered as
+   * unstyled HTML. Token references read from the same `--nx-*`
+   * custom properties declared above so a site theme can
+   * rebrand by overriding tokens, not these rules.
+   */
+
+  /* Site shell ----------------------------------------- */
+
+  .nx-site-header {
+    border-bottom: 1px solid var(--nx-color-border, #e5e7eb);
+    background: var(--nx-color-background, #fff);
+  }
+
+  .nx-site-header > nav {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem;
+  }
+
+  .nx-site-logo {
+    font-weight: 700;
+    font-size: 1.125rem;
+    text-decoration: none;
+    color: inherit;
+    letter-spacing: -0.01em;
+  }
+
+  .nx-site-nav {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 auto 0 0;
+  }
+
+  .nx-site-nav a {
+    color: var(--nx-color-muted-foreground, #64748b);
+    text-decoration: none;
+    font-size: 0.9375rem;
+    transition: color 0.15s ease;
+  }
+
+  .nx-site-nav a:hover {
+    color: var(--nx-color-foreground, #0f172a);
+  }
+
+  .nx-site-main {
+    min-height: calc(100vh - 8rem);
+  }
+
+  .nx-site-footer {
+    border-top: 1px solid var(--nx-color-border, #e5e7eb);
+    background: var(--nx-color-muted, #f8fafc);
+    margin-top: 4rem;
+  }
+
+  .nx-site-footer > nav {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  .nx-site-footer ul {
+    display: flex;
+    gap: 1.5rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.875rem;
+  }
+
+  .nx-site-footer a {
+    color: var(--nx-color-muted-foreground, #64748b);
+    text-decoration: none;
+  }
+
+  .nx-site-footer a:hover {
+    color: var(--nx-color-foreground, #0f172a);
+  }
+
+  /* Member auth pages ---------------------------------- */
+
+  .nx-members-auth {
+    max-width: 28rem;
+    margin: 4rem auto;
+    padding: 2.5rem;
+    background: var(--nx-color-card, #fff);
+    border: 1px solid var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-lg, 0.75rem);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.04),
+      0 4px 16px -8px rgba(0, 0, 0, 0.08);
+  }
+
+  .nx-members-auth h1 {
+    margin: 0 0 1.5rem;
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  .nx-members-auth-alt {
+    margin: 1rem 0 0;
+    font-size: 0.875rem;
+    color: var(--nx-color-muted-foreground, #64748b);
+  }
+
+  .nx-members-auth-alt a {
+    color: var(--nx-color-primary, #4f46e5);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .nx-members-auth-alt a:hover {
+    text-decoration: underline;
+  }
+
+  /* Forms (member auth + discussion + comments) -------- */
+
+  .nx-members-form,
+  .nx-discussion-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .nx-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .nx-form-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--nx-color-foreground, #0f172a);
+  }
+
+  .nx-form-input,
+  textarea.nx-form-input {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font: inherit;
+    color: inherit;
+    background: var(--nx-color-background, #fff);
+    border: 1px solid var(--nx-color-input, #e5e7eb);
+    border-radius: var(--nx-radius-md, 0.5rem);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .nx-form-input:focus,
+  textarea.nx-form-input:focus {
+    outline: none;
+    border-color: var(--nx-color-ring, #4f46e5);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--nx-color-ring, #4f46e5) 20%, transparent);
+  }
+
+  .nx-form-input:disabled {
+    background: var(--nx-color-muted, #f8fafc);
+    cursor: not-allowed;
+  }
+
+  .nx-form-help {
+    font-size: 0.8125rem;
+    color: var(--nx-color-muted-foreground, #64748b);
+  }
+
+  .nx-form-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .nx-form-error {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: var(--nx-color-destructive, #b91c1c);
+    background: color-mix(in oklch, var(--nx-color-destructive, #b91c1c) 8%, transparent);
+    border: 1px solid color-mix(in oklch, var(--nx-color-destructive, #b91c1c) 30%, transparent);
+    border-radius: var(--nx-radius-md, 0.5rem);
+  }
+
+  .nx-form-success {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: #047857;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: var(--nx-radius-md, 0.5rem);
+    margin: 0 0 1rem;
+  }
+
+  .nx-form-editor-loading {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--nx-color-muted-foreground, #64748b);
+    border: 1px dashed var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-md, 0.5rem);
+  }
+
+  /* Buttons -------------------------------------------- */
+
+  .nx-button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--nx-color-primary-foreground, #fff);
+    background: var(--nx-color-primary, #4f46e5);
+    border: 1px solid transparent;
+    border-radius: var(--nx-radius-md, 0.5rem);
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      transform 0.05s ease;
+  }
+
+  .nx-button-primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--nx-color-primary, #4f46e5) 90%, black);
+  }
+
+  .nx-button-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .nx-button-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .nx-text-button {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font: inherit;
+    color: var(--nx-color-muted-foreground, #64748b);
+    background: transparent;
+    border: 1px solid var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-md, 0.5rem);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s ease;
+  }
+
+  .nx-text-button:hover {
+    background: var(--nx-color-muted, #f8fafc);
+    color: var(--nx-color-foreground, #0f172a);
+  }
+
+  /* Member status widget ------------------------------- */
+
+  .nx-member-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .nx-member-status-handle {
+    font-weight: 500;
+  }
+
+  .nx-member-status-loading {
+    color: var(--nx-color-muted-foreground, #64748b);
+  }
+
+  /* Member profile / page wrappers --------------------- */
+
+  .nx-member-profile,
+  .nx-page,
+  .nx-post,
+  .nx-blog,
+  .nx-discussions,
+  .nx-discussion {
+    max-width: 48rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+  }
+
+  .nx-page > *:first-child,
+  .nx-post > *:first-child {
+    margin-top: 0;
+  }
+
+  /* Tabs ----------------------------------------------- */
+
+  .nx-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.875rem;
+    color: var(--nx-color-muted-foreground, #64748b);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .nx-tab[aria-current="true"],
+  .nx-tab.is-active {
+    color: var(--nx-color-foreground, #0f172a);
+    background: var(--nx-color-muted, #f8fafc);
+    border-color: var(--nx-color-border, #e5e7eb);
+  }
+
+  .nx-tab-destructive {
+    color: var(--nx-color-destructive, #b91c1c);
+  }
+
+  /* Confirm dialog ------------------------------------- */
+
+  .nx-confirm-dialog {
+    max-width: 28rem;
+    padding: 1.5rem;
+    background: var(--nx-color-card, #fff);
+    border: 1px solid var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-lg, 0.75rem);
+    box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Discussions list ----------------------------------- */
+
+  .nx-discussions-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .nx-discussions-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .nx-discussions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nx-discussions-card {
+    padding: 1.25rem 1.5rem;
+    background: var(--nx-color-card, #fff);
+    border: 1px solid var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-md, 0.5rem);
+  }
+
+  .nx-discussions-card a {
+    color: var(--nx-color-foreground, #0f172a);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .nx-discussions-card a:hover {
+    color: var(--nx-color-primary, #4f46e5);
+  }
+
+  .nx-discussions-meta,
+  .nx-discussions-author,
+  .nx-discussion-meta,
+  .nx-discussion-author,
+  .nx-blog-excerpt {
+    font-size: 0.875rem;
+    color: var(--nx-color-muted-foreground, #64748b);
+  }
+
+  .nx-discussions-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--nx-color-muted-foreground, #64748b);
+    background: var(--nx-color-muted, #f8fafc);
+    border-radius: 9999px;
+  }
+
+  .nx-discussions-empty {
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--nx-color-muted-foreground, #64748b);
+    border: 1px dashed var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-md, 0.5rem);
+  }
+
+  .nx-discussions-pagination,
+  .nx-blog-pagination {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 2rem;
+  }
+
+  /* Discussion detail ---------------------------------- */
+
+  .nx-discussion-header {
+    margin-bottom: 1rem;
+  }
+
+  .nx-discussion-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .nx-discussion-body {
+    margin: 1.5rem 0;
+    line-height: 1.7;
+  }
+
+  .nx-discussion-body-empty {
+    color: var(--nx-color-muted-foreground, #64748b);
+    font-style: italic;
+  }
+
+  .nx-discussion-comments {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--nx-color-border, #e5e7eb);
+  }
+
+  /* Blog list ------------------------------------------ */
+
+  .nx-blog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nx-blog-card {
+    padding: 1.5rem;
+    background: var(--nx-color-card, #fff);
+    border: 1px solid var(--nx-color-border, #e5e7eb);
+    border-radius: var(--nx-radius-md, 0.5rem);
+  }
+
+  .nx-blog-card h2,
+  .nx-blog-card h3 {
+    margin: 0 0 0.5rem;
+  }
+
+  .nx-blog-card a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Post detail (cover, header, content) --------------- */
+
+  .nx-post-cover {
+    margin: 0 0 2rem;
+    border-radius: var(--nx-radius-md, 0.5rem);
+    overflow: hidden;
+  }
+
+  .nx-post-cover img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .nx-post-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .nx-post-content {
+    line-height: 1.7;
+  }
+
+  /* Comments (already styled in @nexpress/blocks via the
+   * shared component, but the wrapper class needs spacing) */
+  .nx-comments {
+    margin-top: 2rem;
+  }
+
+  .nx-comment-body {
+    line-height: 1.6;
+  }
+
+  /* Misc ----------------------------------------------- */
+
+  .nx-draft-banner {
+    border-bottom: 1px solid #fcd34d;
+  }
 }
 
 @theme {
