@@ -47,6 +47,15 @@ interface NxFieldBase {
     readOnly?: boolean;
     condition?: NxFieldCondition;
     width?: string;
+    /**
+     * Optional override for the admin field renderer. The default
+     * renderer dispatches on `type` (text → input, textarea →
+     * textarea, etc.); `kind` overrides that with a specialized
+     * widget. v1: `templatePicker` (Phase 11.3) replaces the
+     * input with a dropdown sourced from the active theme's
+     * `templates.{collection}` registry.
+     */
+    kind?: "templatePicker";
   };
   validate?: NxFieldValidator;
 }

@@ -4,6 +4,8 @@ import { DefaultFooter } from "./footer.js";
 import { DefaultHeader } from "./header.js";
 import { DefaultShell } from "./shell.js";
 import { defaultThemeCss } from "./styles.js";
+import { PageDefaultTemplate } from "./templates/page-default.js";
+import { PageWideTemplate } from "./templates/page-wide.js";
 
 /**
  * `@nexpress/theme-default` — the built-in baseline theme.
@@ -45,9 +47,25 @@ export const defaultTheme = defineTheme({
       footer: DefaultFooter,
     },
     css: defaultThemeCss,
-    // Templates land in 11.3; tokens in 11.4. The fields are
-    // declared on the type so themes can future-proof — leaving
-    // them undefined here is intentional.
+    // 11.3 — page templates. Each `pages` document picks one
+    // via the `template` field in the admin UI. `default` is
+    // the centered max-width container; `wide` drops the
+    // constraint for landing pages / hero-led marketing.
+    templates: {
+      pages: {
+        default: {
+          label: "Default",
+          description: "Centered content container with the standard reading width.",
+          component: PageDefaultTemplate,
+        },
+        wide: {
+          label: "Wide",
+          description:
+            "Edge-to-edge layout with no max-width. Best for landing pages and full-bleed media.",
+          component: PageWideTemplate,
+        },
+      },
+    },
   },
 });
 

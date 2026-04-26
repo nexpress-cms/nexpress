@@ -1,5 +1,11 @@
-import { buildPageMetadata, buildWebSiteJsonLd, getPageBySlug } from "@nexpress/core";
+import {
+  buildPageMetadata,
+  buildWebSiteJsonLd,
+  getActiveTheme,
+  getPageBySlug,
+} from "@nexpress/core";
 import { renderBlocks } from "@nexpress/blocks";
+import type { ComponentType } from "react";
 import type { Metadata } from "next";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
@@ -77,8 +83,19 @@ export default async function CatchAllPage({ params }: PageProps) {
   // distinct schema.org type worth expressing here).
   const websiteJsonLd = path === "/" ? await buildWebSiteJsonLd() : null;
 
+  // Phase 11.3 — page template dispatch. The doc carries a
+  // `template` id; we look it up in the active theme's
+  // `templates.pages` map, fall back to the theme's `default`
+  // template, and only if both are missing fall through to the
+  // historical block-renderer path. Themes that don't declare
+  // any `pages` templates keep working identically — this is
+  // additive.
+  const Template = await resolvePageTemplate(
+    typeof page.template === "string" ? page.template : null,
+  );
+
   return (
-    <div className="nx-page">
+    <>
       {websiteJsonLd ? (
         <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
       ) : null}
@@ -88,8 +105,44 @@ export default async function CatchAllPage({ params }: PageProps) {
           Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
         </div>
       ) : null}
-      {pageBlocks ? renderBlocks(pageBlocks) : <h1>{(page.title as string) ?? "Untitled"}</h1>}
+      {Template ? (
+        <Template doc={page as Record<string, unknown>} />
+      ) : (
+        <div className="nx-page">
+          {pageBlocks ? (
+            renderBlocks(pageBlocks)
+          ) : (
+            <h1>{(page.title as string) ?? "Untitled"}</h1>
+          )}
+        </div>
+      )}
       <RenderBodyEnd entries={bodyEnd} />
-    </div>
+    </>
   );
+}
+
+/**
+ * Resolves the page template component from the active theme.
+ * Tries the doc's chosen template id, then the theme's
+ * `default`, then null (which signals the catch-all to use the
+ * historical block renderer). Returns the component itself so
+ * the route doesn't have to know how the theme stored it.
+ */
+async function resolvePageTemplate(
+  templateId: string | null,
+): Promise<ComponentType<{ doc: Record<string, unknown> }> | null> {
+  const active = await getActiveTheme();
+  if (!active) return null;
+  const impl = active.impl as {
+    templates?: Record<
+      string,
+      Record<string, { component?: ComponentType<{ doc: Record<string, unknown> }> }>
+    >;
+  };
+  const set = impl.templates?.pages;
+  if (!set) return null;
+  const chosen = templateId
+    ? (set[templateId]?.component ?? set.default?.component)
+    : set.default?.component;
+  return chosen ?? null;
 }
