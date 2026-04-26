@@ -393,4 +393,103 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
       .where(eq(nxComments.id, commentA))) as Array<unknown>;
     expect(goneComments).toHaveLength(0);
   });
+
+  // Phase 9.7q — reports filed against the cascaded comments would
+  // otherwise outlive their target. Hard-deleting a doc must also
+  // sweep the report queue so mods aren't staring at rows that
+  // dereference to nothing.
+  it("reports filed against cascaded comments are cleaned up (Phase 9.7q)", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const author = await seedActiveMember("cas-rep-author");
+    const reporter = await seedActiveMember("cas-rep-reporter");
+
+    const docToKill = await seedStaffPost(editor);
+    const docToKeep = await seedStaffPost(editor);
+    const targetCommentId = await postComment(
+      author,
+      "posts",
+      docToKill,
+      "reportable",
+    );
+    const survivingCommentId = await postComment(
+      author,
+      "posts",
+      docToKeep,
+      "innocent",
+    );
+
+    // File two reports — one against each comment. Only the report
+    // pointing at the about-to-cascade comment should disappear.
+    const { fileReport, nxReports } = await import("@nexpress/core");
+    await fileReport({
+      reporterId: reporter.memberId,
+      targetType: "comment",
+      targetId: targetCommentId,
+      reason: "spam",
+    });
+    await fileReport({
+      reporterId: reporter.memberId,
+      targetType: "comment",
+      targetId: survivingCommentId,
+      reason: "spam too",
+    });
+
+    await collectionDELETE(
+      staffRequest(`/api/collections/posts/${docToKill}`, editor, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ slug: "posts", id: docToKill }) },
+    );
+
+    const db = await getTestDb();
+    const { eq } = await import("drizzle-orm");
+    const remaining = (await db.select().from(nxReports)) as Array<{
+      targetId: string;
+    }>;
+    // The unrelated report still points at the surviving comment.
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].targetId).toBe(survivingCommentId);
+
+    // And belt-and-braces: a query keyed on the deleted comment id
+    // returns zero rows.
+    const orphans = (await db
+      .select()
+      .from(nxReports)
+      .where(eq(nxReports.targetId, targetCommentId))) as Array<unknown>;
+    expect(orphans).toHaveLength(0);
+  });
+
+  it("reports targeting OTHER members survive (cascade is comment-scoped)", async () => {
+    // Member-target reports (`target_type='member'`) are unrelated
+    // to the doc being deleted — they must NOT be collateral damage
+    // of the cascade.
+    const editor = await seedUser({ role: "editor" });
+    const offender = await seedActiveMember("cas-rep-offender");
+    const reporter = await seedActiveMember("cas-rep-watchdog");
+    const docToKill = await seedStaffPost(editor);
+    await postComment(offender, "posts", docToKill, "noise");
+
+    const { fileReport, nxReports } = await import("@nexpress/core");
+    await fileReport({
+      reporterId: reporter.memberId,
+      targetType: "member",
+      targetId: offender.memberId,
+      reason: "repeat behavior",
+    });
+
+    await collectionDELETE(
+      staffRequest(`/api/collections/posts/${docToKill}`, editor, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ slug: "posts", id: docToKill }) },
+    );
+
+    const db = await getTestDb();
+    const { eq } = await import("drizzle-orm");
+    const memberReports = (await db
+      .select()
+      .from(nxReports)
+      .where(eq(nxReports.targetType, "member"))) as Array<unknown>;
+    expect(memberReports).toHaveLength(1);
+  });
 });
