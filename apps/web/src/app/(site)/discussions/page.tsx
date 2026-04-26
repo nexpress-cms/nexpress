@@ -93,9 +93,11 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
               </Link>
             </>
           ) : (
-            <Link href="/members/login?next=/discussions/new" className="nx-button-primary">
-              Sign in to post
-            </Link>
+            // Member login UI is a separate scope — for now we just
+            // tell anonymous visitors what they'd need. Sites that
+            // ship a member login page can swap this for a `<Link>`
+            // to it.
+            <span className="nx-discussions-signin-hint">Sign in to post.</span>
           )}
         </div>
       </header>

@@ -1,6 +1,6 @@
 import { findDocuments } from "@nexpress/core";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 
 import { DiscussionForm } from "@/components/discussion-form";
 import { ensureCoreServices } from "@/lib/init-core";
@@ -16,7 +16,10 @@ export default async function EditDiscussionPage({ params }: EditDiscussionPageP
   const { slug } = await params;
   const member = await getSiteMember();
   if (!member) {
-    redirect(`/members/login?next=/discussions/${slug}/edit`);
+    // 404 instead of redirecting to a not-yet-built login page.
+    // The author needs to be signed in to even see this URL exists;
+    // anonymous discovery shouldn't reveal the edit slug.
+    notFound();
   }
 
   const result = await findDocuments("discussions", { where: { slug }, limit: 1 });

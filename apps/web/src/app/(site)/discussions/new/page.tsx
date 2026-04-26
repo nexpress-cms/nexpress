@@ -10,14 +10,18 @@ export default async function NewDiscussionPage() {
   const member = await getSiteMember();
 
   if (!member) {
+    // Member login / register UI is a separate scope (not bundled
+    // into 9.7f). When a site ships those pages, swap this hint for
+    // links to them. The framework's `/api/members/login` endpoint
+    // exists; only the public-facing form is missing.
     return (
       <div className="nx-discussions">
         <h1>Start a discussion</h1>
         <p>
-          You need to be signed in to post.{" "}
-          <Link href="/members/login?next=/discussions/new">Sign in</Link>
-          {" or "}
-          <Link href="/members/register">create an account</Link>.
+          You need to be signed in as a member to post a discussion.
+          The login + register UI ships separately —{" "}
+          <Link href="/discussions">browse existing discussions</Link>{" "}
+          while you wait.
         </p>
       </div>
     );
