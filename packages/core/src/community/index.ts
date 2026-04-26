@@ -11,6 +11,18 @@ export type {
 } from "./roles.js";
 
 export { memberCan } from "./can.js";
+
+export {
+  setSpamAdapter,
+  getSpamAdapter,
+  resetSpamAdapter,
+} from "./spam-adapter.js";
+export type {
+  NxSpamAdapter,
+  NxSpamCheckContext,
+  NxSpamVerdict,
+  NxSpamVerdictKind,
+} from "./spam-adapter.js";
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
 export { renderCommentMarkdown } from "./markdown.js";
