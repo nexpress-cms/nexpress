@@ -42,7 +42,20 @@ type MediaItem = {
   url?: string;
   thumbnailUrl?: string;
   folderId?: string;
+  /**
+   * Resolved uploader info (Phase 9.7k). Server-side `listMedia`
+   * LEFT JOINs `nx_users` and `nx_members` so we don't have to do
+   * a follow-up lookup per row. `null` for system / plugin
+   * uploads where neither column was set.
+   */
+  uploader?: MediaUploader | null;
 };
+
+type MediaUploader =
+  | { kind: "staff"; name: string | null; email: string | null }
+  | { kind: "member"; handle: string; displayName: string | null };
+
+type UploaderFilter = "all" | "staff" | "member";
 
 type MediaFolder = {
   id: string;
@@ -54,6 +67,7 @@ export function MediaLibrary() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [currentFolder, setCurrentFolder] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [uploaderFilter, setUploaderFilter] = useState<UploaderFilter>("all");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [folders, setFolders] = useState<MediaFolder[]>([]);
@@ -86,7 +100,7 @@ export function MediaLibrary() {
 
   useEffect(() => {
     void fetchMedia();
-  }, [currentFolder, searchQuery]);
+  }, [currentFolder, searchQuery, uploaderFilter]);
 
   async function fetchFolders() {
     setLoadingFolders(true);
@@ -121,6 +135,10 @@ export function MediaLibrary() {
 
       if (searchQuery.trim()) {
         params.set("search", searchQuery.trim());
+      }
+
+      if (uploaderFilter !== "all") {
+        params.set("uploaderKind", uploaderFilter);
       }
 
       const response = await fetch(`/api/media?${params.toString()}`);
@@ -258,6 +276,35 @@ export function MediaLibrary() {
                     placeholder="Search media"
                     className="pl-9"
                   />
+                </div>
+
+                {/*
+                  Phase 9.7k uploader filter. Three-state segmented
+                  control instead of a select to keep it inline with
+                  the existing view-mode toggle below.
+                */}
+                <div className="flex items-center rounded-lg border border-border/70 bg-background p-1 text-sm">
+                  {(
+                    [
+                      { value: "all", label: "All" },
+                      { value: "staff", label: "Staff" },
+                      { value: "member", label: "Members" },
+                    ] as const
+                  ).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={cn(
+                        "rounded-md px-3 py-2 transition-colors",
+                        uploaderFilter === option.value
+                          ? "bg-foreground text-background"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setUploaderFilter(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
 
                 <div className="flex items-center rounded-lg border border-border/70 bg-background p-1">
@@ -416,11 +463,31 @@ function GridView({
             <div className="space-y-1 p-4">
               <p className="truncate font-medium text-foreground">{item.filename}</p>
               <p className="text-sm text-muted-foreground">{formatBytes(item.size)}</p>
+              {item.uploader ? <UploaderBadge uploader={item.uploader} /> : null}
             </div>
           </label>
         );
       })}
     </div>
+  );
+}
+
+function UploaderBadge({ uploader }: { uploader: MediaUploader }) {
+  if (uploader.kind === "member") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+          @{uploader.handle}
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground">
+      <span className="rounded-full bg-muted px-2 py-0.5">
+        {uploader.name ?? uploader.email ?? "staff"}
+      </span>
+    </p>
   );
 }
 
@@ -441,9 +508,9 @@ function ListView({
         {Array.from({ length: 6 }).map((_, index) => (
           <div
             key={`media-list-skeleton-${index}`}
-            className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_0.9fr] gap-4 border-b border-border/70 px-4 py-4 last:border-b-0"
+            className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 px-4 py-4 last:border-b-0"
           >
-            {Array.from({ length: 6 }).map((__, cellIndex) => (
+            {Array.from({ length: 7 }).map((__, cellIndex) => (
               <div
                 key={`media-list-skeleton-${index}-${cellIndex}`}
                 className="h-4 animate-pulse rounded bg-muted"
@@ -461,19 +528,20 @@ function ListView({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/70">
-      <div className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+      <div className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         <span />
         <span>Thumbnail</span>
         <span>Filename</span>
         <span>Type</span>
         <span>Size</span>
+        <span>Uploader</span>
         <span>Date</span>
       </div>
       <div className="divide-y divide-border/70">
         {items.map((item) => (
           <div
             key={item.id}
-            className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_0.9fr] gap-4 px-4 py-4 text-sm"
+            className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 px-4 py-4 text-sm"
           >
             <div className="flex items-center">
               <input
@@ -493,6 +561,13 @@ function ListView({
             </div>
             <div className="flex items-center text-muted-foreground">{item.type || "file"}</div>
             <div className="flex items-center text-muted-foreground">{formatBytes(item.size)}</div>
+            <div className="flex min-w-0 items-center text-muted-foreground">
+              {item.uploader ? (
+                <UploaderBadge uploader={item.uploader} />
+              ) : (
+                <span className="text-xs italic">system</span>
+              )}
+            </div>
             <div className="flex items-center text-muted-foreground">
               {formatDate(item.createdAt)}
             </div>
@@ -647,7 +722,30 @@ function normalizeMediaItem(entry: unknown, index: number): MediaItem {
       getOptionalString(record, "thumbnail") ??
       getOptionalString(record, "url"),
     folderId: getOptionalString(record, "folderId"),
+    uploader: normalizeUploader(record.uploader),
   };
+}
+
+function normalizeUploader(value: unknown): MediaUploader | null {
+  if (!isRecord(value)) return null;
+  const kind = getOptionalString(value, "kind");
+  if (kind === "staff") {
+    return {
+      kind: "staff",
+      name: getOptionalString(value, "name") ?? null,
+      email: getOptionalString(value, "email") ?? null,
+    };
+  }
+  if (kind === "member") {
+    const handle = getOptionalString(value, "handle");
+    if (!handle) return null;
+    return {
+      kind: "member",
+      handle,
+      displayName: getOptionalString(value, "displayName") ?? null,
+    };
+  }
+  return null;
 }
 
 function getArrayFromPayload(payload: unknown, keys: string[]) {
