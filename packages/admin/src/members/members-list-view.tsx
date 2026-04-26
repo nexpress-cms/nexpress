@@ -36,7 +36,7 @@ export function MembersListView({ members, totalDocs }: MembersListViewProps) {
           <Badge variant="secondary">{totalDocs}</Badge>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Public site members. Moderation actions ship in Phase 9.5.
+          Public site members. Open a row for ban / purge / identity actions.
         </p>
       </div>
 
