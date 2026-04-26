@@ -3,7 +3,7 @@ import { extname } from "node:path";
 import { buffer as consumeBuffer } from "node:stream/consumers";
 import { Readable } from "node:stream";
 
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
@@ -123,28 +123,11 @@ export async function uploadMedia(
       ? { kind: "staff", userId: uploader }
       : uploader;
 
-  // Phase 9.7p: per-member upload quota / rate limit. Staff
-  // uploads are never gated. Defer-loaded to avoid binding
-  // media → community at module level (the rest of the media
-  // module is community-agnostic).
-  if (resolvedUploader && resolvedUploader.kind === "member") {
-    await assertMemberUploadQuota(resolvedUploader.memberId);
-  }
-
-  const adapter = getStorageAdapter();
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
   const id = randomUUID();
   const extension = resolveFileExtension(file.originalFilename, file.mimeType);
   const storageKey = `media/${id}/original.${extension}`;
   const now = new Date();
-
-  await adapter.upload(storageKey, file.buffer, {
-    contentType: file.mimeType,
-    contentLength: file.buffer.byteLength,
-    originalFilename: file.originalFilename,
-  });
-
-  await db.insert(nxMedia).values({
+  const insertValues = {
     id,
     filename: file.originalFilename,
     originalFilename: file.originalFilename,
@@ -152,7 +135,7 @@ export async function uploadMedia(
     filesize: file.buffer.byteLength,
     storageKey,
     hash: createHash("sha256").update(file.buffer).digest("hex"),
-    status: "processing",
+    status: "processing" as const,
     folderId,
     uploadedBy:
       resolvedUploader && resolvedUploader.kind === "staff"
@@ -164,6 +147,49 @@ export async function uploadMedia(
         : null,
     createdAt: now,
     updatedAt: now,
+  };
+
+  // Phase 9.7p: per-member upload quota. Staff uploads are never
+  // gated. Phase 9.7p-followup (#120) — the count + insert must be
+  // atomic per member, otherwise concurrent uploads can both
+  // observe the same pre-insert count and both succeed past the
+  // cap. Wrap the gated branch in a transaction holding a Postgres
+  // advisory lock keyed on the member id; cross-member uploaders
+  // don't contend (different lock keys), same-member concurrent
+  // uploaders serialize and the second one sees the updated
+  // count.
+  //
+  // Storage upload happens AFTER the DB row commits, not before:
+  // if the storage adapter throws, the row stays at status =
+  // `processing` and the image processor marks it `error` —
+  // already a valid state. The reverse order (storage first)
+  // would leave orphaned bytes behind on quota failure, requiring
+  // a separate sweep job. Quota enforcement matters more than
+  // perfectly-paired bytes.
+  if (resolvedUploader && resolvedUploader.kind === "member") {
+    const memberId = resolvedUploader.memberId;
+    const dbPg = getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+    await dbPg.transaction(async (tx) => {
+      // `pg_advisory_xact_lock` auto-releases on commit/rollback.
+      // `hashtextextended` produces a stable int8 from a UUID
+      // string — collisions across different member ids are
+      // benign (worst case some unrelated members serialize).
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${memberId}, 0))`,
+      );
+      await assertMemberUploadQuota(memberId, tx);
+      await tx.insert(nxMedia).values(insertValues);
+    });
+  } else {
+    const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+    await db.insert(nxMedia).values(insertValues);
+  }
+
+  const adapter = getStorageAdapter();
+  await adapter.upload(storageKey, file.buffer, {
+    contentType: file.mimeType,
+    contentLength: file.buffer.byteLength,
+    originalFilename: file.originalFilename,
   });
 
   await enqueueJob("media:processImage", { mediaId: id });
@@ -185,7 +211,10 @@ export async function uploadMedia(
  * so they sit on the same module layer; deferring keeps a clean
  * one-way edge from media → community for this single call site.
  */
-async function assertMemberUploadQuota(memberId: string): Promise<void> {
+async function assertMemberUploadQuota(
+  memberId: string,
+  txDb?: NodePgDatabase<Record<string, unknown>>,
+): Promise<void> {
   const { getCommunitySettings } = await import(
     "../community/settings.js"
   );
@@ -194,7 +223,14 @@ async function assertMemberUploadQuota(memberId: string): Promise<void> {
   const { perDay, total } = settings.memberUploadQuota;
   if (perDay === null && total === null) return;
 
-  const db = getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // When invoked inside the upload transaction (#120 fix), the
+  // count + downstream insert run under the same advisory lock,
+  // so the count must use the tx handle to see writes by sibling
+  // statements. When called from elsewhere we fall back to the
+  // shared media DB.
+  const db =
+    txDb ??
+    (getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>);
 
   if (total !== null) {
     const [row] = (await db
