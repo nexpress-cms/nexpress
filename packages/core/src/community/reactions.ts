@@ -7,6 +7,7 @@ import { NxNotFoundError, NxValidationError } from "../errors.js";
 
 import { assertNotBanned } from "./can.js";
 import { createNotification } from "./notifications.js";
+import { applyReputation } from "./reputation.js";
 
 /**
  * Reactions service. `kind` is currently free-form per call; sites can
@@ -104,7 +105,8 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
     return existing;
   }
 
-  // Fan out a notification to the comment author (skip self-reactions).
+  // Fan out a notification + apply reputation delta to the recipient.
+  // Self-reactions are filtered for both — neither makes sense.
   if (input.targetType === "comment") {
     const [comment] = (await db
       .select({ memberId: nxComments.memberId })
@@ -122,6 +124,14 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
           reactionKind: input.kind,
         },
       });
+      await applyReputation(comment.memberId, {
+        kind: "reaction.received",
+        reactionKind: input.kind,
+        recipientId: comment.memberId,
+        reactorId: input.memberId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+      });
     }
   }
 
@@ -131,6 +141,22 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
 export async function removeReaction(input: NxReactToInput): Promise<void> {
   validateKind(input.kind);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Look up the reaction's recipient BEFORE deleting so the
+  // reputation event has the right context. We only emit
+  // `reaction.removed` when there was actually something to remove
+  // (i.e. the row existed and the reactor isn't the recipient).
+  let recipientId: string | null = null;
+  if (input.targetType === "comment") {
+    const [comment] = (await db
+      .select({ memberId: nxComments.memberId })
+      .from(nxComments)
+      .where(eq(nxComments.id, input.targetId))
+      .limit(1)) as Array<{ memberId: string }>;
+    if (comment && comment.memberId !== input.memberId) {
+      recipientId = comment.memberId;
+    }
+  }
+
   await db
     .delete(nxReactions)
     .where(
@@ -141,6 +167,17 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
         eq(nxReactions.kind, input.kind),
       ),
     );
+
+  if (recipientId) {
+    await applyReputation(recipientId, {
+      kind: "reaction.removed",
+      reactionKind: input.kind,
+      recipientId,
+      reactorId: input.memberId,
+      targetType: input.targetType,
+      targetId: input.targetId,
+    });
+  }
 }
 
 /**

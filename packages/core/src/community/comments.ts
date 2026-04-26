@@ -12,6 +12,7 @@ import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { createNotification } from "./notifications.js";
+import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
 
 /**
@@ -215,6 +216,19 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
         reason: verdict.reason ?? null,
         adapter: verdict.metadata ?? null,
       },
+    });
+  }
+
+  // Reputation: only credit visible comments. Flagged content waits
+  // for a mod restore — at that point the moderation surface can
+  // decide whether to retroactively credit (not done in v1).
+  if (initialStatus === "visible") {
+    await applyReputation(input.memberId, {
+      kind: "comment.created",
+      commentId: row.id,
+      memberId: input.memberId,
+      targetType: input.targetType,
+      targetId: input.targetId,
     });
   }
 
@@ -495,7 +509,7 @@ export async function staffHideComment(
   staffUserId: string,
   reason?: string | null,
 ): Promise<void> {
-  await loadCommentForStaffOp(commentId);
+  const existing = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -512,6 +526,16 @@ export async function staffHideComment(
     targetType: "comment",
     targetId: commentId,
     payload: { reason: reason ?? null, byStaff: true },
+  });
+  // Hiding the comment usually penalizes the author. Adapters return
+  // 0 if they don't want to (e.g. the hide is purely admin cleanup
+  // that shouldn't affect reputation).
+  await applyReputation(existing.memberId, {
+    kind: "comment.hidden",
+    commentId,
+    memberId: existing.memberId,
+    byStaff: true,
+    reason: reason ?? null,
   });
 }
 
@@ -555,7 +579,7 @@ export async function staffDeleteComment(
   commentId: string,
   staffUserId: string,
 ): Promise<void> {
-  await loadCommentForStaffOp(commentId);
+  const existing = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -567,5 +591,11 @@ export async function staffDeleteComment(
     targetType: "comment",
     targetId: commentId,
     payload: { byStaff: true },
+  });
+  await applyReputation(existing.memberId, {
+    kind: "comment.deleted",
+    commentId,
+    memberId: existing.memberId,
+    byStaff: true,
   });
 }
