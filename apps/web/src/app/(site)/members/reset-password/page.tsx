@@ -1,0 +1,39 @@
+import Link from "next/link";
+
+import { ResetPasswordForm } from "@/components/member-reset-password-form";
+import { ensureCoreServices } from "@/lib/init-core";
+
+interface ResetPasswordPageProps {
+  searchParams: Promise<{ token?: string }>;
+}
+
+export default async function MemberResetPasswordPage({
+  searchParams,
+}: ResetPasswordPageProps) {
+  ensureCoreServices();
+  const { token } = await searchParams;
+
+  if (!token) {
+    return (
+      <div className="nx-members-auth">
+        <h1>Reset your password</h1>
+        <p className="nx-form-error">
+          Missing reset token. Open the link from the email we sent you, or{" "}
+          <Link href="/members/forgot-password">request a new one</Link>.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="nx-members-auth">
+      <h1>Choose a new password</h1>
+      {/* Token validity is checked server-side when the form posts
+          — we don't pre-validate here because that would burn one
+          DB round-trip per page load. The form's error state
+          surfaces "expired or invalid" if the token is no longer
+          good (the email link is single-use + 1h TTL). */}
+      <ResetPasswordForm token={token} />
+    </div>
+  );
+}
