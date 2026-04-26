@@ -9,7 +9,7 @@ function renderCollectionInterface(collection: NxCollectionConfig): string {
   const interfaceName = `${toPascalCase(collection.slug)}Document`;
   const fields = [
     'id: string;',
-    'status: "draft" | "published" | "archived";',
+    'status: "draft" | "published" | "archived" | "pending";',
     'createdAt: Date;',
     'updatedAt: Date;',
     'createdBy: string | null;',

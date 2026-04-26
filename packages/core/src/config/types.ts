@@ -242,6 +242,17 @@ export interface NxCollectionConfig {
       create?: boolean;
       update?: boolean;
       delete?: boolean;
+      /**
+       * Status that member-authored creates land in by default.
+       * Defaults to `"published"` (a member's thread is live as
+       * soon as it's submitted). Set to `"pending"` to require a
+       * mod to promote the row before it shows up on the public
+       * site — a flag-on-write moderation gate without writing a
+       * spam adapter. The spam adapter, if installed, can also
+       * downgrade an individual row to `pending` regardless of
+       * this default (`flag` verdict).
+       */
+      defaultStatus?: "published" | "pending";
     };
   };
   timestamps?: boolean;
@@ -387,7 +398,21 @@ export interface NxFindResult<T = Record<string, unknown>> {
   hasPrevPage: boolean;
 }
 
-export type NxDocumentStatus = "draft" | "scheduled" | "published" | "archived";
+/**
+ * Document lifecycle status. `pending` (Phase 9.7c) is a moderation
+ * holding pen for member-authored docs that haven't cleared review
+ * — flagged by the spam adapter or sent there because the
+ * collection set `community.memberWrite.defaultStatus = "pending"`.
+ * Public listings filter to `published`, so pending rows are
+ * invisible to anonymous and non-staff members until a mod
+ * promotes them.
+ */
+export type NxDocumentStatus =
+  | "draft"
+  | "scheduled"
+  | "published"
+  | "archived"
+  | "pending";
 
 export interface NxSaveOptions {
   status?: NxDocumentStatus;
