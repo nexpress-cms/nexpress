@@ -8,7 +8,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import type { NxFindResult, NxImageSize } from "../config/types.js";
+import { nxMembers } from "../db/schema/community.js";
 import { nxMedia, nxMediaRefs } from "../db/schema/media.js";
+import { nxUsers } from "../db/schema/system.js";
 import { enqueueJob } from "../jobs/queue.js";
 import {
   DEFAULT_IMAGE_SIZES,
@@ -295,12 +297,6 @@ export async function listMedia(options: {
   if (options.uploadedByMemberId) {
     conditions.push(eq(nxMedia.uploadedByMemberId, options.uploadedByMemberId));
   }
-
-  // Defer-load the user / member tables so we don't drag the
-  // community schema into module-init order. Both are part of the
-  // same DB anyway; this is just an import-graph hygiene thing.
-  const { nxUsers } = await import("../db/schema/system.js");
-  const { nxMembers } = await import("../db/schema/community.js");
 
   const whereClause = combineConditions(conditions);
   // The local `DrizzleDatabaseLike` interface in this file is
