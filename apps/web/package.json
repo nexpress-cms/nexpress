@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "schema:gen": "tsx scripts/generate-schema.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
+    "seed:content": "tsx scripts/seed-content.ts",
     "worker": "tsx scripts/worker.ts",
     "db:generate": "pnpm schema:gen && drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

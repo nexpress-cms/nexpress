@@ -127,7 +127,15 @@ export function DefaultHomePage() {
         </div>
       </div>
 
-      <div className="mt-12 rounded-2xl border border-amber-300/60 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-900 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="mt-12 rounded-2xl border border-emerald-300/60 bg-emerald-50 px-5 py-4 text-sm leading-relaxed text-emerald-900 dark:border-emerald-700/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <strong className="font-semibold">Want sample content?</strong> Run{" "}
+        <code className="rounded bg-black/5 px-1.5 py-0.5">pnpm seed:content</code>{" "}
+        once you&rsquo;ve created an admin. It seeds a home page, an About / Contact
+        page, three sample posts, and the header / footer menus so the public
+        site has something real to show.
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-amber-300/60 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-900 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-200">
         <strong className="font-semibold">Default placeholder.</strong> This
         page is shown only when no published <code>pages</code> entry exists at
         slug <code>/</code>. Publish one in the admin to take over this URL —

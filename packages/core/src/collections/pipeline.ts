@@ -1283,7 +1283,12 @@ async function createMainDocument(
     ...mainData,
     createdBy: user?.id ?? null,
     updatedBy: user?.id ?? null,
-    searchVector,
+    // Wrap in `to_tsvector` so Postgres tokenizes the source
+    // text rather than parsing it as raw tsvector syntax —
+    // otherwise content with colons (URLs, "key:value") or other
+    // tsvector-meaningful punctuation 500s the write. Stemming
+    // matches the search query path which also uses 'english'.
+    searchVector: sql`to_tsvector('english', ${searchVector})`,
   };
 
   if (config.timestamps !== false) {
@@ -1314,7 +1319,9 @@ async function updateMainDocument(
   const values: Record<string, unknown> = {
     ...mainData,
     updatedBy: user?.id ?? null,
-    searchVector,
+    // See createMainDocument — same to_tsvector wrap so updates
+    // can't introduce content that crashes the cast either.
+    searchVector: sql`to_tsvector('english', ${searchVector})`,
   };
 
   if (config.timestamps !== false) {
