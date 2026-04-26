@@ -163,6 +163,41 @@ export async function updateMemberDocument(
   const memberOptions: NxSaveOptions = { ...(options ?? {}) };
   delete memberOptions.status;
 
+  // Cheap authorization checks BEFORE moderation (#139). Without
+  // this gate a banned member or a non-owner could still trigger
+  // the (potentially-paid, potentially-network) spam/profanity
+  // adapters before `saveDocumentImpl` rejects them. Order:
+  //   1. collection opt-in
+  //   2. doc existence
+  //   3. owner check
+  //   4. ban check
+  // These are duplicated inside `saveDocumentImpl`, but both
+  // execute the same SELECT-or-cache queries; doing them here
+  // saves the moderation round-trip on doomed requests. If any
+  // of these throw, the moderation never runs.
+  const config = getCollectionConfig(collection);
+  if (!config.community?.memberWrite?.update) {
+    throw new NxForbiddenError(collection, "update");
+  }
+  const table = getCollectionTable(collection) as PgTable;
+  const dbForGate = getDb() as unknown as DrizzleDatabaseLike;
+  const originalDoc = await getDocumentByIdInternal(
+    dbForGate,
+    table,
+    collection,
+    docId,
+  );
+  if (!originalDoc) {
+    throw new NxNotFoundError(collection, docId);
+  }
+  const authorId =
+    (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
+  if (authorId !== memberId) {
+    throw new NxForbiddenError(collection, "update");
+  }
+  const { assertNotBanned } = await import("../community/can.js");
+  await assertNotBanned(memberId);
+
   // Re-run the spam + profanity adapters on the submitted patch.
   // Pre-fix this path skipped moderation entirely, so a member
   // could create a clean discussion, get it published, then PATCH
@@ -228,6 +263,19 @@ export async function createMemberDocument(
   //      refuses the write entirely; `pass` accepts the default.
   // The API body's `_status` is always ignored.
   const config = getCollectionConfig(collection);
+
+  // Cheap authorization checks BEFORE moderation (#139). Banned
+  // members or members in collections that haven't opted into
+  // member-write should never reach the (potentially-paid)
+  // spam/profanity adapters. These same checks run again inside
+  // `saveDocumentImpl`, but doing them here saves the
+  // moderation round-trip on doomed requests.
+  if (!config.community?.memberWrite?.create) {
+    throw new NxForbiddenError(collection, "create");
+  }
+  const { assertNotBanned } = await import("../community/can.js");
+  await assertNotBanned(memberId);
+
   const defaultStatus: NxDocumentStatus =
     config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
 

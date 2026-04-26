@@ -598,4 +598,122 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       expect(del.status).toBe(403);
     });
   });
+
+  // Issue #139 — pre-fix `runMemberDocModeration` ran at the top
+  // of `createMemberDocument` / `updateMemberDocument`, BEFORE
+  // the cheap auth checks (collection opt-in, owner, ban). For
+  // sites using a paid moderation provider, doomed requests
+  // (banned member, non-owner edit, opt-out collection) still
+  // burned an adapter call. Now the cheap auth gate runs first
+  // and the adapter only sees authorized writes.
+  describe("auth checks run before moderation (#139)", () => {
+    let probeCount = 0;
+    const probeAdapter = {
+      check: () => {
+        probeCount += 1;
+        return { kind: "pass" as const };
+      },
+    };
+
+    beforeEach(async () => {
+      probeCount = 0;
+      const core = await import("@nexpress/core");
+      core.setSpamAdapter(probeAdapter);
+      core.setProfanityAdapter(probeAdapter);
+    });
+    afterEach(async () => {
+      const core = await import("@nexpress/core");
+      core.resetSpamAdapter();
+      core.resetProfanityAdapter();
+    });
+
+    it("banned member create — moderation NOT called", async () => {
+      const admin = await seedUser({ role: "admin" });
+      const member = await seedActiveMember("auth-banned-create");
+      const { issueBan } = await import("@nexpress/core");
+      await issueBan({
+        memberId: member.memberId,
+        scopeType: "site",
+        kind: "permanent",
+        actor: { kind: "staff", user: { id: admin.userId, role: admin.role, tokenVersion: 0 } as never },
+      });
+
+      const res = await collectionPOST(
+        memberRequest("/api/collections/discussions", member, {
+          method: "POST",
+          body: JSON.stringify({
+            title: "Should not pass moderation",
+            slug: "banned-create-1",
+            body: { root: { type: "root", children: [] } },
+          }),
+        }),
+        { params: Promise.resolve({ slug: "discussions" }) },
+      );
+      expect(res.status).toBe(403);
+      expect(probeCount).toBe(0);
+    });
+
+    it("non-owner update — moderation NOT called", async () => {
+      const owner = await seedActiveMember("auth-owner");
+      const docId = await seedMemberDiscussion(owner, "Mine", "auth-owner-1");
+
+      // probeCount may have ticked during the create; reset for
+      // the assertion.
+      probeCount = 0;
+
+      const stranger = await seedActiveMember("auth-stranger");
+      const patch = await collectionPATCH(
+        memberRequest(`/api/collections/discussions/${docId}`, stranger, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Hijack attempt" }),
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(patch.status).toBe(403);
+      expect(probeCount).toBe(0);
+    });
+
+    it("banned owner update — moderation NOT called", async () => {
+      const admin = await seedUser({ role: "admin" });
+      const member = await seedActiveMember("auth-banned-edit");
+      const docId = await seedMemberDiscussion(member, "Initial", "auth-be-1");
+
+      const { issueBan } = await import("@nexpress/core");
+      await issueBan({
+        memberId: member.memberId,
+        scopeType: "site",
+        kind: "permanent",
+        actor: { kind: "staff", user: { id: admin.userId, role: admin.role, tokenVersion: 0 } as never },
+      });
+
+      probeCount = 0;
+      const patch = await collectionPATCH(
+        memberRequest(`/api/collections/discussions/${docId}`, member, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Banned edit" }),
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(patch.status).toBe(403);
+      expect(probeCount).toBe(0);
+    });
+
+    it("authorized create still triggers moderation (sanity)", async () => {
+      const member = await seedActiveMember("auth-clean");
+      const res = await collectionPOST(
+        memberRequest("/api/collections/discussions", member, {
+          method: "POST",
+          body: JSON.stringify({
+            title: "Authorized",
+            slug: "auth-clean-1",
+            body: { root: { type: "root", children: [] } },
+          }),
+        }),
+        { params: Promise.resolve({ slug: "discussions" }) },
+      );
+      expect(res.status).toBe(201);
+      // profanity + spam each fire once on the create path.
+      expect(probeCount).toBe(2);
+    });
+  });
 });
