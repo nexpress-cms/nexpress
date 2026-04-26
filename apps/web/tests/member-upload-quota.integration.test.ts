@@ -280,4 +280,57 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     expect(ok.memberUploadQuota.perDay).toBeNull();
     expect(ok.memberUploadQuota.total).toBe(100);
   });
+
+  // Issue #120 — pre-fix the count happened outside any lock or
+  // transaction, so two concurrent uploads for the same member
+  // could both observe the same pre-insert count and both succeed
+  // past the cap. With the advisory-lock transaction added by the
+  // fix, the second uploader's count sees the first's row and
+  // throws.
+  it("concurrent uploads for the same member can't bypass the cap (#120)", async () => {
+    await setQuota({ perDay: null, total: 1 });
+    const member = await seedActiveMember("quota-race");
+
+    // Fire two uploads in parallel. With the lock in place, the
+    // first acquires the lock and inserts; the second waits, sees
+    // the inserted row, and throws 429.
+    const results = await Promise.all([
+      uploadPOST(uploadRequest(member)),
+      uploadPOST(uploadRequest(member)),
+    ]);
+    const statuses = results.map((r) => r.status).sort();
+    // One success (202) and one quota-rejected (429).
+    expect(statuses).toEqual([202, 429]);
+
+    // Sanity: exactly one row in the DB despite the race.
+    const db = await getTestDb();
+    const { nxMedia } = await import("@nexpress/core");
+    const { and, eq, isNull } = await import("drizzle-orm");
+    const rows = (await db
+      .select()
+      .from(nxMedia)
+      .where(
+        and(
+          eq(nxMedia.uploadedByMemberId, member.memberId),
+          isNull(nxMedia.deletedAt),
+        ),
+      )) as Array<unknown>;
+    expect(rows).toHaveLength(1);
+  });
+
+  it("concurrent uploads for DIFFERENT members don't contend (#120)", async () => {
+    // Sanity that the per-member advisory lock doesn't serialize
+    // unrelated uploaders. Both members have a quota of 1, both
+    // upload concurrently, both should succeed because the lock
+    // keys differ.
+    await setQuota({ perDay: null, total: 1 });
+    const a = await seedActiveMember("quota-race-a");
+    const b = await seedActiveMember("quota-race-b");
+
+    const results = await Promise.all([
+      uploadPOST(uploadRequest(a)),
+      uploadPOST(uploadRequest(b)),
+    ]);
+    expect(results.map((r) => r.status)).toEqual([202, 202]);
+  });
 });
