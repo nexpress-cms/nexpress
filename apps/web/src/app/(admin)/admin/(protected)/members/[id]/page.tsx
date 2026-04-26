@@ -10,6 +10,7 @@ import {
   LinkedIdentitiesPanel,
   MemberBansPanel,
   MemberPurgePanel,
+  MemberRolesPanel,
 } from "@nexpress/admin/client";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
@@ -85,6 +86,18 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         subjectKind="member"
         subjectId={row.id}
         canRevoke={hasRole(user, "admin")}
+      />
+
+      {/*
+        Roles panel surfaces the `nx_member_roles` grants. Read is
+        staff-mod gated to match the API; write (Grant / Revoke) is
+        admin-only because handing a member moderation capabilities
+        is a privilege escalation editors don't get to perform.
+      */}
+      <MemberRolesPanel
+        memberId={row.id}
+        memberHandle={row.handle}
+        canModify={hasRole(user, "admin")}
       />
 
       {/*
