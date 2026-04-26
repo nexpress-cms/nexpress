@@ -31,9 +31,12 @@ export interface NxMemberTokenPayload {
   sub: string;
   aud: "member";
   ver: number;
+  /** Required. `verifyMemberToken` refuses tokens missing this claim
+   *  so legacy refresh JWTs from before #92 cannot be smuggled into
+   *  the session cookie path (#91 reopen). */
   use: NxMemberTokenUse;
-  /** Optional in the type so legacy tokens minted before the
-   *  jti-claim addition still validate; new tokens always carry one. */
+  /** Optional only for the deploy window; new tokens always carry
+   *  one. */
   jti?: string;
   iat: number;
   exp: number;
@@ -65,10 +68,15 @@ export async function signMemberToken(
  * as a session cookie and how the refresh route rejects an access
  * token as a refresh trigger.
  *
- * Tokens minted before the `use` claim landed (which would have
- * `use === undefined`) are treated as `access` for backward compat
- * — this only matters during the rolling deploy window when the
- * tokens issued by the previous build are still in flight.
+ * Tokens minted before the `use` claim landed have NO `use` payload
+ * field. We refuse those outright rather than treating them as
+ * `access` — the prior fallback let still-live legacy refresh JWTs
+ * (already persisted in `nx_member_sessions` per #45's fix) be
+ * smuggled into the session cookie and pass the access check (#91
+ * reopen). The cost: members logged in before this deploy must log
+ * in once. That's bounded by the access-token TTL (default 2h);
+ * legacy session rows that don't match a new login age out via
+ * `expiresAt` within 7 days regardless.
  */
 export async function verifyMemberToken(
   token: string,
@@ -86,7 +94,10 @@ export async function verifyMemberToken(
     exp: number;
     use?: NxMemberTokenUse;
   };
-  const use: NxMemberTokenUse = typed.use === "refresh" ? "refresh" : "access";
+  if (typed.use !== "access" && typed.use !== "refresh") {
+    throw new NxAuthError("Member token missing `use` claim");
+  }
+  const use: NxMemberTokenUse = typed.use;
   if (expectedUse && use !== expectedUse) {
     // Throw `NxAuthError` so the response mapper emits 401 instead of
     // a plain 500 — this is an auth failure, not a server failure.

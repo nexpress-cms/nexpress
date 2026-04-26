@@ -387,6 +387,41 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     );
     expect(wrongRotation.status).toBe(401);
   });
+
+  // Regression for the #91 reopen: a legitimately-signed member JWT
+  // that lacks the `use` claim (i.e. was minted by a NexPress build
+  // before this change) must NOT pass the session lookup. The prior
+  // backward-compat fallback treated `use === undefined` as
+  // `"access"`, which let still-live legacy refresh tokens be
+  // smuggled into the session cookie up to refresh-TTL after deploy.
+  it("legacy member JWT without a `use` claim is refused on /me", async () => {
+    await registerAndVerify("legacy", "legacy@example.com", "password123");
+    const memberId = await getMemberId("legacy");
+
+    // Hand-mint a token mimicking the old shape — same audience and
+    // tokenVersion, no `use` claim. We sign with the same secret the
+    // app uses so the JWT signature passes; only the missing claim
+    // should cause the rejection. Built with `node:crypto` so this
+    // test doesn't pull in `jose` as an apps/web dep.
+    const { createHmac } = await import("node:crypto");
+    const secret = process.env.NX_SECRET as string;
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
+      "base64url",
+    );
+    const payload = Buffer.from(
+      JSON.stringify({ sub: memberId, ver: 0, aud: "member", iat: now, exp: now + 3600 }),
+    ).toString("base64url");
+    const sig = createHmac("sha256", secret)
+      .update(`${header}.${payload}`)
+      .digest("base64url");
+    const legacyToken = `${header}.${payload}.${sig}`;
+
+    const res = await meGET(
+      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${legacyToken}`] }),
+    );
+    expect(res.status).toBe(401);
+  });
 });
 
 // ── helpers ───────────────────────────────────────────────────────────
