@@ -3,7 +3,7 @@ import { extname } from "node:path";
 import { buffer as consumeBuffer } from "node:stream/consumers";
 import { Readable } from "node:stream";
 
-import { and, count, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
@@ -123,6 +123,14 @@ export async function uploadMedia(
       ? { kind: "staff", userId: uploader }
       : uploader;
 
+  // Phase 9.7p: per-member upload quota / rate limit. Staff
+  // uploads are never gated. Defer-loaded to avoid binding
+  // media → community at module level (the rest of the media
+  // module is community-agnostic).
+  if (resolvedUploader && resolvedUploader.kind === "member") {
+    await assertMemberUploadQuota(resolvedUploader.memberId);
+  }
+
   const adapter = getStorageAdapter();
   const db = getMediaDb() as unknown as DrizzleDatabaseLike;
   const id = randomUUID();
@@ -161,6 +169,70 @@ export async function uploadMedia(
   await enqueueJob("media:processImage", { mediaId: id });
 
   return { id, status: "processing" };
+}
+
+/**
+ * Throws `NxRateLimitError` (429) if the member is at or over
+ * their per-day or lifetime upload cap. Both bounds count
+ * non-deleted rows, so admin / member deletes free up quota the
+ * same way (mirrors the 9.7l purge semantic). When both bounds
+ * are `null` (the default), this function is a no-op aside from
+ * a single settings read.
+ *
+ * Defer-loaded `getCommunitySettings` to avoid an import cycle
+ * with `community/settings.ts` — that module reads `getDb()`,
+ * which is wired by the same bootstrap that wires the media DB,
+ * so they sit on the same module layer; deferring keeps a clean
+ * one-way edge from media → community for this single call site.
+ */
+async function assertMemberUploadQuota(memberId: string): Promise<void> {
+  const { getCommunitySettings } = await import(
+    "../community/settings.js"
+  );
+  const { NxRateLimitError } = await import("../errors.js");
+  const settings = await getCommunitySettings();
+  const { perDay, total } = settings.memberUploadQuota;
+  if (perDay === null && total === null) return;
+
+  const db = getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+
+  if (total !== null) {
+    const [row] = (await db
+      .select({ value: count() })
+      .from(nxMedia)
+      .where(
+        and(
+          eq(nxMedia.uploadedByMemberId, memberId),
+          isNull(nxMedia.deletedAt),
+        ),
+      )) as Array<{ value: number }>;
+    const used = row?.value ?? 0;
+    if (used >= total) {
+      throw new NxRateLimitError(
+        `Upload quota exceeded — this account has reached its lifetime cap of ${total} uploads.`,
+      );
+    }
+  }
+
+  if (perDay !== null) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [row] = (await db
+      .select({ value: count() })
+      .from(nxMedia)
+      .where(
+        and(
+          eq(nxMedia.uploadedByMemberId, memberId),
+          isNull(nxMedia.deletedAt),
+          gte(nxMedia.createdAt, since),
+        ),
+      )) as Array<{ value: number }>;
+    const recent = row?.value ?? 0;
+    if (recent >= perDay) {
+      throw new NxRateLimitError(
+        `Upload rate limit exceeded — try again later (max ${perDay} uploads per 24 hours).`,
+      );
+    }
+  }
 }
 
 export async function processMediaImage(

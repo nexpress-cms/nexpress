@@ -54,3 +54,17 @@ export class NxConflictError extends NxError {
     this.name = "NxConflictError";
   }
 }
+
+/**
+ * Per-actor rate limit / quota exceeded. Distinct from
+ * `NxValidationError` because the request shape was valid — the
+ * server is rejecting it on policy grounds. The 429 status lets
+ * client UIs recognize the case and surface a "you've hit your
+ * daily limit" message rather than a generic validation error.
+ */
+export class NxRateLimitError extends NxError {
+  constructor(message: string) {
+    super(message, "RATE_LIMITED", 429);
+    this.name = "NxRateLimitError";
+  }
+}

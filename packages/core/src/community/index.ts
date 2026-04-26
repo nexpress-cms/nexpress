@@ -53,7 +53,10 @@ export {
   updateCommunitySettings,
   validateCommunitySettingsPatch,
 } from "./settings.js";
-export type { NxCommunitySettings } from "./settings.js";
+export type {
+  NxCommunitySettings,
+  NxMemberUploadQuota,
+} from "./settings.js";
 
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
