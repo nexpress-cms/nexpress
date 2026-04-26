@@ -253,8 +253,9 @@ export interface NxCollectionConfig {
   /**
    * Community features opt-in per collection. Comments are off by
    * default; flip `comments: true` to let members post comments
-   * underneath this collection's documents. Reactions / threading
-   * land in 9.3 + 9.4 and gain their own toggles here.
+   * underneath this collection's documents. Reactions ride on the
+   * comment surface — sites enable reactions by enabling comments;
+   * a per-collection reactions toggle isn't needed today.
    *
    * `memberWrite.create` (9.7a) lets logged-in members create
    * documents in this collection without needing a staff role.

@@ -7,9 +7,9 @@ import { NxForbiddenError, NxValidationError } from "../errors.js";
 
 /**
  * Per-member notification inbox. v1 is synchronous: every event that
- * generates a notification writes a row immediately. Email fan-out
- * + per-member frequency preferences land in 9.5/9.6 — for now the
- * inbox is in-app only.
+ * generates a notification writes a row immediately. The inbox is
+ * in-app only — email fan-out and per-member frequency preferences
+ * are out of scope for the shipped roadmap.
  *
  * `kind` is a free-form string. The current vocabulary:
  *  - `comment.reply`        — your comment got a reply
