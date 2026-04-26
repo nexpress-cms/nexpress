@@ -25,6 +25,7 @@ export type {
   NxCollapsibleField,
   NxFieldConfig,
   NxCollectionHook,
+  NxHookPrincipal,
   NxUploadConfig,
   NxImageSize,
   NxCollectionConfig,
