@@ -54,14 +54,10 @@ const minimalCss = `
   color: inherit;
   text-decoration: none;
 }
-/* Override the default theme's flex nav layout — the minimal
-   theme intentionally drops nav links / search / member widget. */
-.nx-minimal-header > nav,
-.nx-minimal-header .nx-site-nav,
-.nx-minimal-header .nx-site-search,
-.nx-minimal-header .nx-member-status {
-  display: none;
-}
+/* The minimal header doesn't render nav / search / member
+   widget at all — the components return only the logo — so
+   we don't need defensive display:none rules here. The default
+   theme's CSS isn't injected when minimal is active either. */
 .nx-minimal-footer {
   margin-top: 4rem;
   padding: 2rem 0;
