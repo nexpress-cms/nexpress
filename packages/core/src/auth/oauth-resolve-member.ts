@@ -2,7 +2,9 @@ import { and, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
+import { getCommunitySettings } from "../community/settings.js";
 import { nxMemberIdentities, nxMembers } from "../db/schema/community.js";
+import { NxForbiddenError } from "../errors.js";
 
 import { hashPassword } from "./password.js";
 import type { OAuthProfile } from "./oauth-providers.js";
@@ -191,7 +193,24 @@ export async function resolveMemberOAuthLogin(
     }
   }
 
-  // Step 3: auto-provision.
+  // Step 3: auto-provision a brand-new member account. This is the
+  // step the `community.registrationEnabled` site setting gates —
+  // an invite-only site that disables password sign-up via
+  // `/api/members/register` would otherwise be joined through OAuth
+  // (the password endpoint and OAuth callback both create new
+  // member rows from an unauthenticated request, so they're the
+  // same surface from a policy point of view).
+  //
+  // Steps 1 and 2 are NOT gated: durable links and email matches
+  // log an EXISTING member back in, which isn't a new
+  // registration. An admin who flips `registrationEnabled = false`
+  // expects existing members to keep working — only new accounts
+  // should be refused.
+  const settings = await getCommunitySettings();
+  if (!settings.registrationEnabled) {
+    throw new NxForbiddenError("members", "register");
+  }
+
   const email =
     profile.email && profile.email.trim().length > 0
       ? profile.email.trim().toLowerCase()
