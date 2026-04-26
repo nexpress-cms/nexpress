@@ -33,6 +33,16 @@ export const localizedPagesCollection = defineCollection({
     update: isOwnerOrAdmin,
     delete: isOwnerOrAdmin,
   },
+  seo: {
+    urlPath: (doc) => {
+      const slug = typeof doc.slug === "string" ? doc.slug : null;
+      const locale = typeof doc.locale === "string" ? doc.locale : null;
+      if (!slug || !locale) return null;
+      return `/${locale}/${slug.replace(/^\/+/, "")}`;
+    },
+    changefreq: "weekly",
+    priority: 0.6,
+  },
   fields: [
     {
       type: "text",

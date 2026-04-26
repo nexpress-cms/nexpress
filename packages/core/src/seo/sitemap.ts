@@ -23,6 +23,13 @@ export interface NxSitemapEntry {
     | "yearly"
     | "never";
   priority?: number;
+  /**
+   * Phase 12.2 — hreflang alternates for translated content.
+   * The renderer emits an `<xhtml:link rel="alternate" hreflang="..." href="..."/>`
+   * entry per alternate, and the urlset gets the xhtml namespace
+   * declaration when any entry uses alternates.
+   */
+  alternates?: Array<{ hreflang: string; href: string }>;
 }
 
 export interface BuildSitemapOptions {
@@ -87,13 +94,70 @@ export async function buildSitemap(
       continue;
     }
 
-    for (const doc of result.docs) {
-      const path = seo.urlPath(doc as Record<string, unknown>);
+    // Phase 12.2 — for i18n collections, group rows by
+    // translationGroupId so each emitted entry can advertise
+    // its hreflang alternates. Rows missing the group id
+    // (shouldn't happen post-12.1) fall back to standalone
+    // entries with no alternates.
+    const docs = result.docs as Array<Record<string, unknown>>;
+    if (config.i18n) {
+      const groups = new Map<string, Array<Record<string, unknown>>>();
+      const orphans: Array<Record<string, unknown>> = [];
+      for (const doc of docs) {
+        const groupId =
+          typeof doc.translationGroupId === "string"
+            ? doc.translationGroupId
+            : null;
+        if (!groupId) {
+          orphans.push(doc);
+          continue;
+        }
+        const list = groups.get(groupId);
+        if (list) list.push(doc);
+        else groups.set(groupId, [doc]);
+      }
+      for (const siblings of groups.values()) {
+        const alternates: Array<{ hreflang: string; href: string }> = [];
+        for (const sibling of siblings) {
+          const siblingPath = seo.urlPath(sibling);
+          const locale =
+            typeof sibling.locale === "string" ? sibling.locale : null;
+          if (siblingPath && locale) {
+            alternates.push({ hreflang: locale, href: siblingPath });
+          }
+        }
+        for (const sibling of siblings) {
+          const path = seo.urlPath(sibling);
+          if (!path || !path.startsWith("/")) continue;
+          entries.push({
+            loc: path,
+            lastmod: pickLastmod(sibling),
+            changefreq: seo.changefreq,
+            priority: seo.priority,
+            alternates: alternates.length > 1 ? alternates : undefined,
+          });
+        }
+      }
+      for (const doc of orphans) {
+        const path = seo.urlPath(doc);
+        if (!path || !path.startsWith("/")) continue;
+        entries.push({
+          loc: path,
+          lastmod: pickLastmod(doc),
+          changefreq: seo.changefreq,
+          priority: seo.priority,
+        });
+      }
+      continue;
+    }
+
+    for (const doc of docs) {
+      const path = seo.urlPath(doc);
       if (!path) continue;
       if (!path.startsWith("/")) continue;
       entries.push({
         loc: path,
-        lastmod: pickLastmod(doc as Record<string, unknown>),
+        lastmod: pickLastmod(doc),
         changefreq: seo.changefreq,
         priority: seo.priority,
       });
@@ -125,9 +189,14 @@ export function renderSitemapXml(
   entries: NxSitemapEntry[],
 ): string {
   const trimmed = origin.replace(/\/+$/, "");
+  const usesAlternates = entries.some(
+    (e) => e.alternates && e.alternates.length > 0,
+  );
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    usesAlternates
+      ? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">'
+      : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
   ];
   for (const entry of entries) {
     lines.push("  <url>");
@@ -140,6 +209,13 @@ export function renderSitemapXml(
     }
     if (typeof entry.priority === "number") {
       lines.push(`    <priority>${entry.priority.toFixed(1)}</priority>`);
+    }
+    if (entry.alternates) {
+      for (const alt of entry.alternates) {
+        lines.push(
+          `    <xhtml:link rel="alternate" hreflang="${escapeXml(alt.hreflang)}" href="${escapeXml(`${trimmed}${alt.href}`)}"/>`,
+        );
+      }
     }
     lines.push("  </url>");
   }
