@@ -14,14 +14,14 @@ import { POST as registerPOST } from "@/app/api/members/register/route";
 import { POST as verifyPOST } from "@/app/api/members/verify/route";
 import { POST as loginPOST } from "@/app/api/members/login/route";
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
-import {
-  GET as commentsGET,
-  POST as commentsPOST,
-} from "@/app/api/collections/[slug]/[id]/comments/route";
+import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments/route";
 
 import { NextRequest } from "next/server";
 
-function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
+function jsonRequest(
+  path: string,
+  init: RequestInit & { cookies?: string[] } = {},
+): NextRequest {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
   if (init.cookies && init.cookies.length > 0) headers.set("cookie", init.cookies.join("; "));
@@ -43,9 +43,9 @@ function cookieValue(setCookieHeader: string | string[] | null, name: string): s
 
 async function seedActiveMember(
   handle: string,
-  email: string,
-  password: string,
 ): Promise<{ memberId: string; sessionCookie: string; csrfCookie: string }> {
+  const password = "password-12345";
+  const email = `${handle}@example.com`;
   const reg = await registerPOST(
     jsonRequest("/api/members/register", {
       method: "POST",
@@ -61,13 +61,18 @@ async function seedActiveMember(
     .from(nxMembers)
     .where(eq(nxMembers.handle, handle))
     .limit(1)) as Array<{ id: string }>;
-  if (!row) throw new Error(`member ${handle} not found`);
   const issued = await createMemberEmailVerifyToken(db as never, row.id, 60_000);
   await verifyPOST(
-    jsonRequest("/api/members/verify", { method: "POST", body: JSON.stringify({ token: issued.token }) }),
+    jsonRequest("/api/members/verify", {
+      method: "POST",
+      body: JSON.stringify({ token: issued.token }),
+    }),
   );
   const login = await loginPOST(
-    jsonRequest("/api/members/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    jsonRequest("/api/members/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   );
   const sc = login.headers.get("set-cookie");
   return {
@@ -83,27 +88,36 @@ async function seedStaffPost(): Promise<string> {
   const password = await hashPassword("password12345");
   const [user] = (await db
     .insert(nxUsers)
-    .values({ email: "spam-staff@example.com", password, name: "Staff", role: "editor" })
+    .values({
+      email: "prof-staff@example.com",
+      password,
+      name: "Staff",
+      role: "editor",
+    })
     .returning({
       id: nxUsers.id,
       email: nxUsers.email,
       role: nxUsers.role,
       tokenVersion: nxUsers.tokenVersion,
-    })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
+    })) as Array<{
+    id: string;
+    email: string;
+    role: "editor";
+    tokenVersion: number;
+  }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
     process.env.NX_SECRET!,
   );
   const csrf = "csrf-staff";
-
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
       cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
-        title: "Spam target",
-        slug: "spam-target",
+        title: "Profanity target",
+        slug: "profanity-target",
         content: { root: { type: "root", children: [] } },
         _status: "published",
       }),
@@ -115,7 +129,7 @@ async function seedStaffPost(): Promise<string> {
   return body.id;
 }
 
-describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
+describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
@@ -125,22 +139,26 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
   });
   afterEach(async () => {
     const core = await import("@nexpress/core");
+    core.resetProfanityAdapter();
     core.resetSpamAdapter();
   });
   afterAll(async () => {
     await closeTestDb();
   });
 
-  it("default no-op adapter: comments land as `visible` (existing behavior)", async () => {
+  it("default no-op adapter: comment lands as `visible` (existing behavior)", async () => {
     const postId = await seedStaffPost();
-    const author = await seedActiveMember("anna", "anna@example.com", "password-12");
+    const author = await seedActiveMember("prof-anna");
 
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
         headers: { "x-csrf-token": author.csrfCookie },
-        body: JSON.stringify({ bodyMd: "Genuine comment" }),
+        body: JSON.stringify({ bodyMd: "Clean comment" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
@@ -149,21 +167,28 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     expect(body.body.status).toBe("visible");
   });
 
-  it("`flag` verdict: comment lands as `pending`, hidden from default list", async () => {
+  it("`flag` verdict from profanity adapter pushes comment to `pending`", async () => {
     const core = await import("@nexpress/core");
-    core.setSpamAdapter({
-      check: () => ({ kind: "flag", reason: "low reputation", metadata: { score: 0.7 } }),
+    core.setProfanityAdapter({
+      check: () => ({
+        kind: "flag",
+        reason: "matched profanity list",
+        metadata: { matched: ["badword"], severity: "mild" },
+      }),
     });
 
     const postId = await seedStaffPost();
-    const author = await seedActiveMember("bea", "bea@example.com", "password-12");
+    const author = await seedActiveMember("prof-bea");
 
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
         headers: { "x-csrf-token": author.csrfCookie },
-        body: JSON.stringify({ bodyMd: "Suspicious content" }),
+        body: JSON.stringify({ bodyMd: "edgy content" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
@@ -171,15 +196,6 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     expect(body.status).toBe(201);
     expect(body.body.status).toBe("pending");
 
-    // Public list filters to status=visible — pending row hidden.
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
-    const listBody = await readJson<{ totalDocs: number }>(list);
-    expect(listBody.body.totalDocs).toBe(0);
-
-    // Audit log captured the flag with adapter metadata.
     const db = await getTestDb();
     const { nxAuditEvents } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
@@ -191,126 +207,182 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     }>;
     expect(audits).toHaveLength(1);
     const payload = audits[0].payload;
-    // Combined spam+profanity audit shape (Phase 9.7n): `sources`
-    // tells mods which adapter(s) flagged, `spam` carries the
-    // verdict reason+metadata, `profanity` is null when only spam
-    // flagged.
-    expect(payload.sources).toEqual(["spam"]);
-    const spamPayload = payload.spam as { reason: string; metadata: Record<string, unknown> };
-    expect(spamPayload.reason).toBe("low reputation");
-    expect(spamPayload.metadata).toEqual({ score: 0.7 });
-    expect(payload.profanity).toBeNull();
+    expect(payload.sources).toEqual(["profanity"]);
+    const profanity = payload.profanity as {
+      reason: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(profanity.reason).toBe("matched profanity list");
+    expect(profanity.metadata).toEqual({ matched: ["badword"], severity: "mild" });
+    expect(payload.spam).toBeNull();
   });
 
-  it("`reject` verdict: comment write refused with 400, no row written", async () => {
+  it("`reject` verdict from profanity adapter refuses the comment with 400", async () => {
     const core = await import("@nexpress/core");
-    core.setSpamAdapter({
-      check: () => ({ kind: "reject", reason: "Detected as spam by Akismet" }),
+    core.setProfanityAdapter({
+      check: () => ({
+        kind: "reject",
+        reason: "Comment contains banned slur",
+      }),
     });
 
     const postId = await seedStaffPost();
-    const author = await seedActiveMember("carl", "carl@example.com", "password-12");
+    const author = await seedActiveMember("prof-carl");
 
     const res = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
         headers: { "x-csrf-token": author.csrfCookie },
-        body: JSON.stringify({ bodyMd: "Buy cheap pills here" }),
+        body: JSON.stringify({ bodyMd: "anything" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
     expect(res.status).toBe(400);
-    const body = await readJson<{ error?: { message?: string; details?: Array<{ message?: string }> } }>(
-      res,
-    );
+    const body = await readJson<{
+      error?: { details?: Array<{ message?: string }> };
+    }>(res);
     const detailMessage = body.body.error?.details?.[0]?.message;
-    expect(detailMessage).toContain("Akismet");
-
-    // No row inserted.
-    const list = await commentsGET(
-      jsonRequest(`/api/collections/posts/${postId}/comments?includeHidden=1`),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
-    const listBody = await readJson<{ totalDocs: number }>(list);
-    expect(listBody.body.totalDocs).toBe(0);
+    expect(detailMessage).toContain("slur");
   });
 
-  // Fail-open: an adapter that throws (Akismet 5xx, OpenAI timeout,
-  // etc.) must not block legitimate comment writes. Sites that want
-  // fail-closed wrap their adapter in try/catch and return `reject`.
+  it("profanity reject short-circuits — spam adapter is not invoked", async () => {
+    let spamCalls = 0;
+    const core = await import("@nexpress/core");
+    core.setProfanityAdapter({
+      check: () => ({ kind: "reject", reason: "blocked" }),
+    });
+    core.setSpamAdapter({
+      check: () => {
+        spamCalls += 1;
+        return { kind: "pass" };
+      },
+    });
+
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember("prof-dora");
+
+    await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "irrelevant" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect(spamCalls).toBe(0);
+  });
+
+  it("profanity flag + spam pass → pending; both adapters ran", async () => {
+    let spamCalls = 0;
+    const core = await import("@nexpress/core");
+    core.setProfanityAdapter({
+      check: () => ({ kind: "flag", reason: "mild" }),
+    });
+    core.setSpamAdapter({
+      check: () => {
+        spamCalls += 1;
+        return { kind: "pass" };
+      },
+    });
+
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember("prof-eric");
+
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "edgy but not spam" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const body = await readJson<{ status: string }>(created);
+    expect(body.body.status).toBe("pending");
+    expect(spamCalls).toBe(1);
+  });
+
+  it("both flag → pending; audit lists both sources", async () => {
+    const core = await import("@nexpress/core");
+    core.setProfanityAdapter({
+      check: () => ({
+        kind: "flag",
+        reason: "language",
+        metadata: { score: 0.4 },
+      }),
+    });
+    core.setSpamAdapter({
+      check: () => ({ kind: "flag", reason: "low reputation", metadata: { score: 0.6 } }),
+    });
+
+    const postId = await seedStaffPost();
+    const author = await seedActiveMember("prof-flo");
+
+    const created = await commentsPOST(
+      jsonRequest(`/api/collections/posts/${postId}/comments`, {
+        method: "POST",
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
+        headers: { "x-csrf-token": author.csrfCookie },
+        body: JSON.stringify({ bodyMd: "questionable" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    expect(created.status).toBe(201);
+
+    const db = await getTestDb();
+    const { nxAuditEvents } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const audits = (await db
+      .select()
+      .from(nxAuditEvents)
+      .where(eq(nxAuditEvents.action, "comment.flag"))) as Array<{
+      payload: Record<string, unknown>;
+    }>;
+    expect(audits).toHaveLength(1);
+    expect(audits[0].payload.sources).toEqual(["profanity", "spam"]);
+    expect(audits[0].payload.profanity).not.toBeNull();
+    expect(audits[0].payload.spam).not.toBeNull();
+  });
+
   it("adapter that throws is treated as pass (fail-open)", async () => {
     const core = await import("@nexpress/core");
-    core.setSpamAdapter({
+    core.setProfanityAdapter({
       check: () => {
         throw new Error("upstream unavailable");
       },
     });
 
     const postId = await seedStaffPost();
-    const author = await seedActiveMember("flo", "flo@example.com", "password-12");
+    const author = await seedActiveMember("prof-gus");
 
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [
+          `nx-mb-session=${author.sessionCookie}`,
+          `nx-mb-csrf=${author.csrfCookie}`,
+        ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Genuine comment" }),
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
-    const body = await readJson<{ id: string; status: string }>(created);
+    const body = await readJson<{ status: string }>(created);
     expect(body.status).toBe(201);
     expect(body.body.status).toBe("visible");
-  });
-
-  it("`flag` verdict skips parent reply notification (avoids leaking pending content)", async () => {
-    const postId = await seedStaffPost();
-    const parentAuthor = await seedActiveMember("dora", "dora@example.com", "password-12");
-
-    // Parent comment: written under default no-op adapter.
-    const parent = await commentsPOST(
-      jsonRequest(`/api/collections/posts/${postId}/comments`, {
-        method: "POST",
-        cookies: [
-          `nx-mb-session=${parentAuthor.sessionCookie}`,
-          `nx-mb-csrf=${parentAuthor.csrfCookie}`,
-        ],
-        headers: { "x-csrf-token": parentAuthor.csrfCookie },
-        body: JSON.stringify({ bodyMd: "parent" }),
-      }),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
-    const { id: parentId } = await readJson<{ id: string }>(parent).then((r) => r.body);
-
-    const replier = await seedActiveMember("eric", "eric@example.com", "password-12");
-
-    // Now flip to flag and post a reply.
-    const core = await import("@nexpress/core");
-    core.setSpamAdapter({ check: () => ({ kind: "flag" }) });
-
-    await commentsPOST(
-      jsonRequest(`/api/collections/posts/${postId}/comments`, {
-        method: "POST",
-        cookies: [
-          `nx-mb-session=${replier.sessionCookie}`,
-          `nx-mb-csrf=${replier.csrfCookie}`,
-        ],
-        headers: { "x-csrf-token": replier.csrfCookie },
-        body: JSON.stringify({ bodyMd: "reply", parentId }),
-      }),
-      { params: Promise.resolve({ slug: "posts", id: postId }) },
-    );
-
-    // dora (parent author) should NOT have a notification — the
-    // pending reply is invisible to her until a mod restores it.
-    const db = await getTestDb();
-    const { nxNotifications } = await import("@nexpress/core");
-    const { eq } = await import("drizzle-orm");
-    const inbox = (await db
-      .select()
-      .from(nxNotifications)
-      .where(eq(nxNotifications.memberId, parentAuthor.memberId))) as Array<unknown>;
-    expect(inbox).toHaveLength(0);
   });
 });

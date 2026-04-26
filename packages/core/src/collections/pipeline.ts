@@ -187,29 +187,67 @@ export async function createMemberDocument(
   const defaultStatus: NxDocumentStatus =
     config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
 
-  // Spam check. Defer-load to avoid the `community` ↔ `collections`
-  // import cycle. v1 passes the user-controlled `title` as the spam
-  // text; rich-text body sniffing is out of scope because the
-  // `NxSpamCheckContext` doesn't yet carry the structured body. A
-  // future ext can widen the context with a `body` field; until
-  // then, adapters that want body checks should run the API body
-  // through their own pipeline upstream of the framework call.
-  // The default no-op adapter passes everything through.
+  // Profanity + spam checks. Same sequence as the comment write
+  // path: profanity (language-level) first, then spam (intent-level);
+  // any reject short-circuits, any flag pushes the row to `pending`.
+  // Defer-load to avoid the `community` ↔ `collections` import cycle.
+  // v1 passes the user-controlled `title` as the moderation text;
+  // rich-text body sniffing is out of scope because the check
+  // context doesn't yet carry the structured body. Adapters that
+  // want body checks should run the API body through their own
+  // pipeline upstream of the framework call.
   const { getSpamAdapter } = await import("../community/spam-adapter.js");
+  const { getProfanityAdapter } = await import(
+    "../community/profanity-adapter.js"
+  );
   const { getLogger } = await import("../observability/logger.js");
-  const spamText = typeof data.title === "string" ? data.title : "";
-  let spamStatus: NxDocumentStatus = defaultStatus;
+  const moderationText = typeof data.title === "string" ? data.title : "";
+  const moderationCtx = {
+    memberId,
+    targetType: collection,
+    // No id yet — adapters that key off it should treat the empty
+    // string as "new doc, pre-insert".
+    targetId: "",
+    parentId: null,
+  };
+  let profanityFlagged = false;
+  let profanityMetadata: Record<string, unknown> | undefined;
+  let profanityReason: string | undefined;
+  try {
+    const verdict = await getProfanityAdapter().check(
+      moderationText,
+      moderationCtx,
+    );
+    if (verdict.kind === "reject") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "body",
+          message:
+            verdict.reason ?? "Submission contains prohibited language",
+        },
+      ]);
+    }
+    if (verdict.kind === "flag") {
+      profanityFlagged = true;
+      profanityMetadata = verdict.metadata;
+      profanityReason = verdict.reason;
+    }
+  } catch (err) {
+    if (err instanceof NxValidationError) throw err;
+    getLogger().warn(
+      "profanity adapter threw on doc create — treating as pass",
+      {
+        error: err instanceof Error ? err.message : String(err),
+        collection,
+        memberId,
+      },
+    );
+  }
   let spamFlagged = false;
   let spamVerdictMetadata: Record<string, unknown> | undefined;
+  let spamReason: string | undefined;
   try {
-    const verdict = await getSpamAdapter().check(spamText, {
-      memberId,
-      targetType: collection,
-      // No id yet — adapters that key off it should treat the empty
-      // string as "new doc, pre-insert".
-      targetId: "",
-      parentId: null,
-    });
+    const verdict = await getSpamAdapter().check(moderationText, moderationCtx);
     if (verdict.kind === "reject") {
       throw new NxValidationError("Invalid input", [
         {
@@ -219,9 +257,9 @@ export async function createMemberDocument(
       ]);
     }
     if (verdict.kind === "flag") {
-      spamStatus = "pending";
       spamFlagged = true;
       spamVerdictMetadata = verdict.metadata;
+      spamReason = verdict.reason;
     }
   } catch (err) {
     if (err instanceof NxValidationError) throw err;
@@ -235,6 +273,11 @@ export async function createMemberDocument(
       memberId,
     });
   }
+  const flaggedBy: Array<"profanity" | "spam"> = [];
+  if (profanityFlagged) flaggedBy.push("profanity");
+  if (spamFlagged) flaggedBy.push("spam");
+  const spamStatus: NxDocumentStatus =
+    flaggedBy.length > 0 ? "pending" : defaultStatus;
 
   const memberOptions: NxSaveOptions = { ...(options ?? {}), status: spamStatus };
   const result = await saveDocumentImpl(
@@ -248,18 +291,35 @@ export async function createMemberDocument(
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
   const documentId = getRecordId(result.doc);
-  // `document.flag` action when the spam adapter flagged this row
-  // (regardless of whether it returned metadata). A pending row that
-  // got there via `defaultStatus="pending"` is config-driven, not a
-  // per-row flag, so it stays under `document.create`.
+  // `document.flag` action when either adapter flagged this row.
+  // A pending row that got there via `defaultStatus="pending"` is
+  // config-driven, not a per-row flag, so it stays under
+  // `document.create`. The `sources` array tells mods which
+  // adapter(s) flagged the row.
   await recordAuditEvent({
     actor: { kind: "member", memberId },
-    action: spamFlagged ? "document.flag" : "document.create",
+    action: flaggedBy.length > 0 ? "document.flag" : "document.create",
     targetType: collection,
     targetId: documentId,
     payload: {
       collectionSlug: collection,
-      ...(spamVerdictMetadata ? { spamVerdict: spamVerdictMetadata } : {}),
+      ...(flaggedBy.length > 0 ? { sources: flaggedBy } : {}),
+      ...(profanityFlagged
+        ? {
+            profanityVerdict: {
+              reason: profanityReason ?? null,
+              metadata: profanityMetadata ?? null,
+            },
+          }
+        : {}),
+      ...(spamFlagged
+        ? {
+            spamVerdict: {
+              reason: spamReason ?? null,
+              metadata: spamVerdictMetadata ?? null,
+            },
+          }
+        : {}),
     },
   });
   // Reputation only credits visible (i.e. `published`) creates.
