@@ -33,6 +33,7 @@
     "@nexpress/plugin-seo-audit": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
     "@nexpress/theme": "workspace:*",
+    "@nexpress/theme-default": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "next": "^15.3.0",
     "nodemailer": "^7.0.0",

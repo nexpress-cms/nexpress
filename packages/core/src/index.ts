@@ -36,6 +36,8 @@ export type {
   NxResolvedPluginLike,
   NxNavItem,
   NxConfig,
+  NxThemeManifest,
+  NxRegisteredTheme,
   NxJobType,
   NxFindOptions,
   NxFindResult,
@@ -304,6 +306,16 @@ export type {
 } from "./theme/types.js";
 export { DEFAULT_THEME } from "./theme/defaults.js";
 export { sanitizeTokenValue } from "./theme/sanitize.js";
+
+export {
+  registerThemes,
+  resetThemes,
+  getRegisteredThemes,
+  getThemeById,
+  getActiveTheme,
+  getActiveThemeId,
+  setActiveThemeId,
+} from "./themes/registry.js";
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 
 export {
