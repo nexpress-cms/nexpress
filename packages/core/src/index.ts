@@ -250,6 +250,7 @@ export {
   listMedia,
   cleanupDeletedMedia,
 } from "./media/service.js";
+export type { NxMediaUploader } from "./media/service.js";
 export { processImage, DEFAULT_IMAGE_SIZES } from "./media/processor.js";
 export type { NxProcessedImageVariant, NxProcessedImageResult } from "./media/processor.js";
 export { extractMediaIds } from "./media/refs.js";
@@ -319,6 +320,7 @@ export {
   registerCommunityRole,
   resetCommunityRoles,
   memberCan,
+  assertNotBanned,
   setSpamAdapter,
   getSpamAdapter,
   resetSpamAdapter,

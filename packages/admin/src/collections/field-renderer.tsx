@@ -3,19 +3,52 @@
 import { lazy, Suspense, type ComponentType } from "react";
 import type { NxFieldConfig } from "@nexpress/core";
 import { getDefaultBlocks, type NxBlockDefinition, type NxBlockInstance } from "@nexpress/blocks";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NxEditorConfig, NxRichTextContent } from "@nexpress/editor";
 import { ChevronDown } from "lucide-react";
 import type { Control, FieldPath } from "react-hook-form";
 
 import { ArrayFieldEditor } from "./fields/array-field-editor.js";
 import { MediaPickerField } from "./fields/media-picker-field.js";
 import { RelationshipField } from "./fields/relationship-field.js";
+import { nxFetch } from "../lib/api-client.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../ui/form.js";
 import { Input } from "../ui/input.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
+
+/**
+ * Default staff-side image uploader for `NxRichTextEditor`'s
+ * Insert Image dialog (Phase 9.7j). Posts to the framework's
+ * convention endpoint `/api/media/upload`. Field configs may
+ * override via `editor.onUploadImage` for sites with custom
+ * media pipelines.
+ */
+async function defaultStaffImageUpload(
+  file: File,
+): Promise<{ url: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await nxFetch("/api/media/upload", {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as
+      | { error?: { message?: string; details?: Array<{ message?: string }> } }
+      | null;
+    const detail = body?.error?.details?.[0]?.message;
+    const message = detail ?? body?.error?.message ?? `HTTP ${res.status}`;
+    throw new Error(message);
+  }
+  const json = (await res.json()) as
+    | { data?: { url?: string }; url?: string }
+    | null;
+  const url = json?.data?.url ?? json?.url ?? null;
+  if (!url) throw new Error("Upload succeeded but no URL was returned.");
+  return { url };
+}
 
 interface FieldRendererProps {
   field: NxFieldConfig;
@@ -204,7 +237,19 @@ const renderNamedField = (
                   <LazyRichTextEditor
                     value={isRichTextContent(formField.value) ? formField.value : null}
                     onChange={formField.onChange}
-                    config={field.editor}
+                    config={{
+                      ...field.editor,
+                      // Default to the framework `/api/media/upload`
+                      // staff endpoint when the field config doesn't
+                      // already override the uploader. `field.editor`
+                      // is `NxEditorConfig` from core (intentionally
+                      // minimal — no `File` types); cast through
+                      // editor's full `NxEditorConfig` to read the
+                      // optional uploader.
+                      onUploadImage:
+                        (field.editor as NxEditorConfig | undefined)?.onUploadImage ??
+                        defaultStaffImageUpload,
+                    }}
                   />
                 </Suspense>
               </FormControl>

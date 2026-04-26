@@ -1,14 +1,16 @@
 import type { SerializedLexicalNode } from "lexical";
 
-interface File extends Blob {
-  readonly lastModified: number;
-  readonly name: string;
-  readonly webkitRelativePath: string;
-}
-
 export interface NxEditorConfig {
   features?: NxEditorFeature[];
-  onUploadImage?: (file: File) => Promise<{ url: string; alt: string }>;
+  /**
+   * Async upload callback. The toolbar's Insert Image dialog
+   * (Phase 9.7j) calls this with the user-selected file and uses
+   * the returned URL as the `ImageNode` src. `alt` is optional —
+   * when omitted the dialog's alt-text input is the source of
+   * truth (the user may want to override an auto-generated alt
+   * anyway).
+   */
+  onUploadImage?: (file: File) => Promise<{ url: string; alt?: string }>;
   placeholder?: string;
   readOnly?: boolean;
 }

@@ -52,16 +52,55 @@ function extractMessage(body: unknown): string | null {
  * the Lexical bundle is heavy, and a member browsing /discussions
  * shouldn't pay for it until they actually click "New discussion".
  */
+interface LazyRichTextEditorProps {
+  value: NxRichTextContent | null;
+  onChange: (value: unknown) => void;
+  config?: {
+    onUploadImage?: (file: File) => Promise<{ url: string; alt?: string }>;
+  };
+}
+
 const LazyRichTextEditor = lazy(async () => {
   const module = await import("@nexpress/editor/client");
   return {
-    default: module.NxRichTextEditor as ComponentType<{
-      value: NxRichTextContent | null;
-      onChange: (value: unknown) => void;
-      config?: unknown;
-    }>,
+    default: module.NxRichTextEditor as ComponentType<LazyRichTextEditorProps>,
   };
 });
+
+/**
+ * Member-side image uploader. POSTs to the dedicated member
+ * endpoint (Phase 9.7j) — image-only, 5 MB cap, banned-member
+ * check on the server side. The endpoint resolves the storage URL
+ * via `getStorageAdapter().getUrl()` and returns it directly so the
+ * editor can insert an `<img src>` that works under both local-disk
+ * (`/uploads/...`) and S3 (CDN URL) storage adapters.
+ */
+async function uploadMemberImage(file: File): Promise<{ url: string }> {
+  const csrf = readCookie("nx-mb-csrf");
+  const headers: Record<string, string> = csrf ? { "X-CSRF-Token": csrf } : {};
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/members/media/upload", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as
+      | { error?: { message?: string; details?: Array<{ message?: string }> } }
+      | null;
+    const detail = body?.error?.details?.[0]?.message;
+    const message = detail ?? body?.error?.message ?? `HTTP ${res.status}`;
+    throw new Error(message);
+  }
+  const json = (await res.json()) as
+    | { data?: { url?: string }; url?: string }
+    | null;
+  const url = json?.data?.url ?? json?.url ?? null;
+  if (!url) throw new Error("Upload succeeded but no URL was returned.");
+  return { url };
+}
 
 /**
  * Member-side discussion create / edit form. The body field uses
@@ -214,6 +253,7 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
               // the shape — Lexical JSON or null — so we narrow.
               setBody(isRichTextContent(value) ? value : null);
             }}
+            config={{ onUploadImage: uploadMemberImage }}
           />
         </Suspense>
       </div>
