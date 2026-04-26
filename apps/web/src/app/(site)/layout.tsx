@@ -1,32 +1,73 @@
 import { NxThemeStyle } from "@nexpress/theme";
-import { getTheme, getNavigation } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import { getActiveTheme, getTheme } from "@nexpress/core";
 
-import { MemberStatusWidget } from "@/components/member-status-widget";
 import { ensureCoreServices } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Phase 11.2 — site layout reads the active theme from the
+ * registry and renders its shell + header + footer slots.
+ * Everything that used to live hardcoded in this file moved
+ * into `@nexpress/theme-default`. Sites switch themes via the
+ * settings UI (11.4 lands the picker) without redeploying.
+ *
+ * Fallbacks when the active theme doesn't expose a particular
+ * piece are deliberately tolerant: an absent shell becomes a
+ * fragment, an absent slot is omitted entirely. That lets a
+ * theme intentionally remove the header (e.g. a fullscreen
+ * landing-page theme) without a workaround.
+ */
 export default async function SiteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   ensureCoreServices();
-  const theme = await getTheme();
-  const headerNav = await getNavigation("header");
-  const footerNav = await getNavigation("footer");
+  const tokens = await getTheme();
+  const active = await getActiveTheme();
+
+  const impl = (active?.impl ?? {}) as {
+    shell?: React.ComponentType<{ children: React.ReactNode }>;
+    slots?: {
+      header?: React.ComponentType;
+      footer?: React.ComponentType;
+    };
+    css?: string;
+  };
+  const { shell: Shell, slots, css: themeCss } = impl;
+  const Header = slots?.header;
+  const Footer = slots?.footer;
+  const themeId = active?.manifest.id;
+
+  const inner = (
+    <>
+      {Header ? <Header /> : null}
+      <main className="nx-site-main">{children}</main>
+      {Footer ? <Footer /> : null}
+    </>
+  );
 
   return (
     <>
-      <NxThemeStyle theme={theme} />
+      <NxThemeStyle theme={tokens} />
       {/*
-        Feed discovery link — Next.js hoists static <link> elements
-        rendered in a layout into <head>. Browsers and feed
-        readers (Reeder, NetNewsWire, RSS extensions) read this
-        tag to surface a "Subscribe" affordance for the site.
-        Phase 10.4 ships posts at the default URL; sites with
-        multiple feedable collections add per-collection links.
+        Theme-owned CSS — emitted as `<style data-nx-theme="{id}">`
+        so DevTools makes the source obvious. Inactive themes
+        don't leak their styles (only the active theme's CSS
+        string is rendered).
+      */}
+      {themeCss ? (
+        <style
+          data-nx-theme={themeId}
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: themeCss }}
+        />
+      ) : null}
+      {/*
+        Feed discovery link — stays at framework level, not theme
+        level. Crawlers and reader apps look for this regardless
+        of the theme rendering the page.
       */}
       <link
         rel="alternate"
@@ -34,51 +75,7 @@ export default async function SiteLayout({
         title="Posts feed"
         href="/feed.xml"
       />
-      <header className="nx-site-header">
-        <nav>
-          <a href="/" className="nx-site-logo">
-            NexPress
-          </a>
-          <ul className="nx-site-nav">
-            {headerNav.map((item: NxNavItem) => (
-              <li key={item.label}>
-                <a href={item.url}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-          <form
-            action="/search"
-            method="GET"
-            role="search"
-            className="nx-site-search"
-          >
-            <label className="sr-only" htmlFor="nx-site-search-input">
-              Search
-            </label>
-            <input
-              id="nx-site-search-input"
-              type="search"
-              name="q"
-              placeholder="Search…"
-              autoComplete="off"
-              className="nx-site-search-input"
-            />
-          </form>
-          <MemberStatusWidget />
-        </nav>
-      </header>
-      <main className="nx-site-main">{children}</main>
-      <footer className="nx-site-footer">
-        <nav>
-          <ul>
-            {footerNav.map((item: NxNavItem) => (
-              <li key={item.label}>
-                <a href={item.url}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </footer>
+      {Shell ? <Shell>{inner}</Shell> : inner}
     </>
   );
 }

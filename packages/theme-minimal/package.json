@@ -1,5 +1,5 @@
 {
-  "name": "@nexpress/theme-default",
+  "name": "@nexpress/theme-minimal",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,6 @@
     "lint": "tsc --noEmit"
   },
   "peerDependencies": {
-    "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -30,7 +29,6 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.0",

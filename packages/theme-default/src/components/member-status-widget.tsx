@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 interface MemberMe {
@@ -12,14 +12,15 @@ interface MemberMe {
 
 /**
  * Site header widget that probes `/api/members/me` on mount and
- * shows either:
- *   - signed-in: "@handle" + Sign out button
- *   - anonymous: Sign in / Register links
+ * renders either signed-in (`@handle` + Sign out) or anonymous
+ * (Sign in / Register links). Phase 11.2 moved this from
+ * `apps/web/components` into the theme package — it's shipped
+ * as a default-theme detail, not framework-level chrome, so
+ * a theme that wants a different auth UX can omit or replace it.
  *
- * Client-side detection (vs reading from the server-rendered layout)
- * is the framework's existing pattern for member-aware site
- * components — see `<Comments />` and `<FollowButton />`. It avoids
- * re-rendering the entire `(site)` layout when auth state changes.
+ * Client-side detection avoids re-rendering the entire (site)
+ * layout when auth state changes — the existing pattern used
+ * by the `<Comments />` and `<FollowButton />` components.
  */
 export function MemberStatusWidget() {
   const router = useRouter();
@@ -29,9 +30,7 @@ export function MemberStatusWidget() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/members/me", {
-          credentials: "include",
-        });
+        const res = await fetch("/api/members/me", { credentials: "include" });
         if (!res.ok) {
           setMember(null);
           return;
@@ -55,9 +54,8 @@ export function MemberStatusWidget() {
         credentials: "include",
       });
     } catch {
-      // Ignore — even if the network call fails, we still want to
-      // clear the local state and reload (cookies usually expire
-      // server-side anyway).
+      // Ignore — local state still clears below; the cookie
+      // typically expires server-side regardless.
     }
     setMember(null);
     setSigningOut(false);
@@ -66,9 +64,12 @@ export function MemberStatusWidget() {
   };
 
   if (member === "loading") {
-    // Render a minimal placeholder so the header doesn't jump width
-    // on hydration. Empty span keeps the flex slot.
-    return <span className="nx-member-status nx-member-status-loading" aria-hidden="true" />;
+    return (
+      <span
+        className="nx-member-status nx-member-status-loading"
+        aria-hidden="true"
+      />
+    );
   }
 
   if (member) {
