@@ -1,6 +1,7 @@
 import {
   buildPageMetadata,
   buildWebSiteJsonLd,
+  findDocuments,
   getPageBySlug,
 } from "@nexpress/core";
 import { getActiveTheme } from "@nexpress/theme";
@@ -13,7 +14,43 @@ import type { NxPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
 import { JsonLd } from "@/components/json-ld";
+import { i18nConfig, isLocale } from "@/i18n.config";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+
+/**
+ * Phase 12.2 — peel a locale prefix off the path. Returns
+ * `{ locale, path }` where `path` is the slug WITHOUT the
+ * leading locale segment (so DB lookups match the stored
+ * slug). When the URL doesn't carry a recognized locale, the
+ * site's default locale is returned and the path is unchanged.
+ */
+function splitLocaleFromPath(rawPath: string): {
+  locale: string;
+  path: string;
+} {
+  const segments = rawPath.split("/").filter(Boolean);
+  const first = segments[0];
+  if (first && isLocale(first)) {
+    const remaining = segments.slice(1).join("/") || "/";
+    return { locale: first, path: remaining };
+  }
+  return { locale: i18nConfig.defaultLocale, path: rawPath };
+}
+
+/**
+ * Build hreflang `<link rel="alternate">` URLs for every locale
+ * we render the same logical page in. Used for both metadata
+ * (next/Metadata) and the in-document JSX fallback.
+ */
+function buildHreflangAlternates(
+  pathWithoutLocale: string,
+): Array<{ hreflang: string; href: string }> {
+  return i18nConfig.locales.map((loc) => {
+    const path =
+      pathWithoutLocale === "/" ? `/${loc}` : `/${loc}/${pathWithoutLocale}`;
+    return { hreflang: loc, href: path };
+  });
+}
 import {
   RenderBodyEnd,
   RenderHead,
@@ -27,29 +64,75 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   ensureCoreServices();
   const { slug } = await params;
-  const path = slug?.join("/") || "/";
+  const rawPath = slug?.join("/") || "/";
+  const { locale, path } = splitLocaleFromPath(rawPath);
   const page = await getPageBySlug(path);
+
+  // hreflang alternates: any path that resolves under i18n
+  // routing gets one alternate per configured locale plus
+  // x-default pointing at the canonical default-locale URL.
+  // Search engines use this to deduplicate translated copies.
+  const alternates = buildHreflangAlternates(path === "/" ? "" : path);
+  const xDefault =
+    path === "/" ? "/" : `/${path}`;
 
   // Pages without a published row fall back to site-wide
   // defaults; that's also what the `DefaultHomePage` empty-state
   // surface uses, so the meta tags still describe the brand.
-  return (await buildPageMetadata({
+  const metadata = (await buildPageMetadata({
     title: typeof page?.title === "string" ? page.title : null,
     description:
       typeof page?.seoDescription === "string" ? page.seoDescription : null,
-    path: path === "/" ? "/" : `/${path}`,
+    path: rawPath === "/" ? "/" : `/${rawPath}`,
     ogType: "website",
+    locale,
   })) as Metadata;
+
+  return {
+    ...metadata,
+    alternates: {
+      ...(metadata.alternates ?? {}),
+      languages: {
+        ...Object.fromEntries(alternates.map((a) => [a.hreflang, a.href])),
+        "x-default": xDefault,
+      },
+    },
+  };
 }
 
 export default async function CatchAllPage({ params }: PageProps) {
   ensureCoreServices();
   await ensurePluginsLoaded();
   const { slug } = await params;
-  const path = slug?.join("/") || "/";
+  const rawPath = slug?.join("/") || "/";
+  // Phase 12.2 — strip the locale prefix BEFORE looking the
+  // doc up. Stored slugs don't include the prefix; the URL's
+  // locale segment is metadata for routing / hreflang.
+  const { locale: requestedLocale, path } = splitLocaleFromPath(rawPath);
   const { isEnabled: isDraft } = await draftMode();
 
-  const page = await getPageBySlug(path, { draft: isDraft });
+  // Try the (single-locale) `pages` collection first. Pages
+  // doesn't opt into i18n today; the same row serves every
+  // locale URL.
+  let page = await getPageBySlug(path, { draft: isDraft });
+
+  // Fall through to `localized-pages` (i18n collection) when
+  // the pages lookup misses. The slug match is locale-scoped
+  // because the (locale, slug) unique index lives on the
+  // localized table — the same slug can resolve to different
+  // documents depending on which locale the visitor asked for.
+  if (!page && path !== "/") {
+    const result = await findDocuments("localized-pages", {
+      where: {
+        slug: path.replace(/^\/+/, ""),
+        ...(isDraft ? {} : { _status: "published" }),
+      },
+      locale: requestedLocale,
+      limit: 1,
+    });
+    page = result.docs[0] ?? null;
+  }
+
   if (!page) {
     // The site root is special: a fresh install with no pages
     // would 404 on `/` and look broken. Surface a default landing

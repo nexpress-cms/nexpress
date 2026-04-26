@@ -15,6 +15,7 @@ import { portfolioTheme } from "@nexpress/theme-portfolio";
 import { localizedPagesCollection } from "./collections/localized-pages";
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
+import { i18nConfig } from "./i18n.config";
 
 const discussionsCollection = defineDiscussionsCollection({
   categories: [
@@ -61,9 +62,13 @@ export default defineConfig({
   // demonstrate the new primitive on `localized_pages`; sites
   // that don't need multi-language content can drop this block
   // and remove their localized collections.
+  //
+  // Sourced from `./i18n.config` so the middleware (which can't
+  // load core) can read the same locale list at request-parse
+  // time without duplicating the array.
   i18n: {
-    locales: ["en", "ko"],
-    defaultLocale: "en",
+    locales: [...i18nConfig.locales],
+    defaultLocale: i18nConfig.defaultLocale,
   },
   // Phase 11.1 — themes registry. Sites declare an array;
   // admin switches the active one via the Theme settings tab
