@@ -9,18 +9,18 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "build": "node scripts/run-with-env.mjs turbo run build",
-    "dev": "node scripts/run-with-env.mjs turbo run dev --concurrency=20",
+    "build": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build",
+    "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=20",
     "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint .",
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
-    "typecheck": "node scripts/run-with-env.mjs turbo run lint",
-    "test": "node scripts/run-with-env.mjs turbo run test",
-    "test:integration": "node scripts/run-with-env.mjs turbo run test:integration --concurrency=1",
+    "typecheck": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint",
+    "test": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test",
+    "test:integration": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test:integration --concurrency=1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:generate": "node scripts/run-with-env.mjs turbo run db:generate",
-    "db:migrate": "node scripts/run-with-env.mjs turbo run db:migrate",
-    "clean": "node scripts/run-with-env.mjs turbo run clean && rm -rf node_modules"
+    "db:generate": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run db:generate",
+    "db:migrate": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run db:migrate",
+    "clean": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
