@@ -5,7 +5,7 @@ import {
   nxMembers,
   verifyTokenFull,
 } from "@nexpress/core";
-import { LinkedIdentitiesPanel } from "@nexpress/admin/client";
+import { LinkedIdentitiesPanel, MemberPurgePanel } from "@nexpress/admin/client";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -81,6 +81,16 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         subjectId={row.id}
         canRevoke={hasRole(user, "admin")}
       />
+
+      {/*
+        Mass-delete-by-member is admin-only — editor-and-mod roles
+        already have per-target staff hide / staff delete on the
+        moderation surfaces. Shown last so the page reads
+        identity-first, dangerous-action-last.
+      */}
+      {hasRole(user, "admin") ? (
+        <MemberPurgePanel memberId={row.id} memberHandle={row.handle} />
+      ) : null}
     </div>
   );
 }

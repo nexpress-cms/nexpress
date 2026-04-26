@@ -133,3 +133,6 @@ export type {
   IssueBanInput,
   RevokeBanInput,
 } from "./bans.js";
+
+export { purgeMemberContent } from "./member-admin.js";
+export type { NxMemberPurgeResult } from "./member-admin.js";
