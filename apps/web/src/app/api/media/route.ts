@@ -48,8 +48,25 @@ export async function GET(request: NextRequest) {
     const limit = parsePositiveInt(params.get("limit"), "limit", 20, 100);
     const folderId = params.get("folderId") ?? undefined;
     const mimeType = params.get("mimeType") ?? undefined;
+    // Phase 9.7k: optional uploader filters for the moderation
+    // surface. Anything other than the two enum values is treated
+    // as "no filter" — we don't 400 on a typo because the param
+    // is operator-typed in URLs.
+    const uploaderKindRaw = params.get("uploaderKind");
+    const uploaderKind =
+      uploaderKindRaw === "staff" || uploaderKindRaw === "member"
+        ? uploaderKindRaw
+        : undefined;
+    const uploadedByMemberId = params.get("uploadedByMemberId") ?? undefined;
 
-    const result = await listMedia({ page, limit, folderId, mimeType });
+    const result = await listMedia({
+      page,
+      limit,
+      folderId,
+      mimeType,
+      uploaderKind,
+      uploadedByMemberId,
+    });
 
     return nxSuccessResponse(result);
   } catch (error) {

@@ -8,7 +8,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import type { NxFindResult, NxImageSize } from "../config/types.js";
+import { nxMembers } from "../db/schema/community.js";
 import { nxMedia, nxMediaRefs } from "../db/schema/media.js";
+import { nxUsers } from "../db/schema/system.js";
 import { enqueueJob } from "../jobs/queue.js";
 import {
   DEFAULT_IMAGE_SIZES,
@@ -253,11 +255,24 @@ export async function deleteMedia(
   return { deleted: true };
 }
 
+/**
+ * Phase 9.7k uploader filters. `uploaderKind` partitions the
+ * library into staff-uploaded rows (`uploaded_by IS NOT NULL`) vs
+ * member-uploaded rows (`uploaded_by_member_id IS NOT NULL`) — the
+ * two columns are mutually exclusive on every row written through
+ * `uploadMedia`. `uploadedByMemberId` narrows to a specific member
+ * for "show me everything @handle uploaded" investigations after a
+ * spam wave.
+ */
+export type NxMediaUploaderKindFilter = "staff" | "member";
+
 export async function listMedia(options: {
   page?: number;
   limit?: number;
   folderId?: string;
   mimeType?: string;
+  uploaderKind?: NxMediaUploaderKindFilter;
+  uploadedByMemberId?: string;
 }): Promise<NxFindResult> {
   const db = getMediaDb() as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
@@ -273,21 +288,88 @@ export async function listMedia(options: {
     conditions.push(eq(nxMedia.mimeType, options.mimeType));
   }
 
+  if (options.uploaderKind === "staff") {
+    conditions.push(isNotNull(nxMedia.uploadedBy));
+  } else if (options.uploaderKind === "member") {
+    conditions.push(isNotNull(nxMedia.uploadedByMemberId));
+  }
+
+  if (options.uploadedByMemberId) {
+    conditions.push(eq(nxMedia.uploadedByMemberId, options.uploadedByMemberId));
+  }
+
   const whereClause = combineConditions(conditions);
-  const docs = whereClause
-    ? await db
-        .select()
-        .from(nxMedia)
-        .where(whereClause)
-        .orderBy(desc(nxMedia.createdAt))
-        .limit(limit)
-        .offset(offset)
-    : await db.select().from(nxMedia).orderBy(desc(nxMedia.createdAt)).limit(limit).offset(offset);
+  // The local `DrizzleDatabaseLike` interface in this file is
+  // narrow on purpose (only `select/insert/update/delete`); a
+  // proper leftJoin chain would require typing the full Drizzle
+  // builder pipeline. Cast through `unknown` for this query —
+  // safer than widening the interface and dragging join semantics
+  // into every other media call site.
+  const joined = (db as unknown as {
+    select: (s: Record<string, unknown>) => {
+      from: (t: PgTable) => {
+        leftJoin: (j: PgTable, c: unknown) => {
+          leftJoin: (j: PgTable, c: unknown) => {
+            where: (c: unknown) => {
+              orderBy: (o: unknown) => {
+                limit: (n: number) => {
+                  offset: (n: number) => Promise<Array<Record<string, unknown>>>;
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+  })
+    .select({
+      media: nxMedia,
+      userName: nxUsers.name,
+      userEmail: nxUsers.email,
+      memberHandle: nxMembers.handle,
+      memberDisplayName: nxMembers.displayName,
+    })
+    .from(nxMedia)
+    .leftJoin(nxUsers, eq(nxMedia.uploadedBy, nxUsers.id))
+    .leftJoin(nxMembers, eq(nxMedia.uploadedByMemberId, nxMembers.id))
+    .where(whereClause)
+    .orderBy(desc(nxMedia.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const rows = (await joined) as Array<{
+    media: Record<string, unknown>;
+    userName: string | null;
+    userEmail: string | null;
+    memberHandle: string | null;
+    memberDisplayName: string | null;
+  }>;
   const [{ total }] = (whereClause
     ? await db.select({ total: count() }).from(nxMedia).where(whereClause)
     : await db.select({ total: count() }).from(nxMedia)) as Array<{ total: number | string }>;
   const totalDocs = Number(total ?? 0);
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
+
+  // Flatten the JOIN result so each doc carries an `uploader`
+  // sub-object alongside the standard media columns. Keeps the
+  // shape backwards-compatible (the existing media columns are
+  // still at the top level).
+  const docs = rows.map((row) => ({
+    ...row.media,
+    uploader: row.userName !== null
+      ? {
+          kind: "staff" as const,
+          name: row.userName,
+          email: row.userEmail,
+        }
+      : row.memberHandle !== null
+      ? {
+          kind: "member" as const,
+          handle: row.memberHandle,
+          displayName: row.memberDisplayName,
+        }
+      : null,
+  }));
 
   return {
     docs: docs as Record<string, unknown>[],
