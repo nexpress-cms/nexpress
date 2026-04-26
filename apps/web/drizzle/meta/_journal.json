@@ -71,6 +71,13 @@
       "when": 1777133674714,
       "tag": "0009_fancy_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777167262638,
+      "tag": "0010_flimsy_hannibal_king",
+      "breakpoints": true
     }
   ]
 }
