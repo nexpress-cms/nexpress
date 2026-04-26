@@ -72,6 +72,7 @@ export {
   setDb,
   getDb,
   saveDocument,
+  createMemberDocument,
   autosaveRevision,
   deleteDocument,
   findDocuments,

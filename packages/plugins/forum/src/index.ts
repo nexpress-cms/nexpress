@@ -109,11 +109,19 @@ export function defineDiscussionsCollection(
         "Staff-authored discussion threads. Members converse via the comment system.",
     },
     versions: { drafts: true, max: 30 },
-    community: { comments: true },
+    community: {
+      comments: true,
+      // 9.7a: members can create discussion threads. Update / delete
+      // for member-authored threads land in 9.7b — until then a
+      // member can only create; the staff `update`/`delete` access
+      // gates apply unchanged.
+      memberWrite: { create: true },
+    },
     access: {
       read: () => true,
-      // v1: staff-only authorship. Member-authored threads need a
-      // member-writable collection path (separate framework feature).
+      // Staff still create via the admin UI. The member create path
+      // bypasses this access function entirely (gated by
+      // `community.memberWrite.create` + `assertNotBanned` instead).
       create: isEditorOrAbove,
       update: isOwnerOrAdmin,
       delete: isOwnerOrAdmin,
