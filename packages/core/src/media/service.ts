@@ -93,18 +93,34 @@ export function getMediaDb(): NodePgDatabase<Record<string, unknown>> {
   return dbInstance;
 }
 
+/**
+ * Polymorphic uploader: a row on `nx_media` is owned by exactly
+ * one of staff (`uploadedBy` → `nx_users.id`) or member
+ * (`uploadedByMemberId` → `nx_members.id`, Phase 9.7j). Pass a
+ * `null` value as the second argument to `uploadMedia` for plugin /
+ * system uploads with no human owner — both columns stay null and
+ * the audit log carries the actor.
+ */
+export type NxMediaUploader =
+  | { kind: "staff"; userId: string }
+  | { kind: "member"; memberId: string }
+  | null;
+
 export async function uploadMedia(
   file: { buffer: Buffer; originalFilename: string; mimeType: string },
-  /**
-   * Author of the upload. Pass a real `nx_users.id` UUID for staff
-   * uploads, or `null` when the upload originated outside the
-   * staff-user pool (e.g. a plugin's `ctx.media.upload`). The
-   * column is a nullable FK; passing a non-UUID string used to fail
-   * with a Postgres FK error and orphan the storage object. (#62)
-   */
-  userId: string | null,
+  uploader: NxMediaUploader | string,
   folderId?: string,
 ): Promise<{ id: string; status: string }> {
+  // Backwards-compat: the original signature was
+  // `uploadMedia(file, userId: string | null, folderId?)`. Existing
+  // callers (plugin context, admin bulk uploads, etc.) pass a bare
+  // string. Coerce that into the staff variant of the polymorphic
+  // shape so the rest of this function only deals with the union.
+  const resolvedUploader: NxMediaUploader =
+    typeof uploader === "string"
+      ? { kind: "staff", userId: uploader }
+      : uploader;
+
   const adapter = getStorageAdapter();
   const db = getMediaDb() as unknown as DrizzleDatabaseLike;
   const id = randomUUID();
@@ -128,7 +144,14 @@ export async function uploadMedia(
     hash: createHash("sha256").update(file.buffer).digest("hex"),
     status: "processing",
     folderId,
-    uploadedBy: userId,
+    uploadedBy:
+      resolvedUploader && resolvedUploader.kind === "staff"
+        ? resolvedUploader.userId
+        : null,
+    uploadedByMemberId:
+      resolvedUploader && resolvedUploader.kind === "member"
+        ? resolvedUploader.memberId
+        : null,
     createdAt: now,
     updatedAt: now,
   });

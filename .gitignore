@@ -33,8 +33,9 @@ coverage/
 pgdata/
 minio-data/
 
-# Media uploads (local dev)
+# Media uploads (local dev + integration test artifacts)
 public/media/
+apps/web/uploads/
 
 CLAUDE.md
 

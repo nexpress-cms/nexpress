@@ -56,7 +56,7 @@ export function NxRichTextEditor({ value, onChange, config }: NxRichTextEditorPr
   return (
     <LexicalComposer key={composerKey} initialConfig={{ ...initialConfig, editorState: serializedValue }}>
       <div className="nx-rich-text-editor">
-        <ToolbarPlugin />
+        <ToolbarPlugin onUploadImage={config?.onUploadImage} />
         <RichTextPlugin
           contentEditable={<ContentEditable className="nx-editor-content" />}
           placeholder={<div className="nx-editor-placeholder">{config?.placeholder ?? "Start writing..."}</div>}

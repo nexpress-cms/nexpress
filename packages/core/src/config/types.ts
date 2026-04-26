@@ -28,6 +28,11 @@ export type NxRichTextContent = Record<string, unknown>;
 
 export interface NxEditorConfig {
   features?: string[];
+  // Other knobs (e.g. `onUploadImage` for the Insert Image dialog
+  // that landed in 9.7j) are typed in `@nexpress/editor`'s own
+  // `NxEditorConfig`. Keeping core's version minimal avoids
+  // dragging the DOM lib (`File`, `Blob`) into the server-evaluated
+  // collection config types.
 }
 
 interface NxFieldBase {

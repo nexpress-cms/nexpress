@@ -37,7 +37,16 @@ export class LocalStorageAdapter implements NxStorageAdapter {
   }
 
   async getUrl(key: string): Promise<string> {
-    return new URL(key, `${this.normalizeBaseUrl(this.config.baseUrl)}/`).toString();
+    // `baseUrl` is commonly a relative path (the default is
+    // `"/uploads"`) — `new URL(key, "/uploads/")` throws because
+    // the URL constructor requires an absolute base. Concatenate
+    // for relative baseUrls and let the URL constructor handle
+    // absolute ones (full origin, S3-style, etc.).
+    const base = this.normalizeBaseUrl(this.config.baseUrl);
+    if (base.startsWith("/")) {
+      return `${base}/${key}`;
+    }
+    return new URL(key, `${base}/`).toString();
   }
 
   async delete(key: string): Promise<void> {
