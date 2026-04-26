@@ -811,12 +811,33 @@ export async function deleteDocument(
  * `member_author_id` must match the caller. Fires
  * `document.deleted` reputation event so adapters can debit the
  * author the same way `comment.deleted` debits commenters.
+ *
+ * The reputation event is gated on the row's status at delete
+ * time: only `published` docs ever earned a `document.created`
+ * credit (the create path withholds it for pending rows; promote
+ * later backfills the credit). Issuing a `document.deleted`
+ * debit for a row that was never credited would drive the
+ * member negative for deleting their own not-yet-visible
+ * content (#126). The audit row is unconditional — the operator
+ * still wants to see "member deleted X".
  */
 export async function deleteMemberDocument(
   collection: string,
   docId: string,
   memberId: string,
 ): Promise<void> {
+  // Read the current status BEFORE delete so we know whether a
+  // `document.created` credit was ever granted. `deleteDocumentImpl`
+  // also looks the row up internally, so this is a small redundant
+  // SELECT — but the alternative (returning status from the impl)
+  // would change a private API for one caller. Fine to repeat.
+  const table = getCollectionTable(collection) as PgTable;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const original = await getDocumentByIdInternal(db, table, collection, docId);
+  const wasPublished =
+    typeof (original as { status?: unknown } | null)?.status === "string" &&
+    (original as { status: string }).status === "published";
+
   await deleteDocumentImpl(collection, docId, { kind: "member", memberId });
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
@@ -825,14 +846,26 @@ export async function deleteMemberDocument(
     action: "document.delete",
     targetType: collection,
     targetId: docId,
-    payload: { collectionSlug: collection },
+    payload: {
+      collectionSlug: collection,
+      // Capture the status that was in effect at delete time so a
+      // mod re-reading the audit log can tell "they deleted a
+      // pending submission" from "they retracted a published
+      // post."
+      previousStatus:
+        typeof (original as { status?: unknown } | null)?.status === "string"
+          ? (original as { status: string }).status
+          : null,
+    },
   });
-  await applyReputation(memberId, {
-    kind: "document.deleted",
-    collectionSlug: collection,
-    documentId: docId,
-    memberId,
-  });
+  if (wasPublished) {
+    await applyReputation(memberId, {
+      kind: "document.deleted",
+      collectionSlug: collection,
+      documentId: docId,
+      memberId,
+    });
+  }
 }
 
 /**
