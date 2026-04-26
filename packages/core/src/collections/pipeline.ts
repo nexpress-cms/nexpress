@@ -138,12 +138,12 @@ export async function saveDocument(
  * status was checked) — this function adds:
  *   - the per-collection opt-in gate, and
  *   - `assertNotBanned(memberId)` (site-wide; per-collection bans
- *     resolve to the same site scope until 9.7b)
+ *     resolve to the same site scope)
  *
  * Fires the `document.created` reputation event after a successful
  * write so adapters can credit the author the same way they credit
- * comments / reactions. No member-side update / delete in this PR;
- * update lands in 9.7b.
+ * comments / reactions. Member-side update / delete live in
+ * `updateMemberDocument` / `deleteMemberDocument` below.
  */
 /**
  * Member-side document update. Only valid when
@@ -1130,8 +1130,9 @@ async function createMainDocument(
   // Member writes (`user === null`) leave `createdBy` / `updatedBy`
   // unset so the FK to `nx_users` stays null. The audit log captures
   // the actual member; readers that need authorship for member-
-  // authored docs should join through audit (or the dedicated
-  // author column landing in 9.7b).
+  // authored docs should join through the dedicated `member_author_id`
+  // column (codegen'd onto every collection that opts into
+  // `community.memberWrite.create`).
   const values: Record<string, unknown> = {
     id: randomUUID(),
     status: "published",

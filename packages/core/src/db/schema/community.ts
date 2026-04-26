@@ -36,7 +36,8 @@ export const nxBanKindEnum = pgEnum("nx_ban_kind", ["temporary", "permanent"]);
 /**
  * Comment lifecycle status.
  *  - `visible` — public.
- *  - `pending` — awaiting moderation (reserved; not used yet in 9.2).
+ *  - `pending` — awaiting moderation. Used by the spam / profanity
+ *    adapters when a verdict comes back as `flag` (9.7n).
  *  - `hidden` — taken down by a mod; row stays for restore + audit.
  *  - `deleted` — soft-delete by the author or post-cascade.
  */
@@ -251,11 +252,14 @@ export const nxComments = pgTable(
 );
 
 /**
- * Polymorphic reactions. `target_type` is the surface (`'comment'` for
- * 9.3; `'thread'` / `'reply'` land alongside the forum tables in 9.4).
- * `kind` is configurable per site — default vocabulary in v1 is just
- * `'like'`. The unique constraint enforces "one reaction-of-kind per
- * member per target," so toggling a like is an upsert / delete.
+ * Polymorphic reactions. `target_type` is the surface — only
+ * `'comment'` is wired today; `'thread'` / `'reply'` are reserved
+ * for a future threads schema (the forum plugin shipped without
+ * one, reusing `nx_comments` under the `discussions` collection).
+ * `kind` is configurable per site — default vocabulary in v1 is
+ * just `'like'`. The unique constraint enforces "one reaction-of-
+ * kind per member per target," so toggling a like is an upsert /
+ * delete.
  */
 export const nxReactions = pgTable(
   "nx_reactions",
@@ -285,7 +289,8 @@ export const nxReactions = pgTable(
 /**
  * Follow graph. Polymorphic over what's being followed:
  *  - `member` — target_id is `nx_members.id` as a string
- *  - `thread` — target_id is `nx_threads.id` (lands in 9.4)
+ *  - `thread` — reserved; no thread schema today (forum plugin
+ *    reuses `nx_comments` so there's nothing to follow per-thread)
  *  - `tag`    — target_id is the tag slug (no FK; tags are strings)
  *
  * `target_id` is `text` rather than `uuid` so all three kinds share

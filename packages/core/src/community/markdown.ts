@@ -15,8 +15,8 @@
  *   - Hard break  single \n     → `<br/>`
  *
  * NOT supported (deliberate, to keep the renderer tight + safe):
- *   raw HTML, headings, lists, blockquotes, images, tables. If users
- *   need richer formatting in 9.3+, plug `marked` + `dompurify` here
+ *   raw HTML, headings, lists, blockquotes, images, tables. If a
+ *   site needs richer formatting, plug `marked` + `dompurify` here
  *   without changing the public function shape.
  */
 
