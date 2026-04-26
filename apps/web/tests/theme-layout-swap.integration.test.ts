@@ -63,10 +63,11 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     const active = await getActiveTheme();
     expect(active?.manifest.id).toBe("minimal");
     const impl = active?.impl as { css?: string };
-    // The minimal theme's CSS hides nav menu / search / member
-    // widget. The default theme's CSS doesn't carry those rules.
+    // Minimal theme owns the `.nx-minimal-header` look (centered
+    // logo, dotted rule, serif type) — distinct from the
+    // default theme's flex-row header layout.
     expect(impl.css).toContain(".nx-minimal-header");
-    expect(impl.css).toContain("display: none");
+    expect(impl.css).toContain("text-align: center");
   });
 
   it("active themes' CSS doesn't include other themes' rules (no leakage)", async () => {

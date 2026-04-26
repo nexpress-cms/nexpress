@@ -48,9 +48,14 @@ export const defaultThemeCss = `
 .nx-site-nav a:hover {
   color: var(--nx-color-foreground, #0f172a);
 }
-.nx-site-main {
-  min-height: calc(100vh - 8rem);
-}
+/*
+ * .nx-site-main baseline (min-height) lives in the consuming
+ * app's globals.css as a cross-theme primitive — every theme
+ * renders the same <main className="nx-site-main"> container,
+ * so the box-model rule belongs to the framework, not the
+ * theme. Themes that want to restyle the main area layer
+ * their own rules on top.
+ */
 .nx-site-footer {
   border-top: 1px solid var(--nx-color-border, #e5e7eb);
   background: var(--nx-color-muted, #f8fafc);
