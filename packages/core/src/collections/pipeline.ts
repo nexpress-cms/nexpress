@@ -14,6 +14,7 @@ import {
   type NxAuthUser,
   type NxCollectionHook,
   type NxFieldConfig,
+  type NxHookPrincipal,
 } from "../config/types.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 import { applySlugField } from "./slug.js";
@@ -106,6 +107,18 @@ function actorUserOrNull(actor: SaveActor): NxAuthUser | null {
 
 function actorUserId(actor: SaveActor): string | null {
   return actor.kind === "staff" ? actor.user.id : null;
+}
+
+/**
+ * Polymorphic actor reference passed to collection hooks and
+ * surfaced to plugin hooks via the `principal` payload field.
+ * Mirrors `SaveActor` — kept structurally identical so hook
+ * authors can switch on `kind` without importing a separate type.
+ */
+function actorPrincipal(actor: SaveActor): NxHookPrincipal {
+  return actor.kind === "staff"
+    ? { kind: "staff", user: actor.user }
+    : { kind: "member", memberId: actor.memberId };
 }
 
 export async function saveDocument(
@@ -386,26 +399,23 @@ async function saveDocumentImpl(
   }
 
   const userForHooks = actorUserOrNull(actor);
-  // Collection-defined hooks (config.hooks.beforeCreate etc.) are typed
-  // with `user: NxAuthUser` (non-null). They were designed pre-9.7a
-  // assuming a staff actor is always present. For member writes we
-  // skip them rather than relax the public type — that change can
-  // happen in 9.7b alongside member update / delete, when the hook
-  // surface is more naturally polymorphic. Plugin hooks (`runHook`
-  // below) still fire because their data shape is `Record<string, unknown>`
-  // and tolerates a null user.
-  const hookData =
-    actor.kind === "staff"
-      ? await runHooks(
-          operation === "create" ? config.hooks?.beforeCreate : config.hooks?.beforeUpdate,
-          {
-            data: validatedData,
-            user: actor.user,
-            collection,
-            originalDoc,
-          },
-        )
-      : validatedData;
+  const principal = actorPrincipal(actor);
+  // Collection-defined hooks (config.hooks.beforeCreate etc.) fire
+  // for BOTH staff and member writes since 9.7o. Hook authors that
+  // only care about staff identity can switch on
+  // `principal.kind === "staff"` and read `principal.user`; the
+  // `user` field is the resolved staff session for staff writes,
+  // `null` for member writes.
+  const hookData = await runHooks(
+    operation === "create" ? config.hooks?.beforeCreate : config.hooks?.beforeUpdate,
+    {
+      data: validatedData,
+      user: userForHooks,
+      principal,
+      collection,
+      originalDoc,
+    },
+  );
 
   applySlugField(config, hookData, originalDoc);
 
@@ -461,6 +471,7 @@ async function saveDocumentImpl(
     data: hookData,
     originalDoc,
     user: userForHooks,
+    principal,
     operation,
   });
   if (publishTransition) {
@@ -469,6 +480,7 @@ async function saveDocumentImpl(
       data: hookData,
       originalDoc,
       user: userForHooks,
+      principal,
     });
   }
   if (unpublishTransition) {
@@ -477,6 +489,7 @@ async function saveDocumentImpl(
       data: hookData,
       originalDoc,
       user: userForHooks,
+      principal,
     });
   }
 
@@ -529,6 +542,7 @@ async function saveDocumentImpl(
     doc: savedDoc,
     operation,
     user: userForHooks,
+    principal,
   });
   if (publishTransition) {
     await runHook("content:afterPublish", {
@@ -536,6 +550,7 @@ async function saveDocumentImpl(
       doc: savedDoc,
       operation,
       user: userForHooks,
+      principal,
     });
   }
 
@@ -906,19 +921,20 @@ async function deleteDocumentImpl(
   }
 
   const userForHooks = actorUserOrNull(actor);
-  if (actor.kind === "staff") {
-    await runHooks(config.hooks?.beforeDelete, {
-      data: originalDoc,
-      user: actor.user,
-      collection,
-      originalDoc,
-    });
-  }
+  const principal = actorPrincipal(actor);
+  await runHooks(config.hooks?.beforeDelete, {
+    data: originalDoc,
+    user: userForHooks,
+    principal,
+    collection,
+    originalDoc,
+  });
 
   await runHook("content:beforeDelete", {
     collection,
     doc: originalDoc,
     user: userForHooks,
+    principal,
   });
 
   await db.transaction(async (tx) => {
@@ -970,6 +986,7 @@ async function deleteDocumentImpl(
     collection,
     documentId: docId,
     user: userForHooks,
+    principal,
   });
 }
 
@@ -1071,12 +1088,7 @@ async function assertReadAccess(
 
 async function runHooks(
   hooks: NxCollectionHook[] | undefined,
-  args: {
-    data: Record<string, unknown>;
-    user: NxAuthUser;
-    collection: string;
-    originalDoc?: Record<string, unknown> | null;
-  },
+  args: Parameters<NxCollectionHook>[0],
 ): Promise<Record<string, unknown>> {
   let nextData = args.data;
 

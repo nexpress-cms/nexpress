@@ -2,6 +2,7 @@ import {
   type NxAuthUser,
   type NxCollectionConfig,
   type NxCollectionHook,
+  type NxHookPrincipal,
   type NxJobType,
 } from "../config/types.js";
 import { getEmailAdapter } from "../email/service.js";
@@ -28,14 +29,27 @@ interface ContentDeleteJobData {
 interface ResolvedHookContext {
   collectionConfig: NxCollectionConfig;
   data: Record<string, unknown>;
-  user: NxAuthUser;
+  /**
+   * Resolved staff session, or `null` when the originating actor
+   * was a member (Phase 9.7o widened the hook surface so member
+   * writes also fire `afterCreate` / `afterUpdate`).
+   */
+  user: NxAuthUser | null;
+  /**
+   * Polymorphic actor reference. Resolvers should derive this
+   * from whatever actor metadata they recorded with the job —
+   * e.g. by checking whether the saved `userId` is null
+   * (member-authored) and looking up the member id separately.
+   */
+  principal: NxHookPrincipal;
   originalDoc?: Record<string, unknown> | null;
 }
 
 interface ResolvedDeleteHookContext {
   collectionConfig: NxCollectionConfig;
   data: Record<string, unknown>;
-  user: NxAuthUser;
+  user: NxAuthUser | null;
+  principal: NxHookPrincipal;
 }
 
 interface BuiltinJobContext {
@@ -106,6 +120,7 @@ async function handleContentAfterSave(data: unknown): Promise<void> {
   await runCollectionHooks(hooks, {
     data: context.data,
     user: context.user,
+    principal: context.principal,
     collection: context.collectionConfig.slug,
     originalDoc: context.originalDoc,
   });
@@ -125,6 +140,7 @@ async function handleContentAfterDelete(data: unknown): Promise<void> {
   await runCollectionHooks(context.collectionConfig.hooks?.afterDelete, {
     data: context.data,
     user: context.user,
+    principal: context.principal,
     collection: context.collectionConfig.slug,
   });
 }
