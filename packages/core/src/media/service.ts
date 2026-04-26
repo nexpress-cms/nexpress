@@ -159,13 +159,15 @@ export async function uploadMedia(
   // uploaders serialize and the second one sees the updated
   // count.
   //
-  // Storage upload happens AFTER the DB row commits, not before:
-  // if the storage adapter throws, the row stays at status =
-  // `processing` and the image processor marks it `error` —
-  // already a valid state. The reverse order (storage first)
-  // would leave orphaned bytes behind on quota failure, requiring
-  // a separate sweep job. Quota enforcement matters more than
-  // perfectly-paired bytes.
+  // Storage upload happens AFTER the DB row commits so the quota
+  // count is correct before bytes touch storage. If the upload
+  // fails (#138 follow-up), we hard-delete the just-inserted row
+  // so it stops counting against quota and doesn't strand the
+  // member with a permanent ghost. We do NOT just mark the row
+  // `error` here — there's no storage object to inspect, no
+  // processor will arrive (the job hasn't been enqueued yet),
+  // and the quota count filters by `deletedAt IS NULL`, not
+  // `status`. Hard delete is the right semantic.
   if (resolvedUploader && resolvedUploader.kind === "member") {
     const memberId = resolvedUploader.memberId;
     const dbPg = getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>;
@@ -186,11 +188,28 @@ export async function uploadMedia(
   }
 
   const adapter = getStorageAdapter();
-  await adapter.upload(storageKey, file.buffer, {
-    contentType: file.mimeType,
-    contentLength: file.buffer.byteLength,
-    originalFilename: file.originalFilename,
-  });
+  try {
+    await adapter.upload(storageKey, file.buffer, {
+      contentType: file.mimeType,
+      contentLength: file.buffer.byteLength,
+      originalFilename: file.originalFilename,
+    });
+  } catch (err) {
+    // Storage failed after the DB row committed. Roll the row
+    // back so it doesn't (a) eat the member's quota allowance
+    // for nothing, (b) confuse operators with a permanent
+    // `processing` row that never gets a job. Cleanup is
+    // best-effort — if the delete itself fails we still surface
+    // the original storage error to the caller, since that's
+    // what they need to act on.
+    try {
+      const cleanupDb = getMediaDb() as unknown as DrizzleDatabaseLike;
+      await cleanupDb.delete(nxMedia).where(eq(nxMedia.id, id));
+    } catch {
+      // swallow — the storage error matters more
+    }
+    throw err;
+  }
 
   await enqueueJob("media:processImage", { mediaId: id });
 
