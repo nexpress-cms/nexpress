@@ -156,6 +156,16 @@ export type {
 } from "./auth/oauth-resolve.js";
 export { sha256, verifyTokenFull, invalidateAllSessions } from "./auth/session.js";
 export {
+  listUserIdentities,
+  listMemberIdentities,
+  revokeUserIdentity,
+  revokeMemberIdentity,
+} from "./auth/identities-admin.js";
+export type {
+  NxUserIdentityRow,
+  NxMemberIdentityRow,
+} from "./auth/identities-admin.js";
+export {
   createPasswordResetToken,
   requestPasswordReset,
   consumePasswordResetToken,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { NxUserRole } from "@nexpress/core";
 import { MailPlus, Plus } from "lucide-react";
 
@@ -188,10 +189,11 @@ export function UserManagement() {
         ) : null}
 
         <div className="overflow-hidden rounded-2xl border border-border/70">
-          <div className="grid grid-cols-[1fr_1.2fr_140px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          <div className="grid grid-cols-[1fr_1.2fr_140px_120px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             <span>Name</span>
             <span>Email</span>
             <span>Role</span>
+            <span />
           </div>
           <div className="divide-y divide-border/70">
             {loading ? (
@@ -209,12 +211,20 @@ export function UserManagement() {
               users.map((user) => (
                 <div
                   key={user.id}
-                  className="grid grid-cols-[1fr_1.2fr_140px] gap-4 px-4 py-4 text-sm"
+                  className="grid grid-cols-[1fr_1.2fr_140px_120px] gap-4 px-4 py-4 text-sm"
                 >
                   <div className="font-medium text-foreground">{user.name}</div>
                   <div className="text-muted-foreground">{user.email}</div>
                   <div>
                     <Badge variant="secondary">{user.role}</Badge>
+                  </div>
+                  <div className="text-right">
+                    <Link
+                      href={`/admin/users/${user.id}`}
+                      className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      Manage →
+                    </Link>
                   </div>
                 </div>
               ))
