@@ -7,6 +7,7 @@ import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
+import { defaultTheme } from "@nexpress/theme-default";
 
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
@@ -46,6 +47,11 @@ export default defineConfig({
           },
         },
   collections: [postsCollection, pagesCollection, discussionsCollection],
+  // Phase 11.1 — themes registry. Sites declare an array;
+  // admin switches the active one via the Theme settings tab
+  // (11.4) without redeploying. The first entry is the
+  // default-active until an admin overrides.
+  themes: [defaultTheme],
   plugins: [
     readingTimePlugin,
     seoAuditPlugin,

@@ -405,6 +405,36 @@ export interface NxNavItem {
   children?: NxNavItem[];
 }
 
+/**
+ * Phase 11.1 — theme manifest. Pure metadata, kept React-free
+ * so it can live in `@nexpress/core` (which is server-only and
+ * intentionally has no React peer). The full theme — shell,
+ * slots, templates with React component types — lives in
+ * `@nexpress/theme` via `defineTheme()`. The registry stores
+ * `NxRegisteredTheme` instances; `impl` is opaque to core but
+ * typed for consumers downstream.
+ */
+export interface NxThemeManifest {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  author?: { name: string; url?: string };
+  /** Optional minimum NexPress version this theme requires. */
+  nexpress?: { minVersion?: string };
+}
+
+export interface NxRegisteredTheme {
+  manifest: NxThemeManifest;
+  /**
+   * The theme's runtime implementation — shell component,
+   * slot components, page templates, default tokens.
+   * `@nexpress/theme` types this; core treats it as opaque so
+   * the React peer dependency stays out of this package.
+   */
+  impl: unknown;
+}
+
 export interface NxConfig {
   site: {
     name: string;
@@ -422,6 +452,14 @@ export interface NxConfig {
   collections: NxCollectionConfig[];
   blocks?: NxBlockConfig[];
   editor?: NxEditorConfig;
+  /**
+   * Phase 11.1 — multi-theme registry. Sites declare every
+   * theme they want available; admins switch between them
+   * via the settings UI without rebuilding. The first theme
+   * in the array is the default-active until an admin sets
+   * a different one (`nx_settings.activeTheme`).
+   */
+  themes?: NxRegisteredTheme[];
   images?: {
     sizes?: NxImageSize[];
     format?: "webp" | "avif" | "jpeg" | "png";

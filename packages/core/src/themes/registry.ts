@@ -1,0 +1,115 @@
+import { eq } from "drizzle-orm";
+
+import { getDb } from "../collections/pipeline.js";
+import { nxSettings } from "../db/schema/system.js";
+import { NxValidationError } from "../errors.js";
+import type { NxRegisteredTheme } from "../config/types.js";
+
+/**
+ * Phase 11.1 — theme registry. Sites declare an array of themes
+ * in `nexpress.config.ts`; the framework registers them once at
+ * boot. The active theme id lives in `nx_settings.activeTheme`,
+ * so admins can switch between installed themes via the admin UI
+ * without a redeploy. New theme INSTALLATION still requires a
+ * rebuild (Next.js bundles the components) — same constraint
+ * WordPress has with file uploads on the server.
+ *
+ * The registry is a process-level Map; same lifetime as the
+ * collection / plugin registries. Re-registration overwrites
+ * by `manifest.id` so a hot-reload during dev doesn't accumulate
+ * stale entries.
+ */
+const registry = new Map<string, NxRegisteredTheme>();
+
+/**
+ * Idempotent — call once at boot from the framework's
+ * bootstrap, again from a hot-reload, etc. Themes are matched
+ * by `manifest.id`; later registrations replace earlier ones.
+ */
+export function registerThemes(themes: NxRegisteredTheme[]): void {
+  for (const theme of themes) {
+    if (!theme?.manifest?.id) {
+      throw new Error("Theme is missing manifest.id");
+    }
+    registry.set(theme.manifest.id, theme);
+  }
+}
+
+export function getRegisteredThemes(): NxRegisteredTheme[] {
+  return Array.from(registry.values());
+}
+
+export function getThemeById(id: string): NxRegisteredTheme | undefined {
+  return registry.get(id);
+}
+
+/** Tests use this between cases; production callers should never need it. */
+export function resetThemes(): void {
+  registry.clear();
+}
+
+/**
+ * Reads the persisted active-theme id from `nx_settings`.
+ * Returns `null` when no row exists — caller's job to decide
+ * the fallback (typically the first registered theme).
+ */
+export async function getActiveThemeId(): Promise<string | null> {
+  const db = getDb();
+  const rows = (await db
+    .select()
+    .from(nxSettings)
+    .where(eq(nxSettings.key, "activeTheme"))
+    .limit(1)) as Array<{ value: unknown }>;
+  const row = rows[0];
+  if (!row) return null;
+  return typeof row.value === "string" ? row.value : null;
+}
+
+/**
+ * Resolves the active theme to render. Looks up the persisted id
+ * in the registry; falls back to the first registered theme when
+ * the id is unset, missing, or points at a theme that's no
+ * longer in the registry (e.g. it was removed from
+ * `nexpress.config.ts` between deploys). Returns `null` only
+ * when the registry is completely empty.
+ */
+export async function getActiveTheme(): Promise<NxRegisteredTheme | null> {
+  const id = await getActiveThemeId();
+  if (id) {
+    const theme = registry.get(id);
+    if (theme) return theme;
+  }
+  // Registry preserves insertion order; the first registered
+  // theme is the implicit default.
+  const first = registry.values().next();
+  return first.done ? null : first.value;
+}
+
+/**
+ * Persist the active theme. Validates the id is registered so
+ * an admin can't pick a string that doesn't resolve to anything
+ * (which would silently fall back to the default and confuse
+ * the operator).
+ */
+export async function setActiveThemeId(
+  id: string,
+  updatedBy: string | null = null,
+): Promise<void> {
+  if (!registry.has(id)) {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "themeId",
+        message: `Unknown theme '${id}'. Register it in nexpress.config.ts first.`,
+      },
+    ]);
+  }
+  const db = getDb();
+  const now = new Date();
+  await db
+    .insert(nxSettings)
+    .values({ key: "activeTheme", value: id, updatedAt: now, updatedBy })
+    .onConflictDoUpdate({
+      target: nxSettings.key,
+      set: { value: id, updatedAt: now, updatedBy },
+    });
+}
