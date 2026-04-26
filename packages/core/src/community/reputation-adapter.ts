@@ -68,6 +68,16 @@ export type NxReputationEvent =
       reactorId: string;
       targetType: string;
       targetId: string;
+    }
+  /** A member created a top-level document in a collection that
+   *  opted into `community.memberWrite.create` (Phase 9.7a). Fires
+   *  after the row + revision are persisted; adapters can credit
+   *  reputation for thread / post creation just like comments. */
+  | {
+      kind: "document.created";
+      collectionSlug: string;
+      documentId: string;
+      memberId: string;
     };
 
 export interface NxReputationAdapter {

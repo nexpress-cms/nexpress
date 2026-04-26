@@ -1,8 +1,13 @@
-import { getCollectionConfig } from "@nexpress/core";
+import {
+  NxAuthError,
+  NxForbiddenError,
+  createMemberDocument,
+  getCollectionConfig,
+} from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { optionalAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import {
   extractSaveOptions,
@@ -11,7 +16,8 @@ import {
   parseFindOptions,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
+import { optionalMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
 
 export async function GET(
@@ -52,16 +58,43 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const user = await requireAuth(request);
 
-    requireCsrf(request);
+    // Two auth surfaces converge on this endpoint:
+    //   1. Staff session (`nx-session`) → standard path through
+    //      `saveCollectionDocument`, which honors `access.create`.
+    //   2. Member session (`nx-mb-session`) → only valid when the
+    //      collection opted into `community.memberWrite.create`;
+    //      goes through `createMemberDocument`, which bypasses
+    //      `access.create` and gates on `assertNotBanned` instead.
+    // Staff takes precedence when both are present (admin browsing
+    // signed in as a member should still be able to act as staff).
+    const staffUser = await optionalAuth(request);
+    if (staffUser) {
+      requireCsrf(request);
+      const data = parseBodyRecord(await readJsonBody(request));
+      const saveOptions = extractSaveOptions(data);
+      const result = await saveCollectionDocument(slug, null, data, staffUser, saveOptions);
+      revalidateCollection(slug, result.doc);
+      return nxSuccessResponse(result.doc, { status: 201 });
+    }
 
+    const member = await optionalMember(request);
+    if (!member) throw new NxAuthError();
+
+    ensureCoreServices();
+    const config = getCollectionConfig(slug);
+    if (!config.community?.memberWrite?.create) {
+      // Surface as 403 not 401 — the member is authenticated; the
+      // collection just hasn't opted in to member writes.
+      throw new NxForbiddenError(slug, "create");
+    }
+
+    requireMemberCsrf(request);
+    await ensureWriteReady();
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
-    const result = await saveCollectionDocument(slug, null, data, user, saveOptions);
-
+    const result = await createMemberDocument(slug, data, member.id, saveOptions);
     revalidateCollection(slug, result.doc);
-
     return nxSuccessResponse(result.doc, { status: 201 });
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

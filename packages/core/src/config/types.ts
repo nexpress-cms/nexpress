@@ -221,9 +221,20 @@ export interface NxCollectionConfig {
    * default; flip `comments: true` to let members post comments
    * underneath this collection's documents. Reactions / threading
    * land in 9.3 + 9.4 and gain their own toggles here.
+   *
+   * `memberWrite.create` (9.7a) lets logged-in members create
+   * documents in this collection without needing a staff role.
+   * The staff `access.create` function is bypassed in that path —
+   * gating is `assertNotBanned(memberId)` plus this opt-in flag,
+   * not the staff access tree. Member-authored docs default to
+   * `_status = "published"` (no moderation gate yet — that lands
+   * in 9.7b alongside `memberWrite.update`/`delete`).
    */
   community?: {
     comments?: boolean;
+    memberWrite?: {
+      create?: boolean;
+    };
   };
   timestamps?: boolean;
   admin?: {
