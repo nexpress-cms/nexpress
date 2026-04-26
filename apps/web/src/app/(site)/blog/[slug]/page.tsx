@@ -1,4 +1,4 @@
-import { getPostBySlug } from "@nexpress/core";
+import { buildArticleJsonLd, getPostBySlug, getSiteSeoSettings } from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
@@ -10,6 +10,7 @@ import {
   collectRenderContributions,
 } from "@/components/render-contributions";
 import { Comments } from "@/components/comments";
+import { JsonLd } from "@/components/json-ld";
 import type { Metadata } from "next";
 import type { NxRichTextContent } from "@nexpress/editor";
 
@@ -33,8 +34,33 @@ export default async function PostPage({ params }: PostPageProps) {
     document: post,
   });
 
+  // BlogPosting JSON-LD — gives search engines the headline,
+  // dates, image, and author for rich-result rendering. The
+  // ogImage field on the post (when set) doubles as the
+  // structured-data image.
+  const settings = await getSiteSeoSettings();
+  const articleJsonLd = await buildArticleJsonLd({
+    url: `${settings.siteUrl.replace(/\/+$/, "")}/blog/${slug}`,
+    headline: post.title as string,
+    description:
+      typeof post.excerpt === "string" && post.excerpt
+        ? (post.excerpt as string)
+        : null,
+    image:
+      typeof post.coverImage === "string" && post.coverImage
+        ? await getMediaUrl(post.coverImage, "og")
+        : null,
+    datePublished:
+      post.publishedAt instanceof Date
+        ? (post.publishedAt as Date)
+        : (post.createdAt as Date | undefined) ?? null,
+    dateModified: (post.updatedAt as Date | undefined) ?? null,
+    type: "BlogPosting",
+  });
+
   return (
     <article className="nx-post">
+      <JsonLd data={articleJsonLd as unknown as Record<string, unknown>} />
       <RenderHead entries={head} />
       {isDraft ? (
         <div className="nx-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
