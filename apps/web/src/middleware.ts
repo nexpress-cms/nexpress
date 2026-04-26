@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { i18nConfig, isLocale } from "@/i18n.config";
+
 function getSecurityHeaders(request: NextRequest): Record<string, string> {
   const isDev = process.env.NODE_ENV !== "production";
   const protocol = request.nextUrl.protocol === "https:" ? "wss:" : "ws:";
@@ -85,6 +87,38 @@ setInterval(() => {
   }
 }, 60_000);
 
+/**
+ * Phase 12.2 — pull the requested locale out of the URL path.
+ *
+ * `/ko/about` → "ko" + "/about"
+ * `/about`    → defaultLocale + "/about"
+ *
+ * Admin / API / static asset paths skip i18n entirely (they're
+ * locale-agnostic) so site visitors hitting `/admin` don't get
+ * unnecessary cookie reads or redirects.
+ */
+function resolveSiteLocale(pathname: string): {
+  locale: string;
+  rewrite: string | null;
+} {
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/_next/") ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/robots.txt" ||
+    pathname === "/feed.xml"
+  ) {
+    return { locale: i18nConfig.defaultLocale, rewrite: null };
+  }
+  const segments = pathname.split("/").filter(Boolean);
+  const first = segments[0];
+  if (first && isLocale(first)) {
+    return { locale: first, rewrite: null };
+  }
+  return { locale: i18nConfig.defaultLocale, rewrite: null };
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
@@ -107,7 +141,16 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
+  // Phase 12.2 — propagate the resolved locale to server
+  // components via a request header. Server components can read
+  // it via `headers().get("x-nx-locale")` without re-parsing the
+  // pathname themselves.
+  const { locale } = resolveSiteLocale(pathname);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nx-locale", locale);
+  requestHeaders.set("x-nx-pathname", pathname);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   for (const [key, value] of Object.entries(securityHeaders)) {
     response.headers.set(key, value);

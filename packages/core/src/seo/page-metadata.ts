@@ -125,6 +125,13 @@ export interface NxPageMetadataInput {
    */
   publishedTime?: Date | null;
   modifiedTime?: Date | null;
+  /**
+   * Phase 12.2 — locale for the rendered page. Surfaces into
+   * `og:locale` so social cards label the language correctly.
+   * Optional; sites without i18n leave it unset and the helper
+   * omits `og:locale` from the output.
+   */
+  locale?: string;
 }
 
 /**
@@ -188,7 +195,11 @@ export async function buildPageMetadata(
       siteName: settings.siteName,
       url: canonicalUrl,
       type: ogType,
-      locale: settings.defaultLocale,
+      // Page-supplied locale wins over the site default so
+      // translated copies surface their actual language to
+      // social previews. Falls back to the site setting when
+      // the caller doesn't pass one (non-i18n routes).
+      locale: input.locale ?? settings.defaultLocale,
       ...(ogImage ? { images: [{ url: ogImage }] } : {}),
       ...(ogType === "article" && input.publishedTime
         ? { publishedTime: input.publishedTime.toISOString() }
