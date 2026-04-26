@@ -696,6 +696,99 @@ export async function deleteMemberDocument(
   });
 }
 
+/**
+ * Staff promotion of a member-authored `pending` row to `published`
+ * (Phase 9.7d). Closes the loop on the 9.7c moderation gate:
+ *   - the row's status flips to `published` (visible on the public
+ *     site immediately)
+ *   - the deferred `document.created` reputation event fires now,
+ *     crediting the author for content that was held in review
+ *     (mirrors how a comment promoted from `pending` would, in a
+ *     hypothetical comment-promote API — not implemented yet)
+ *   - audit log records `document.promote` with the staff actor
+ *     and the original member author in the payload
+ *
+ * Guards:
+ *   - 404 if the row doesn't exist
+ *   - 400 (validation) if the row isn't currently `pending`
+ *   - 400 (validation) if the row isn't member-authored
+ *     (`member_author_id` is null) — staff drafts use the standard
+ *     edit path
+ *
+ * Idempotence: a second promote on an already-`published` row 400s
+ * rather than silently no-op'ing — the audit trail and reputation
+ * backfill must run exactly once per row.
+ */
+export async function promoteMemberDocument(
+  collection: string,
+  docId: string,
+  staffUserId: string,
+): Promise<NxSaveResult> {
+  const table = getCollectionTable(collection) as PgTable;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const originalDoc = await getDocumentByIdInternal(db, table, collection, docId);
+  if (!originalDoc) {
+    throw new NxNotFoundError(collection, docId);
+  }
+  const status = (originalDoc as { status?: string }).status;
+  if (status !== "pending") {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "status",
+        message: `Cannot promote: document is ${status ?? "unknown"}, expected pending`,
+      },
+    ]);
+  }
+  const memberAuthorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
+  if (!memberAuthorId) {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "memberAuthorId",
+        message: "Cannot promote: document is not member-authored",
+      },
+    ]);
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(table)
+    .set({ status: "published", updatedAt: now, updatedBy: staffUserId })
+    .where(eq(getTableColumn(table, "id"), docId))
+    .returning();
+  if (!updated) {
+    // Lost a race with delete — surface as 404 to mirror staff
+    // delete semantics.
+    throw new NxNotFoundError(collection, docId);
+  }
+  const persistedDoc = toRecord(updated);
+
+  const { applyReputation } = await import("../community/reputation.js");
+  const { recordAuditEvent } = await import("../community/audit.js");
+  await recordAuditEvent({
+    actor: { kind: "staff", userId: staffUserId },
+    action: "document.promote",
+    targetType: collection,
+    targetId: docId,
+    payload: {
+      collectionSlug: collection,
+      memberAuthorId,
+      previousStatus: "pending",
+    },
+  });
+  // Backfill the reputation credit that was withheld at create time
+  // when status landed as pending. The adapter sees the same event
+  // shape as a fresh member create — adapters that key off creation
+  // time should consult the audit log, not infer from the event.
+  await applyReputation(memberAuthorId, {
+    kind: "document.created",
+    collectionSlug: collection,
+    documentId: docId,
+    memberId: memberAuthorId,
+  });
+
+  return { doc: persistedDoc, operation: "update" };
+}
+
 async function deleteDocumentImpl(
   collection: string,
   docId: string,

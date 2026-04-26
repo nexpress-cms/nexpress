@@ -74,6 +74,7 @@ export {
   saveDocument,
   createMemberDocument,
   updateMemberDocument,
+  promoteMemberDocument,
   autosaveRevision,
   deleteDocument,
   deleteMemberDocument,
