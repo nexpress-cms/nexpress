@@ -23,6 +23,17 @@ export type {
   NxSpamVerdict,
   NxSpamVerdictKind,
 } from "./spam-adapter.js";
+
+export {
+  setReputationAdapter,
+  getReputationAdapter,
+  resetReputationAdapter,
+} from "./reputation-adapter.js";
+export type {
+  NxReputationAdapter,
+  NxReputationEvent,
+} from "./reputation-adapter.js";
+export { applyReputation } from "./reputation.js";
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
 export { renderCommentMarkdown } from "./markdown.js";
