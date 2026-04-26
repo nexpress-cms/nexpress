@@ -10,6 +10,7 @@ export type {
   NxThemeImpl,
   NxThemeShellProps,
   NxThemeSlots,
+  NxThemeTemplate,
   NxThemeTemplates,
   NxTemplateRenderProps,
 } from "./define-theme.js";

@@ -315,7 +315,9 @@ export {
   getActiveTheme,
   getActiveThemeId,
   setActiveThemeId,
+  getThemeTemplateSummaries,
 } from "./themes/registry.js";
+export type { NxThemeTemplateSummary } from "./themes/registry.js";
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 
 export {

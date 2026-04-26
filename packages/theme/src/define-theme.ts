@@ -44,19 +44,42 @@ export interface NxThemeSlots {
 export interface NxTemplateRenderProps<T = Record<string, unknown>> {
   /** The doc being rendered, in whatever shape the collection produces. */
   doc: T;
-  /** Children = the theme's shell already rendered the surrounding chrome;
-   *  the template returns its own body content. */
 }
 
 /**
- * Phase 11.1 reserves the templates surface but doesn't dispatch
- * yet — that lands in 11.3 alongside the `pages.template` field
- * and the admin picker. Themes can declare templates now to
- * future-proof their package.
+ * A single page template. Each template carries human-readable
+ * metadata so the admin picker (11.3) can render a meaningful
+ * dropdown — bare component refs would force callers to maintain
+ * a parallel id→label map.
+ */
+export interface NxThemeTemplate<T = Record<string, unknown>> {
+  /** Human label shown in the admin template picker. */
+  label: string;
+  /** Optional description shown beneath the picker. */
+  description?: string;
+  /** The render component receives `{ doc }` and returns the page body. */
+  component: ComponentType<NxTemplateRenderProps<T>>;
+}
+
+/**
+ * Per-collection page templates.
+ *
+ *   templates: {
+ *     pages: {
+ *       default: { label: "Default", component: PageDefault },
+ *       wide:    { label: "Wide", component: PageWide },
+ *     },
+ *     posts: { default: { label: "Article", component: PostArticle } },
+ *   }
+ *
+ * The catch-all reads `doc.template` (or falls back to `default`)
+ * and renders the corresponding component. Themes that don't
+ * declare templates for a collection let the framework's existing
+ * rendering path run.
  */
 export type NxThemeTemplates = Record<
   string,
-  Record<string, ComponentType<NxTemplateRenderProps>>
+  Record<string, NxThemeTemplate>
 >;
 
 export interface NxThemeImpl {

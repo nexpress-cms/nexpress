@@ -113,3 +113,38 @@ export async function setActiveThemeId(
       set: { value: id, updatedAt: now, updatedBy },
     });
 }
+
+/**
+ * Phase 11.3 — surface the active theme's templates for a
+ * given collection so admin pickers and the catch-all renderer
+ * can introspect what's available without reaching into the
+ * opaque `impl` themselves. The result is sanitized for serial-
+ * ization (no React component refs leak through this path) so
+ * the same shape is safe to send over the API to the admin UI.
+ */
+export interface NxThemeTemplateSummary {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export async function getThemeTemplateSummaries(
+  collectionSlug: string,
+): Promise<NxThemeTemplateSummary[]> {
+  const active = await getActiveTheme();
+  if (!active) return [];
+  const impl = active.impl as {
+    templates?: Record<
+      string,
+      Record<string, { label?: string; description?: string }>
+    >;
+  };
+  const set = impl.templates?.[collectionSlug];
+  if (!set) return [];
+  return Object.entries(set).map(([id, def]) => ({
+    id,
+    label: typeof def.label === "string" ? def.label : id,
+    description:
+      typeof def.description === "string" ? def.description : undefined,
+  }));
+}
