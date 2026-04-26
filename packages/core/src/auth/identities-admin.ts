@@ -117,9 +117,16 @@ export async function revokeUserIdentity(
     // existence to staff who don't have the right grants.
     throw new NxNotFoundError("identity", identityId);
   }
-  await db
+  // Use `.returning()` so we can tell whether OUR call did the
+  // delete. Two concurrent revokes both pass the select check
+  // above; if we record an audit event unconditionally we'd
+  // double-log the revocation. The second caller's delete returns
+  // zero rows — we skip the audit there.
+  const deleted = (await db
     .delete(nxUserOAuthIdentities)
-    .where(eq(nxUserOAuthIdentities.id, identityId));
+    .where(eq(nxUserOAuthIdentities.id, identityId))
+    .returning({ id: nxUserOAuthIdentities.id })) as Array<{ id: string }>;
+  if (deleted.length === 0) return;
   await recordAuditEvent({
     actor: { kind: "staff", userId: actor.staffUserId },
     action: "user.identity.revoke",
@@ -150,7 +157,11 @@ export async function revokeMemberIdentity(
     )
     .limit(1)) as NxMemberIdentityRow[];
   if (!existing) throw new NxNotFoundError("identity", identityId);
-  await db.delete(nxMemberIdentities).where(eq(nxMemberIdentities.id, identityId));
+  const deleted = (await db
+    .delete(nxMemberIdentities)
+    .where(eq(nxMemberIdentities.id, identityId))
+    .returning({ id: nxMemberIdentities.id })) as Array<{ id: string }>;
+  if (deleted.length === 0) return;
   await recordAuditEvent({
     actor: { kind: "staff", userId: actor.staffUserId },
     action: "member.identity.revoke",
