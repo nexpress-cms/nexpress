@@ -141,6 +141,17 @@ export type {
 } from "./reports.js";
 
 export { issueBan, listBansForMember, revokeBan } from "./bans.js";
+
+export {
+  grantMemberRole,
+  listMemberRoleGrants,
+  revokeMemberRole,
+} from "./grants.js";
+export type {
+  NxMemberRoleGrantRow,
+  GrantMemberRoleInput,
+  RevokeMemberRoleInput,
+} from "./grants.js";
 export type {
   NxBanRow,
   BanScope,
