@@ -306,6 +306,65 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       expect(body.body.status).toBe("pending");
     });
 
+    // Regression: a `flag` verdict with no `metadata` must still
+    // record `document.flag` (the audit action discriminates on the
+    // verdict kind, not on whether the adapter chose to attach
+    // metadata). Earlier draft used `metadata !== undefined` as the
+    // proxy for flag-ness and silently mis-labelled metadata-less
+    // flags as `document.create`.
+    it("`flag` with no metadata still records `document.flag` audit", async () => {
+      const core = await import("@nexpress/core");
+      core.setSpamAdapter({ check: () => ({ kind: "flag" }) });
+
+      const member = await seedActiveMember("flag-no-meta");
+      const res = await memberCreate(member, { title: "Sus", slug: "flag-no-meta-1" });
+      expect(res.status).toBe(201);
+
+      const db = await getTestDb();
+      const { nxAuditEvents } = await import("@nexpress/core");
+      const { eq } = await import("drizzle-orm");
+      const flag = (await db
+        .select()
+        .from(nxAuditEvents)
+        .where(eq(nxAuditEvents.action, "document.flag"))) as Array<unknown>;
+      const create = (await db
+        .select()
+        .from(nxAuditEvents)
+        .where(eq(nxAuditEvents.action, "document.create"))) as Array<unknown>;
+      expect(flag).toHaveLength(1);
+      expect(create).toHaveLength(0);
+    });
+
+    // Regression: a config-driven `pending` (defaultStatus="pending"
+    // with no spam adapter installed, or `pass` verdict) must NOT
+    // be recorded as `document.flag` — that audit action is reserved
+    // for spam-adapter-flagged rows so mods can tell "this needs
+    // review because the adapter said so" from "this is in the
+    // moderation queue because the site is invite-style."
+    it("config `pending` (no spam flag) records `document.create` not `document.flag`", async () => {
+      // Switch to defaultStatus=pending for this test.
+      await registerDiscussionsWith("pending");
+
+      const member = await seedActiveMember("config-pending");
+      const res = await memberCreate(member, { title: "Awaits", slug: "config-pending-1" });
+      const body = await readJson<{ status: string }>(res);
+      expect(body.body.status).toBe("pending");
+
+      const db = await getTestDb();
+      const { nxAuditEvents } = await import("@nexpress/core");
+      const { eq } = await import("drizzle-orm");
+      const flag = (await db
+        .select()
+        .from(nxAuditEvents)
+        .where(eq(nxAuditEvents.action, "document.flag"))) as Array<unknown>;
+      const create = (await db
+        .select()
+        .from(nxAuditEvents)
+        .where(eq(nxAuditEvents.action, "document.create"))) as Array<unknown>;
+      expect(flag).toHaveLength(0);
+      expect(create).toHaveLength(1);
+    });
+
     it("flagged creates do NOT credit reputation (mirrors comment.flag)", async () => {
       const core = await import("@nexpress/core");
       core.setSpamAdapter({ check: () => ({ kind: "flag" }) });

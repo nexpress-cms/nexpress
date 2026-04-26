@@ -187,14 +187,18 @@ export async function createMemberDocument(
     config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
 
   // Spam check. Defer-load to avoid the `community` ↔ `collections`
-  // import cycle. Adapters receive the user-controlled `title` as
-  // text; rich-text body extraction is left to adapters that want
-  // it (they can read `data` via the context if the API exposes
-  // it). The default no-op adapter passes everything through.
+  // import cycle. v1 passes the user-controlled `title` as the spam
+  // text; rich-text body sniffing is out of scope because the
+  // `NxSpamCheckContext` doesn't yet carry the structured body. A
+  // future ext can widen the context with a `body` field; until
+  // then, adapters that want body checks should run the API body
+  // through their own pipeline upstream of the framework call.
+  // The default no-op adapter passes everything through.
   const { getSpamAdapter } = await import("../community/spam-adapter.js");
   const { getLogger } = await import("../observability/logger.js");
   const spamText = typeof data.title === "string" ? data.title : "";
   let spamStatus: NxDocumentStatus = defaultStatus;
+  let spamFlagged = false;
   let spamVerdictMetadata: Record<string, unknown> | undefined;
   try {
     const verdict = await getSpamAdapter().check(spamText, {
@@ -215,6 +219,7 @@ export async function createMemberDocument(
     }
     if (verdict.kind === "flag") {
       spamStatus = "pending";
+      spamFlagged = true;
       spamVerdictMetadata = verdict.metadata;
     }
   } catch (err) {
@@ -242,11 +247,13 @@ export async function createMemberDocument(
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
   const documentId = getRecordId(result.doc);
+  // `document.flag` action when the spam adapter flagged this row
+  // (regardless of whether it returned metadata). A pending row that
+  // got there via `defaultStatus="pending"` is config-driven, not a
+  // per-row flag, so it stays under `document.create`.
   await recordAuditEvent({
     actor: { kind: "member", memberId },
-    action: spamStatus === "pending" && spamVerdictMetadata !== undefined
-      ? "document.flag"
-      : "document.create",
+    action: spamFlagged ? "document.flag" : "document.create",
     targetType: collection,
     targetId: documentId,
     payload: {
