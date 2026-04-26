@@ -8,6 +8,7 @@ import {
   getCollectionTable,
 } from "./registry.js";
 import { buildSearchVector } from "./search.js";
+import { getSearchAdapter } from "./search-adapter.js";
 
 export interface SearchCollectionsOptions {
   q: string;
@@ -66,6 +67,34 @@ export async function searchCollections(
   const limit = normalizeLimit(opts.limit);
   const offset = opts.offset ?? 0;
   const baseWhere = opts.where ?? { status: "published" };
+
+  // Phase 10.6 — pluggable adapter. When a site has installed an
+  // external search engine (Algolia / Meilisearch / OpenSearch),
+  // delegate to that. The adapter can return `null` to fall
+  // through to the pg path (e.g. for collections it doesn't
+  // index). Throws are fail-open: log + treat as null. The
+  // adapter is responsible for keeping its index fresh — the
+  // pipeline already fires `content:afterCreate / :afterUpdate /
+  // :afterDelete` hooks (9.7o made them Principal-aware), so a
+  // plugin subscribes to those for indexing without needing any
+  // new framework plumbing.
+  const adapter = getSearchAdapter();
+  if (adapter) {
+    try {
+      const adapterResult = await adapter.search({
+        q: query,
+        collections: opts.collections,
+        limit,
+        offset,
+      });
+      if (adapterResult) return adapterResult;
+    } catch (err) {
+      const { getLogger } = await import("../observability/logger.js");
+      getLogger().warn("search adapter threw — falling back to pg tsvector", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   const results: SearchResultItem[] = [];
   const perCollection: Record<string, number> = {};

@@ -51,5 +51,14 @@ export type {
   SearchResultItem,
   ReindexResult,
 } from "./search-api.js";
+export {
+  getSearchAdapter,
+  resetSearchAdapter,
+  setSearchAdapter,
+} from "./search-adapter.js";
+export type {
+  NxSearchAdapter,
+  NxSearchAdapterContext,
+} from "./search-adapter.js";
 export { buildZodSchema, getCollectionZodSchema } from "./validation.js";
 export { slugify, applySlugField } from "./slug.js";
