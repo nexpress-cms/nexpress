@@ -1,0 +1,41 @@
+import { renderRichText } from "@nexpress/editor";
+import type { NxRichTextContent } from "@nexpress/editor";
+
+import type { NxTemplateRenderProps } from "@nexpress/theme";
+
+/**
+ * Long-form post template — kicker / large headline / byline
+ * rule / dropcap on the first paragraph. Reads from the
+ * standard post fields (title, content, author, publishedAt)
+ * with optional kicker support if the collection adds one.
+ */
+export function PostFeatureTemplate({ doc }: NxTemplateRenderProps) {
+  const title = (doc as { title?: string }).title ?? "Untitled";
+  const kicker = (doc as { kicker?: string }).kicker;
+  const author = (doc as { authorName?: string }).authorName;
+  const published = (doc as { publishedAt?: string }).publishedAt;
+  const content = (doc as { content?: NxRichTextContent }).content;
+
+  return (
+    <article className="nx-magazine-feature">
+      {kicker ? <p className="nx-magazine-feature-kicker">{kicker}</p> : null}
+      <h1 className="nx-magazine-feature-title">{title}</h1>
+      {author || published ? (
+        <p className="nx-magazine-feature-byline">
+          {author ? `By ${author}` : null}
+          {author && published ? " · " : null}
+          {published
+            ? new Date(published).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : null}
+        </p>
+      ) : null}
+      <div className="nx-magazine-feature-body">
+        {content ? renderRichText(content) : null}
+      </div>
+    </article>
+  );
+}
