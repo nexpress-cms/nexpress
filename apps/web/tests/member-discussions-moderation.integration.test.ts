@@ -15,6 +15,7 @@ import {
   GET as collectionGET,
   POST as collectionPOST,
 } from "@/app/api/collections/[slug]/route";
+import { PATCH as collectionPATCH } from "@/app/api/collections/[slug]/[id]/route";
 import { POST as registerPOST } from "@/app/api/members/register/route";
 import { POST as verifyPOST } from "@/app/api/members/verify/route";
 import { POST as loginPOST } from "@/app/api/members/login/route";
@@ -387,6 +388,184 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       const res = await memberCreate(member, { title: "Sus", slug: "spam-flag-rep-1" });
       expect(res.status).toBe(201);
       expect(events).toHaveLength(0);
+    });
+  });
+
+  // Issues #119 + #121 — moderation must scan rich-text body
+  // (not just the title) AND must re-run on owner edits, not
+  // just on the create path.
+  describe("moderation gate widens beyond create-time titles", () => {
+    beforeEach(async () => {
+      await registerDiscussionsWith("published");
+    });
+
+    it("rich-text body is fed to the adapters (#119)", async () => {
+      // The adapter only sees `body` — title is benign. Pre-fix
+      // `moderationText = data.title` only, so this row would have
+      // landed `published`. With the body-extraction fix it should
+      // land `pending`.
+      const seen: string[] = [];
+      const core = await import("@nexpress/core");
+      core.setProfanityAdapter({
+        check: (text) => {
+          seen.push(text);
+          return text.includes("badword")
+            ? { kind: "flag", reason: "lexicon" }
+            : { kind: "pass" };
+        },
+      });
+
+      const member = await seedActiveMember("body-prof");
+      const res = await collectionPOST(
+        memberRequest("/api/collections/discussions", member, {
+          method: "POST",
+          body: JSON.stringify({
+            title: "Innocent title",
+            slug: "innocent-1",
+            body: {
+              root: {
+                type: "root",
+                children: [
+                  {
+                    type: "paragraph",
+                    children: [{ type: "text", text: "this contains badword inside" }],
+                  },
+                ],
+              },
+            },
+          }),
+        }),
+        { params: Promise.resolve({ slug: "discussions" }) },
+      );
+      expect(res.status).toBe(201);
+      const body = await readJson<{ status: string }>(res);
+      expect(body.body.status).toBe("pending");
+
+      // Sanity: the adapter actually saw the body bytes.
+      expect(seen.some((t) => t.includes("badword"))).toBe(true);
+    });
+
+    it("clean create then flagged edit demotes to pending (#121)", async () => {
+      const core = await import("@nexpress/core");
+      // Adapter is pass-through during create, then we flip it to
+      // flag for the edit. Mirrors the realistic threat: a member
+      // gets a clean post published and then PATCHes spam in.
+      core.setSpamAdapter({ check: () => ({ kind: "pass" }) });
+
+      const member = await seedActiveMember("edit-flag");
+      const create = await memberCreate(member, {
+        title: "Clean original",
+        slug: "edit-flag-1",
+      });
+      const created = await readJson<{ id: string; status: string }>(create);
+      expect(created.body.status).toBe("published");
+      const docId = created.body.id;
+
+      core.setSpamAdapter({
+        check: () => ({
+          kind: "flag",
+          reason: "low rep",
+          metadata: { score: 0.7 },
+        }),
+      });
+
+      const patch = await collectionPATCH(
+        memberRequest(`/api/collections/discussions/${docId}`, member, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Newly flagged content" }),
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(patch.status).toBe(200);
+      const patched = await readJson<{ status: string }>(patch);
+      expect(patched.body.status).toBe("pending");
+
+      // Audit trail records the flag with `event: "update"` so a
+      // mod scanning `document.flag` rows can tell create-flags
+      // from edit-flags.
+      const db = await getTestDb();
+      const { nxAuditEvents } = await import("@nexpress/core");
+      const { and, eq } = await import("drizzle-orm");
+      const audits = (await db
+        .select()
+        .from(nxAuditEvents)
+        .where(
+          and(
+            eq(nxAuditEvents.action, "document.flag"),
+            eq(nxAuditEvents.targetId, docId),
+          ),
+        )) as Array<{ payload: Record<string, unknown> }>;
+      expect(audits).toHaveLength(1);
+      expect(audits[0].payload.event).toBe("update");
+      expect(audits[0].payload.sources).toEqual(["spam"]);
+    });
+
+    it("edit with reject verdict refuses the patch (#121)", async () => {
+      const core = await import("@nexpress/core");
+      core.setSpamAdapter({ check: () => ({ kind: "pass" }) });
+
+      const member = await seedActiveMember("edit-reject");
+      const create = await memberCreate(member, {
+        title: "Clean",
+        slug: "edit-reject-1",
+      });
+      const docId = (await readJson<{ id: string }>(create)).body.id;
+
+      core.setSpamAdapter({
+        check: () => ({ kind: "reject", reason: "Detected as spam" }),
+      });
+
+      const patch = await collectionPATCH(
+        memberRequest(`/api/collections/discussions/${docId}`, member, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Spam edit" }),
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(patch.status).toBe(400);
+
+      // Sanity: the row's title is NOT updated — the reject
+      // throws before saveDocumentImpl runs.
+      const db = await getTestDb();
+      const { discussionsTable } = await import("@/db/generated/collections");
+      const { eq } = await import("drizzle-orm");
+      const [row] = (await db
+        .select({ title: discussionsTable.title, status: discussionsTable.status })
+        .from(discussionsTable)
+        .where(eq(discussionsTable.id, docId))
+        .limit(1)) as Array<{ title: string; status: string }>;
+      expect(row.title).toBe("Clean");
+      expect(row.status).toBe("published");
+    });
+
+    it("edit with clean content keeps the row published (#121)", async () => {
+      // Sanity that the new moderation gate on update doesn't
+      // demote a clean edit. Pre-fix the path skipped moderation
+      // entirely; post-fix it runs but should still pass clean
+      // text through to the original status.
+      const core = await import("@nexpress/core");
+      core.setSpamAdapter({
+        check: (text) =>
+          text.includes("badword") ? { kind: "flag" } : { kind: "pass" },
+      });
+
+      const member = await seedActiveMember("edit-clean");
+      const create = await memberCreate(member, {
+        title: "Clean original",
+        slug: "edit-clean-1",
+      });
+      const docId = (await readJson<{ id: string }>(create)).body.id;
+
+      const patch = await collectionPATCH(
+        memberRequest(`/api/collections/discussions/${docId}`, member, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Still clean" }),
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(patch.status).toBe(200);
+      const patched = await readJson<{ status: string }>(patch);
+      expect(patched.body.status).toBe("published");
     });
   });
 });
