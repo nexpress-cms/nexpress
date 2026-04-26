@@ -75,7 +75,13 @@ export async function listPendingMemberDocs(
   // Fan out across collections. We collect per-collection rows then
   // sort + paginate in JS — the per-collection queries are
   // status-indexed (`nx_c_<slug>_status_idx`) so each is cheap, and
-  // the pending queue is small by definition.
+  // the pending queue is small by definition (mods drain it). Note
+  // that the per-collection query has no SQL `LIMIT`: if a single
+  // collection accumulates an unreasonable number of pendings (a
+  // misbehaving spam adapter, no mod attention for weeks), this
+  // function would fetch every row into memory. Sites that hit
+  // that ceiling should switch to a dedicated `nx_pending_queue`
+  // materialized view — out of scope for v1.
   const allRows: NxPendingDocSummary[] = [];
   let totalDocs = 0;
 
