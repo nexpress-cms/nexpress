@@ -28,7 +28,7 @@ import { buildSearchVector } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { nxRevisions } from "../db/schema/system.js";
-import { nxComments, nxReactions } from "../db/schema/community.js";
+import { nxComments, nxReactions, nxReports } from "../db/schema/community.js";
 import { nxMediaRefs } from "../db/schema/media.js";
 
 let dbInstance: NodePgDatabase<Record<string, unknown>> | null = null;
@@ -966,12 +966,28 @@ async function deleteDocumentImpl(
       await tx.delete(nxReactions as unknown as PgTable).where(
         sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReactions as unknown as PgTable, "targetId"), commentIds)}`,
       );
+      // Phase 9.7q: same orphan story for `nx_reports` — a member
+      // who reported one of these comments would otherwise be left
+      // with a row pointing at a non-existent comment id. The
+      // existing audit row carries enough context for after-the-
+      // fact tracing, so the report itself can go.
+      await tx.delete(nxReports as unknown as PgTable).where(
+        sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReports as unknown as PgTable, "targetId"), commentIds)}`,
+      );
     }
     await tx.delete(nxComments as unknown as PgTable).where(
       sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
     );
     await tx.delete(nxReactions as unknown as PgTable).where(
       sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReactions as unknown as PgTable, "targetId"), docId)}`,
+    );
+    // Doc-level reports (sites that file `target_type=$collection`
+    // reports against a post / discussion). The shipped report API
+    // today only files against comments + members, but the schema
+    // is polymorphic — a future surface could add doc-level reports
+    // and this cascade keeps that case correct from day one.
+    await tx.delete(nxReports as unknown as PgTable).where(
+      sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReports as unknown as PgTable, "targetId"), docId)}`,
     );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   });
