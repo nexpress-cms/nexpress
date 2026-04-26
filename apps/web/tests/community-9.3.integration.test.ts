@@ -378,6 +378,58 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     expect(afterBody.body.following).toBe(true);
   });
 
+  // Issue #124 — pre-fix `follow()` did select-then-insert. Two
+  // identical follow requests racing each other could both miss
+  // the existing row, then both insert; the unique-constraint
+  // loser bubbled a 500 to the client. Now uses
+  // `onConflictDoNothing` mirroring the reactions write path.
+  it("concurrent identical follow requests are idempotent (#124)", async () => {
+    const a = await seedActiveMember("race-a", "race-a@example.com");
+    const b = await seedActiveMember("race-b", "race-b@example.com");
+
+    const fire = () =>
+      followsPOST(
+        jsonRequest("/api/follows", {
+          method: "POST",
+          cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+          headers: { "x-csrf-token": a.csrfCookie },
+          body: JSON.stringify({ targetType: "member", targetId: b.memberId }),
+        }),
+      );
+
+    const results = await Promise.all([fire(), fire(), fire()]);
+    for (const res of results) {
+      // Every concurrent POST returns 201 — there's exactly one
+      // row in the DB regardless of who won the insert race.
+      expect(res.status).toBe(201);
+    }
+
+    // Only one row in `nx_follows` despite three POSTs.
+    const db = await getTestDb();
+    const { nxFollows } = await import("@nexpress/core");
+    const { and, eq } = await import("drizzle-orm");
+    const rows = (await db
+      .select()
+      .from(nxFollows)
+      .where(
+        and(
+          eq(nxFollows.followerId, a.memberId),
+          eq(nxFollows.targetId, b.memberId),
+        ),
+      )) as Array<unknown>;
+    expect(rows).toHaveLength(1);
+
+    // And only ONE follow.received notification — the conflict
+    // path doesn't re-fire it.
+    const inbox = await notificationsGET(
+      jsonRequest("/api/notifications", {
+        cookies: [`nx-mb-session=${b.sessionCookie}`],
+      }),
+    );
+    const inboxBody = await readJson<{ unread: number }>(inbox);
+    expect(inboxBody.body.unread).toBe(1);
+  });
+
   it("self-follow is rejected", async () => {
     const a = await seedActiveMember("ivy", "ivy@example.com");
     const res = await followsPOST(
