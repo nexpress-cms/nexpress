@@ -1,5 +1,5 @@
-import { NxThemeStyle } from "@nexpress/theme";
-import { getActiveTheme, getTheme } from "@nexpress/core";
+import { NxThemeStyle, getActiveTheme } from "@nexpress/theme";
+import { getTheme } from "@nexpress/core";
 
 import { ensureCoreServices } from "@/lib/init-core";
 
@@ -27,17 +27,10 @@ export default async function SiteLayout({
   const tokens = await getTheme();
   const active = await getActiveTheme();
 
-  const impl = (active?.impl ?? {}) as {
-    shell?: React.ComponentType<{ children: React.ReactNode }>;
-    slots?: {
-      header?: React.ComponentType;
-      footer?: React.ComponentType;
-    };
-    css?: string;
-  };
-  const { shell: Shell, slots, css: themeCss } = impl;
-  const Header = slots?.header;
-  const Footer = slots?.footer;
+  const Shell = active?.impl.shell;
+  const Header = active?.impl.slots?.header;
+  const Footer = active?.impl.slots?.footer;
+  const themeCss = active?.impl.css;
   const themeId = active?.manifest.id;
 
   const inner = (
