@@ -24,31 +24,21 @@
   }
 
   /*
-   * Site (public-facing) styles. The `(site)` route group's
-   * components reference these `nx-*` classes; the design system
-   * was sketched out before stylesheet rules existed, so without
-   * these definitions auth/register/discussion pages rendered as
-   * unstyled HTML. Token references read from the same `--nx-*`
-   * custom properties declared above so a site theme can
-   * rebrand by overriding tokens, not these rules.
+   * Cross-theme site primitives. Forms, auth pages, search
+   * results, and other surfaces every theme inherits — token
+   * references read from `--nx-*` custom properties so theme
+   * overrides flow through without per-rule edits. Theme-owned
+   * shell rules (header / footer / search bar) live in each
+   * theme's `impl.css` instead.
    */
 
   /*
-   * Site shell rules moved to `@nexpress/theme-default` (Phase
-   * 11.2). Each registered theme ships its own `.nx-site-*`
-   * rules via the theme's `impl.css`; the framework injects
-   * only the active theme's rules so a swap fully replaces the
-   * shell. Non-shell primitives below (forms, auth pages,
-   * search results, etc.) stay here because they're not
-   * theme-specific.
-   *
-   * Exception: `.nx-site-main` is the cross-theme content
-   * container. The framework's site layout always renders
-   * `<main className="nx-site-main">`, so the baseline box
-   * model has to be defined regardless of the active theme —
-   * otherwise short pages collapse and the footer floats up.
-   * Themes still override font / color / size; the baseline
-   * just keeps the chrome predictable.
+   * `.nx-site-main` is a cross-theme primitive: every theme's
+   * shell renders `<main className="nx-site-main">` so the
+   * baseline box-model has to live here, not in any single
+   * theme's CSS. Without the min-height, short pages collapse
+   * and the footer floats up. Themes layer their own typography
+   * and color rules on top.
    */
   .nx-site-main {
     min-height: calc(100vh - 8rem);
@@ -587,10 +577,6 @@
     color: var(--nx-color-muted-foreground, #64748b);
     opacity: 0.5;
   }
-
-  /* `.nx-site-search` + `.nx-site-search-input` moved to
-     @nexpress/theme-default along with the rest of the
-     header chrome (Phase 11.2). */
 
   /* Accessibility helper used by labels-for-screen-readers
    * patterns (the search forms above hide the label visually
