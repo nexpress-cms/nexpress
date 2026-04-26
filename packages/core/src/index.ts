@@ -84,6 +84,7 @@ export {
   getRevision,
   restoreRevision,
   publishScheduledDocuments,
+  listPendingMemberDocs,
   searchCollections,
   reindexCollection,
 } from "./collections/index.js";
@@ -94,6 +95,9 @@ export type {
   NxRevisionListOptions,
   NxRevisionListResult,
   PublishScheduledResult,
+  NxPendingDocSummary,
+  NxListPendingDocsOptions,
+  NxListPendingDocsResult,
   SearchCollectionsOptions,
   SearchResult,
   SearchResultItem,

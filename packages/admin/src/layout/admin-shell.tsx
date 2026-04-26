@@ -10,6 +10,7 @@ import {
   Flag,
   History,
   Image,
+  Inbox,
   LayoutDashboard,
   Puzzle,
   Settings,
@@ -115,6 +116,7 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
       items.push({ href: "/admin/members", label: "Members", icon: Users });
     }
     if (STAFF_MOD_ROLES.has(user.role)) {
+      items.push({ href: "/admin/community/pending", label: "Pending review", icon: Inbox });
       items.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
       items.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
       items.push({ href: "/admin/community/settings", label: "Community settings", icon: Settings });
