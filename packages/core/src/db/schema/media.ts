@@ -11,6 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { nxMembers } from "./community.js";
 import { nxUsers } from "./system.js";
 import { type NxRichTextContent } from "../../config/types.js";
 
@@ -55,6 +56,20 @@ export const nxMedia = pgTable(
     status: nxMediaStatusEnum("status").notNull(),
     folderId: uuid("folder_id").references(() => nxMediaFolders.id),
     uploadedBy: uuid("uploaded_by").references((): AnyPgColumn => nxUsers.id),
+    /**
+     * Set when a member uploaded the row instead of a staff user
+     * (Phase 9.7j). Mutually exclusive with `uploadedBy`: a row
+     * has exactly one uploader. Member-side moderation tools key
+     * off this column to filter "uploads I should review."
+     * `ON DELETE SET NULL` so a member account deletion doesn't
+     * cascade-delete their uploads — staff still need them for
+     * the audit trail (just like `member_author_id` on
+     * collection tables).
+     */
+    uploadedByMemberId: uuid("uploaded_by_member_id").references(
+      (): AnyPgColumn => nxMembers.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .defaultNow()
       .notNull(),
@@ -66,6 +81,9 @@ export const nxMedia = pgTable(
   (table) => ({
     hashIdx: index("nx_media_hash_idx").on(table.hash),
     statusIdx: index("nx_media_status_idx").on(table.status),
+    uploadedByMemberIdx: index("nx_media_uploaded_by_member_idx").on(
+      table.uploadedByMemberId,
+    ),
   }),
 );
 

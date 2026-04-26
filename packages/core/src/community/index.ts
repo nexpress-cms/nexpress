@@ -10,7 +10,7 @@ export type {
   CommunityScope,
 } from "./roles.js";
 
-export { memberCan } from "./can.js";
+export { memberCan, assertNotBanned } from "./can.js";
 
 export {
   setSpamAdapter,
