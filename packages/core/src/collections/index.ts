@@ -11,8 +11,10 @@ export {
   getDb,
   saveDocument,
   createMemberDocument,
+  updateMemberDocument,
   autosaveRevision,
   deleteDocument,
+  deleteMemberDocument,
   findDocuments,
   getDocumentById,
 } from "./pipeline.js";

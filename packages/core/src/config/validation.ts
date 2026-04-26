@@ -250,6 +250,8 @@ export const collectionConfigSchema = z.object({
       memberWrite: z
         .object({
           create: z.boolean().optional(),
+          update: z.boolean().optional(),
+          delete: z.boolean().optional(),
         })
         .optional(),
     })
