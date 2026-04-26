@@ -162,6 +162,25 @@ export async function updateMemberDocument(
 ): Promise<NxSaveResult> {
   const memberOptions: NxSaveOptions = { ...(options ?? {}) };
   delete memberOptions.status;
+
+  // Re-run the spam + profanity adapters on the submitted patch.
+  // Pre-fix this path skipped moderation entirely, so a member
+  // could create a clean discussion, get it published, then PATCH
+  // it to spam/profanity and the row stayed published. The same
+  // verdict semantics apply as the create path:
+  //   - reject → 400, no write
+  //   - flag   → status forced to `pending`
+  //   - pass   → status untouched (the original status survives)
+  const moderation = await runMemberDocModeration({
+    collection,
+    data,
+    memberId,
+    targetId: docId,
+  });
+  if (moderation.flaggedBy.length > 0) {
+    memberOptions.status = "pending";
+  }
+
   const result = await saveDocumentImpl(
     collection,
     docId,
@@ -172,10 +191,22 @@ export async function updateMemberDocument(
   const { recordAuditEvent } = await import("../community/audit.js");
   await recordAuditEvent({
     actor: { kind: "member", memberId },
-    action: "document.update",
+    action: moderation.flaggedBy.length > 0 ? "document.flag" : "document.update",
     targetType: collection,
     targetId: docId,
-    payload: { collectionSlug: collection },
+    payload: {
+      collectionSlug: collection,
+      event: "update",
+      ...(moderation.flaggedBy.length > 0
+        ? { sources: moderation.flaggedBy }
+        : {}),
+      ...(moderation.profanityVerdict
+        ? { profanityVerdict: moderation.profanityVerdict }
+        : {}),
+      ...(moderation.spamVerdict
+        ? { spamVerdict: moderation.spamVerdict }
+        : {}),
+    },
   });
   return result;
 }
@@ -200,95 +231,13 @@ export async function createMemberDocument(
   const defaultStatus: NxDocumentStatus =
     config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
 
-  // Profanity + spam checks. Same sequence as the comment write
-  // path: profanity (language-level) first, then spam (intent-level);
-  // any reject short-circuits, any flag pushes the row to `pending`.
-  // Defer-load to avoid the `community` ↔ `collections` import cycle.
-  // v1 passes the user-controlled `title` as the moderation text;
-  // rich-text body sniffing is out of scope because the check
-  // context doesn't yet carry the structured body. Adapters that
-  // want body checks should run the API body through their own
-  // pipeline upstream of the framework call.
-  const { getSpamAdapter } = await import("../community/spam-adapter.js");
-  const { getProfanityAdapter } = await import(
-    "../community/profanity-adapter.js"
-  );
-  const { getLogger } = await import("../observability/logger.js");
-  const moderationText = typeof data.title === "string" ? data.title : "";
-  const moderationCtx = {
+  const moderation = await runMemberDocModeration({
+    collection,
+    data,
     memberId,
-    targetType: collection,
-    // No id yet — adapters that key off it should treat the empty
-    // string as "new doc, pre-insert".
     targetId: "",
-    parentId: null,
-  };
-  let profanityFlagged = false;
-  let profanityMetadata: Record<string, unknown> | undefined;
-  let profanityReason: string | undefined;
-  try {
-    const verdict = await getProfanityAdapter().check(
-      moderationText,
-      moderationCtx,
-    );
-    if (verdict.kind === "reject") {
-      throw new NxValidationError("Invalid input", [
-        {
-          field: "body",
-          message:
-            verdict.reason ?? "Submission contains prohibited language",
-        },
-      ]);
-    }
-    if (verdict.kind === "flag") {
-      profanityFlagged = true;
-      profanityMetadata = verdict.metadata;
-      profanityReason = verdict.reason;
-    }
-  } catch (err) {
-    if (err instanceof NxValidationError) throw err;
-    getLogger().warn(
-      "profanity adapter threw on doc create — treating as pass",
-      {
-        error: err instanceof Error ? err.message : String(err),
-        collection,
-        memberId,
-      },
-    );
-  }
-  let spamFlagged = false;
-  let spamVerdictMetadata: Record<string, unknown> | undefined;
-  let spamReason: string | undefined;
-  try {
-    const verdict = await getSpamAdapter().check(moderationText, moderationCtx);
-    if (verdict.kind === "reject") {
-      throw new NxValidationError("Invalid input", [
-        {
-          field: "body",
-          message: verdict.reason ?? "Submission rejected",
-        },
-      ]);
-    }
-    if (verdict.kind === "flag") {
-      spamFlagged = true;
-      spamVerdictMetadata = verdict.metadata;
-      spamReason = verdict.reason;
-    }
-  } catch (err) {
-    if (err instanceof NxValidationError) throw err;
-    // Fail-open: a buggy adapter that throws (Akismet 5xx, OpenAI
-    // timeout, etc.) MUST NOT block legitimate doc writes. Sites
-    // that want fail-closed wrap their adapter in try/catch and
-    // return `reject`. Mirrors the comment write-path policy.
-    getLogger().warn("spam adapter threw on doc create — treating as pass", {
-      error: err instanceof Error ? err.message : String(err),
-      collection,
-      memberId,
-    });
-  }
-  const flaggedBy: Array<"profanity" | "spam"> = [];
-  if (profanityFlagged) flaggedBy.push("profanity");
-  if (spamFlagged) flaggedBy.push("spam");
+  });
+  const flaggedBy = moderation.flaggedBy;
   const spamStatus: NxDocumentStatus =
     flaggedBy.length > 0 ? "pending" : defaultStatus;
 
@@ -316,22 +265,13 @@ export async function createMemberDocument(
     targetId: documentId,
     payload: {
       collectionSlug: collection,
+      event: "create",
       ...(flaggedBy.length > 0 ? { sources: flaggedBy } : {}),
-      ...(profanityFlagged
-        ? {
-            profanityVerdict: {
-              reason: profanityReason ?? null,
-              metadata: profanityMetadata ?? null,
-            },
-          }
+      ...(moderation.profanityVerdict
+        ? { profanityVerdict: moderation.profanityVerdict }
         : {}),
-      ...(spamFlagged
-        ? {
-            spamVerdict: {
-              reason: spamReason ?? null,
-              metadata: spamVerdictMetadata ?? null,
-            },
-          }
+      ...(moderation.spamVerdict
+        ? { spamVerdict: moderation.spamVerdict }
         : {}),
     },
   });
@@ -348,6 +288,129 @@ export async function createMemberDocument(
     });
   }
   return result;
+}
+
+interface MemberDocModerationResult {
+  flaggedBy: Array<"profanity" | "spam">;
+  profanityVerdict: { reason: string | null; metadata: Record<string, unknown> | null } | null;
+  spamVerdict: { reason: string | null; metadata: Record<string, unknown> | null } | null;
+}
+
+interface RunMemberDocModerationInput {
+  collection: string;
+  data: Record<string, unknown>;
+  memberId: string;
+  /** Empty string for create, the doc id for update. */
+  targetId: string;
+}
+
+/**
+ * Runs the profanity → spam adapter chain on a member-authored
+ * document write (create or update). Shared between
+ * `createMemberDocument` and `updateMemberDocument` so the
+ * moderation gate can't drift between the two surfaces (#121).
+ *
+ * The moderation text is built from every text / textarea /
+ * richText field present in `data` — `buildSearchVector` already
+ * implements that walk for the FTS index, so we reuse it here
+ * (same input set, different downstream consumer). Pre-fix this
+ * function only saw `data.title`, so a member could keep a
+ * benign title and put spam / slurs in the rich-text body and
+ * the adapters would never see them (#119).
+ *
+ * Verdict semantics match the comment write path:
+ *   - reject  → throws `NxValidationError`
+ *   - flag    → returned with the source recorded in `flaggedBy`
+ *   - pass    → returned with empty `flaggedBy`
+ *
+ * Adapter throws are fail-open (logged as warnings, treated as
+ * pass) — same policy as comments and the original create-only
+ * gate.
+ */
+async function runMemberDocModeration(
+  input: RunMemberDocModerationInput,
+): Promise<MemberDocModerationResult> {
+  const { collection, data, memberId, targetId } = input;
+  const config = getCollectionConfig(collection);
+  const { getSpamAdapter } = await import("../community/spam-adapter.js");
+  const { getProfanityAdapter } = await import(
+    "../community/profanity-adapter.js"
+  );
+  const { getLogger } = await import("../observability/logger.js");
+
+  // Walk every text / textarea / richText field in the patch.
+  // Empty string when none of the moderated fields are touched
+  // — the adapters then run on empty text, which by convention
+  // passes (no content = no policy violation).
+  const moderationText = buildSearchVector(config, data);
+  const ctx = {
+    memberId,
+    targetType: collection,
+    targetId,
+    parentId: null,
+  };
+
+  let profanityVerdict: MemberDocModerationResult["profanityVerdict"] = null;
+  try {
+    const verdict = await getProfanityAdapter().check(moderationText, ctx);
+    if (verdict.kind === "reject") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "body",
+          message:
+            verdict.reason ?? "Submission contains prohibited language",
+        },
+      ]);
+    }
+    if (verdict.kind === "flag") {
+      profanityVerdict = {
+        reason: verdict.reason ?? null,
+        metadata: verdict.metadata ?? null,
+      };
+    }
+  } catch (err) {
+    if (err instanceof NxValidationError) throw err;
+    getLogger().warn(
+      "profanity adapter threw on doc write — treating as pass",
+      {
+        error: err instanceof Error ? err.message : String(err),
+        collection,
+        memberId,
+      },
+    );
+  }
+
+  let spamVerdict: MemberDocModerationResult["spamVerdict"] = null;
+  try {
+    const verdict = await getSpamAdapter().check(moderationText, ctx);
+    if (verdict.kind === "reject") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "body",
+          message: verdict.reason ?? "Submission rejected",
+        },
+      ]);
+    }
+    if (verdict.kind === "flag") {
+      spamVerdict = {
+        reason: verdict.reason ?? null,
+        metadata: verdict.metadata ?? null,
+      };
+    }
+  } catch (err) {
+    if (err instanceof NxValidationError) throw err;
+    getLogger().warn("spam adapter threw on doc write — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
+      collection,
+      memberId,
+    });
+  }
+
+  const flaggedBy: Array<"profanity" | "spam"> = [];
+  if (profanityVerdict) flaggedBy.push("profanity");
+  if (spamVerdict) flaggedBy.push("spam");
+
+  return { flaggedBy, profanityVerdict, spamVerdict };
 }
 
 async function saveDocumentImpl(
