@@ -211,6 +211,33 @@ function buildSpec(): OpenApiSchema {
         },
       },
     },
+    "/api/members/oauth/{provider}/start": {
+      get: {
+        summary: "Begin an OAuth login (member side)",
+        description:
+          "Member-side mirror of `/api/auth/oauth/{provider}/start`. Mints a signed `nx-mb-oauth-state` cookie and 302s to the provider. The provider registry is shared with the staff route — a single registered provider works for both audiences; the routes choose which user pool to resolve to.",
+        parameters: [{ in: "path", name: "provider", required: true, schema: { type: "string" } }],
+        responses: {
+          "307": { description: "Redirect to provider authorize URL" },
+          "404": { description: "Provider not registered" },
+        },
+      },
+    },
+    "/api/members/oauth/{provider}/callback": {
+      get: {
+        summary: "Finish an OAuth login (member side)",
+        description:
+          "Validates `nx-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `nx_members` row in this order: (1) durable `(provider, subject)` link in `nx_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists access + refresh hashes in `nx_member_sessions`, sets `nx-mb-session` / `nx-mb-refresh` / `nx-mb-csrf` cookies, and 302s to `/`. Suspended/deleted members 302 to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
+        parameters: [
+          { in: "path", name: "provider", required: true, schema: { type: "string" } },
+          { in: "query", name: "code", required: true, schema: { type: "string" } },
+          { in: "query", name: "state", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          "307": { description: "Redirect — `/` on success or `/members/login?oauth_error=…` on failure" },
+        },
+      },
+    },
     "/api/auth/refresh": {
       post: {
         summary: "Exchange refresh token for a new session",

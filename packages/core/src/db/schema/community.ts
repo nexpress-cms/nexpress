@@ -114,9 +114,17 @@ export const nxMemberSessions = pgTable("nx_member_sessions", {
 });
 
 /**
- * SSO provider identities. Schema-only in 9.1 — the OAuth adapter API
- * lands in 9.6. The unique key `(provider, subject)` lets us look up a
- * member from a provider's stable user id during the OAuth callback.
+ * Per-member OAuth identity links. Mirrors `nx_user_oauth_identities`
+ * for the staff side (Phase 9.6a) but resolves to `nx_members`
+ * instead of `nx_users`. The first row is created either when an
+ * OAuth callback finds an existing member with the same email, or
+ * when a brand-new member is auto-provisioned from the profile
+ * (status=`active`, no password).
+ *
+ * `subject` is the provider's stable user id (GitHub `id`, Google
+ * `sub`, etc.) — naming kept from the 9.1 placeholder schema for
+ * backward compat. The staff equivalent calls the same column
+ * `provider_user_id`; both serve the same role.
  */
 export const nxMemberIdentities = pgTable(
   "nx_member_identities",
@@ -128,11 +136,20 @@ export const nxMemberIdentities = pgTable(
     provider: text("provider").notNull(),
     subject: text("subject").notNull(),
     email: text("email"),
+    /** Free-form per-provider metadata (avatar URL, scopes granted, etc.). */
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .defaultNow()
       .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
   },
-  (table) => [unique("nx_member_identities_provider_subject_uq").on(table.provider, table.subject)],
+  (table) => [
+    unique("nx_member_identities_provider_subject_uq").on(table.provider, table.subject),
+    unique("nx_member_identities_member_provider_uq").on(table.memberId, table.provider),
+    index("nx_member_identities_member_idx").on(table.memberId),
+  ],
 );
 
 /**

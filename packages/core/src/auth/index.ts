@@ -3,6 +3,7 @@ export * from "./csrf.js";
 export * from "./oauth-arctic.js";
 export * from "./oauth-providers.js";
 export * from "./oauth-resolve.js";
+export * from "./oauth-resolve-member.js";
 export * from "./oauth-state.js";
 export * from "./password.js";
 export * from "./session.js";

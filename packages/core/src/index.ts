@@ -131,6 +131,12 @@ export type {
   OAuthExchangeParams,
 } from "./auth/oauth-providers.js";
 export { resolveOAuthLogin } from "./auth/oauth-resolve.js";
+export { resolveMemberOAuthLogin } from "./auth/oauth-resolve-member.js";
+export type {
+  ResolveMemberOAuthLoginInput,
+  ResolveMemberOAuthLoginResult,
+  ResolvedOAuthMember,
+} from "./auth/oauth-resolve-member.js";
 export { issueOAuthState, verifyOAuthState } from "./auth/oauth-state.js";
 export type {
   IssuedOAuthState,
