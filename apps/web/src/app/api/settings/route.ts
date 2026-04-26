@@ -3,6 +3,7 @@ import {
   NxValidationError,
   hasRole,
   nxSettings,
+  validateSeoSettingsPatch,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
@@ -53,15 +54,34 @@ export async function PUT(request: NextRequest) {
       ]);
     }
 
+    // Per-key validators run on the way in. The `seo` shape is
+    // surfaced into public `<head>` tags, so a malformed string
+    // (e.g. `javascript:` URL in defaultOgImage) would be a
+    // content-injection hazard — `validateSeoSettingsPatch`
+    // rejects those before storage.
+    let value = body.value;
+    if (key === "seo") {
+      try {
+        value = validateSeoSettingsPatch(body.value);
+      } catch (err) {
+        throw new NxValidationError("Invalid input", [
+          {
+            field: "value",
+            message: err instanceof Error ? err.message : "Invalid SEO patch",
+          },
+        ]);
+      }
+    }
+
     const db = getDb();
     const now = new Date();
 
     const [result] = await db
       .insert(nxSettings)
-      .values({ key, value: body.value, updatedAt: now, updatedBy: user.id })
+      .values({ key, value, updatedAt: now, updatedBy: user.id })
       .onConflictDoUpdate({
         target: nxSettings.key,
-        set: { value: body.value, updatedAt: now, updatedBy: user.id },
+        set: { value, updatedAt: now, updatedBy: user.id },
       })
       .returning();
 

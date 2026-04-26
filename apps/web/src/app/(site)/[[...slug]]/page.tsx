@@ -1,5 +1,6 @@
-import { getPageBySlug } from "@nexpress/core";
+import { buildPageMetadata, getPageBySlug } from "@nexpress/core";
 import { renderBlocks } from "@nexpress/blocks";
+import type { Metadata } from "next";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import type { NxPageBlocks } from "@nexpress/blocks";
@@ -14,6 +15,24 @@ import {
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  ensureCoreServices();
+  const { slug } = await params;
+  const path = slug?.join("/") || "/";
+  const page = await getPageBySlug(path);
+
+  // Pages without a published row fall back to site-wide
+  // defaults; that's also what the `DefaultHomePage` empty-state
+  // surface uses, so the meta tags still describe the brand.
+  return (await buildPageMetadata({
+    title: typeof page?.title === "string" ? page.title : null,
+    description:
+      typeof page?.seoDescription === "string" ? page.seoDescription : null,
+    path: path === "/" ? "/" : `/${path}`,
+    ogType: "website",
+  })) as Metadata;
 }
 
 export default async function CatchAllPage({ params }: PageProps) {
