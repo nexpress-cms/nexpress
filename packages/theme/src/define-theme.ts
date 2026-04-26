@@ -67,6 +67,18 @@ export interface NxThemeImpl {
   templates?: NxThemeTemplates;
   /** Default tokens. Admin overrides via the theme settings tab (11.4). */
   tokens?: Partial<NxThemeTokens>;
+  /**
+   * Theme-owned CSS, served alongside the theme's components.
+   * The framework injects this as a `<style data-nx-theme="{id}">`
+   * tag in the layout's head when this theme is active. Phase 11.2
+   * lets themes ship the layout-level rules (header / footer /
+   * shell) that previously lived in `apps/web/globals.css` so a
+   * theme swap actually changes the rendered shell, not just the
+   * components but the styles around them. Cross-theme primitives
+   * (form inputs, member auth pages, etc.) stay in the consuming
+   * app's globals.css because they aren't theme-specific.
+   */
+  css?: string;
 }
 
 export interface NxTheme extends NxRegisteredTheme {
