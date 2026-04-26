@@ -1,8 +1,15 @@
-import { NxNotFoundError, getCollectionConfig } from "@nexpress/core";
+import {
+  NxAuthError,
+  NxForbiddenError,
+  NxNotFoundError,
+  deleteMemberDocument,
+  getCollectionConfig,
+  updateMemberDocument,
+} from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { optionalAuth, requireCsrf } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import {
   deleteCollectionDocument,
@@ -11,7 +18,8 @@ import {
   parseBodyRecord,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
+import { optionalMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
 
 export async function GET(
@@ -50,20 +58,51 @@ export async function PATCH(
 ) {
   try {
     const { slug, id } = await params;
-    const user = await requireAuth(request);
 
-    requireCsrf(request);
+    // Two auth surfaces (Phase 9.7b):
+    //   1. Staff session → standard `saveCollectionDocument` path,
+    //      gated by the collection's `access.update` access function.
+    //   2. Member session → only valid when the collection opted into
+    //      `community.memberWrite.update` AND the row's
+    //      `member_author_id` matches the caller. Goes through
+    //      `updateMemberDocument`, which also strips `_status`
+    //      from the body so members can't transition status.
+    // Staff takes precedence when both are present.
+    const staffUser = await optionalAuth(request);
+    if (staffUser) {
+      requireCsrf(request);
+      const data = parseBodyRecord(await readJsonBody(request));
+      const saveOptions = extractSaveOptions(data);
+      const previous = await getCollectionDocument(slug, id, staffUser);
+      const result = await saveCollectionDocument(slug, id, data, staffUser, saveOptions);
 
+      revalidateCollection(slug, result.doc);
+      if (previous && previous.slug !== result.doc.slug) {
+        revalidateCollection(slug, previous);
+      }
+      return nxSuccessResponse(result.doc);
+    }
+
+    const member = await optionalMember(request);
+    if (!member) throw new NxAuthError();
+
+    ensureCoreServices();
+    const config = getCollectionConfig(slug);
+    if (!config.community?.memberWrite?.update) {
+      throw new NxForbiddenError(slug, "update");
+    }
+
+    requireMemberCsrf(request);
+    await ensureWriteReady();
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
-    const previous = await getCollectionDocument(slug, id, user);
-    const result = await saveCollectionDocument(slug, id, data, user, saveOptions);
+    const previous = await getCollectionDocument(slug, id, null);
+    const result = await updateMemberDocument(slug, id, data, member.id, saveOptions);
 
     revalidateCollection(slug, result.doc);
     if (previous && previous.slug !== result.doc.slug) {
       revalidateCollection(slug, previous);
     }
-
     return nxSuccessResponse(result.doc);
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
@@ -76,14 +115,30 @@ export async function DELETE(
 ) {
   try {
     const { slug, id } = await params;
-    const user = await requireAuth(request);
 
-    requireCsrf(request);
-    const previous = await getCollectionDocument(slug, id, user);
-    await deleteCollectionDocument(slug, id, user);
+    const staffUser = await optionalAuth(request);
+    if (staffUser) {
+      requireCsrf(request);
+      const previous = await getCollectionDocument(slug, id, staffUser);
+      await deleteCollectionDocument(slug, id, staffUser);
+      revalidateCollection(slug, previous);
+      return new NextResponse(null, { status: 204 });
+    }
 
+    const member = await optionalMember(request);
+    if (!member) throw new NxAuthError();
+
+    ensureCoreServices();
+    const config = getCollectionConfig(slug);
+    if (!config.community?.memberWrite?.delete) {
+      throw new NxForbiddenError(slug, "delete");
+    }
+
+    requireMemberCsrf(request);
+    await ensureWriteReady();
+    const previous = await getCollectionDocument(slug, id, null);
+    await deleteMemberDocument(slug, id, member.id);
     revalidateCollection(slug, previous);
-
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

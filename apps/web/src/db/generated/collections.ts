@@ -4,7 +4,7 @@
 
 import { relations } from "drizzle-orm";
 import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { nxMedia, nxUsers } from "@nexpress/core";
+import { nxMedia, nxUsers, nxMembers } from "@nexpress/core";
 
 const tsvector = customType<{ data: string }>({
   dataType() {
@@ -74,6 +74,7 @@ export const discussionsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references(() => nxUsers.id),
     updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    memberAuthorId: uuid("member_author_id").references(() => nxMembers.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     body: jsonb("body"),
     category: text("category"),
@@ -83,10 +84,11 @@ export const discussionsTable = pgTable(
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_discussions_status_idx").on(table.status), uniqueIndex("nx_c_discussions_slug_idx").on(table.slug)],
+  (table) => [index("nx_c_discussions_status_idx").on(table.status), index("nx_c_discussions_member_author_idx").on(table.memberAuthorId), uniqueIndex("nx_c_discussions_slug_idx").on(table.slug)],
 );
 
 export const discussionsTableRelations = relations(discussionsTable, ({ many, one }) => ({
   createdByUser: one(nxUsers, { fields: [discussionsTable.createdBy], references: [nxUsers.id] }),
   updatedByUser: one(nxUsers, { fields: [discussionsTable.updatedBy], references: [nxUsers.id] }),
+  memberAuthor: one(nxMembers, { fields: [discussionsTable.memberAuthorId], references: [nxMembers.id] }),
 }));
