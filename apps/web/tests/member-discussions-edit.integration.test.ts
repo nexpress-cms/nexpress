@@ -335,6 +335,40 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       expect(update.status).toBe(403);
     });
 
+    // Defense in depth: a body-injected `memberAuthorId` must NOT
+    // reassign authorship. Even if zod's strip behavior changes or
+    // `prepareDocumentData` ever emits the column, the explicit
+    // delete in `saveDocumentImpl` on the update branch catches it.
+    it("body-injected `memberAuthorId` is ignored on member update", async () => {
+      const owner = await seedActiveMember("hijack-owner");
+      const intruder = await seedActiveMember("hijack-target");
+      const docId = await seedMemberDiscussion(owner, "Mine", "hijack-1");
+
+      const update = await collectionPATCH(
+        memberRequest(`/api/collections/discussions/${docId}`, owner, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title: "Self-edit",
+            slug: "hijack-1",
+            memberAuthorId: intruder.memberId,
+          }),
+        }),
+        { params: Promise.resolve({ slug: "discussions", id: docId }) },
+      );
+      expect(update.status).toBe(200);
+
+      const db = await getTestDb();
+      const { discussionsTable } = await import("@/db/generated/collections");
+      const { eq } = await import("drizzle-orm");
+      const [row] = (await db
+        .select()
+        .from(discussionsTable)
+        .where(eq(discussionsTable.id, docId))) as Array<{
+        memberAuthorId: string | null;
+      }>;
+      expect(row.memberAuthorId).toBe(owner.memberId);
+    });
+
     // Admin role required: the discussions access policy is
     // `isOwnerOrAdmin` for update — an editor that didn't author the
     // doc (createdBy is null on member-authored rows) gets denied.
