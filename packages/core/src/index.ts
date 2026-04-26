@@ -82,6 +82,21 @@ export type {
 export { buildAtomFeed, renderAtomFeed } from "./seo/feed.js";
 export type { NxFeedEntry, BuildAtomFeedOptions } from "./seo/feed.js";
 export {
+  buildArticleJsonLd,
+  buildDiscussionForumPostingJsonLd,
+  buildPersonJsonLd,
+  buildWebSiteJsonLd,
+} from "./seo/json-ld.js";
+export type {
+  ArticleJsonLd,
+  ArticleJsonLdInput,
+  BuildJsonLdContext,
+  DiscussionForumPostingJsonLd,
+  PersonJsonLd,
+  PersonJsonLdInput,
+  WebSiteJsonLd,
+} from "./seo/json-ld.js";
+export {
   registerCollection,
   getCollectionConfig,
   getCollectionTable,

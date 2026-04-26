@@ -1,9 +1,10 @@
-import { nxMembers } from "@nexpress/core";
+import { buildPersonJsonLd, getSiteSeoSettings, nxMembers } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { FollowButton } from "@/components/follow-button";
+import { JsonLd } from "@/components/json-ld";
 import { ensureCoreServices } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 
@@ -47,8 +48,18 @@ export default async function PublicProfilePage({ params }: ProfilePageProps) {
   const member = await loadActiveMember(handle);
   if (!member) notFound();
 
+  const settings = await getSiteSeoSettings();
+  const personJsonLd = await buildPersonJsonLd({
+    url: `${settings.siteUrl.replace(/\/+$/, "")}/u/${member.handle}`,
+    name: member.displayName,
+    alternateName: `@${member.handle}`,
+    image: typeof member.avatar === "string" ? member.avatar : null,
+    description: member.bio ?? null,
+  });
+
   return (
     <article className="nx-member-profile" style={{ maxWidth: 640, margin: "3rem auto", padding: "0 1.5rem" }}>
+      <JsonLd data={personJsonLd as unknown as Record<string, unknown>} />
       <header style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
         <div
           style={{

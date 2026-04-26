@@ -1,4 +1,10 @@
-import { buildPageMetadata, findDocuments, nxMembers } from "@nexpress/core";
+import {
+  buildDiscussionForumPostingJsonLd,
+  buildPageMetadata,
+  findDocuments,
+  getSiteSeoSettings,
+  nxMembers,
+} from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import { eq } from "drizzle-orm";
 import type { Metadata } from "next";
@@ -7,6 +13,7 @@ import { notFound } from "next/navigation";
 
 import { Comments } from "@/components/comments";
 import { DiscussionAuthorActions } from "@/components/discussion-author-actions";
+import { JsonLd } from "@/components/json-ld";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 import { getSiteMember } from "@/lib/site-member";
@@ -97,8 +104,33 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
 
   const body = (doc.body as NxRichTextContent | undefined) ?? null;
 
+  // DiscussionForumPosting JSON-LD — only for published rows so
+  // pending / draft submissions don't surface in search before
+  // a mod approves them. Authors of pending submissions still
+  // see the page (rendered without the structured-data block).
+  const settings = await getSiteSeoSettings();
+  const jsonLd =
+    status === "published"
+      ? await buildDiscussionForumPostingJsonLd({
+          url: `${settings.siteUrl.replace(/\/+$/, "")}/discussions/${slug}`,
+          headline: doc.title as string,
+          description:
+            typeof doc.excerpt === "string" && doc.excerpt
+              ? (doc.excerpt as string)
+              : null,
+          datePublished:
+            (doc.createdAt as Date | undefined) ?? null,
+          dateModified:
+            (doc.updatedAt as Date | undefined) ?? null,
+          authorName: author?.displayName ?? null,
+        })
+      : null;
+
   return (
     <article className="nx-discussion">
+      {jsonLd ? (
+        <JsonLd data={jsonLd as unknown as Record<string, unknown>} />
+      ) : null}
       <header className="nx-discussion-header">
         <Link href="/discussions" className="nx-tab">
           ← Back to discussions
