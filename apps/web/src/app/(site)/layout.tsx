@@ -20,6 +20,20 @@ export default async function SiteLayout({
   return (
     <>
       <NxThemeStyle theme={theme} />
+      {/*
+        Feed discovery link — Next.js hoists static <link> elements
+        rendered in a layout into <head>. Browsers and feed
+        readers (Reeder, NetNewsWire, RSS extensions) read this
+        tag to surface a "Subscribe" affordance for the site.
+        Phase 10.4 ships posts at the default URL; sites with
+        multiple feedable collections add per-collection links.
+      */}
+      <link
+        rel="alternate"
+        type="application/atom+xml"
+        title="Posts feed"
+        href="/feed.xml"
+      />
       <header className="nx-site-header">
         <nav>
           <a href="/" className="nx-site-logo">

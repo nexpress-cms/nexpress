@@ -79,6 +79,8 @@ export type {
   NxPageMetadataInput,
   NxSeoSettingsPatch,
 } from "./seo/page-metadata.js";
+export { buildAtomFeed, renderAtomFeed } from "./seo/feed.js";
+export type { NxFeedEntry, BuildAtomFeedOptions } from "./seo/feed.js";
 export {
   registerCollection,
   getCollectionConfig,
