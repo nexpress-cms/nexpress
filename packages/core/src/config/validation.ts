@@ -192,6 +192,17 @@ export const nxConfigSchema = z.object({
     .optional(),
   plugins: z.array(pluginEntrySchema).optional(),
   typescript: z.unknown().optional(),
+  themes: z.array(z.unknown()).optional(),
+  i18n: z
+    .object({
+      locales: z.array(z.string().min(1).max(35)).min(1),
+      defaultLocale: z.string().min(1),
+    })
+    .refine((val) => val.locales.includes(val.defaultLocale), {
+      message: "defaultLocale must be one of the declared locales",
+      path: ["defaultLocale"],
+    })
+    .optional(),
 });
 
 export const collectionConfigSchema = z.object({
@@ -209,6 +220,7 @@ export const collectionConfigSchema = z.object({
       }),
     ])
     .optional(),
+  i18n: z.boolean().optional(),
   fields: z.array(fieldSchema).min(1),
   access: z
     .object({

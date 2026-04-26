@@ -9,30 +9,52 @@
  * run inside the monorepo where apps/web's source is on-disk.
  */
 // eslint-disable-next-line import-x/no-relative-packages
-import { postsTable } from "../../../../apps/web/src/db/generated/collections.js";
+import { postsTable, localizedPagesTable } from "../../../../apps/web/src/db/generated/collections.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { postsCollection } from "../../../../apps/web/src/collections/posts.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { localizedPagesCollection } from "../../../../apps/web/src/collections/localized-pages.js";
 import { registerCollection } from "../collections/registry.js";
+import { setI18nConfig } from "../i18n/registry.js";
 import type { NxCollectionConfig } from "../config/types.js";
 
 let registered = false;
 
 /**
- * Idempotently registers the `posts` collection so tests can call
- * saveDocument / findDocuments / publishScheduledDocuments against a known
- * table. `postsCollection` ships with ACLs — we strip them for tests so a
- * synthetic principal can write freely.
+ * Idempotently registers the `posts` and `localized-pages` collections so
+ * tests can call saveDocument / findDocuments / publishScheduledDocuments
+ * against known tables. Collections ship with ACLs — we strip them for
+ * tests so a synthetic principal can write freely.
+ *
+ * Phase 12.1 — also installs the i18n config singleton with the same
+ * `["en", "ko"]` shape the reference app's nexpress.config.ts uses, so
+ * the pipeline's locale resolver has somewhere to read its allowed
+ * locale list from.
  */
 export function registerTestCollections(): void {
   if (registered) return;
 
-  const config: NxCollectionConfig = {
+  const postsConfig: NxCollectionConfig = {
     ...postsCollection,
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("posts", postsTable as never, config);
+  registerCollection("posts", postsTable as never, postsConfig);
+
+  const localizedConfig: NxCollectionConfig = {
+    ...localizedPagesCollection,
+    access: undefined,
+    hooks: undefined,
+  };
+  registerCollection(
+    "localized-pages",
+    localizedPagesTable as never,
+    localizedConfig,
+  );
+
+  setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
+
   registered = true;
 }
 
-export { postsTable };
+export { postsTable, localizedPagesTable };
