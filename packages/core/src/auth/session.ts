@@ -3,7 +3,7 @@ import { webcrypto } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 
 import type { NxAuthUser } from "../config/types.js";
-import { verifyToken } from "./token.js";
+import { verifyToken, type NxTokenUse } from "./token.js";
 import { nxSessions, nxUsers } from "../db/schema/system.js";
 
 export async function sha256(input: string): Promise<string> {
@@ -17,12 +17,21 @@ export async function sha256(input: string): Promise<string> {
   ).join("");
 }
 
+/**
+ * Verify a staff JWT and resolve the active user. The optional
+ * `expectedUse` argument forces the token's `use` claim to match —
+ * `getSessionUser` passes `"access"` so a refresh JWT cannot be
+ * smuggled into the session cookie path (#94). Tokens missing the
+ * `use` claim throw via `verifyToken`; we let that propagate so a
+ * `NxAuthError` surfaces as 401 at the API layer.
+ */
 export async function verifyTokenFull(
   token: string,
   secret: string,
   db: any,
+  expectedUse?: NxTokenUse,
 ): Promise<NxAuthUser | null> {
-  const payload = await verifyToken(token, secret);
+  const payload = await verifyToken(token, secret, expectedUse);
   const [user] = await db
     .select({
       id: nxUsers.id,

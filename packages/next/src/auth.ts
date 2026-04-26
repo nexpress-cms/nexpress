@@ -91,7 +91,11 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     if (!token) return null;
 
     try {
-      return await verifyTokenFull(token, readSecret(), options.getDb() as never);
+      // Pass `"access"` so a refresh JWT (longer-lived `nx-refresh`
+      // cookie) cannot be replayed in the session cookie. `verifyToken`
+      // throws `NxAuthError` on mismatch; the catch below maps any
+      // token failure to a clean null so the route layer surfaces 401.
+      return await verifyTokenFull(token, readSecret(), options.getDb() as never, "access");
     } catch {
       return null;
     }
