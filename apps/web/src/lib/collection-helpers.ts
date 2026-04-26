@@ -18,6 +18,7 @@ const VALID_STATUSES: readonly NxDocumentStatus[] = [
   "scheduled",
   "published",
   "archived",
+  "pending",
 ];
 
 export function parseBodyRecord(body: unknown): Record<string, unknown> {

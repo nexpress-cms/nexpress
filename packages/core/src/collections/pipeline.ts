@@ -6,6 +6,7 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import {
   type NxCollectionConfig,
+  type NxDocumentStatus,
   type NxFindOptions,
   type NxFindResult,
   type NxSaveOptions,
@@ -171,14 +172,65 @@ export async function createMemberDocument(
   memberId: string,
   options?: NxSaveOptions,
 ): Promise<NxSaveResult> {
-  // Members can't author drafts / archive / schedule in v1 — those
-  // status transitions are admin-side affordances. Force `published`
-  // even if the caller passed something else; otherwise the API
-  // body's `_status` would let a member create rows that bypass
-  // public-list filtering or pre-stage future content. Moderation
-  // gates (status=pending) land in 9.7b alongside the spam adapter
-  // running on doc creates.
-  const memberOptions: NxSaveOptions = { ...(options ?? {}), status: "published" };
+  // Members can't author drafts / archive / schedule — those status
+  // transitions are admin-side affordances. The status that
+  // member-authored creates land in is governed by:
+  //   1. The collection's `community.memberWrite.defaultStatus`
+  //      (default `"published"` — sites that want a moderation gate
+  //      flip to `"pending"`).
+  //   2. The spam adapter's verdict on this individual write — `flag`
+  //      forces `"pending"` regardless of the default; `reject`
+  //      refuses the write entirely; `pass` accepts the default.
+  // The API body's `_status` is always ignored.
+  const config = getCollectionConfig(collection);
+  const defaultStatus: NxDocumentStatus =
+    config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
+
+  // Spam check. Defer-load to avoid the `community` ↔ `collections`
+  // import cycle. Adapters receive the user-controlled `title` as
+  // text; rich-text body extraction is left to adapters that want
+  // it (they can read `data` via the context if the API exposes
+  // it). The default no-op adapter passes everything through.
+  const { getSpamAdapter } = await import("../community/spam-adapter.js");
+  const { getLogger } = await import("../observability/logger.js");
+  const spamText = typeof data.title === "string" ? data.title : "";
+  let spamStatus: NxDocumentStatus = defaultStatus;
+  let spamVerdictMetadata: Record<string, unknown> | undefined;
+  try {
+    const verdict = await getSpamAdapter().check(spamText, {
+      memberId,
+      targetType: collection,
+      // No id yet — adapters that key off it should treat the empty
+      // string as "new doc, pre-insert".
+      targetId: "",
+      parentId: null,
+    });
+    if (verdict.kind === "reject") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "body",
+          message: verdict.reason ?? "Submission rejected",
+        },
+      ]);
+    }
+    if (verdict.kind === "flag") {
+      spamStatus = "pending";
+      spamVerdictMetadata = verdict.metadata;
+    }
+  } catch (err) {
+    if (err instanceof NxValidationError) throw err;
+    // Fail-open: a buggy adapter that throws (Akismet 5xx, OpenAI
+    // timeout, etc.) MUST NOT block legitimate doc writes. Sites
+    // that want fail-closed wrap their adapter in try/catch and
+    // return `reject`. Mirrors the comment write-path policy.
+    getLogger().warn("spam adapter threw on doc create — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
+      collection,
+      memberId,
+    });
+  }
+
+  const memberOptions: NxSaveOptions = { ...(options ?? {}), status: spamStatus };
   const result = await saveDocumentImpl(
     collection,
     null,
@@ -186,28 +238,34 @@ export async function createMemberDocument(
     { kind: "member", memberId },
     memberOptions,
   );
-  // Defer-load to avoid the `community` ↔ `collections` import cycle.
+
   const { applyReputation } = await import("../community/reputation.js");
   const { recordAuditEvent } = await import("../community/audit.js");
   const documentId = getRecordId(result.doc);
-  // Audit before reputation: reputation is fail-soft, audit is the
-  // canonical record of "who did what" (action, actor, time). The
-  // doc-level `member_author_id` column (9.7b) is the authorship
-  // record; this audit row captures the act of creation alongside
-  // staff hide / restore / delete events for the same target.
   await recordAuditEvent({
     actor: { kind: "member", memberId },
-    action: "document.create",
+    action: spamStatus === "pending" && spamVerdictMetadata !== undefined
+      ? "document.flag"
+      : "document.create",
     targetType: collection,
     targetId: documentId,
-    payload: { collectionSlug: collection },
+    payload: {
+      collectionSlug: collection,
+      ...(spamVerdictMetadata ? { spamVerdict: spamVerdictMetadata } : {}),
+    },
   });
-  await applyReputation(memberId, {
-    kind: "document.created",
-    collectionSlug: collection,
-    documentId,
-    memberId,
-  });
+  // Reputation only credits visible (i.e. `published`) creates.
+  // Pending docs wait on a mod restore — at that point the
+  // moderation surface can decide whether to retroactively credit.
+  // Mirrors the `comment.created` semantic.
+  if (spamStatus === "published") {
+    await applyReputation(memberId, {
+      kind: "document.created",
+      collectionSlug: collection,
+      documentId,
+      memberId,
+    });
+  }
   return result;
 }
 

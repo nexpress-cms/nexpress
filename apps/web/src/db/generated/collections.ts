@@ -16,7 +16,7 @@ export const postsTable = pgTable(
   "nx_c_posts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references(() => nxUsers.id),
@@ -45,7 +45,7 @@ export const pagesTable = pgTable(
   "nx_c_pages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references(() => nxUsers.id),
@@ -69,7 +69,7 @@ export const discussionsTable = pgTable(
   "nx_c_discussions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived"] }).default("draft").notNull(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdBy: uuid("created_by").references(() => nxUsers.id),

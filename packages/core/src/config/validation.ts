@@ -252,6 +252,7 @@ export const collectionConfigSchema = z.object({
           create: z.boolean().optional(),
           update: z.boolean().optional(),
           delete: z.boolean().optional(),
+          defaultStatus: z.enum(["published", "pending"]).optional(),
         })
         .optional(),
     })
