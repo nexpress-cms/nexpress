@@ -278,6 +278,54 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     expect(cb.headers.get("set-cookie") ?? "").not.toMatch(/nx-mb-session=[^;]+;/);
   });
 
+  // Regression: an OAuth profile whose email matches a non-active
+  // member (pending / suspended / deleted) must NOT pre-link an
+  // identity to that member. Without this guard, an attacker who
+  // controls an OAuth account with the victim's email could attach
+  // their identity before the victim verifies, then sign in as the
+  // victim once the row goes active.
+  it("callback never links OAuth identity to a pending member by email match", async () => {
+    const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
+    const id = await registerStub(bookkeeping, { profileEmail: "pending@example.com" });
+
+    const db = await getTestDb();
+    const { hashPassword, nxMembers, nxMemberIdentities } = await import("@nexpress/core");
+    const password = await hashPassword("password-12");
+    const [pendingRow] = (await db
+      .insert(nxMembers)
+      .values({
+        email: "pending@example.com",
+        password,
+        handle: "pending",
+        displayName: "Pending",
+        status: "pending",
+      })
+      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+
+    const start = await oauthStartGET(
+      jsonRequest(`/api/members/oauth/${id}/start`),
+      { params: Promise.resolve({ provider: id }) },
+    );
+    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+
+    const cb = await oauthCallbackGET(
+      jsonRequest(
+        `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
+        { cookies: [`nx-mb-oauth-state=${state}`] },
+      ),
+      { params: Promise.resolve({ provider: id }) },
+    );
+    expect(cb.status).toBe(307);
+    expect(cb.headers.get("location") ?? "").toContain("oauth_error=member_inactive");
+
+    const { eq } = await import("drizzle-orm");
+    const links = (await db
+      .select()
+      .from(nxMemberIdentities)
+      .where(eq(nxMemberIdentities.memberId, pendingRow.id))) as Array<unknown>;
+    expect(links).toHaveLength(0);
+  });
+
   it("repeat login with same provider id re-uses the member (no duplicate identity rows)", async () => {
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
     const id = await registerStub(bookkeeping, {

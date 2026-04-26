@@ -165,6 +165,21 @@ export async function resolveMemberOAuthLogin(
       .limit(1)) as ResolvedOAuthMember[];
 
     if (existingMember) {
+      // Refuse to auto-link an OAuth identity to a non-active member.
+      // Without this guard an attacker who controls an OAuth account
+      // with a victim's email could pre-link an identity to the
+      // victim's pending (unverified) row; once the victim later
+      // activates, the attacker's identity is already attached and
+      // they can sign in as the victim. The callback would still
+      // refuse the immediate login (status check below), but the
+      // dangling link would persist.
+      //
+      // Active members are the only ones we'll cross-link
+      // automatically — pending / suspended / deleted are returned
+      // as-is and the route's status check refuses the login.
+      if (existingMember.status !== "active") {
+        return { member: existingMember, created: false, linked: false };
+      }
       await db.insert(nxMemberIdentities).values({
         memberId: existingMember.id,
         provider,
