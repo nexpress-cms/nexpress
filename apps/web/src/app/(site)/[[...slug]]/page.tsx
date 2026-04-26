@@ -1,4 +1,4 @@
-import { buildPageMetadata, getPageBySlug } from "@nexpress/core";
+import { buildPageMetadata, buildWebSiteJsonLd, getPageBySlug } from "@nexpress/core";
 import { renderBlocks } from "@nexpress/blocks";
 import type { Metadata } from "next";
 import { draftMode } from "next/headers";
@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import type { NxPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
+import { JsonLd } from "@/components/json-ld";
 import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
 import {
   RenderBodyEnd,
@@ -51,7 +52,13 @@ export default async function CatchAllPage({ params }: PageProps) {
     // `pages` row with slug `/`, the lookup above succeeds and
     // this branch never runs.
     if (path === "/") {
-      return <DefaultHomePage />;
+      const websiteJsonLd = await buildWebSiteJsonLd();
+      return (
+        <>
+          <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
+          <DefaultHomePage />
+        </>
+      );
     }
     notFound();
   }
@@ -64,8 +71,17 @@ export default async function CatchAllPage({ params }: PageProps) {
     document: page,
   });
 
+  // The site root gets a WebSite + SearchAction descriptor so
+  // search engines can render the sitelinks searchbox in SERP.
+  // Other paths skip the descriptor (a generic page row isn't a
+  // distinct schema.org type worth expressing here).
+  const websiteJsonLd = path === "/" ? await buildWebSiteJsonLd() : null;
+
   return (
     <div className="nx-page">
+      {websiteJsonLd ? (
+        <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
+      ) : null}
       <RenderHead entries={head} />
       {isDraft ? (
         <div className="nx-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
