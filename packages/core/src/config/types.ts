@@ -171,9 +171,38 @@ export type NxFieldConfig =
   | NxRowField
   | NxCollapsibleField;
 
+/**
+ * Polymorphic actor reference for collection hooks. Phase 9.7o
+ * widened the hook surface so plugins can react to member writes,
+ * not just staff writes:
+ *
+ *   - `{ kind: "staff", user }`   — staff-authored write; `user` is
+ *     the resolved staff session as before.
+ *   - `{ kind: "member", memberId }` — member-authored write
+ *     (`createMemberDocument` / `updateMemberDocument` /
+ *     `deleteMemberDocument`).
+ *
+ * Hooks that only care about staff identity can switch on
+ * `principal.kind === "staff"` and read `principal.user`. The
+ * top-level `user` field is also still passed (`null` for member
+ * actors) so existing hooks that destructure `{ user }` keep
+ * compiling — they just need to handle the null case now.
+ */
+export type NxHookPrincipal =
+  | { kind: "staff"; user: NxAuthUser }
+  | { kind: "member"; memberId: string };
+
 export type NxCollectionHook = (args: {
   data: Record<string, unknown>;
-  user: NxAuthUser;
+  /**
+   * Resolved staff session, or `null` when the actor is a member.
+   * Pre-9.7o this was always non-null because member writes
+   * skipped collection hooks entirely. Hooks that key off staff
+   * identity should now switch on `principal.kind` instead.
+   */
+  user: NxAuthUser | null;
+  /** Polymorphic actor — see `NxHookPrincipal`. */
+  principal: NxHookPrincipal;
   collection: string;
   originalDoc?: Record<string, unknown> | null;
 }) => Record<string, unknown> | Promise<Record<string, unknown>>;
