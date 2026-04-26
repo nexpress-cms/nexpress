@@ -157,7 +157,12 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
     }
   }
 
-  await db
+  // Use `.returning()` so we know whether the delete actually
+  // removed a row — repeated/no-op DELETEs (e.g. a client re-trying
+  // an unreact) must NOT emit a phantom `reaction.removed` event,
+  // otherwise a member could drain a recipient's reputation by
+  // hammering the endpoint without ever having reacted.
+  const deleted = (await db
     .delete(nxReactions)
     .where(
       and(
@@ -166,9 +171,10 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
         eq(nxReactions.memberId, input.memberId),
         eq(nxReactions.kind, input.kind),
       ),
-    );
+    )
+    .returning({ id: nxReactions.id })) as Array<{ id: string }>;
 
-  if (recipientId) {
+  if (recipientId && deleted.length > 0) {
     await applyReputation(recipientId, {
       kind: "reaction.removed",
       reactionKind: input.kind,

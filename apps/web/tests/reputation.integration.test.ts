@@ -160,6 +160,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
   afterEach(async () => {
     const core = await import("@nexpress/core");
     core.resetReputationAdapter();
+    core.resetSpamAdapter();
   });
   afterAll(async () => {
     await closeTestDb();
@@ -410,6 +411,51 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
     expect(undo.status).toBe(200);
 
     expect(events.filter((e) => e.kind === "reaction.removed")).toHaveLength(1);
+    expect(await readReputation(author.memberId)).toBe(baseRep);
+  });
+
+  // Regression: a DELETE on a reaction that never existed (or already
+  // got removed by an earlier call) must not emit `reaction.removed`,
+  // otherwise a malicious member could spam-DELETE to drain a
+  // recipient's reputation without ever having reacted.
+  it("no-op `removeReaction` (no row to delete) does NOT fire `reaction.removed`", async () => {
+    const core = await import("@nexpress/core");
+    const events: NxReputationEvent[] = [];
+    core.setReputationAdapter({
+      apply: (event) => {
+        events.push(event);
+        return -100;
+      },
+    });
+
+    const staff = await seedUser({ role: "editor" });
+    const postId = await seedStaffPost(staff);
+    const author = await seedActiveMember("rep-mia", "rep-mia@example.com", "password-12");
+    const sneak = await seedActiveMember("rep-ned", "rep-ned@example.com", "password-12");
+
+    const created = await commentsPOST(
+      memberRequest(`/api/collections/posts/${postId}/comments`, author, {
+        method: "POST",
+        body: JSON.stringify({ bodyMd: "phantom" }),
+      }),
+      { params: Promise.resolve({ slug: "posts", id: postId }) },
+    );
+    const { id: commentId } = await readJson<{ id: string }>(created).then((r) => r.body);
+
+    const baseRep = await readReputation(author.memberId);
+    events.length = 0;
+
+    // sneak has never reacted — DELETE is a no-op.
+    const undo = await reactionDELETE(
+      memberRequest(
+        `/api/reactions?targetType=comment&targetId=${commentId}&kind=like`,
+        sneak,
+        { method: "DELETE" },
+      ),
+    );
+    expect(undo.status).toBe(200);
+
+    expect(events.filter((e) => e.kind === "reaction.removed")).toHaveLength(0);
     expect(await readReputation(author.memberId)).toBe(baseRep);
   });
 
