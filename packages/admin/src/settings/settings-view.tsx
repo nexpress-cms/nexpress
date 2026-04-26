@@ -15,6 +15,7 @@ import { Label } from "../ui/label.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { Textarea } from "../ui/textarea.js";
 import { NavigationEditor } from "./navigation-editor.js";
+import { SeoSettingsTab } from "./seo-settings-tab.js";
 import { ThemeEditor } from "./theme-editor.js";
 import { UserManagement } from "./user-management.js";
 
@@ -116,8 +117,9 @@ export function SettingsView() {
       ) : null}
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-5">
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="seo">SEO</TabsTrigger>
           <TabsTrigger value="theme">Theme</TabsTrigger>
           <TabsTrigger value="navigation">Navigation</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
@@ -200,6 +202,10 @@ export function SettingsView() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="seo">
+          <SeoSettingsTab />
         </TabsContent>
 
         <TabsContent value="theme">

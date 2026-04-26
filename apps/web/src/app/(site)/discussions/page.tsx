@@ -1,4 +1,5 @@
-import { findDocuments, nxMembers } from "@nexpress/core";
+import { buildPageMetadata, findDocuments, nxMembers } from "@nexpress/core";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ensureCoreServices } from "@/lib/init-core";
@@ -8,6 +9,15 @@ import { inArray } from "drizzle-orm";
 
 interface DiscussionsListPageProps {
   searchParams: Promise<{ page?: string; author?: string }>;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  ensureCoreServices();
+  return (await buildPageMetadata({
+    title: "Discussions",
+    description: "Member-authored discussion threads.",
+    path: "/discussions",
+  })) as Metadata;
 }
 
 const STATUS_LABELS: Record<string, string> = {

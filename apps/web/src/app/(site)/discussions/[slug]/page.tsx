@@ -1,6 +1,7 @@
-import { findDocuments, nxMembers } from "@nexpress/core";
+import { buildPageMetadata, findDocuments, nxMembers } from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import { eq } from "drizzle-orm";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -13,6 +14,37 @@ import type { NxRichTextContent } from "@nexpress/editor";
 
 interface DiscussionDetailPageProps {
   params: Promise<{ slug: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: DiscussionDetailPageProps): Promise<Metadata> {
+  ensureCoreServices();
+  const { slug } = await params;
+  const result = await findDocuments("discussions", {
+    where: { slug, status: "published" },
+    limit: 1,
+  });
+  const doc = result.docs[0];
+
+  // A non-published or missing row falls back to a generic
+  // "Discussion not found" title — `notFound()` in the page
+  // body will turn the response into a 404 anyway, but search
+  // crawlers fetching just the head still need a sane title.
+  return (await buildPageMetadata({
+    title:
+      typeof doc?.title === "string" ? (doc.title as string) : "Discussion",
+    description:
+      typeof doc?.excerpt === "string" && doc.excerpt
+        ? (doc.excerpt as string)
+        : null,
+    path: `/discussions/${slug}`,
+    ogType: "article",
+    publishedTime:
+      doc?.createdAt instanceof Date ? (doc.createdAt as Date) : null,
+    modifiedTime:
+      doc?.updatedAt instanceof Date ? (doc.updatedAt as Date) : null,
+  })) as Metadata;
 }
 
 const STATUS_LABELS: Record<string, string> = {
