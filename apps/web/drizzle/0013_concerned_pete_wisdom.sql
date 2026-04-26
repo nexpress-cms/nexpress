@@ -1,0 +1,1 @@
+ALTER TABLE "nx_c_pages" ADD COLUMN "template" text;

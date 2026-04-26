@@ -100,4 +100,17 @@ export const defaultThemeCss = `
   border-color: var(--nx-color-ring, #4f46e5);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--nx-color-ring, #4f46e5) 20%, transparent);
 }
+
+/*
+ * Page templates (11.3). The base .nx-page rule lives in
+ * apps/web's globals.css alongside the other content-wrapper
+ * primitives (.nx-blog, .nx-discussions, etc.). The wide
+ * variant is theme-owned because how a theme expresses
+ * "edge-to-edge" is opinionated.
+ */
+.nx-page-wide {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
 `.trim();

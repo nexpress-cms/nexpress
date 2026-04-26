@@ -52,6 +52,7 @@ export const pagesTable = pgTable(
     updatedBy: uuid("updated_by").references(() => nxUsers.id),
     title: text("title").notNull(),
     seoDescription: text("seo_description"),
+    template: text("template"),
     blocks: jsonb("blocks"),
     slug: text("slug").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),

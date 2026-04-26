@@ -10,6 +10,7 @@ import type { Control, FieldPath } from "react-hook-form";
 import { ArrayFieldEditor } from "./fields/array-field-editor.js";
 import { MediaPickerField } from "./fields/media-picker-field.js";
 import { RelationshipField } from "./fields/relationship-field.js";
+import { TemplatePickerField } from "./template-picker-field.js";
 import { nxFetch } from "../lib/api-client.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../ui/form.js";
@@ -54,6 +55,13 @@ interface FieldRendererProps {
   field: NxFieldConfig;
   control: Control<Record<string, unknown>>;
   namePrefix?: string;
+  /**
+   * Collection slug the field belongs to. Optional today —
+   * only the Phase 11.3 `templatePicker` widget needs it (it
+   * fetches `/api/admin/themes/active/templates?collection=…`
+   * to populate the dropdown). Other widgets ignore it.
+   */
+  collectionSlug?: string;
 }
 
 const LazyRichTextEditor = lazy(async () => {
@@ -506,7 +514,12 @@ const renderNamedField = (
   }
 };
 
-export function FieldRenderer({ field, control, namePrefix }: FieldRendererProps) {
+export function FieldRenderer({
+  field,
+  control,
+  namePrefix,
+  collectionSlug,
+}: FieldRendererProps) {
   if (field.type === "row") {
     return (
       <div className="flex flex-col gap-4 md:flex-row md:items-start">
@@ -515,7 +528,12 @@ export function FieldRenderer({ field, control, namePrefix }: FieldRendererProps
             key={nestedField.type === "row" || nestedField.type === "collapsible" ? `${nestedField.type}-${index}` : nestedField.name}
             className="flex-1"
           >
-            <FieldRenderer field={nestedField} control={control} namePrefix={namePrefix} />
+            <FieldRenderer
+              field={nestedField}
+              control={control}
+              namePrefix={namePrefix}
+              collectionSlug={collectionSlug}
+            />
           </div>
         ))}
       </div>
@@ -536,10 +554,30 @@ export function FieldRenderer({ field, control, namePrefix }: FieldRendererProps
               field={nestedField}
               control={control}
               namePrefix={namePrefix}
+              collectionSlug={collectionSlug}
             />
           ))}
         </CollapsibleContent>
       </Collapsible>
+    );
+  }
+
+  // Phase 11.3 — special-cased widget. Fields opt into the
+  // template picker via `admin.kind: "templatePicker"`; the
+  // picker fetches available templates from the active theme
+  // and renders a Select. Without `collectionSlug` we can't
+  // know which collection's template registry to query, so
+  // fall through to the standard renderer in that case (a
+  // sub-form lacking the prop just keeps the plain text input).
+  if ("name" in field && field.admin?.kind === "templatePicker" && collectionSlug) {
+    return (
+      <TemplatePickerField
+        control={control}
+        name={buildFieldName(field.name, namePrefix)}
+        label={field.label ?? field.name}
+        collection={collectionSlug}
+        description={field.admin?.description}
+      />
     );
   }
 

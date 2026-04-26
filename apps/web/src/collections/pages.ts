@@ -43,6 +43,20 @@ export const pagesCollection = defineCollection({
       admin: { description: "Meta description shown in search results." },
     },
     {
+      // Phase 11.3 — template id chosen for this page. The
+      // catch-all renderer dispatches into the active theme's
+      // template registry; the admin renderer replaces the
+      // input with a dropdown sourced from the same registry
+      // via `admin.kind: "templatePicker"`.
+      type: "text",
+      name: "template",
+      admin: {
+        kind: "templatePicker",
+        description:
+          "Page layout template. Defaults to the active theme's `default` when blank.",
+      },
+    },
+    {
       type: "blocks",
       name: "blocks",
     },
