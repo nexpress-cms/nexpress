@@ -81,7 +81,38 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
     ]);
   }
 
-  // Idempotent: if the follow already exists, return it.
+  // Idempotent: insert with `onConflictDoNothing` so two concurrent
+  // follow toggles don't surface a unique-constraint 500 to the
+  // race-loser. The schema's `nx_follows_unique` enforces
+  // `(follower, targetType, targetId)` uniqueness — without
+  // `onConflict` the loser of a race would bubble the raw
+  // pg 23505 instead of the intended idempotent success (#124,
+  // mirrors the reactions write path).
+  const [inserted] = (await db
+    .insert(nxFollows)
+    .values({
+      followerId: input.followerId,
+      targetType: input.targetType,
+      targetId: input.targetId,
+    })
+    .onConflictDoNothing()
+    .returning()) as NxFollowRow[];
+
+  if (inserted) {
+    // Fresh insert — notify the followed member.
+    if (input.targetType === "member") {
+      await createNotification({
+        memberId: input.targetId,
+        kind: "follow.received",
+        payload: { followerId: input.followerId },
+      });
+    }
+    return inserted;
+  }
+
+  // Conflict path: the row already existed (or a concurrent caller
+  // just inserted it). Re-select and return without re-firing the
+  // notification — the original insertion already did that.
   const [existing] = (await db
     .select()
     .from(nxFollows)
@@ -93,28 +124,13 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
       ),
     )
     .limit(1)) as NxFollowRow[];
-  if (existing) return existing;
-
-  const [row] = (await db
-    .insert(nxFollows)
-    .values({
-      followerId: input.followerId,
-      targetType: input.targetType,
-      targetId: input.targetId,
-    })
-    .returning()) as NxFollowRow[];
-  if (!row) throw new Error("Follow insert returned no row");
-
-  // Notify the followed member.
-  if (input.targetType === "member") {
-    await createNotification({
-      memberId: input.targetId,
-      kind: "follow.received",
-      payload: { followerId: input.followerId },
-    });
+  if (!existing) {
+    // Unreachable in practice — the conflict means a row exists.
+    // If we genuinely don't see it, something is racing us with a
+    // delete; surface a generic error rather than fabricate a row.
+    throw new Error("Follow insert hit conflict but re-select returned no row");
   }
-
-  return row;
+  return existing;
 }
 
 export async function unfollow(input: NxFollowInput): Promise<void> {
