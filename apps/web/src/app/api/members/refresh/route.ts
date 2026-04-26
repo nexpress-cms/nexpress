@@ -34,7 +34,10 @@ export async function POST(request: NextRequest) {
     if (!refreshToken) throw new NxAuthError();
 
     const { secret, tokenExpiration, refreshTokenExpiration } = getMemberAuthRuntimeConfig();
-    const payload = await verifyMemberToken(refreshToken, secret);
+    // Reject access tokens presented as refresh triggers — without the
+    // `use` check a stolen access JWT could spin a fresh access +
+    // refresh pair (#91).
+    const payload = await verifyMemberToken(refreshToken, secret, "refresh");
     const member = await getMemberFromTokenPayload(getDb() as never, payload);
     if (!member || member.status !== "active") throw new NxAuthError();
 
@@ -58,8 +61,8 @@ export async function POST(request: NextRequest) {
       .limit(1);
     if (!sessionRow) throw new NxAuthError();
 
-    const access = await signMemberToken(member, secret, tokenExpiration);
-    const refresh = await signMemberToken(member, secret, refreshTokenExpiration);
+    const access = await signMemberToken(member, secret, tokenExpiration, "access");
+    const refresh = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
     const csrf = randomBytes(16).toString("hex");
 
     // Rotate: drop the consumed refresh row + insert fresh access +
