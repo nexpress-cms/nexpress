@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
@@ -27,6 +27,7 @@ import { buildSearchVector } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { nxRevisions } from "../db/schema/system.js";
+import { nxComments, nxReactions } from "../db/schema/community.js";
 import { nxMediaRefs } from "../db/schema/media.js";
 
 let dbInstance: NodePgDatabase<Record<string, unknown>> | null = null;
@@ -865,6 +866,36 @@ async function deleteDocumentImpl(
     await deleteJoinTables(tx, registration.joinTables, docId);
     await tx.delete(nxMediaRefs as unknown as PgTable).where(
       sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), docId)}`,
+    );
+    // Phase 9.7m: cascade comments + reactions on the deleted doc.
+    // The polymorphic `(target_type, target_id)` shape on
+    // `nx_comments` / `nx_reactions` doesn't have a DB-level FK
+    // (it can't — the target table varies per row), so without an
+    // explicit cleanup these rows would orphan once the parent
+    // doc was gone. Order matters: reactions targeting the comments
+    // (`target_type='comment'`) must go before the comments
+    // themselves, since after the comment rows are gone we can't
+    // discover their ids anymore. Top-level comments and replies
+    // both carry `target_id=$docId`, so a single SELECT covers both.
+    const commentIdRows = (await tx
+      .select({
+        id: getTableColumn(nxComments as unknown as PgTable, "id"),
+      })
+      .from(nxComments as unknown as PgTable)
+      .where(
+        sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
+      )) as Array<{ id: string }>;
+    if (commentIdRows.length > 0) {
+      const commentIds = commentIdRows.map((row) => row.id);
+      await tx.delete(nxReactions as unknown as PgTable).where(
+        sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReactions as unknown as PgTable, "targetId"), commentIds)}`,
+      );
+    }
+    await tx.delete(nxComments as unknown as PgTable).where(
+      sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
+    );
+    await tx.delete(nxReactions as unknown as PgTable).where(
+      sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReactions as unknown as PgTable, "targetId"), docId)}`,
     );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   });
