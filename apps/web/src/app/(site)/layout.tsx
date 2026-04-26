@@ -2,6 +2,7 @@ import { NxThemeStyle } from "@nexpress/theme";
 import { getTheme, getNavigation } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
 
+import { MemberStatusWidget } from "@/components/member-status-widget";
 import { ensureCoreServices } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export default async function SiteLayout({
               </li>
             ))}
           </ul>
+          <MemberStatusWidget />
         </nav>
       </header>
       <main className="nx-site-main">{children}</main>
