@@ -13,11 +13,13 @@ import { Switch } from "../ui/switch.js";
 export interface CommunitySettings {
   reactionKinds: string[];
   registrationEnabled: boolean;
+  memberUploadQuota: { perDay: number | null; total: number | null };
 }
 
 const DEFAULT_SETTINGS: CommunitySettings = {
   reactionKinds: ["like"],
   registrationEnabled: true,
+  memberUploadQuota: { perDay: null, total: null },
 };
 
 const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
@@ -55,6 +57,9 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         return;
       }
       const data = (raw.data ?? raw) as Partial<CommunitySettings>;
+      const quotaRaw = (data.memberUploadQuota ?? {}) as Partial<
+        CommunitySettings["memberUploadQuota"]
+      >;
       setSettings({
         reactionKinds: Array.isArray(data.reactionKinds)
           ? data.reactionKinds.filter((k): k is string => typeof k === "string")
@@ -63,6 +68,12 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
           typeof data.registrationEnabled === "boolean"
             ? data.registrationEnabled
             : DEFAULT_SETTINGS.registrationEnabled,
+        memberUploadQuota: {
+          perDay:
+            typeof quotaRaw.perDay === "number" ? quotaRaw.perDay : null,
+          total:
+            typeof quotaRaw.total === "number" ? quotaRaw.total : null,
+        },
       });
     } catch {
       setError("Unable to load community settings.");
@@ -224,6 +235,87 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
               </Button>
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Member upload quota</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Limits image uploads from member accounts. Leave a field blank for
+            unlimited. Admin / member deletes free up quota — staff uploads
+            are never gated. The 24h window is rolling, not calendar-day.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label
+                htmlFor="quota-per-day"
+                className="text-xs uppercase tracking-wide text-muted-foreground"
+              >
+                Max uploads per 24h
+              </Label>
+              <Input
+                id="quota-per-day"
+                type="number"
+                min={0}
+                step={1}
+                value={
+                  settings.memberUploadQuota.perDay === null
+                    ? ""
+                    : String(settings.memberUploadQuota.perDay)
+                }
+                placeholder="Unlimited"
+                disabled={loading || saving || !canEdit}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    memberUploadQuota: {
+                      ...s.memberUploadQuota,
+                      perDay:
+                        e.target.value.trim() === ""
+                          ? null
+                          : Math.max(0, Math.floor(Number(e.target.value))),
+                    },
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label
+                htmlFor="quota-total"
+                className="text-xs uppercase tracking-wide text-muted-foreground"
+              >
+                Lifetime cap
+              </Label>
+              <Input
+                id="quota-total"
+                type="number"
+                min={0}
+                step={1}
+                value={
+                  settings.memberUploadQuota.total === null
+                    ? ""
+                    : String(settings.memberUploadQuota.total)
+                }
+                placeholder="Unlimited"
+                disabled={loading || saving || !canEdit}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    memberUploadQuota: {
+                      ...s.memberUploadQuota,
+                      total:
+                        e.target.value.trim() === ""
+                          ? null
+                          : Math.max(0, Math.floor(Number(e.target.value))),
+                    },
+                  }))
+                }
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
