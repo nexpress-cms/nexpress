@@ -66,6 +66,31 @@ export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
   updatedByUser: one(nxUsers, { fields: [pagesTable.updatedBy], references: [nxUsers.id] }),
 }));
 
+export const localizedPagesTable = pgTable(
+  "nx_c_localized-pages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    title: text("title").notNull(),
+    body: text("body"),
+    slug: text("slug").notNull(),
+    locale: text("locale").notNull(),
+    translationGroupId: uuid("translation_group_id").notNull(),
+    _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [index("nx_c_localized-pages_status_idx").on(table.status), uniqueIndex("nx_c_localized-pages_locale_slug_idx").on(table.locale, table.slug), index("nx_c_localized-pages_translation_group_idx").on(table.translationGroupId), index("nx_c_localized-pages_locale_idx").on(table.locale)],
+);
+
+export const localizedPagesTableRelations = relations(localizedPagesTable, ({ many, one }) => ({
+  createdByUser: one(nxUsers, { fields: [localizedPagesTable.createdBy], references: [nxUsers.id] }),
+  updatedByUser: one(nxUsers, { fields: [localizedPagesTable.updatedBy], references: [nxUsers.id] }),
+}));
+
 export const discussionsTable = pgTable(
   "nx_c_discussions",
   {

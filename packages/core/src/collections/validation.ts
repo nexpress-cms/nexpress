@@ -26,7 +26,20 @@ export function buildZodSchema(
 }
 
 export function getCollectionZodSchema(config: NxCollectionConfig): z.ZodSchema {
-  return buildZodSchema(config.fields);
+  const base = buildZodSchema(config.fields);
+  // Phase 12.1 — i18n collections accept `locale` and an
+  // optional `translationGroupId` on writes. zod's default
+  // strip behavior would otherwise drop them before the
+  // pipeline could read them. Validation of `locale` against
+  // the configured locales list happens later in the pipeline
+  // (we don't have the parent NxConfig here).
+  if (config.i18n) {
+    return base.extend({
+      locale: z.string().min(1).optional(),
+      translationGroupId: z.string().uuid().optional(),
+    });
+  }
+  return base;
 }
 
 function buildFieldSchema(field: Exclude<NxFieldConfig, { type: "row" | "collapsible" | "group" }>): z.ZodTypeAny {

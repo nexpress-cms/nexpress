@@ -6,6 +6,7 @@ import {
   registerCollection,
   registerThemes,
   setDb,
+  setI18nConfig,
   setMediaDb,
   setStorageAdapter,
   startProducer,
@@ -130,6 +131,14 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     if (config.themes && config.themes.length > 0) {
       registerThemes(config.themes);
     }
+
+    // Phase 12.1 — install the i18n config singleton so the
+    // pipeline's locale resolver can read it. Idempotent;
+    // re-calling on hot reload just overwrites the previous
+    // value. Sites without an i18n block leave the singleton
+    // null and the per-collection `i18n: true` opt-in is
+    // already rejected at `defineConfig` time.
+    setI18nConfig(config.i18n ?? null);
 
     collectionsRegistered = true;
   }
