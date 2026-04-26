@@ -12,6 +12,7 @@ import { magazineTheme } from "@nexpress/theme-magazine";
 import { minimalTheme } from "@nexpress/theme-minimal";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
 
+import { localizedPagesCollection } from "./collections/localized-pages";
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
 
@@ -49,7 +50,21 @@ export default defineConfig({
             baseUrl: process.env.NX_STORAGE_URL ?? "/uploads",
           },
         },
-  collections: [postsCollection, pagesCollection, discussionsCollection],
+  collections: [
+    postsCollection,
+    pagesCollection,
+    localizedPagesCollection,
+    discussionsCollection,
+  ],
+  // Phase 12.1 — i18n config. Required when any collection
+  // sets `i18n: true`. The reference app uses this to
+  // demonstrate the new primitive on `localized_pages`; sites
+  // that don't need multi-language content can drop this block
+  // and remove their localized collections.
+  i18n: {
+    locales: ["en", "ko"],
+    defaultLocale: "en",
+  },
   // Phase 11.1 — themes registry. Sites declare an array;
   // admin switches the active one via the Theme settings tab
   // (11.4) without redeploying. The first entry is the

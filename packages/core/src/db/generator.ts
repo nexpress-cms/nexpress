@@ -110,7 +110,28 @@ export function generateDrizzleSchema(
 
     if (hasSlugField(collection)) {
       columns.push('slug: text("slug").notNull()');
-      indexes.push(`uniqueIndex("${tableName}_slug_idx").on(table.slug)`);
+      // Phase 12.1 — i18n collections key slug uniqueness on
+      // (locale, slug) so the same slug can exist in two
+      // locales (e.g., `/about` in both en and ko). Non-i18n
+      // collections keep the global `slug` unique index.
+      if (collection.i18n) {
+        indexes.push(
+          `uniqueIndex("${tableName}_locale_slug_idx").on(table.locale, table.slug)`,
+        );
+      } else {
+        indexes.push(`uniqueIndex("${tableName}_slug_idx").on(table.slug)`);
+      }
+    }
+
+    if (collection.i18n) {
+      columns.push('locale: text("locale").notNull()');
+      columns.push('translationGroupId: uuid("translation_group_id").notNull()');
+      indexes.push(
+        `index("${tableName}_translation_group_idx").on(table.translationGroupId)`,
+      );
+      indexes.push(
+        `index("${tableName}_locale_idx").on(table.locale)`,
+      );
     }
 
     if (hasDraftVersions(collection)) {

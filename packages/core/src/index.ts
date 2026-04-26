@@ -38,6 +38,7 @@ export type {
   NxConfig,
   NxThemeManifest,
   NxRegisteredTheme,
+  NxI18nConfig,
   NxJobType,
   NxFindOptions,
   NxFindResult,
@@ -318,6 +319,13 @@ export {
   getThemeTemplateSummaries,
 } from "./themes/registry.js";
 export type { NxThemeTemplateSummary } from "./themes/registry.js";
+
+export {
+  setI18nConfig,
+  getI18nConfig,
+  resetI18nConfig,
+} from "./i18n/registry.js";
+
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 
 export {

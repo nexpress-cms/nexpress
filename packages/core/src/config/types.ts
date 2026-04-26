@@ -238,6 +238,22 @@ export interface NxCollectionConfig {
         useField?: string;
         unique?: boolean;
       };
+  /**
+   * Phase 12.1 — opt this collection into i18n. When set, the
+   * codegen adds a `locale` text column and a
+   * `translation_group_id` uuid column to the generated table.
+   * The slug uniqueness index becomes `(locale, slug)` so the
+   * same slug can appear in two locales. Fetching helpers
+   * (`findDocuments`, `getDoc`) accept a `locale` option;
+   * writes require a `locale` field (the pipeline rejects
+   * missing-locale writes with NxValidationError).
+   *
+   * Requires the top-level `i18n` config to also be set.
+   * Without it, `i18n: true` here errors at config validation
+   * time — the framework needs to know the locale enum to
+   * validate writes.
+   */
+  i18n?: boolean;
   fields: NxFieldConfig[];
   access?: {
     create?: NxAccessFunction;
@@ -444,6 +460,23 @@ export interface NxRegisteredTheme {
   impl: unknown;
 }
 
+export interface NxI18nConfig {
+  /**
+   * Locales this site supports. Order matters only insofar as
+   * the first locale becomes the default when `defaultLocale`
+   * isn't explicitly set. Locale strings are passed through to
+   * BCP-47 consumers (HTML `lang` attribute, hreflang) so
+   * conventional codes are recommended (`en`, `en-US`, `ko`,
+   * `pt-BR`).
+   */
+  locales: string[];
+  /**
+   * Locale used when the caller doesn't specify one — drives
+   * default writes and fallback reads. Must appear in `locales`.
+   */
+  defaultLocale: string;
+}
+
 export interface NxConfig {
   site: {
     name: string;
@@ -469,6 +502,25 @@ export interface NxConfig {
    * a different one (`nx_settings.activeTheme`).
    */
   themes?: NxRegisteredTheme[];
+  /**
+   * Phase 12.1 — i18n config. Sites that want multi-language
+   * content declare every locale they intend to support here.
+   * Per-collection opt-in via `defineCollection({ i18n: true })`
+   * is required: only collections that declare `i18n` get the
+   * `locale` / `translation_group_id` columns codegen'd onto
+   * their generated table. Sites with no i18n config (or that
+   * opt no collections in) keep the existing single-locale
+   * shape — i18n is purely additive.
+   *
+   *   i18n: { locales: ["en", "ko", "ja"], defaultLocale: "en" }
+   *
+   * `defaultLocale` is what new docs land in when the caller
+   * doesn't pass an explicit locale, and what the framework
+   * falls back to when a translation is missing for a requested
+   * locale (the public site renders a 404 only when the doc
+   * doesn't exist in any locale).
+   */
+  i18n?: NxI18nConfig;
   images?: {
     sizes?: NxImageSize[];
     format?: "webp" | "avif" | "jpeg" | "png";
@@ -506,6 +558,14 @@ export interface NxFindOptions {
   sort?: string;
   search?: string;
   where?: Record<string, unknown>;
+  /**
+   * Phase 12.1 — restrict the result set to one locale on
+   * i18n-enabled collections. Equivalent to passing
+   * `where: { locale }`, but kept top-level for ergonomics
+   * (callers don't have to know it's a column). Ignored on
+   * non-i18n collections (no `locale` column to match).
+   */
+  locale?: string;
 }
 
 export interface NxFindResult<T = Record<string, unknown>> {
