@@ -25,6 +25,18 @@ export type {
 } from "./spam-adapter.js";
 
 export {
+  setProfanityAdapter,
+  getProfanityAdapter,
+  resetProfanityAdapter,
+} from "./profanity-adapter.js";
+export type {
+  NxProfanityAdapter,
+  NxProfanityCheckContext,
+  NxProfanityVerdict,
+  NxProfanityVerdictKind,
+} from "./profanity-adapter.js";
+
+export {
   setReputationAdapter,
   getReputationAdapter,
   resetReputationAdapter,

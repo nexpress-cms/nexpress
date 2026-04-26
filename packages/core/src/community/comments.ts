@@ -12,6 +12,7 @@ import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { createNotification } from "./notifications.js";
+import { getProfanityAdapter } from "./profanity-adapter.js";
 import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
 
@@ -150,43 +151,67 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     parentAuthorId = parent.memberId;
   }
 
-  // Run the registered spam adapter (default: pass-through). Sites
-  // that install Akismet / OpenAI moderation / a custom classifier
-  // via `setSpamAdapter()` get their verdict here:
-  //   - `"pass"`   → status = "visible" (existing behavior)
-  //   - `"flag"`   → status = "pending"; mods see the row, public list
-  //                  does not; the audit log captures the verdict
-  //   - `"reject"` → throw NxValidationError, no row written
+  // Two adapters run in sequence: profanity (language-level) first,
+  // then spam (intent-level). If profanity rejects we short-circuit
+  // — no point billing the spam adapter's network call when the
+  // content is already gone. Verdicts combine with the strongest-
+  // wins rule: any reject → reject, any flag → pending, both pass
+  // → visible.
   //
-  // Fail-open: if the adapter throws (network blip, timeout, 5xx
-  // from the upstream service), log via the observability hook and
-  // treat the verdict as `pass`. Sites that prefer fail-closed wrap
-  // their own adapter in a try/catch and return `reject` on errors.
-  let verdict;
+  // Fail-open on adapter throw (network blip, 5xx, timeout) — sites
+  // that want fail-closed wrap their own adapter and return
+  // `reject` on errors. Mirrors the doc-create policy.
+  const ctx = {
+    memberId: input.memberId,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    parentId: input.parentId ?? null,
+  };
+  let profanityVerdict;
   try {
-    verdict = await getSpamAdapter().check(input.bodyMd, {
-      memberId: input.memberId,
+    profanityVerdict = await getProfanityAdapter().check(input.bodyMd, ctx);
+  } catch (err) {
+    getLogger().warn("profanity adapter threw — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
       targetType: input.targetType,
       targetId: input.targetId,
-      parentId: input.parentId ?? null,
     });
+    profanityVerdict = { kind: "pass" as const };
+  }
+  if (profanityVerdict.kind === "reject") {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "bodyMd",
+        message:
+          profanityVerdict.reason ??
+          "Comment contains prohibited language",
+      },
+    ]);
+  }
+  let spamVerdict;
+  try {
+    spamVerdict = await getSpamAdapter().check(input.bodyMd, ctx);
   } catch (err) {
     getLogger().warn("spam adapter threw — treating as pass", {
       error: err instanceof Error ? err.message : String(err),
       targetType: input.targetType,
       targetId: input.targetId,
     });
-    verdict = { kind: "pass" as const };
+    spamVerdict = { kind: "pass" as const };
   }
-  if (verdict.kind === "reject") {
+  if (spamVerdict.kind === "reject") {
     throw new NxValidationError("Invalid input", [
       {
         field: "bodyMd",
-        message: verdict.reason ?? "Comment was rejected by the site's spam filter",
+        message:
+          spamVerdict.reason ?? "Comment was rejected by the site's spam filter",
       },
     ]);
   }
-  const initialStatus: CommentStatus = verdict.kind === "flag" ? "pending" : "visible";
+  const flaggedBy: Array<"profanity" | "spam"> = [];
+  if (profanityVerdict.kind === "flag") flaggedBy.push("profanity");
+  if (spamVerdict.kind === "flag") flaggedBy.push("spam");
+  const initialStatus: CommentStatus = flaggedBy.length > 0 ? "pending" : "visible";
 
   const html = renderCommentMarkdown(input.bodyMd);
   const [row] = (await db
@@ -203,18 +228,34 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     .returning()) as Array<NxCommentRow>;
   if (!row) throw new Error("Comment insert returned no row");
 
-  if (verdict.kind === "flag") {
+  if (flaggedBy.length > 0) {
     // Surface flagged content in the audit log so mods can triage.
     // Recorded as a member-actor event so it threads with other
-    // member-originated audit entries on the comment.
+    // member-originated audit entries on the comment. The `sources`
+    // array tells mods which adapter(s) flagged the row — useful
+    // when a site runs both profanity and spam and wants to know
+    // which signal to tune.
     await recordAuditEvent({
       actor: { kind: "member", memberId: input.memberId },
       action: "comment.flag",
       targetType: "comment",
       targetId: row.id,
       payload: {
-        reason: verdict.reason ?? null,
-        adapter: verdict.metadata ?? null,
+        sources: flaggedBy,
+        profanity:
+          profanityVerdict.kind === "flag"
+            ? {
+                reason: profanityVerdict.reason ?? null,
+                metadata: profanityVerdict.metadata ?? null,
+              }
+            : null,
+        spam:
+          spamVerdict.kind === "flag"
+            ? {
+                reason: spamVerdict.reason ?? null,
+                metadata: spamVerdict.metadata ?? null,
+              }
+            : null,
       },
     });
   }

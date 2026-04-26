@@ -251,9 +251,16 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       expect(audits).toHaveLength(1);
       expect(audits[0].actorMemberId).toBe(member.memberId);
       expect(audits[0].targetType).toBe("discussions");
-      const verdict = audits[0].payload.spamVerdict as Record<string, unknown> | undefined;
+      // Phase 9.7n widened the audit payload: `spamVerdict` is now
+      // `{ reason, metadata }` (so a sibling `profanityVerdict` can
+      // carry the same shape). The adapter's metadata lives under
+      // `spamVerdict.metadata`.
+      const verdict = audits[0].payload.spamVerdict as
+        | { reason: string | null; metadata: Record<string, unknown> | null }
+        | undefined;
       expect(verdict).toBeDefined();
-      expect(verdict?.score).toBe(0.7);
+      expect(verdict?.metadata).toEqual({ score: 0.7 });
+      expect(audits[0].payload.sources).toEqual(["spam"]);
     });
 
     it("`reject` verdict — write refused with 400, no row inserted", async () => {
