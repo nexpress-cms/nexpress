@@ -54,12 +54,13 @@ export function MembersListView({ members, totalDocs }: MembersListViewProps) {
                   <th className="px-4 py-3 font-medium">Email</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Joined</th>
+                  <th className="px-4 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody>
                 {members.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                       No members yet.
                     </td>
                   </tr>
@@ -88,6 +89,14 @@ export function MembersListView({ members, totalDocs }: MembersListViewProps) {
                       </td>
                       <td className="px-4 py-3 align-middle text-muted-foreground">
                         {new Date(member.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 align-middle text-right">
+                        <Link
+                          href={`/admin/members/${member.id}`}
+                          className="text-sm underline-offset-4 hover:underline"
+                        >
+                          Manage →
+                        </Link>
                       </td>
                     </tr>
                   ))
