@@ -17,6 +17,7 @@ import { Textarea } from "../ui/textarea.js";
 import { NavigationEditor } from "./navigation-editor.js";
 import { SeoSettingsTab } from "./seo-settings-tab.js";
 import { ThemeEditor } from "./theme-editor.js";
+import { ThemeSwitcher } from "./theme-switcher.js";
 import { UserManagement } from "./user-management.js";
 
 type GeneralSettings = {
@@ -208,7 +209,8 @@ export function SettingsView() {
           <SeoSettingsTab />
         </TabsContent>
 
-        <TabsContent value="theme">
+        <TabsContent value="theme" className="space-y-6">
+          <ThemeSwitcher />
           <ThemeEditor />
         </TabsContent>
 
