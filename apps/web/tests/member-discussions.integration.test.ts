@@ -1,0 +1,355 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  closeTestDb,
+  ensureMigrated,
+  getTestDb,
+  readJson,
+  registerTestCollections,
+  seedUser,
+  skipIfNoTestDb,
+  truncateAll,
+  type TestUserSession,
+} from "./harness.js";
+
+import {
+  GET as collectionGET,
+  POST as collectionPOST,
+} from "@/app/api/collections/[slug]/route";
+import { POST as registerPOST } from "@/app/api/members/register/route";
+import { POST as verifyPOST } from "@/app/api/members/verify/route";
+import { POST as loginPOST } from "@/app/api/members/login/route";
+
+import { NextRequest } from "next/server";
+
+import type { NxReputationEvent } from "@nexpress/core";
+
+function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
+  if (init.cookies && init.cookies.length > 0) headers.set("cookie", init.cookies.join("; "));
+  return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
+}
+
+function staffRequest(
+  path: string,
+  user: TestUserSession,
+  init: RequestInit = {},
+): NextRequest {
+  return jsonRequest(path, {
+    ...init,
+    cookies: [`nx-session=${user.accessToken}`, `nx-csrf=${user.csrfToken}`],
+    headers: { ...(init.headers ?? {}), "x-csrf-token": user.csrfToken },
+  });
+}
+
+function memberRequest(
+  path: string,
+  member: { sessionCookie: string; csrfCookie: string },
+  init: RequestInit = {},
+): NextRequest {
+  return jsonRequest(path, {
+    ...init,
+    cookies: [`nx-mb-session=${member.sessionCookie}`, `nx-mb-csrf=${member.csrfCookie}`],
+    headers: { ...(init.headers ?? {}), "x-csrf-token": member.csrfCookie },
+  });
+}
+
+function cookieValue(setCookie: string | string[] | null, name: string): string | undefined {
+  const headers = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
+  for (const line of headers) {
+    const m = new RegExp(`${name}=([^;]+)`).exec(line);
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+async function seedActiveMember(
+  handle: string,
+): Promise<{ memberId: string; sessionCookie: string; csrfCookie: string }> {
+  const password = "password-12345";
+  const email = `${handle}@example.com`;
+  await registerPOST(
+    jsonRequest("/api/members/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, handle, displayName: handle }),
+    }),
+  );
+  const db = await getTestDb();
+  const { createMemberEmailVerifyToken, nxMembers } = await import("@nexpress/core");
+  const { eq } = await import("drizzle-orm");
+  const [row] = (await db
+    .select({ id: nxMembers.id })
+    .from(nxMembers)
+    .where(eq(nxMembers.handle, handle))
+    .limit(1)) as Array<{ id: string }>;
+  const issued = await createMemberEmailVerifyToken(db as never, row.id, 60_000);
+  await verifyPOST(
+    jsonRequest("/api/members/verify", {
+      method: "POST",
+      body: JSON.stringify({ token: issued.token }),
+    }),
+  );
+  const login = await loginPOST(
+    jsonRequest("/api/members/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  );
+  const setCookies = login.headers.get("set-cookie");
+  return {
+    memberId: row.id,
+    sessionCookie: cookieValue(setCookies, "nx-mb-session")!,
+    csrfCookie: cookieValue(setCookies, "nx-mb-csrf")!,
+  };
+}
+
+describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    registerTestCollections();
+    // Register the discussions collection just like forum.integration
+    // does — but KEEP the `community.memberWrite` block so the
+    // member-write path is actually exercised. We strip only `access`
+    // (so synthetic test principals can write) and `hooks`.
+    const { defineDiscussionsCollection } = await import("@nexpress/plugin-forum");
+    const { registerCollection } = await import("@nexpress/core");
+    const { discussionsTable } = await import("@/db/generated/collections");
+    const config = defineDiscussionsCollection();
+    registerCollection(
+      "discussions",
+      discussionsTable as never,
+      { ...config, access: undefined, hooks: undefined },
+    );
+  });
+  beforeEach(async () => {
+    await truncateAll();
+  });
+  afterEach(async () => {
+    const core = await import("@nexpress/core");
+    core.resetReputationAdapter();
+  });
+  afterAll(async () => {
+    await closeTestDb();
+  });
+
+  it("active member creates a discussion; row is published", async () => {
+    const member = await seedActiveMember("alice");
+    const create = await collectionPOST(
+      memberRequest("/api/collections/discussions", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "First member-authored thread",
+          slug: "first-member-thread",
+          body: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const body = await readJson<{ id: string; status: string; title: string; createdBy: string | null }>(
+      create,
+    );
+    expect(body.status).toBe(201);
+    expect(body.body.title).toBe("First member-authored thread");
+    expect(body.body.status).toBe("published");
+    // `createdBy` references nx_users — for a member-authored doc it
+    // must be null (audit log carries the actual member id).
+    expect(body.body.createdBy).toBeNull();
+
+    // Listing returns it for everyone (read access is open).
+    const list = await collectionGET(
+      jsonRequest("/api/collections/discussions"),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const listBody = await readJson<{ totalDocs: number; docs: Array<{ id: string }> }>(list);
+    expect(listBody.body.totalDocs).toBe(1);
+  });
+
+  it("revision row is created with authorId=null", async () => {
+    const member = await seedActiveMember("revauthor");
+    const create = await collectionPOST(
+      memberRequest("/api/collections/discussions", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Has revision",
+          slug: "has-revision",
+          body: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const { id: docId } = await readJson<{ id: string }>(create).then((r) => r.body);
+
+    const db = await getTestDb();
+    const { nxRevisions } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const revs = (await db
+      .select()
+      .from(nxRevisions)
+      .where(eq(nxRevisions.documentId, docId))) as Array<{
+      authorId: string | null;
+      version: number;
+      status: string;
+    }>;
+    expect(revs).toHaveLength(1);
+    expect(revs[0].authorId).toBeNull();
+    expect(revs[0].version).toBe(1);
+    expect(revs[0].status).toBe("published");
+  });
+
+  it("fires `document.created` reputation event with collection slug + member id", async () => {
+    const core = await import("@nexpress/core");
+    const events: NxReputationEvent[] = [];
+    core.setReputationAdapter({
+      apply: (event) => {
+        events.push(event);
+        return event.kind === "document.created" ? 10 : 0;
+      },
+    });
+
+    const member = await seedActiveMember("repmember");
+    const create = await collectionPOST(
+      memberRequest("/api/collections/discussions", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Reputation thread",
+          slug: "rep-thread",
+          body: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    const { id: docId } = await readJson<{ id: string }>(create).then((r) => r.body);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("document.created");
+    if (events[0].kind === "document.created") {
+      expect(events[0].collectionSlug).toBe("discussions");
+      expect(events[0].documentId).toBe(docId);
+      expect(events[0].memberId).toBe(member.memberId);
+    }
+
+    // Reputation row was bumped.
+    const db = await getTestDb();
+    const { nxMembers } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const [row] = (await db
+      .select({ reputation: nxMembers.reputation })
+      .from(nxMembers)
+      .where(eq(nxMembers.id, member.memberId))
+      .limit(1)) as Array<{ reputation: number }>;
+    expect(row.reputation).toBe(10);
+  });
+
+  it("collection without `community.memberWrite.create` rejects member writes with 403", async () => {
+    // `posts` doesn't opt in.
+    const member = await seedActiveMember("postwriter");
+    const create = await collectionPOST(
+      memberRequest("/api/collections/posts", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Should not work",
+          slug: "no-go",
+          content: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "posts" }) },
+    );
+    expect(create.status).toBe(403);
+  });
+
+  it("banned member is rejected with 403 even on opt-in collection", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const member = await seedActiveMember("banned");
+
+    // Issue a permanent site-wide ban.
+    const { issueBan } = await import("@nexpress/core");
+    await issueBan({
+      memberId: member.memberId,
+      scopeType: "site",
+      kind: "permanent",
+      reason: "test",
+      actor: {
+        kind: "staff",
+        user: {
+          id: admin.userId,
+          email: admin.email,
+          name: null,
+          role: admin.role,
+          tokenVersion: 0,
+        },
+      },
+    });
+
+    const create = await collectionPOST(
+      memberRequest("/api/collections/discussions", member, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Should fail",
+          slug: "banned-attempt",
+          body: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    expect(create.status).toBe(403);
+
+    // No row inserted.
+    const db = await getTestDb();
+    const { getCollectionTable } = await import("@nexpress/core");
+    const table = getCollectionTable("discussions") as never;
+    const rows = (await db.select().from(table)) as Array<unknown>;
+    expect(rows).toHaveLength(0);
+  });
+
+  it("unauthenticated request rejected (no staff or member session)", async () => {
+    const create = await collectionPOST(
+      jsonRequest("/api/collections/discussions", {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Anon",
+          slug: "anon",
+          body: { root: { type: "root", children: [] } },
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    expect(create.status).toBe(401);
+  });
+
+  it("member without CSRF header rejected (401 NxAuthError)", async () => {
+    const member = await seedActiveMember("nocsrf");
+    // Cookies present, x-csrf-token header absent.
+    const req = jsonRequest("/api/collections/discussions", {
+      method: "POST",
+      cookies: [`nx-mb-session=${member.sessionCookie}`, `nx-mb-csrf=${member.csrfCookie}`],
+      body: JSON.stringify({
+        title: "No CSRF",
+        slug: "no-csrf",
+        body: { root: { type: "root", children: [] } },
+      }),
+    });
+    const res = await collectionPOST(req, { params: Promise.resolve({ slug: "discussions" }) });
+    expect(res.status).toBe(401);
+  });
+
+  it("staff path still works on the same endpoint when both auths absent", async () => {
+    const staff = await seedUser({ role: "editor" });
+    const create = await collectionPOST(
+      staffRequest("/api/collections/discussions", staff, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Staff thread",
+          slug: "staff-thread",
+          body: { root: { type: "root", children: [] } },
+          _status: "published",
+        }),
+      }),
+      { params: Promise.resolve({ slug: "discussions" }) },
+    );
+    expect(create.status).toBe(201);
+    const body = await readJson<{ createdBy: string | null }>(create);
+    // Staff path stamps createdBy with their user id.
+    expect(body.body.createdBy).toBe(staff.userId);
+  });
+});

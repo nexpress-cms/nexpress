@@ -247,6 +247,11 @@ export const collectionConfigSchema = z.object({
   community: z
     .object({
       comments: z.boolean().optional(),
+      memberWrite: z
+        .object({
+          create: z.boolean().optional(),
+        })
+        .optional(),
     })
     .optional(),
   timestamps: z.boolean().optional(),

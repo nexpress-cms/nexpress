@@ -84,11 +84,81 @@ export function getDb(): NodePgDatabase<Record<string, unknown>> {
   return dbInstance;
 }
 
+/**
+ * Internal actor type. The pipeline accepts either a staff `NxAuthUser`
+ * (the original behavior) or a `{ kind: "member", memberId }` shape
+ * (Phase 9.7a — `community.memberWrite.create` collections). Member
+ * writes bypass the staff `access.create` access function: gating is
+ * the per-collection opt-in flag plus `assertNotBanned(memberId)`,
+ * not the staff access tree. `createdBy` / `updatedBy` / `authorId`
+ * (revisions) are stored as null when the actor is a member; the
+ * audit log captures the actual member id.
+ */
+type SaveActor =
+  | { kind: "staff"; user: NxAuthUser }
+  | { kind: "member"; memberId: string };
+
+function actorUserOrNull(actor: SaveActor): NxAuthUser | null {
+  return actor.kind === "staff" ? actor.user : null;
+}
+
+function actorUserId(actor: SaveActor): string | null {
+  return actor.kind === "staff" ? actor.user.id : null;
+}
+
 export async function saveDocument(
   collection: string,
   docId: string | null,
   data: Record<string, unknown>,
   user: NxAuthUser,
+  options?: NxSaveOptions,
+): Promise<NxSaveResult> {
+  return saveDocumentImpl(collection, docId, data, { kind: "staff", user }, options);
+}
+
+/**
+ * Member-side document create. Only valid when
+ * `config.community?.memberWrite?.create === true`. Assumes the API
+ * layer has already authenticated the member (and that the cookie's
+ * status was checked) — this function adds:
+ *   - the per-collection opt-in gate, and
+ *   - `assertNotBanned(memberId)` (site-wide; per-collection bans
+ *     resolve to the same site scope until 9.7b)
+ *
+ * Fires the `document.created` reputation event after a successful
+ * write so adapters can credit the author the same way they credit
+ * comments / reactions. No member-side update / delete in this PR;
+ * update lands in 9.7b.
+ */
+export async function createMemberDocument(
+  collection: string,
+  data: Record<string, unknown>,
+  memberId: string,
+  options?: NxSaveOptions,
+): Promise<NxSaveResult> {
+  const result = await saveDocumentImpl(
+    collection,
+    null,
+    data,
+    { kind: "member", memberId },
+    options,
+  );
+  // Defer-load to avoid the `community` ↔ `collections` import cycle.
+  const { applyReputation } = await import("../community/reputation.js");
+  await applyReputation(memberId, {
+    kind: "document.created",
+    collectionSlug: collection,
+    documentId: getRecordId(result.doc),
+    memberId,
+  });
+  return result;
+}
+
+async function saveDocumentImpl(
+  collection: string,
+  docId: string | null,
+  data: Record<string, unknown>,
+  actor: SaveActor,
   options?: NxSaveOptions,
 ): Promise<NxSaveResult> {
   const config = getCollectionConfig(collection);
@@ -99,17 +169,46 @@ export async function saveDocument(
   const operation = docId ? "update" : "create";
   const originalDoc = docId ? await getDocumentByIdInternal(db, table, collection, docId) : null;
 
-  await assertWriteAccess(config, collection, operation, user, validatedData, originalDoc);
+  if (actor.kind === "staff") {
+    await assertWriteAccess(config, collection, operation, actor.user, validatedData, originalDoc);
+  } else {
+    // Member actor. Update / delete by members lands in 9.7b — for
+    // now this branch only gates create. The API path checks docId
+    // is null before reaching here, but we re-assert to keep the
+    // pipeline self-defensive against direct callers.
+    if (operation !== "create") {
+      throw new NxForbiddenError(collection, "update");
+    }
+    if (!config.community?.memberWrite?.create) {
+      throw new NxForbiddenError(collection, "create");
+    }
+    // Avoid an import cycle (`community/can` imports the collections
+    // pipeline transitively): defer-load the helper at runtime.
+    const { assertNotBanned } = await import("../community/can.js");
+    await assertNotBanned(actor.memberId);
+  }
 
-  const hookData = await runHooks(
-    operation === "create" ? config.hooks?.beforeCreate : config.hooks?.beforeUpdate,
-    {
-      data: validatedData,
-      user,
-      collection,
-      originalDoc,
-    },
-  );
+  const userForHooks = actorUserOrNull(actor);
+  // Collection-defined hooks (config.hooks.beforeCreate etc.) are typed
+  // with `user: NxAuthUser` (non-null). They were designed pre-9.7a
+  // assuming a staff actor is always present. For member writes we
+  // skip them rather than relax the public type — that change can
+  // happen in 9.7b alongside member update / delete, when the hook
+  // surface is more naturally polymorphic. Plugin hooks (`runHook`
+  // below) still fire because their data shape is `Record<string, unknown>`
+  // and tolerates a null user.
+  const hookData =
+    actor.kind === "staff"
+      ? await runHooks(
+          operation === "create" ? config.hooks?.beforeCreate : config.hooks?.beforeUpdate,
+          {
+            data: validatedData,
+            user: actor.user,
+            collection,
+            originalDoc,
+          },
+        )
+      : validatedData;
 
   applySlugField(config, hookData, originalDoc);
 
@@ -147,7 +246,7 @@ export async function saveDocument(
     collection,
     data: hookData,
     originalDoc,
-    user,
+    user: userForHooks,
     operation,
   });
   if (publishTransition) {
@@ -155,7 +254,7 @@ export async function saveDocument(
       collection,
       data: hookData,
       originalDoc,
-      user,
+      user: userForHooks,
     });
   }
   if (unpublishTransition) {
@@ -163,14 +262,14 @@ export async function saveDocument(
       collection,
       data: hookData,
       originalDoc,
-      user,
+      user: userForHooks,
     });
   }
 
   const savedDoc = (await db.transaction(async (tx) => {
     const persistedDoc: Record<string, unknown> = operation === "update"
-      ? await updateMainDocument(tx, table, collection, docId, prepared.mainData, searchVector, config, user, now)
-      : await createMainDocument(tx, table, prepared.mainData, searchVector, config, user, now);
+      ? await updateMainDocument(tx, table, collection, docId, prepared.mainData, searchVector, config, userForHooks, now)
+      : await createMainDocument(tx, table, prepared.mainData, searchVector, config, userForHooks, now);
     const persistedDocId = getRecordId(persistedDoc);
 
     await syncChildTables(tx, registration.childTables, prepared.childRows, persistedDocId);
@@ -193,7 +292,7 @@ export async function saveDocument(
         operation,
         hookData,
         originalDoc,
-        user,
+        userForHooks,
         revisionStatus,
         maxRevisions,
       );
@@ -207,7 +306,7 @@ export async function saveDocument(
     collection,
     documentId: savedDocId,
     operation,
-    userId: user.id,
+    userId: actorUserId(actor),
   });
 
   const pluginHookName = operation === "create" ? "content:afterCreate" : "content:afterUpdate";
@@ -215,14 +314,14 @@ export async function saveDocument(
     collection,
     doc: savedDoc,
     operation,
-    user,
+    user: userForHooks,
   });
   if (publishTransition) {
     await runHook("content:afterPublish", {
       collection,
       doc: savedDoc,
       operation,
-      user,
+      user: userForHooks,
     });
   }
 
@@ -591,15 +690,20 @@ async function createMainDocument(
   mainData: Record<string, unknown>,
   searchVector: string,
   config: NxCollectionConfig,
-  user: NxAuthUser,
+  user: NxAuthUser | null,
   now: Date,
 ): Promise<Record<string, unknown>> {
+  // Member writes (`user === null`) leave `createdBy` / `updatedBy`
+  // unset so the FK to `nx_users` stays null. The audit log captures
+  // the actual member; readers that need authorship for member-
+  // authored docs should join through audit (or the dedicated
+  // author column landing in 9.7b).
   const values: Record<string, unknown> = {
     id: randomUUID(),
     status: "published",
     ...mainData,
-    createdBy: user.id,
-    updatedBy: user.id,
+    createdBy: user?.id ?? null,
+    updatedBy: user?.id ?? null,
     searchVector,
   };
 
@@ -621,7 +725,7 @@ async function updateMainDocument(
   mainData: Record<string, unknown>,
   searchVector: string,
   config: NxCollectionConfig,
-  user: NxAuthUser,
+  user: NxAuthUser | null,
   now: Date,
 ): Promise<Record<string, unknown>> {
   if (!docId) {
@@ -630,7 +734,7 @@ async function updateMainDocument(
 
   const values: Record<string, unknown> = {
     ...mainData,
-    updatedBy: user.id,
+    updatedBy: user?.id ?? null,
     searchVector,
   };
 
@@ -746,7 +850,7 @@ async function insertRevision(
   operation: NxSaveResult["operation"],
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
-  user: NxAuthUser,
+  user: NxAuthUser | null,
   status: string,
   maxRevisions?: number,
 ): Promise<void> {
@@ -763,7 +867,9 @@ async function insertRevision(
     status,
     snapshot: data,
     changedFields: getChangedFields(data, originalDoc, operation),
-    authorId: user.id,
+    // `authorId` references nx_users; member-authored revisions
+    // store null and the audit log carries the actual member id.
+    authorId: user?.id ?? null,
     createdAt: new Date(),
   });
 

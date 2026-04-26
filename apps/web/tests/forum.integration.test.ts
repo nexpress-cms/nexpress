@@ -173,11 +173,14 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
     expect(listBody.body.comments[0]?.bodyHtml).toContain("<strong>excited</strong>");
   });
 
-  it("rejects member-authored discussions (staff-only authorship in v1)", async () => {
+  // Phase 9.7a flipped this surface: members can now author
+  // discussions thanks to `community.memberWrite.create` on the
+  // forum plugin's collection. The dedicated coverage for member
+  // creates lives in `member-discussions.integration.test.ts`;
+  // this just sanity-checks the cookie path doesn't 401 anymore.
+  it("accepts member-authored discussions (Phase 9.7a member-write)", async () => {
     const member = await seedActiveMember("bob");
 
-    // Members don't have a staff JWT, so the collection POST gate
-    // refuses the write outright at the auth layer.
     const create = await collectionPOST(
       jsonRequest("/api/collections/discussions", {
         method: "POST",
@@ -187,16 +190,13 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
         ],
         headers: { "x-csrf-token": member.csrfCookie },
         body: JSON.stringify({
-          title: "Member-authored?",
-          slug: "no-good",
+          title: "Member-authored",
+          slug: "by-member",
           body: { root: { type: "root", children: [] } },
-          _status: "published",
         }),
       }),
       { params: Promise.resolve({ slug: "discussions" }) },
     );
-    // 401 because staff-side cookies aren't present (member cookies
-    // are a different cookie family).
-    expect(create.status).toBe(401);
+    expect(create.status).toBe(201);
   });
 });
