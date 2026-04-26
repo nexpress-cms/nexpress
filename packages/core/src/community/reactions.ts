@@ -8,13 +8,18 @@ import { NxNotFoundError, NxValidationError } from "../errors.js";
 import { assertNotBanned } from "./can.js";
 import { createNotification } from "./notifications.js";
 import { applyReputation } from "./reputation.js";
+import { getCommunitySettings } from "./settings.js";
 
 /**
- * Reactions service. `kind` is currently free-form per call; sites can
- * restrict the allowed values via a check in the API layer. v1 ships
- * with `'like'` as the default vocabulary — a config knob to control
- * the allow-list lands in 9.6 alongside the rest of the community
- * settings page.
+ * Reactions service. `kind` is gated by both:
+ *   1. `KIND_RE` — a syntactic check (lowercase token, ≤30 chars)
+ *      that runs on every add/remove call without a DB round-trip.
+ *   2. The site's reaction allow-list, persisted in
+ *      `nx_settings.community.reactionKinds` and edited from the
+ *      admin community settings page. v1 ships with `["like"]` as
+ *      the only allowed kind. Removal is NOT gated against the
+ *      allow-list — if a site retires a reaction, members can still
+ *      undo their old reactions of that kind.
  */
 
 export const DEFAULT_REACTION_KINDS = ["like"] as const;
@@ -55,6 +60,16 @@ function validateKind(kind: string): void {
  */
 export async function addReaction(input: NxReactToInput): Promise<NxReactionRow> {
   validateKind(input.kind);
+
+  const settings = await getCommunitySettings();
+  if (!settings.reactionKinds.includes(input.kind)) {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "kind",
+        message: `Reaction kind '${input.kind}' is not allowed on this site`,
+      },
+    ]);
+  }
 
   // Banned members can't react. We don't know the target's collection
   // from a polymorphic reaction, so site-wide bans are the only scope

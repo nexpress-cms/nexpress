@@ -1,0 +1,255 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { nxFetch } from "../lib/api-client.js";
+import { Badge } from "../ui/badge.js";
+import { Button } from "../ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Input } from "../ui/input.js";
+import { Label } from "../ui/label.js";
+import { Switch } from "../ui/switch.js";
+
+export interface CommunitySettings {
+  reactionKinds: string[];
+  registrationEnabled: boolean;
+}
+
+const DEFAULT_SETTINGS: CommunitySettings = {
+  reactionKinds: ["like"],
+  registrationEnabled: true,
+};
+
+const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
+
+interface CommunitySettingsViewProps {
+  /**
+   * When false, the page renders read-only — fetched values display
+   * but the inputs and Save button are disabled. The server enforces
+   * this independently (PUT requires admin role); the prop is just
+   * UX so mods don't see a Save button that would always 403.
+   */
+  canEdit: boolean;
+}
+
+export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
+  const [settings, setSettings] = useState<CommunitySettings>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pendingKind, setPendingKind] = useState("");
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await nxFetch("/api/admin/community/settings");
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!res.ok || !raw) {
+        setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
+        return;
+      }
+      const data = (raw.data ?? raw) as Partial<CommunitySettings>;
+      setSettings({
+        reactionKinds: Array.isArray(data.reactionKinds)
+          ? data.reactionKinds.filter((k): k is string => typeof k === "string")
+          : DEFAULT_SETTINGS.reactionKinds,
+        registrationEnabled:
+          typeof data.registrationEnabled === "boolean"
+            ? data.registrationEnabled
+            : DEFAULT_SETTINGS.registrationEnabled,
+      });
+    } catch {
+      setError("Unable to load community settings.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await nxFetch("/api/admin/community/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!res.ok || !raw) {
+        setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
+        return;
+      }
+      const data = (raw.data ?? raw) as CommunitySettings;
+      setSettings(data);
+      setMessage("Community settings saved.");
+    } catch {
+      setError("Unable to save community settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function addKind() {
+    const trimmed = pendingKind.trim().toLowerCase();
+    if (!trimmed) return;
+    if (!KIND_RE.test(trimmed)) {
+      setError(`Invalid kind '${trimmed}'. Use lowercase letters, digits, '_' or '-' (max 30).`);
+      return;
+    }
+    if (settings.reactionKinds.includes(trimmed)) {
+      setError(`'${trimmed}' is already in the list.`);
+      return;
+    }
+    setError(null);
+    setSettings((s) => ({ ...s, reactionKinds: [...s.reactionKinds, trimmed] }));
+    setPendingKind("");
+  }
+
+  function removeKind(kind: string) {
+    setSettings((s) => ({ ...s, reactionKinds: s.reactionKinds.filter((k) => k !== kind) }));
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
+          Community
+        </p>
+        <div className="space-y-1">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+            Community settings
+          </h1>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Site-wide knobs for member registration and the reactions members can
+            leave on community content. Changes apply immediately.
+          </p>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+      {message ? (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+          {message}
+        </div>
+      ) : null}
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Member registration</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="registration-enabled" className="text-sm font-medium">
+                Self-registration
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                When off, the public sign-up endpoint returns 403. Existing members
+                can still sign in; new members must be provisioned manually.
+              </p>
+            </div>
+            <Switch
+              id="registration-enabled"
+              checked={settings.registrationEnabled}
+              disabled={loading || saving || !canEdit}
+              onCheckedChange={(v) =>
+                setSettings((s) => ({ ...s, registrationEnabled: v }))
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Reaction kinds</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Members can only add reactions whose kind is in this list. Removing a
+            kind doesn&rsquo;t delete existing reactions — members can still un-react
+            them. An empty list disables reactions entirely.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {settings.reactionKinds.length === 0 ? (
+              <span className="text-sm text-muted-foreground">
+                No reaction kinds configured.
+              </span>
+            ) : (
+              settings.reactionKinds.map((kind) => (
+                <Badge key={kind} variant="secondary" className="gap-2 px-3 py-1.5 text-sm">
+                  <span className="font-mono">{kind}</span>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => removeKind(kind)}
+                      disabled={saving}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove ${kind}`}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </Badge>
+              ))
+            )}
+          </div>
+          {canEdit ? (
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor="pending-kind" className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Add kind
+                </Label>
+                <Input
+                  id="pending-kind"
+                  value={pendingKind}
+                  onChange={(e) => setPendingKind(e.target.value)}
+                  placeholder="e.g. love, fire, thanks"
+                  disabled={saving}
+                />
+              </div>
+              <Button type="button" variant="outline" onClick={addKind} disabled={saving}>
+                Add
+              </Button>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-end gap-3">
+        {canEdit ? (
+          <Button onClick={() => void save()} disabled={loading || saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            Read-only view. Admin role required to edit.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function extractErrorMessage(raw: Record<string, unknown> | null): string | null {
+  if (!raw) return null;
+  const err = raw.error as Record<string, unknown> | undefined;
+  if (!err) return typeof raw.message === "string" ? raw.message : null;
+  const detail = Array.isArray(err.details) ? err.details[0] : null;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const msg = (detail as { message?: unknown }).message;
+    if (typeof msg === "string") return msg;
+  }
+  return typeof err.message === "string" ? err.message : null;
+}

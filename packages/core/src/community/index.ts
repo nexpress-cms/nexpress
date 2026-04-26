@@ -34,6 +34,15 @@ export type {
   NxReputationEvent,
 } from "./reputation-adapter.js";
 export { applyReputation } from "./reputation.js";
+
+export {
+  DEFAULT_COMMUNITY_SETTINGS,
+  getCommunitySettings,
+  updateCommunitySettings,
+  validateCommunitySettingsPatch,
+} from "./settings.js";
+export type { NxCommunitySettings } from "./settings.js";
+
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
 export { renderCommentMarkdown } from "./markdown.js";
