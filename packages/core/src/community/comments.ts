@@ -391,13 +391,106 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
     throw new NxForbiddenError("comment", "update");
   }
 
+  // Re-run profanity → spam on the new body. Pre-fix `updateComment`
+  // skipped moderation entirely, so a member could create a clean
+  // visible comment then PATCH it to spam / banned language and
+  // the row stayed visible. Mirrors the create-time gate (#123):
+  //   - reject → 400, no write
+  //   - flag   → status forced to `pending` so mods triage the edit
+  //   - pass   → status untouched
+  // Mods don't get an automatic bypass; if a moderator needs to
+  // commit otherwise-banned text intentionally (rare), they can
+  // staff-restore the row afterward.
+  const ctx = {
+    memberId: input.memberId,
+    targetType: existing.targetType,
+    targetId: existing.targetId,
+    parentId: existing.parentId,
+  };
+  let profanityFlag: { reason: string | null; metadata: Record<string, unknown> | null } | null = null;
+  try {
+    const verdict = await getProfanityAdapter().check(input.bodyMd, ctx);
+    if (verdict.kind === "reject") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "bodyMd",
+          message:
+            verdict.reason ?? "Comment contains prohibited language",
+        },
+      ]);
+    }
+    if (verdict.kind === "flag") {
+      profanityFlag = {
+        reason: verdict.reason ?? null,
+        metadata: verdict.metadata ?? null,
+      };
+    }
+  } catch (err) {
+    if (err instanceof NxValidationError) throw err;
+    getLogger().warn("profanity adapter threw on comment edit — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
+      commentId: input.commentId,
+    });
+  }
+  let spamFlag: { reason: string | null; metadata: Record<string, unknown> | null } | null = null;
+  try {
+    const verdict = await getSpamAdapter().check(input.bodyMd, ctx);
+    if (verdict.kind === "reject") {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "bodyMd",
+          message:
+            verdict.reason ?? "Comment was rejected by the site's spam filter",
+        },
+      ]);
+    }
+    if (verdict.kind === "flag") {
+      spamFlag = {
+        reason: verdict.reason ?? null,
+        metadata: verdict.metadata ?? null,
+      };
+    }
+  } catch (err) {
+    if (err instanceof NxValidationError) throw err;
+    getLogger().warn("spam adapter threw on comment edit — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
+      commentId: input.commentId,
+    });
+  }
+  const editFlaggedBy: Array<"profanity" | "spam"> = [];
+  if (profanityFlag) editFlaggedBy.push("profanity");
+  if (spamFlag) editFlaggedBy.push("spam");
+
   const html = renderCommentMarkdown(input.bodyMd);
+  const updateValues: Record<string, unknown> = {
+    bodyMd: input.bodyMd,
+    bodyHtml: html,
+    editedAt: new Date(),
+  };
+  if (editFlaggedBy.length > 0) {
+    updateValues.status = "pending";
+  }
   const [updated] = (await db
     .update(nxComments)
-    .set({ bodyMd: input.bodyMd, bodyHtml: html, editedAt: new Date() })
+    .set(updateValues)
     .where(eq(nxComments.id, input.commentId))
     .returning()) as NxCommentRow[];
   if (!updated) throw new Error("Comment update returned no row");
+
+  if (editFlaggedBy.length > 0) {
+    await recordAuditEvent({
+      actor: { kind: "member", memberId: input.memberId },
+      action: "comment.flag",
+      targetType: "comment",
+      targetId: updated.id,
+      payload: {
+        event: "update",
+        sources: editFlaggedBy,
+        profanity: profanityFlag,
+        spam: spamFlag,
+      },
+    });
+  }
   return updated;
 }
 
