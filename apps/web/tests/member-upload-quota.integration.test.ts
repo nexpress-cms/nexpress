@@ -333,4 +333,65 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     ]);
     expect(results.map((r) => r.status)).toEqual([202, 202]);
   });
+
+  // Issue #138 — `uploadMedia` inserts the `nx_media` row before
+  // calling `adapter.upload`. If the storage call throws, the
+  // pre-fix code left a permanent `processing` row that counted
+  // against quota forever (no job was enqueued, no processor
+  // would ever mark it `error`). The fix wraps the upload call
+  // in try/catch and hard-deletes the row on failure.
+  it("storage failure rolls back the row so quota stays correct (#138)", async () => {
+    const core = await import("@nexpress/core");
+    const original = core.getStorageAdapter();
+
+    // Wrap the real adapter so reads still work (the test infra
+    // never reads back the bytes for these uploads), but uploads
+    // throw the way an S3 5xx would.
+    const failingAdapter: typeof original = {
+      upload: () => Promise.reject(new Error("simulated storage outage")),
+      getStream: original.getStream.bind(original),
+      getUrl: original.getUrl.bind(original),
+      delete: original.delete.bind(original),
+      exists: original.exists.bind(original),
+    };
+    core.setStorageAdapter(failingAdapter);
+
+    try {
+      await setQuota({ perDay: null, total: 2 });
+      const member = await seedActiveMember("quota-storage-fail");
+
+      // First upload — storage fails, row should be cleaned up.
+      const failed = await uploadPOST(uploadRequest(member));
+      // The route maps the thrown error to a 500 (or whatever
+      // `nxErrorResponse` produces for a non-`NxError` throw).
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+
+      // Restore the working adapter and confirm the member can
+      // still upload TWO times — i.e. the failed attempt did NOT
+      // eat their quota allowance.
+      core.setStorageAdapter(original);
+
+      const ok1 = await uploadPOST(uploadRequest(member));
+      expect(ok1.status).toBe(202);
+      const ok2 = await uploadPOST(uploadRequest(member));
+      expect(ok2.status).toBe(202);
+
+      // Sanity: the failed row didn't survive in the DB.
+      const db = await getTestDb();
+      const { nxMedia } = await import("@nexpress/core");
+      const { and, eq, isNull } = await import("drizzle-orm");
+      const live = (await db
+        .select()
+        .from(nxMedia)
+        .where(
+          and(
+            eq(nxMedia.uploadedByMemberId, member.memberId),
+            isNull(nxMedia.deletedAt),
+          ),
+        )) as Array<unknown>;
+      expect(live).toHaveLength(2);
+    } finally {
+      core.setStorageAdapter(original);
+    }
+  });
 });
