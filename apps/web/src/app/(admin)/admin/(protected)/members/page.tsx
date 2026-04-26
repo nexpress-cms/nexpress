@@ -20,7 +20,9 @@ export default async function MembersAdminPage() {
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
   if (!hasRole(user, "editor")) {
-    // Re-using the staff role gate — moderator role lands in 9.5.
+    // Editor-or-above can browse members. Per-row mod actions
+    // (ban, role grant, purge) gate independently on the detail
+    // page — admin for grants/purge, staff-mod for bans.
     throw new NxForbiddenError("members", "read");
   }
   const rows = (await db

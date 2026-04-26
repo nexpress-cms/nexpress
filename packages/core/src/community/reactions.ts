@@ -245,9 +245,11 @@ export async function listMemberReactions(
 
 /**
  * Internal helper — assert that the target exists for the given kind.
- * Today only `comment` is supported; extending to thread/reply is a
- * 9.4 concern. Callers can short-circuit before hitting the unique
- * constraint with this lookup.
+ * Today only `comment` is supported. The polymorphic shape leaves
+ * room for `thread` / `reply` once a thread schema lands; the forum
+ * plugin shipped without one (it reuses `nx_comments` under the
+ * `discussions` collection), so widening this surface is on hold
+ * until a separate threads design.
  */
 export async function assertReactableExists(
   targetType: string,
@@ -257,7 +259,7 @@ export async function assertReactableExists(
     throw new NxValidationError("Invalid input", [
       {
         field: "targetType",
-        message: `Reactions on '${targetType}' aren't supported yet (9.4 ships threads + replies).`,
+        message: `Reactions on '${targetType}' aren't supported yet — only 'comment' is wired today.`,
       },
     ]);
   }

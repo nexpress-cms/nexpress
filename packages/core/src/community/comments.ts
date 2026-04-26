@@ -79,9 +79,10 @@ function validateBody(bodyMd: string): void {
 }
 
 function commentScopes(row: { targetType: string }): Array<{ type: "collection"; id: string }> {
-  // The only scope a comment carries today is its target collection. When
-  // 9.4 ships threads, we'll add `category` / `thread` here so the
-  // permission resolver can match category-mod / thread-author grants.
+  // The only scope a comment carries today is its target collection.
+  // If a thread schema is ever added, this is where `category` /
+  // `thread` would join the chain so category-mod / thread-author
+  // grants resolve.
   return [{ type: "collection", id: row.targetType }];
 }
 

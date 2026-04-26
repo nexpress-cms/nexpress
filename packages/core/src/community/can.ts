@@ -85,12 +85,12 @@ export async function assertNotBanned(
 export type MemberAction = CommunityCapability | "edit-own" | "delete-own";
 
 /**
- * Caller-provided context for a permission check. The community tables
- * don't all exist yet (only thread / category land in 9.4), so the
- * caller — the comment service, the thread service, etc. — provides
- * the target's ownership + scope chain rather than `memberCan` looking
- * it up via a polymorphic join. This keeps the resolver decoupled from
- * the per-target table layout.
+ * Caller-provided context for a permission check. The caller — the
+ * comment service, a future thread service, etc. — provides the
+ * target's ownership + scope chain rather than `memberCan` looking
+ * it up via a polymorphic join. This keeps the resolver decoupled
+ * from the per-target table layout, and lets the surface evolve
+ * without touching this resolver.
  */
 export interface MemberCanTarget {
   /** Free-form target type — `"comment" | "thread" | "reply" | "category" | "report" | "member"`. */

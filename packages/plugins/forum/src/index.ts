@@ -139,9 +139,12 @@ export function defineDiscussionsCollection(
  * `defineDiscussionsCollection()` to their `nexpress.config.ts`
  * `collections` array.
  *
- * Future-proofing: once 9.5 wires a `community:*` hook namespace,
- * this plugin will also subscribe to `community:commentCreated` and
- * cache `commentCount` / `lastActivityAt` on the parent discussion.
+ * Future-proofing: a `community:*` hook namespace would let this
+ * plugin subscribe to `community:commentCreated` and cache
+ * `commentCount` / `lastActivityAt` on the parent discussion. Not
+ * wired today — the existing `content:afterCreate` hook (now
+ * Principal-aware as of 9.7o) already covers the member-write
+ * cases the plugin cares about.
  */
 export const forumPlugin = definePlugin({
   manifest: {

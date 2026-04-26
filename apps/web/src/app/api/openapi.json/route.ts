@@ -1667,7 +1667,7 @@ function buildSpec(): OpenApiSchema {
     get: {
       summary: "Reaction summary for a target",
       parameters: [
-        { in: "query", name: "targetType", required: true, schema: { type: "string" }, description: "Today: `comment`. `thread`/`reply` land in 9.4." },
+        { in: "query", name: "targetType", required: true, schema: { type: "string" }, description: "Only `comment` is wired today; the polymorphic shape leaves room for future surfaces." },
         { in: "query", name: "targetId", required: true, schema: { type: "string", format: "uuid" } },
         { in: "query", name: "kind", schema: { type: "string" }, description: "Defaults to `like`." },
       ],
