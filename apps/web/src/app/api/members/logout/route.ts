@@ -1,5 +1,5 @@
 import { nxMemberSessions, sha256 } from "@nexpress/core";
-import { and, eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -10,21 +10,22 @@ import { ensureCoreServices } from "@/lib/init-core";
 export async function POST(request: NextRequest) {
   ensureCoreServices();
   const sessionToken = request.cookies.get("nx-mb-session")?.value;
+  const refreshToken = request.cookies.get("nx-mb-refresh")?.value;
 
-  // Revoke the matching session row so a stolen access token can't
-  // be reused even before its JWT expiry. Best-effort — even when the
-  // delete misses, clearing cookies is enough to log the user out.
-  if (sessionToken) {
+  // Revoke BOTH session rows (access + refresh) so a stolen refresh
+  // JWT can't mint new access tokens after the user logged out (#45).
+  // The previous version only deleted the access-token row.
+  // Best-effort — clearing the cookies below is enough to log the
+  // user out of this device even if the delete misses.
+  const hashes: string[] = [];
+  if (sessionToken) hashes.push(await sha256(sessionToken));
+  if (refreshToken) hashes.push(await sha256(refreshToken));
+  if (hashes.length > 0) {
     try {
-      const tokenHash = await sha256(sessionToken);
       const db = getDb();
-      // We don't have the member id from the cookie alone; scope the
-      // delete to the token hash, which uniquely identifies the row.
-      await db.delete(nxMemberSessions).where(
-        and(
-          eq(nxMemberSessions.tokenHash, tokenHash),
-        ),
-      );
+      await db
+        .delete(nxMemberSessions)
+        .where(inArray(nxMemberSessions.tokenHash, hashes));
     } catch {
       // Swallow — caller still gets cookies cleared below.
     }
