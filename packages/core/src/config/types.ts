@@ -290,6 +290,44 @@ export interface NxCollectionConfig {
       defaultStatus?: "published" | "pending";
     };
   };
+  /**
+   * SEO configuration. Phase 10 introduced this surface for the
+   * sitemap / RSS / OG metadata pipeline. The contract is
+   * opt-in: a collection appears in `/sitemap.xml` iff it
+   * declares `seo.urlPath`, which maps a document row to its
+   * public URL path (e.g. `(doc) => "/blog/" + doc.slug`).
+   * Collections without `seo.urlPath` are assumed to be admin-
+   * internal or rendered through a custom route the framework
+   * can't introspect.
+   */
+  seo?: {
+    /**
+     * Maps a document row to the public URL path the row is
+     * served at, or `null` to skip the row (e.g. a draft / a
+     * row whose URL is computed dynamically and shouldn't be
+     * indexed). Returned paths must start with `/`. The host
+     * comes from `SITE_URL` at sitemap-build time.
+     */
+    urlPath?: (doc: Record<string, unknown>) => string | null;
+    /**
+     * Hint for sitemap consumers about how often this
+     * collection's content changes. Optional — Google now
+     * largely ignores it but other crawlers still honor it.
+     */
+    changefreq?:
+      | "always"
+      | "hourly"
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "yearly"
+      | "never";
+    /**
+     * Sitemap priority hint, 0.0–1.0. Optional, same caveat as
+     * changefreq.
+     */
+    priority?: number;
+  };
   timestamps?: boolean;
   admin?: {
     listColumns?: string[];

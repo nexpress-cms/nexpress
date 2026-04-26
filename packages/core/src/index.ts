@@ -65,6 +65,8 @@ export {
 } from "./errors.js";
 
 export { buildSearchVector } from "./collections/search.js";
+export { buildSitemap, renderSitemapXml } from "./seo/sitemap.js";
+export type { NxSitemapEntry, BuildSitemapOptions } from "./seo/sitemap.js";
 export {
   registerCollection,
   getCollectionConfig,
