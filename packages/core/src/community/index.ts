@@ -79,6 +79,7 @@ export type {
   NxCommentCreateInput,
   NxCommentListOptions,
   NxCommentListResult,
+  NxCommentSort,
   NxCommentUpdateInput,
   NxCommentDeleteInput,
   NxCommentHideInput,

@@ -1,9 +1,9 @@
-import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDb, getDocumentById } from "../collections/pipeline.js";
-import { nxComments } from "../db/schema/community.js";
+import { nxComments, nxReactions } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
 import { getLogger } from "../observability/logger.js";
@@ -320,13 +320,26 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   return row;
 }
 
+/**
+ * Comment ordering options.
+ *
+ *   - `newest`  — created_at DESC (default; matches the
+ *     surface a fresh thread should show)
+ *   - `oldest`  — created_at ASC (chronological reads)
+ *   - `top`     — reactions DESC, then created_at DESC as
+ *     tiebreaker. Useful for high-traffic threads where the
+ *     "best" comment should bubble up regardless of when
+ *     it was posted.
+ */
+export type NxCommentSort = "newest" | "oldest" | "top";
+
 export interface NxCommentListOptions {
   /** Default 50, max 200. */
   limit?: number;
   /** Default 0. */
   offset?: number;
-  /** Newest first by default; flip for chronological reads. */
-  order?: "newest" | "oldest";
+  /** Newest first by default. */
+  order?: NxCommentSort;
   /** Override visibility — staff/mods may want to see hidden rows. */
   includeHidden?: boolean;
 }
@@ -344,17 +357,29 @@ export async function listComments(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
-  const order = options.order === "oldest" ? asc : desc;
+  const order = options.order ?? "newest";
 
   const where = options.includeHidden
     ? and(eq(nxComments.targetType, targetType), eq(nxComments.targetId, targetId))
     : sql`${eq(nxComments.targetType, targetType)} and ${eq(nxComments.targetId, targetId)} and ${eq(nxComments.status, "visible")}`;
 
+  // `top` orders by reaction count via a correlated subquery,
+  // then created_at DESC as a stable tiebreaker. The subquery
+  // is bounded by the page size (limit 200 max), so the cost
+  // stays linear in returned-row count rather than total
+  // reactions across the table.
+  const orderBy: SQL =
+    order === "top"
+      ? sql`(SELECT COUNT(*) FROM ${nxReactions} WHERE ${nxReactions.targetType} = 'comment' AND ${nxReactions.targetId} = ${nxComments.id}) DESC, ${nxComments.createdAt} DESC`
+      : order === "oldest"
+        ? asc(nxComments.createdAt)
+        : desc(nxComments.createdAt);
+
   const rows = (await db
     .select()
     .from(nxComments)
     .where(where)
-    .orderBy(order(nxComments.createdAt))
+    .orderBy(orderBy)
     .limit(limit)
     .offset(offset)) as NxCommentRow[];
 
