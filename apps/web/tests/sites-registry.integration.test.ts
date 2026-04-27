@@ -34,7 +34,7 @@ describe.skipIf(skipIfNoTestDb())("sites registry (Phase 15.1)", () => {
     const sites = await listSites();
     for (const site of sites) {
       if (!site.isDefault) {
-        await deleteSite(site.id);
+        await deleteSite(site.id, { cascade: true });
       }
     }
   });
