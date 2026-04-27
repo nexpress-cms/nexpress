@@ -4,10 +4,11 @@ import { defaultRevalidationRules, revalidateCollection } from "./revalidate.js"
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
 }));
 
 // Import after the mock so the helper picks up the mocked module.
-const { revalidatePath } = await import("next/cache");
+const { revalidatePath, revalidateTag } = await import("next/cache");
 
 describe("revalidateCollection", () => {
   it("is a no-op for collections with no rule", () => {
@@ -57,5 +58,45 @@ describe("defaultRevalidationRules", () => {
     expect(defaultRevalidationRules.posts?.paths).toContain("/blog/{slug}");
     expect(defaultRevalidationRules.pages?.paths).toContain("/");
     expect(defaultRevalidationRules.pages?.paths).toContain("/{slug}");
+  });
+
+  it("declares cache tags so writes invalidate sitemap / feed alongside paths", () => {
+    expect(defaultRevalidationRules.posts?.tags).toContain("nx:sitemap");
+    expect(defaultRevalidationRules.posts?.tags).toContain("nx:feed:posts");
+    expect(defaultRevalidationRules.pages?.tags).toContain("nx:sitemap");
+  });
+});
+
+describe("revalidateCollection — tag bust (Phase 14.1)", () => {
+  it("calls revalidateTag for every tag in the rule", () => {
+    vi.mocked(revalidateTag).mockClear();
+    revalidateCollection(
+      { posts: { paths: [], tags: ["nx:sitemap", "nx:feed:posts"] } },
+      "posts",
+      { slug: "x" },
+    );
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:feed:posts");
+  });
+
+  it("expands {slug} placeholders inside tag templates too", () => {
+    vi.mocked(revalidateTag).mockClear();
+    revalidateCollection(
+      { posts: { paths: [], tags: ["nx:posts:{slug}"] } },
+      "posts",
+      { slug: "hello-world" },
+    );
+    expect(revalidateTag).toHaveBeenCalledWith("nx:posts:hello-world");
+  });
+
+  it("skips slug-templated tags when the doc has no slug (mirrors path behavior)", () => {
+    vi.mocked(revalidateTag).mockClear();
+    revalidateCollection(
+      { posts: { paths: [], tags: ["nx:sitemap", "nx:posts:{slug}"] } },
+      "posts",
+      null,
+    );
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap");
+    expect(revalidateTag).toHaveBeenCalledTimes(1);
   });
 });

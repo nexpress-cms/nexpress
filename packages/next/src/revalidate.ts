@@ -1,5 +1,5 @@
 import { getLogger } from "@nexpress/core";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 export interface CollectionRevalidationRule {
   /**
@@ -9,6 +9,13 @@ export interface CollectionRevalidationRule {
    * is revalidated.
    */
   paths: readonly string[];
+  /**
+   * Phase 14.1 — cache tags to bust alongside path invalidation.
+   * Routes using `unstable_cache(..., [], { tags })` (sitemap.xml,
+   * feed.xml, etc.) re-render on the next request after a write
+   * to this collection. Same `{slug}` placeholder rules as paths.
+   */
+  tags?: readonly string[];
 }
 
 export type RevalidationMap = Record<string, CollectionRevalidationRule>;
@@ -60,13 +67,41 @@ export function revalidateCollection(
       }
     }
   }
+
+  // Phase 14.1 — bust any registered tags alongside paths so
+  // `unstable_cache`-wrapped readers (sitemap, feed, navigation,
+  // theme tokens) drop their cached output on the next request.
+  for (const rawTag of rule.tags ?? []) {
+    const target = substitute(rawTag, documentSlug);
+    if (!target) continue;
+    try {
+      revalidateTag(target);
+    } catch (error) {
+      if (process.env.NODE_ENV !== "test") {
+        getLogger().warn("revalidateCollection skipped tag (no Next context)", {
+          tag: target,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
 }
 
 /**
  * Common-sense defaults for the blog + pages reference layout. Consumers
  * can spread this into their own rule map or override per collection.
+ *
+ * Phase 14.1 added the `tags` field so writes also invalidate the
+ * sitemap / feed / homepage data caches that `unstable_cache`-wrapped
+ * readers in the (site) routes depend on.
  */
 export const defaultRevalidationRules: RevalidationMap = {
-  posts: { paths: ["/blog", "/blog/{slug}"] },
-  pages: { paths: ["/{slug}", "/"] },
+  posts: {
+    paths: ["/blog", "/blog/{slug}"],
+    tags: ["nx:posts", "nx:sitemap", "nx:feed:posts"],
+  },
+  pages: {
+    paths: ["/{slug}", "/"],
+    tags: ["nx:pages", "nx:sitemap"],
+  },
 };
