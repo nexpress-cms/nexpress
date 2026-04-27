@@ -1,14 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { defaultRevalidationRules, revalidateCollection } from "./revalidate.js";
-
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
 }));
 
-// Import after the mock so the helper picks up the mocked module.
+vi.mock("@nexpress/core", () => ({
+  getCurrentSiteId: vi.fn(() => Promise.resolve(null)),
+  getLogger: () => ({ warn: () => {} }),
+}));
+
+// Import after the mocks so the helper picks up the mocked modules.
 const { revalidatePath, revalidateTag } = await import("next/cache");
+const { getCurrentSiteId } = await import("@nexpress/core");
+const { defaultRevalidationRules, revalidateCollection } = await import(
+  "./revalidate.js"
+);
 
 describe("revalidateCollection", () => {
   it("is a no-op for collections with no rule", () => {
@@ -69,6 +76,69 @@ describe("defaultRevalidationRules", () => {
   it("declares the nx:search tag so the short-TTL search cache busts on every write (Phase 14.7)", () => {
     expect(defaultRevalidationRules.posts?.tags).toContain("nx:search");
     expect(defaultRevalidationRules.pages?.tags).toContain("nx:search");
+  });
+
+  it("declares site-scoped {siteId} tags alongside the global ones (Phase 15.10)", () => {
+    expect(defaultRevalidationRules.posts?.tags).toContain(
+      "nx:sitemap:{siteId}",
+    );
+    expect(defaultRevalidationRules.posts?.tags).toContain(
+      "nx:search:{siteId}",
+    );
+    expect(defaultRevalidationRules.pages?.tags).toContain(
+      "nx:sitemap:{siteId}",
+    );
+  });
+});
+
+describe("revalidateCollection — site-scoped tags (Phase 15.10)", () => {
+  it("substitutes {siteId} when the resolver returns a site", async () => {
+    vi.mocked(revalidateTag).mockClear();
+    vi.mocked(getCurrentSiteId).mockResolvedValueOnce("acme");
+    revalidateCollection(
+      { posts: { paths: [], tags: ["nx:sitemap:{siteId}"] } },
+      "posts",
+      { slug: "x" },
+    );
+    // The site-scoped tag emit is fire-and-forget; await a
+    // microtask before assertion.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap:acme");
+  });
+
+  it("skips {siteId} tags when the resolver returns null (still emits global tags)", async () => {
+    vi.mocked(revalidateTag).mockClear();
+    vi.mocked(getCurrentSiteId).mockResolvedValueOnce(null);
+    revalidateCollection(
+      {
+        posts: {
+          paths: [],
+          tags: ["nx:sitemap", "nx:sitemap:{siteId}"],
+        },
+      },
+      "posts",
+      { slug: "x" },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap");
+    expect(revalidateTag).not.toHaveBeenCalledWith("nx:sitemap:{siteId}");
+    // Confirm no leftover {siteId} placeholder snuck through.
+    const calls = vi.mocked(revalidateTag).mock.calls.map((c) => c[0]);
+    expect(calls.every((c) => !c.includes("{siteId}"))).toBe(true);
+  });
+
+  it("only resolves the site once per call (skips when no rule contains {siteId})", async () => {
+    vi.mocked(getCurrentSiteId).mockClear();
+    revalidateCollection(
+      { posts: { paths: ["/blog"], tags: ["nx:sitemap"] } },
+      "posts",
+      { slug: "x" },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCurrentSiteId).not.toHaveBeenCalled();
   });
 });
 
