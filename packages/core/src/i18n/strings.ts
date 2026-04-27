@@ -1,5 +1,8 @@
+import IntlMessageFormat from "intl-messageformat";
+
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { getLogger } from "../observability/logger.js";
 
 import { getI18nConfig } from "./registry.js";
 import {
@@ -28,6 +31,15 @@ import {
  * are a follow-up; the registry already supports
  * `addStrings(locale, bundle)` so an admin-side override
  * loader can layer on top without changing this surface.
+ *
+ * Phase 12.7 — message format upgraded from a private
+ * `{{name}}` regex to ICU MessageFormat via
+ * `intl-messageformat`. Plain strings still work unchanged
+ * ("Read more"); `{name}` interpolation replaces the old
+ * `{{name}}`; plural / select / date / number formatting
+ * follow ICU syntax. Compiled message instances are cached
+ * keyed by `(locale, template)` so a hot path doesn't re-parse
+ * every call.
  */
 
 /** A flat key → translated string map for a single locale. */
@@ -79,11 +91,27 @@ export function getAllStrings(): Record<string, NxTranslationBundle> {
 }
 
 /**
+ * Acceptable param value types for ICU MessageFormat. Beyond
+ * primitives, `Date` is accepted because ICU's `{x, date, ...}`
+ * and `{x, time, ...}` formatters expect them. `boolean` is
+ * accepted because ICU's `{x, select, true {...} false {...}}`
+ * pattern is occasionally useful even though `select` keys are
+ * stringified in matching.
+ */
+export type NxTranslationParams = Record<
+  string,
+  string | number | boolean | Date | null | undefined
+>;
+
+/**
  * Resolve a translated string.
  *
- *   await t("readingTime", "ko", { minutes: 5 }) → "5분 읽기"
- *   await t("readingTime", "en", { minutes: 5 }) → "5 min read"
- *   await t("missing")                            → "missing"
+ *   await t("readingTime", "ko", { minutes: 5 })
+ *     → "5분 읽기"
+ *   await t("items.count", "en", { count: 3 })
+ *     → "3 items"  (ICU plural)
+ *   await t("missing")
+ *     → "missing"
  *
  * Lookup order (Phase D):
  *   1. site-scoped admin override for the requested locale
@@ -103,14 +131,18 @@ export function getAllStrings(): Record<string, NxTranslationBundle> {
  * in-memory cache for free; admin writes invalidate the
  * site's cache so the next call reloads.
  *
- * Param interpolation is `{{name}}` style. Missing params
- * are left as the literal `{{name}}` placeholder (surfaces
- * template bugs).
+ * Phase 12.7 — message format is ICU MessageFormat. Plain
+ * strings work unchanged; `{name}` interpolation replaces the
+ * old `{{name}}`; plural / select / date / number formatters
+ * are available via the standard ICU syntax. The locale used
+ * for plural rules / number formatting is the locale the
+ * matched template came from (so an English fallback message
+ * gets English plural rules even on a Korean request).
  */
 export async function t(
   key: string,
   locale?: string,
-  params?: Record<string, string | number>,
+  params?: NxTranslationParams,
 ): Promise<string> {
   const config = getI18nConfig();
   const requested = locale ?? config?.defaultLocale ?? null;
@@ -125,25 +157,27 @@ export async function t(
   // 1. requested-locale override
   if (requested) {
     const override = getStringOverride(siteId, requested, key);
-    if (override !== null) return interpolate(override, params);
+    if (override !== null) return interpolate(override, params, requested);
   }
   // 2. requested-locale bundle
   if (requested) {
     const bundle = registry.get(requested)?.[key];
-    if (bundle !== undefined) return interpolate(bundle, params);
+    if (bundle !== undefined) return interpolate(bundle, params, requested);
   }
   // 3. defaultLocale override (cross-locale fallback)
   if (defaultLocale && defaultLocale !== requested) {
     const override = getStringOverride(siteId, defaultLocale, key);
-    if (override !== null) return interpolate(override, params);
+    if (override !== null) return interpolate(override, params, defaultLocale);
   }
   // 4. defaultLocale bundle
   if (defaultLocale && defaultLocale !== requested) {
     const bundle = registry.get(defaultLocale)?.[key];
-    if (bundle !== undefined) return interpolate(bundle, params);
+    if (bundle !== undefined) return interpolate(bundle, params, defaultLocale);
   }
-  // 5. key fallback
-  return interpolate(key, params);
+  // 5. key fallback — use the requested locale (or default)
+  // for any plural rules in the literal key, though in
+  // practice keys don't carry ICU syntax.
+  return interpolate(key, params, requested ?? defaultLocale ?? "en");
 }
 
 /**
@@ -156,31 +190,95 @@ export async function t(
 export function tSync(
   key: string,
   locale?: string,
-  params?: Record<string, string | number>,
+  params?: NxTranslationParams,
 ): string {
   const config = getI18nConfig();
   const requested = locale ?? config?.defaultLocale ?? null;
   const defaultLocale = config?.defaultLocale ?? null;
   let template: string | undefined;
+  let foundLocale: string | null = null;
   if (requested) {
     template = registry.get(requested)?.[key];
+    if (template !== undefined) foundLocale = requested;
   }
   if (template === undefined && defaultLocale && defaultLocale !== requested) {
     template = registry.get(defaultLocale)?.[key];
+    if (template !== undefined) foundLocale = defaultLocale;
   }
   if (template === undefined) {
-    return interpolate(key, params);
+    return interpolate(key, params, requested ?? defaultLocale ?? "en");
   }
-  return interpolate(template, params);
+  return interpolate(template, params, foundLocale ?? "en");
+}
+
+/**
+ * Compiled-message cache keyed by `${locale}::${template}`.
+ * The IntlMessageFormat constructor parses the ICU AST, which
+ * isn't free; caching means a hot key (e.g. a header tagline
+ * rendered on every request) parses once per process.
+ *
+ * The cache is unbounded by design — keys are bounded by
+ * (locales × templates × site overrides), all small in
+ * practice. If a misconfigured site managed to register
+ * thousands of templates it would still grow into the low MB
+ * range, well under the existing in-memory caches in this
+ * file.
+ */
+const compiledCache = new Map<string, IntlMessageFormat>();
+
+function compile(template: string, locale: string): IntlMessageFormat | null {
+  const cacheKey = `${locale}::${template}`;
+  const cached = compiledCache.get(cacheKey);
+  if (cached) return cached;
+  try {
+    const fmt = new IntlMessageFormat(template, locale);
+    compiledCache.set(cacheKey, fmt);
+    return fmt;
+  } catch (error) {
+    // Malformed ICU template — log once at warn so the
+    // operator can fix the bundle, then fall through to the
+    // raw template (better to render the source than to crash
+    // a page render over a typo).
+    getLogger().warn("Failed to compile ICU translation template", {
+      locale,
+      template,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/** Drop the compile cache. Tests use this between cases. */
+export function resetTranslationCache(): void {
+  compiledCache.clear();
 }
 
 function interpolate(
   template: string,
-  params?: Record<string, string | number>,
+  params: NxTranslationParams | undefined,
+  locale: string,
 ): string {
-  if (!params) return template;
-  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => {
-    const value = params[name];
-    return value === undefined ? match : String(value);
-  });
+  // Plain string fast path: no params + no ICU syntax.
+  // Skipping the parser saves a measurable amount of work
+  // for the common "Read more" / "Submit" case.
+  if (!params && !template.includes("{")) return template;
+
+  const fmt = compile(template, locale);
+  if (!fmt) return template;
+  try {
+    const formatted = fmt.format(params ?? {});
+    // intl-messageformat returns string for plain templates,
+    // (string | object)[] for templates that pass non-string
+    // values through `{x, plural, ...}` selectors with
+    // <Component> placeholders. We don't use rich-text so
+    // coerce to string for safety.
+    return Array.isArray(formatted) ? formatted.join("") : String(formatted);
+  } catch (error) {
+    getLogger().warn("Failed to format ICU translation template", {
+      locale,
+      template,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return template;
+  }
 }

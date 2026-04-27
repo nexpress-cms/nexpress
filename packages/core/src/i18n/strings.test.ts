@@ -5,6 +5,7 @@ import {
   addStrings,
   getAllStrings,
   resetStrings,
+  resetTranslationCache,
   setStrings,
   tSync,
 } from "./strings.js";
@@ -16,11 +17,17 @@ import {
  * has to round-trip to the DB for the override layer.
  * `tSync` is the bundle-only resolver so we don't need the
  * DB here.
+ *
+ * Phase 12.7 — message format upgraded to ICU MessageFormat.
+ * The old `{{name}}` syntax was replaced with `{name}` (single
+ * braces); plural / select / date / number formatters now
+ * follow standard ICU syntax.
  */
 describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
   afterEach(() => {
     resetStrings();
     resetI18nConfig();
+    resetTranslationCache();
   });
 
   it("tSync() resolves from the requested locale's bundle", () => {
@@ -42,16 +49,10 @@ describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
     expect(tSync("totallyMissingKey", "ko")).toBe("totallyMissingKey");
   });
 
-  it("tSync() interpolates {{name}} placeholders from params", () => {
+  it("tSync() interpolates ICU {name} placeholders from params", () => {
     setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
-    addStrings("en", { greeting: "Hello, {{name}}!" });
+    addStrings("en", { greeting: "Hello, {name}!" });
     expect(tSync("greeting", "en", { name: "Bae" })).toBe("Hello, Bae!");
-  });
-
-  it("tSync() leaves placeholders intact when their param is missing (helps surface bugs)", () => {
-    setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
-    addStrings("en", { greeting: "Hello, {{name}}!" });
-    expect(tSync("greeting", "en")).toBe("Hello, {{name}}!");
   });
 
   it("addStrings merges into an existing locale; setStrings replaces", () => {
@@ -74,7 +75,7 @@ describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
     expect(all.ko?.hello).toBe("안녕");
     // The returned object is a copy — mutating it doesn't
     // affect the registry.
-    all.en!.hello = "Mutated";
+    if (all.en) all.en.hello = "Mutated";
     expect(tSync("hello", "en")).toBe("Hello");
   });
 
@@ -88,5 +89,100 @@ describe("UI string registry (Phase 12.5 + D bundle behavior)", () => {
   it("tSync() with no i18n config and no `locale` arg returns the key (no defaults to fall back on)", () => {
     addStrings("en", { hi: "Hello" });
     expect(tSync("hi")).toBe("hi");
+  });
+});
+
+/**
+ * Phase 12.7 — ICU MessageFormat features now available
+ * through the same `t()` / `tSync()` surface. These tests
+ * lock in the contract so a future swap of the formatter
+ * library would have to preserve the same behaviors.
+ */
+describe("ICU MessageFormat (Phase 12.7)", () => {
+  afterEach(() => {
+    resetStrings();
+    resetI18nConfig();
+    resetTranslationCache();
+  });
+
+  it("plural — English picks the right branch for 0/1/n", () => {
+    setI18nConfig({ locales: ["en"], defaultLocale: "en" });
+    addStrings("en", {
+      "items.count":
+        "{count, plural, =0 {No items} one {1 item} other {# items}}",
+    });
+    expect(tSync("items.count", "en", { count: 0 })).toBe("No items");
+    expect(tSync("items.count", "en", { count: 1 })).toBe("1 item");
+    expect(tSync("items.count", "en", { count: 5 })).toBe("5 items");
+  });
+
+  it("plural — Korean uses Korean plural rules (everything is 'other')", () => {
+    // Korean has no plural distinction; CLDR collapses every
+    // count to the `other` category. The formatter should pick
+    // up Korean rules from the locale and render the `other`
+    // branch even for count=1.
+    setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
+    addStrings("ko", {
+      "items.count": "{count, plural, =0 {항목 없음} other {항목 #개}}",
+    });
+    expect(tSync("items.count", "ko", { count: 0 })).toBe("항목 없음");
+    expect(tSync("items.count", "ko", { count: 1 })).toBe("항목 1개");
+    expect(tSync("items.count", "ko", { count: 5 })).toBe("항목 5개");
+  });
+
+  it("select — branches on a string value", () => {
+    setI18nConfig({ locales: ["en"], defaultLocale: "en" });
+    addStrings("en", {
+      "auth.greeting":
+        "{role, select, admin {Welcome, admin} editor {Hi, editor} other {Hi}}",
+    });
+    expect(tSync("auth.greeting", "en", { role: "admin" })).toBe(
+      "Welcome, admin",
+    );
+    expect(tSync("auth.greeting", "en", { role: "editor" })).toBe(
+      "Hi, editor",
+    );
+    expect(tSync("auth.greeting", "en", { role: "viewer" })).toBe("Hi");
+  });
+
+  it("number — locale-aware grouping separator", () => {
+    setI18nConfig({ locales: ["en", "de"], defaultLocale: "en" });
+    addStrings("en", { "stats.views": "{n, number} views" });
+    addStrings("de", { "stats.views": "{n, number} Aufrufe" });
+    expect(tSync("stats.views", "en", { n: 12345 })).toBe("12,345 views");
+    // de-DE uses a dot as the thousands separator.
+    expect(tSync("stats.views", "de", { n: 12345 })).toBe("12.345 Aufrufe");
+  });
+
+  it("plain string with no params and no ICU syntax skips the parser", () => {
+    // Smoke test for the fast path. Not directly observable
+    // from the outside, but we verify the output matches the
+    // input verbatim — including characters that aren't
+    // valid ICU literals. (Apostrophes are ICU's escape
+    // character, so this would otherwise round-trip differently.)
+    setI18nConfig({ locales: ["en"], defaultLocale: "en" });
+    addStrings("en", { plain: "It's a plain string" });
+    expect(tSync("plain", "en")).toBe("It's a plain string");
+  });
+
+  it("malformed ICU template falls back to the raw template instead of throwing", () => {
+    setI18nConfig({ locales: ["en"], defaultLocale: "en" });
+    // `{count, plural,` with no branches is invalid ICU.
+    addStrings("en", { broken: "{count, plural," });
+    // Should not throw — the warn log surfaces the bug to the
+    // operator and the user sees the raw template.
+    expect(() => tSync("broken", "en", { count: 1 })).not.toThrow();
+  });
+
+  it("missing param falls back to the raw template instead of crashing", () => {
+    setI18nConfig({ locales: ["en"], defaultLocale: "en" });
+    addStrings("en", { greet: "Hello, {name}!" });
+    // intl-messageformat throws on a missing required
+    // placeholder; our `interpolate()` catches that, logs a
+    // warn (helps the operator find the missing param), and
+    // returns the raw template. Better than rendering a page
+    // 500 over a missing variable.
+    expect(() => tSync("greet", "en")).not.toThrow();
+    expect(tSync("greet", "en")).toBe("Hello, {name}!");
   });
 });
