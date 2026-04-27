@@ -9,6 +9,7 @@ import {
   type NxJobQueue,
   type NxJobState,
   type NxJobSummary,
+  type NxScheduleSummary,
 } from "./queue.js";
 
 /**
@@ -98,10 +99,13 @@ export class PgBossAdapter implements NxJobQueue {
   /**
    * Phase 13 — admin job introspection. Joins pgboss.job
    * (pending / active / retry) and pgboss.archive (completed
-   * / failed / expired) into one unified list. Pagination
-   * happens client-side after the merge to keep state-filter
-   * semantics straightforward (the alternative is two
-   * paginated queries the caller has to interleave).
+   * / failed / expired) into one unified list.
+   *
+   * Phase 13.2 — `since` filter for time-bounded queries
+   * ("last 24 hours") and accurate `total` via a parallel
+   * COUNT(*) so the admin pagination shows the right count.
+   * The COUNT runs against the same UNION; the per-page
+   * SELECT still gets the row data.
    */
   async listJobs(options: NxJobListOptions): Promise<NxJobListResult> {
     const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
@@ -118,12 +122,16 @@ export class PgBossAdapter implements NxJobQueue {
       params.push(options.state);
       where.push(`state = $${params.length}`);
     }
+    if (options.since) {
+      params.push(options.since.toISOString());
+      where.push(`created_on >= $${params.length}`);
+    }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
     // Schema name defaults to `pgboss` but can be overridden
     // via constructor options. We didn't pass `schema`, so the
     // default is in effect.
-    const sql = `
+    const listSql = `
       SELECT id, name, state::text AS state, data, retry_count,
              output, created_on, started_on, completed_on
       FROM (
@@ -137,24 +145,52 @@ export class PgBossAdapter implements NxJobQueue {
       ) jobs
       ${whereSql}
       ORDER BY created_on DESC
-      LIMIT ${limit + 1} OFFSET ${offset}
+      LIMIT ${limit} OFFSET ${offset}
     `;
-    const result = await db.executeSql(sql, params);
-    const rows = result.rows ?? [];
-
-    // Total count — `LIMIT n+1` lets us tell whether there's
-    // a "next page" without a second COUNT(*) round-trip.
-    // Total accuracy across both tables is tricky; we report
-    // the in-page total + a `hasMore` fallback by trimming
-    // the extra row.
-    const hasMore = rows.length > limit;
-    const slice = hasMore ? rows.slice(0, limit) : rows;
-    const total = offset + rows.length; // approximate; a real total would COUNT(*)
+    const countSql = `
+      SELECT COUNT(*)::bigint AS total
+      FROM (
+        SELECT id, name, state, data, created_on FROM pgboss.job
+        UNION ALL
+        SELECT id, name, state, data, created_on FROM pgboss.archive
+      ) jobs
+      ${whereSql}
+    `;
+    const [listResult, countResult] = await Promise.all([
+      db.executeSql(listSql, params),
+      db.executeSql(countSql, params) as unknown as Promise<{
+        rows: Array<{ total: string | number }>;
+      }>,
+    ]);
+    const rows = listResult.rows ?? [];
+    const totalRaw = countResult.rows?.[0]?.total;
+    const total =
+      typeof totalRaw === "number"
+        ? totalRaw
+        : typeof totalRaw === "string"
+          ? Number.parseInt(totalRaw, 10)
+          : 0;
 
     return {
-      jobs: slice.map(rowToSummary),
-      total,
+      jobs: rows.map(rowToSummary),
+      total: Number.isFinite(total) ? total : 0,
     };
+  }
+
+  /**
+   * Phase 13.2 — list every cron schedule registered in the
+   * queue. Reads from `pgboss.schedule`, which is the table
+   * pg-boss writes to on each `boss.schedule()` call. Sorted
+   * by name for stable display.
+   */
+  async listSchedules(): Promise<NxScheduleSummary[]> {
+    const db = (this.boss as unknown as { db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossScheduleRow[] }> } }).db;
+    const result = await db.executeSql(
+      `SELECT name, cron, timezone, data, created_on, updated_on
+         FROM pgboss.schedule
+        ORDER BY name ASC`,
+    );
+    return (result.rows ?? []).map(scheduleRowToSummary);
   }
 
   async retryJob(id: string): Promise<string> {
@@ -212,6 +248,26 @@ interface PgBossRow {
   created_on?: Date | string | null;
   started_on?: Date | string | null;
   completed_on?: Date | string | null;
+}
+
+interface PgBossScheduleRow {
+  name: string;
+  cron: string;
+  timezone?: string | null;
+  data?: unknown;
+  created_on?: Date | string | null;
+  updated_on?: Date | string | null;
+}
+
+function scheduleRowToSummary(row: PgBossScheduleRow): NxScheduleSummary {
+  return {
+    name: row.name,
+    cron: row.cron,
+    timezone: row.timezone ?? null,
+    data: row.data ?? null,
+    createdOn: toIso(row.created_on) ?? new Date(0).toISOString(),
+    updatedOn: toIso(row.updated_on),
+  };
 }
 
 function rowToSummary(row: PgBossRow): NxJobSummary {

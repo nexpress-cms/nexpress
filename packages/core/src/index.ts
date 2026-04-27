@@ -282,6 +282,7 @@ export type {
   NxJobSummary,
   NxJobListOptions,
   NxJobListResult,
+  NxScheduleSummary,
 } from "./jobs/index.js";
 
 export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
