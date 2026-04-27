@@ -1,4 +1,4 @@
-import { getLogger } from "@nexpress/core";
+import { getCurrentSiteId, getLogger } from "@nexpress/core";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 export interface CollectionRevalidationRule {
@@ -7,23 +7,40 @@ export interface CollectionRevalidationRule {
    * `{slug}` placeholder is substituted with the document's slug. If the
    * document has no slug (or the rule has no placeholder), the literal path
    * is revalidated.
+   *
+   * Phase 15.10 — `{siteId}` placeholder is also supported for paths that
+   * need site-scoping. Invalidations from a request without a resolved
+   * siteId fall through to the legacy global tags only.
    */
   paths: readonly string[];
   /**
    * Phase 14.1 — cache tags to bust alongside path invalidation.
    * Routes using `unstable_cache(..., [], { tags })` (sitemap.xml,
    * feed.xml, etc.) re-render on the next request after a write
-   * to this collection. Same `{slug}` placeholder rules as paths.
+   * to this collection. Same `{slug}` / `{siteId}` placeholder rules
+   * as paths.
    */
   tags?: readonly string[];
 }
 
 export type RevalidationMap = Record<string, CollectionRevalidationRule>;
 
-function substitute(path: string, documentSlug: string | undefined): string | null {
-  if (!path.includes("{slug}")) return path;
-  if (!documentSlug) return null;
-  return path.replace("{slug}", documentSlug);
+interface SubstituteContext {
+  documentSlug: string | undefined;
+  siteId: string | null;
+}
+
+function substitute(template: string, ctx: SubstituteContext): string | null {
+  let out = template;
+  if (out.includes("{slug}")) {
+    if (!ctx.documentSlug) return null;
+    out = out.replace("{slug}", ctx.documentSlug);
+  }
+  if (out.includes("{siteId}")) {
+    if (!ctx.siteId) return null;
+    out = out.replace("{siteId}", ctx.siteId);
+  }
+  return out;
 }
 
 /**
@@ -49,8 +66,25 @@ export function revalidateCollection(
   const documentSlug =
     doc && typeof doc.slug === "string" && doc.slug.length > 0 ? doc.slug : undefined;
 
+  // First pass — emit every tag/path that doesn't depend on
+  // siteId. This includes the legacy global tags (`nx:sitemap`,
+  // `nx:feed:posts`, …) so existing site-scoped cache wrappers
+  // (Phase 14.8) and global wrappers both clear.
+  emit(rule, { documentSlug, siteId: null });
+
+  // Second pass — resolve siteId asynchronously and re-fire
+  // any rule entries that contain `{siteId}`. Fire-and-forget
+  // so the (sync) caller doesn't have to await; if the
+  // resolver returns null, this is a no-op. The first pass
+  // already covered the global-tag invalidation as a safety
+  // net, so a missed site-scoped tag is at worst over-
+  // invalidation, never stale-cache.
+  void emitSiteScopedTags(rule, documentSlug);
+}
+
+function emit(rule: CollectionRevalidationRule, ctx: SubstituteContext): void {
   for (const raw of rule.paths) {
-    const target = substitute(raw, documentSlug);
+    const target = substitute(raw, ctx);
     if (!target) continue;
     try {
       revalidatePath(target);
@@ -72,7 +106,7 @@ export function revalidateCollection(
   // `unstable_cache`-wrapped readers (sitemap, feed, navigation,
   // theme tokens) drop their cached output on the next request.
   for (const rawTag of rule.tags ?? []) {
-    const target = substitute(rawTag, documentSlug);
+    const target = substitute(rawTag, ctx);
     if (!target) continue;
     try {
       revalidateTag(target);
@@ -85,6 +119,31 @@ export function revalidateCollection(
       }
     }
   }
+}
+
+async function emitSiteScopedTags(
+  rule: CollectionRevalidationRule,
+  documentSlug: string | undefined,
+): Promise<void> {
+  // Skip the work entirely if no rule entry references {siteId}.
+  const hasSiteScoped =
+    rule.paths.some((p) => p.includes("{siteId}")) ||
+    (rule.tags ?? []).some((t) => t.includes("{siteId}"));
+  if (!hasSiteScoped) return;
+
+  let siteId: string | null;
+  try {
+    siteId = await getCurrentSiteId();
+  } catch {
+    siteId = null;
+  }
+  if (!siteId) return;
+
+  const siteScopedRule: CollectionRevalidationRule = {
+    paths: rule.paths.filter((p) => p.includes("{siteId}")),
+    tags: rule.tags?.filter((t) => t.includes("{siteId}")),
+  };
+  emit(siteScopedRule, { documentSlug, siteId });
 }
 
 /**
@@ -102,10 +161,32 @@ export function revalidateCollection(
 export const defaultRevalidationRules: RevalidationMap = {
   posts: {
     paths: ["/blog", "/blog/{slug}"],
-    tags: ["nx:posts", "nx:sitemap", "nx:feed:posts", "nx:search"],
+    tags: [
+      // Global tags — bust every-site caches (legacy contract).
+      "nx:posts",
+      "nx:sitemap",
+      "nx:feed:posts",
+      "nx:search",
+      // Phase 15.10 — site-scoped tags so multi-tenant deploys
+      // only invalidate the writing tenant's caches. Resolved
+      // asynchronously by `revalidateCollection`; if the
+      // current request has no resolved siteId, only the
+      // global tags above fire (still correct, just over-
+      // invalidating).
+      "nx:sitemap:{siteId}",
+      "nx:feed:{siteId}:posts",
+      "nx:feed:{siteId}",
+      "nx:search:{siteId}",
+    ],
   },
   pages: {
     paths: ["/{slug}", "/"],
-    tags: ["nx:pages", "nx:sitemap", "nx:search"],
+    tags: [
+      "nx:pages",
+      "nx:sitemap",
+      "nx:search",
+      "nx:sitemap:{siteId}",
+      "nx:search:{siteId}",
+    ],
   },
 };
