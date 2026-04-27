@@ -356,6 +356,18 @@ export {
   getCurrentSiteId,
   withCurrentSite,
 } from "./sites/context.js";
+export {
+  listSiteMemberships,
+  listMembershipsForUser,
+  getMembership,
+  grantSiteMembership,
+  revokeSiteMembership,
+  setSuperAdmin,
+  resolveUserRoleOnSite,
+  hasRoleOnSite,
+  isSuperAdmin,
+} from "./sites/memberships.js";
+export type { SiteMembership } from "./sites/memberships.js";
 
 export {
   setI18nConfig,
