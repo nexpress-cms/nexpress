@@ -417,6 +417,24 @@ export interface NxResolvedPluginLike {
    * sites can layer overrides via plugin order.
    */
   i18n?: Record<string, Record<string, string>>;
+  /**
+   * Phase 14.5 — page templates the plugin contributes to the
+   * shared template registry. Same shape as a theme's
+   * `impl.templates`: keyed by collection slug, then by
+   * template id, with `{ label, description?, component }`
+   * values. The plugin host merges these at boot;
+   * `getThemeTemplateSummaries` returns plugin templates +
+   * theme templates as a union, with theme entries winning
+   * id collisions (the active theme is the site's design
+   * authority).
+   *
+   *   templates: {
+   *     pages: {
+   *       docs: { label: "Documentation", component: DocsTemplate },
+   *     },
+   *   }
+   */
+  templates?: Record<string, Record<string, unknown>>;
 }
 
 export interface NxPluginContext {

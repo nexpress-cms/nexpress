@@ -327,8 +327,15 @@ export {
   getActiveThemeId,
   setActiveThemeId,
   getThemeTemplateSummaries,
+  resolveTemplateComponent,
 } from "./themes/registry.js";
 export type { NxThemeTemplateSummary } from "./themes/registry.js";
+
+export {
+  registerPluginTemplates,
+  resetPluginTemplates,
+  getPluginTemplatesForCollection,
+} from "./plugins/templates.js";
 
 export {
   setI18nConfig,
