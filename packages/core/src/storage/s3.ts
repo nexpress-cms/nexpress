@@ -1,6 +1,13 @@
 import { Readable } from "node:stream";
 import type { ReadableStream } from "node:stream/web";
 
+import type { S3Client } from "@aws-sdk/client-s3";
+// `import type *` keeps this a compile-time alias only —
+// the actual `import("@aws-sdk/client-s3")` happens lazily
+// in `s3ModulePromise` below, so apps that don't use S3
+// don't pay the import cost.
+import type * as awsS3 from "@aws-sdk/client-s3";
+
 import type { NxFileMetadata, NxStorageAdapter } from "./types.js";
 
 export interface S3StorageAdapterConfig {
@@ -13,12 +20,12 @@ export interface S3StorageAdapterConfig {
   };
 }
 
-type S3Module = typeof import("@aws-sdk/client-s3");
+type S3Module = typeof awsS3;
 
 let s3ModulePromise: Promise<S3Module> | null = null;
 
 export class S3StorageAdapter implements NxStorageAdapter {
-  private clientPromise: Promise<import("@aws-sdk/client-s3").S3Client> | null = null;
+  private clientPromise: Promise<S3Client> | null = null;
 
   constructor(private readonly config: S3StorageAdapterConfig) {}
 
@@ -61,15 +68,22 @@ export class S3StorageAdapter implements NxStorageAdapter {
     return toReadableStream(response.Body);
   }
 
-  async getUrl(key: string): Promise<string> {
+  getUrl(key: string): Promise<string> {
     if (this.config.endpoint) {
-      return new URL(key, `${normalizeUrl(this.config.endpoint)}/${this.config.bucket}/`).toString();
+      return Promise.resolve(
+        new URL(
+          key,
+          `${normalizeUrl(this.config.endpoint)}/${this.config.bucket}/`,
+        ).toString(),
+      );
     }
 
-    return new URL(
-      key,
-      `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/`,
-    ).toString();
+    return Promise.resolve(
+      new URL(
+        key,
+        `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/`,
+      ).toString(),
+    );
   }
 
   async delete(key: string): Promise<void> {
@@ -109,7 +123,7 @@ export class S3StorageAdapter implements NxStorageAdapter {
     }
   }
 
-  private async getClient(): Promise<import("@aws-sdk/client-s3").S3Client> {
+  private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
       this.clientPromise = this.createClient();
     }
@@ -117,7 +131,7 @@ export class S3StorageAdapter implements NxStorageAdapter {
     return this.clientPromise;
   }
 
-  private async createClient(): Promise<import("@aws-sdk/client-s3").S3Client> {
+  private async createClient(): Promise<S3Client> {
     const { S3Client } = await loadS3Module();
 
     return new S3Client({

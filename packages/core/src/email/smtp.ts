@@ -25,7 +25,7 @@ interface NodemailerTransporterLike {
     text: string;
     html?: string;
   }): Promise<unknown>;
-  verify?: () => Promise<boolean | unknown>;
+  verify?: () => Promise<unknown>;
 }
 
 /**
@@ -51,13 +51,12 @@ export class SmtpEmailAdapter implements NxEmailAdapter {
       createTransport: (cfg: unknown) => NodemailerTransporterLike;
     };
     try {
-      // `new Function` keeps TypeScript from rewriting to a static require
-      // on consumers that bundle core (e.g. Next.js). Deferred import lets
-      // the package opt out of loading nodemailer entirely.
-      const importer = new Function("id", "return import(id);") as (
-        id: string,
-      ) => Promise<unknown>;
-      nodemailer = (await importer("nodemailer")) as typeof nodemailer;
+      // Indirect specifier so TypeScript doesn't try to
+      // resolve `nodemailer` at compile time —
+      // `@nexpress/core` doesn't depend on it. Apps using the
+      // noop or a custom adapter never pay the import cost.
+      const moduleId: string = "nodemailer";
+      nodemailer = (await import(moduleId)) as typeof nodemailer;
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
       throw new NxError(

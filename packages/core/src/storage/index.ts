@@ -1,6 +1,7 @@
 import type { NxConfig } from "../config/types.js";
 import { LocalStorageAdapter } from "./local.js";
 import { S3StorageAdapter } from "./s3.js";
+import type { NxStorageAdapter } from "./types.js";
 
 export type { NxFileMetadata, NxStorageAdapter } from "./types.js";
 export { LocalStorageAdapter } from "./local.js";
@@ -8,7 +9,7 @@ export { S3StorageAdapter } from "./s3.js";
 
 type NxStorageConfig = NonNullable<NxConfig["storage"]>;
 
-export function createStorageAdapter(config: NxConfig["storage"]): import("./types.js").NxStorageAdapter {
+export function createStorageAdapter(config: NxConfig["storage"]): NxStorageAdapter {
   if (!config) {
     throw new Error("Storage configuration is required.");
   }

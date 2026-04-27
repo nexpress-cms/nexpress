@@ -26,7 +26,7 @@ function resolvedPlugin(
       hook: string;
       data: Record<string, unknown>;
       collection?: string;
-    }) => unknown | Promise<unknown>>;
+    }) => unknown>;
     routes?: Array<{ method: string; path: string; handler: () => Promise<{ status: number }> }>;
   } = {},
 ): {

@@ -16,9 +16,11 @@ export default async function EditDiscussionPage({ params }: EditDiscussionPageP
   const { slug } = await params;
   const member = await getSiteMember();
   if (!member) {
-    // 404 instead of redirecting to a not-yet-built login page.
-    // The author needs to be signed in to even see this URL exists;
-    // anonymous discovery shouldn't reveal the edit slug.
+    // 404 instead of redirecting to /members/login. The
+    // author needs to be signed in to even see this URL
+    // exists; anonymous discovery shouldn't reveal the edit
+    // slug, and a redirect would silently leak existence
+    // (the redirect target reveals the slug as `?next=`).
     notFound();
   }
 

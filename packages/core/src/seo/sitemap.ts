@@ -99,7 +99,7 @@ export async function buildSitemap(
     // its hreflang alternates. Rows missing the group id
     // (shouldn't happen post-12.1) fall back to standalone
     // entries with no alternates.
-    const docs = result.docs as Array<Record<string, unknown>>;
+    const docs = result.docs;
     if (config.i18n) {
       const groups = new Map<string, Array<Record<string, unknown>>>();
       const orphans: Array<Record<string, unknown>> = [];
