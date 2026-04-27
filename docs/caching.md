@@ -38,11 +38,14 @@ walk. Tagged so writes can invalidate selectively.
 
 **Tagged routes**
 
-| Route                    | Tag(s)                          | Revalidate |
-| ------------------------ | ------------------------------- | ---------- |
-| `/sitemap.xml`           | `nx:sitemap`                    | 600s       |
-| `/feed.xml` (default)    | `nx:feed`, `nx:feed:posts`      | 600s       |
-| `/feed.xml?collection=…` | `nx:feed`, `nx:feed:{collection}` (when added) | 600s |
+| Route                    | Tag(s)                                         | Revalidate |
+| ------------------------ | ---------------------------------------------- | ---------- |
+| `/sitemap.xml`           | `nx:sitemap`                                   | 600s       |
+| `/feed.xml` (default)    | `nx:feed`, `nx:feed:posts`                     | 600s       |
+| `/feed.xml?collection=…` | `nx:feed`, `nx:feed:{collection}` (when added) | 600s       |
+| `getCachedTheme()`       | `nx:theme:<siteId>`                            | 600s       |
+| `getCachedActiveThemeId()` | `nx:theme:<siteId>` (shared)                 | 600s       |
+| `getCachedNavigation(loc)` | `nx:nav:<siteId>:<location>`                 | 600s       |
 
 **Invalidation**
 
@@ -138,17 +141,37 @@ serving with no CDN; that's fine for development.
 
 ## What's NOT cached (yet)
 
-- Catch-all page render (`/[[...slug]]`) — uses
+- **Catch-all page render** (`/[[...slug]]`) — uses
   `force-dynamic` because of `draftMode()` and member-
-  authored content. ISR for the non-draft public path is a
-  follow-up.
-- Theme tokens (`getTheme()`) and navigation
-  (`getNavigation()`) — called on every public page render.
-  Wrapping in `unstable_cache` with `nx:theme` / `nx:nav:*`
-  tags is a clear win; not yet shipped.
-- Search responses (`/api/search`) — query strings make
-  caching tricky; deferred until a search-adapter pattern
-  emerges (the pluggable adapter from 10.6 will likely
-  handle its own cache).
+  authored content. ISR for the non-draft public path is the
+  biggest open perf win.
+- **Search responses** (`/api/search`) — query strings make
+  caching tricky; the pluggable adapter from 10.6 may handle
+  its own cache. A simple short-TTL wrapper for the
+  hot-query case is a candidate follow-up.
+- **Multi-site sitemap / feed cache keys** — current tags
+  (`nx:sitemap`, `nx:feed:posts`) are global. In a multi-
+  tenant deploy where the same worker pool serves several
+  sites, a write to site A invalidates site B's cache too.
+  Site-scoped tags (`nx:sitemap:<siteId>`) would mirror the
+  Phase 14.3 theme/nav pattern.
+- **CDN cache invalidation** — `revalidateTag` only flushes
+  the Next data cache, not a downstream CDN. Sites running
+  Cloudflare / Fastly need their own purge call. A pluggable
+  hook (`setCdnPurgeAdapter()`) parallel to the spam /
+  search adapters is the natural fit.
+- **stale-while-revalidate** — Tagged routes have a hard
+  `revalidate: 600` TTL with no SWR window. A request that
+  arrives just after expiry waits for the regen. Adding
+  SWR to sitemap / feed / theme would smooth the spike.
 
 These are tracked as 14.x follow-ups.
+
+## Already cached (Phase 14 retrospective)
+
+- 14.1 — `sitemap.xml` and `feed.xml` (tag-based ISR)
+- 14.2 — `Cache-Control` + `Vary` middleware
+- 14.3 — `getCachedTheme()`, `getCachedActiveThemeId()`,
+  `getCachedNavigation()` with site-scoped tags
+- 14.5 — plugin-contributed page templates (separate concern,
+  but reuses the cache plumbing)
