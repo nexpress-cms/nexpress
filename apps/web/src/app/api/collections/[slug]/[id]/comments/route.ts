@@ -24,7 +24,11 @@ export async function GET(
     const url = request.nextUrl;
     const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
-    const order = url.searchParams.get("order") === "oldest" ? "oldest" : "newest";
+    const orderParam = url.searchParams.get("order");
+    const order =
+      orderParam === "oldest" || orderParam === "top"
+        ? orderParam
+        : "newest";
 
     // Hidden rows are mod-only. The original guard only checked
     // "is any member logged in?", which leaked hidden/deleted/pending
