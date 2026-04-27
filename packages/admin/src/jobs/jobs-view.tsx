@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Ban,
+  CalendarClock,
   Check,
   Clock,
+  Code,
   Loader2,
   Play,
   RefreshCw,
@@ -31,11 +33,34 @@ import {
  * Phase 13 — admin background-jobs view. One tab per state:
  * Pending (created+retry), Active, Completed, Failed.
  *
+ * Phase 13.2 — added Scheduled tab (registered cron entries +
+ * handler list) and a time-range toggle ("All time" / "Last
+ * 24 h") on the state tabs so operators can spot recent
+ * incidents without paging through history.
+ *
  * The endpoint reports a `supported: false` flag when the
  * site runs without pg-boss (NX_ENABLE_JOBS=0); the UI shows
  * an empty-state in that case rather than 500ing on every
  * tab fetch.
  */
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+type WindowMode = "all" | "24h";
+
+interface ScheduleSummary {
+  name: string;
+  cron: string;
+  timezone: string | null;
+  data: unknown;
+  createdOn: string;
+  updatedOn?: string | null;
+}
+
+interface ScheduleListResponse {
+  supported: boolean;
+  schedules?: ScheduleSummary[];
+  handlers?: string[];
+}
 
 interface JobSummary {
   id: string;
@@ -62,38 +87,58 @@ interface JobListResponse {
   total?: number;
 }
 
-const STATE_BUCKETS: Record<string, JobSummary["state"][]> = {
+type StateTab = "pending" | "active" | "completed" | "failed";
+type Tab = StateTab | "scheduled";
+
+const STATE_BUCKETS: Record<StateTab, JobSummary["state"][]> = {
   pending: ["created", "retry"],
   active: ["active"],
   completed: ["completed"],
   failed: ["failed", "cancelled", "expired"],
 };
 
+const STATE_TABS: StateTab[] = ["pending", "active", "completed", "failed"];
+
+function isStateTab(tab: Tab): tab is StateTab {
+  return tab !== "scheduled";
+}
+
 export function JobsView() {
-  const [tab, setTab] = useState<keyof typeof STATE_BUCKETS>("pending");
+  const [tab, setTab] = useState<Tab>("pending");
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [supported, setSupported] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [windowMode, setWindowMode] = useState<WindowMode>("all");
+  const [schedules, setSchedules] = useState<ScheduleSummary[] | null>(null);
+  const [handlers, setHandlers] = useState<string[]>([]);
+  const [schedulesSupported, setSchedulesSupported] = useState<boolean>(true);
 
   useEffect(() => {
-    void load(tab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+    if (tab === "scheduled") {
+      void loadSchedules();
+    } else {
+      void load(tab, windowMode);
+    }
+  }, [tab, windowMode]);
 
-  async function load(activeTab: keyof typeof STATE_BUCKETS) {
+  async function load(activeTab: StateTab, mode: WindowMode) {
     setRefreshing(true);
     setError(null);
     try {
       const states = STATE_BUCKETS[activeTab];
+      const sinceParam =
+        mode === "24h"
+          ? `&since=${encodeURIComponent(new Date(Date.now() - ONE_DAY_MS).toISOString())}`
+          : "";
       // Fetch each state in this bucket and merge — pg-boss
       // doesn't have a single "any-of-these-states" filter, so
       // we round-trip per state. Buckets have 1-3 states max.
       const results = await Promise.all(
         states.map(async (state) => {
           const res = await nxFetch(
-            `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100`,
+            `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}`,
           );
           return (await res.json().catch(() => null)) as JobListResponse | null;
         }),
@@ -109,6 +154,24 @@ export function JobsView() {
       setJobs(merged);
     } catch {
       setError("Unable to load jobs.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function loadSchedules() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await nxFetch("/api/admin/jobs/schedules");
+      const body = (await res.json().catch(() => null)) as
+        | ScheduleListResponse
+        | null;
+      setSchedulesSupported(body?.supported ?? false);
+      setSchedules(body?.schedules ?? []);
+      setHandlers(body?.handlers ?? []);
+    } catch {
+      setError("Unable to load schedules.");
     } finally {
       setRefreshing(false);
     }
@@ -130,7 +193,7 @@ export function JobsView() {
         setError(body?.error?.message ?? "Unable to retry job.");
         return;
       }
-      await load(tab);
+      if (isStateTab(tab)) await load(tab, windowMode);
     } catch {
       setError("Unable to retry job.");
     } finally {
@@ -154,7 +217,7 @@ export function JobsView() {
         setError(body?.error?.message ?? "Unable to cancel job.");
         return;
       }
-      await load(tab);
+      if (isStateTab(tab)) await load(tab, windowMode);
     } catch {
       setError("Unable to cancel job.");
     } finally {
@@ -177,19 +240,53 @@ export function JobsView() {
             last error inline so you can patch the upstream issue and re-run.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void load(tab)}
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
-          )}
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {isStateTab(tab) ? (
+            <div className="inline-flex rounded-md border border-border/70 bg-background p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setWindowMode("all")}
+                className={`rounded px-2 py-1 transition ${
+                  windowMode === "all"
+                    ? "bg-muted font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                All time
+              </button>
+              <button
+                type="button"
+                onClick={() => setWindowMode("24h")}
+                className={`rounded px-2 py-1 transition ${
+                  windowMode === "24h"
+                    ? "bg-muted font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Last 24 h
+              </button>
+            </div>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (tab === "scheduled") {
+                void loadSchedules();
+              } else {
+                void load(tab, windowMode);
+              }
+            }}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {!supported ? (
@@ -211,30 +308,130 @@ export function JobsView() {
 
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as keyof typeof STATE_BUCKETS)}
+        onValueChange={(value) => setTab(value as Tab)}
         className="space-y-6"
       >
-        <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-5">
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
           <TabsTrigger value="failed">Failed</TabsTrigger>
+          <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
         </TabsList>
 
-        {(Object.keys(STATE_BUCKETS) as Array<keyof typeof STATE_BUCKETS>).map(
-          (key) => (
-            <TabsContent key={key} value={key} className="space-y-3">
-              <JobList
-                jobs={jobs}
-                tab={key}
-                busyJobId={busyJobId}
-                onRetry={retry}
-                onCancel={cancel}
-              />
-            </TabsContent>
-          ),
-        )}
+        {STATE_TABS.map((key) => (
+          <TabsContent key={key} value={key} className="space-y-3">
+            <JobList
+              jobs={jobs}
+              tab={key}
+              busyJobId={busyJobId}
+              onRetry={(id) => void retry(id)}
+              onCancel={(id) => void cancel(id)}
+            />
+          </TabsContent>
+        ))}
+
+        <TabsContent value="scheduled" className="space-y-4">
+          <SchedulesPanel
+            supported={schedulesSupported}
+            schedules={schedules}
+            handlers={handlers}
+          />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function SchedulesPanel({
+  supported,
+  schedules,
+  handlers,
+}: {
+  supported: boolean;
+  schedules: ScheduleSummary[] | null;
+  handlers: string[];
+}) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm font-medium">
+            <CalendarClock className="h-4 w-4" /> Cron schedules
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Recurring jobs registered via <code>boss.schedule()</code>. Reads
+            from <code>pgboss.schedule</code>.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {!supported ? (
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
+              The active queue adapter doesn't expose schedules.
+            </p>
+          ) : schedules === null ? (
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
+              <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+              Loading…
+            </p>
+          ) : schedules.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
+              No schedules registered.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {schedules.map((schedule) => (
+                <li key={schedule.name} className="space-y-1 px-5 py-3">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <code className="font-mono text-xs">{schedule.name}</code>
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                      {schedule.cron}
+                    </code>
+                    {schedule.timezone ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        {schedule.timezone}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Registered {new Date(schedule.createdOn).toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm font-medium">
+            <Code className="h-4 w-4" /> Registered handlers
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Job types that have a worker handler registered. Enqueues to other
+            types will sit in the queue with no consumer.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {handlers.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
+              No handlers registered yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {handlers.map((name) => (
+                <li
+                  key={name}
+                  className="px-5 py-2 font-mono text-xs text-foreground"
+                >
+                  {name}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

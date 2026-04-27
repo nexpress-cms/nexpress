@@ -222,4 +222,143 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     const { status } = await readJson(res);
     expect(status).toBe(500);
   });
+
+  /**
+   * Phase 13.2 — schedule + handler introspection and the
+   * `since` time-range filter on the jobs list.
+   */
+  it("GET /api/admin/jobs/schedules returns supported:false when no queue is wired (handlers still listed)", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { GET } = await import("@/app/api/admin/jobs/schedules/route");
+    const req = buildRequest("/api/admin/jobs/schedules", { session: admin });
+    const res = await GET(req);
+    const { status, body } = await readJson<{
+      supported?: boolean;
+      schedules?: unknown[];
+      handlers?: string[];
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.supported).toBe(false);
+    expect(body.schedules).toEqual([]);
+    // Handler list is whatever the test harness registered.
+    // It might be empty (no `registerBuiltinHandlers()` in
+    // the harness flow) — the contract is just "always
+    // return an array, never error."
+    expect(Array.isArray(body.handlers)).toBe(true);
+  });
+
+  it("GET /api/admin/jobs/schedules surfaces registered handlers in the response", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue, registerJobHandler } = await import(
+      "@nexpress/core"
+    );
+    setJobQueue(null);
+    registerJobHandler("test:probe", async () => {});
+
+    const { GET } = await import("@/app/api/admin/jobs/schedules/route");
+    const req = buildRequest("/api/admin/jobs/schedules", { session: admin });
+    const res = await GET(req);
+    const { body } = await readJson<{ handlers?: string[] }>(res);
+    expect(body.handlers).toContain("test:probe");
+  });
+
+  it("GET /api/admin/jobs/schedules lists schedules from the configured queue", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    const queue = {
+      enqueue: async () => "stub",
+      start: async () => {},
+      stop: async () => {},
+      listSchedules: async () => [
+        {
+          name: "system.revisionPrune",
+          cron: "0 3 * * *",
+          timezone: "UTC",
+          data: {},
+          createdOn: new Date().toISOString(),
+        },
+        {
+          name: "system.sessionCleanup",
+          cron: "0 * * * *",
+          timezone: null,
+          data: {},
+          createdOn: new Date().toISOString(),
+        },
+      ],
+    };
+    setJobQueue(queue);
+
+    const { GET } = await import("@/app/api/admin/jobs/schedules/route");
+    const req = buildRequest("/api/admin/jobs/schedules", { session: admin });
+    const res = await GET(req);
+    const { status, body } = await readJson<{
+      supported?: boolean;
+      schedules?: Array<{ name: string; cron: string }>;
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.supported).toBe(true);
+    expect(body.schedules?.length).toBe(2);
+    expect(body.schedules?.[0]?.name).toBe("system.revisionPrune");
+    expect(body.schedules?.[0]?.cron).toBe("0 3 * * *");
+  });
+
+  it("GET /api/admin/jobs/schedules forbids non-admin roles", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const { GET } = await import("@/app/api/admin/jobs/schedules/route");
+    const req = buildRequest("/api/admin/jobs/schedules", { session: editor });
+    const res = await GET(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
+
+  it("GET /api/admin/jobs forwards `?since=...` to the queue's listJobs", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    let receivedSince: Date | undefined;
+    const queue = {
+      enqueue: async () => "stub",
+      start: async () => {},
+      stop: async () => {},
+      listJobs: async (opts: { since?: Date }) => {
+        receivedSince = opts.since;
+        return { jobs: [], total: 0 };
+      },
+    };
+    setJobQueue(queue);
+
+    const since = "2026-04-26T00:00:00.000Z";
+    const { GET } = await import("@/app/api/admin/jobs/route");
+    const req = buildRequest("/api/admin/jobs", {
+      session: admin,
+      query: { since },
+    });
+    await GET(req);
+    expect(receivedSince).toBeInstanceOf(Date);
+    expect(receivedSince?.toISOString()).toBe(since);
+  });
+
+  it("GET /api/admin/jobs ignores invalid `?since=...` (no 400, no filter)", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    let receivedSince: Date | undefined;
+    const queue = {
+      enqueue: async () => "stub",
+      start: async () => {},
+      stop: async () => {},
+      listJobs: async (opts: { since?: Date }) => {
+        receivedSince = opts.since;
+        return { jobs: [], total: 0 };
+      },
+    };
+    setJobQueue(queue);
+
+    const { GET } = await import("@/app/api/admin/jobs/route");
+    const req = buildRequest("/api/admin/jobs", {
+      session: admin,
+      query: { since: "not-a-date" },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(receivedSince).toBeUndefined();
+  });
 });

@@ -59,10 +59,19 @@ export async function GET(request: NextRequest) {
         : undefined;
     const limit = parseIntParam(params.get("limit"), 50, 200);
     const offset = parseIntParam(params.get("offset"), 0, 100_000);
+    // Phase 13.2 — `?since=ISO8601` filter for time-bounded
+    // queries ("last 24 hours"). Invalid timestamps are
+    // silently dropped — better to show all jobs than to
+    // 400 a typo.
+    const sinceRaw = params.get("since");
+    const since = sinceRaw ? new Date(sinceRaw) : null;
+    const validSince =
+      since && !Number.isNaN(since.getTime()) ? since : undefined;
 
     const result = await queue.listJobs({
       ...(name ? { name } : {}),
       ...(state ? { state } : {}),
+      ...(validSince ? { since: validSince } : {}),
       limit,
       offset,
     });

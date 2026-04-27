@@ -40,11 +40,36 @@ export interface NxJobListOptions {
   limit?: number;
   /** Skip count for pagination. */
   offset?: number;
+  /**
+   * Phase 13.2 — only include jobs whose `created_on` is at or
+   * after this timestamp. Common operational query: "jobs from
+   * the last 24 hours" without paging through history.
+   */
+  since?: Date;
 }
 
 export interface NxJobListResult {
   jobs: NxJobSummary[];
   total: number;
+}
+
+/**
+ * Phase 13.2 — registered cron schedule (one row per
+ * `boss.schedule()` call). Surfaces in the admin so
+ * operators can confirm `system:revisionPrune` and friends
+ * are actually registered, not just declared in code.
+ */
+export interface NxScheduleSummary {
+  /** pg-boss queue name (after `:` → `.` translation). */
+  name: string;
+  /** Cron expression as registered. */
+  cron: string;
+  /** Timezone the cron runs in (defaults to UTC in pg-boss). */
+  timezone: string | null;
+  /** Default payload used when the cron fires. */
+  data: unknown;
+  createdOn: string;
+  updatedOn?: string | null;
 }
 
 export interface NxJobQueue {
@@ -62,6 +87,13 @@ export interface NxJobQueue {
   retryJob?(id: string): Promise<string>;
   /** Cancel a pending job (no-op for already-running / completed jobs). */
   cancelJob?(id: string): Promise<void>;
+  /**
+   * Phase 13.2 — list every cron schedule registered with the
+   * queue. Surfaces in the admin so operators can confirm
+   * recurring jobs are actually registered, not just declared
+   * in code.
+   */
+  listSchedules?(): Promise<NxScheduleSummary[]>;
 }
 
 let jobQueue: NxJobQueue | null = null;
