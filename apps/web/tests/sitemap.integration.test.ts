@@ -150,7 +150,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
   });
 
   it("robots.txt points at the sitemap and disallows admin/api", async () => {
-    const res = robotsGET();
+    const res = await robotsGET();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/text\/plain/);
     const body = await res.text();
