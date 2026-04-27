@@ -7,9 +7,11 @@ import { eq, sql } from "drizzle-orm";
 import {
   createDbConnection,
   findDocuments,
+  getSiteById,
   nxNavigation,
   nxUsers,
   saveDocument,
+  withCurrentSite,
 } from "@nexpress/core";
 import type { NxAuthUser, NxNavItem } from "@nexpress/core";
 
@@ -210,18 +212,39 @@ async function seedPosts(actor: NxAuthUser): Promise<number> {
 }
 
 async function seedNavigation(actor: NxAuthUser): Promise<{ header: number; footer: number }> {
+  // Phase 15.8 — site-scoped. The caller wraps this in
+  // withCurrentSite(siteId, …) so getCurrentSiteId() returns
+  // the right id; we read it explicitly here so the insert
+  // stamps a value (the column has a 'default' default at
+  // the schema level, but explicit is safer when the script
+  // is targeting a non-default tenant).
+  const { getCurrentSiteId, NX_DEFAULT_SITE_ID } = await import(
+    "@nexpress/core"
+  );
+  const { and } = await import("drizzle-orm");
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const db = createDbConnection({ connectionString: databaseUrl as string });
 
   const headerExisting = await db
     .select({ id: nxNavigation.id })
     .from(nxNavigation)
-    .where(eq(nxNavigation.location, "header"))
+    .where(
+      and(
+        eq(nxNavigation.siteId, siteId),
+        eq(nxNavigation.location, "header"),
+      ),
+    )
     .limit(1);
 
   const footerExisting = await db
     .select({ id: nxNavigation.id })
     .from(nxNavigation)
-    .where(eq(nxNavigation.location, "footer"))
+    .where(
+      and(
+        eq(nxNavigation.siteId, siteId),
+        eq(nxNavigation.location, "footer"),
+      ),
+    )
     .limit(1);
 
   const headerItems: NxNavItem[] = [
@@ -240,6 +263,7 @@ async function seedNavigation(actor: NxAuthUser): Promise<{ header: number; foot
 
   if (headerExisting.length === 0) {
     await db.insert(nxNavigation).values({
+      siteId,
       location: "header",
       items: headerItems,
       updatedAt: new Date(),
@@ -253,6 +277,7 @@ async function seedNavigation(actor: NxAuthUser): Promise<{ header: number; foot
 
   if (footerExisting.length === 0) {
     await db.insert(nxNavigation).values({
+      siteId,
       location: "footer",
       items: footerItems,
       updatedAt: new Date(),
@@ -309,6 +334,12 @@ function lexicalParagraph(text: string): unknown {
   };
 }
 
+function parseSiteFlag(argv: string[]): string {
+  const arg = argv.slice(2).find((a) => a.startsWith("--site="));
+  if (!arg) return "default";
+  return arg.slice("--site=".length).trim() || "default";
+}
+
 async function main(): Promise<void> {
   // Re-use the apps/web bootstrap so collection registrations,
   // plugins, hooks all match what runtime sees. saveDocument
@@ -316,16 +347,41 @@ async function main(): Promise<void> {
   ensureCoreServices();
   await ensurePluginsLoaded();
 
+  // Phase 15.8 — `--site=<id>` flag scopes the seeded
+  // content to a non-default tenant. Without the flag,
+  // everything lands on the default site (preserves the
+  // pre-15.8 behavior). With the flag, every save runs
+  // inside `withCurrentSite(siteId, …)` so the pipeline
+  // stamps each row with the right site_id.
+  const siteId = parseSiteFlag(process.argv);
+  if (siteId !== "default") {
+    const target = await getSiteById(siteId);
+    if (!target) {
+      console.error(
+        `Site "${siteId}" not found. Create it via /admin/sites or the API first.`,
+      );
+      process.exit(1);
+    }
+  }
+
   const actor = await findFirstAdmin();
   if (!actor) {
     console.error("No admin user found. Run `pnpm seed:admin` first.");
     process.exit(1);
   }
-  console.log(`Seeding default content as ${actor.email}…`);
+  console.log(
+    `Seeding content for site "${siteId}" as ${actor.email}…`,
+  );
 
-  const pageCount = await seedPages(actor);
-  const postCount = await seedPosts(actor);
-  const navCounts = await seedNavigation(actor);
+  const { pageCount, postCount, navCounts } = await withCurrentSite(
+    siteId,
+    async () => {
+      const pageCount = await seedPages(actor);
+      const postCount = await seedPosts(actor);
+      const navCounts = await seedNavigation(actor);
+      return { pageCount, postCount, navCounts };
+    },
+  );
 
   console.log("");
   console.log(
