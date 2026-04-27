@@ -361,4 +361,143 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     expect(res.status).toBe(200);
     expect(receivedSince).toBeUndefined();
   });
+
+  /**
+   * Phase 13.3 — bulk retry + manual enqueue.
+   */
+  it("POST /api/admin/jobs/retry-all retries every failed job and reports counts", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    const jobs = makeJobs();
+    // Add a couple more failed rows so the bulk path covers
+    // the loop, not just a single failure.
+    jobs.push({
+      id: "j4",
+      name: "media.cleanup",
+      state: "failed",
+      data: { mediaId: "m3" },
+      retryCount: 3,
+      output: "ENOENT again",
+      createdOn: new Date().toISOString(),
+    });
+    jobs.push({
+      id: "j5",
+      name: "media.cleanup",
+      state: "failed",
+      data: { mediaId: "m4" },
+      retryCount: 3,
+      output: "ENOENT once more",
+      createdOn: new Date().toISOString(),
+    });
+    setJobQueue(installStubQueue(jobs));
+
+    const { POST } = await import("@/app/api/admin/jobs/retry-all/route");
+    const req = buildRequest("/api/admin/jobs/retry-all", {
+      session: admin,
+      method: "POST",
+      body: {},
+    });
+    const res = await POST(req);
+    const { status, body } = await readJson<{
+      retried?: number;
+      failed?: number;
+      remaining?: number;
+      total?: number;
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.retried).toBe(3);
+    expect(body.failed).toBe(0);
+    expect(body.total).toBe(3);
+  });
+
+  it("POST /api/admin/jobs/retry-all forbids non-admin", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const { setJobQueue } = await import("@nexpress/core");
+    setJobQueue(installStubQueue(makeJobs()));
+
+    const { POST } = await import("@/app/api/admin/jobs/retry-all/route");
+    const req = buildRequest("/api/admin/jobs/retry-all", {
+      session: editor,
+      method: "POST",
+      body: {},
+    });
+    const res = await POST(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
+
+  it("POST /api/admin/jobs/enqueue runs a registered handler", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue, registerJobHandler } = await import("@nexpress/core");
+    let capturedType: string | undefined;
+    let capturedData: unknown;
+    const queue = {
+      enqueue: async (type: string, data: unknown) => {
+        capturedType = type;
+        capturedData = data;
+        return "enq-1";
+      },
+      start: async () => {},
+      stop: async () => {},
+    };
+    setJobQueue(queue);
+    registerJobHandler("media:cleanup", async () => {});
+
+    const { POST } = await import("@/app/api/admin/jobs/enqueue/route");
+    const req = buildRequest("/api/admin/jobs/enqueue", {
+      session: admin,
+      method: "POST",
+      body: { type: "media:cleanup", data: { mediaId: "m1" } },
+    });
+    const res = await POST(req);
+    const { status, body } = await readJson<{
+      id?: string;
+      type?: string;
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.id).toBe("enq-1");
+    expect(body.type).toBe("media:cleanup");
+    expect(capturedType).toBe("media:cleanup");
+    expect(capturedData).toEqual({ mediaId: "m1" });
+  });
+
+  it("POST /api/admin/jobs/enqueue rejects unknown handler types (defensive UX)", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { setJobQueue } = await import("@nexpress/core");
+    setJobQueue({
+      enqueue: async () => "ignored",
+      start: async () => {},
+      stop: async () => {},
+    });
+
+    const { POST } = await import("@/app/api/admin/jobs/enqueue/route");
+    const req = buildRequest("/api/admin/jobs/enqueue", {
+      session: admin,
+      method: "POST",
+      body: { type: "media:nope-not-a-handler", data: {} },
+    });
+    const res = await POST(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(400);
+  });
+
+  it("POST /api/admin/jobs/enqueue forbids non-admin", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const { setJobQueue } = await import("@nexpress/core");
+    setJobQueue({
+      enqueue: async () => "ignored",
+      start: async () => {},
+      stop: async () => {},
+    });
+
+    const { POST } = await import("@/app/api/admin/jobs/enqueue/route");
+    const req = buildRequest("/api/admin/jobs/enqueue", {
+      session: editor,
+      method: "POST",
+      body: { type: "media:cleanup", data: {} },
+    });
+    const res = await POST(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
 });

@@ -225,6 +225,35 @@ export function JobsView() {
     }
   }
 
+  async function retryAllFailed() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await nxFetch("/api/admin/jobs/retry-all?state=failed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = (await res.json().catch(() => null)) as
+        | {
+            retried?: number;
+            failed?: number;
+            remaining?: number;
+            error?: { message?: string };
+          }
+        | null;
+      if (!res.ok) {
+        setError(body?.error?.message ?? "Bulk retry failed.");
+        return;
+      }
+      if (isStateTab(tab)) await load(tab, windowMode);
+    } catch {
+      setError("Bulk retry failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -321,6 +350,19 @@ export function JobsView() {
 
         {STATE_TABS.map((key) => (
           <TabsContent key={key} value={key} className="space-y-3">
+            {key === "failed" && jobs && jobs.length > 0 ? (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={refreshing}
+                  onClick={() => void retryAllFailed()}
+                >
+                  <Play className="mr-1.5 h-3 w-3" />
+                  Retry all failed
+                </Button>
+              </div>
+            ) : null}
             <JobList
               jobs={jobs}
               tab={key}
@@ -336,6 +378,9 @@ export function JobsView() {
             supported={schedulesSupported}
             schedules={schedules}
             handlers={handlers}
+            onEnqueued={() => {
+              void loadSchedules();
+            }}
           />
         </TabsContent>
       </Tabs>
@@ -347,92 +392,227 @@ function SchedulesPanel({
   supported,
   schedules,
   handlers,
+  onEnqueued,
 }: {
   supported: boolean;
   schedules: ScheduleSummary[] | null;
   handlers: string[];
+  onEnqueued: () => void;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card className="border-border/60 shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            <CalendarClock className="h-4 w-4" /> Cron schedules
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Recurring jobs registered via <code>boss.schedule()</code>. Reads
-            from <code>pgboss.schedule</code>.
-          </p>
-        </CardHeader>
-        <CardContent className="p-0">
-          {!supported ? (
-            <p className="px-5 pb-5 text-sm text-muted-foreground">
-              The active queue adapter doesn't expose schedules.
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-border/60 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <CalendarClock className="h-4 w-4" /> Cron schedules
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Recurring jobs registered via <code>boss.schedule()</code>. Reads
+              from <code>pgboss.schedule</code>.
             </p>
-          ) : schedules === null ? (
-            <p className="px-5 pb-5 text-sm text-muted-foreground">
-              <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
-              Loading…
-            </p>
-          ) : schedules.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-muted-foreground">
-              No schedules registered.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {schedules.map((schedule) => (
-                <li key={schedule.name} className="space-y-1 px-5 py-3">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <code className="font-mono text-xs">{schedule.name}</code>
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
-                      {schedule.cron}
-                    </code>
-                    {schedule.timezone ? (
-                      <span className="text-[10px] text-muted-foreground">
-                        {schedule.timezone}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Registered {new Date(schedule.createdOn).toLocaleString()}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!supported ? (
+              <p className="px-5 pb-5 text-sm text-muted-foreground">
+                The active queue adapter doesn't expose schedules.
+              </p>
+            ) : schedules === null ? (
+              <p className="px-5 pb-5 text-sm text-muted-foreground">
+                <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+                Loading…
+              </p>
+            ) : schedules.length === 0 ? (
+              <p className="px-5 pb-5 text-sm text-muted-foreground">
+                No schedules registered.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {schedules.map((schedule) => (
+                  <li key={schedule.name} className="space-y-1 px-5 py-3">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <code className="font-mono text-xs">{schedule.name}</code>
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                        {schedule.cron}
+                      </code>
+                      {schedule.timezone ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          {schedule.timezone}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Registered {new Date(schedule.createdOn).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card className="border-border/60 shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            <Code className="h-4 w-4" /> Registered handlers
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Job types that have a worker handler registered. Enqueues to other
-            types will sit in the queue with no consumer.
-          </p>
-        </CardHeader>
-        <CardContent className="p-0">
-          {handlers.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-muted-foreground">
-              No handlers registered yet.
+        <Card className="border-border/60 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Code className="h-4 w-4" /> Registered handlers
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Job types that have a worker handler registered. Enqueues to other
+              types will sit in the queue with no consumer.
             </p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {handlers.map((name) => (
-                <li
-                  key={name}
-                  className="px-5 py-2 font-mono text-xs text-foreground"
-                >
-                  {name}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="p-0">
+            {handlers.length === 0 ? (
+              <p className="px-5 pb-5 text-sm text-muted-foreground">
+                No handlers registered yet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {handlers.map((name) => (
+                  <li
+                    key={name}
+                    className="px-5 py-2 font-mono text-xs text-foreground"
+                  >
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <EnqueuePanel handlers={handlers} onEnqueued={onEnqueued} />
     </div>
+  );
+}
+
+function EnqueuePanel({
+  handlers,
+  onEnqueued,
+}: {
+  handlers: string[];
+  onEnqueued: () => void;
+}) {
+  const [type, setType] = useState<string>("");
+  const [dataText, setDataText] = useState<string>("{}");
+  const [busy, setBusy] = useState<boolean>(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    let data: unknown = {};
+    if (dataText.trim().length > 0) {
+      try {
+        data = JSON.parse(dataText);
+      } catch {
+        setError("Payload is not valid JSON.");
+        setBusy(false);
+        return;
+      }
+    }
+    try {
+      const res = await nxFetch("/api/admin/jobs/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, data }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { id?: string; error?: { message?: string } }
+        | null;
+      if (!res.ok) {
+        setError(body?.error?.message ?? "Enqueue failed.");
+        return;
+      }
+      setMessage(`Enqueued (job id ${body?.id ?? "unknown"}).`);
+      onEnqueued();
+    } catch {
+      setError("Enqueue failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-border/60 shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+          <Play className="h-4 w-4" /> Run a handler
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Enqueue a one-off job for any registered handler. Useful for ad-hoc
+          re-runs (e.g. <code>media:cleanup</code>) without dropping into a
+          shell.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
+          <div className="space-y-1">
+            <label
+              htmlFor="nx-job-enqueue-type"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Handler
+            </label>
+            <select
+              id="nx-job-enqueue-type"
+              value={type}
+              onChange={(event) => setType(event.target.value)}
+              className="w-full rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="">Select…</option>
+              {handlers.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label
+              htmlFor="nx-job-enqueue-data"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Payload (JSON)
+            </label>
+            <textarea
+              id="nx-job-enqueue-data"
+              value={dataText}
+              onChange={(event) => setDataText(event.target.value)}
+              rows={3}
+              spellCheck={false}
+              className="w-full rounded-md border border-border/70 bg-background px-2 py-1.5 font-mono text-xs"
+              placeholder='{"docId": "..."}'
+            />
+          </div>
+        </div>
+        {error ? (
+          <p className="text-xs text-destructive">{error}</p>
+        ) : null}
+        {message ? (
+          <p className="text-xs text-emerald-700 dark:text-emerald-400">
+            {message}
+          </p>
+        ) : null}
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            disabled={busy || !type}
+            onClick={() => void submit()}
+          >
+            {busy ? (
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="mr-1.5 h-3 w-3" />
+            )}
+            Enqueue
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
