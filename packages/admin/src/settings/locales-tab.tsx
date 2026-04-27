@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Globe, Star } from "lucide-react";
+import { CheckCircle2, Globe, Star } from "lucide-react";
 
 import { nxFetch } from "../lib/api-client.js";
 import {
@@ -20,6 +20,10 @@ import {
  * dashboard for admins so they don't have to crack open the
  * config file to see which locales are live.
  *
+ * Phase 12.6 — added a per-collection translation completeness
+ * matrix below the configured-locale list so admins can see at
+ * a glance which collections are lagging in which locales.
+ *
  * Sites without an `i18n` block see an empty-state explaining
  * how to enable i18n.
  */
@@ -30,27 +34,54 @@ interface I18nConfig {
   defaultLocale?: string;
 }
 
+interface TranslationProgressCollection {
+  collection: string;
+  totalGroups: number;
+  perLocale: Record<string, { count: number; missing: number }>;
+}
+
+interface TranslationProgress {
+  defaultLocale: string;
+  locales: string[];
+  collections: TranslationProgressCollection[];
+}
+
 export function LocalesTab() {
   const [config, setConfig] = useState<I18nConfig | null>(null);
+  const [progress, setProgress] = useState<TranslationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   async function load() {
     try {
-      const res = await nxFetch("/api/admin/i18n");
-      const body = (await res.json().catch(() => null)) as I18nConfig | null;
-      if (!res.ok || !body) {
+      const [configRes, progressRes] = await Promise.all([
+        nxFetch("/api/admin/i18n"),
+        nxFetch("/api/admin/i18n/progress"),
+      ]);
+      const body = (await configRes.json().catch(() => null)) as I18nConfig | null;
+      if (!configRes.ok || !body) {
         setError("Unable to load i18n config.");
         return;
       }
       setConfig(body);
+      // Progress is optional — failures don't block the
+      // configured-locale list from rendering.
+      if (progressRes.ok) {
+        const progressBody = (await progressRes.json().catch(() => null)) as
+          | TranslationProgress
+          | null;
+        if (progressBody && Array.isArray(progressBody.collections)) {
+          setProgress(progressBody);
+        }
+      }
     } catch {
       setError("Unable to load i18n config.");
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, []);
 
   if (error) {
     return (
@@ -100,45 +131,148 @@ export function LocalesTab() {
   }
 
   return (
+    <div className="space-y-6">
+      <Card className="border-border/70 bg-card/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            Locales
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Configured at build time. To add or remove a locale, edit{" "}
+            <code>nexpress.config.ts</code> and redeploy.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <ul className="divide-y divide-border/60">
+            {(config.locales ?? []).map((locale) => {
+              const isDefault = locale === config.defaultLocale;
+              return (
+                <li
+                  key={locale}
+                  className="flex items-center justify-between py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 font-mono text-xs uppercase">
+                      {locale}
+                    </span>
+                    {isDefault ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                        <Star className="h-3 w-3" /> Default
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {isDefault
+                      ? "Used when no locale is requested or a translation is missing."
+                      : "Available for translations."}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </CardContent>
+      </Card>
+
+      {progress ? <TranslationProgressCard progress={progress} /> : null}
+    </div>
+  );
+}
+
+function TranslationProgressCard({
+  progress,
+}: {
+  progress: TranslationProgress;
+}) {
+  if (progress.collections.length === 0) {
+    return (
+      <Card className="border-border/70 bg-card/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            Translation progress
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          No i18n-enabled collections registered yet. Set{" "}
+          <code>i18n: true</code> on a collection in{" "}
+          <code>defineCollection</code> to start tracking translations.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
     <Card className="border-border/70 bg-card/80 shadow-sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Globe className="h-4 w-4" />
-          Locales
+          <CheckCircle2 className="h-4 w-4" />
+          Translation progress
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Configured at build time. To add or remove a locale, edit{" "}
-          <code>nexpress.config.ts</code> and redeploy.
+          Each row is one i18n-enabled collection. Numbers are
+          live row counts per locale; the missing badge shows
+          how many translation groups still need a translation
+          in that locale.
         </p>
       </CardHeader>
       <CardContent>
-        <ul className="divide-y divide-border/60">
-          {(config.locales ?? []).map((locale) => {
-            const isDefault = locale === config.defaultLocale;
-            return (
-              <li
-                key={locale}
-                className="flex items-center justify-between py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="rounded-md border border-border/70 bg-background px-2 py-0.5 font-mono text-xs uppercase">
-                    {locale}
-                  </span>
-                  {isDefault ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                      <Star className="h-3 w-3" /> Default
-                    </span>
-                  ) : null}
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {isDefault
-                    ? "Used when no locale is requested or a translation is missing."
-                    : "Available for translations."}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 pr-4 font-medium">Collection</th>
+                <th className="py-2 pr-4 font-medium">Groups</th>
+                {progress.locales.map((locale) => (
+                  <th key={locale} className="py-2 pr-4 font-medium">
+                    {locale.toUpperCase()}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {progress.collections.map((row) => (
+                <tr
+                  key={row.collection}
+                  className="border-b border-border/40 last:border-0"
+                >
+                  <td className="py-3 pr-4 font-medium">{row.collection}</td>
+                  <td className="py-3 pr-4 tabular-nums text-muted-foreground">
+                    {row.totalGroups}
+                  </td>
+                  {progress.locales.map((locale) => {
+                    const cell = row.perLocale[locale];
+                    if (!cell) {
+                      return <td key={locale} className="py-3 pr-4 text-muted-foreground">—</td>;
+                    }
+                    const complete =
+                      cell.missing === 0 && row.totalGroups > 0;
+                    return (
+                      <td key={locale} className="py-3 pr-4 tabular-nums">
+                        <span
+                          className={
+                            complete
+                              ? "font-medium text-emerald-600 dark:text-emerald-400"
+                              : cell.missing > 0
+                                ? "text-foreground"
+                                : "text-muted-foreground"
+                          }
+                        >
+                          {cell.count}
+                        </span>
+                        {cell.missing > 0 ? (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            -{cell.missing}
+                          </span>
+                        ) : null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </CardContent>
     </Card>
   );
