@@ -18,6 +18,7 @@
 7. [Admin Workflow](#7-admin-workflow)
 8. [CLI](#8-cli)
 9. [Operational Notes](#9-operational-notes)
+9.5. [What's NOT Site-Scoped (Yet)](#95-whats-not-site-scoped-yet)
 10. [Single-Tenant Sites Are Unaffected](#10-single-tenant-sites-are-unaffected)
 
 ---
@@ -234,17 +235,61 @@ devices.
 to search every tenant pass through the `siteId: "*"`
 sentinel (admin-only escape hatch).
 
-**Caching**: tag-based invalidation (Phase 14.1) is
-unaffected by site scoping — `revalidateTag("nx:sitemap")`
-busts the sitemap cache for every site at once. Per-site
-caches can be added later via `nx:sitemap:{siteId}`-style
-tags if traffic patterns warrant.
+**Caching** (Phase 14.8 + 15.10): cache wrappers and
+invalidation are both site-scoped. `getCachedTheme()`,
+`getCachedNavigation()`, the sitemap cache, the feed cache,
+and the search cache all key on the resolved siteId, with
+matching `nx:theme:<siteId>` / `nx:nav:<siteId>:<location>` /
+`nx:sitemap:<siteId>` / `nx:feed:<siteId>:<collection>` /
+`nx:search:<siteId>` tags. The legacy global tags are kept
+alongside as a "blow away every site" big hammer for plugins
+and external CDN purgers.
 
-**Deletion safety**: deleting a site does NOT cascade to its
-collection rows. The default site can never be deleted
-(framework invariant). Operators retiring a tenant should
-either soft-archive its content first, or drop the rows
-manually before removing the row from `nx_sites`.
+**Per-site origin** (Phase 15.11): `sitemap.xml` and
+`robots.txt` resolve the absolute origin from the active
+site's `hostname` row when one is configured. Multi-tenant
+deploys emit the right URLs per tenant; single-tenant deploys
+keep the `SITE_URL` env fallback.
+
+**Deletion safety** (Phase 15.9): `deleteSite()` defaults to
+the safe path — refuses if any site-scoped data exists
+(collections, settings, navigation, memberships, string
+overrides). Pass `cascade: true` (or `?cascade=true` on the
+admin API) to delete the dependent rows alongside. The admin
+UI surfaces a usage summary with per-table counts before
+asking for cascade confirmation. The default site can never
+be deleted (framework invariant).
+
+---
+
+## 9.5. What's NOT Site-Scoped (Yet)
+
+A few system surfaces are intentionally global today.
+Listed here so operators reasoning about multi-tenant
+isolation know where the boundary stops:
+
+- **`nx_users`** — accounts are global. Memberships
+  (Phase 15.5+) decide which sites a user has rights on,
+  so the intent is "one identity, many tenants."
+- **`nx_media`** — uploads share a single bucket. Each
+  site's content references media by id; the same image
+  can be reused across tenants. A future "per-site media
+  ownership" surface would need a new column +
+  access-control hook.
+- **`nx_audit_events`** — the audit log doesn't carry a
+  `site_id` column. Multi-tenant operators can't yet
+  filter audit by site without a manual join through the
+  affected entity. Documented gap.
+- **`nx_plugin_storage`** — plugin storage rows aren't
+  site-scoped. A plugin that wants per-site state has to
+  prefix its keys with the siteId itself today.
+- **`nx_comments` / `nx_reactions` / `nx_follows` /
+  `nx_notifications` / `nx_reports` / `nx_members`** —
+  community tables don't carry a `site_id`. Comments and
+  reactions are indirectly scoped because their target row
+  belongs to a site (collection scan filters by site_id),
+  but members themselves are global. Multi-tenant SaaS
+  scenarios that need per-site member bases need more work.
 
 ---
 
