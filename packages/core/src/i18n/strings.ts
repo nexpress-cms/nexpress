@@ -1,4 +1,11 @@
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+
 import { getI18nConfig } from "./registry.js";
+import {
+  getStringOverride,
+  getStringOverridesForSite,
+} from "./string-overrides.js";
 
 /**
  * Phase 12.5 — UI string translation registry.
@@ -74,22 +81,79 @@ export function getAllStrings(): Record<string, NxTranslationBundle> {
 /**
  * Resolve a translated string.
  *
- *   t("readingTime", "ko", { minutes: 5 }) → "5분 읽기"
- *   t("readingTime", "en", { minutes: 5 }) → "5 min read"
- *   t("missing")                            → "missing"
+ *   await t("readingTime", "ko", { minutes: 5 }) → "5분 읽기"
+ *   await t("readingTime", "en", { minutes: 5 }) → "5 min read"
+ *   await t("missing")                            → "missing"
  *
- * Lookup order:
- *   1. requested locale (defaults to the configured
- *      defaultLocale when `locale` is omitted)
- *   2. defaultLocale fallback
- *   3. the key itself (last-resort identity fallback so the
- *      operator sees what's missing rather than a blank string)
+ * Lookup order (Phase D):
+ *   1. site-scoped admin override for the requested locale
+ *   2. requested-locale plugin / theme bundle
+ *   3. site-scoped admin override for defaultLocale
+ *   4. defaultLocale plugin / theme bundle
+ *   5. the key itself (last-resort identity fallback)
  *
- * Param interpolation is `{{name}}` style. Missing params are
- * left as the literal `{{name}}` placeholder (helps surface
- * missing-data bugs in templates).
+ * The locale-locality rule: a requested-locale BUNDLE wins
+ * over a default-locale OVERRIDE. That keeps an English
+ * override from accidentally bleeding into a fully-translated
+ * Korean page — the override is only the cross-locale
+ * fallback when the requested locale has nothing at all.
+ *
+ * Async because the override cache loads from DB on first
+ * access. Subsequent calls within the same process hit the
+ * in-memory cache for free; admin writes invalidate the
+ * site's cache so the next call reloads.
+ *
+ * Param interpolation is `{{name}}` style. Missing params
+ * are left as the literal `{{name}}` placeholder (surfaces
+ * template bugs).
  */
-export function t(
+export async function t(
+  key: string,
+  locale?: string,
+  params?: Record<string, string | number>,
+): Promise<string> {
+  const config = getI18nConfig();
+  const requested = locale ?? config?.defaultLocale ?? null;
+  const defaultLocale = config?.defaultLocale ?? null;
+
+  // Site-scoped overrides are populated lazily; ensure the
+  // cache for THIS site has been loaded once before the
+  // synchronous getStringOverride lookups below.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  await getStringOverridesForSite(siteId);
+
+  // 1. requested-locale override
+  if (requested) {
+    const override = getStringOverride(siteId, requested, key);
+    if (override !== null) return interpolate(override, params);
+  }
+  // 2. requested-locale bundle
+  if (requested) {
+    const bundle = registry.get(requested)?.[key];
+    if (bundle !== undefined) return interpolate(bundle, params);
+  }
+  // 3. defaultLocale override (cross-locale fallback)
+  if (defaultLocale && defaultLocale !== requested) {
+    const override = getStringOverride(siteId, defaultLocale, key);
+    if (override !== null) return interpolate(override, params);
+  }
+  // 4. defaultLocale bundle
+  if (defaultLocale && defaultLocale !== requested) {
+    const bundle = registry.get(defaultLocale)?.[key];
+    if (bundle !== undefined) return interpolate(bundle, params);
+  }
+  // 5. key fallback
+  return interpolate(key, params);
+}
+
+/**
+ * Synchronous variant for non-async contexts (rare). Skips
+ * the override layer entirely and resolves only against the
+ * in-memory plugin/theme bundles. Use `t()` everywhere
+ * possible — that's the surface admins control via the
+ * Strings settings tab.
+ */
+export function tSync(
   key: string,
   locale?: string,
   params?: Record<string, string | number>,
@@ -97,7 +161,6 @@ export function t(
   const config = getI18nConfig();
   const requested = locale ?? config?.defaultLocale ?? null;
   const defaultLocale = config?.defaultLocale ?? null;
-
   let template: string | undefined;
   if (requested) {
     template = registry.get(requested)?.[key];
