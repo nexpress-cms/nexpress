@@ -1,10 +1,13 @@
 import {
+  NX_DEFAULT_SITE_ID,
   NxForbiddenError,
   NxValidationError,
+  getCurrentSiteId,
   hasRole,
   nxSettings,
   validateSeoSettingsPatch,
 } from "@nexpress/core";
+import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
@@ -21,7 +24,11 @@ export async function GET(request: NextRequest) {
     }
 
     const db = getDb();
-    const rows = await db.select().from(nxSettings);
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const rows = await db
+      .select()
+      .from(nxSettings)
+      .where(eq(nxSettings.siteId, siteId));
     const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
 
     return nxSuccessResponse(settings);
@@ -75,12 +82,13 @@ export async function PUT(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 
     const [result] = await db
       .insert(nxSettings)
-      .values({ key, value, updatedAt: now, updatedBy: user.id })
+      .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
       .onConflictDoUpdate({
-        target: nxSettings.key,
+        target: [nxSettings.siteId, nxSettings.key],
         set: { value, updatedAt: now, updatedBy: user.id },
       })
       .returning();

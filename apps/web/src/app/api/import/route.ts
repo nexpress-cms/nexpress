@@ -268,15 +268,22 @@ export async function POST(request: NextRequest) {
         }
         imported.navigation = resolveNavEntries(payload.navigation).length;
       } else {
+        // Phase 15.4 — import lands rows in the current site
+        // (resolved from x-nx-host); cross-site imports for a
+        // super-admin are a 15.5 follow-up.
+        const { getCurrentSiteId, NX_DEFAULT_SITE_ID } = await import(
+          "@nexpress/core"
+        );
+        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
         await db.transaction(async (tx) => {
           const now = new Date();
 
           if (payload.theme) {
             await tx
               .insert(nxSettings)
-              .values({ key: "theme", value: payload.theme, updatedAt: now, updatedBy: user.id })
+              .values({ siteId, key: "theme", value: payload.theme, updatedAt: now, updatedBy: user.id })
               .onConflictDoUpdate({
-                target: nxSettings.key,
+                target: [nxSettings.siteId, nxSettings.key],
                 set: { value: payload.theme, updatedAt: now, updatedBy: user.id },
               });
             imported.theme = 1;
@@ -288,9 +295,9 @@ export async function POST(request: NextRequest) {
 
               await tx
                 .insert(nxSettings)
-                .values({ key, value, updatedAt: now, updatedBy: user.id })
+                .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
                 .onConflictDoUpdate({
-                  target: nxSettings.key,
+                  target: [nxSettings.siteId, nxSettings.key],
                   set: { value, updatedAt: now, updatedBy: user.id },
                 });
               imported.settings++;
@@ -300,9 +307,9 @@ export async function POST(request: NextRequest) {
           for (const { location, items } of resolveNavEntries(payload.navigation)) {
             await tx
               .insert(nxNavigation)
-              .values({ location, items, updatedAt: now, updatedBy: user.id })
+              .values({ siteId, location, items, updatedAt: now, updatedBy: user.id })
               .onConflictDoUpdate({
-                target: nxNavigation.location,
+                target: [nxNavigation.siteId, nxNavigation.location],
                 set: { items, updatedAt: now, updatedBy: user.id },
               });
             imported.navigation++;

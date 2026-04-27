@@ -1,9 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../collections/pipeline.js";
 import { nxSettings } from "../db/schema/system.js";
 import { NxValidationError } from "../errors.js";
 import { addStrings } from "../i18n/strings.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
 import type { NxRegisteredTheme } from "../config/types.js";
 
 /**
@@ -64,16 +66,23 @@ export function resetThemes(): void {
 }
 
 /**
- * Reads the persisted active-theme id from `nx_settings`.
- * Returns `null` when no row exists — caller's job to decide
- * the fallback (typically the first registered theme).
+ * Reads the persisted active-theme id from `nx_settings` for
+ * the current site. Returns `null` when no row exists —
+ * caller's job to decide the fallback (typically the first
+ * registered theme).
+ *
+ * Phase 15.4 — scoped by current site. Single-tenant
+ * deployments leave every row at `site_id = 'default'`, so
+ * the lookup behaves identically to the pre-15.4 global
+ * version.
  */
 export async function getActiveThemeId(): Promise<string | null> {
   const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
     .from(nxSettings)
-    .where(eq(nxSettings.key, "activeTheme"))
+    .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "activeTheme")))
     .limit(1)) as Array<{ value: unknown }>;
   const row = rows[0];
   if (!row) return null;
@@ -120,11 +129,13 @@ export async function setActiveThemeId(
   }
   const db = getDb();
   const now = new Date();
+  const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
+  // Phase 15.4 — composite (site_id, key) PK.
   await db
     .insert(nxSettings)
-    .values({ key: "activeTheme", value: id, updatedAt: now, updatedBy })
+    .values({ siteId, key: "activeTheme", value: id, updatedAt: now, updatedBy })
     .onConflictDoUpdate({
-      target: nxSettings.key,
+      target: [nxSettings.siteId, nxSettings.key],
       set: { value: id, updatedAt: now, updatedBy },
     });
 }
