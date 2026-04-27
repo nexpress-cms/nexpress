@@ -37,7 +37,12 @@ export const defaultThemeCss = `
   gap: 1.25rem;
   list-style: none;
   padding: 0;
-  margin: 0 auto 0 0;
+  /* Phase 12.8 — logical property keeps the auto-margin on
+     the trailing edge in both LTR and RTL, so the search /
+     toggles always sit at the far end of the nav row. */
+  margin-block: 0;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
 }
 .nx-site-nav a {
   color: var(--nx-color-muted-foreground, #64748b);
@@ -82,7 +87,9 @@ export const defaultThemeCss = `
   color: var(--nx-color-foreground, #0f172a);
 }
 .nx-site-search {
-  margin-left: 0.75rem;
+  /* Phase 12.8 — logical property mirrors automatically under
+     RTL, putting the gap on the leading side. */
+  margin-inline-start: 0.75rem;
 }
 .nx-site-search-input {
   padding: 0.375rem 0.75rem;
