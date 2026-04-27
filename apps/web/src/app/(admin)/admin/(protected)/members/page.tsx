@@ -1,6 +1,11 @@
-import { hasRole, NxForbiddenError, nxMembers, verifyTokenFull } from "@nexpress/core";
+import {
+  hasRole,
+  NxForbiddenError,
+  nxMembers,
+  verifyTokenFull,
+} from "@nexpress/core";
 import { MembersListView, type MemberListRow } from "@nexpress/admin/client";
-import { desc } from "drizzle-orm";
+import { and, desc, ilike, or, sql, type SQL } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -10,7 +15,25 @@ import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default async function MembersAdminPage() {
+const VALID_STATUSES = [
+  "active",
+  "pending",
+  "suspended",
+  "deleted",
+] as const satisfies ReadonlyArray<MemberListRow["status"]>;
+type Status = (typeof VALID_STATUSES)[number];
+
+function isStatus(value: string): value is Status {
+  return (VALID_STATUSES as readonly string[]).includes(value);
+}
+
+interface MembersAdminPageProps {
+  searchParams: Promise<{ q?: string; status?: string }>;
+}
+
+export default async function MembersAdminPage({
+  searchParams,
+}: MembersAdminPageProps) {
   ensureCoreServices();
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-session")?.value;
@@ -25,7 +48,33 @@ export default async function MembersAdminPage() {
     // page — admin for grants/purge, staff-mod for bans.
     throw new NxForbiddenError("members", "read");
   }
-  const rows = (await db
+
+  // Phase 9.10 — search + status filter. `q` matches handle,
+  // email, or display_name with a case-insensitive prefix.
+  // `status` filters to one of the four enum values (anything
+  // else is silently dropped — better than 400'ing a typed
+  // URL param).
+  const params = await searchParams;
+  const rawQ = params.q?.trim() ?? "";
+  const q = rawQ.length > 0 ? rawQ : null;
+  const status =
+    params.status && isStatus(params.status) ? params.status : null;
+
+  const conditions: SQL[] = [];
+  if (q) {
+    const pattern = `%${q.replace(/[%_]/g, "\\$&")}%`;
+    const like = or(
+      ilike(nxMembers.handle, pattern),
+      ilike(nxMembers.email, pattern),
+      ilike(nxMembers.displayName, pattern),
+    );
+    if (like) conditions.push(like);
+  }
+  if (status) {
+    conditions.push(sql`${nxMembers.status} = ${status}`);
+  }
+
+  const baseQuery = db
     .select({
       id: nxMembers.id,
       handle: nxMembers.handle,
@@ -35,7 +84,14 @@ export default async function MembersAdminPage() {
       reputation: nxMembers.reputation,
       createdAt: nxMembers.createdAt,
     })
-    .from(nxMembers)
+    .from(nxMembers);
+
+  const filtered =
+    conditions.length === 0
+      ? baseQuery
+      : baseQuery.where(and(...conditions));
+
+  const rows = (await filtered
     .orderBy(desc(nxMembers.createdAt))
     .limit(100)) as Array<{
     id: string;
@@ -51,5 +107,12 @@ export default async function MembersAdminPage() {
     ...r,
     createdAt: r.createdAt.toISOString(),
   }));
-  return <MembersListView members={members} totalDocs={members.length} />;
+  return (
+    <MembersListView
+      members={members}
+      totalDocs={members.length}
+      filterQuery={q ?? ""}
+      filterStatus={status ?? ""}
+    />
+  );
 }
