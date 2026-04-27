@@ -156,6 +156,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     setCurrentSiteResolver(async () => {
       try {
         const headerList = await headers();
+        // Phase 15.6 — the admin site-picker cookie wins over
+        // hostname mapping inside admin paths. The middleware
+        // only forwards `x-nx-admin-site` for /admin and
+        // /api/admin URLs, so public site rendering still
+        // routes by Host header even when an admin has a
+        // picker cookie set.
+        const adminOverride = headerList.get("x-nx-admin-site");
+        if (adminOverride) {
+          return adminOverride;
+        }
         const host = headerList.get("x-nx-host");
         if (!host) return NX_DEFAULT_SITE_ID;
         const site = await resolveSiteForHostname(host);

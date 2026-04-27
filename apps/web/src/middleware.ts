@@ -159,6 +159,23 @@ export function middleware(request: NextRequest) {
     requestHeaders.set("x-nx-host", host);
   }
 
+  // Phase 15.6 — admin context override. The site-picker UI
+  // sets this cookie when an admin (typically a super-admin)
+  // chooses which tenant to operate on. The bootstrap's
+  // resolver reads `x-nx-admin-site` BEFORE x-nx-host, so the
+  // cookie wins inside the admin area; the public site is
+  // unaffected (the resolver only checks the override on
+  // /admin and /api/admin paths). Validation that the user is
+  // ALLOWED to operate on this site happens at the resolver
+  // layer in core, not here — the middleware just forwards.
+  const adminSite = request.cookies.get("nx-admin-site")?.value;
+  if (
+    adminSite &&
+    (pathname.startsWith("/admin") || pathname.startsWith("/api/admin"))
+  ) {
+    requestHeaders.set("x-nx-admin-site", adminSite);
+  }
+
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   for (const [key, value] of Object.entries(securityHeaders)) {
