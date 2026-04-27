@@ -238,6 +238,36 @@ export const nxNavigation = pgTable(
 );
 
 /**
+ * Phase D — UI string admin overrides. Plugins and themes
+ * register translation bundles via `addStrings()` (Phase 12.5);
+ * admins layer overrides on top via this table without
+ * touching plugin/theme code. Composite PK on
+ * (site_id, locale, key) makes per-tenant overrides natural —
+ * "acme" and "default" can each override the same plugin's
+ * "Read more" string differently.
+ *
+ * `value` is nullable so an admin can explicitly mark a key
+ * as "fall back to bundle" without deleting the row (useful
+ * for audit-trail UIs that want to show "this WAS overridden
+ * but the operator reverted it"). The runtime treats null
+ * the same as no row for resolution purposes.
+ */
+export const nxStringOverrides = pgTable(
+  "nx_string_overrides",
+  {
+    siteId: text("site_id").default("default").notNull(),
+    locale: text("locale").notNull(),
+    key: text("key").notNull(),
+    value: text("value"),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+  },
+  (table) => [primaryKey({ columns: [table.siteId, table.locale, table.key] })],
+);
+
+/**
  * Phase 15.1 — multi-site model. One row per tenant. The
  * framework auto-creates a `default` site at boot when the
  * table is empty so single-tenant installs keep working
