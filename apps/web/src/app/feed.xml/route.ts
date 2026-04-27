@@ -95,8 +95,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     headers: {
       "Content-Type": "application/atom+xml; charset=utf-8",
       // Crawlers and feed readers re-fetch every few minutes;
-      // a short cache is plenty.
-      "Cache-Control": "public, max-age=600, s-maxage=600",
+      // a short cache is plenty. Phase 14.9 — SWR window so a
+      // CDN can serve stale entries during the regen
+      // round-trip; feed readers don't surface a 5-second
+      // delay anyway.
+      "Cache-Control":
+        "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
     },
   });
 }

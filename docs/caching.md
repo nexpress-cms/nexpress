@@ -141,10 +141,32 @@ serving with no CDN; that's fine for development.
 
 ## What's NOT cached (yet)
 
-- **Catch-all page render** (`/[[...slug]]`) — uses
-  `force-dynamic` because of `draftMode()` and member-
-  authored content. ISR for the non-draft public path is the
-  biggest open perf win.
+- **Catch-all page render** (`/[[...slug]]`) — every (site)
+  route is dynamic. The proximate cause is the `force-dynamic`
+  on `(site)/layout.tsx`, but that's redundant: the **root
+  layout** (`app/layout.tsx`) calls `cookies()` (Phase 11.5,
+  for the dark-mode initial paint that prevents a flash of
+  light theme) and `headers()` (Phase 12.2, for `<html lang>`).
+  Both are dynamic APIs, so every child route is auto-marked
+  dynamic regardless of what the (site) layout says.
+
+  Lifting either call to ISR-compatible territory carries a
+  trade-off:
+
+  - **Drop `cookies()` for dark mode** — the inline
+    `<NxColorSchemeScript />` already handles
+    prefers-color-scheme + saved cookies on the client side
+    in a single synchronous frame. Server-rendering the
+    `data-theme` attribute is a perf optimization, not a
+    correctness one. Trade: a one-frame flash of light theme
+    on first paint for visitors with a saved dark preference.
+  - **Drop `headers()` for `<html lang>`** — would lose
+    locale-correct `lang` attributes for crawlers and screen
+    readers. SEO-impacting; not a free trade.
+
+  Plausible path: drop `cookies()` (small UX trade) but keep
+  `headers()` and accept that public pages stay dynamic until
+  a deeper redesign. Documented as future work; not blocking.
 - **Search responses** (`/api/search`) — query strings make
   caching tricky; the pluggable adapter from 10.6 may handle
   its own cache. A simple short-TTL wrapper for the
@@ -160,10 +182,13 @@ serving with no CDN; that's fine for development.
   Cloudflare / Fastly need their own purge call. A pluggable
   hook (`setCdnPurgeAdapter()`) parallel to the spam /
   search adapters is the natural fit.
-- **stale-while-revalidate** — Tagged routes have a hard
-  `revalidate: 600` TTL with no SWR window. A request that
-  arrives just after expiry waits for the regen. Adding
-  SWR to sitemap / feed / theme would smooth the spike.
+- **stale-while-revalidate (data cache)** — `unstable_cache`
+  itself doesn't expose a SWR window; a request arriving
+  just after the 600s TTL waits for the regen. The HTTP
+  layer (Phase 14.9) adds `stale-while-revalidate=86400` to
+  sitemap / feed / robots `Cache-Control`, so a CDN smooths
+  the boundary. Sites without a CDN still hit the cache-miss
+  spike on the origin.
 
 These are tracked as 14.x follow-ups.
 
