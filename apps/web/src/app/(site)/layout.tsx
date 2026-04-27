@@ -1,6 +1,7 @@
-import { NxThemeStyle, getActiveTheme } from "@nexpress/theme";
-import { getTheme } from "@nexpress/core";
+import { NxThemeStyle } from "@nexpress/theme";
+import { getCachedTheme } from "@nexpress/next";
 
+import { getCachedActiveTheme } from "@/lib/cached-theme";
 import { ensureCoreServices } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,8 @@ export default async function SiteLayout({
   children: React.ReactNode;
 }) {
   ensureCoreServices();
-  const tokens = await getTheme();
-  const active = await getActiveTheme();
+  const tokens = await getCachedTheme();
+  const active = await getCachedActiveTheme();
 
   const Shell = active?.impl.shell;
   const Header = active?.impl.slots?.header;
@@ -53,7 +54,6 @@ export default async function SiteLayout({
       {themeCss ? (
         <style
           data-nx-theme={themeId}
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: themeCss }}
         />
       ) : null}

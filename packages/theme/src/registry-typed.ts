@@ -1,5 +1,6 @@
 import {
   getActiveTheme as coreGetActiveTheme,
+  getRegisteredThemes as coreGetRegisteredThemes,
   getThemeById as coreGetThemeById,
 } from "@nexpress/core";
 
@@ -26,4 +27,8 @@ export async function getActiveTheme(): Promise<NxTheme | null> {
 
 export function getThemeById(id: string): NxTheme | undefined {
   return coreGetThemeById(id) as NxTheme | undefined;
+}
+
+export function getRegisteredThemes(): NxTheme[] {
+  return coreGetRegisteredThemes() as unknown as NxTheme[];
 }

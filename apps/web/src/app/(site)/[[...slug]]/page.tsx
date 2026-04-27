@@ -6,7 +6,7 @@ import {
   getPluginTemplatesForCollection,
   resolveTemplateComponent,
 } from "@nexpress/core";
-import { getActiveTheme } from "@nexpress/theme";
+import { getCachedActiveTheme } from "@/lib/cached-theme";
 import { renderBlocks } from "@nexpress/blocks";
 import type { ComponentType } from "react";
 import type { Metadata } from "next";
@@ -191,7 +191,7 @@ export default async function CatchAllPage({ params }: PageProps) {
         </div>
       ) : null}
       {Template ? (
-        <Template doc={page as Record<string, unknown>} />
+        <Template doc={page} />
       ) : (
         <div className="nx-page">
           {pageBlocks ? (
@@ -228,7 +228,7 @@ async function resolvePageTemplate(
   }
 
   // Default fallback: prefer theme's `default` over plugin's.
-  const active = await getActiveTheme();
+  const active = await getCachedActiveTheme();
   const themeDefault = active?.impl.templates?.pages?.default?.component as
     | ComponentType<{ doc: Record<string, unknown> }>
     | undefined;

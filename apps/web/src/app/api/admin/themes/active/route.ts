@@ -1,12 +1,14 @@
 import {
+  NX_DEFAULT_SITE_ID,
   NxForbiddenError,
   NxValidationError,
   getActiveThemeId,
+  getCurrentSiteId,
   getThemeById,
   hasRole,
   setActiveThemeId,
 } from "@nexpress/core";
-import { readJsonBody } from "@nexpress/next";
+import { readJsonBody, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -87,8 +89,9 @@ export async function PUT(request: NextRequest) {
     // already succeeded; cache bust failure shouldn't surface
     // as a 500.
     try {
+      const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
       const { revalidatePath, revalidateTag } = await import("next/cache");
-      revalidateTag("nx:theme");
+      revalidateTag(themeCacheTag(siteId));
       revalidatePath("/", "layout");
     } catch {
       // ignore — see comment above

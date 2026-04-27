@@ -27,6 +27,7 @@
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/editor": "workspace:*",
+    "@nexpress/next": "workspace:*",
     "@nexpress/theme": "workspace:*"
   },
   "devDependencies": {

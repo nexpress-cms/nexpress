@@ -13,6 +13,7 @@ declare module "@nexpress/core" {
   export { sanitizeTokenValue } from "../../../core/src/theme/sanitize.js";
   export {
     getActiveTheme,
+    getRegisteredThemes,
     getThemeById,
   } from "../../../core/src/themes/registry.js";
 }
