@@ -92,8 +92,14 @@ export async function DELETE(
       throw new NxForbiddenError("sites", "delete");
     }
     const { id } = await context.params;
-    await deleteSite(id);
-    return nxSuccessResponse({ id, deleted: true });
+    // Phase 15.9 — `?cascade=true` opt-in. Default is the
+    // safe path: deleteSite refuses if any site-scoped data
+    // exists. Operators clicking "Delete site" through the
+    // admin UI explicitly confirm cascade after seeing the
+    // usage summary.
+    const cascade = request.nextUrl.searchParams.get("cascade") === "true";
+    await deleteSite(id, { cascade });
+    return nxSuccessResponse({ id, deleted: true, cascade });
   } catch (error) {
     return nxErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),

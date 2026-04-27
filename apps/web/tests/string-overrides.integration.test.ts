@@ -42,7 +42,7 @@ describe.skipIf(skipIfNoTestDb())(
       } = await import("@nexpress/core");
       const sites = await listSites();
       for (const site of sites) {
-        if (!site.isDefault) await deleteSite(site.id);
+        if (!site.isDefault) await deleteSite(site.id, { cascade: true });
       }
       resetStrings();
       resetStringOverrideCache();

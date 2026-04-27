@@ -1,7 +1,19 @@
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, sql } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 
+import {
+  getAllCollectionSlugs,
+  getCollectionConfig,
+  getCollectionTable,
+} from "../collections/registry.js";
 import { getDb } from "../collections/pipeline.js";
-import { nxSites } from "../db/schema/system.js";
+import {
+  nxNavigation,
+  nxSettings,
+  nxSiteMemberships,
+  nxSites,
+  nxStringOverrides,
+} from "../db/schema/system.js";
 import { NxValidationError } from "../errors.js";
 
 /**
@@ -38,7 +50,7 @@ function rowToSite(row: typeof nxSites.$inferSelect): NxSite {
     name: row.name,
     hostname: row.hostname,
     description: row.description,
-    settings: (row.settings ?? {}) as Record<string, unknown>,
+    settings: row.settings ?? {},
     isDefault: row.isDefault,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -214,12 +226,118 @@ export async function updateSite(
 }
 
 /**
+ * Phase 15.9 — count of every site-scoped row attached to a
+ * given site. Surfaces in the admin delete-site dialog so
+ * operators see what they're about to nuke (or leave behind
+ * as orphans, in the cascade=false path).
+ *
+ * Includes:
+ *   - per-collection row counts (codegen'd `nx_c_*` tables)
+ *   - system tables that carry `site_id`: settings,
+ *     navigation, memberships, string overrides
+ *
+ * Does NOT include things that aren't site-scoped:
+ *   - users (`nx_users` is global)
+ *   - media (`nx_media` is global)
+ *   - audit events / plugin storage / community rows (the
+ *     audit notes these as future work)
+ */
+export interface NxSiteUsage {
+  collections: Record<string, number>;
+  settings: number;
+  navigation: number;
+  memberships: number;
+  stringOverrides: number;
+  /** Sum of every count above. Convenience for "is anything here?" checks. */
+  total: number;
+}
+
+export async function getSiteUsageSummary(id: string): Promise<NxSiteUsage> {
+  const db = getDb();
+  const collections: Record<string, number> = {};
+  for (const slug of getAllCollectionSlugs()) {
+    try {
+      const config = getCollectionConfig(slug);
+      void config;
+      const table = getCollectionTable(slug) as PgTable;
+      const idCol = (table as unknown as Record<string, unknown>).siteId;
+      if (!idCol) continue;
+      const [row] = (await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(table)
+        .where(eq(idCol as never, id))) as Array<{ count: number }>;
+      collections[slug] = row?.count ?? 0;
+    } catch {
+      // Collection without a registered table — skip silently.
+    }
+  }
+
+  const [settingsRow] = (await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(nxSettings)
+    .where(eq(nxSettings.siteId, id))) as Array<{ count: number }>;
+  const [navigationRow] = (await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(nxNavigation)
+    .where(eq(nxNavigation.siteId, id))) as Array<{ count: number }>;
+  const [membershipsRow] = (await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(nxSiteMemberships)
+    .where(eq(nxSiteMemberships.siteId, id))) as Array<{ count: number }>;
+  const [overridesRow] = (await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(nxStringOverrides)
+    .where(eq(nxStringOverrides.siteId, id))) as Array<{ count: number }>;
+
+  const settings = settingsRow?.count ?? 0;
+  const navigation = navigationRow?.count ?? 0;
+  const memberships = membershipsRow?.count ?? 0;
+  const stringOverrides = overridesRow?.count ?? 0;
+  const collectionsTotal = Object.values(collections).reduce(
+    (sum, n) => sum + n,
+    0,
+  );
+
+  return {
+    collections,
+    settings,
+    navigation,
+    memberships,
+    stringOverrides,
+    total:
+      collectionsTotal + settings + navigation + memberships + stringOverrides,
+  };
+}
+
+export interface NxDeleteSiteOptions {
+  /**
+   * Phase 15.9 — when `true`, cascade-delete every site-scoped
+   * row (collection content, settings, navigation, memberships,
+   * string overrides) before dropping the `nx_sites` row.
+   *
+   * When `false` (default, safe), the call refuses if any
+   * site-scoped data still exists. The admin UI uses this to
+   * force operators to confirm cascade explicitly so an
+   * accidental delete can't quietly orphan thousands of rows.
+   */
+  cascade?: boolean;
+}
+
+/**
  * Delete a non-default site. The default site can't be
  * deleted (the framework's invariant is "at least one site
  * always exists"); operators who want to retire the default
  * promote a different site to default first.
+ *
+ * Phase 15.9 — `options.cascade` controls whether site-scoped
+ * data is deleted alongside. Defaults to `false` for safety;
+ * the admin UI surfaces a usage summary first so the operator
+ * sees what cascade would touch.
  */
-export async function deleteSite(id: string): Promise<void> {
+export async function deleteSite(
+  id: string,
+  options?: NxDeleteSiteOptions,
+): Promise<void> {
   const db = getDb();
   const [target] = await db
     .select()
@@ -240,6 +358,40 @@ export async function deleteSite(id: string): Promise<void> {
       },
     ]);
   }
+
+  const usage = await getSiteUsageSummary(id);
+  if (usage.total > 0 && !options?.cascade) {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "cascade",
+        message: `Site "${id}" has ${usage.total} attached row(s). Pass cascade=true to delete them, or clear them manually first.`,
+      },
+    ]);
+  }
+
+  if (options?.cascade) {
+    // Order: collection content first, then system tables, then
+    // the site row itself. Collection deletes go through the
+    // raw table (no hook firing) — site teardown isn't a
+    // pipeline write and there's no doc-level afterDelete hook
+    // expected here.
+    for (const slug of Object.keys(usage.collections)) {
+      try {
+        const table = getCollectionTable(slug) as PgTable;
+        const siteIdCol = (table as unknown as Record<string, unknown>).siteId;
+        if (!siteIdCol) continue;
+        await db.delete(table).where(eq(siteIdCol as never, id));
+      } catch {
+        // Ignore — the collection might have been
+        // unregistered between the usage scan and the delete.
+      }
+    }
+    await db.delete(nxStringOverrides).where(eq(nxStringOverrides.siteId, id));
+    await db.delete(nxNavigation).where(eq(nxNavigation.siteId, id));
+    await db.delete(nxSettings).where(eq(nxSettings.siteId, id));
+    await db.delete(nxSiteMemberships).where(eq(nxSiteMemberships.siteId, id));
+  }
+
   await db.delete(nxSites).where(eq(nxSites.id, id));
 }
 
