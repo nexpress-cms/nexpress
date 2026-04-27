@@ -3,6 +3,8 @@ import {
   buildWebSiteJsonLd,
   findDocuments,
   getPageBySlug,
+  getPluginTemplatesForCollection,
+  resolveTemplateComponent,
 } from "@nexpress/core";
 import { getActiveTheme } from "@nexpress/theme";
 import { renderBlocks } from "@nexpress/blocks";
@@ -214,12 +216,28 @@ export default async function CatchAllPage({ params }: PageProps) {
 async function resolvePageTemplate(
   templateId: string | null,
 ): Promise<ComponentType<{ doc: Record<string, unknown> }> | null> {
+  // Phase 14.5 — lookup walks theme → plugin so theme templates
+  // take precedence on id collision (active theme is the site's
+  // design authority). The historical theme.default fallback
+  // still applies when the doc didn't pick anything specific.
+  if (templateId) {
+    const explicit = (await resolveTemplateComponent("pages", templateId)) as
+      | { component?: ComponentType<{ doc: Record<string, unknown> }> }
+      | null;
+    if (explicit?.component) return explicit.component;
+  }
+
+  // Default fallback: prefer theme's `default` over plugin's.
   const active = await getActiveTheme();
-  if (!active) return null;
-  const set = active.impl.templates?.pages;
-  if (!set) return null;
-  const chosen = templateId
-    ? (set[templateId]?.component ?? set.default?.component)
-    : set.default?.component;
-  return (chosen as ComponentType<{ doc: Record<string, unknown> }>) ?? null;
+  const themeDefault = active?.impl.templates?.pages?.default?.component as
+    | ComponentType<{ doc: Record<string, unknown> }>
+    | undefined;
+  if (themeDefault) return themeDefault;
+
+  const pluginDefault = (
+    getPluginTemplatesForCollection("pages").get("default") as
+      | { component?: ComponentType<{ doc: Record<string, unknown> }> }
+      | undefined
+  )?.component;
+  return pluginDefault ?? null;
 }

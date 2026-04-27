@@ -359,6 +359,21 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     }
   }
 
+  // Phase 14.5 — merge any page templates the plugin
+  // contributes. Theme templates win on id collision (handled
+  // downstream in `getThemeTemplateSummaries`), so plugin
+  // authors don't need to coordinate id namespaces with the
+  // active theme — the theme just stays authoritative. Re-
+  // registering the same plugin overwrites its previous
+  // entries (idempotent across hot reloads).
+  const pluginTemplates = (
+    plugin as { templates?: Record<string, Record<string, unknown>> }
+  ).templates;
+  if (pluginTemplates && typeof pluginTemplates === "object") {
+    const { registerPluginTemplates } = await import("./templates.js");
+    registerPluginTemplates(manifest.id, pluginTemplates);
+  }
+
   // Invoke optional setup() after hooks + routes are registered so setup can
   // call ctx.actions.register(…) and have it visible to subsequent dispatches.
   const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> }).setup;
