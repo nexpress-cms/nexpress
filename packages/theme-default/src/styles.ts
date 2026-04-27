@@ -113,4 +113,35 @@ export const defaultThemeCss = `
   margin: 0;
   padding: 0;
 }
+
+/* Phase 11.5 — dark/light mode toggle in the header. The
+   placeholder span keeps the header from reflowing during the
+   single-frame gap before the client component mounts. */
+.nx-color-scheme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--nx-color-border, #e5e7eb);
+  border-radius: var(--nx-radius-md, 0.5rem);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.nx-color-scheme-toggle:hover {
+  background: var(--nx-color-muted, #f8fafc);
+  border-color: var(--nx-color-mutedForeground, #94a3b8);
+}
+.nx-color-scheme-toggle:focus-visible {
+  outline: 2px solid var(--nx-color-ring, #4f46e5);
+  outline-offset: 2px;
+}
+.nx-color-scheme-toggle-placeholder {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid transparent;
+}
 `.trim();

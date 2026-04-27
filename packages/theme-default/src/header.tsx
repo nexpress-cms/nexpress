@@ -1,6 +1,7 @@
 import type { NxNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
+import { DarkModeToggle } from "./components/dark-mode-toggle.js";
 import { MemberStatusWidget } from "./components/member-status-widget.js";
 
 /**
@@ -49,6 +50,7 @@ export async function DefaultHeader() {
             className="nx-site-search-input"
           />
         </form>
+        <DarkModeToggle />
         <MemberStatusWidget />
       </nav>
     </header>

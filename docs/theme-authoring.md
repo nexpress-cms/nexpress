@@ -15,11 +15,12 @@
 4. [Shell, Slots, Templates](#4-shell-slots-templates)
 5. [Theme-owned CSS](#5-theme-owned-css)
 6. [Per-collection Page Templates](#6-per-collection-page-templates)
-7. [Tokens vs Theme Code](#7-tokens-vs-theme-code)
-8. [Registering and Activating](#8-registering-and-activating)
-9. [Server vs Client Boundary](#9-server-vs-client-boundary)
-10. [Reference Theme Examples](#10-reference-theme-examples)
-11. [Plugins Can Register Templates Too](#11-plugins-can-register-templates-too)
+7. [Dark Mode](#7-dark-mode)
+8. [Tokens vs Theme Code](#8-tokens-vs-theme-code)
+9. [Registering and Activating](#9-registering-and-activating)
+10. [Server vs Client Boundary](#10-server-vs-client-boundary)
+11. [Reference Theme Examples](#11-reference-theme-examples)
+12. [Plugins Can Register Templates Too](#12-plugins-can-register-templates-too)
 
 ---
 
@@ -269,7 +270,52 @@ so the dropdown stays in sync with whichever theme is active.
 
 ---
 
-## 7. Tokens vs Theme Code
+## 7. Dark Mode
+
+Themes opt into dark mode by populating
+`darkMode.colors` in their `tokens` (or in the admin's saved
+theme — admin overrides win). The framework's CSS generator
+emits the color overrides under a `[data-theme="dark"]`
+selector:
+
+```css
+@layer nx-theme {
+  :root {
+    --nx-color-background: oklch(1 0 0);
+    /* … light values … */
+  }
+  [data-theme="dark"] {
+    --nx-color-background: oklch(0.145 0.004 285.823);
+    /* … dark overrides only for keys provided … */
+  }
+}
+```
+
+Activation is wired in the framework, not the theme:
+
+- The root layout reads the `nx-color-scheme` cookie and sets
+  `<html data-theme="...">` server-side, so repeat visitors
+  paint with the right palette before the body renders.
+- `<NxColorSchemeScript />` (auto-mounted by the root layout)
+  runs synchronously as the first body child to detect
+  `prefers-color-scheme` for first-time visitors with no
+  cookie set — single-frame correction at worst, no FOUC for
+  saved choices.
+- The toggle component (theme-default ships
+  `<DarkModeToggle />` in its header slot) writes the cookie
+  + localStorage and flips the `data-theme` attribute. Themes
+  that want their own toggle UI can replace the default
+  header slot and call the same `nx-color-scheme` cookie
+  contract.
+
+A theme that doesn't ship `darkMode.colors` simply doesn't
+emit the dark block; the toggle becomes a no-op. The default
+theme bundles a sensible dark palette so the feature works
+out of the box.
+
+---
+
+## 8. Tokens vs Theme Code
 
 These are orthogonal axes:
 
@@ -285,7 +331,7 @@ revert when an admin tries a different theme.
 
 ---
 
-## 8. Registering and Activating
+## 9. Registering and Activating
 
 **Install**: register every theme you want admins to be able
 to switch into in `nexpress.config.ts`:
@@ -319,7 +365,7 @@ rather than 500.
 
 ---
 
-## 9. Server vs Client Boundary
+## 10. Server vs Client Boundary
 
 `@nexpress/theme-default` is the canonical example of how to ship
 a theme that has both server-rendered slots and an interactive
@@ -367,7 +413,7 @@ fetch it via an API route.
 
 ---
 
-## 10. Reference Theme Examples
+## 11. Reference Theme Examples
 
 | Package                       | Role in repo                                       |
 | ----------------------------- | -------------------------------------------------- |
@@ -383,7 +429,7 @@ unique within the registry.
 
 ---
 
-## 11. Plugins Can Register Templates Too
+## 12. Plugins Can Register Templates Too
 
 Phase 14.5 — plugins use the same template shape as themes
 and merge into the same registry. A plugin manifest may
