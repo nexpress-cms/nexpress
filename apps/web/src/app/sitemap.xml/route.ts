@@ -1,4 +1,9 @@
-import { buildSitemap, renderSitemapXml } from "@nexpress/core";
+import {
+  NX_DEFAULT_SITE_ID,
+  buildSitemap,
+  getCurrentSiteId,
+  renderSitemapXml,
+} from "@nexpress/core";
 import { unstable_cache } from "next/cache";
 
 import { ensureCoreServices } from "@/lib/init-core";
@@ -48,30 +53,42 @@ async function buildSitemapDirect(origin: string): Promise<string> {
 
 /**
  * Phase 14.1 — wrap the expensive collection walk in
- * `unstable_cache` keyed by `nx:sitemap`. The pipeline's
- * `revalidateCollection` (with the 14.1 tag bump) calls
- * `revalidateTag("nx:sitemap")` whenever a write to any
- * sitemap-tagged collection (`pages`, `posts`, ...) lands,
- * so the cache stays fresh without us re-walking the DB on
- * every crawler hit.
+ * `unstable_cache`. The pipeline's `revalidateCollection`
+ * calls `revalidateTag("nx:sitemap")` whenever a write to a
+ * sitemap-tagged collection lands, so the cache stays fresh
+ * without re-walking the DB on every crawler hit.
  *
- * Cache miss cost: one `findDocuments` call per opted-in
- * collection. Cache hit: zero DB load. The HTTP
- * `Cache-Control: s-maxage=600` below is independent and
- * still useful for downstream CDN caching.
+ * Phase 14.8 — site-scoped tag. In a multi-tenant deploy
+ * where the same worker serves several sites, a write to
+ * site A used to bust site B's cache too because both shared
+ * `nx:sitemap`. The fresh tag is `nx:sitemap:<siteId>`; the
+ * legacy `nx:sitemap` is kept as a fallback so existing
+ * `revalidateTag("nx:sitemap")` callers (older plugins,
+ * external CDNs, scripts) still work as a "blow away every
+ * site" big hammer.
+ *
+ * Each request constructs a fresh `unstable_cache` wrapper
+ * because the `tags` option is fixed at definition time and
+ * we need it to vary by siteId. The factory call is cheap;
+ * Next dedupes by key parts so repeat calls with the same
+ * siteId still hit the same cache entry. Mirrors the 14.3
+ * theme/nav pattern.
  */
-const buildSitemapCached = unstable_cache(
-  buildSitemapDirect,
-  ["nx-sitemap"],
-  { tags: ["nx:sitemap"], revalidate: 600 },
-);
-
 export async function GET(): Promise<Response> {
   ensureCoreServices();
   const origin = siteOrigin();
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const buildSitemapCached = unstable_cache(
+    () => buildSitemapDirect(origin),
+    ["nx-sitemap", siteId],
+    {
+      tags: [`nx:sitemap:${siteId}`, "nx:sitemap"],
+      revalidate: 600,
+    },
+  );
   let body: string;
   try {
-    body = await buildSitemapCached(origin);
+    body = await buildSitemapCached();
   } catch (error) {
     // `unstable_cache` requires Next's incremental cache,
     // which is absent in route handlers invoked directly

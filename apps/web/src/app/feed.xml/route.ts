@@ -1,4 +1,8 @@
-import { renderAtomFeed } from "@nexpress/core";
+import {
+  NX_DEFAULT_SITE_ID,
+  getCurrentSiteId,
+  renderAtomFeed,
+} from "@nexpress/core";
 import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
@@ -41,28 +45,35 @@ async function renderAtomFeedDirect(
   });
 }
 
-const renderAtomFeedCached = unstable_cache(
-  renderAtomFeedDirect,
-  ["nx-feed"],
-  {
-    revalidate: 600,
-    // The base "nx:feed" tag plus per-collection sub-tags
-    // (e.g. "nx:feed:posts") so writes can target a single
-    // feed via `revalidateTag("nx:feed:posts")` without
-    // collateral invalidating other collections' feeds.
-    tags: ["nx:feed", "nx:feed:posts"],
-  },
-);
-
 export async function GET(request: NextRequest): Promise<Response> {
   ensureCoreServices();
   const collection = request.nextUrl.searchParams.get("collection") ?? undefined;
   const localeParam = request.nextUrl.searchParams.get("locale")?.trim();
   const locale =
     localeParam && isLocale(localeParam) ? localeParam : undefined;
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // Phase 14.8 — site-scoped tags so a multi-tenant deploy
+  // doesn't bust feed caches across sites on every write. The
+  // legacy `nx:feed` / `nx:feed:<collection>` tags are kept
+  // alongside as a fallback for the existing global-bust
+  // contract. Mirrors the 14.3 theme/nav pattern.
+  const collectionKey = collection ?? "posts";
+  const renderAtomFeedCached = unstable_cache(
+    () => renderAtomFeedDirect(collection, locale),
+    ["nx-feed", siteId, collectionKey, locale ?? ""],
+    {
+      revalidate: 600,
+      tags: [
+        `nx:feed:${siteId}:${collectionKey}`,
+        `nx:feed:${siteId}`,
+        `nx:feed:${collectionKey}`,
+        "nx:feed",
+      ],
+    },
+  );
   let xml: string | null;
   try {
-    xml = await renderAtomFeedCached(collection, locale);
+    xml = await renderAtomFeedCached();
   } catch (error) {
     if (
       error instanceof Error &&
