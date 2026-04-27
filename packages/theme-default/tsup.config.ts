@@ -28,6 +28,7 @@ export default defineConfig([
       "@nexpress/theme",
       "./components/member-status-widget.js",
       "./components/dark-mode-toggle.js",
+      "./components/language-picker.js",
     ],
   },
   {
@@ -36,6 +37,8 @@ export default defineConfig([
         "src/components/member-status-widget.tsx",
       "components/dark-mode-toggle":
         "src/components/dark-mode-toggle.tsx",
+      "components/language-picker":
+        "src/components/language-picker.tsx",
     },
     format: ["esm"],
     dts: true,

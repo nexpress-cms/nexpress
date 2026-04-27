@@ -1,7 +1,9 @@
+import { getI18nConfig } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { DarkModeToggle } from "./components/dark-mode-toggle.js";
+import { LanguagePicker } from "./components/language-picker.js";
 import { MemberStatusWidget } from "./components/member-status-widget.js";
 
 /**
@@ -18,6 +20,8 @@ import { MemberStatusWidget } from "./components/member-status-widget.js";
  */
 export async function DefaultHeader() {
   const headerNav = await getCachedNavigation("header");
+  const i18n = getI18nConfig();
+  const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
 
   return (
     <header className="nx-site-header">
@@ -50,6 +54,9 @@ export async function DefaultHeader() {
             className="nx-site-search-input"
           />
         </form>
+        {showLanguagePicker && i18n ? (
+          <LanguagePicker locales={i18n.locales} />
+        ) : null}
         <DarkModeToggle />
         <MemberStatusWidget />
       </nav>
