@@ -255,6 +255,7 @@ export {
   getAllJobHandlers,
   setJobQueue,
   getJobQueue,
+  getOptionalJobQueue,
   enqueueJob,
   startWorker,
   stopWorker,
@@ -263,7 +264,14 @@ export {
   PgBossAdapter,
   registerBuiltinHandlers,
 } from "./jobs/index.js";
-export type { NxJobHandler, NxJobQueue } from "./jobs/index.js";
+export type {
+  NxJobHandler,
+  NxJobQueue,
+  NxJobState,
+  NxJobSummary,
+  NxJobListOptions,
+  NxJobListResult,
+} from "./jobs/index.js";
 
 export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
 export { LocalStorageAdapter } from "./storage/local.js";
