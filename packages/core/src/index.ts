@@ -133,7 +133,13 @@ export {
   setSearchAdapter,
   findTranslations,
   createTranslation,
+  getTranslationProgress,
 } from "./collections/index.js";
+export type {
+  NxTranslationProgress,
+  NxCollectionTranslationProgress,
+  NxTranslationProgressLocaleStats,
+} from "./collections/translations.js";
 export type {
   NxRevision,
   NxRevisionSummary,
