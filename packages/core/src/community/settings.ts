@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
@@ -97,10 +97,13 @@ function readQuota(raw: unknown): NxMemberUploadQuota {
 
 export async function getCommunitySettings(): Promise<NxCommunitySettings> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const { getCurrentSiteId } = await import("../sites/context.js");
+  const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select()
     .from(nxSettings)
-    .where(eq(nxSettings.key, SETTINGS_KEY))
+    .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, SETTINGS_KEY)))
     .limit(1)) as Array<{ value: unknown }>;
   return mergeWithDefaults(row?.value);
 }
@@ -222,16 +225,20 @@ export async function updateCommunitySettings(
   const current = await getCommunitySettings();
   const next = validateCommunitySettingsPatch(current, patch);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const { getCurrentSiteId } = await import("../sites/context.js");
+  const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   await db
     .insert(nxSettings)
     .values({
+      siteId,
       key: SETTINGS_KEY,
       value: next,
       updatedBy: updatedBy ?? null,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: nxSettings.key,
+      target: [nxSettings.siteId, nxSettings.key],
       set: {
         value: next,
         updatedBy: updatedBy ?? null,

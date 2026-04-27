@@ -321,7 +321,13 @@ export function createPluginRuntimeContext(
     settings: {
       async getSite(): Promise<Record<string, unknown>> {
         assertCap(pluginId, capabilities, "settings:read");
-        const rows = await db().select().from(nxSettings).where(eq(nxSettings.key, "site"));
+        const { getCurrentSiteId } = await import("../sites/context.js");
+        const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
+        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const rows = await db()
+          .select()
+          .from(nxSettings)
+          .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "site")));
         const row = rows[0] as { value?: unknown } | undefined;
         if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
           return {};
@@ -347,7 +353,13 @@ export function createPluginRuntimeContext(
     theme: {
       async getTokens(): Promise<Record<string, unknown>> {
         assertCap(pluginId, capabilities, "theme:read");
-        const rows = await db().select().from(nxSettings).where(eq(nxSettings.key, "theme"));
+        const { getCurrentSiteId } = await import("../sites/context.js");
+        const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
+        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const rows = await db()
+          .select()
+          .from(nxSettings)
+          .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")));
         const row = rows[0] as { value?: unknown } | undefined;
         if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
           return {};
@@ -356,7 +368,13 @@ export function createPluginRuntimeContext(
       },
       async setTokens(partial: Record<string, unknown>): Promise<void> {
         assertCap(pluginId, capabilities, "theme:write");
-        const rows = await db().select().from(nxSettings).where(eq(nxSettings.key, "theme"));
+        const { getCurrentSiteId } = await import("../sites/context.js");
+        const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
+        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const rows = await db()
+          .select()
+          .from(nxSettings)
+          .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")));
         const existing =
           rows[0] && (rows[0] as { value?: unknown }).value &&
           typeof (rows[0] as { value?: unknown }).value === "object" &&
@@ -366,9 +384,9 @@ export function createPluginRuntimeContext(
         const merged = { ...existing, ...partial };
         await db()
           .insert(nxSettings)
-          .values({ key: "theme", value: merged, updatedAt: new Date() })
+          .values({ siteId, key: "theme", value: merged, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: nxSettings.key,
+            target: [nxSettings.siteId, nxSettings.key],
             set: { value: merged, updatedAt: new Date() },
           });
       },
