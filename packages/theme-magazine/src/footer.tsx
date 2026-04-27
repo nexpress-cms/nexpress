@@ -1,5 +1,5 @@
-import { getNavigation } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { getCachedNavigation } from "@nexpress/next";
 
 /**
  * Quiet bottom rule with footer-menu links centered below a
@@ -8,7 +8,7 @@ import type { NxNavItem } from "@nexpress/core";
  * than baking them into the theme.
  */
 export async function MagazineFooter() {
-  const items = await getNavigation("footer");
+  const items = await getCachedNavigation("footer");
 
   return (
     <footer className="nx-site-footer nx-magazine-footer">

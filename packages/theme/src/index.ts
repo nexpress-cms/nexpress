@@ -15,4 +15,8 @@ export type {
   NxTemplateRenderProps,
 } from "./define-theme.js";
 
-export { getActiveTheme, getThemeById } from "./registry-typed.js";
+export {
+  getActiveTheme,
+  getRegisteredThemes,
+  getThemeById,
+} from "./registry-typed.js";

@@ -44,3 +44,12 @@ export {
 } from "./bootstrap.js";
 
 export { toClientCollectionConfig } from "./client-safe.js";
+
+export {
+  getCachedTheme,
+  getCachedActiveTheme,
+  getCachedActiveThemeId,
+  getCachedNavigation,
+  themeCacheTag,
+  navCacheTag,
+} from "./cache.js";

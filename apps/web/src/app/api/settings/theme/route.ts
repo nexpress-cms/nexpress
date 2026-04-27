@@ -69,9 +69,19 @@ export async function PUT(request: NextRequest) {
         set: { value: theme, updatedAt: now, updatedBy: user.id },
       });
 
-    const { revalidatePath, revalidateTag } = await import("next/cache");
-    revalidateTag("nx:theme");
-    revalidatePath("/", "layout");
+    // Phase 14.3 — site-scoped tag matches the cache helpers
+    // in `@nexpress/next` (`themeCacheTag(siteId)`). Tenants
+    // editing their own theme don't bust unrelated sites'
+    // caches. The path revalidation stays scoped to the layout
+    // so any cached SSR output downstream also drops.
+    try {
+      const { revalidatePath, revalidateTag } = await import("next/cache");
+      const { themeCacheTag } = await import("@nexpress/next");
+      revalidateTag(themeCacheTag(siteId));
+      revalidatePath("/", "layout");
+    } catch {
+      // Swallow — see active-theme route's matching catch.
+    }
 
     return nxSuccessResponse(theme);
   } catch (error) {

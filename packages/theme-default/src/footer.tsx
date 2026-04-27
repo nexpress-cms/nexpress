@@ -1,5 +1,5 @@
-import { getNavigation } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { getCachedNavigation } from "@nexpress/next";
 
 /**
  * Default theme footer — server component. Reads the `footer`
@@ -8,7 +8,7 @@ import type { NxNavItem } from "@nexpress/core";
  * `slots.footer` in their own `defineTheme()` call.
  */
 export async function DefaultFooter() {
-  const footerNav = await getNavigation("footer");
+  const footerNav = await getCachedNavigation("footer");
 
   return (
     <footer className="nx-site-footer">

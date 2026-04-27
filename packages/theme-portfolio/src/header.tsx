@@ -1,5 +1,5 @@
-import { getNavigation } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { getCachedNavigation } from "@nexpress/next";
 
 /**
  * Slim top bar. Studio name on the left, menu items on the
@@ -7,7 +7,7 @@ import type { NxNavItem } from "@nexpress/core";
  * carries the visual weight.
  */
 export async function PortfolioHeader() {
-  const items = await getNavigation("header");
+  const items = await getCachedNavigation("header");
 
   return (
     <header className="nx-site-header nx-portfolio-header">
