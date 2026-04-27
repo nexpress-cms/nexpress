@@ -5,16 +5,20 @@ import {
   loadPlugins,
   registerCollection,
   registerThemes,
+  resolveSiteForHostname,
+  setCurrentSiteResolver,
   setDb,
   setI18nConfig,
   setMediaDb,
   setStorageAdapter,
   startProducer,
   syncPluginRegistrations,
+  NX_DEFAULT_SITE_ID,
   type NxConfig,
   type NxPluginConfig,
   type NxResolvedPluginLike,
 } from "@nexpress/core";
+import { headers } from "next/headers";
 
 function resolvePluginId(plugin: NxPluginConfig | NxResolvedPluginLike): string {
   return "manifest" in plugin ? plugin.manifest.id : plugin.id;
@@ -139,6 +143,27 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // null and the per-collection `i18n: true` opt-in is
     // already rejected at `defineConfig` time.
     setI18nConfig(config.i18n ?? null);
+
+    // Phase 15.1 — install the per-request site resolver.
+    // The middleware sets `x-nx-host` from the incoming
+    // Host header; this resolver maps it to a site id via
+    // `resolveSiteForHostname` (DB lookup) and falls back to
+    // the default site id. Reads `headers()` only inside a
+    // request scope; throws are swallowed so non-request
+    // contexts (background workers, scripts) just see a
+    // null site id, which downstream callers treat as
+    // "use default".
+    setCurrentSiteResolver(async () => {
+      try {
+        const headerList = await headers();
+        const host = headerList.get("x-nx-host");
+        if (!host) return NX_DEFAULT_SITE_ID;
+        const site = await resolveSiteForHostname(host);
+        return site?.id ?? NX_DEFAULT_SITE_ID;
+      } catch {
+        return null;
+      }
+    });
 
     collectionsRegistered = true;
   }
