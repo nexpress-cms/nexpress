@@ -7,8 +7,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  esbuild: {
+    jsx: "automatic",
+  },
   test: {
-    include: ["tests/**/*.integration.test.ts"],
+    include: [
+      "tests/**/*.integration.test.ts",
+      "tests/**/*.integration.test.tsx",
+    ],
     environment: "node",
     globals: false,
     // Set env vars (NX_SECRET, etc.) before any test module's imports are

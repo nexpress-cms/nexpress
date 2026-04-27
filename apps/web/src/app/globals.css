@@ -552,6 +552,17 @@
     opacity: 0.65;
   }
 
+  /* Phase 10.7 — query-term highlight inside search-result
+     title and excerpt. Subtle yellow tint that respects the
+     theme's foreground color so it stays legible in both
+     light and dark surfaces. */
+  .nx-search-highlight {
+    background-color: rgba(250, 204, 21, 0.35);
+    color: inherit;
+    padding: 0 0.1em;
+    border-radius: 2px;
+  }
+
   .nx-search-pagination {
     display: flex;
     align-items: center;

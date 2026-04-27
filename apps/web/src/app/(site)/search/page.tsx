@@ -6,6 +6,7 @@ import {
 import Link from "next/link";
 
 import { ensureCoreServices } from "@/lib/init-core";
+import { highlightMatches } from "@/lib/search-highlight";
 
 interface SearchPageProps {
   searchParams: Promise<{ q?: string; page?: string }>;
@@ -136,6 +137,7 @@ function SearchResults({ q, result, page }: SearchResultsProps) {
               <SearchResultRow
                 key={`${item.collection}:${docId(item.doc)}`}
                 item={item}
+                query={q}
               />
             ))}
           </ul>
@@ -149,10 +151,18 @@ function SearchResults({ q, result, page }: SearchResultsProps) {
   );
 }
 
-function SearchResultRow({ item }: { item: SearchResultItem }) {
+function SearchResultRow({
+  item,
+  query,
+}: {
+  item: SearchResultItem;
+  query: string;
+}) {
   const href = collectionUrlPath(item.collection, item.doc);
   const title = pickTitle(item.doc);
   const excerpt = pickExcerpt(item.doc);
+  const highlightedTitle = highlightMatches(title, query);
+  const highlightedExcerpt = excerpt ? highlightMatches(excerpt, query) : null;
 
   if (!href) {
     // Collection doesn't declare a public URL — render the title
@@ -160,8 +170,10 @@ function SearchResultRow({ item }: { item: SearchResultItem }) {
     // hit, but don't bait public visitors with a dead link.
     return (
       <li className="nx-search-result nx-search-result-untargeted">
-        <span className="nx-search-result-title">{title}</span>
-        {excerpt ? <p className="nx-search-result-excerpt">{excerpt}</p> : null}
+        <span className="nx-search-result-title">{highlightedTitle}</span>
+        {highlightedExcerpt ? (
+          <p className="nx-search-result-excerpt">{highlightedExcerpt}</p>
+        ) : null}
       </li>
     );
   }
@@ -169,9 +181,11 @@ function SearchResultRow({ item }: { item: SearchResultItem }) {
   return (
     <li className="nx-search-result">
       <Link href={href} className="nx-search-result-title">
-        {title}
+        {highlightedTitle}
       </Link>
-      {excerpt ? <p className="nx-search-result-excerpt">{excerpt}</p> : null}
+      {highlightedExcerpt ? (
+        <p className="nx-search-result-excerpt">{highlightedExcerpt}</p>
+      ) : null}
     </li>
   );
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
@@ -27,7 +27,10 @@ import {
   getCollectionTable,
   getCollectionRegistration,
 } from "./registry.js";
-import { buildSearchVector } from "./search.js";
+import {
+  buildSearchVector,
+  buildWeightedSearchVectorSql,
+} from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { nxRevisions } from "../db/schema/system.js";
@@ -647,7 +650,11 @@ async function saveDocumentImpl(
     prepared.mainData.status = "scheduled";
   }
 
-  const searchVector = buildSearchVector(config, hookData);
+  // Phase 10.7 — write the weighted tsvector so titles
+  // outrank body matches at query time. The plain-text
+  // version stays around for moderation paths (spam /
+  // profanity adapters need the full text without weights).
+  const searchVector = buildWeightedSearchVectorSql(config, hookData);
 
   // Compute publish-transition so we can fire before/afterPublish + beforeUnpublish
   // around the write. Status precedence: explicit mainData.status > original doc
@@ -1385,7 +1392,7 @@ async function createMainDocument(
   tx: DrizzleTransactionLike,
   table: PgTable,
   mainData: Record<string, unknown>,
-  searchVector: string,
+  searchVectorSql: SQL,
   config: NxCollectionConfig,
   user: NxAuthUser | null,
   now: Date,
@@ -1402,12 +1409,12 @@ async function createMainDocument(
     ...mainData,
     createdBy: user?.id ?? null,
     updatedBy: user?.id ?? null,
-    // Wrap in `to_tsvector` so Postgres tokenizes the source
-    // text rather than parsing it as raw tsvector syntax —
-    // otherwise content with colons (URLs, "key:value") or other
-    // tsvector-meaningful punctuation 500s the write. Stemming
-    // matches the search query path which also uses 'english'.
-    searchVector: sql`to_tsvector('english', ${searchVector})`,
+    // Phase 10.7 — composed setweight() tsvector so titles
+    // outrank body matches at query time. The 11.x
+    // to_tsvector wrap (so colon-containing content doesn't
+    // crash the cast) is preserved inside each setweight call
+    // by buildWeightedSearchVectorSql.
+    searchVector: searchVectorSql,
   };
 
   if (config.timestamps !== false) {
@@ -1426,7 +1433,7 @@ async function updateMainDocument(
   collection: string,
   docId: string | null,
   mainData: Record<string, unknown>,
-  searchVector: string,
+  searchVectorSql: SQL,
   config: NxCollectionConfig,
   user: NxAuthUser | null,
   now: Date,
@@ -1438,9 +1445,10 @@ async function updateMainDocument(
   const values: Record<string, unknown> = {
     ...mainData,
     updatedBy: user?.id ?? null,
-    // See createMainDocument — same to_tsvector wrap so updates
-    // can't introduce content that crashes the cast either.
-    searchVector: sql`to_tsvector('english', ${searchVector})`,
+    // Phase 10.7 — see createMainDocument: weighted setweight()
+    // tsvector preserves the 11.x to_tsvector safety AND adds
+    // title boost.
+    searchVector: searchVectorSql,
   };
 
   if (config.timestamps !== false) {
