@@ -156,6 +156,42 @@ export function middleware(request: NextRequest) {
     response.headers.set(key, value);
   }
 
+  // Phase 14.2 — cache + vary annotations.
+  // - /admin and /api/admin: hard no-store so a misconfigured
+  //   reverse proxy can't accidentally cache an admin's
+  //   dashboard / API response and serve it to another user.
+  // - /api/auth, /api/members, /api/identities: same — they
+  //   carry session-derived data.
+  // - Public site: Vary on Cookie + Accept-Language so a CDN
+  //   doesn't cache a logged-in user's page and serve it to
+  //   an anonymous visitor (or vice versa). Routes that opt
+  //   into ISR set their own Cache-Control which overrides
+  //   this default.
+  const isPrivateRoute =
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/members") ||
+    pathname.startsWith("/api/identities") ||
+    pathname.startsWith("/api/users");
+  if (isPrivateRoute) {
+    response.headers.set("Cache-Control", "private, no-store, must-revalidate");
+  } else if (
+    !pathname.startsWith("/api/") &&
+    !pathname.startsWith("/_next/")
+  ) {
+    // Public site routes — let the per-route Cache-Control
+    // (set by sitemap.xml / feed.xml / etc.) win when present;
+    // otherwise just declare what the response varies on.
+    const existingVary = response.headers.get("Vary");
+    const varyDirectives = new Set(
+      (existingVary ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    );
+    varyDirectives.add("Cookie");
+    varyDirectives.add("Accept-Language");
+    response.headers.set("Vary", [...varyDirectives].join(", "));
+  }
+
   return response;
 }
 
