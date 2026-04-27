@@ -1,5 +1,6 @@
-import { getNavigation } from "@nexpress/core";
+import { getNavigation, t } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { headers } from "next/headers";
 
 /**
  * Caps masthead. Reads the `header` navigation menu (same
@@ -7,9 +8,22 @@ import type { NxNavItem } from "@nexpress/core";
  * are bottom-aligned beneath a thick rule with letter-spaced
  * caps. The site name is rendered in display-serif and pulls
  * from the framework's logical site name slot.
+ *
+ * Phase 12.5 — the masthead tagline is keyed in the theme's
+ * i18n bundle (`magazine.tagline`) and rendered via `t()`.
+ * The locale comes from the middleware-set `x-nx-locale`
+ * request header.
  */
 export async function MagazineHeader() {
   const items = await getNavigation("header");
+  let locale: string | undefined;
+  try {
+    const headerList = await headers();
+    locale = headerList.get("x-nx-locale") ?? undefined;
+  } catch {
+    // headers() throws outside a request scope; fall through
+    // to the default-locale fallback in t().
+  }
 
   return (
     <header className="nx-site-header nx-magazine-header">
@@ -18,7 +32,7 @@ export async function MagazineHeader() {
           NexPress
         </a>
         <p className="nx-magazine-tagline">
-          Stories, essays, and reports
+          {t("magazine.tagline", locale)}
         </p>
       </div>
       {items.length > 0 ? (

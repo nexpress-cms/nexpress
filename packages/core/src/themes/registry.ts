@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../collections/pipeline.js";
 import { nxSettings } from "../db/schema/system.js";
 import { NxValidationError } from "../errors.js";
+import { addStrings } from "../i18n/strings.js";
 import type { NxRegisteredTheme } from "../config/types.js";
 
 /**
@@ -32,6 +33,20 @@ export function registerThemes(themes: NxRegisteredTheme[]): void {
       throw new Error("Theme is missing manifest.id");
     }
     registry.set(theme.manifest.id, theme);
+
+    // Phase 12.5 — themes can ship UI-string bundles via
+    // `impl.i18n: { locale: { key: value } }`. Merging happens
+    // here (alongside theme registration) rather than in the
+    // bootstrap so live theme swaps in dev pick up updated
+    // strings without a restart.
+    const impl = theme.impl as { i18n?: Record<string, Record<string, string>> };
+    if (impl?.i18n && typeof impl.i18n === "object") {
+      for (const [locale, bundle] of Object.entries(impl.i18n)) {
+        if (bundle && typeof bundle === "object") {
+          addStrings(locale, bundle);
+        }
+      }
+    }
   }
 }
 

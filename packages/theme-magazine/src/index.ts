@@ -45,6 +45,20 @@ export const magazineTheme = defineTheme({
       footer: MagazineFooter,
     },
     css: magazineCss,
+    // Phase 12.5 — example UI-string bundle. Theme components
+    // call `t("magazine.tagline", locale)` from server-side
+    // render so the masthead tagline matches the current
+    // request's locale. Sites that want different copy
+    // override these keys in their app-level bundle (last
+    // writer wins on key collision).
+    i18n: {
+      en: {
+        "magazine.tagline": "Stories, essays, and reports",
+      },
+      ko: {
+        "magazine.tagline": "이야기, 에세이, 그리고 리포트",
+      },
+    },
     templates: {
       pages: {
         default: {

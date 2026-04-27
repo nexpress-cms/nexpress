@@ -11,6 +11,7 @@ export default defineConfig({
     "react-dom",
     "next",
     "next/link",
+    "next/headers",
     "@nexpress/blocks",
     "@nexpress/editor",
     "@nexpress/theme",
