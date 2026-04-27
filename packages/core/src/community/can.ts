@@ -176,7 +176,7 @@ export async function memberCan(
   for (const grant of grants) {
     const def = getCommunityRole(grant.role, grant.scopeType);
     if (!def) continue;
-    if (!def.capabilities.includes(action as CommunityCapability)) continue;
+    if (!def.capabilities.includes(action)) continue;
 
     if (grant.scopeType === "site") {
       return true;

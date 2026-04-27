@@ -12,7 +12,7 @@ export interface PluginHookHandler {
    * hooks may return a value; `runHookAndCollect` gathers those, while
    * `runHook` ignores returns.
    */
-  handler: (data: Record<string, unknown>) => unknown | Promise<unknown>;
+  handler: (data: Record<string, unknown>) => unknown;
 }
 
 export interface PluginRouteHandler {
@@ -185,7 +185,7 @@ type ResolvedHookFn = (ctx: {
   data: Record<string, unknown>;
   collection?: string;
   ctx: Record<string, unknown>;
-}) => unknown | Promise<unknown>;
+}) => unknown;
 
 type ResolvedRouteFn = (
   req: PluginRouteRequest,

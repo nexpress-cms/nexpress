@@ -11,13 +11,13 @@ import type { NxEmailAdapter, NxEmailMessage } from "./types.js";
 export class NoopEmailAdapter implements NxEmailAdapter {
   readonly kind = "noop";
 
-  async send(message: NxEmailMessage): Promise<void> {
-    // eslint-disable-next-line no-console
+  send(message: NxEmailMessage): Promise<void> {
     console.warn(
       `[nexpress] email (noop adapter) — not actually delivered.\n` +
         `  to:      ${message.to}\n` +
         `  subject: ${message.subject}\n` +
         `  text:\n${message.text.replace(/^/gm, "    ")}`,
     );
+    return Promise.resolve();
   }
 }

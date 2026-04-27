@@ -93,7 +93,7 @@ async function handleContentPublishScheduled(_: unknown): Promise<void> {
   const { publishScheduledDocuments } = await import("../collections/scheduled.js");
   const result = await publishScheduledDocuments();
   if (result.published > 0) {
-    // eslint-disable-next-line no-console
+     
     console.info(
       `[nexpress] content:publishScheduled flipped ${result.published} document(s)`,
       result.byCollection,
@@ -259,7 +259,17 @@ async function revalidateCollectionTags(collection: string, documentId: string):
 }
 
 async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
-  const importedModule = await loadOptionalModule("next/cache");
+  // Indirect specifier so TypeScript doesn't try to resolve
+  // `next/cache` at compile time — `@nexpress/core` doesn't
+  // depend on Next.js, the cache helpers are only available
+  // when this code runs inside a Next runtime.
+  const moduleId: string = "next/cache";
+  let importedModule: unknown;
+  try {
+    importedModule = await import(moduleId);
+  } catch {
+    return null;
+  }
 
   if (!isRecord(importedModule)) {
     return null;
@@ -274,15 +284,6 @@ async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
   return (tag: string) => {
     revalidateTag(tag);
   };
-}
-
-async function loadOptionalModule(moduleId: string): Promise<unknown> {
-  const importer = new Function(
-    "moduleId",
-    'return import(moduleId);',
-  ) as (moduleId: string) => Promise<unknown>;
-
-  return importer(moduleId);
 }
 
 function asContentJobData(data: unknown): ContentJobData {

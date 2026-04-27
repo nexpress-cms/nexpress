@@ -99,7 +99,7 @@ export async function buildAtomFeed(
 
   const entries: NxFeedEntry[] = [];
   for (const doc of result.docs) {
-    const path = urlPath(doc as Record<string, unknown>);
+    const path = urlPath(doc);
     if (!path) continue;
     const link = `${origin}${path}`;
     const updated = pickIso(
@@ -109,10 +109,10 @@ export async function buildAtomFeed(
     if (!updated) continue;
     entries.push({
       id: link,
-      title: pickTitle(doc as Record<string, unknown>),
-      summary: pickSummary(doc as Record<string, unknown>),
+      title: pickTitle(doc),
+      summary: pickSummary(doc),
       link,
-      author: pickAuthor(doc as Record<string, unknown>),
+      author: pickAuthor(doc),
       updated,
       published: pickIso(
         (doc as { publishedAt?: unknown }).publishedAt ??

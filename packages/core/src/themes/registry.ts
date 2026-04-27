@@ -211,7 +211,7 @@ export async function getThemeTemplateSummaries(
 export async function resolveTemplateComponent(
   collectionSlug: string,
   templateId: string,
-): Promise<unknown | null> {
+): Promise<unknown> {
   const active = await getActiveTheme();
   if (active) {
     const impl = active.impl as {

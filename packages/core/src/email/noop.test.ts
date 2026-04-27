@@ -22,7 +22,8 @@ describe("NoopEmailAdapter", () => {
       text: "body line 1\nbody line 2",
     });
     expect(warnSpy).toHaveBeenCalledOnce();
-    const logged = String(warnSpy.mock.calls[0]?.[0] ?? "");
+    const firstArg = warnSpy.mock.calls[0]?.[0];
+    const logged = typeof firstArg === "string" ? firstArg : "";
     expect(logged).toContain("alice@example.com");
     expect(logged).toContain("Hi");
     expect(logged).toContain("body line 1");
