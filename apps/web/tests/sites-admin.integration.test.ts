@@ -29,14 +29,14 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const { listSites, deleteSite } = await import("@nexpress/core");
     const sites = await listSites();
     for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id);
+      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
     }
   });
   afterEach(async () => {
     const { listSites, deleteSite } = await import("@nexpress/core");
     const sites = await listSites();
     for (const site of sites) {
-      if (!site.isDefault) await deleteSite(site.id);
+      if (!site.isDefault) await deleteSite(site.id, { cascade: true });
     }
   });
   afterAll(async () => {
@@ -147,5 +147,165 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const res = await GET(req);
     const { status } = await readJson(res);
     expect(status).toBe(403);
+  });
+
+  /**
+   * Phase 15.9 — usage summary + cascade safety net.
+   */
+  it("GET /api/admin/sites/[id]/usage returns row counts per site-scoped table", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { createSite, getDb, nxSettings } = await import("@nexpress/core");
+    const created = await createSite({
+      id: "usage-target",
+      name: "Usage target",
+      hostname: "usage.example.com",
+    });
+
+    const db = getDb();
+    await db.insert(nxSettings).values({
+      siteId: created.id,
+      key: "site",
+      value: { name: "Usage target" },
+      updatedAt: new Date(),
+    });
+
+    const { GET } = await import(
+      "@/app/api/admin/sites/[id]/usage/route"
+    );
+    const req = buildRequest(`/api/admin/sites/${created.id}/usage`, {
+      session: admin,
+    });
+    const res = await GET(req, {
+      params: Promise.resolve({ id: created.id }),
+    });
+    const { status, body } = await readJson<{
+      site?: { id: string };
+      usage?: {
+        settings: number;
+        navigation: number;
+        memberships: number;
+        stringOverrides: number;
+        total: number;
+        collections: Record<string, number>;
+      };
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.site?.id).toBe(created.id);
+    expect(body.usage?.settings).toBe(1);
+    expect(body.usage?.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it("DELETE refuses when site has attached rows and no cascade flag", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { createSite, getDb, nxSettings } = await import("@nexpress/core");
+    const created = await createSite({
+      id: "no-cascade",
+      name: "No cascade",
+      hostname: "no-cascade.example.com",
+    });
+    await getDb().insert(nxSettings).values({
+      siteId: created.id,
+      key: "site",
+      value: {},
+      updatedAt: new Date(),
+    });
+
+    const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest(`/api/admin/sites/${created.id}`, {
+      session: admin,
+      method: "DELETE",
+    });
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: created.id }),
+    });
+    const { status, body } = await readJson<{
+      error?: {
+        message?: string;
+        details?: Array<{ field: string; message: string }>;
+      };
+    }>(res);
+    expect(status).toBe(400);
+    // The cascade hint lives in `details[0].message`; the
+    // top-level `message` is the generic "Invalid input"
+    // because `NxValidationError`'s contract is one-line
+    // top-level + per-field detail rows.
+    const cascadeDetail = body.error?.details?.find(
+      (d) => d.field === "cascade",
+    );
+    expect(cascadeDetail?.message).toMatch(/cascade=true/);
+
+    const { getSiteById } = await import("@nexpress/core");
+    expect(await getSiteById(created.id)).not.toBeNull();
+  });
+
+  it("DELETE ?cascade=true removes attached rows and the site", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const {
+      createSite,
+      getDb,
+      nxSettings,
+      nxNavigation,
+      getSiteById,
+    } = await import("@nexpress/core");
+    const created = await createSite({
+      id: "cascade-target",
+      name: "Cascade target",
+      hostname: "cascade.example.com",
+    });
+    const db = getDb();
+    await db.insert(nxSettings).values({
+      siteId: created.id,
+      key: "site",
+      value: {},
+      updatedAt: new Date(),
+    });
+    await db.insert(nxNavigation).values({
+      siteId: created.id,
+      location: "header",
+      items: [],
+      updatedAt: new Date(),
+    });
+
+    const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest(
+      `/api/admin/sites/${created.id}?cascade=true`,
+      {
+        session: admin,
+        method: "DELETE",
+      },
+    );
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: created.id }),
+    });
+    const { status, body } = await readJson<{
+      cascade?: boolean;
+      deleted?: boolean;
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.cascade).toBe(true);
+    expect(body.deleted).toBe(true);
+    expect(await getSiteById(created.id)).toBeNull();
+  });
+
+  it("DELETE without cascade succeeds when no attached rows exist (backwards-compat)", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const { createSite, getSiteById } = await import("@nexpress/core");
+    const created = await createSite({
+      id: "empty-site",
+      name: "Empty",
+      hostname: "empty.example.com",
+    });
+
+    const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest(`/api/admin/sites/${created.id}`, {
+      session: admin,
+      method: "DELETE",
+    });
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: created.id }),
+    });
+    const { status } = await readJson(res);
+    expect(status).toBe(200);
+    expect(await getSiteById(created.id)).toBeNull();
   });
 });

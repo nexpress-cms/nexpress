@@ -359,9 +359,15 @@ export {
   createSite,
   updateSite,
   deleteSite,
+  getSiteUsageSummary,
   NX_DEFAULT_SITE_ID,
 } from "./sites/registry.js";
-export type { NxSite, CreateSiteInput } from "./sites/registry.js";
+export type {
+  NxSite,
+  NxSiteUsage,
+  NxDeleteSiteOptions,
+  CreateSiteInput,
+} from "./sites/registry.js";
 export {
   setCurrentSiteResolver,
   resetCurrentSiteResolver,

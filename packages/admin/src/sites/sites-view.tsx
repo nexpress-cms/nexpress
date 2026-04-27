@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Globe2,
+  Loader2,
+  Plus,
+  Star,
+  Trash2,
+  Users,
+} from "lucide-react";
 
 import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -23,6 +31,23 @@ import {
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
+
+interface SiteUsage {
+  collections: Record<string, number>;
+  settings: number;
+  navigation: number;
+  memberships: number;
+  stringOverrides: number;
+  total: number;
+}
+
+interface DeleteDialogState {
+  site: Site;
+  usage: SiteUsage | null;
+  loading: boolean;
+  cascade: boolean;
+  busy: boolean;
+}
 
 /**
  * Phase 15.3 — multi-site admin view.
@@ -52,6 +77,9 @@ export function SitesView() {
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(
+    null,
+  );
 
   useEffect(() => {
     void load();
@@ -74,26 +102,73 @@ export function SitesView() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm(`Delete site "${id}"? Content for this site will become inaccessible.`)) {
-      return;
-    }
-    setBusyId(id);
+  async function openDeleteDialog(site: Site) {
+    // Phase 15.9 — fetch the usage summary first so the
+    // operator sees what cascade=true would touch BEFORE
+    // confirming. The dialog stays loading until the summary
+    // arrives.
+    setDeleteDialog({
+      site,
+      usage: null,
+      loading: true,
+      cascade: false,
+      busy: false,
+    });
     setError(null);
     try {
-      const res = await nxFetch(`/api/admin/sites/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      const res = await nxFetch(
+        `/api/admin/sites/${encodeURIComponent(site.id)}/usage`,
+      );
+      const body = (await res.json().catch(() => null)) as
+        | { usage?: SiteUsage; error?: { message?: string } }
+        | null;
+      if (!res.ok || !body?.usage) {
+        setError(body?.error?.message ?? "Unable to load site usage.");
+        setDeleteDialog(null);
+        return;
+      }
+      setDeleteDialog((prev) =>
+        prev && prev.site.id === site.id
+          ? { ...prev, usage: body.usage ?? null, loading: false }
+          : prev,
+      );
+    } catch {
+      setError("Unable to load site usage.");
+      setDeleteDialog(null);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteDialog) return;
+    const { site, usage, cascade } = deleteDialog;
+    if (!usage) return;
+    setDeleteDialog({ ...deleteDialog, busy: true });
+    setBusyId(site.id);
+    setError(null);
+    try {
+      const cascadeParam =
+        usage.total > 0 && cascade ? "?cascade=true" : "";
+      const res = await nxFetch(
+        `/api/admin/sites/${encodeURIComponent(site.id)}${cascadeParam}`,
+        {
+          method: "DELETE",
+        },
+      );
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as
           | { error?: { message?: string } }
           | null;
         setError(body?.error?.message ?? "Unable to delete site.");
+        setDeleteDialog((prev) =>
+          prev ? { ...prev, busy: false } : prev,
+        );
         return;
       }
+      setDeleteDialog(null);
       await load();
     } catch {
       setError("Unable to delete site.");
+      setDeleteDialog((prev) => (prev ? { ...prev, busy: false } : prev));
     } finally {
       setBusyId(null);
     }
@@ -192,7 +267,7 @@ export function SitesView() {
                       variant="outline"
                       size="sm"
                       disabled={busyId === site.id}
-                      onClick={() => void handleDelete(site.id)}
+                      onClick={() => void openDeleteDialog(site)}
                     >
                       {busyId === site.id ? (
                         <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
@@ -217,7 +292,161 @@ export function SitesView() {
           void load();
         }}
       />
+
+      <DeleteSiteDialog
+        state={deleteDialog}
+        onClose={() => setDeleteDialog(null)}
+        onCascadeChange={(value) =>
+          setDeleteDialog((prev) =>
+            prev ? { ...prev, cascade: value } : prev,
+          )
+        }
+        onConfirm={() => void handleConfirmDelete()}
+      />
     </div>
+  );
+}
+
+function DeleteSiteDialog({
+  state,
+  onClose,
+  onCascadeChange,
+  onConfirm,
+}: {
+  state: DeleteDialogState | null;
+  onClose: () => void;
+  onCascadeChange: (value: boolean) => void;
+  onConfirm: () => void;
+}) {
+  const open = state !== null;
+  const usage = state?.usage;
+  const hasData = usage ? usage.total > 0 : false;
+  const cascadeRequired = hasData;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Delete site{state ? ` "${state.site.name}"` : ""}?
+          </DialogTitle>
+          <DialogDescription>
+            This action removes the site from the registry. Site-scoped
+            data is left in place unless you opt into cascade.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!state ? null : state.loading ? (
+          <p className="text-sm text-muted-foreground">
+            <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+            Loading usage…
+          </p>
+        ) : usage ? (
+          <div className="space-y-4">
+            {hasData ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="flex items-start gap-2 font-medium">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  This site has {usage.total} attached row(s) across{" "}
+                  {Object.keys(usage.collections).length} collection(s) +
+                  system tables. Without cascade they become orphaned.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No site-scoped rows attached. Safe to delete.
+              </p>
+            )}
+
+            {hasData ? (
+              <ul className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs">
+                {Object.entries(usage.collections)
+                  .filter(([, count]) => count > 0)
+                  .map(([slug, count]) => (
+                    <li
+                      key={slug}
+                      className="flex items-center justify-between py-1"
+                    >
+                      <code className="font-mono">{slug}</code>
+                      <span className="tabular-nums">{count}</span>
+                    </li>
+                  ))}
+                {usage.settings > 0 ? (
+                  <li className="flex items-center justify-between py-1">
+                    <code className="font-mono">nx_settings</code>
+                    <span className="tabular-nums">{usage.settings}</span>
+                  </li>
+                ) : null}
+                {usage.navigation > 0 ? (
+                  <li className="flex items-center justify-between py-1">
+                    <code className="font-mono">nx_navigation</code>
+                    <span className="tabular-nums">{usage.navigation}</span>
+                  </li>
+                ) : null}
+                {usage.memberships > 0 ? (
+                  <li className="flex items-center justify-between py-1">
+                    <code className="font-mono">nx_site_memberships</code>
+                    <span className="tabular-nums">{usage.memberships}</span>
+                  </li>
+                ) : null}
+                {usage.stringOverrides > 0 ? (
+                  <li className="flex items-center justify-between py-1">
+                    <code className="font-mono">nx_string_overrides</code>
+                    <span className="tabular-nums">
+                      {usage.stringOverrides}
+                    </span>
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
+
+            {cascadeRequired ? (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={state.cascade}
+                  onChange={(event) => onCascadeChange(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Cascade-delete every row above. This is{" "}
+                  <strong>irreversible</strong> — there's no soft-delete or
+                  archive.
+                </span>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={state?.busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={
+              !state ||
+              state.loading ||
+              state.busy ||
+              (cascadeRequired && !state.cascade)
+            }
+          >
+            {state?.busy ? (
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="mr-1.5 h-3 w-3" />
+            )}
+            {cascadeRequired ? "Delete site + cascade" : "Delete site"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -239,6 +468,7 @@ function CreateSiteDialog({
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setId("");
       setName("");
       setHostname("");
