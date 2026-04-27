@@ -525,6 +525,20 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
   configSchema?: ZodType<TConfig>;
   setup?: (ctx: NxPluginContext<TConfig>) => void | Promise<void>;
   teardown?: () => void | Promise<void>;
+  /**
+   * Phase 12.5 — UI string bundles per locale. Plugin
+   * authors register keys here and call `t(key, locale)`
+   * from their templates / routes. Bundles merge into the
+   * global registry at boot; later plugins overwrite earlier
+   * ones on key collision so plugin-order in the config
+   * drives override priority.
+   *
+   *   i18n: {
+   *     en: { "forum.replyButton": "Reply" },
+   *     ko: { "forum.replyButton": "답글" },
+   *   }
+   */
+  i18n?: Record<string, Record<string, string>>;
 }
 
 export type NxResolvedPlugin<TConfig = Record<string, unknown>> = Omit<

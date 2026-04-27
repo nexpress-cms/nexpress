@@ -327,6 +327,15 @@ export {
   getI18nConfig,
   resetI18nConfig,
 } from "./i18n/registry.js";
+export {
+  addStrings,
+  setStrings,
+  resetStrings,
+  getStrings,
+  getAllStrings,
+  t,
+} from "./i18n/strings.js";
+export type { NxTranslationBundle } from "./i18n/strings.js";
 
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 
