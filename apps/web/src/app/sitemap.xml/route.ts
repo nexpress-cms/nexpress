@@ -2,6 +2,7 @@ import {
   NX_DEFAULT_SITE_ID,
   buildSitemap,
   getCurrentSiteId,
+  getSiteById,
   renderSitemapXml,
 } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
@@ -28,10 +29,40 @@ const STATIC_ROUTES: Array<{ loc: string; priority?: number; changefreq?: "daily
   { loc: "/search", priority: 0.5, changefreq: "weekly" },
 ];
 
-function siteOrigin(): string {
+function fallbackOrigin(): string {
   const configured = process.env.SITE_URL;
   if (configured) return configured.replace(/\/+$/, "");
   return "http://localhost:3000";
+}
+
+/**
+ * Phase 15.11 — resolve the absolute origin for sitemap
+ * entries.
+ *
+ * In a multi-tenant deploy each site has its own hostname,
+ * so a single `SITE_URL` env can't serve every tenant's
+ * sitemap correctly. We look up the resolved site's row and
+ * use its `hostname` to build the origin; falls back to the
+ * env-driven origin when no site is resolved (single-tenant
+ * deploys, background workers, scripts).
+ *
+ * The `https://` scheme is assumed for hostnames. Operators
+ * running locally (`localhost:3000`) keep the SITE_URL
+ * fallback because their dev hostname doesn't carry a
+ * scheme.
+ */
+async function resolveSiteOrigin(siteId: string): Promise<string> {
+  const fallback = fallbackOrigin();
+  if (siteId === NX_DEFAULT_SITE_ID) return fallback;
+  try {
+    const site = await getSiteById(siteId);
+    if (site?.hostname) {
+      return `https://${site.hostname.replace(/\/+$/, "")}`;
+    }
+  } catch {
+    // Site row gone or DB unreachable — fall through.
+  }
+  return fallback;
 }
 
 /**
@@ -76,8 +107,8 @@ async function buildSitemapDirect(origin: string): Promise<string> {
  */
 export async function GET(): Promise<Response> {
   ensureCoreServices();
-  const origin = siteOrigin();
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const origin = await resolveSiteOrigin(siteId);
   const buildSitemapCached = unstable_cache(
     () => buildSitemapDirect(origin),
     ["nx-sitemap", siteId],
