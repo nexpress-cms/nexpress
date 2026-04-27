@@ -554,4 +554,73 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
 
     core.resetSpamAdapter();
   });
+
+  /**
+   * Comments sort: `top` orders by reaction count desc with
+   * `created_at desc` as a stable tiebreaker. Pin the
+   * behavior so a future refactor of the correlated subquery
+   * can't quietly change ordering.
+   */
+  it("listComments order=top sorts by reaction count desc", async () => {
+    const core = await import("@nexpress/core");
+    const post = await seedStaffPost();
+    const author = await seedActiveMember(
+      "sort-author",
+      "sort-author@example.com",
+      "password-12",
+    );
+    const reactor = await seedActiveMember(
+      "sort-reactor",
+      "sort-reactor@example.com",
+      "password-12",
+    );
+
+    // Three comments. The middle one (created second) gets
+    // two reactions; the others get zero. Top order should
+    // surface the middle comment first; oldest order should
+    // surface them in creation order.
+    const a = await core.createComment({
+      memberId: author.memberId,
+      targetType: "posts",
+      targetId: post,
+      bodyMd: "first",
+    });
+    const b = await core.createComment({
+      memberId: author.memberId,
+      targetType: "posts",
+      targetId: post,
+      bodyMd: "second (top)",
+    });
+    const c = await core.createComment({
+      memberId: author.memberId,
+      targetType: "posts",
+      targetId: post,
+      bodyMd: "third",
+    });
+    void a;
+    void c;
+
+    await core.addReaction({
+      memberId: author.memberId,
+      targetType: "comment",
+      targetId: b.id,
+      kind: "like",
+    });
+    await core.addReaction({
+      memberId: reactor.memberId,
+      targetType: "comment",
+      targetId: b.id,
+      kind: "like",
+    });
+
+    const top = await core.listComments("posts", post, { order: "top" });
+    expect(top.comments[0]?.id).toBe(b.id);
+
+    const oldest = await core.listComments("posts", post, { order: "oldest" });
+    expect(oldest.comments.map((row) => row.bodyMd)).toEqual([
+      "first",
+      "second (top)",
+      "third",
+    ]);
+  });
 });

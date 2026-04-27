@@ -26,6 +26,8 @@ interface CommentsProps {
  * httpOnly so the client can read it. If a member isn't logged in,
  * the form is hidden and only the read view shows.
  */
+type CommentSort = "newest" | "oldest" | "top";
+
 export function Comments({ collectionSlug, documentId }: CommentsProps) {
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -33,15 +35,18 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [memberKnown, setMemberKnown] = useState<boolean | null>(null);
+  const [sort, setSort] = useState<CommentSort>("oldest");
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/collections/${collectionSlug}/${documentId}/comments?order=oldest`);
+    const res = await fetch(
+      `/api/collections/${collectionSlug}/${documentId}/comments?order=${sort}`,
+    );
     if (res.ok) {
       const body = (await res.json()) as { comments: CommentRow[]; totalDocs: number };
       setComments(body.comments);
       setTotal(body.totalDocs);
     }
-  }, [collectionSlug, documentId]);
+  }, [collectionSlug, documentId, sort]);
 
   // Probe `/api/members/me` once on mount to show or hide the form. The
   // probe is cheap (single DB read by id) and avoids prop-drilling
@@ -87,9 +92,52 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
 
   return (
     <section className="nx-comments" style={{ marginTop: "3rem", maxWidth: 720 }}>
-      <h2 style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>
-        Comments {total > 0 ? `(${total})` : ""}
-      </h2>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: "1rem",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <h2 style={{ fontSize: "1.25rem", margin: 0 }}>
+          Comments {total > 0 ? `(${total})` : ""}
+        </h2>
+        {total > 1 ? (
+          <div
+            style={{ display: "inline-flex", gap: "0.25rem", fontSize: "0.875rem" }}
+            role="tablist"
+            aria-label="Comment sort order"
+          >
+            {(["oldest", "newest", "top"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={sort === value}
+                onClick={() => setSort(value)}
+                style={{
+                  padding: "0.25rem 0.625rem",
+                  borderRadius: 999,
+                  border: 0,
+                  cursor: "pointer",
+                  background: sort === value ? "#0f172a" : "transparent",
+                  color: sort === value ? "#f8fafc" : "#475569",
+                  fontWeight: sort === value ? 600 : 400,
+                }}
+              >
+                {value === "oldest"
+                  ? "Oldest"
+                  : value === "newest"
+                    ? "Newest"
+                    : "Top"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       {comments.length === 0 ? (
         <p style={{ color: "#64748b" }}>No comments yet.</p>
