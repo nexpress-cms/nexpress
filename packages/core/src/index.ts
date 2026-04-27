@@ -389,10 +389,12 @@ export {
   addStrings,
   setStrings,
   resetStrings,
+  resetTranslationCache,
   getStrings,
   getAllStrings,
   t,
   tSync,
+  type NxTranslationParams,
 } from "./i18n/strings.js";
 export type { NxTranslationBundle } from "./i18n/strings.js";
 export {
