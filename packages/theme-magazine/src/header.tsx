@@ -25,15 +25,17 @@ export async function MagazineHeader() {
     // to the default-locale fallback in t().
   }
 
+  // Phase D — t() is async (consults admin override layer).
+  // Resolve before rendering since JSX can't await inline.
+  const tagline = await t("magazine.tagline", locale);
+
   return (
     <header className="nx-site-header nx-magazine-header">
       <div className="nx-magazine-masthead">
         <a href="/" className="nx-site-logo nx-magazine-logo">
           NexPress
         </a>
-        <p className="nx-magazine-tagline">
-          {t("magazine.tagline", locale)}
-        </p>
+        <p className="nx-magazine-tagline">{tagline}</p>
       </div>
       {items.length > 0 ? (
         <nav aria-label="Sections" className="nx-magazine-sections">

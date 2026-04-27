@@ -381,8 +381,20 @@ export {
   getStrings,
   getAllStrings,
   t,
+  tSync,
 } from "./i18n/strings.js";
 export type { NxTranslationBundle } from "./i18n/strings.js";
+export {
+  loadStringOverridesForSite,
+  getStringOverridesForSite,
+  clearStringOverrideCacheForSite,
+  resetStringOverrideCache,
+  getStringOverride,
+  setStringOverride,
+  deleteStringOverride,
+  listStringOverridesForSite,
+} from "./i18n/string-overrides.js";
+export type { NxStringOverrideRow } from "./i18n/string-overrides.js";
 
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 

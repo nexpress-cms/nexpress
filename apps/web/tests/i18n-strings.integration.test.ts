@@ -12,7 +12,13 @@ import {
  * Phase 12.5 — UI-string i18n. Verifies plugin and theme
  * bundles are merged into the global string registry at
  * registration time and that `t()` resolves them via the
- * usual locale → defaultLocale → key fallback chain.
+ * locale → defaultLocale → key fallback chain.
+ *
+ * Phase D made `t()` async (it now consults the per-site
+ * override layer); these tests still cover the bundle-only
+ * path because no overrides are written. Awaiting `t()`
+ * resolves the override cache for the default site
+ * (essentially an empty cache, no overrides).
  */
 describe.skipIf(skipIfNoTestDb())("i18n UI strings (Phase 12.5)", () => {
   beforeAll(async () => {
@@ -23,8 +29,11 @@ describe.skipIf(skipIfNoTestDb())("i18n UI strings (Phase 12.5)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    const { resetStrings } = await import("@nexpress/core");
+    const { resetStrings, resetStringOverrideCache } = await import(
+      "@nexpress/core"
+    );
     resetStrings();
+    resetStringOverrideCache();
   });
   afterAll(async () => {
     await closeTestDb();
@@ -45,8 +54,8 @@ describe.skipIf(skipIfNoTestDb())("i18n UI strings (Phase 12.5)", () => {
       },
     ]);
 
-    expect(t("test.greeting", "en")).toBe("Hello");
-    expect(t("test.greeting", "ko")).toBe("안녕");
+    expect(await t("test.greeting", "en")).toBe("Hello");
+    expect(await t("test.greeting", "ko")).toBe("안녕");
   });
 
   it("the magazine theme ships its tagline bundle", async () => {
@@ -55,8 +64,10 @@ describe.skipIf(skipIfNoTestDb())("i18n UI strings (Phase 12.5)", () => {
     resetThemes();
     registerThemes([magazineTheme]);
 
-    expect(t("magazine.tagline", "en")).toBe("Stories, essays, and reports");
-    expect(t("magazine.tagline", "ko")).toBe(
+    expect(await t("magazine.tagline", "en")).toBe(
+      "Stories, essays, and reports",
+    );
+    expect(await t("magazine.tagline", "ko")).toBe(
       "이야기, 에세이, 그리고 리포트",
     );
   });
@@ -74,11 +85,11 @@ describe.skipIf(skipIfNoTestDb())("i18n UI strings (Phase 12.5)", () => {
         impl: { i18n: { en: { brand: "Override" } } },
       },
     ]);
-    expect(t("brand", "en")).toBe("Override");
+    expect(await t("brand", "en")).toBe("Override");
   });
 
   it("t() falls back to the key when no theme + no plugin contributed it", async () => {
     const { t } = await import("@nexpress/core");
-    expect(t("totally.unknown.key", "en")).toBe("totally.unknown.key");
+    expect(await t("totally.unknown.key", "en")).toBe("totally.unknown.key");
   });
 });
