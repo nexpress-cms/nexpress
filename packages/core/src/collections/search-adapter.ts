@@ -35,6 +35,17 @@ export interface NxSearchAdapterContext {
   limit: number;
   /** Skip count, already normalized. */
   offset: number;
+  /**
+   * Phase 12.4 — locale to scope results to. When set, the
+   * framework expects only docs in this locale (for i18n
+   * collections) plus all docs from non-i18n collections. The
+   * default pg path applies a `locale = $1` filter on i18n
+   * collections; external adapters typically rebuild the index
+   * with one document per (sourceId, locale) and filter on the
+   * locale field. Adapters that don't support per-locale
+   * filtering can return `null` to fall through to pg.
+   */
+  locale?: string;
 }
 
 export interface NxSearchAdapter {

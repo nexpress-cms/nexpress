@@ -35,6 +35,15 @@ export interface BuildAtomFeedOptions {
   collection?: string;
   /** Cap entries per feed. Default 50 — most readers ignore beyond that. */
   limit?: number;
+  /**
+   * Phase 12.4 — restrict an i18n collection's feed to one
+   * locale. Ignored on non-i18n collections. The Atom feed's
+   * top-level `<title>` / `<subtitle>` aren't translated by
+   * the framework — sites that want fully translated feeds
+   * pass their own language-specific siteName / description
+   * via custom site settings hooks.
+   */
+  locale?: string;
 }
 
 const DEFAULT_FEED_LIMIT = 50;
@@ -74,6 +83,13 @@ export async function buildAtomFeed(
         limit,
         page: 1,
         sort: "-updatedAt",
+        // Phase 12.4 — when the caller passed a locale AND
+        // this collection is i18n-enabled, scope the feed to
+        // that locale. findDocuments() ignores `locale` for
+        // non-i18n collections so passing it unconditionally
+        // is safe; we still gate on config.i18n to keep the
+        // intent obvious to readers.
+        ...(options.locale && config.i18n ? { locale: options.locale } : {}),
       },
       undefined,
     );
@@ -163,16 +179,21 @@ export async function renderAtomFeed(
   if (!result) return null;
   const settings = await getSiteSeoSettings();
   const origin = settings.siteUrl.replace(/\/+$/, "");
-  const collectionPath =
-    result.collection === DEFAULT_FEED_COLLECTION
-      ? ""
-      : `?collection=${encodeURIComponent(result.collection)}`;
-  const feedSelfUrl = `${origin}/feed.xml${collectionPath}`;
+  const queryParts: string[] = [];
+  if (result.collection !== DEFAULT_FEED_COLLECTION) {
+    queryParts.push(`collection=${encodeURIComponent(result.collection)}`);
+  }
+  if (options.locale) {
+    queryParts.push(`locale=${encodeURIComponent(options.locale)}`);
+  }
+  const feedSelfUrl = `${origin}/feed.xml${queryParts.length ? `?${queryParts.join("&")}` : ""}`;
   const updated = result.entries[0]?.updated ?? new Date().toISOString();
 
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<feed xmlns="http://www.w3.org/2005/Atom">',
+    options.locale
+      ? `<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="${escapeXml(options.locale)}">`
+      : '<feed xmlns="http://www.w3.org/2005/Atom">',
     `  <title>${escapeXml(settings.siteName)}</title>`,
     settings.defaultDescription
       ? `  <subtitle>${escapeXml(settings.defaultDescription)}</subtitle>`
