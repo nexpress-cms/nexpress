@@ -549,4 +549,82 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  /**
+   * Phase 9.9 — `reply` and `thread` report targets are
+   * activated. `reply` resolves to a comment row (replies are
+   * stored in nx_comments alongside top-level comments).
+   * `thread` resolves to a row in the registered `discussions`
+   * collection (forum plugin's default slug).
+   */
+  it("file report accepts a `reply` target by looking up the comment row", async () => {
+    const { fileReport, getDb, nxComments } = await import("@nexpress/core");
+    const reporter = await seedActiveMember(
+      "reply-reporter",
+      "reply-r@example.com",
+      "password-12",
+    );
+    const author = await seedActiveMember(
+      "reply-author",
+      "reply-a@example.com",
+      "password-12",
+    );
+
+    // Replies are stored in `nx_comments` (Phase 9.2 decision:
+    // forum replies reuse the comments table). Insert directly
+    // so we don't need a real `posts` row to anchor the
+    // synthetic reply against.
+    const db = getDb();
+    const replyId = "11111111-1111-4111-8111-111111111111";
+    await db.insert(nxComments).values({
+      id: replyId,
+      memberId: author.memberId,
+      targetType: "posts",
+      targetId: "22222222-2222-4222-8222-222222222222",
+      bodyMd: "stand-in reply body",
+      bodyHtml: "<p>stand-in reply body</p>",
+      status: "visible",
+    });
+
+    const report = await fileReport({
+      reporterId: reporter.memberId,
+      targetType: "reply",
+      targetId: replyId,
+      reason: "rude reply",
+    });
+    expect(report.targetType).toBe("reply");
+    expect(report.targetId).toBe(replyId);
+  });
+
+  it("file report rejects a `thread` target with an unresolvable id", async () => {
+    const { fileReport, NxNotFoundError, NxValidationError } = await import(
+      "@nexpress/core"
+    );
+    const reporter = await seedActiveMember(
+      "thread-reporter",
+      "thread-r@example.com",
+      "password-12",
+    );
+
+    // Two valid outcomes depending on whether prior tests in
+    // the same vitest run registered the `discussions`
+    // collection (forum plugin):
+    //   - Not registered → NxValidationError (clear "feature
+    //     not enabled" message)
+    //   - Registered but no such id → NxNotFoundError
+    // Both are correct rejections — the contract is "fileReport
+    // doesn't accept thread targets that can't be resolved."
+    await expect(
+      fileReport({
+        reporterId: reporter.memberId,
+        targetType: "thread",
+        targetId: "00000000-0000-0000-0000-000000000000",
+        reason: "spam thread",
+      }),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof NxValidationError ||
+        error instanceof NxNotFoundError,
+    );
+  });
 });

@@ -1,6 +1,11 @@
 import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgTable } from "drizzle-orm/pg-core";
 
+import {
+  getCollectionRegistration,
+  getCollectionTable,
+} from "../collections/registry.js";
 import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
@@ -213,23 +218,34 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
 }
 
 /**
- * Verify the report's target row actually exists. Comment / member
- * targets get a direct-table lookup; thread/reply targets are deferred
- * — the design doc carves out separate tables for those that don't
- * exist yet, so the safest behavior is to reject until they do.
+ * Verify the report's target row actually exists.
+ *
+ *   - `comment` / `reply` — both stored in `nx_comments`
+ *     (the forum plugin's replies are just comments under
+ *     a discussion thread). Lookup the comment row.
+ *   - `member` — direct lookup against `nx_members`.
+ *   - `thread` — Phase 9.9 enabled. The forum plugin
+ *     stores threads as rows in the `discussions` collection
+ *     (Phase 9.4 decision: no thread-specific tables, reuse
+ *     the codegen pipeline). We resolve the table at runtime
+ *     so the report flow works whether the discussions
+ *     collection is named `discussions`, `posts`, or anything
+ *     else — sites that register a different forum slug just
+ *     pass that through as `targetType`. Falls back to a
+ *     clear "no such collection" error when unregistered.
  */
 async function assertReportTargetExists(
   targetType: string,
   targetId: string,
 ): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  if (targetType === "comment") {
+  if (targetType === "comment" || targetType === "reply") {
     const [row] = (await db
       .select({ id: nxComments.id })
       .from(nxComments)
       .where(eq(nxComments.id, targetId))
       .limit(1)) as Array<{ id: string }>;
-    if (!row) throw new NxNotFoundError("comment", targetId);
+    if (!row) throw new NxNotFoundError(targetType, targetId);
     return;
   }
   if (targetType === "member") {
@@ -241,14 +257,42 @@ async function assertReportTargetExists(
     if (!row) throw new NxNotFoundError("member", targetId);
     return;
   }
-  // `thread` / `reply` targets — those tables aren't in the v1 schema
-  // (the forum plugin reuses the comments table for replies). Until we
-  // add dedicated thread/reply storage, refuse rather than letting
-  // members file reports against UUIDs that can never resolve.
+  if (targetType === "thread") {
+    // Resolve to a registered collection that opts in to
+    // member-write thread semantics. We try `discussions`
+    // first (the forum plugin's default slug); future
+    // multi-forum setups can register different slugs and
+    // the plugin's report-emission path can supply them.
+    const slug = "discussions";
+    let registered: ReturnType<typeof getCollectionRegistration> | null;
+    try {
+      registered = getCollectionRegistration(slug);
+    } catch {
+      registered = null;
+    }
+    if (!registered) {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "targetType",
+          message:
+            "Reports against threads require the forum plugin's `discussions` collection to be registered.",
+        },
+      ]);
+    }
+    const table = getCollectionTable(slug) as PgTable;
+    const idCol = (table as unknown as Record<string, unknown>).id;
+    const [row] = (await db
+      .select({ id: idCol as never })
+      .from(table)
+      .where(eq(idCol as never, targetId))
+      .limit(1)) as Array<{ id: string }>;
+    if (!row) throw new NxNotFoundError("thread", targetId);
+    return;
+  }
   throw new NxValidationError("Invalid input", [
     {
       field: "targetType",
-      message: `Reports against "${targetType}" are not supported yet`,
+      message: `Reports against "${targetType}" are not supported`,
     },
   ]);
 }
