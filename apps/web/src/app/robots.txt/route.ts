@@ -1,18 +1,47 @@
+import {
+  NX_DEFAULT_SITE_ID,
+  getCurrentSiteId,
+  getSiteById,
+} from "@nexpress/core";
+
+import { ensureCoreServices } from "@/lib/init-core";
+
 /**
  * Phase 10.1 — robots.txt. Sane defaults: allow general crawl,
  * block authenticated surfaces (/admin, /api) where rendering
  * a meta-description is meaningless, and point at the
  * sitemap. Sites that need stricter rules (no-index for
  * staging, etc.) replace this file with their own copy.
+ *
+ * Phase 15.11 — robots's `Sitemap:` line resolves the current
+ * site's hostname so each tenant in a multi-tenant deploy
+ * advertises the right sitemap URL. Single-tenant deploys
+ * keep the SITE_URL fallback unchanged.
  */
-function siteOrigin(): string {
+function fallbackOrigin(): string {
   const configured = process.env.SITE_URL;
   if (configured) return configured.replace(/\/+$/, "");
   return "http://localhost:3000";
 }
 
-export function GET(): Response {
-  const origin = siteOrigin();
+async function resolveSiteOrigin(): Promise<string> {
+  const fallback = fallbackOrigin();
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  if (siteId === NX_DEFAULT_SITE_ID) return fallback;
+  try {
+    const site = await getSiteById(siteId);
+    if (site?.hostname) {
+      return `https://${site.hostname.replace(/\/+$/, "")}`;
+    }
+  } catch {
+    // Site row gone or DB unreachable — fall through.
+  }
+  return fallback;
+}
+
+export async function GET(): Promise<Response> {
+  ensureCoreServices();
+  const origin = await resolveSiteOrigin();
   const body = [
     "User-agent: *",
     "Allow: /",
