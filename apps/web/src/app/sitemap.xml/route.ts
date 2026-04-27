@@ -112,7 +112,14 @@ export async function GET(): Promise<Response> {
       // re-walking the DB; the HTTP cache here lets a CDN /
       // browser hold the rendered XML for ~10 min so even the
       // origin Next process gets pinned less often.
-      "Cache-Control": "public, max-age=600, s-maxage=600",
+      //
+      // Phase 14.9 — `stale-while-revalidate=86400` lets a CDN
+      // serve stale XML for up to a day after expiry while it
+      // re-fetches in the background. Crawlers tolerate
+      // slightly-stale sitemaps fine; the smoothing matters
+      // when traffic spikes around the expiry boundary.
+      "Cache-Control":
+        "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
     },
   });
 }
