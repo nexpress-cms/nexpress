@@ -226,6 +226,12 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   );
 }
 
+interface UserSearchResult {
+  id: string;
+  email: string;
+  name: string;
+}
+
 function GrantDialog({
   open,
   onOpenChange,
@@ -237,20 +243,55 @@ function GrantDialog({
   siteId: string;
   onCreated: () => void;
 }) {
-  const [userId, setUserId] = useState("");
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<UserSearchResult | null>(null);
   const [role, setRole] = useState<(typeof ROLES)[number]>("editor");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
-      setUserId("");
+      setSearch("");
+      setResults([]);
+      setSelected(null);
       setRole("editor");
       setError(null);
     }
   }, [open]);
 
+  // Phase 15.8 — debounced user search via the existing
+  // /api/users?search= endpoint. 250ms debounce keeps the
+  // typing experience responsive without blasting the DB.
+  useEffect(() => {
+    if (!open || selected || !search.trim()) {
+      setResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await nxFetch(
+          `/api/users?search=${encodeURIComponent(search.trim())}&limit=8`,
+        );
+        if (!res.ok) {
+          setResults([]);
+          return;
+        }
+        const body = (await res.json().catch(() => null)) as
+          | { docs?: UserSearchResult[] }
+          | null;
+        setResults(body?.docs ?? []);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [search, selected, open]);
+
   async function handleSubmit() {
+    if (!selected) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -259,7 +300,7 @@ function GrantDialog({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: userId.trim(), role }),
+          body: JSON.stringify({ userId: selected.id, role }),
         },
       );
       const body = (await res.json().catch(() => null)) as
@@ -283,22 +324,80 @@ function GrantDialog({
         <DialogHeader>
           <DialogTitle>Grant membership on {siteId}</DialogTitle>
           <DialogDescription>
-            Paste the user id from <code>/admin/users</code>. Granting on a
-            site overrides the user&apos;s global default role for queries
-            scoped to that site.
+            Search by email or name. Granting on a site overrides the
+            user&apos;s global default role for queries scoped to this site.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="grant-user-id">User id</Label>
-            <Input
-              id="grant-user-id"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              className="font-mono text-xs"
-            />
+            <Label htmlFor="grant-user-search">User</Label>
+            {selected ? (
+              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/30 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{selected.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {selected.email}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelected(null);
+                    setSearch("");
+                  }}
+                >
+                  Change
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="grant-user-search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Email or name…"
+                />
+                {search.trim() ? (
+                  <div className="rounded-xl border border-border/70 bg-background">
+                    {searching ? (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+                        Searching…
+                      </p>
+                    ) : results.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        No users match.
+                      </p>
+                    ) : (
+                      <ul className="max-h-48 overflow-auto divide-y divide-border/60">
+                        {results.map((r) => (
+                          <li key={r.id}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-muted/40"
+                              onClick={() => {
+                                setSelected(r);
+                                setSearch("");
+                              }}
+                            >
+                              <span className="truncate font-medium">
+                                {r.name}
+                              </span>
+                              <span className="truncate text-xs text-muted-foreground">
+                                {r.email}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="grant-role">Role</Label>
@@ -335,7 +434,7 @@ function GrantDialog({
           </Button>
           <Button
             onClick={() => void handleSubmit()}
-            disabled={submitting || !userId}
+            disabled={submitting || !selected}
           >
             {submitting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
