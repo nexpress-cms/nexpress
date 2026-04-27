@@ -39,6 +39,7 @@ export { LinkedIdentitiesPanel } from "./auth/linked-identities-panel.js";
 export type { LinkedIdentity } from "./auth/linked-identities-panel.js";
 
 export { JobsView } from "./jobs/jobs-view.js";
+export { SitesView } from "./sites/sites-view.js";
 
 export { MediaLibrary } from "./media/media-library.js";
 export { MediaUploadZone } from "./media/media-upload-zone.js";

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   FileText,
   Flag,
+  Globe2,
   History,
   Image,
   Inbox,
@@ -109,7 +110,10 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
     { href: "/admin/media", label: "Media", icon: Image },
     { href: "/admin/plugins", label: "Plugins", icon: Puzzle },
     ...(user.role === "admin"
-      ? [{ href: "/admin/jobs", label: "Jobs", icon: Timer }]
+      ? [
+          { href: "/admin/jobs", label: "Jobs", icon: Timer },
+          { href: "/admin/sites", label: "Sites", icon: Globe2 },
+        ]
       : []),
     { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
