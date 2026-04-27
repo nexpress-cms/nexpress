@@ -59,7 +59,7 @@ export async function reportError(error: Error, context?: NxErrorReportContext):
     await currentReporter.captureException(error, context);
   } catch (reporterError) {
     // Last-resort: bypass the logger to avoid a circular failure path.
-    // eslint-disable-next-line no-console
+     
     console.error("[nexpress] error reporter itself threw:", reporterError);
   }
 }

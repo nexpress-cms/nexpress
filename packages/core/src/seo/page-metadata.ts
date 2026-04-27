@@ -1,5 +1,3 @@
-import { eq } from "drizzle-orm";
-
 import { getDb } from "../collections/pipeline.js";
 import { nxSettings } from "../db/schema/system.js";
 

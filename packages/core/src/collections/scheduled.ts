@@ -62,7 +62,6 @@ export async function publishScheduledDocuments(
     const table = getCollectionTable(slug) as PgTable;
     const statusCol = getTableColumn(table, "status");
     const publishedAtCol = getTableColumn(table, "publishedAt");
-    const idCol = getTableColumn(table, "id");
 
     const db = getDb();
     // `.returning()` without args gives every column so plugin hooks get the

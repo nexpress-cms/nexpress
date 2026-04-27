@@ -69,7 +69,7 @@ function mergeWithDefaults(stored: unknown): NxCommunitySettings {
   const raw = stored as Record<string, unknown>;
   const reactionKinds =
     Array.isArray(raw.reactionKinds) && raw.reactionKinds.every((k) => typeof k === "string")
-      ? (raw.reactionKinds as string[])
+      ? (raw.reactionKinds)
       : DEFAULT_COMMUNITY_SETTINGS.reactionKinds;
   const registrationEnabled =
     typeof raw.registrationEnabled === "boolean"

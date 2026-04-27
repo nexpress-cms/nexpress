@@ -269,8 +269,10 @@ export async function POST(request: NextRequest) {
         imported.navigation = resolveNavEntries(payload.navigation).length;
       } else {
         // Phase 15.4 — import lands rows in the current site
-        // (resolved from x-nx-host); cross-site imports for a
-        // super-admin are a 15.5 follow-up.
+        // (resolved from x-nx-host). Cross-site import (a
+        // super-admin picking a target site explicitly via a
+        // request param) isn't built; the resolved siteId is
+        // the only target today.
         const { getCurrentSiteId, NX_DEFAULT_SITE_ID } = await import(
           "@nexpress/core"
         );

@@ -32,11 +32,13 @@ export class LocalStorageAdapter implements NxStorageAdapter {
     await pipeline(Readable.fromWeb(data), createWriteStream(filePath));
   }
 
-  async getStream(key: string): Promise<ReadableStream> {
-    return Readable.toWeb(createReadStream(this.resolvePath(key)));
+  getStream(key: string): Promise<ReadableStream> {
+    return Promise.resolve(
+      Readable.toWeb(createReadStream(this.resolvePath(key))),
+    );
   }
 
-  async getUrl(key: string): Promise<string> {
+  getUrl(key: string): Promise<string> {
     // `baseUrl` is commonly a relative path (the default is
     // `"/uploads"`) — `new URL(key, "/uploads/")` throws because
     // the URL constructor requires an absolute base. Concatenate
@@ -44,9 +46,9 @@ export class LocalStorageAdapter implements NxStorageAdapter {
     // absolute ones (full origin, S3-style, etc.).
     const base = this.normalizeBaseUrl(this.config.baseUrl);
     if (base.startsWith("/")) {
-      return `${base}/${key}`;
+      return Promise.resolve(`${base}/${key}`);
     }
-    return new URL(key, `${base}/`).toString();
+    return Promise.resolve(new URL(key, `${base}/`).toString());
   }
 
   async delete(key: string): Promise<void> {

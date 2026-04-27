@@ -75,10 +75,13 @@ async function loadOptionalNextCache(): Promise<
   | null
 > {
   try {
-    const importer = new Function("moduleId", "return import(moduleId);") as (
-      moduleId: string,
-    ) => Promise<unknown>;
-    const mod = (await importer("next/cache")) as {
+    // Indirect specifier so TypeScript doesn't try to resolve
+    // `next/cache` at compile time — `@nexpress/core` doesn't
+    // depend on Next.js. Only the Next-runtime path needs
+    // the cache helpers; worker / CLI / standalone Node
+    // consumers see this fall through to null cleanly.
+    const moduleId: string = "next/cache";
+    const mod = (await import(moduleId)) as {
       revalidatePath?: (path: string) => void;
       revalidateTag?: (tag: string) => void;
     };
@@ -92,12 +95,22 @@ async function loadOptionalNextCache(): Promise<
  * Produces the runtime ctx passed to plugin hook / route / setup handlers.
  * Matches the `NxPluginContext` shape declared in `@nexpress/plugin-sdk`.
  *
- * Implemented: pluginId, config, capabilities, content.*, media.list/getById/getUrl,
- * settings.*, log.*, next.*, actions.*.
+ * Every namespace declared on `NxPluginContext` is implemented:
+ *   - `pluginId`, `config`, `capabilities`
+ *   - `content.*` (find / findOne / save / delete)
+ *   - `media.*` (list / getById / getUrl / upload / delete)
+ *   - `settings.*`
+ *   - `log.*`
+ *   - `next.*`
+ *   - `actions.*`
+ *   - `storage.*` (plugin-scoped key/value persistence)
+ *   - `cache.*` (revalidatePath / revalidateTag wrappers)
+ *   - `theme.*` (read theme tokens / active theme)
+ *   - `http.fetch` (allowlist-gated outbound HTTP)
  *
- * Declared-but-not-implemented (throws NxError 501 with "NOT_IMPLEMENTED"):
- * storage.*, cache.*, http.fetch, theme.*, media.upload/delete.
- * These will land in follow-up PRs.
+ * Capability checks (`assertCap`) gate every namespace so a
+ * plugin that only declares `content:read` can't reach into
+ * `media:upload` etc. without explicit opt-in.
  */
 export function createPluginRuntimeContext(
   options: BuildContextOptions,
@@ -292,29 +305,38 @@ export function createPluginRuntimeContext(
     },
 
     cache: {
-      async get<T = unknown>(key: string): Promise<T | null> {
+      // The cache namespace is in-memory today (a process-
+      // scoped Map). The interface is `Promise<...>` so a
+      // future Redis-backed implementation can swap in
+      // without breaking plugin authors; the sync
+      // implementations return resolved promises directly so
+      // the require-await rule stays happy.
+      get<T = unknown>(key: string): Promise<T | null> {
         const entry = pluginCache.get(cacheKey(pluginId, key));
-        if (!entry) return null;
+        if (!entry) return Promise.resolve(null);
         if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
           pluginCache.delete(cacheKey(pluginId, key));
-          return null;
+          return Promise.resolve(null);
         }
-        return entry.value as T;
+        return Promise.resolve(entry.value as T);
       },
-      async set(key: string, value: unknown, ttl?: number): Promise<void> {
+      set(key: string, value: unknown, ttl?: number): Promise<void> {
         pluginCache.set(cacheKey(pluginId, key), {
           value,
           expiresAt: ttl && ttl > 0 ? Date.now() + ttl * 1000 : null,
         });
+        return Promise.resolve();
       },
-      async invalidate(key: string): Promise<void> {
+      invalidate(key: string): Promise<void> {
         pluginCache.delete(cacheKey(pluginId, key));
+        return Promise.resolve();
       },
-      async invalidateAll(): Promise<void> {
+      invalidateAll(): Promise<void> {
         const prefix = `${pluginId}:`;
         for (const key of pluginCache.keys()) {
           if (key.startsWith(prefix)) pluginCache.delete(key);
         }
+        return Promise.resolve();
       },
     },
 
