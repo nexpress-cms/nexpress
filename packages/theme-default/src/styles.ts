@@ -144,4 +144,39 @@ export const defaultThemeCss = `
   height: 2rem;
   border: 1px solid transparent;
 }
+
+/* Phase 12.6 — visitor-facing language picker. Renders as a
+   horizontal row of locale chips; the active locale is bolder
+   and underlined. Only mounted by the header when the i18n
+   config declares more than one locale. */
+.nx-language-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.nx-language-picker-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border-radius: var(--nx-radius-md, 0.5rem);
+  text-decoration: none;
+  color: inherit;
+  opacity: 0.6;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.nx-language-picker-link:hover {
+  opacity: 1;
+  background: var(--nx-color-muted, #f8fafc);
+}
+.nx-language-picker-link[data-active="true"] {
+  opacity: 1;
+  font-weight: 600;
+  background: var(--nx-color-muted, #f8fafc);
+}
 `.trim();
