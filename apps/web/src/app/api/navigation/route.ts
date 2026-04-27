@@ -1,12 +1,14 @@
 import {
+  NX_DEFAULT_SITE_ID,
   NxForbiddenError,
   NxValidationError,
+  getCurrentSiteId,
   hasRole,
   nxNavigation,
 } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
@@ -35,10 +37,13 @@ export async function GET(request: NextRequest) {
 
     const location = request.nextUrl.searchParams.get("location") ?? "main";
     const db = getDb();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
     const [row] = await db
       .select()
       .from(nxNavigation)
-      .where(eq(nxNavigation.location, location))
+      .where(
+        and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)),
+      )
       .limit(1);
 
     return nxSuccessResponse(row ?? { location, items: [] });
@@ -71,17 +76,19 @@ export async function PUT(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 
     const [result] = await db
       .insert(nxNavigation)
       .values({
+        siteId,
         location,
         items,
         updatedAt: now,
         updatedBy: user.id,
       })
       .onConflictDoUpdate({
-        target: nxNavigation.location,
+        target: [nxNavigation.siteId, nxNavigation.location],
         set: { items, updatedAt: now, updatedBy: user.id },
       })
       .returning();

@@ -152,24 +152,48 @@ export const nxRevisions = pgTable(
   }),
 );
 
-export const nxSettings = pgTable("nx_settings", {
-  key: text("key").primaryKey(),
-  value: jsonb("value").$type<unknown>().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
-  updatedBy: uuid("updated_by").references(() => nxUsers.id),
-});
+/**
+ * Phase 15.4 — settings are scoped per site so each tenant
+ * has its own active theme, theme tokens, SEO config, etc.
+ * Single-tenant deployments leave every row at
+ * `site_id = 'default'`, matching the framework's
+ * default-site invariant. Composite PK on (site_id, key) so
+ * the same key (e.g. `activeTheme`) can take different
+ * values per tenant.
+ */
+export const nxSettings = pgTable(
+  "nx_settings",
+  {
+    siteId: text("site_id").default("default").notNull(),
+    key: text("key").notNull(),
+    value: jsonb("value").$type<unknown>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+  },
+  (table) => [primaryKey({ columns: [table.siteId, table.key] })],
+);
 
-export const nxNavigation = pgTable("nx_navigation", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  location: text("location").notNull().unique(),
-  items: jsonb("items").$type<NxNavItem[]>().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
-  updatedBy: uuid("updated_by").references(() => nxUsers.id),
-});
+/**
+ * Phase 15.4 — navigation is scoped per site too. Same model
+ * as settings: composite uniqueness on (site_id, location)
+ * lets each tenant own its own header / footer menus.
+ */
+export const nxNavigation = pgTable(
+  "nx_navigation",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").default("default").notNull(),
+    location: text("location").notNull(),
+    items: jsonb("items").$type<NxNavItem[]>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+  },
+  (table) => [unique("nx_navigation_site_location_idx").on(table.siteId, table.location)],
+);
 
 /**
  * Phase 15.1 — multi-site model. One row per tenant. The

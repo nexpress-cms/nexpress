@@ -1,13 +1,15 @@
 import {
+  NX_DEFAULT_SITE_ID,
   NxForbiddenError,
   NxValidationError,
+  getCurrentSiteId,
   hasRole,
   nxSettings,
   DEFAULT_THEME,
 } from "@nexpress/core";
 import type { NxThemeTokens } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
@@ -25,10 +27,11 @@ function isValidTheme(value: unknown): value is NxThemeTokens {
 export async function GET(_request: NextRequest) {
   try {
     const db = getDb();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
     const [row] = await db
       .select()
       .from(nxSettings)
-      .where(eq(nxSettings.key, "theme"))
+      .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")))
       .limit(1);
 
     return nxSuccessResponse(row?.value ?? DEFAULT_THEME);
@@ -56,12 +59,13 @@ export async function PUT(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 
     await db
       .insert(nxSettings)
-      .values({ key: "theme", value: theme, updatedAt: now, updatedBy: user.id })
+      .values({ siteId, key: "theme", value: theme, updatedAt: now, updatedBy: user.id })
       .onConflictDoUpdate({
-        target: nxSettings.key,
+        target: [nxSettings.siteId, nxSettings.key],
         set: { value: theme, updatedAt: now, updatedBy: user.id },
       });
 
