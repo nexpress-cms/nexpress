@@ -110,16 +110,24 @@ export function generateDrizzleSchema(
 
     if (hasSlugField(collection)) {
       columns.push('slug: text("slug").notNull()');
-      // Phase 12.1 — i18n collections key slug uniqueness on
-      // (locale, slug) so the same slug can exist in two
-      // locales (e.g., `/about` in both en and ko). Non-i18n
-      // collections keep the global `slug` unique index.
+      // Phase 15.2 — multi-site scoping. Every collection
+      // table gets a `site_id` column so the same slug can
+      // exist in multiple sites (e.g., `/about` on the main
+      // site and on `acme.example.com`). i18n collections
+      // additionally key on locale, so the unique becomes
+      // `(site_id, locale, slug)`; non-i18n becomes
+      // `(site_id, slug)`. Single-tenant installs leave
+      // every row at `site_id = 'default'`, so the
+      // uniqueness constraint behaves identically to the
+      // pre-15.2 `slug-only` index.
       if (collection.i18n) {
         indexes.push(
-          `uniqueIndex("${tableName}_locale_slug_idx").on(table.locale, table.slug)`,
+          `uniqueIndex("${tableName}_site_locale_slug_idx").on(table.siteId, table.locale, table.slug)`,
         );
       } else {
-        indexes.push(`uniqueIndex("${tableName}_slug_idx").on(table.slug)`);
+        indexes.push(
+          `uniqueIndex("${tableName}_site_slug_idx").on(table.siteId, table.slug)`,
+        );
       }
     }
 
@@ -133,6 +141,22 @@ export function generateDrizzleSchema(
         `index("${tableName}_locale_idx").on(table.locale)`,
       );
     }
+
+    // Phase 15.2 — multi-site scoping column. Default is
+    // 'default' so existing single-tenant deployments keep
+    // working without operator intervention; the migration
+    // backfills existing rows. NOT NULL so writes always
+    // commit a site id; pipeline reads `getCurrentSiteId()`
+    // (or falls back to 'default') and stamps every row.
+    // FK to `nx_sites.id` is intentionally omitted from
+    // codegen — adding it forces every test fixture to
+    // create the default site row first; the framework
+    // invariant (default site always exists post-migration)
+    // gives us the same safety without the schema-level FK.
+    columns.push(
+      'siteId: text("site_id").default("default").notNull()',
+    );
+    indexes.push(`index("${tableName}_site_idx").on(table.siteId)`);
 
     if (hasDraftVersions(collection)) {
       columns.push(
