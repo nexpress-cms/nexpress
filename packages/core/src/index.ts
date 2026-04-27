@@ -398,6 +398,10 @@ export {
 } from "./i18n/strings.js";
 export type { NxTranslationBundle } from "./i18n/strings.js";
 export {
+  getLocaleDirection,
+  type NxLocaleDirection,
+} from "./i18n/direction.js";
+export {
   loadStringOverridesForSite,
   getStringOverridesForSite,
   clearStringOverrideCacheForSite,

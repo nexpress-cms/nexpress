@@ -1,3 +1,4 @@
+import { getLocaleDirection } from "@nexpress/core";
 import {
   COLOR_SCHEME_COOKIE,
   NxColorSchemeScript,
@@ -23,6 +24,13 @@ import { i18nConfig } from "@/i18n.config";
  * visitors with no cookie, `<NxColorSchemeScript />` runs as
  * the first body child to detect `prefers-color-scheme` and
  * apply the right attribute synchronously.
+ *
+ * Phase 12.8 — text direction. `getLocaleDirection()` resolves
+ * the lang's BCP-47 tag against CLDR's `textInfo` so RTL
+ * locales (`ar`, `he`, `fa`, `ur`, …) automatically render
+ * mirrored without each site declaring per-locale `dir`
+ * config. Themes get `[dir="rtl"]` to scope flipped CSS rules
+ * (e.g. `flex-direction: row-reverse` for the header).
  */
 export default async function RootLayout({
   children,
@@ -31,11 +39,12 @@ export default async function RootLayout({
 }) {
   const headerList = await headers();
   const lang = headerList.get("x-nx-locale") ?? i18nConfig.defaultLocale;
+  const dir = getLocaleDirection(lang);
   const cookieJar = await cookies();
   const stored = cookieJar.get(COLOR_SCHEME_COOKIE)?.value;
   const dataTheme = isColorScheme(stored) ? stored : undefined;
   return (
-    <html lang={lang} data-theme={dataTheme}>
+    <html lang={lang} dir={dir} data-theme={dataTheme}>
       <body>
         <NxColorSchemeScript />
         {children}
