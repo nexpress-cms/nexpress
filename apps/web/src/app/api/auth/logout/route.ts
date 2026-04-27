@@ -36,6 +36,15 @@ export async function POST(request: NextRequest) {
     const response = nxSuccessResponse({ success: true });
     clearAuthCookies(response);
 
+    // Phase 15.7 — clear the multi-site picker cookie
+    // alongside the session cookies. Without this, the next
+    // user logging in on the same device inherits the
+    // previous user's site context (and might land on a
+    // tenant they don't have access to, which leads to
+    // confusing 403s in the admin UI even though it's not a
+    // security hole — downstream role checks still gate).
+    response.cookies.delete("nx-admin-site");
+
     return response;
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
