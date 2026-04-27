@@ -28,10 +28,11 @@ export const postsTable = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     author: uuid("author").references(() => nxUsers.id),
     slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_posts_status_idx").on(table.status), uniqueIndex("nx_c_posts_slug_idx").on(table.slug)],
+  (table) => [index("nx_c_posts_status_idx").on(table.status), uniqueIndex("nx_c_posts_site_slug_idx").on(table.siteId, table.slug), index("nx_c_posts_site_idx").on(table.siteId)],
 );
 
 export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
@@ -55,10 +56,11 @@ export const pagesTable = pgTable(
     template: text("template"),
     blocks: jsonb("blocks"),
     slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_pages_status_idx").on(table.status), uniqueIndex("nx_c_pages_slug_idx").on(table.slug)],
+  (table) => [index("nx_c_pages_status_idx").on(table.status), uniqueIndex("nx_c_pages_site_slug_idx").on(table.siteId, table.slug), index("nx_c_pages_site_idx").on(table.siteId)],
 );
 
 export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
@@ -80,10 +82,11 @@ export const localizedPagesTable = pgTable(
     slug: text("slug").notNull(),
     locale: text("locale").notNull(),
     translationGroupId: uuid("translation_group_id").notNull(),
+    siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_localized-pages_status_idx").on(table.status), uniqueIndex("nx_c_localized-pages_locale_slug_idx").on(table.locale, table.slug), index("nx_c_localized-pages_translation_group_idx").on(table.translationGroupId), index("nx_c_localized-pages_locale_idx").on(table.locale)],
+  (table) => [index("nx_c_localized-pages_status_idx").on(table.status), uniqueIndex("nx_c_localized-pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug), index("nx_c_localized-pages_translation_group_idx").on(table.translationGroupId), index("nx_c_localized-pages_locale_idx").on(table.locale), index("nx_c_localized-pages_site_idx").on(table.siteId)],
 );
 
 export const localizedPagesTableRelations = relations(localizedPagesTable, ({ many, one }) => ({
@@ -107,10 +110,11 @@ export const discussionsTable = pgTable(
     pinned: boolean("pinned"),
     locked: boolean("locked"),
     slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_discussions_status_idx").on(table.status), index("nx_c_discussions_member_author_idx").on(table.memberAuthorId), uniqueIndex("nx_c_discussions_slug_idx").on(table.slug)],
+  (table) => [index("nx_c_discussions_status_idx").on(table.status), index("nx_c_discussions_member_author_idx").on(table.memberAuthorId), uniqueIndex("nx_c_discussions_site_slug_idx").on(table.siteId, table.slug), index("nx_c_discussions_site_idx").on(table.siteId)],
 );
 
 export const discussionsTableRelations = relations(discussionsTable, ({ many, one }) => ({
