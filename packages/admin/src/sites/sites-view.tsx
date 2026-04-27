@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Globe2, Loader2, Plus, Star, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
 
 import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -179,7 +180,13 @@ export function SitesView() {
                     <p className="pt-1 text-foreground">{site.description}</p>
                   ) : null}
                 </div>
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-end gap-2">
+                  <Link href={`/admin/sites/${encodeURIComponent(site.id)}/members`}>
+                    <Button variant="outline" size="sm">
+                      <Users className="mr-1.5 h-3 w-3" />
+                      Members
+                    </Button>
+                  </Link>
                   {!site.isDefault ? (
                     <Button
                       variant="outline"

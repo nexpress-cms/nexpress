@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ExternalLink, LogOut, User } from "lucide-react";
 import type { NxAuthUser } from "@nexpress/core";
 
+import { SitePicker } from "../sites/site-picker.js";
 import { Badge } from "../ui/badge.js";
 import {
   DropdownMenu,
@@ -25,6 +26,9 @@ function AdminTopbar({ user }: AdminTopbarProps) {
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Admin</p>
         <h1 className="text-lg font-semibold tracking-tight text-neutral-950 dark:text-neutral-50">Welcome back, {user.name}</h1>
       </div>
+
+      <div className="flex items-center gap-3">
+        <SitePicker />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -75,6 +79,7 @@ function AdminTopbar({ user }: AdminTopbarProps) {
           </form>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   );
 }

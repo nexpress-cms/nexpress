@@ -40,6 +40,8 @@ export type { LinkedIdentity } from "./auth/linked-identities-panel.js";
 
 export { JobsView } from "./jobs/jobs-view.js";
 export { SitesView } from "./sites/sites-view.js";
+export { SitePicker } from "./sites/site-picker.js";
+export { MembershipsView } from "./sites/memberships-view.js";
 
 export { MediaLibrary } from "./media/media-library.js";
 export { MediaUploadZone } from "./media/media-upload-zone.js";

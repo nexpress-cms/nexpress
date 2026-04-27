@@ -1,0 +1,349 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Loader2, Plus, Trash2, Users } from "lucide-react";
+
+import { nxFetch } from "../lib/api-client.js";
+import { Button } from "../ui/button.js";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../ui/card.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog.js";
+import { Input } from "../ui/input.js";
+import { Label } from "../ui/label.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select.js";
+
+/**
+ * Phase 15.6 — per-site membership management.
+ *
+ *   /admin/sites/{id}/members
+ *
+ * Lists every (user, role) grant on the given site; admins
+ * (super-admin or per-site admin) can grant a new
+ * membership by user id + role, and revoke existing ones.
+ *
+ * v1 grants by raw user id — there's no user picker yet
+ * (would require a /api/admin/users search endpoint with
+ * email autocomplete). Operators paste the user id from
+ * /admin/users.
+ */
+
+interface Membership {
+  siteId: string;
+  userId: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const ROLES = ["admin", "editor", "moderator", "author", "viewer"] as const;
+
+export function MembershipsView({ siteId }: { siteId: string }) {
+  const [memberships, setMemberships] = useState<Membership[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId]);
+
+  async function load() {
+    setError(null);
+    try {
+      const res = await nxFetch(
+        `/api/admin/sites/${encodeURIComponent(siteId)}/memberships`,
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setError(body?.error?.message ?? "Unable to load memberships.");
+        setMemberships([]);
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as
+        | { docs?: Membership[] }
+        | null;
+      setMemberships(body?.docs ?? []);
+    } catch {
+      setError("Unable to load memberships.");
+    }
+  }
+
+  async function handleRevoke(userId: string) {
+    if (
+      !confirm(
+        "Revoke this membership? The user will fall back to their global default role on this site.",
+      )
+    ) {
+      return;
+    }
+    setBusyUserId(userId);
+    setError(null);
+    try {
+      const res = await nxFetch(
+        `/api/admin/sites/${encodeURIComponent(siteId)}/memberships/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setError(body?.error?.message ?? "Unable to revoke.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Unable to revoke.");
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
+            Multi-tenancy
+          </p>
+          <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
+            <Users className="h-7 w-7 text-muted-foreground" />
+            Site members
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Members of <code>{siteId}</code> with explicit roles. Users not
+            listed here fall back to their global default role.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/sites">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+              All sites
+            </Button>
+          </Link>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Grant membership
+          </Button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!memberships ? (
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+            Loading memberships…
+          </CardContent>
+        </Card>
+      ) : memberships.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            No explicit memberships on this site. Grant one to start scoping
+            roles per tenant.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-border/70 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {memberships.length} membership
+              {memberships.length === 1 ? "" : "s"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y divide-border/60 p-0">
+            {memberships.map((m) => (
+              <div
+                key={m.userId}
+                className="flex items-center justify-between gap-3 px-5 py-3"
+              >
+                <div className="space-y-1">
+                  <p className="font-mono text-xs">{m.userId}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Granted {new Date(m.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary capitalize">
+                    {m.role}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyUserId === m.userId}
+                    onClick={() => void handleRevoke(m.userId)}
+                  >
+                    {busyUserId === m.userId ? (
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-1.5 h-3 w-3" />
+                    )}
+                    Revoke
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <GrantDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        siteId={siteId}
+        onCreated={() => {
+          setCreateOpen(false);
+          void load();
+        }}
+      />
+    </div>
+  );
+}
+
+function GrantDialog({
+  open,
+  onOpenChange,
+  siteId,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  siteId: string;
+  onCreated: () => void;
+}) {
+  const [userId, setUserId] = useState("");
+  const [role, setRole] = useState<(typeof ROLES)[number]>("editor");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setUserId("");
+      setRole("editor");
+      setError(null);
+    }
+  }, [open]);
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await nxFetch(
+        `/api/admin/sites/${encodeURIComponent(siteId)}/memberships`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: userId.trim(), role }),
+        },
+      );
+      const body = (await res.json().catch(() => null)) as
+        | { error?: { message?: string } }
+        | null;
+      if (!res.ok) {
+        setError(body?.error?.message ?? "Unable to grant membership.");
+        return;
+      }
+      onCreated();
+    } catch {
+      setError("Unable to grant membership.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Grant membership on {siteId}</DialogTitle>
+          <DialogDescription>
+            Paste the user id from <code>/admin/users</code>. Granting on a
+            site overrides the user&apos;s global default role for queries
+            scoped to that site.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="grant-user-id">User id</Label>
+            <Input
+              id="grant-user-id"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              placeholder="00000000-0000-0000-0000-000000000000"
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="grant-role">Role</Label>
+            <Select
+              value={role}
+              onValueChange={(v) => setRole(v as (typeof ROLES)[number])}
+            >
+              <SelectTrigger id="grant-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES.map((r) => (
+                  <SelectItem key={r} value={r} className="capitalize">
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {error ? (
+            <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => void handleSubmit()}
+            disabled={submitting || !userId}
+          >
+            {submitting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            Grant
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
