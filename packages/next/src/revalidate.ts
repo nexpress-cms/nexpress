@@ -94,14 +94,18 @@ export function revalidateCollection(
  * Phase 14.1 added the `tags` field so writes also invalidate the
  * sitemap / feed / homepage data caches that `unstable_cache`-wrapped
  * readers in the (site) routes depend on.
+ *
+ * Phase 14.7 added the `nx:search` tag so the short-TTL search cache
+ * invalidates immediately on every write — without it the hot-query
+ * cache could serve up to 60s of stale results after a publish.
  */
 export const defaultRevalidationRules: RevalidationMap = {
   posts: {
     paths: ["/blog", "/blog/{slug}"],
-    tags: ["nx:posts", "nx:sitemap", "nx:feed:posts"],
+    tags: ["nx:posts", "nx:sitemap", "nx:feed:posts", "nx:search"],
   },
   pages: {
     paths: ["/{slug}", "/"],
-    tags: ["nx:pages", "nx:sitemap"],
+    tags: ["nx:pages", "nx:sitemap", "nx:search"],
   },
 };
