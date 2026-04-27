@@ -7,7 +7,7 @@ import {
   getCollectionConfig,
   getCollectionTable,
 } from "./registry.js";
-import { buildSearchVector } from "./search.js";
+import { buildWeightedSearchVectorSql } from "./search.js";
 import { getSearchAdapter } from "./search-adapter.js";
 
 export interface SearchCollectionsOptions {
@@ -179,14 +179,20 @@ export async function reindexCollection(slug: string): Promise<ReindexResult> {
 
   let processed = 0;
   for (const row of rows) {
-    const vector = buildSearchVector(config, row);
-    // Match the write pattern in pipeline.ts — searchVector is inserted as a
-    // plain string that Postgres casts to tsvector. A future improvement is
-    // to wrap both sites in to_tsvector('english', …) for proper language
-    // processing.
+    // Phase 10.7 — match the pipeline's write path:
+    //   1. Wrap in `to_tsvector('english', $)` so Postgres
+    //      tokenizes the source text rather than parsing it
+    //      as raw tsvector syntax (the colon-content bug
+    //      that 11.x fixed for createMainDocument /
+    //      updateMainDocument). Reindex was a parallel write
+    //      path missing the same fix.
+    //   2. Apply the weighted setweight() composition so
+    //      title fields outrank body fields, matching the
+    //      pipeline.
+    const weighted = buildWeightedSearchVectorSql(config, row);
     await db
       .update(table)
-      .set({ searchVector: vector })
+      .set({ searchVector: weighted })
       .where(eq(idCol, row.id as string));
     processed += 1;
   }
