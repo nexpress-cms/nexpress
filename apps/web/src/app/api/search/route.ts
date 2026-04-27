@@ -1,5 +1,10 @@
-import { searchCollections } from "@nexpress/core";
+import {
+  NX_DEFAULT_SITE_ID,
+  getCurrentSiteId,
+  searchCollections,
+} from "@nexpress/core";
 import { headers } from "next/headers";
+import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
@@ -61,13 +66,68 @@ export async function GET(request: NextRequest) {
     const locale =
       candidate && isLocale(candidate) ? candidate : undefined;
 
-    const result = await searchCollections({
-      q,
-      collections,
-      limit,
-      offset,
-      ...(locale ? { locale } : {}),
-    });
+    // Phase 14.7 — short-TTL cache around `searchCollections`.
+    // Hot queries (header search box clicks for the same word
+    // on the same locale) skip the DB walk; less-popular
+    // queries pay the cache miss once per minute and serve
+    // hits the rest of the time. Tagged so writes on any
+    // collection invalidate the search cache atomically via
+    // `revalidateCollection`.
+    //
+    // Cache cardinality is bounded by request shape (q,
+    // collections, limit, offset, locale) — pathological
+    // attackers spamming unique queries would still hit the
+    // origin every time, but the per-key memory cost is the
+    // result row, not a re-walk.
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const collectionsKey = collections ? collections.slice().sort().join(",") : "";
+    const cached = unstable_cache(
+      () =>
+        searchCollections({
+          q,
+          collections,
+          limit,
+          offset,
+          ...(locale ? { locale } : {}),
+        }),
+      [
+        "nx:search",
+        siteId,
+        q,
+        collectionsKey,
+        String(limit),
+        String(offset),
+        locale ?? "",
+      ],
+      {
+        tags: [`nx:search:${siteId}`, "nx:search"],
+        revalidate: 60,
+      },
+    );
+
+    let result;
+    try {
+      result = await cached();
+    } catch (error) {
+      // `unstable_cache` requires Next's incremental cache
+      // store. Integration tests calling `GET()` directly
+      // miss it; fall through to the uncached path so the
+      // route still works in those contexts.
+      if (
+        error instanceof Error &&
+        /incrementalCache/i.test(error.message)
+      ) {
+        result = await searchCollections({
+          q,
+          collections,
+          limit,
+          offset,
+          ...(locale ? { locale } : {}),
+        });
+      } else {
+        throw error;
+      }
+    }
     return nxSuccessResponse(result);
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

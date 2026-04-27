@@ -65,6 +65,11 @@ describe("defaultRevalidationRules", () => {
     expect(defaultRevalidationRules.posts?.tags).toContain("nx:feed:posts");
     expect(defaultRevalidationRules.pages?.tags).toContain("nx:sitemap");
   });
+
+  it("declares the nx:search tag so the short-TTL search cache busts on every write (Phase 14.7)", () => {
+    expect(defaultRevalidationRules.posts?.tags).toContain("nx:search");
+    expect(defaultRevalidationRules.pages?.tags).toContain("nx:search");
+  });
 });
 
 describe("revalidateCollection — tag bust (Phase 14.1)", () => {
