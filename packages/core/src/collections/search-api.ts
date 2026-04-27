@@ -21,6 +21,13 @@ export interface SearchCollectionsOptions {
    * only do this for authenticated admin contexts).
    */
   where?: Record<string, unknown>;
+  /**
+   * Phase 12.4 — restrict i18n collections to one locale. Non-
+   * i18n collections ignore this (no `locale` column to match).
+   * Public site search reads this from the URL's locale prefix
+   * so visitors browsing in `/ko/` only see Korean hits.
+   */
+  locale?: string;
 }
 
 export interface SearchResultItem {
@@ -86,6 +93,7 @@ export async function searchCollections(
         collections: opts.collections,
         limit,
         offset,
+        locale: opts.locale,
       });
       if (adapterResult) return adapterResult;
     } catch (err) {
@@ -109,11 +117,21 @@ export async function searchCollections(
     }
     if (!hasSearchVectorColumn(table)) continue;
 
+    // Phase 12.4 — fold locale into the per-collection where
+    // clause for i18n collections. findDocuments() already
+    // ignores `locale` on non-i18n collections (the column
+    // doesn't exist), so we forward it unconditionally without
+    // a config check here.
+    const config = getCollectionConfig(slug);
+    const collectionLocale =
+      config.i18n && opts.locale ? opts.locale : undefined;
+
     const page = await findDocuments(slug, {
       search: query,
       where: baseWhere,
       limit,
       page: 1,
+      ...(collectionLocale ? { locale: collectionLocale } : {}),
     });
 
     perCollection[slug] = page.totalDocs;
