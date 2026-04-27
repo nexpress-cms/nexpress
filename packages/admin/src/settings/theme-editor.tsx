@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NxThemeTokens } from "@nexpress/core";
-import { Moon, Palette, RotateCcw, Save, Square, Type } from "lucide-react";
+import {
+  Download,
+  Moon,
+  Palette,
+  RotateCcw,
+  Save,
+  Square,
+  Type,
+  Upload,
+} from "lucide-react";
 
 import { Button } from "../ui/button.js";
 import {
@@ -15,6 +24,12 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { nxFetch } from "../lib/api-client.js";
+import {
+  PARSE_ERROR_MESSAGES,
+  downloadFilename,
+  parseImportedTheme,
+  serializeTheme,
+} from "./theme-io.js";
 
 const defaultTheme: NxThemeTokens = {
   colors: {
@@ -120,10 +135,7 @@ export function ThemeEditor() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    void fetchTheme();
-  }, []);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function fetchTheme() {
     setLoading(true);
@@ -145,6 +157,11 @@ export function ThemeEditor() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchTheme();
+  }, []);
 
   async function saveTheme() {
     setSaving(true);
@@ -171,6 +188,41 @@ export function ThemeEditor() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function exportTheme() {
+    const blob = new Blob([serializeTheme(theme)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = downloadFilename();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setMessage("Theme exported.");
+    setError(null);
+  }
+
+  async function handleImportFile(file: File) {
+    setError(null);
+    setMessage(null);
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      setError("Could not read the selected file.");
+      return;
+    }
+    const result = parseImportedTheme(text, normalizeTheme);
+    if (!result.ok) {
+      setError(PARSE_ERROR_MESSAGES[result.reason]);
+      return;
+    }
+    setTheme(result.theme);
+    setMessage("Theme imported. Click Save Theme to apply.");
   }
 
   if (loading) {
@@ -369,6 +421,32 @@ export function ThemeEditor() {
             </div>
 
             <div className="flex flex-wrap justify-end gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  // Reset the input so picking the same file twice
+                  // still fires `onChange`.
+                  event.target.value = "";
+                  if (file) {
+                    void handleImportFile(file);
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Import JSON
+              </Button>
+              <Button variant="outline" onClick={exportTheme}>
+                <Download className="mr-2 h-4 w-4" />
+                Export JSON
+              </Button>
               <Button variant="outline" onClick={() => setTheme(defaultTheme)}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Reset to Defaults
