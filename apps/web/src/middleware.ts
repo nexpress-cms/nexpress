@@ -150,6 +150,15 @@ export function middleware(request: NextRequest) {
   requestHeaders.set("x-nx-locale", locale);
   requestHeaders.set("x-nx-pathname", pathname);
 
+  // Phase 15.1 — propagate the request host so the server-side
+  // site resolver can map it to a site id. The DB lookup
+  // happens lazily in the resolver (cached per request); the
+  // middleware just forwards the raw value.
+  const host = request.headers.get("host") ?? request.headers.get("x-forwarded-host");
+  if (host) {
+    requestHeaders.set("x-nx-host", host);
+  }
+
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   for (const [key, value] of Object.entries(securityHeaders)) {

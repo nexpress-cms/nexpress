@@ -171,6 +171,45 @@ export const nxNavigation = pgTable("nx_navigation", {
   updatedBy: uuid("updated_by").references(() => nxUsers.id),
 });
 
+/**
+ * Phase 15.1 — multi-site model. One row per tenant. The
+ * framework auto-creates a `default` site at boot when the
+ * table is empty so single-tenant installs keep working
+ * without operator intervention. Subsequent sites are added
+ * via the super-admin UI (15.3) — the framework treats
+ * additional sites as additive: they share users, plugins,
+ * and theme code at install time, but each site has its own
+ * collection content, navigation, and settings.
+ *
+ * `hostname` is nullable so the default site can match
+ * "anything that doesn't have an explicit host route". When
+ * a request's `Host` header matches a non-default site's
+ * hostname, that site wins; otherwise the default site is
+ * used. Multi-domain sites (apex + www) need separate rows
+ * pointing at the same `id` — that's a 15.x follow-up;
+ * v15.1 is one-hostname-per-site.
+ */
+export const nxSites = pgTable(
+  "nx_sites",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    hostname: text("hostname"),
+    description: text("description"),
+    settings: jsonb("settings").$type<Record<string, unknown>>().default({}).notNull(),
+    isDefault: boolean("is_default").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("nx_sites_hostname_idx").on(table.hostname),
+  ],
+);
+
 export const nxPlugins = pgTable("nx_plugins", {
   id: text("id").primaryKey(),
   enabled: boolean("enabled").default(true).notNull(),
