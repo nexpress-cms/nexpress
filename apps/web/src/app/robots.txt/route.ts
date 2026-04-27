@@ -31,7 +31,12 @@ export function GET(): Response {
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      // Phase 14.9 — SWR window so a CDN can serve stale
+      // robots during the regen. Crawlers fetch this rarely
+      // and tolerate stale entries; the smoothing matters at
+      // expiry boundaries.
+      "Cache-Control":
+        "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
     },
   });
 }

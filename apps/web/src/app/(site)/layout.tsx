@@ -18,6 +18,16 @@ export const dynamic = "force-dynamic";
  * fragment, an absent slot is omitted entirely. That lets a
  * theme intentionally remove the header (e.g. a fullscreen
  * landing-page theme) without a workaround.
+ *
+ * Phase 14.9 — `force-dynamic` here is technically redundant:
+ * the root layout already calls `cookies()` (for the 11.5
+ * dark-mode initial paint) and `headers()` (for the 12.2
+ * `<html lang>` resolution), both of which mark every child
+ * route as dynamic. Keeping the directive explicit so a
+ * future refactor that lifts those calls out of the root
+ * layout doesn't accidentally turn the (site) tree into
+ * static pages — see `docs/caching.md`'s "What's NOT cached"
+ * for the trade-off analysis.
  */
 export default async function SiteLayout({
   children,
