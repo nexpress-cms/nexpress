@@ -7,7 +7,7 @@ import {
   nxNavigation,
 } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
-import { readJsonBody } from "@nexpress/next";
+import { navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
@@ -92,6 +92,18 @@ export async function PUT(request: NextRequest) {
         set: { items, updatedAt: now, updatedBy: user.id },
       })
       .returning();
+
+    // Phase 14.3 — bust the per-(site, location) cache key set
+    // up by `getCachedNavigation` so theme headers/footers
+    // pick up the edit on the next render. Wrapped in try/catch
+    // because `revalidateTag` throws outside Next's request
+    // context (test harness, scripts).
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag(navCacheTag(siteId, location));
+    } catch {
+      // ignore
+    }
 
     return nxSuccessResponse(result);
   } catch (error) {

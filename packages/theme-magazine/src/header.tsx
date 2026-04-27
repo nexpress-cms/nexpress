@@ -1,5 +1,6 @@
-import { getNavigation, t } from "@nexpress/core";
+import { t } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { getCachedNavigation } from "@nexpress/next";
 import { headers } from "next/headers";
 
 /**
@@ -15,7 +16,7 @@ import { headers } from "next/headers";
  * request header.
  */
 export async function MagazineHeader() {
-  const items = await getNavigation("header");
+  const items = await getCachedNavigation("header");
   let locale: string | undefined;
   try {
     const headerList = await headers();

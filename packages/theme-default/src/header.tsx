@@ -1,5 +1,5 @@
-import { getNavigation } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
+import { getCachedNavigation } from "@nexpress/next";
 
 import { MemberStatusWidget } from "./components/member-status-widget.js";
 
@@ -16,7 +16,7 @@ import { MemberStatusWidget } from "./components/member-status-widget.js";
  * rendered header (not just the styles around an unchanged DOM).
  */
 export async function DefaultHeader() {
-  const headerNav = await getNavigation("header");
+  const headerNav = await getCachedNavigation("header");
 
   return (
     <header className="nx-site-header">

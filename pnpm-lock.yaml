@@ -547,6 +547,9 @@ importers:
       '@nexpress/core':
         specifier: workspace:*
         version: link:../core
+      '@nexpress/next':
+        specifier: workspace:*
+        version: link:../next
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../theme
@@ -584,6 +587,9 @@ importers:
       '@nexpress/editor':
         specifier: workspace:*
         version: link:../editor
+      '@nexpress/next':
+        specifier: workspace:*
+        version: link:../next
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../theme
@@ -646,6 +652,9 @@ importers:
       '@nexpress/core':
         specifier: workspace:*
         version: link:../core
+      '@nexpress/next':
+        specifier: workspace:*
+        version: link:../next
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../theme
