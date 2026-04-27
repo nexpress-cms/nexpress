@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Puzzle,
   Settings,
+  Timer,
   Users,
 } from "lucide-react";
 import type { NxAuthUser, NxCollectionConfig } from "@nexpress/core";
@@ -107,6 +108,9 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
   const systemItems: NavItem[] = [
     { href: "/admin/media", label: "Media", icon: Image },
     { href: "/admin/plugins", label: "Plugins", icon: Puzzle },
+    ...(user.role === "admin"
+      ? [{ href: "/admin/jobs", label: "Jobs", icon: Timer }]
+      : []),
     { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 
