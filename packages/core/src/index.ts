@@ -67,7 +67,12 @@ export {
   NxRateLimitError,
 } from "./errors.js";
 
-export { buildSearchVector } from "./collections/search.js";
+export {
+  buildSearchVector,
+  buildSearchVectorParts,
+  buildWeightedSearchVectorSql,
+} from "./collections/search.js";
+export type { NxSearchVectorParts } from "./collections/search.js";
 export { buildSitemap, renderSitemapXml } from "./seo/sitemap.js";
 export type { NxSitemapEntry, BuildSitemapOptions } from "./seo/sitemap.js";
 export {
