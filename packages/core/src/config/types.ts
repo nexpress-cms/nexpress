@@ -408,6 +408,15 @@ export interface NxResolvedPluginLike {
     description?: string;
     auth?: boolean;
   }>;
+  /**
+   * Phase 12.5 — optional UI string bundles per locale. Keys
+   * are plugin-namespaced strings the plugin's own templates /
+   * routes / admin pages call `t()` against. The host merges
+   * every plugin's bundle into the global registry at boot;
+   * later plugins overwrite earlier ones on key collision so
+   * sites can layer overrides via plugin order.
+   */
+  i18n?: Record<string, Record<string, string>>;
 }
 
 export interface NxPluginContext {

@@ -341,6 +341,24 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     globalRoutes.push(entry);
   }
 
+  // Phase 12.5 — merge any UI-string bundles the plugin
+  // ships into the global registry. Bundles are scoped per
+  // locale; later plugins overwrite earlier ones on key
+  // collision so plugin-order in the config drives override
+  // priority. Plugin authors typically namespace their keys
+  // (e.g. `forum.replyButton`) to avoid collisions across
+  // unrelated plugins.
+  const i18nBundles = (plugin as { i18n?: Record<string, Record<string, string>> })
+    .i18n;
+  if (i18nBundles && typeof i18nBundles === "object") {
+    const { addStrings } = await import("../i18n/strings.js");
+    for (const [locale, bundle] of Object.entries(i18nBundles)) {
+      if (bundle && typeof bundle === "object") {
+        addStrings(locale, bundle);
+      }
+    }
+  }
+
   // Invoke optional setup() after hooks + routes are registered so setup can
   // call ctx.actions.register(…) and have it visible to subsequent dispatches.
   const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> }).setup;

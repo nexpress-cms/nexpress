@@ -102,6 +102,20 @@ export interface NxThemeImpl {
    * app's globals.css because they aren't theme-specific.
    */
   css?: string;
+  /**
+   * Phase 12.5 — UI string bundles per locale. Themes that
+   * render hardcoded chrome ("Read more", "by {{author}}",
+   * "{{minutes}} min read") localize them by registering keys
+   * here and calling `t(key, locale, params)` from their
+   * components. The theme registry merges these into the
+   * global string registry at activation time.
+   *
+   *   i18n: {
+   *     en: { "magazine.tagline": "Stories, essays, reports" },
+   *     ko: { "magazine.tagline": "이야기, 에세이, 리포트" },
+   *   }
+   */
+  i18n?: Record<string, Record<string, string>>;
 }
 
 export interface NxTheme extends NxRegisteredTheme {
