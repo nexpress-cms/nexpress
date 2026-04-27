@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { NxNotFoundError, NxValidationError } from "../errors.js";
@@ -6,8 +6,8 @@ import { getI18nConfig } from "../i18n/registry.js";
 import type { NxAuthUser } from "../config/types.js";
 
 import {
+  getAllCollectionSlugs,
   getCollectionConfig,
-  getCollectionRegistration,
   getCollectionTable,
 } from "./registry.js";
 import { getDb, getDocumentById, saveDocument } from "./pipeline.js";
@@ -179,7 +179,7 @@ export async function createTranslation(
   // a blank form.
   const { id, slug, locale, status, _status, createdAt, updatedAt,
     createdBy, updatedBy, searchVector, translationGroupId, ...content } =
-    source as Record<string, unknown>;
+    source;
   void id; void slug; void locale; void status; void _status;
   void createdAt; void updatedAt; void createdBy; void updatedBy;
   void searchVector; void translationGroupId;
@@ -199,4 +199,110 @@ export async function createTranslation(
   return { id: result.doc.id as string };
 }
 
-void and; // referenced for future filtering
+/**
+ * Phase 12.6 — translation completeness snapshot for the
+ * admin Locales tab.
+ *
+ * Walks every i18n-enabled collection and counts:
+ *   - `totalGroups` — distinct `translation_group_id` values
+ *     (one per "logical document"; if the source has 5 base
+ *     pages, that's 5 groups regardless of locale spread)
+ *   - `counts[locale]` — actual rows per locale
+ *   - `missing[locale]` — `totalGroups - counts[locale]`,
+ *     i.e. how many groups still need this locale
+ *
+ * Returns `null` when i18n isn't configured. Non-i18n
+ * collections are silently skipped — they don't have the
+ * `translation_group_id` column and the dashboard isn't
+ * meaningful for them.
+ *
+ * One SQL round-trip per i18n collection (two GROUP BYs in a
+ * single query). For 1–2 i18n collections this is well under
+ * the cost of the existing dashboard widgets.
+ */
+export interface NxTranslationProgressLocaleStats {
+  count: number;
+  missing: number;
+}
+
+export interface NxCollectionTranslationProgress {
+  collection: string;
+  totalGroups: number;
+  perLocale: Record<string, NxTranslationProgressLocaleStats>;
+}
+
+export interface NxTranslationProgress {
+  defaultLocale: string;
+  locales: string[];
+  collections: NxCollectionTranslationProgress[];
+}
+
+export async function getTranslationProgress(): Promise<NxTranslationProgress | null> {
+  const i18n = getI18nConfig();
+  if (!i18n) return null;
+
+  const db = getDb();
+  const out: NxCollectionTranslationProgress[] = [];
+
+  for (const slug of getAllCollectionSlugs()) {
+    const config = getCollectionConfig(slug);
+    if (!config.i18n) continue;
+    const table = getCollectionTable(slug) as PgTable;
+    const localeCol = getTableColumn(table, "locale");
+    const groupCol = getTableColumn(table, "translationGroupId");
+
+    // Two parallel queries: per-locale row counts, plus the
+    // total group count. Could be fused into one CTE, but the
+    // two-query form keeps the Drizzle expressions readable
+    // and the cost is negligible for the volumes the admin UI
+    // is reading.
+    const localeRows = (await db
+      .select({
+        locale: localeCol as never,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(table)
+      .groupBy(localeCol as never)) as Array<{
+      locale: string;
+      count: number;
+    }>;
+
+    const totalRows = (await db
+      .select({
+        groups: sql<number>`count(distinct ${groupCol})::int`,
+      })
+      .from(table)) as Array<{ groups: number }>;
+
+    const totalGroups = totalRows[0]?.groups ?? 0;
+
+    const counts: Record<string, number> = Object.fromEntries(
+      i18n.locales.map((loc) => [loc, 0]),
+    );
+    for (const row of localeRows) {
+      if (row.locale in counts) {
+        counts[row.locale] = row.count;
+      }
+    }
+
+    const perLocale: Record<string, NxTranslationProgressLocaleStats> = {};
+    for (const loc of i18n.locales) {
+      const count = counts[loc] ?? 0;
+      perLocale[loc] = {
+        count,
+        missing: Math.max(0, totalGroups - count),
+      };
+    }
+
+    out.push({
+      collection: slug,
+      totalGroups,
+      perLocale,
+    });
+  }
+
+  return {
+    defaultLocale: i18n.defaultLocale,
+    locales: i18n.locales,
+    collections: out,
+  };
+}
