@@ -338,6 +338,26 @@ export {
 } from "./plugins/templates.js";
 
 export {
+  ensureDefaultSite,
+  listSites,
+  getSiteById,
+  getSiteByHostname,
+  getDefaultSite,
+  resolveSiteForHostname,
+  createSite,
+  updateSite,
+  deleteSite,
+  NX_DEFAULT_SITE_ID,
+} from "./sites/registry.js";
+export type { NxSite, CreateSiteInput } from "./sites/registry.js";
+export {
+  setCurrentSiteResolver,
+  resetCurrentSiteResolver,
+  getCurrentSiteId,
+  withCurrentSite,
+} from "./sites/context.js";
+
+export {
   setI18nConfig,
   getI18nConfig,
   resetI18nConfig,
