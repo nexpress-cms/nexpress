@@ -146,20 +146,74 @@ export interface NxThemeTemplateSummary {
 export async function getThemeTemplateSummaries(
   collectionSlug: string,
 ): Promise<NxThemeTemplateSummary[]> {
+  const summaries = new Map<string, NxThemeTemplateSummary>();
+
+  // Phase 14.5 — start with plugin-contributed templates so
+  // theme entries naturally overwrite them on id collision.
+  // Lazy import keeps the registry → plugin coupling one-way
+  // (plugins know about themes' template shape; themes don't
+  // depend on plugins at type-import time).
+  const { getPluginTemplatesForCollection } = await import(
+    "../plugins/templates.js"
+  );
+  for (const [id, value] of getPluginTemplatesForCollection(collectionSlug)) {
+    const def = value as { label?: unknown; description?: unknown };
+    summaries.set(id, {
+      id,
+      label: typeof def.label === "string" ? def.label : id,
+      description:
+        typeof def.description === "string" ? def.description : undefined,
+    });
+  }
+
   const active = await getActiveTheme();
-  if (!active) return [];
-  const impl = active.impl as {
-    templates?: Record<
-      string,
-      Record<string, { label?: string; description?: string }>
-    >;
-  };
-  const set = impl.templates?.[collectionSlug];
-  if (!set) return [];
-  return Object.entries(set).map(([id, def]) => ({
-    id,
-    label: typeof def.label === "string" ? def.label : id,
-    description:
-      typeof def.description === "string" ? def.description : undefined,
-  }));
+  if (active) {
+    const impl = active.impl as {
+      templates?: Record<
+        string,
+        Record<string, { label?: string; description?: string }>
+      >;
+    };
+    const set = impl.templates?.[collectionSlug];
+    if (set) {
+      for (const [id, def] of Object.entries(set)) {
+        summaries.set(id, {
+          id,
+          label: typeof def.label === "string" ? def.label : id,
+          description:
+            typeof def.description === "string" ? def.description : undefined,
+        });
+      }
+    }
+  }
+
+  return [...summaries.values()];
+}
+
+/**
+ * Phase 14.5 — resolve a template's render component for the
+ * given collection + template id. Looks up theme first
+ * (theme always wins), falls back to plugin-contributed
+ * templates. Returns the opaque value (the catch-all casts to
+ * `{ component }` at the render boundary).
+ */
+export async function resolveTemplateComponent(
+  collectionSlug: string,
+  templateId: string,
+): Promise<unknown | null> {
+  const active = await getActiveTheme();
+  if (active) {
+    const impl = active.impl as {
+      templates?: Record<string, Record<string, unknown>>;
+    };
+    const themeEntry = impl.templates?.[collectionSlug]?.[templateId];
+    if (themeEntry) return themeEntry;
+  }
+
+  const { getPluginTemplatesForCollection } = await import(
+    "../plugins/templates.js"
+  );
+  const pluginEntry =
+    getPluginTemplatesForCollection(collectionSlug).get(templateId);
+  return pluginEntry ?? null;
 }

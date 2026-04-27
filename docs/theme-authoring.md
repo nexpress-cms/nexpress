@@ -19,6 +19,7 @@
 8. [Registering and Activating](#8-registering-and-activating)
 9. [Server vs Client Boundary](#9-server-vs-client-boundary)
 10. [Reference Theme Examples](#10-reference-theme-examples)
+11. [Plugins Can Register Templates Too](#11-plugins-can-register-templates-too)
 
 ---
 
@@ -379,3 +380,56 @@ Copy any of them into a new package directory, rename the
 manifest id, and start tweaking. The contract is the same; the
 only constraint is that your theme's `manifest.id` must be
 unique within the registry.
+
+---
+
+## 11. Plugins Can Register Templates Too
+
+Phase 14.5 — plugins use the same template shape as themes
+and merge into the same registry. A plugin manifest may
+declare:
+
+```ts
+definePlugin({
+  manifest: { id: "docs", name: "Documentation", ... },
+  templates: {
+    pages: {
+      docs: {
+        label: "Documentation",
+        description: "Sidebar TOC + prev/next navigation",
+        component: DocsTemplate,
+      },
+    },
+  },
+});
+```
+
+The plugin host registers these at boot.
+`getThemeTemplateSummaries(collectionSlug)` returns the
+union of theme + plugin templates so the admin
+template-picker dropdown sees both. The catch-all's
+`resolveTemplateComponent` walks **theme first**, then
+plugins — so on id collision the active theme wins. This is
+deliberate: the active theme is the site's design authority,
+and plugin templates are baselines / domain-specific
+alternates.
+
+When a plugin's template id is unique (recommended:
+namespace it like `docs.sidebar` or `events.calendar`), it
+sits alongside theme templates in the picker without ever
+colliding. Plugin authors who want their template to be
+overridable by sites just register it with a generic id;
+the site's chosen theme can ship its own version of that id
+and seamlessly take over.
+
+Use cases:
+- A `docs` plugin shipping a `pages.docs` template (TOC + version selector)
+- An `events` plugin shipping `pages.event` (calendar embed + RSVP)
+- A `commerce` plugin shipping `pages.product` (price + cart widget)
+- A `course` plugin shipping `posts.lesson` (progress bar + prev/next)
+
+Plugins can also use the existing slot system
+(`beforeContent`, `afterContent`, `sidebar`) when they want
+to inject UI without owning the entire page render. The two
+mechanisms are orthogonal: a plugin can both ship a template
+and contribute slot components.

@@ -539,6 +539,27 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
    *   }
    */
   i18n?: Record<string, Record<string, string>>;
+  /**
+   * Phase 14.5 — page templates the plugin contributes to
+   * the shared template registry. Same shape as a theme's
+   * `impl.templates`: keyed by collection slug, then by
+   * template id, with `{ label, description?, component }`
+   * values. The plugin host merges these at boot so admin
+   * pickers and the catch-all see them. Theme entries win
+   * id collisions — the active theme is the design authority
+   * for the site, plugins are baseline / alternates.
+   *
+   *   templates: {
+   *     pages: {
+   *       docs: {
+   *         label: "Documentation",
+   *         description: "Sidebar TOC + prev/next nav",
+   *         component: DocsTemplate,
+   *       },
+   *     },
+   *   }
+   */
+  templates?: Record<string, Record<string, unknown>>;
 }
 
 export type NxResolvedPlugin<TConfig = Record<string, unknown>> = Omit<
