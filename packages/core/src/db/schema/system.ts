@@ -56,6 +56,15 @@ export const nxUsers = pgTable("nx_users", {
   password: text("password").notNull(),
   name: text("name").notNull(),
   role: nxUserRoleEnum("role").notNull(),
+  /**
+   * Phase 15.5 — super-admin flag. Bypasses per-site membership
+   * checks; the super-admin can manage every site including
+   * creating / deleting tenants. The flag is independent of
+   * the per-site `role` enum (a super-admin still needs a
+   * `role` field for non-multi-site contexts; multi-site
+   * permissions check `is_super_admin OR site_membership`).
+   */
+  isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
   avatar: uuid("avatar").references((): AnyPgColumn => nxMedia.id),
   loginAttempts: integer("login_attempts").default(0).notNull(),
   lockUntil: timestamp("lock_until", { withTimezone: true, mode: "date" }),
@@ -73,6 +82,39 @@ export const nxUsers = pgTable("nx_users", {
     .defaultNow()
     .notNull(),
 });
+
+/**
+ * Phase 15.5 — per-site role grants. A user can hold a
+ * different role on each site they're a member of (admin on
+ * `acme`, editor on `partner-blog`, no role on `internal`).
+ * Composite PK on (site_id, user_id) so each pair is unique;
+ * the role enum reuses the existing `nx_user_role` so the
+ * concept stays consistent across the framework.
+ *
+ * `nxUsers.role` becomes the "global default role" — used in
+ * single-tenant contexts and as the fallback when a user has
+ * no explicit membership on the current site. Most operators
+ * will give cross-site users an explicit membership per
+ * site they should access; the `is_super_admin` flag
+ * separately bypasses the membership check entirely.
+ */
+export const nxSiteMemberships = pgTable(
+  "nx_site_memberships",
+  {
+    siteId: text("site_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => nxUsers.id, { onDelete: "cascade" }),
+    role: nxUserRoleEnum("role").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.siteId, table.userId] })],
+);
 
 /**
  * Per-user OAuth identity links. A user can have one identity per provider
