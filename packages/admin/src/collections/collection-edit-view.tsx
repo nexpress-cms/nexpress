@@ -13,6 +13,7 @@ import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.
 import { FieldRenderer } from "./field-renderer.js";
 import { RevisionsPanel } from "./revisions-panel.js";
 import { ScheduleDialog } from "./schedule-dialog.js";
+import { TranslationTabs } from "./translation-tabs.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
@@ -533,6 +534,12 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
 
         <div className="grid gap-6 xl:grid-cols-12">
           <div className="space-y-6 xl:col-span-8">
+            {config.i18n && doc?.id ? (
+              <TranslationTabs
+                collectionSlug={collectionSlug}
+                documentId={String(doc.id)}
+              />
+            ) : null}
             {mainFields.map((field, index) => (
               <Card key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}>
                 <CardContent className="pt-6">

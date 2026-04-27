@@ -42,8 +42,10 @@ export { MediaLibrary } from "./media/media-library.js";
 export { MediaUploadZone } from "./media/media-upload-zone.js";
 
 export { SettingsView } from "./settings/settings-view.js";
+export { LocalesTab } from "./settings/locales-tab.js";
 export { ThemeEditor } from "./settings/theme-editor.js";
 export { ThemeSwitcher } from "./settings/theme-switcher.js";
+export { TranslationTabs } from "./collections/translation-tabs.js";
 export { NavigationEditor } from "./settings/navigation-editor.js";
 export { UserManagement } from "./settings/user-management.js";
 export { PluginsManager } from "./settings/plugins-manager.js";
