@@ -126,6 +126,8 @@ export {
   getSearchAdapter,
   resetSearchAdapter,
   setSearchAdapter,
+  findTranslations,
+  createTranslation,
 } from "./collections/index.js";
 export type {
   NxRevision,
