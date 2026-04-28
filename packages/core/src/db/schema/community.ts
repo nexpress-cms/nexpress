@@ -410,12 +410,20 @@ export const nxAuditEvents = pgTable(
     targetType: text("target_type"),
     targetId: text("target_id"),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+    /**
+     * Phase 17 — site-scoped audit. Filled by `recordAuditEvent`
+     * from the current request's site (the multi-site resolver).
+     * Nullable for events that don't belong to a single site
+     * (super-admin actions, background jobs, scripts).
+     */
+    siteId: text("site_id"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_audit_target_idx").on(table.targetType, table.targetId, table.createdAt),
     index("nx_audit_actor_user_idx").on(table.actorUserId, table.createdAt),
     index("nx_audit_actor_member_idx").on(table.actorMemberId, table.createdAt),
+    index("nx_audit_site_idx").on(table.siteId, table.createdAt),
   ],
 );
 

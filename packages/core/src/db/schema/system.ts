@@ -45,10 +45,7 @@ type NxRevisionSnapshot = Record<string, unknown> & {
   content?: NxRichTextContent;
 };
 
-export const nxPasswordResetPurposeEnum = pgEnum("nx_password_reset_purpose", [
-  "invite",
-  "reset",
-]);
+export const nxPasswordResetPurposeEnum = pgEnum("nx_password_reset_purpose", ["invite", "reset"]);
 
 export const nxUsers = pgTable("nx_users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -75,12 +72,8 @@ export const nxUsers = pgTable("nx_users", {
     mode: "date",
   }),
   passwordResetPurpose: nxPasswordResetPurposeEnum("password_reset_purpose"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
 
 /**
@@ -106,12 +99,8 @@ export const nxSiteMemberships = pgTable(
       .notNull()
       .references((): AnyPgColumn => nxUsers.id, { onDelete: "cascade" }),
     role: nxUserRoleEnum("role").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.siteId, table.userId] })],
 );
@@ -135,12 +124,8 @@ export const nxUserOAuthIdentities = pgTable(
     providerUserId: text("provider_user_id").notNull(),
     /** Free-form per-provider metadata (avatar URL, scopes granted, etc.). */
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => ({
     providerSubjectUnique: unique("nx_user_oauth_identities_provider_subject_unique").on(
@@ -164,9 +149,7 @@ export const nxSessions = pgTable("nx_sessions", {
   userAgent: text("user_agent"),
   ip: text("ip"),
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
 
 export const nxRevisions = pgTable(
@@ -180,9 +163,7 @@ export const nxRevisions = pgTable(
     snapshot: jsonb("snapshot").$type<NxRevisionSnapshot>().notNull(),
     changedFields: text("changed_fields").array().notNull(),
     authorId: uuid("author_id").references(() => nxUsers.id),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => ({
     documentVersionUnique: unique("nx_revisions_document_id_version_unique").on(
@@ -209,9 +190,7 @@ export const nxSettings = pgTable(
     siteId: text("site_id").default("default").notNull(),
     key: text("key").notNull(),
     value: jsonb("value").$type<unknown>().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedBy: uuid("updated_by").references(() => nxUsers.id),
   },
   (table) => [primaryKey({ columns: [table.siteId, table.key] })],
@@ -229,9 +208,7 @@ export const nxNavigation = pgTable(
     siteId: text("site_id").default("default").notNull(),
     location: text("location").notNull(),
     items: jsonb("items").$type<NxNavItem[]>().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedBy: uuid("updated_by").references(() => nxUsers.id),
   },
   (table) => [unique("nx_navigation_site_location_idx").on(table.siteId, table.location)],
@@ -259,9 +236,7 @@ export const nxStringOverrides = pgTable(
     locale: text("locale").notNull(),
     key: text("key").notNull(),
     value: text("value"),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedBy: uuid("updated_by").references(() => nxUsers.id),
   },
   (table) => [primaryKey({ columns: [table.siteId, table.locale, table.key] })],
@@ -294,16 +269,10 @@ export const nxSites = pgTable(
     description: text("description"),
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}).notNull(),
     isDefault: boolean("is_default").default(false).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
-  (table) => [
-    unique("nx_sites_hostname_idx").on(table.hostname),
-  ],
+  (table) => [unique("nx_sites_hostname_idx").on(table.hostname)],
 );
 
 export const nxPlugins = pgTable("nx_plugins", {
@@ -313,24 +282,36 @@ export const nxPlugins = pgTable("nx_plugins", {
   installedAt: timestamp("installed_at", { withTimezone: true, mode: "date" })
     .defaultNow()
     .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
+
+/**
+ * Phase 17 — plugin K/V storage with multi-tenant scope.
+ *
+ * The PK is `(plugin_id, site_id, key)`; `site_id` defaults to
+ * `_global_` so single-site deploys (and pre-Phase-17 callers
+ * that don't pass a site) keep their non-tenant behavior.
+ * Plugin context auto-scopes reads/writes to the current site,
+ * so plugin authors don't have to think about it — every plugin
+ * operating inside a request automatically gets a per-site
+ * keyspace, while background workers / scripts (no resolved
+ * site) share the `_global_` space.
+ */
+export const NX_GLOBAL_PLUGIN_SITE_ID = "_global_";
 
 export const nxPluginStorage = pgTable(
   "nx_plugin_storage",
   {
     pluginId: text("plugin_id").notNull(),
+    siteId: text("site_id").default(NX_GLOBAL_PLUGIN_SITE_ID).notNull(),
     key: text("key").notNull(),
     value: jsonb("value").$type<unknown>().notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.pluginId, table.key] }),
+    pk: primaryKey({ columns: [table.pluginId, table.siteId, table.key] }),
     pluginIdx: index("nx_plugin_storage_plugin_id_idx").on(table.pluginId),
+    siteIdx: index("nx_plugin_storage_site_idx").on(table.siteId),
   }),
 );
