@@ -150,6 +150,25 @@ async function handleMediaCleanup(data: unknown): Promise<void> {
 }
 
 async function handlePluginScheduledTask(data: unknown): Promise<void> {
+  // Phase 19 — first prefer the inline handler registered via
+  // `definePlugin({ scheduled })`. Falls back to the legacy
+  // `builtinJobContext.runScheduledPluginTask` resolver for
+  // sites that wired their own dispatcher pre-Phase-19.
+  if (isRecord(data) && typeof data.pluginId === "string" && typeof data.taskId === "string") {
+    try {
+      const { runPluginScheduledTask } = await import("../plugins/host.js");
+      await runPluginScheduledTask(data.pluginId, data.taskId);
+      return;
+    } catch (err) {
+      // No registered schedule with this id — fall through to
+      // the legacy resolver. If that's also absent we re-throw
+      // so the worker's retry policy surfaces the misconfig.
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/no scheduled task/.test(message) && !/is not registered/.test(message)) {
+        throw err;
+      }
+    }
+  }
   await builtinJobContext.runScheduledPluginTask?.(data);
 }
 

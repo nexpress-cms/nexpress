@@ -108,6 +108,7 @@ export async function truncateAll(): Promise<void> {
     "nx_revisions",
     "nx_plugin_storage",
     "nx_plugins",
+    "nx_worker_heartbeats",
     "nx_settings",
     "nx_navigation",
     "nx_media_refs",

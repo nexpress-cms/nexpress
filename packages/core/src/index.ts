@@ -263,6 +263,14 @@ export {
   stopProducer,
   PgBossAdapter,
   registerBuiltinHandlers,
+  recordHeartbeat,
+  markWorkerStopped,
+  listWorkerHealth,
+  startHeartbeatLoop,
+  purgeStaleWorkers,
+  countAliveWorkers,
+  WORKER_HEARTBEAT_INTERVAL_MS,
+  WORKER_STALE_THRESHOLD_MS,
 } from "./jobs/index.js";
 export type {
   NxJobHandler,
@@ -272,6 +280,8 @@ export type {
   NxJobListOptions,
   NxJobListResult,
   NxScheduleSummary,
+  NxWorkerHeartbeat,
+  NxWorkerHealthSummary,
 } from "./jobs/index.js";
 
 export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
@@ -419,6 +429,8 @@ export {
   getDashboardWidgetsFromPlugins,
   dispatchPluginAction,
   schedulePluginTask,
+  getRegisteredPluginSchedules,
+  runPluginScheduledTask,
   resetPlugins,
   listPluginStates,
   getPluginState,

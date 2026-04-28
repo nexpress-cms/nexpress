@@ -81,6 +81,43 @@ export class PgBossAdapter implements NxJobQueue {
         }
       });
     }
+
+    // Phase 19 — register one queue + worker per plugin schedule.
+    // pg-boss enforces a 1:1 mapping between schedule name and
+    // queue, so each `definePlugin({ scheduled })` entry needs
+    // its own queue. The dispatcher inside the handler delegates
+    // to the registered handler via `runPluginScheduledTask`.
+    const { getRegisteredPluginSchedules, runPluginScheduledTask } =
+      await import("../plugins/host.js");
+    for (const schedule of getRegisteredPluginSchedules()) {
+      const queueName = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
+      await this.boss.createQueue(queueName);
+      await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
+        for (const job of jobs) {
+          try {
+            await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
+          } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            getLogger().error("Plugin scheduled task threw", {
+              pluginId: schedule.pluginId,
+              taskId: schedule.taskId,
+              jobId: job.id,
+              error: err.message,
+              stack: err.stack,
+            });
+            void reportError(err, {
+              tags: {
+                source: "worker",
+                pluginId: schedule.pluginId,
+                taskId: schedule.taskId,
+              },
+              extra: { jobId: job.id },
+            });
+            throw err;
+          }
+        }
+      });
+    }
   }
 
   async stop(): Promise<void> {
@@ -99,6 +136,20 @@ export class PgBossAdapter implements NxJobQueue {
     await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * 1", {
       cadence: "weekly",
     });
+    // Phase 19 — first-class plugin cron schedules. Each entry
+    // declared via `definePlugin({ scheduled: [...] })` becomes
+    // one row in `pgboss.schedule`. We share the `plugin:scheduledTask`
+    // queue and dispatch by `(pluginId, taskId)` in the handler;
+    // the schedule's pg-boss `name` is stable per task so a re-
+    // boot doesn't accumulate duplicates.
+    const { getRegisteredPluginSchedules } = await import("../plugins/host.js");
+    for (const schedule of getRegisteredPluginSchedules()) {
+      const pgBossName = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
+      await this.boss.schedule(pgBossName, schedule.cron, {
+        pluginId: schedule.pluginId,
+        taskId: schedule.taskId,
+      });
+    }
   }
 
   getBoss(): PgBoss {

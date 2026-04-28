@@ -169,6 +169,13 @@
       "when": 1777351911661,
       "tag": "0023_lumpy_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777355745326,
+      "tag": "0024_sparkling_nova",
+      "breakpoints": true
     }
   ]
 }
