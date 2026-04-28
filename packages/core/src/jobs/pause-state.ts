@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../collections/pipeline.js";
 import { nxSettings } from "../db/schema/system.js";
+import { getLogger } from "../observability/logger.js";
+import { type NxJobQueue } from "./queue.js";
 
 /**
  * Phase 20.2 — global pause / resume for job processing.
@@ -86,4 +88,63 @@ export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<
     });
 
   return next;
+}
+
+export const PAUSE_SYNC_INTERVAL_MS = 30_000;
+
+export interface PauseSyncLoopHandle {
+  stop(): void;
+}
+
+/**
+ * Phase 20.2 — multi-pod pause sync. Each worker pod polls the
+ * persisted flag on this cadence (default 30 s, matching the
+ * heartbeat) and applies any state change locally. So an
+ * operator pausing on pod A also stops pod B within roughly
+ * one tick, instead of waiting for pod B to restart.
+ *
+ * Returns a handle whose `stop()` clears the interval. Read
+ * errors are logged at warn — we don't want a transient DB
+ * blip to wedge the worker.
+ */
+export function startPauseSyncLoop(
+  queue: NxJobQueue,
+  intervalMs: number = PAUSE_SYNC_INTERVAL_MS,
+): PauseSyncLoopHandle {
+  const log = getLogger();
+
+  const tick = async (): Promise<void> => {
+    try {
+      const persisted = await getJobsPauseState();
+      const localPaused =
+        typeof queue.isProcessingPaused === "function" ? queue.isProcessingPaused() : false;
+
+      if (persisted.paused && !localPaused && typeof queue.pauseProcessing === "function") {
+        await queue.pauseProcessing();
+        log.info("Pause sync: applied paused=true from settings", {
+          changedAt: persisted.changedAt,
+        });
+      } else if (!persisted.paused && localPaused && typeof queue.resumeProcessing === "function") {
+        await queue.resumeProcessing();
+        log.info("Pause sync: applied paused=false from settings", {
+          changedAt: persisted.changedAt,
+        });
+      }
+    } catch (err) {
+      log.warn("Pause sync tick failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const timer = setInterval(() => {
+    void tick();
+  }, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+
+  return {
+    stop() {
+      clearInterval(timer);
+    },
+  };
 }

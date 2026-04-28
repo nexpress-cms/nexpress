@@ -293,9 +293,9 @@ the endpoint directly if needed.
 - In-flight jobs run to completion; producers keep
   enqueueing. The pg-boss queue accumulates pending jobs.
 - `POST /api/admin/jobs/resume` to start draining again.
-- Multi-pod operators: today only the pod that handled the
-  API call applies the flag in-process. Restart other
-  worker pods to pick up the persisted flag (see §12).
+- Multi-pod deployments converge in ≤ 30 s — each worker
+  pod polls the persisted flag on its heartbeat tick and
+  applies any state change locally.
 
 **Backlog after an outage (hundreds of failed jobs)**
 
@@ -335,12 +335,6 @@ Open follow-ups, in rough order of impact:
 - **Per-job logs** — handler `console.log` calls go to the
   worker's stdout, not associated with the job row in the
   admin. Linking them would help post-mortems.
-- **Multi-pod pause sync** — Phase 20.2 ships pause/resume
-  but only applies the flag to the worker pod that received
-  the API call. Other worker pods see the flag on their
-  next restart. A periodic poll (piggy-backed on the
-  heartbeat tick) would close this gap. Single-pod
-  deployments work fully today.
 
 ### Recently closed
 
@@ -351,7 +345,9 @@ Open follow-ups, in rough order of impact:
   queue. In-flight jobs run to completion; producers keep
   enqueueing while paused. The state is read on worker
   startup so a paused worker stays paused after a restart.
-  See multi-pod caveat above.
+  Multi-pod deployments converge automatically: each worker
+  re-reads the persisted flag every 30 s (piggy-backed on
+  the heartbeat tick) and applies any divergence locally.
 - **Rate-limit on retry / enqueue endpoints** — Phase 20.1.
   `apps/web/src/proxy.ts` now imposes tighter buckets above
   the general `/api/admin/` 60/min limit:

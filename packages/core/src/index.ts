@@ -273,6 +273,8 @@ export {
   WORKER_STALE_THRESHOLD_MS,
   getJobsPauseState,
   setJobsPauseState,
+  startPauseSyncLoop,
+  PAUSE_SYNC_INTERVAL_MS,
 } from "./jobs/index.js";
 export type {
   NxJobHandler,
@@ -286,6 +288,7 @@ export type {
   NxWorkerHealthSummary,
   NxJobsPauseState,
   SetJobsPauseStateInput,
+  PauseSyncLoopHandle,
 } from "./jobs/index.js";
 
 export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";

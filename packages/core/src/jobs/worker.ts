@@ -1,6 +1,6 @@
 import { registerBuiltinHandlers } from "./builtin-handlers.js";
 import { startHeartbeatLoop } from "./heartbeat.js";
-import { getJobsPauseState } from "./pause-state.js";
+import { getJobsPauseState, startPauseSyncLoop, type PauseSyncLoopHandle } from "./pause-state.js";
 import { PgBossAdapter } from "./pg-boss-adapter.js";
 import { setJobQueue } from "./queue.js";
 import { getLogger } from "../observability/logger.js";
@@ -8,6 +8,7 @@ import { getLogger } from "../observability/logger.js";
 let workerAdapter: PgBossAdapter | null = null;
 let producerAdapter: PgBossAdapter | null = null;
 let heartbeatHandle: { stop(): Promise<void> } | null = null;
+let pauseSyncHandle: PauseSyncLoopHandle | null = null;
 
 export async function startWorker(
   connectionString: string,
@@ -61,6 +62,13 @@ export async function startWorker(
   if (heartbeatOpt !== false) {
     const meta = typeof heartbeatOpt === "object" ? (heartbeatOpt.meta ?? {}) : {};
     heartbeatHandle = startHeartbeatLoop(meta);
+    // Phase 20.2 — multi-pod pause sync. Each tick reads the
+    // persisted flag and applies any divergence to the local
+    // adapter, so an operator pause on one pod propagates to
+    // the rest within ~30 s. Same gate as the heartbeat — if
+    // the operator opted out of background loops (tests), we
+    // skip this too.
+    pauseSyncHandle = startPauseSyncLoop(workerAdapter);
   }
 }
 
@@ -98,6 +106,15 @@ export async function stopWorker(): Promise<void> {
   if (heartbeatHandle) {
     await heartbeatHandle.stop();
     heartbeatHandle = null;
+  }
+
+  // Phase 20.2 — pause sync interval is just an in-memory
+  // timer; clear it before tearing down the queue so a
+  // late-firing tick doesn't try to call pauseProcessing on a
+  // half-shut-down adapter.
+  if (pauseSyncHandle) {
+    pauseSyncHandle.stop();
+    pauseSyncHandle = null;
   }
 
   await workerAdapter.stop();
