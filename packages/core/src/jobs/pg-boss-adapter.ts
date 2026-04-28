@@ -90,6 +90,15 @@ export class PgBossAdapter implements NxJobQueue {
   async scheduleRecurring(): Promise<void> {
     await this.boss.schedule(toQueueName("system:revisionPrune"), "0 3 * * *", {});
     await this.boss.schedule(toQueueName("system:sessionCleanup"), "0 * * * *", {});
+    // Phase 16.4 — daily digest at 08:00 UTC, weekly digest Mondays
+    // 08:00 UTC. Members opt in via their notification prefs;
+    // the handler short-circuits when nobody matches.
+    await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * *", {
+      cadence: "daily",
+    });
+    await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * 1", {
+      cadence: "weekly",
+    });
   }
 
   getBoss(): PgBoss {
@@ -111,7 +120,11 @@ export class PgBossAdapter implements NxJobQueue {
     const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
     const offset = Math.max(0, options.offset ?? 0);
 
-    const db = (this.boss as unknown as { db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }> } }).db;
+    const db = (
+      this.boss as unknown as {
+        db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }> };
+      }
+    ).db;
     const params: unknown[] = [];
     const where: string[] = [];
     if (options.name) {
@@ -184,7 +197,13 @@ export class PgBossAdapter implements NxJobQueue {
    * by name for stable display.
    */
   async listSchedules(): Promise<NxScheduleSummary[]> {
-    const db = (this.boss as unknown as { db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossScheduleRow[] }> } }).db;
+    const db = (
+      this.boss as unknown as {
+        db: {
+          executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossScheduleRow[] }>;
+        };
+      }
+    ).db;
     const result = await db.executeSql(
       `SELECT name, cron, timezone, data, created_on, updated_on
          FROM pgboss.schedule
@@ -198,7 +217,11 @@ export class PgBossAdapter implements NxJobQueue {
     // can re-enqueue with the same shape. Could be in either
     // pgboss.job (still pending/active/retry) or pgboss.archive
     // (already terminal); UNION handles both.
-    const db = (this.boss as unknown as { db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }> } }).db;
+    const db = (
+      this.boss as unknown as {
+        db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }> };
+      }
+    ).db;
     const result = await db.executeSql(
       `SELECT id, name, state::text AS state, data, retry_count,
               output::text AS output, created_on, started_on, completed_on
@@ -225,11 +248,14 @@ export class PgBossAdapter implements NxJobQueue {
     // pg-boss's cancel API requires the queue name; look it up
     // from pgboss.job. Already-archived (terminal) jobs can't
     // be cancelled, which matches user intuition.
-    const db = (this.boss as unknown as { db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: { name: string }[] }> } }).db;
-    const result = await db.executeSql(
-      `SELECT name FROM pgboss.job WHERE id = $1`,
-      [id],
-    );
+    const db = (
+      this.boss as unknown as {
+        db: {
+          executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: { name: string }[] }>;
+        };
+      }
+    ).db;
+    const result = await db.executeSql(`SELECT name FROM pgboss.job WHERE id = $1`, [id]);
     const row = result.rows?.[0];
     if (!row) {
       throw new Error(`Job ${id} not found or already terminal`);

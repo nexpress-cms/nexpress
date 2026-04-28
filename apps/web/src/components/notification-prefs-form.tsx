@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import type { NxNotificationKindMeta, NxNotificationPrefs } from "@nexpress/core";
+import type { NxDigestCadence, NxNotificationKindMeta, NxNotificationPrefs } from "@nexpress/core";
 
 interface NotificationPrefsFormProps {
   initialPrefs: NxNotificationPrefs;
@@ -10,12 +10,15 @@ interface NotificationPrefsFormProps {
 }
 
 /**
- * Phase 16.3 — checkbox-per-kind form. The persisted shape is a
- * deny list (`disabled: string[]`); the UI flips that to "enabled
- * by default" so a fresh member sees all toggles ON.
+ * Phase 16.3 + 16.4 — checkbox-per-kind form plus a digest
+ * cadence dropdown. Persisted shape: deny list (`disabled:
+ * string[]`) and `digest: "off" | "daily" | "weekly"`. UI flips
+ * deny list to "enabled by default" so a fresh member sees all
+ * toggles ON.
  */
 export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefsFormProps) {
   const [disabled, setDisabled] = useState<Set<string>>(() => new Set(initialPrefs.disabled));
+  const [digest, setDigest] = useState<NxDigestCadence>(initialPrefs.digest);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -42,7 +45,7 @@ export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefs
           "Content-Type": "application/json",
           ...(csrf ? { "X-CSRF-Token": csrf } : {}),
         },
-        body: JSON.stringify({ disabled: Array.from(disabled) }),
+        body: JSON.stringify({ disabled: Array.from(disabled), digest }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
@@ -98,6 +101,42 @@ export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefs
           );
         })}
       </ul>
+
+      <fieldset
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 8,
+          padding: "0.75rem 1rem",
+          margin: 0,
+          display: "grid",
+          gap: "0.5rem",
+        }}
+      >
+        <legend style={{ fontWeight: 600, padding: "0 0.25rem" }}>Email digest</legend>
+        <p style={{ color: "#64748b", fontSize: "0.9rem", margin: 0 }}>
+          Get a batched email of your unread notifications. Off by default.
+        </p>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+          <span>Cadence</span>
+          <select
+            value={digest}
+            onChange={(event) => {
+              setDigest(event.target.value as NxDigestCadence);
+              setSavedAt(null);
+            }}
+            style={{
+              padding: "0.35rem 0.5rem",
+              borderRadius: 6,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+            }}
+          >
+            <option value="off">Off</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+      </fieldset>
 
       {error ? (
         <p style={{ color: "#dc2626", margin: 0 }}>{error}</p>
