@@ -24,6 +24,19 @@ function toQueueName(type: NxJobType): string {
 
 export class PgBossAdapter implements NxJobQueue {
   private readonly boss: PgBoss;
+  /**
+   * Phase 20.2 — every queue we've called `boss.work()` on, plus
+   * the function that re-registers it. We need both because
+   * `pauseProcessing()` calls `boss.offWork(name)` (drops the
+   * worker) and `resumeProcessing()` has to re-call the original
+   * `boss.work(...)` to bring it back. Order is preserved so
+   * resume registers in the same order as start did.
+   */
+  private readonly workRegistrations: Array<{
+    queueName: string;
+    register: () => Promise<void>;
+  }> = [];
+  private paused = false;
 
   constructor(connectionString: string, options?: ConstructorOptions) {
     this.boss = new PgBoss({ connectionString, ...options });
@@ -58,28 +71,32 @@ export class PgBossAdapter implements NxJobQueue {
     for (const [type, handler] of getAllJobHandlers()) {
       const queueName = toQueueName(type);
       await this.boss.createQueue(queueName);
-      await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
-        for (const job of jobs) {
-          try {
-            await handler(job.data);
-          } catch (error) {
-            // Surface job failures to logs + the configured error reporter.
-            // Re-throw so pg-boss applies its retry/dead-letter policy.
-            const err = error instanceof Error ? error : new Error(String(error));
-            getLogger().error("Job handler threw", {
-              type,
-              jobId: job.id,
-              error: err.message,
-              stack: err.stack,
-            });
-            void reportError(err, {
-              tags: { source: "worker", jobType: type },
-              extra: { jobId: job.id },
-            });
-            throw err;
+      const register = async () => {
+        await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
+          for (const job of jobs) {
+            try {
+              await handler(job.data);
+            } catch (error) {
+              // Surface job failures to logs + the configured error reporter.
+              // Re-throw so pg-boss applies its retry/dead-letter policy.
+              const err = error instanceof Error ? error : new Error(String(error));
+              getLogger().error("Job handler threw", {
+                type,
+                jobId: job.id,
+                error: err.message,
+                stack: err.stack,
+              });
+              void reportError(err, {
+                tags: { source: "worker", jobType: type },
+                extra: { jobId: job.id },
+              });
+              throw err;
+            }
           }
-        }
-      });
+        });
+      };
+      this.workRegistrations.push({ queueName, register });
+      await register();
     }
 
     // Phase 19 — register one queue + worker per plugin schedule.
@@ -92,32 +109,70 @@ export class PgBossAdapter implements NxJobQueue {
     for (const schedule of getRegisteredPluginSchedules()) {
       const queueName = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
       await this.boss.createQueue(queueName);
-      await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
-        for (const job of jobs) {
-          try {
-            await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
-          } catch (error) {
-            const err = error instanceof Error ? error : new Error(String(error));
-            getLogger().error("Plugin scheduled task threw", {
-              pluginId: schedule.pluginId,
-              taskId: schedule.taskId,
-              jobId: job.id,
-              error: err.message,
-              stack: err.stack,
-            });
-            void reportError(err, {
-              tags: {
-                source: "worker",
+      const register = async () => {
+        await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
+          for (const job of jobs) {
+            try {
+              await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
+            } catch (error) {
+              const err = error instanceof Error ? error : new Error(String(error));
+              getLogger().error("Plugin scheduled task threw", {
                 pluginId: schedule.pluginId,
                 taskId: schedule.taskId,
-              },
-              extra: { jobId: job.id },
-            });
-            throw err;
+                jobId: job.id,
+                error: err.message,
+                stack: err.stack,
+              });
+              void reportError(err, {
+                tags: {
+                  source: "worker",
+                  pluginId: schedule.pluginId,
+                  taskId: schedule.taskId,
+                },
+                extra: { jobId: job.id },
+              });
+              throw err;
+            }
           }
-        }
-      });
+        });
+      };
+      this.workRegistrations.push({ queueName, register });
+      await register();
     }
+  }
+
+  /**
+   * Phase 20.2 — drop every registered worker so the boss stops
+   * claiming new jobs. The pg-boss connection stays open; the
+   * producer can keep enqueueing while paused. In-flight jobs
+   * picked up before pause finish normally because pg-boss only
+   * cancels the polling loop, not the fetch already in flight.
+   */
+  async pauseProcessing(): Promise<void> {
+    if (this.paused) return;
+    for (const { queueName } of this.workRegistrations) {
+      await this.boss.offWork(queueName);
+    }
+    this.paused = true;
+    getLogger().info("Job processing paused", {
+      queues: this.workRegistrations.length,
+    });
+  }
+
+  /** Phase 20.2 — re-run every captured `boss.work()` registration. Idempotent. */
+  async resumeProcessing(): Promise<void> {
+    if (!this.paused) return;
+    for (const { register } of this.workRegistrations) {
+      await register();
+    }
+    this.paused = false;
+    getLogger().info("Job processing resumed", {
+      queues: this.workRegistrations.length,
+    });
+  }
+
+  isProcessingPaused(): boolean {
+    return this.paused;
   }
 
   async stop(): Promise<void> {
