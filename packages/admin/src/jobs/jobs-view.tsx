@@ -16,18 +16,8 @@ import {
 
 import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.js";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../ui/tabs.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -65,14 +55,7 @@ interface ScheduleListResponse {
 interface JobSummary {
   id: string;
   name: string;
-  state:
-    | "created"
-    | "active"
-    | "completed"
-    | "failed"
-    | "retry"
-    | "cancelled"
-    | "expired";
+  state: "created" | "active" | "completed" | "failed" | "retry" | "cancelled" | "expired";
   data: unknown;
   retryCount?: number;
   output?: string | null;
@@ -85,6 +68,20 @@ interface JobListResponse {
   supported: boolean;
   jobs?: JobSummary[];
   total?: number;
+}
+
+interface JobLogEntry {
+  id: string;
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  context: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+interface JobLogsResponse {
+  jobId: string;
+  total: number;
+  entries: JobLogEntry[];
 }
 
 type StateTab = "pending" | "active" | "completed" | "failed";
@@ -147,10 +144,7 @@ export function JobsView() {
       setSupported(supportedFlags.every(Boolean));
       const merged = results.flatMap((r) => r?.jobs ?? []);
       // Sort newest first across the merged buckets.
-      merged.sort(
-        (a, b) =>
-          new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime(),
-      );
+      merged.sort((a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime());
       setJobs(merged);
     } catch {
       setError("Unable to load jobs.");
@@ -164,9 +158,7 @@ export function JobsView() {
     setError(null);
     try {
       const res = await nxFetch("/api/admin/jobs/schedules");
-      const body = (await res.json().catch(() => null)) as
-        | ScheduleListResponse
-        | null;
+      const body = (await res.json().catch(() => null)) as ScheduleListResponse | null;
       setSchedulesSupported(body?.supported ?? false);
       setSchedules(body?.schedules ?? []);
       setHandlers(body?.handlers ?? []);
@@ -186,9 +178,10 @@ export function JobsView() {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const body = (await res.json().catch(() => null)) as
-        | { id?: string; error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        id?: string;
+        error?: { message?: string };
+      } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Unable to retry job.");
         return;
@@ -210,9 +203,7 @@ export function JobsView() {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const body = (await res.json().catch(() => null)) as
-        | { error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Unable to cancel job.");
         return;
@@ -234,14 +225,12 @@ export function JobsView() {
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const body = (await res.json().catch(() => null)) as
-        | {
-            retried?: number;
-            failed?: number;
-            remaining?: number;
-            error?: { message?: string };
-          }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        retried?: number;
+        failed?: number;
+        remaining?: number;
+        error?: { message?: string };
+      } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Bulk retry failed.");
         return;
@@ -261,12 +250,10 @@ export function JobsView() {
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
             Operations
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Background jobs
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Background jobs</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Inspect, retry, and cancel queued jobs. Failed jobs surface their
-            last error inline so you can patch the upstream issue and re-run.
+            Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so
+            you can patch the upstream issue and re-run.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -321,10 +308,9 @@ export function JobsView() {
       {!supported ? (
         <Card className="border-amber-300/60 bg-amber-50">
           <CardContent className="pt-6 text-sm text-amber-900">
-            <strong className="font-semibold">Background jobs disabled.</strong>{" "}
-            This site is running without pg-boss. Set{" "}
-            <code>NX_ENABLE_JOBS=1</code> and restart the worker to surface
-            queued jobs here.
+            <strong className="font-semibold">Background jobs disabled.</strong> This site is
+            running without pg-boss. Set <code>NX_ENABLE_JOBS=1</code> and restart the worker to
+            surface queued jobs here.
           </CardContent>
         </Card>
       ) : null}
@@ -335,11 +321,7 @@ export function JobsView() {
         </div>
       ) : null}
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => setTab(value as Tab)}
-        className="space-y-6"
-      >
+      <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="space-y-6">
         <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-5">
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
@@ -408,8 +390,8 @@ function SchedulesPanel({
               <CalendarClock className="h-4 w-4" /> Cron schedules
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Recurring jobs registered via <code>boss.schedule()</code>. Reads
-              from <code>pgboss.schedule</code>.
+              Recurring jobs registered via <code>boss.schedule()</code>. Reads from{" "}
+              <code>pgboss.schedule</code>.
             </p>
           </CardHeader>
           <CardContent className="p-0">
@@ -423,9 +405,7 @@ function SchedulesPanel({
                 Loading…
               </p>
             ) : schedules.length === 0 ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">
-                No schedules registered.
-              </p>
+              <p className="px-5 pb-5 text-sm text-muted-foreground">No schedules registered.</p>
             ) : (
               <ul className="divide-y divide-border/60">
                 {schedules.map((schedule) => (
@@ -457,22 +437,17 @@ function SchedulesPanel({
               <Code className="h-4 w-4" /> Registered handlers
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Job types that have a worker handler registered. Enqueues to other
-              types will sit in the queue with no consumer.
+              Job types that have a worker handler registered. Enqueues to other types will sit in
+              the queue with no consumer.
             </p>
           </CardHeader>
           <CardContent className="p-0">
             {handlers.length === 0 ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">
-                No handlers registered yet.
-              </p>
+              <p className="px-5 pb-5 text-sm text-muted-foreground">No handlers registered yet.</p>
             ) : (
               <ul className="divide-y divide-border/60">
                 {handlers.map((name) => (
-                  <li
-                    key={name}
-                    className="px-5 py-2 font-mono text-xs text-foreground"
-                  >
+                  <li key={name} className="px-5 py-2 font-mono text-xs text-foreground">
                     {name}
                   </li>
                 ))}
@@ -487,13 +462,7 @@ function SchedulesPanel({
   );
 }
 
-function EnqueuePanel({
-  handlers,
-  onEnqueued,
-}: {
-  handlers: string[];
-  onEnqueued: () => void;
-}) {
+function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued: () => void }) {
   const [type, setType] = useState<string>("");
   const [dataText, setDataText] = useState<string>("{}");
   const [busy, setBusy] = useState<boolean>(false);
@@ -520,9 +489,10 @@ function EnqueuePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, data }),
       });
-      const body = (await res.json().catch(() => null)) as
-        | { id?: string; error?: { message?: string } }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        id?: string;
+        error?: { message?: string };
+      } | null;
       if (!res.ok) {
         setError(body?.error?.message ?? "Enqueue failed.");
         return;
@@ -543,9 +513,8 @@ function EnqueuePanel({
           <Play className="h-4 w-4" /> Run a handler
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Enqueue a one-off job for any registered handler. Useful for ad-hoc
-          re-runs (e.g. <code>media:cleanup</code>) without dropping into a
-          shell.
+          Enqueue a one-off job for any registered handler. Useful for ad-hoc re-runs (e.g.{" "}
+          <code>media:cleanup</code>) without dropping into a shell.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -589,20 +558,12 @@ function EnqueuePanel({
             />
           </div>
         </div>
-        {error ? (
-          <p className="text-xs text-destructive">{error}</p>
-        ) : null}
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
         {message ? (
-          <p className="text-xs text-emerald-700 dark:text-emerald-400">
-            {message}
-          </p>
+          <p className="text-xs text-emerald-700 dark:text-emerald-400">{message}</p>
         ) : null}
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            disabled={busy || !type}
-            onClick={() => void submit()}
-          >
+          <Button size="sm" disabled={busy || !type} onClick={() => void submit()}>
             {busy ? (
               <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
             ) : (
@@ -669,9 +630,7 @@ function JobList({
                     </span>
                   ) : null}
                 </div>
-                <p className="font-mono text-[11px] text-muted-foreground">
-                  {job.id}
-                </p>
+                <p className="font-mono text-[11px] text-muted-foreground">{job.id}</p>
                 <p className="text-[11px] text-muted-foreground">
                   Created {new Date(job.createdOn).toLocaleString()}
                   {job.completedOn
@@ -725,6 +684,7 @@ function JobList({
                 {JSON.stringify(job.data, null, 2)}
               </pre>
             </details>
+            <JobLogsSection jobId={job.id} />
           </div>
         ))}
       </CardContent>
@@ -732,11 +692,152 @@ function JobList({
   );
 }
 
+/**
+ * Phase 20.3b — collapsible logs panel per job. Lazy-fetches
+ * `/api/admin/jobs/{id}/logs` only when the operator expands the
+ * row, so the jobs list itself stays cheap. Reuses the pattern of
+ * the existing "Payload" details element above so the row's
+ * visual weight stays consistent.
+ *
+ * Each entry renders as `[HH:mm:ss.SSS] [level] message`. Context
+ * payloads (when present) collapse into a nested `<details>`
+ * summary so wide objects don't blow out the row's width.
+ */
+function JobLogsSection({ jobId }: { jobId: string }) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "loaded"; total: number; entries: JobLogEntry[] }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
+  useEffect(() => {
+    if (!open || state.kind !== "idle") return;
+    let cancelled = false;
+    setState({ kind: "loading" });
+    void (async () => {
+      try {
+        const res = await nxFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as JobLogsResponse;
+        if (!cancelled) {
+          setState({ kind: "loaded", total: data.total, entries: data.entries });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setState({
+            kind: "error",
+            message: err instanceof Error ? err.message : "Failed to load logs",
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, jobId, state.kind]);
+
+  return (
+    <details
+      className="text-[11px]"
+      open={open}
+      onToggle={(event) => {
+        const nowOpen = (event.currentTarget as HTMLDetailsElement).open;
+        setOpen(nowOpen);
+        // Self-review fix — reset to idle on collapse so the next
+        // expand re-fetches. Without this, a still-running job's
+        // log stream stays frozen at the first-expand snapshot.
+        if (!nowOpen && state.kind !== "idle") {
+          setState({ kind: "idle" });
+        }
+      }}
+    >
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+        Logs
+        {state.kind === "loaded" ? (
+          <span className="ml-2 text-[10px] opacity-70">
+            ({state.total}
+            {state.entries.length < state.total ? ` · showing ${state.entries.length}` : ""})
+          </span>
+        ) : null}
+      </summary>
+      <div className="mt-1">
+        {state.kind === "loading" ? (
+          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Loading logs…
+          </div>
+        ) : state.kind === "error" ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
+            {state.message}
+          </div>
+        ) : state.kind === "loaded" ? (
+          state.entries.length === 0 ? (
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
+              No log entries for this job.
+            </div>
+          ) : (
+            <ol className="max-h-64 space-y-1 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3 font-mono text-[11px]">
+              {state.entries.map((entry) => (
+                <li key={entry.id} className="flex flex-wrap items-baseline gap-2">
+                  <span className="opacity-60">{formatLogTime(entry.createdAt)}</span>
+                  <LogLevelBadge level={entry.level} />
+                  <span className="break-words whitespace-pre-wrap">{entry.message}</span>
+                  {entry.context && Object.keys(entry.context).length > 0 ? (
+                    <details className="ml-6 w-full">
+                      <summary className="cursor-pointer opacity-70 hover:opacity-100">
+                        context
+                      </summary>
+                      <pre className="mt-1 overflow-auto rounded border border-border/40 bg-background/40 p-2 text-[10px]">
+                        {JSON.stringify(entry.context, null, 2)}
+                      </pre>
+                    </details>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          )
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+const LOG_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+  hour12: false,
+});
+
+function formatLogTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return LOG_TIME_FORMATTER.format(date);
+}
+
+function LogLevelBadge({ level }: { level: JobLogEntry["level"] }) {
+  const tone =
+    level === "error"
+      ? "bg-destructive/10 text-destructive"
+      : level === "warn"
+        ? "bg-amber-100 text-amber-900"
+        : level === "debug"
+          ? "bg-muted text-muted-foreground"
+          : "bg-blue-50 text-blue-900";
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${tone}`}>
+      {level}
+    </span>
+  );
+}
+
 function StateBadge({ state }: { state: JobSummary["state"] }) {
-  const map: Record<
-    JobSummary["state"],
-    { label: string; cls: string; Icon: typeof Check }
-  > = {
+  const map: Record<JobSummary["state"], { label: string; cls: string; Icon: typeof Check }> = {
     created: {
       label: "Pending",
       cls: "bg-blue-100 text-blue-900",
