@@ -20,10 +20,18 @@ export default defineConfig({
     // Set env vars (NX_SECRET, etc.) before any test module's imports are
     // evaluated — nexpress.config.ts validates them at module load time.
     setupFiles: ["./tests/setup-env.ts"],
-    // DB-touching suites serialise themselves via the harness, but multiple
-    // files running in parallel would still share the same test DB. Force
-    // single-file execution so truncate-between-tests stays correct.
-    fileParallelism: false,
+    // Builds the migrated `${TEST_DATABASE_URL}_template` once before any
+    // worker forks; workers then lazily clone it into per-worker `_wN`
+    // databases. Lets fileParallelism: true stay safe — see
+    // packages/core/src/integration/setup.ts for the wider rationale.
+    globalSetup: ["./tests/global-setup.ts"],
+    fileParallelism: true,
+    pool: "forks",
+    // Reuse module evaluation across files in the same fork. The harness
+    // already truncates between tests, and `migrated` / pool singletons
+    // are deliberately process-wide; sharing them avoids re-importing
+    // `@nexpress/core` (and its transitive graph) on every file.
+    isolate: false,
     testTimeout: 30_000,
   },
 });

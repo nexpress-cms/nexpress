@@ -22,7 +22,15 @@ import {
 // eslint-disable-next-line import-x/no-relative-packages
 import { registerTestCollections } from "../../../packages/core/src/integration/fixtures.js";
 
-import { hashPassword, nxUsers, signToken } from "@nexpress/core";
+import {
+  hashPassword,
+  nxMemberSessions,
+  nxMembers,
+  nxUsers,
+  signMemberToken,
+  signToken,
+} from "@nexpress/core";
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 
 import { ensureCoreServices } from "@/lib/init-core";
@@ -39,6 +47,22 @@ export {
   registerTestCollections,
 };
 
+/**
+ * Speedup A — Argon2 is intentionally slow (~30ms / hash on a
+ * dev laptop). Test seeds use the same default password every
+ * call, so we hash it ONCE per worker and reuse the digest for
+ * every subsequent seed. Tests that need a different password
+ * still pass `overrides.password` and pay the per-call hash
+ * cost; that's the rare branch.
+ */
+const DEFAULT_TEST_PASSWORD = "password123456";
+let cachedDefaultHash: string | null = null;
+async function getDefaultPasswordHash(): Promise<string> {
+  if (cachedDefaultHash !== null) return cachedDefaultHash;
+  cachedDefaultHash = await hashPassword(DEFAULT_TEST_PASSWORD);
+  return cachedDefaultHash;
+}
+
 export interface TestUserSession {
   userId: string;
   email: string;
@@ -51,18 +75,28 @@ export interface TestUserSession {
  * Seed a user and mint a valid access token for it. Bypasses `/api/auth/login`
  * because that path has its own middleware stack — these helpers exist to
  * test the downstream routes, not auth itself.
+ *
+ * Speedup A — uses the shared default-password hash when the
+ * caller doesn't override it, so 100+ tests don't each pay
+ * Argon2's ~30ms cost.
  */
 export async function seedUser(
-  overrides: Partial<{ email: string; password: string; name: string; role: TestUserSession["role"] }> = {},
+  overrides: Partial<{
+    email: string;
+    password: string;
+    name: string;
+    role: TestUserSession["role"];
+  }> = {},
 ): Promise<TestUserSession> {
   ensureCoreServices();
   const db = await getTestDb();
-  const password = overrides.password ?? "password123456";
-  const hash = await hashPassword(password);
+  const hash = overrides.password
+    ? await hashPassword(overrides.password)
+    : await getDefaultPasswordHash();
   const [row] = await db
     .insert(nxUsers)
     .values({
-      email: overrides.email ?? `user-${Date.now()}@example.com`,
+      email: overrides.email ?? `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
       password: hash,
       name: overrides.name ?? "Test User",
       role: overrides.role ?? "admin",
@@ -88,6 +122,96 @@ export async function seedUser(
     role: row.role as TestUserSession["role"],
     accessToken,
     csrfToken,
+  };
+}
+
+export interface TestMemberSession {
+  memberId: string;
+  email: string;
+  handle: string;
+  sessionCookie: string;
+  csrfCookie: string;
+}
+
+/**
+ * Speedup A — direct-insert member seed. Replaces the
+ * register → verify → login endpoint chain that was duplicated
+ * across most member-touching test files (~6 DB writes + 2
+ * Argon2 ops + 3 route invocations). This helper:
+ *
+ *   1. Inserts the `nx_members` row directly with the cached
+ *      default-password hash and `status='active' / emailVerified=true`.
+ *   2. Mints an access JWT via `signMemberToken` (the same
+ *      helper the login route uses).
+ *   3. Inserts an `nx_member_sessions` row hashing the access
+ *      token, mirroring what `setMemberAuthCookies` does at
+ *      login time.
+ *
+ * The result is a session object the existing `memberRequest`
+ * helpers can stamp into cookies as if the member had logged
+ * in normally. Tests that specifically exercise the
+ * register / verify / login flow keep using the endpoints; we
+ * only short-circuit "I just need a logged-in member."
+ */
+export async function seedActiveMember(
+  overrides: Partial<{
+    handle: string;
+    email: string;
+    displayName: string;
+  }> = {},
+): Promise<TestMemberSession> {
+  ensureCoreServices();
+  const db = await getTestDb();
+  const handle =
+    overrides.handle ??
+    `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+  const email = overrides.email ?? `${handle}@example.com`;
+  const displayName = overrides.displayName ?? handle;
+  const hash = await getDefaultPasswordHash();
+
+  const [memberRow] = (await db
+    .insert(nxMembers)
+    .values({
+      email,
+      password: hash,
+      handle,
+      displayName,
+      emailVerified: true,
+      status: "active",
+    })
+    .returning({
+      id: nxMembers.id,
+      handle: nxMembers.handle,
+      email: nxMembers.email,
+      tokenVersion: nxMembers.tokenVersion,
+    })) as Array<{ id: string; handle: string; email: string; tokenVersion: number }>;
+
+  if (!memberRow) throw new Error("Failed to seed member");
+
+  const accessToken = await signMemberToken(
+    { id: memberRow.id, tokenVersion: memberRow.tokenVersion },
+    TEST_JWT_SECRET,
+  );
+
+  // Mirror `setMemberAuthCookies`: the session row stores a
+  // SHA-256 of the JWT so a leaked cookie alone (without the
+  // hash in the DB) is rejected at refresh time.
+  const tokenHash = createHash("sha256").update(accessToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await db.insert(nxMemberSessions).values({
+    memberId: memberRow.id,
+    tokenHash,
+    expiresAt,
+  });
+
+  const csrfCookie = `csrf-${Math.random().toString(36).slice(2)}`;
+
+  return {
+    memberId: memberRow.id,
+    email: memberRow.email,
+    handle: memberRow.handle,
+    sessionCookie: accessToken,
+    csrfCookie,
   };
 }
 
