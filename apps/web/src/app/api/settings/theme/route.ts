@@ -21,7 +21,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isValidTheme(value: unknown): value is NxThemeTokens {
-  return isRecord(value) && isRecord(value.colors) && isRecord(value.typography) && isRecord(value.shape);
+  return (
+    isRecord(value) && isRecord(value.colors) && isRecord(value.typography) && isRecord(value.shape)
+  );
 }
 
 export async function GET(_request: NextRequest) {
@@ -77,7 +79,7 @@ export async function PUT(request: NextRequest) {
     try {
       const { revalidatePath, revalidateTag } = await import("next/cache");
       const { themeCacheTag } = await import("@nexpress/next");
-      revalidateTag(themeCacheTag(siteId));
+      revalidateTag(themeCacheTag(siteId), "default");
       revalidatePath("/", "layout");
     } catch {
       // Swallow — see active-theme route's matching catch.

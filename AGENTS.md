@@ -92,7 +92,7 @@ Route groups:
 
 - `(site)` — public site. Catch-all `[[...slug]]` renders pages from the content service.
 - `(admin)/admin` — admin UI (Radix + Tailwind v4 via `@nexpress/admin`). Split into `login/` and `(protected)/`.
-- `api/` — REST endpoints. Rate limiting + security headers applied in `src/middleware.ts` (in-memory per-IP buckets, per-path-pattern limits).
+- `api/` — REST endpoints. Rate limiting + security headers applied in `src/proxy.ts` (in-memory per-IP buckets, per-path-pattern limits). The file is the Next 16 rename of the legacy `middleware.ts` convention; behavior is identical.
 
 Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` that can be bumped to invalidate. CSRF is enforced on state-changing endpoints via `verifyCsrf`.
 
@@ -131,7 +131,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 | Add admin UI primitive                           | `packages/admin/src/ui/`                                | shadcn pattern: Radix + cva + cn()                 |
 | Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`       | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin). |
 | Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts` | JWT sign/verify in core; cookie helpers in next    |
-| Change middleware (rate limits, CSP)             | `apps/web/src/middleware.ts`                            | In-memory rate limiter, security headers           |
+| Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                 | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`) |
 | Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory        |
 | Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | nxUsers, nxMedia, nxRevisions, nxSettings          |
 | Scaffold templates (create-nexpress)             | `packages/cli/src/templates.ts`                         | 1664 lines of string templates                     |
