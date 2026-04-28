@@ -25,6 +25,15 @@ export async function GET(request: NextRequest) {
     const targetId = params.get("targetId")?.trim();
     const actorUserId = params.get("actorUserId")?.trim();
     const actorMemberId = params.get("actorMemberId")?.trim();
+    const action = params.get("action")?.trim();
+    const sinceRaw = params.get("since");
+    const untilRaw = params.get("until");
+    const since = sinceRaw ? new Date(sinceRaw) : null;
+    const until = untilRaw ? new Date(untilRaw) : null;
+    const validSince =
+      since && !Number.isNaN(since.getTime()) ? since : undefined;
+    const validUntil =
+      until && !Number.isNaN(until.getTime()) ? until : undefined;
     const limit = parsePositiveInt(params.get("limit"), 50, 200);
     const page = parsePositiveInt(params.get("page"), 1, 10_000);
     const offset = (page - 1) * limit;
@@ -34,6 +43,9 @@ export async function GET(request: NextRequest) {
       targetId: targetId || undefined,
       actorUserId: actorUserId || undefined,
       actorMemberId: actorMemberId || undefined,
+      action: action || undefined,
+      ...(validSince ? { since: validSince } : {}),
+      ...(validUntil ? { until: validUntil } : {}),
       limit,
       offset,
     });
