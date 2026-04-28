@@ -2,9 +2,10 @@ import { defineConfig } from "vitest/config";
 
 /**
  * Integration-test config, invoked via `pnpm test:integration`. Picks up
- * `*.integration.test.ts` files only and runs them sequentially so tests
- * that share tables don't step on each other. Unit tests live under the
- * default `vitest run` and use a separate shape.
+ * `*.integration.test.ts` files only. Each fork lazily clones a
+ * pre-migrated template DB into its own `_wN` database (see
+ * src/integration/setup.ts), so fileParallelism stays safe. Unit tests
+ * live under the default `vitest run` and use a separate shape.
  */
 export default defineConfig({
   test: {
@@ -12,11 +13,13 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    fileParallelism: true,
+    // Reuse module evaluation across files in the same fork. setup.ts
+    // singletons (pool, db, migrated) are deliberately process-wide so
+    // sharing them is correct — no need to repay the `@nexpress/core`
+    // import cost on every file.
+    isolate: false,
+    globalSetup: ["./src/integration/global-setup.ts"],
     // Tests skip themselves when TEST_DATABASE_URL isn't set, so running
     // without Docker is non-fatal.
     env: {

@@ -104,7 +104,7 @@ describe("revalidateCollection — site-scoped tags (Phase 15.10)", () => {
     // microtask before assertion.
     await Promise.resolve();
     await Promise.resolve();
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap:acme");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap:acme", "default");
   });
 
   it("skips {siteId} tags when the resolver returns null (still emits global tags)", async () => {
@@ -122,8 +122,11 @@ describe("revalidateCollection — site-scoped tags (Phase 15.10)", () => {
     );
     await Promise.resolve();
     await Promise.resolve();
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap");
-    expect(revalidateTag).not.toHaveBeenCalledWith("nx:sitemap:{siteId}");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
+    expect(revalidateTag).not.toHaveBeenCalledWith(
+      "nx:sitemap:{siteId}",
+      "default",
+    );
     // Confirm no leftover {siteId} placeholder snuck through.
     const calls = vi.mocked(revalidateTag).mock.calls.map((c) => c[0]);
     expect(calls.every((c) => !c.includes("{siteId}"))).toBe(true);
@@ -150,8 +153,8 @@ describe("revalidateCollection — tag bust (Phase 14.1)", () => {
       "posts",
       { slug: "x" },
     );
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap");
-    expect(revalidateTag).toHaveBeenCalledWith("nx:feed:posts");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:feed:posts", "default");
   });
 
   it("expands {slug} placeholders inside tag templates too", () => {
@@ -161,7 +164,10 @@ describe("revalidateCollection — tag bust (Phase 14.1)", () => {
       "posts",
       { slug: "hello-world" },
     );
-    expect(revalidateTag).toHaveBeenCalledWith("nx:posts:hello-world");
+    expect(revalidateTag).toHaveBeenCalledWith(
+      "nx:posts:hello-world",
+      "default",
+    );
   });
 
   it("skips slug-templated tags when the doc has no slug (mirrors path behavior)", () => {
@@ -171,7 +177,7 @@ describe("revalidateCollection — tag bust (Phase 14.1)", () => {
       "posts",
       null,
     );
-    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap");
+    expect(revalidateTag).toHaveBeenCalledWith("nx:sitemap", "default");
     expect(revalidateTag).toHaveBeenCalledTimes(1);
   });
 });
