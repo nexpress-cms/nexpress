@@ -41,6 +41,14 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000 },
   // Member-side report submissions — keep tight to discourage report-spam.
   { pattern: /^\/api\/reports(?:\/|$)/, limit: 10, windowMs: 60_000 },
+  // Phase 20.1 — job actions that do real work or bulk fan-out get
+  // tighter limits than the general /api/admin/ bucket. Each
+  // retry-all call fires up to 200 retries; enqueue runs an
+  // arbitrary registered handler. List these ABOVE the general
+  // rule below — first-match wins in checkRateLimit.
+  { pattern: /^\/api\/admin\/jobs\/retry-all/, limit: 5, windowMs: 60_000 },
+  { pattern: /^\/api\/admin\/jobs\/enqueue/, limit: 10, windowMs: 60_000 },
+  { pattern: /^\/api\/admin\/jobs\/[^/]+\/retry/, limit: 30, windowMs: 60_000 },
   // Staff moderation surface (queue browsing, action buttons in admin).
   { pattern: /^\/api\/admin\//, limit: 60, windowMs: 60_000 },
   // Bearer-token-protected cron triggers. Rate-limit on top of the token so
