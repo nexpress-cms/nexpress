@@ -109,7 +109,12 @@ function emit(rule: CollectionRevalidationRule, ctx: SubstituteContext): void {
     const target = substitute(rawTag, ctx);
     if (!target) continue;
     try {
-      revalidateTag(target);
+      // Next 16 made `revalidateTag` two-arg: `(tag, profile)`.
+      // `"default"` matches the implicit profile our
+      // `unstable_cache` wrappers use (no explicit `cacheLife`),
+      // so the invalidation reaches every cached entry tagged
+      // with `target`.
+      revalidateTag(target, "default");
     } catch (error) {
       if (process.env.NODE_ENV !== "test") {
         getLogger().warn("revalidateCollection skipped tag (no Next context)", {
@@ -181,12 +186,6 @@ export const defaultRevalidationRules: RevalidationMap = {
   },
   pages: {
     paths: ["/{slug}", "/"],
-    tags: [
-      "nx:pages",
-      "nx:sitemap",
-      "nx:search",
-      "nx:sitemap:{siteId}",
-      "nx:search:{siteId}",
-    ],
+    tags: ["nx:pages", "nx:sitemap", "nx:search", "nx:sitemap:{siteId}", "nx:search:{siteId}"],
   },
 };

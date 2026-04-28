@@ -5,7 +5,7 @@ import {
   COLOR_SCHEME_STORAGE_KEY,
   isColorScheme,
   type NxColorScheme,
-} from "@nexpress/theme";
+} from "@nexpress/theme/client";
 import { useEffect, useState } from "react";
 
 /**
@@ -63,8 +63,7 @@ export function DarkModeToggle() {
   }
 
   const next: NxColorScheme = scheme === "dark" ? "light" : "dark";
-  const label =
-    scheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  const label = scheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
 
   return (
     <button

@@ -270,14 +270,23 @@ async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
     return null;
   }
 
-  const revalidateTag = importedModule.revalidateTag;
+  const revalidateTag = importedModule.revalidateTag as
+    | ((tag: string) => void)
+    | ((tag: string, profile: string) => void);
 
   if (typeof revalidateTag !== "function") {
     return null;
   }
 
+  // Next 16 widened the signature to `(tag, profile)`. Detect
+  // the runtime arity so this helper works against both 15.x
+  // and 16.x without a hard pin: pre-16 ignores extra args.
   return (tag: string) => {
-    revalidateTag(tag);
+    if (revalidateTag.length >= 2) {
+      (revalidateTag as (tag: string, profile: string) => void)(tag, "default");
+    } else {
+      (revalidateTag as (tag: string) => void)(tag);
+    }
   };
 }
 
