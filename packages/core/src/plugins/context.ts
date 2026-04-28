@@ -17,8 +17,14 @@ import {
   getStorageAdapter,
 } from "../media/service.js";
 import { getDb } from "../collections/pipeline.js";
-import { nxPluginStorage, nxPlugins, nxSettings } from "../db/schema/system.js";
+import {
+  NX_GLOBAL_PLUGIN_SITE_ID,
+  nxPluginStorage,
+  nxPlugins,
+  nxSettings,
+} from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
+import { getCurrentSiteId } from "../sites/context.js";
 
 /**
  * Plugin principal used when plugin-initiated operations need an NxAuthUser.
@@ -213,8 +219,15 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     },
 
     storage: {
+      // Phase 17 — every storage call resolves the current
+      // site at call time and uses it as part of the composite
+      // PK `(plugin_id, site_id, key)`. Background workers and
+      // scripts (no site resolver) fall back to the
+      // `_global_` sentinel so legacy single-site callers keep
+      // their existing keyspace.
       async get<T = unknown>(key: string): Promise<T | null> {
         assertCap(pluginId, capabilities, "storage:kv");
+        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
         const now = new Date();
         const rows = await db()
           .select()
@@ -222,6 +235,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           .where(
             and(
               eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.siteId, siteId),
               eq(nxPluginStorage.key, key),
               or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
             ),
@@ -232,38 +246,50 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async set(key: string, value: unknown, opts?: { ttl?: number }): Promise<void> {
         assertCap(pluginId, capabilities, "storage:kv");
+        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
         const expiresAt = opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
         await db()
           .insert(nxPluginStorage)
           .values({
             pluginId,
+            siteId,
             key,
             value,
             expiresAt,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
-            target: [nxPluginStorage.pluginId, nxPluginStorage.key],
+            target: [nxPluginStorage.pluginId, nxPluginStorage.siteId, nxPluginStorage.key],
             set: { value, expiresAt, updatedAt: new Date() },
           });
       },
       async delete(key: string): Promise<void> {
         assertCap(pluginId, capabilities, "storage:kv");
+        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
         await db()
           .delete(nxPluginStorage)
-          .where(and(eq(nxPluginStorage.pluginId, pluginId), eq(nxPluginStorage.key, key)));
+          .where(
+            and(
+              eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.siteId, siteId),
+              eq(nxPluginStorage.key, key),
+            ),
+          );
       },
       async list(prefix?: string): Promise<string[]> {
         assertCap(pluginId, capabilities, "storage:kv");
+        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
         const now = new Date();
         const where = prefix
           ? and(
               eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.siteId, siteId),
               like(nxPluginStorage.key, `${prefix}%`),
               or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
             )
           : and(
               eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.siteId, siteId),
               or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
             );
         const rows = (await db()
@@ -274,6 +300,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async has(key: string): Promise<boolean> {
         assertCap(pluginId, capabilities, "storage:kv");
+        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
         const now = new Date();
         const rows = await db()
           .select({ key: nxPluginStorage.key })
@@ -281,6 +308,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           .where(
             and(
               eq(nxPluginStorage.pluginId, pluginId),
+              eq(nxPluginStorage.siteId, siteId),
               eq(nxPluginStorage.key, key),
               or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
             ),

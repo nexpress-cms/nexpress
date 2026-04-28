@@ -1,4 +1,4 @@
-import { NxForbiddenError, isStaffMod, listAuditEvents } from "@nexpress/core";
+import { NxForbiddenError, hasRole, isStaffMod, listAuditEvents } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -30,13 +30,23 @@ export async function GET(request: NextRequest) {
     const untilRaw = params.get("until");
     const since = sinceRaw ? new Date(sinceRaw) : null;
     const until = untilRaw ? new Date(untilRaw) : null;
-    const validSince =
-      since && !Number.isNaN(since.getTime()) ? since : undefined;
-    const validUntil =
-      until && !Number.isNaN(until.getTime()) ? until : undefined;
+    const validSince = since && !Number.isNaN(since.getTime()) ? since : undefined;
+    const validUntil = until && !Number.isNaN(until.getTime()) ? until : undefined;
     const limit = parsePositiveInt(params.get("limit"), 50, 200);
     const page = parsePositiveInt(params.get("page"), 1, 10_000);
     const offset = (page - 1) * limit;
+
+    // Phase 17 — site scope. By default `listAuditEvents`
+    // filters to the current request's site (resolved by
+    // the multi-site proxy). Admin-role users can pin a
+    // specific site (`siteId=<id>`) or skip the filter
+    // entirely (`siteId=all`) for super-admin cross-tenant
+    // triage. Mods stay confined to their current site.
+    const rawSiteFilter = params.get("siteId")?.trim();
+    let siteIdFilter: string | null | undefined;
+    if (rawSiteFilter && hasRole(user, "admin")) {
+      siteIdFilter = rawSiteFilter === "all" ? null : rawSiteFilter;
+    }
 
     const result = await listAuditEvents({
       targetType: targetType || undefined,
@@ -46,6 +56,7 @@ export async function GET(request: NextRequest) {
       action: action || undefined,
       ...(validSince ? { since: validSince } : {}),
       ...(validUntil ? { until: validUntil } : {}),
+      ...(siteIdFilter !== undefined ? { siteId: siteIdFilter } : {}),
       limit,
       offset,
     });
