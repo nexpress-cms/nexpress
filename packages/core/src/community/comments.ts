@@ -11,6 +11,7 @@ import { getLogger } from "../observability/logger.js";
 import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
+import { extractMentionHandles, fanOutMentionNotifications } from "./mentions.js";
 import { getMutedTargetIds } from "./mutes.js";
 import { createNotification } from "./notifications.js";
 import { getProfanityAdapter } from "./profanity-adapter.js";
@@ -310,6 +311,27 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     });
   }
 
+  // Phase 16.2 — @mention fan-out. Skipped on pending rows (same
+  // reason as the reply notification: don't notify on content the
+  // public can't see yet). Parent author already received
+  // `comment.reply` so we exclude them to avoid two pings for one
+  // comment.
+  if (initialStatus === "visible") {
+    const exclude = new Set<string>();
+    if (parentAuthorId) exclude.add(parentAuthorId);
+    await fanOutMentionNotifications({
+      actorMemberId: input.memberId,
+      kind: "comment.mention",
+      source: input.bodyMd,
+      exclude,
+      payload: {
+        commentId: row.id,
+        targetType: input.targetType,
+        targetId: input.targetId,
+      },
+    });
+  }
+
   return row;
 }
 
@@ -545,6 +567,27 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
         sources: editFlaggedBy,
         profanity: profanityFlag,
         spam: spamFlag,
+      },
+    });
+  }
+
+  // Phase 16.2 — @mention fan-out on edit. Only newly-added handles
+  // notify (delta vs the prior body), so retoggling a single
+  // unrelated word doesn't re-notify the same recipients. Skipped
+  // on edits that flipped the row to `pending` (spam/profanity gate
+  // matches the create-time policy: don't notify on content the
+  // public can't see yet).
+  if (updated.status === "visible") {
+    const previousHandles = new Set(extractMentionHandles(existing.bodyMd));
+    await fanOutMentionNotifications({
+      actorMemberId: input.memberId,
+      kind: "comment.mention",
+      source: input.bodyMd,
+      previousHandles,
+      payload: {
+        commentId: updated.id,
+        targetType: existing.targetType,
+        targetId: existing.targetId,
       },
     });
   }
