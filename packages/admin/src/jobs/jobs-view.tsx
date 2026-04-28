@@ -744,12 +744,24 @@ function JobLogsSection({ jobId }: { jobId: string }) {
     <details
       className="text-[11px]"
       open={open}
-      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+      onToggle={(event) => {
+        const nowOpen = (event.currentTarget as HTMLDetailsElement).open;
+        setOpen(nowOpen);
+        // Self-review fix — reset to idle on collapse so the next
+        // expand re-fetches. Without this, a still-running job's
+        // log stream stays frozen at the first-expand snapshot.
+        if (!nowOpen && state.kind !== "idle") {
+          setState({ kind: "idle" });
+        }
+      }}
     >
       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
         Logs
         {state.kind === "loaded" ? (
-          <span className="ml-2 text-[10px] opacity-70">({state.total})</span>
+          <span className="ml-2 text-[10px] opacity-70">
+            ({state.total}
+            {state.entries.length < state.total ? ` · showing ${state.entries.length}` : ""})
+          </span>
         ) : null}
       </summary>
       <div className="mt-1">
