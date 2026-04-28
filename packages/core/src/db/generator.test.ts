@@ -39,7 +39,7 @@ describe("generateDrizzleSchema", () => {
     ]);
 
     expect(out).toContain('slug: text("slug").notNull()');
-    expect(out).toContain('uniqueIndex("nx_c_posts_slug_idx").on(table.slug)');
+    expect(out).toContain('uniqueIndex("nx_c_posts_site_slug_idx").on(table.siteId, table.slug)');
   });
 
   it("adds a _status draft column when versions.drafts is true", () => {
