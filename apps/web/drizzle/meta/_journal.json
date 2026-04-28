@@ -155,6 +155,13 @@
       "when": 1777339896829,
       "tag": "0021_clear_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1777347403540,
+      "tag": "0022_whole_stick",
+      "breakpoints": true
     }
   ]
 }
