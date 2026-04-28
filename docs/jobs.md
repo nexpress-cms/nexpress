@@ -332,15 +332,19 @@ the endpoint directly if needed.
 
 ## 12. What's Not Built (Yet)
 
-Open follow-ups, in rough order of impact:
-
-- **Per-job logs admin UI** — Phase 20.3a captures logs into
-  `nx_job_logs` (see "Recently closed" below) but the admin
-  view doesn't render them yet. Phase 20.3b will add the
-  panel + `GET /api/admin/jobs/{id}/logs` endpoint.
+The Phase 20 jobs operability sweep closed every original §12
+entry. Add new items here as they surface — keep the list
+honest about what's missing rather than letting it drift.
 
 ### Recently closed
 
+- **Per-job logs admin UI** — Phase 20.3b. Each job row in
+  `/admin/jobs` now has a collapsible "Logs" section that
+  lazy-fetches `GET /api/admin/jobs/{id}/logs` (editor-only,
+  paged via `?limit=` / `?offset=`, default 500 / max 1000).
+  Entries render as `[time] [level] message` with
+  per-entry collapsible context payloads. Empty state shows
+  "No log entries for this job."
 - **Per-job log capture** — Phase 20.3a. `nx_job_logs` table
   - `recordJobLog(level, message, context?)` helper. The
     pg-boss adapter wraps every handler invocation in an
