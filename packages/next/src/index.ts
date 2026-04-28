@@ -36,12 +36,7 @@ export {
   type RevalidationMap,
 } from "./revalidate.js";
 
-export {
-  createBootstrap,
-  type Bootstrap,
-  type BootstrapOptions,
-  type NxDb,
-} from "./bootstrap.js";
+export { createBootstrap, type Bootstrap, type BootstrapOptions, type NxDb } from "./bootstrap.js";
 
 export { toClientCollectionConfig } from "./client-safe.js";
 
@@ -53,3 +48,5 @@ export {
   themeCacheTag,
   navCacheTag,
 } from "./cache.js";
+
+export { resolveAvailableLocales } from "./locale-siblings.js";

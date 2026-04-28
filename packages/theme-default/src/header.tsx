@@ -1,6 +1,7 @@
 import { getI18nConfig } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
-import { getCachedNavigation } from "@nexpress/next";
+import { getCachedNavigation, resolveAvailableLocales } from "@nexpress/next";
+import { headers } from "next/headers";
 
 import { DarkModeToggle } from "./components/dark-mode-toggle.js";
 import { LanguagePicker } from "./components/language-picker.js";
@@ -22,6 +23,23 @@ export async function DefaultHeader() {
   const headerNav = await getCachedNavigation("header");
   const i18n = getI18nConfig();
   const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
+  // Sprint S — read the request path the proxy stamped onto
+  // `x-nx-pathname` so we can resolve which locales actually
+  // publish a translation of this page. Falls back to `null`
+  // (every locale enabled) when the header isn't set, e.g.
+  // during static prerender / unit tests.
+  let availableLocales: string[] | null = null;
+  if (showLanguagePicker) {
+    const headerList = await headers();
+    const pathname = headerList.get("x-nx-pathname");
+    if (pathname) {
+      try {
+        availableLocales = await resolveAvailableLocales(pathname);
+      } catch {
+        availableLocales = null;
+      }
+    }
+  }
 
   return (
     <header className="nx-site-header">
@@ -36,12 +54,7 @@ export async function DefaultHeader() {
             </li>
           ))}
         </ul>
-        <form
-          action="/search"
-          method="GET"
-          role="search"
-          className="nx-site-search"
-        >
+        <form action="/search" method="GET" role="search" className="nx-site-search">
           <label className="sr-only" htmlFor="nx-site-search-input">
             Search
           </label>
@@ -55,7 +68,7 @@ export async function DefaultHeader() {
           />
         </form>
         {showLanguagePicker && i18n ? (
-          <LanguagePicker locales={i18n.locales} />
+          <LanguagePicker locales={i18n.locales} availableLocales={availableLocales ?? undefined} />
         ) : null}
         <DarkModeToggle />
         <MemberStatusWidget />
