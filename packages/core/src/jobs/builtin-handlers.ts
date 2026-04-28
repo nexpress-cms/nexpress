@@ -6,11 +6,7 @@ import {
   type NxJobType,
 } from "../config/types.js";
 import { getEmailAdapter } from "../email/service.js";
-import {
-  buildInviteEmail,
-  buildMemberVerifyEmail,
-  buildResetEmail,
-} from "../email/templates.js";
+import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
 import { registerJobHandler } from "./handlers.js";
 
 interface ContentJobData {
@@ -87,13 +83,13 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("auth:sendPasswordReset", handleAuthSendPasswordReset);
   registerJobHandler("members:sendVerifyEmail", handleMemberSendVerifyEmail);
   registerJobHandler("members:sendPasswordReset", handleMemberSendPasswordReset);
+  registerJobHandler("notifications:sendDigest", handleNotificationsSendDigest);
 }
 
 async function handleContentPublishScheduled(_: unknown): Promise<void> {
   const { publishScheduledDocuments } = await import("../collections/scheduled.js");
   const result = await publishScheduledDocuments();
   if (result.published > 0) {
-     
     console.info(
       `[nexpress] content:publishScheduled flipped ${result.published} document(s)`,
       result.byCollection,
@@ -195,9 +191,7 @@ async function handleAuthSendPasswordReset(data: unknown): Promise<void> {
     resetUrl: payload.resetUrl,
   };
   const template =
-    payload.purpose === "invite"
-      ? buildInviteEmail(templateData)
-      : buildResetEmail(templateData);
+    payload.purpose === "invite" ? buildInviteEmail(templateData) : buildResetEmail(templateData);
 
   await getEmailAdapter().send({
     to: payload.email,
@@ -216,7 +210,8 @@ function asPasswordResetJobData(data: unknown): PasswordResetJobData {
     email: asString(data.email, "email"),
     name: asString(data.name, "name"),
     token: asString(data.token, "token"),
-    siteName: typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
+    siteName:
+      typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
     purpose: asResetPurpose(data.purpose),
     resetUrl: asString(data.resetUrl, "resetUrl"),
   };
@@ -356,9 +351,7 @@ async function handleMemberSendVerifyEmail(data: unknown): Promise<void> {
     displayName: asString(data.displayName, "displayName"),
     verifyUrl: asString(data.verifyUrl, "verifyUrl"),
     siteName:
-      typeof data.siteName === "string" && data.siteName.length > 0
-        ? data.siteName
-        : undefined,
+      typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
   };
   const template = buildMemberVerifyEmail({
     siteName: payload.siteName ?? "your site",
@@ -384,9 +377,7 @@ async function handleMemberSendPasswordReset(data: unknown): Promise<void> {
     displayName: asString(data.displayName, "displayName"),
     resetUrl: asString(data.resetUrl, "resetUrl"),
     siteName:
-      typeof data.siteName === "string" && data.siteName.length > 0
-        ? data.siteName
-        : undefined,
+      typeof data.siteName === "string" && data.siteName.length > 0 ? data.siteName : undefined,
   };
   // Reuse the staff `buildResetEmail` template — copy is identical from
   // the user's POV ("reset your <site> password"). When templating
@@ -402,6 +393,22 @@ async function handleMemberSendPasswordReset(data: unknown): Promise<void> {
     text: template.text,
     html: template.html,
   });
+}
+
+async function handleNotificationsSendDigest(data: unknown): Promise<void> {
+  const cadence =
+    isRecord(data) && (data.cadence === "daily" || data.cadence === "weekly")
+      ? data.cadence
+      : "daily";
+  const siteName = isRecord(data) && typeof data.siteName === "string" ? data.siteName : undefined;
+  const { runDigestSweep } = await import("../community/digest.js");
+  const result = await runDigestSweep({ cadence, siteName });
+
+  console.info(
+    `[nexpress] notifications:sendDigest cadence=${cadence}` +
+      ` considered=${result.considered} sent=${result.sent}` +
+      ` skipped=${result.skipped} failed=${result.failed}`,
+  );
 }
 
 export type { BuiltinJobContext, ContentDeleteJobData, ContentJobData, NxJobType };

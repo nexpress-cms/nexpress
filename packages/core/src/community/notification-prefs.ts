@@ -81,12 +81,43 @@ export function listNotificationKinds(): NxNotificationKindMeta[] {
   return [...builtinKinds, ...dynamicKinds];
 }
 
+export type NxDigestCadence = "off" | "daily" | "weekly";
+
+const DIGEST_CADENCES: readonly NxDigestCadence[] = ["off", "daily", "weekly"] as const;
+
 export interface NxNotificationPrefs {
   /** Kinds the member opted out of. Empty / missing = all kinds enabled. */
   disabled: string[];
+  /**
+   * Phase 16.4 — email digest cadence. `off` (default) disables
+   * the digest. `daily` and `weekly` opt the member into a
+   * batched email of unread notifications, scheduled by the
+   * `notifications:sendDigest` recurring job.
+   */
+  digest: NxDigestCadence;
+  /**
+   * Set when the digest sweep last sent an email to this member.
+   * Used to scope each digest to "unread since the last send" so
+   * members aren't repeatedly emailed about the same row. Stored
+   * as ISO-8601 string in the JSONB blob; `null` for accounts
+   * that have never received a digest.
+   */
+  lastDigestAt: string | null;
 }
 
-const EMPTY_PREFS: NxNotificationPrefs = { disabled: [] };
+const EMPTY_PREFS: NxNotificationPrefs = {
+  disabled: [],
+  digest: "off",
+  lastDigestAt: null,
+};
+
+function normalizeDigest(raw: unknown): NxDigestCadence {
+  return DIGEST_CADENCES.includes(raw as NxDigestCadence) ? (raw as NxDigestCadence) : "off";
+}
+
+function normalizeLastDigestAt(raw: unknown): string | null {
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
 
 function normalizePrefs(raw: unknown): NxNotificationPrefs {
   if (!raw || typeof raw !== "object") return { ...EMPTY_PREFS };
@@ -94,7 +125,11 @@ function normalizePrefs(raw: unknown): NxNotificationPrefs {
   const disabled = Array.isArray(obj.disabled)
     ? obj.disabled.filter((k): k is string => typeof k === "string")
     : [];
-  return { disabled };
+  return {
+    disabled,
+    digest: normalizeDigest(obj.digest),
+    lastDigestAt: normalizeLastDigestAt(obj.lastDigestAt),
+  };
 }
 
 export async function getMemberNotificationPrefs(memberId: string): Promise<NxNotificationPrefs> {
@@ -115,35 +150,53 @@ export interface SetMemberNotificationPrefsInput {
    * `listNotificationKinds()` are accepted; unknown strings
    * raise NxValidationError so a forged client can't bloat the
    * JSONB or hide future framework kinds via a stale list.
+   * Optional — when omitted the existing list is preserved.
    */
-  disabled: string[];
+  disabled?: string[];
+  /**
+   * Phase 16.4 — email digest cadence. Optional; when omitted
+   * the existing setting is preserved. `off` clears the
+   * member's enrollment.
+   */
+  digest?: NxDigestCadence;
 }
 
 export async function setMemberNotificationPrefs(
   input: SetMemberNotificationPrefsInput,
 ): Promise<NxNotificationPrefs> {
   const known = new Set(listNotificationKinds().map((k) => k.kind));
-  const cleaned: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of input.disabled) {
-    if (typeof raw !== "string") {
-      throw new NxValidationError("Invalid input", [
-        { field: "disabled", message: "Each entry must be a string" },
-      ]);
+  let cleanedDisabled: string[] | undefined;
+  if (input.disabled !== undefined) {
+    cleanedDisabled = [];
+    const seen = new Set<string>();
+    for (const raw of input.disabled) {
+      if (typeof raw !== "string") {
+        throw new NxValidationError("Invalid input", [
+          { field: "disabled", message: "Each entry must be a string" },
+        ]);
+      }
+      if (!known.has(raw)) {
+        throw new NxValidationError("Invalid input", [
+          { field: "disabled", message: `Unknown notification kind: ${raw}` },
+        ]);
+      }
+      if (seen.has(raw)) continue;
+      seen.add(raw);
+      cleanedDisabled.push(raw);
     }
-    if (!known.has(raw)) {
-      throw new NxValidationError("Invalid input", [
-        { field: "disabled", message: `Unknown notification kind: ${raw}` },
-      ]);
-    }
-    if (seen.has(raw)) continue;
-    seen.add(raw);
-    cleaned.push(raw);
+  }
+  if (input.digest !== undefined && !DIGEST_CADENCES.includes(input.digest)) {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "digest",
+        message: `digest must be one of: ${DIGEST_CADENCES.join(", ")}`,
+      },
+    ]);
   }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
-  // Read-then-merge so we don't clobber other JSONB keys (digest
-  // cadence in 16.4, future channel toggles, etc.).
+  // Read-then-merge so we don't clobber other JSONB keys
+  // (lastDigestAt, future channel toggles, etc.).
   const [existing] = (await db
     .select({ prefs: nxMembers.notificationPrefs })
     .from(nxMembers)
@@ -151,10 +204,9 @@ export async function setMemberNotificationPrefs(
     .limit(1)) as Array<{ prefs: Record<string, unknown> }>;
   if (!existing) throw new NxNotFoundError("member", input.memberId);
 
-  const merged = {
-    ...(existing.prefs ?? {}),
-    disabled: cleaned,
-  };
+  const merged: Record<string, unknown> = { ...(existing.prefs ?? {}) };
+  if (cleanedDisabled !== undefined) merged.disabled = cleanedDisabled;
+  if (input.digest !== undefined) merged.digest = input.digest;
 
   await db
     .update(nxMembers)
@@ -162,6 +214,30 @@ export async function setMemberNotificationPrefs(
     .where(eq(nxMembers.id, input.memberId));
 
   return normalizePrefs(merged);
+}
+
+/**
+ * Phase 16.4 — bookkeeping helper called by the digest sweep
+ * after a successful email send. Stamps `lastDigestAt` so the
+ * next run scopes its query to the correct window. Read-merge
+ * to preserve other JSONB keys.
+ */
+export async function recordDigestSent(memberId: string, sentAt: Date): Promise<void> {
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const [existing] = (await db
+    .select({ prefs: nxMembers.notificationPrefs })
+    .from(nxMembers)
+    .where(eq(nxMembers.id, memberId))
+    .limit(1)) as Array<{ prefs: Record<string, unknown> }>;
+  if (!existing) return;
+  const merged = {
+    ...(existing.prefs ?? {}),
+    lastDigestAt: sentAt.toISOString(),
+  };
+  await db
+    .update(nxMembers)
+    .set({ notificationPrefs: merged, updatedAt: new Date() })
+    .where(eq(nxMembers.id, memberId));
 }
 
 /**

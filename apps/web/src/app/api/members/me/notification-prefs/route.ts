@@ -40,15 +40,29 @@ export async function PUT(request: NextRequest) {
     requireMemberCsrf(request);
     const body = (await readJsonBody(request)) as Record<string, unknown> | null;
     const disabledRaw = body?.disabled;
-    if (!Array.isArray(disabledRaw)) {
-      throw new NxValidationError("Invalid input", [
-        { field: "disabled", message: "disabled must be an array of strings" },
-      ]);
-    }
-    const prefs = await setMemberNotificationPrefs({
+    const digestRaw = body?.digest;
+
+    const patch: Parameters<typeof setMemberNotificationPrefs>[0] = {
       memberId: member.id,
-      disabled: disabledRaw as string[],
-    });
+    };
+    if (disabledRaw !== undefined) {
+      if (!Array.isArray(disabledRaw)) {
+        throw new NxValidationError("Invalid input", [
+          { field: "disabled", message: "disabled must be an array of strings" },
+        ]);
+      }
+      patch.disabled = disabledRaw as string[];
+    }
+    if (digestRaw !== undefined) {
+      if (digestRaw !== "off" && digestRaw !== "daily" && digestRaw !== "weekly") {
+        throw new NxValidationError("Invalid input", [
+          { field: "digest", message: "digest must be one of: off, daily, weekly" },
+        ]);
+      }
+      patch.digest = digestRaw;
+    }
+
+    const prefs = await setMemberNotificationPrefs(patch);
     return nxSuccessResponse({ prefs });
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));

@@ -533,6 +533,9 @@ export {
   getMemberNotificationPrefs,
   setMemberNotificationPrefs,
   isNotificationKindEnabled,
+  recordDigestSent,
+  buildDigestEmail,
+  runDigestSweep,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -599,5 +602,11 @@ export type {
   FanOutMentionsInput,
   NxNotificationKindMeta,
   NxNotificationPrefs,
+  NxDigestCadence,
   SetMemberNotificationPrefsInput,
+  NxDigestEmailContent,
+  NxDigestNotificationSummary,
+  BuildDigestEmailInput,
+  RunDigestSweepInput,
+  RunDigestSweepResult,
 } from "./community/index.js";
