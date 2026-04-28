@@ -91,6 +91,16 @@ export const nxMembers = pgTable(
     }),
     /** Plugin-extensible bag — preferences, custom profile fields, etc. */
     meta: jsonb("meta").$type<Record<string, unknown>>().default({}).notNull(),
+    /**
+     * Phase 16.3 — per-member notification preferences. Shape:
+     *   { disabled?: string[] }   — kinds the member opted out of
+     *   { digest?: "off"|"daily"|"weekly" }  — email digest cadence (16.4)
+     * Empty default = every kind enabled, no email digest.
+     */
+    notificationPrefs: jsonb("notification_prefs")
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },

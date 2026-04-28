@@ -63,6 +63,16 @@ export async function createNotification(
     if (muted) return null;
   }
 
+  // Phase 16.3 — recipient-controlled kind toggle. Fails open
+  // on read error (transient DB blip shouldn't silently swallow
+  // notifications). Deferred import for the same reason as
+  // mutes.
+  {
+    const { isNotificationKindEnabled } = await import("./notification-prefs.js");
+    const enabled = await isNotificationKindEnabled(input.memberId, input.kind);
+    if (!enabled) return null;
+  }
+
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
     .insert(nxNotifications)
