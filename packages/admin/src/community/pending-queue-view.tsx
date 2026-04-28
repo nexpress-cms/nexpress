@@ -45,6 +45,12 @@ export function PendingQueueView() {
   const [actingOn, setActingOn] = useState<{ row: PendingDocRow; verb: "approve" | "reject" } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Phase: bulk approve / reject. Selection is keyed by
+  // `${collectionSlug}:${id}` because the queue is cross-
+  // collection — a `discussions` row and a `pages` row could
+  // share an id by coincidence.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<"approve" | "reject" | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -68,6 +74,7 @@ export function PendingQueueView() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
@@ -96,6 +103,69 @@ export function PendingQueueView() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function rowKey(row: PendingDocRow): string {
+    return `${row.collectionSlug}:${row.id}`;
+  }
+
+  function toggleOne(row: PendingDocRow): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const key = rowKey(row);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAll(): void {
+    if (selected.size === rows.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(rows.map(rowKey)));
+    }
+  }
+
+  async function runBulk(verb: "approve" | "reject"): Promise<void> {
+    if (selected.size === 0) return;
+    setBulkBusy(verb);
+    setError(null);
+    setMessage(null);
+
+    // Fan out per-row. The existing per-doc endpoints
+    // already record audit events, fire reputation deltas,
+    // and revalidate caches; running them in a loop preserves
+    // every side-effect a single-row click would trigger.
+    // Sequenced (not Promise.all) so a failure halfway
+    // through doesn't cascade — each row's outcome is
+    // independent.
+    const targets = rows.filter((r) => selected.has(rowKey(r)));
+    let ok = 0;
+    let fail = 0;
+    for (const row of targets) {
+      const url =
+        verb === "approve"
+          ? `/api/admin/collections/${row.collectionSlug}/${row.id}/promote`
+          : `/api/collections/${row.collectionSlug}/${row.id}`;
+      const method = verb === "approve" ? "POST" : "DELETE";
+      try {
+        const res = await nxFetch(url, { method });
+        if (res.ok) ok++;
+        else fail++;
+      } catch {
+        fail++;
+      }
+    }
+
+    setMessage(
+      fail === 0
+        ? `${verb === "approve" ? "Approved" : "Rejected"} ${ok} item${ok === 1 ? "" : "s"}.`
+        : `${ok} ${verb}d, ${fail} failed.`,
+    );
+    setSelected(new Set());
+    setBulkBusy(null);
+    await refresh();
   }
 
   return (
@@ -127,6 +197,44 @@ export function PendingQueueView() {
         </div>
       ) : null}
 
+      {selected.size > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/40 px-4 py-3 text-sm">
+          <span>
+            <strong>{selected.size}</strong> selected
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void runBulk("approve")}
+              disabled={bulkBusy !== null}
+            >
+              {bulkBusy === "approve" ? "Approving…" : "Approve all"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => void runBulk("reject")}
+              disabled={bulkBusy !== null}
+            >
+              {bulkBusy === "reject" ? "Rejecting…" : "Reject all"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelected(new Set())}
+              disabled={bulkBusy !== null}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg">Queue</CardTitle>
@@ -136,6 +244,17 @@ export function PendingQueueView() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-muted-foreground">
                 <tr>
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={
+                        rows.length > 0 && selected.size === rows.length
+                      }
+                      onChange={toggleAll}
+                      disabled={loading || rows.length === 0}
+                    />
+                  </th>
                   <th className="px-4 py-3 font-medium">Title</th>
                   <th className="px-4 py-3 font-medium">Collection</th>
                   <th className="px-4 py-3 font-medium">Author</th>
@@ -146,19 +265,28 @@ export function PendingQueueView() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                       Loading…
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                       Nothing pending review.
                     </td>
                   </tr>
                 ) : (
                   rows.map((row) => (
-                    <tr key={`${row.collectionSlug}:${row.id}`} className="border-t border-border/60 align-top">
+                    <tr key={rowKey(row)} className="border-t border-border/60 align-top">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${row.title}`}
+                          checked={selected.has(rowKey(row))}
+                          onChange={() => toggleOne(row)}
+                          disabled={bulkBusy !== null}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <Link
                           href={`/admin/collections/${row.collectionSlug}/${row.id}`}
