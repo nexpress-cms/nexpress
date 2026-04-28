@@ -522,6 +522,12 @@ export {
   isMuted,
   getMutedTargetIds,
   listMutes,
+  MENTION_HANDLE_RE,
+  extractMentionHandles,
+  extractMentionHandlesFromRichText,
+  extractMentionHandlesFromDocData,
+  resolveMentionedMembers,
+  fanOutMentionNotifications,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -584,4 +590,6 @@ export type {
   NxMemberMuteSummary,
   MuteMemberInput,
   ListMutesOptions,
+  NxMentionTarget,
+  FanOutMentionsInput,
 } from "./community/index.js";

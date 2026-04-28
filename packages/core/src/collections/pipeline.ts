@@ -22,15 +22,8 @@ import { getI18nConfig } from "../i18n/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCollectionZodSchema } from "./validation.js";
-import {
-  getCollectionConfig,
-  getCollectionTable,
-  getCollectionRegistration,
-} from "./registry.js";
-import {
-  buildSearchVector,
-  buildWeightedSearchVectorSql,
-} from "./search.js";
+import { getCollectionConfig, getCollectionTable, getCollectionRegistration } from "./registry.js";
+import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import { nxRevisions } from "../db/schema/system.js";
@@ -103,9 +96,7 @@ export function getDb(): NodePgDatabase<Record<string, unknown>> {
  * (revisions) are stored as null when the actor is a member; the
  * audit log captures the actual member id.
  */
-type SaveActor =
-  | { kind: "staff"; user: NxAuthUser }
-  | { kind: "member"; memberId: string };
+type SaveActor = { kind: "staff"; user: NxAuthUser } | { kind: "member"; memberId: string };
 
 function actorUserOrNull(actor: SaveActor): NxAuthUser | null {
   return actor.kind === "staff" ? actor.user : null;
@@ -187,17 +178,11 @@ export async function updateMemberDocument(
   }
   const table = getCollectionTable(collection) as PgTable;
   const dbForGate = getDb() as unknown as DrizzleDatabaseLike;
-  const originalDoc = await getDocumentByIdInternal(
-    dbForGate,
-    table,
-    collection,
-    docId,
-  );
+  const originalDoc = await getDocumentByIdInternal(dbForGate, table, collection, docId);
   if (!originalDoc) {
     throw new NxNotFoundError(collection, docId);
   }
-  const authorId =
-    (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
+  const authorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
   if (authorId !== memberId) {
     throw new NxForbiddenError(collection, "update");
   }
@@ -238,17 +223,33 @@ export async function updateMemberDocument(
     payload: {
       collectionSlug: collection,
       event: "update",
-      ...(moderation.flaggedBy.length > 0
-        ? { sources: moderation.flaggedBy }
-        : {}),
-      ...(moderation.profanityVerdict
-        ? { profanityVerdict: moderation.profanityVerdict }
-        : {}),
-      ...(moderation.spamVerdict
-        ? { spamVerdict: moderation.spamVerdict }
-        : {}),
+      ...(moderation.flaggedBy.length > 0 ? { sources: moderation.flaggedBy } : {}),
+      ...(moderation.profanityVerdict ? { profanityVerdict: moderation.profanityVerdict } : {}),
+      ...(moderation.spamVerdict ? { spamVerdict: moderation.spamVerdict } : {}),
     },
   });
+
+  // Phase 16.2 — @mention fan-out on edit. Only fire for edits
+  // that landed `published` (skip flagged-to-pending edits — same
+  // policy as `comment.mention` on update). Delta the prior
+  // body so toggling unrelated fields doesn't re-notify the same
+  // recipients.
+  const resultStatus = (result.doc as { status?: unknown }).status;
+  if (resultStatus === "published") {
+    const { extractMentionHandlesFromDocData, fanOutMentionNotifications } =
+      await import("../community/mentions.js");
+    const previousHandles = new Set(extractMentionHandlesFromDocData(originalDoc));
+    await fanOutMentionNotifications({
+      actorMemberId: memberId,
+      kind: "document.mention",
+      data,
+      previousHandles,
+      payload: {
+        collectionSlug: collection,
+        documentId: docId,
+      },
+    });
+  }
   return result;
 }
 
@@ -292,8 +293,7 @@ export async function createMemberDocument(
     targetId: "",
   });
   const flaggedBy = moderation.flaggedBy;
-  const spamStatus: NxDocumentStatus =
-    flaggedBy.length > 0 ? "pending" : defaultStatus;
+  const spamStatus: NxDocumentStatus = flaggedBy.length > 0 ? "pending" : defaultStatus;
 
   const memberOptions: NxSaveOptions = { ...(options ?? {}), status: spamStatus };
   const result = await saveDocumentImpl(
@@ -321,12 +321,8 @@ export async function createMemberDocument(
       collectionSlug: collection,
       event: "create",
       ...(flaggedBy.length > 0 ? { sources: flaggedBy } : {}),
-      ...(moderation.profanityVerdict
-        ? { profanityVerdict: moderation.profanityVerdict }
-        : {}),
-      ...(moderation.spamVerdict
-        ? { spamVerdict: moderation.spamVerdict }
-        : {}),
+      ...(moderation.profanityVerdict ? { profanityVerdict: moderation.profanityVerdict } : {}),
+      ...(moderation.spamVerdict ? { spamVerdict: moderation.spamVerdict } : {}),
     },
   });
   // Reputation only credits visible (i.e. `published`) creates.
@@ -339,6 +335,23 @@ export async function createMemberDocument(
       collectionSlug: collection,
       documentId,
       memberId,
+    });
+  }
+
+  // Phase 16.2 — @mention fan-out. Same gate as reputation: only
+  // visible (`published`) creates fire. Pending docs wait on mod
+  // restore so notifications can't surface text the public list
+  // won't render.
+  if (spamStatus === "published") {
+    const { fanOutMentionNotifications } = await import("../community/mentions.js");
+    await fanOutMentionNotifications({
+      actorMemberId: memberId,
+      kind: "document.mention",
+      data,
+      payload: {
+        collectionSlug: collection,
+        documentId,
+      },
     });
   }
   return result;
@@ -387,9 +400,7 @@ async function runMemberDocModeration(
   const { collection, data, memberId, targetId } = input;
   const config = getCollectionConfig(collection);
   const { getSpamAdapter } = await import("../community/spam-adapter.js");
-  const { getProfanityAdapter } = await import(
-    "../community/profanity-adapter.js"
-  );
+  const { getProfanityAdapter } = await import("../community/profanity-adapter.js");
   const { getLogger } = await import("../observability/logger.js");
 
   // Walk every text / textarea / richText field in the patch.
@@ -411,8 +422,7 @@ async function runMemberDocModeration(
       throw new NxValidationError("Invalid input", [
         {
           field: "body",
-          message:
-            verdict.reason ?? "Submission contains prohibited language",
+          message: verdict.reason ?? "Submission contains prohibited language",
         },
       ]);
     }
@@ -424,14 +434,11 @@ async function runMemberDocModeration(
     }
   } catch (err) {
     if (err instanceof NxValidationError) throw err;
-    getLogger().warn(
-      "profanity adapter threw on doc write — treating as pass",
-      {
-        error: err instanceof Error ? err.message : String(err),
-        collection,
-        memberId,
-      },
-    );
+    getLogger().warn("profanity adapter threw on doc write — treating as pass", {
+      error: err instanceof Error ? err.message : String(err),
+      collection,
+      memberId,
+    });
   }
 
   let spamVerdict: MemberDocModerationResult["spamVerdict"] = null;
@@ -566,17 +573,14 @@ async function saveDocumentImpl(
           },
         ]);
       }
-      const requestedGroup = (hookData as { translationGroupId?: unknown })
-        .translationGroupId;
+      const requestedGroup = (hookData as { translationGroupId?: unknown }).translationGroupId;
       const translationGroupId =
         typeof requestedGroup === "string" && requestedGroup.length > 0
           ? requestedGroup
           : randomUUID();
       i18nResolved = { locale, translationGroupId };
     } else {
-      const original = originalDoc as
-        | { locale?: string; translationGroupId?: string }
-        | null;
+      const original = originalDoc as { locale?: string; translationGroupId?: string } | null;
       if (!original?.locale || !original.translationGroupId) {
         throw new Error(
           `i18n collection "${collection}" doc ${docId} is missing locale/translationGroupId. The row predates i18n opt-in; backfill required.`,
@@ -661,7 +665,9 @@ async function saveDocumentImpl(
   // (on update) > "published" default (on create).
   const nextStatus =
     (prepared.mainData.status as string | undefined) ??
-    (operation === "update" ? ((originalDoc?.status as string | undefined) ?? "published") : "published");
+    (operation === "update"
+      ? ((originalDoc?.status as string | undefined) ?? "published")
+      : "published");
   const previousStatus = originalDoc?.status as string | undefined;
   const wasPublished = previousStatus === "published";
   const willBePublished = nextStatus === "published";
@@ -695,10 +701,29 @@ async function saveDocumentImpl(
     });
   }
 
-  const savedDoc = (await db.transaction(async (tx) => {
-    const persistedDoc: Record<string, unknown> = operation === "update"
-      ? await updateMainDocument(tx, table, collection, docId, prepared.mainData, searchVector, config, userForHooks, now)
-      : await createMainDocument(tx, table, prepared.mainData, searchVector, config, userForHooks, now);
+  const savedDoc = await db.transaction(async (tx) => {
+    const persistedDoc: Record<string, unknown> =
+      operation === "update"
+        ? await updateMainDocument(
+            tx,
+            table,
+            collection,
+            docId,
+            prepared.mainData,
+            searchVector,
+            config,
+            userForHooks,
+            now,
+          )
+        : await createMainDocument(
+            tx,
+            table,
+            prepared.mainData,
+            searchVector,
+            config,
+            userForHooks,
+            now,
+          );
     const persistedDocId = getRecordId(persistedDoc);
 
     await syncChildTables(tx, registration.childTables, prepared.childRows, persistedDocId);
@@ -728,7 +753,7 @@ async function saveDocumentImpl(
     }
 
     return persistedDoc;
-  }));
+  });
   const savedDocId = getRecordId(savedDoc);
 
   await enqueueJob("content:afterSave", {
@@ -896,9 +921,7 @@ export async function autosaveRevision(
         .limit(overflow)) as Array<{ id: string }>;
       if (toDelete.length > 0) {
         const ids = toDelete.map((r) => r.id);
-        await tx
-          .delete(nxRevisions)
-          .where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
+        await tx.delete(nxRevisions).where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
       }
     }
 
@@ -1175,9 +1198,11 @@ async function deleteDocumentImpl(
   await db.transaction(async (tx) => {
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
-    await tx.delete(nxMediaRefs as unknown as PgTable).where(
-      sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), docId)}`,
-    );
+    await tx
+      .delete(nxMediaRefs as unknown as PgTable)
+      .where(
+        sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), docId)}`,
+      );
     // Phase 9.7m: cascade comments + reactions on the deleted doc.
     // The polymorphic `(target_type, target_id)` shape on
     // `nx_comments` / `nx_reactions` doesn't have a DB-level FK
@@ -1198,32 +1223,42 @@ async function deleteDocumentImpl(
       )) as Array<{ id: string }>;
     if (commentIdRows.length > 0) {
       const commentIds = commentIdRows.map((row) => row.id);
-      await tx.delete(nxReactions as unknown as PgTable).where(
-        sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReactions as unknown as PgTable, "targetId"), commentIds)}`,
-      );
+      await tx
+        .delete(nxReactions as unknown as PgTable)
+        .where(
+          sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReactions as unknown as PgTable, "targetId"), commentIds)}`,
+        );
       // Phase 9.7q: same orphan story for `nx_reports` — a member
       // who reported one of these comments would otherwise be left
       // with a row pointing at a non-existent comment id. The
       // existing audit row carries enough context for after-the-
       // fact tracing, so the report itself can go.
-      await tx.delete(nxReports as unknown as PgTable).where(
-        sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReports as unknown as PgTable, "targetId"), commentIds)}`,
-      );
+      await tx
+        .delete(nxReports as unknown as PgTable)
+        .where(
+          sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReports as unknown as PgTable, "targetId"), commentIds)}`,
+        );
     }
-    await tx.delete(nxComments as unknown as PgTable).where(
-      sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
-    );
-    await tx.delete(nxReactions as unknown as PgTable).where(
-      sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReactions as unknown as PgTable, "targetId"), docId)}`,
-    );
+    await tx
+      .delete(nxComments as unknown as PgTable)
+      .where(
+        sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
+      );
+    await tx
+      .delete(nxReactions as unknown as PgTable)
+      .where(
+        sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReactions as unknown as PgTable, "targetId"), docId)}`,
+      );
     // Doc-level reports (sites that file `target_type=$collection`
     // reports against a post / discussion). The shipped report API
     // today only files against comments + members, but the schema
     // is polymorphic — a future surface could add doc-level reports
     // and this cascade keeps that case correct from day one.
-    await tx.delete(nxReports as unknown as PgTable).where(
-      sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReports as unknown as PgTable, "targetId"), docId)}`,
-    );
+    await tx
+      .delete(nxReports as unknown as PgTable)
+      .where(
+        sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReports as unknown as PgTable, "targetId"), docId)}`,
+      );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   });
 
@@ -1568,10 +1603,10 @@ async function insertRevision(
   maxRevisions?: number,
 ): Promise<void> {
   const revisionConditions = sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`;
-  const [revisionCount] = ((await tx
+  const [revisionCount] = (await tx
     .select({ total: count() })
     .from(nxRevisions)
-    .where(revisionConditions)) as Array<{ total: number | string }>);
+    .where(revisionConditions)) as Array<{ total: number | string }>;
 
   await tx.insert(nxRevisions).values({
     collection,
@@ -1605,9 +1640,7 @@ async function insertRevision(
 
       if (toDelete.length > 0) {
         const ids = toDelete.map((r) => r.id);
-        await tx
-          .delete(nxRevisions)
-          .where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
+        await tx.delete(nxRevisions).where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
       }
     }
   }
@@ -1669,7 +1702,7 @@ async function executeFindQuery(
   const orderClause = getSortOrderClause(table, options.sort);
 
   if (whereClause && orderClause) {
-    return await (db
+    return (await db
       .select()
       .from(table)
       .where(whereClause)
@@ -1679,16 +1712,14 @@ async function executeFindQuery(
   }
 
   if (whereClause) {
-    return await (db
-      .select()
-      .from(table)
-      .where(whereClause)
-      .limit(limit)
-      .offset(offset)) as Record<string, unknown>[];
+    return (await db.select().from(table).where(whereClause).limit(limit).offset(offset)) as Record<
+      string,
+      unknown
+    >[];
   }
 
   if (orderClause) {
-    return await (db
+    return (await db
       .select()
       .from(table)
       .orderBy(orderClause)
@@ -1736,7 +1767,11 @@ async function getDocumentByIdOptional(
   table: PgTable,
   id: string,
 ): Promise<Record<string, unknown> | null> {
-  const [doc] = await db.select().from(table).where(eq(getTableColumn(table, "id"), id)).limit(1);
+  const [doc] = await db
+    .select()
+    .from(table)
+    .where(eq(getTableColumn(table, "id"), id))
+    .limit(1);
   return doc ? toRecord(doc) : null;
 }
 
@@ -1811,10 +1846,7 @@ function collectPreparedDocumentData(
   }
 }
 
-function normalizeChildRows(
-  fields: NxFieldConfig[],
-  value: unknown,
-): Record<string, unknown>[] {
+function normalizeChildRows(fields: NxFieldConfig[], value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -1850,15 +1882,19 @@ async function syncMediaRefsForDocument(
   const refs = extractMediaIdsFromFields(fields, data, []);
 
   if (refs.length === 0) {
-    await tx.delete(nxMediaRefs as unknown as PgTable).where(
-      sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
-    );
+    await tx
+      .delete(nxMediaRefs as unknown as PgTable)
+      .where(
+        sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+      );
     return;
   }
 
-  await tx.delete(nxMediaRefs as unknown as PgTable).where(
-    sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
-  );
+  await tx
+    .delete(nxMediaRefs as unknown as PgTable)
+    .where(
+      sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+    );
 
   const values = refs.map((ref) => ({
     id: randomUUID(),
@@ -1916,7 +1952,9 @@ function extractMediaIdsFromFields(
         for (const item of arrayValue) {
           const itemRecord = toOptionalRecord(item);
           if (itemRecord) {
-            refs.push(...extractMediaIdsFromFields(field.fields, itemRecord, [...prefix, field.name]));
+            refs.push(
+              ...extractMediaIdsFromFields(field.fields, itemRecord, [...prefix, field.name]),
+            );
           }
         }
       }
@@ -1959,7 +1997,7 @@ function extractMediaIdsFromLexicalJson(
     }
   }
 
-  const children = record.children ?? (toOptionalRecord(record.root))?.children;
+  const children = record.children ?? toOptionalRecord(record.root)?.children;
   if (Array.isArray(children)) {
     for (const child of children) {
       refs.push(...extractMediaIdsFromLexicalJson(child, fieldPath));
@@ -2001,9 +2039,7 @@ function getChangedFields(
   return Object.keys(data).filter((field) => !Object.is(data[field], originalDoc[field]));
 }
 
-function combineConditions(
-  conditions: QueryCondition[],
-): ReturnType<typeof sql> | undefined {
+function combineConditions(conditions: QueryCondition[]): ReturnType<typeof sql> | undefined {
   if (conditions.length === 0) {
     return undefined;
   }
@@ -2029,7 +2065,7 @@ function findParentColumnName(table: PgTable, preferred: string[]): string {
 
   const derived = keys.find(
     (key) => key !== "id" && key !== "targetId" && key !== "order" && key.endsWith("Id"),
-    );
+  );
 
   if (!derived) {
     throw new Error("Unable to resolve parent column for related table.");
@@ -2095,9 +2131,8 @@ function getFlattenedFieldName(prefix: string[], name: string): string {
     return toCamelCase(name);
   }
 
-  return `${prefix.map(toPascalCase).join("")}${toPascalCase(name)}`.replace(
-    /^./u,
-    (char) => char.toLowerCase(),
+  return `${prefix.map(toPascalCase).join("")}${toPascalCase(name)}`.replace(/^./u, (char) =>
+    char.toLowerCase(),
   );
 }
 
