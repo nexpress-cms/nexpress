@@ -4,6 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxMemberRoles } from "../db/schema/community.js";
 import { NxConflictError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { getCommunityRole } from "./roles.js";
@@ -48,9 +50,7 @@ export interface GrantMemberRoleInput {
   grantedByUserId: string;
 }
 
-export async function grantMemberRole(
-  input: GrantMemberRoleInput,
-): Promise<NxMemberRoleGrantRow> {
+export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMemberRoleGrantRow> {
   // Validate the role + scope pair is in the registry. Without this
   // a typo silently writes a row that `memberCan` will never match
   // — the grant looks active in the admin UI but does nothing.
@@ -64,8 +64,7 @@ export async function grantMemberRole(
     ]);
   }
 
-  const scopeId =
-    input.scopeType === "site" ? null : (input.scopeId ?? "").trim();
+  const scopeId = input.scopeType === "site" ? null : (input.scopeId ?? "").trim();
   if (input.scopeType !== "site" && !scopeId) {
     throw new NxValidationError("Invalid input", [
       { field: "scopeId", message: "scopeId required for non-site grants" },
@@ -88,6 +87,11 @@ export async function grantMemberRole(
   // The pre-check makes the conflict deterministic regardless of
   // constraint state and gives the API a clean 409 path.
   const normalizedScopeId = scopeId === "" ? null : scopeId;
+  // Phase 18 — site this grant applies to. For
+  // `scope_type='site'` this column IS the site identifier;
+  // for category / collection / thread grants it scopes the
+  // slug to a tenant.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const existing = (await db
     .select({ id: nxMemberRoles.id })
     .from(nxMemberRoles)
@@ -96,6 +100,7 @@ export async function grantMemberRole(
         eq(nxMemberRoles.memberId, input.memberId),
         eq(nxMemberRoles.role, input.role),
         eq(nxMemberRoles.scopeType, input.scopeType),
+        eq(nxMemberRoles.siteId, siteId),
         normalizedScopeId === null
           ? isNull(nxMemberRoles.scopeId)
           : eq(nxMemberRoles.scopeId, normalizedScopeId),
@@ -103,9 +108,7 @@ export async function grantMemberRole(
     )
     .limit(1)) as Array<{ id: string }>;
   if (existing.length > 0) {
-    throw new NxConflictError(
-      `Member already has this role grant in scope '${input.scopeType}'.`,
-    );
+    throw new NxConflictError(`Member already has this role grant in scope '${input.scopeType}'.`);
   }
 
   // Race fallback: even with the pre-check, two concurrent grants
@@ -120,6 +123,7 @@ export async function grantMemberRole(
         role: input.role,
         scopeType: input.scopeType,
         scopeId: normalizedScopeId,
+        siteId,
         grantedBy: input.grantedByUserId,
         expiresAt: input.expiresAt ?? null,
       })
@@ -163,10 +167,13 @@ export async function grantMemberRole(
  * List currently-active grants for a member. Mirrors the
  * `memberCan` filter so expired rows are hidden.
  */
-export async function listMemberRoleGrants(
-  memberId: string,
-): Promise<NxMemberRoleGrantRow[]> {
+export async function listMemberRoleGrants(memberId: string): Promise<NxMemberRoleGrantRow[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Phase 18 — show only grants on the current tenant. A
+  // member who's a community-mod on tenant A and not on
+  // tenant B should see exactly one grant when admin pages
+  // load on each.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const now = new Date();
   return (await db
     .select()
@@ -174,6 +181,7 @@ export async function listMemberRoleGrants(
     .where(
       and(
         eq(nxMemberRoles.memberId, memberId),
+        eq(nxMemberRoles.siteId, siteId),
         or(isNull(nxMemberRoles.expiresAt), gt(nxMemberRoles.expiresAt, now)),
       ),
     )
@@ -190,9 +198,7 @@ export interface RevokeMemberRoleInput {
  * `revokeBan`'s semantic — the grant either exists and counts, or
  * it doesn't; soft-deleted rows would only confuse the resolver.
  */
-export async function revokeMemberRole(
-  input: RevokeMemberRoleInput,
-): Promise<void> {
+export async function revokeMemberRole(input: RevokeMemberRoleInput): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const deleted = (await db
     .delete(nxMemberRoles)

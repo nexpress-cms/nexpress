@@ -4,6 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxBans } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import type { Principal } from "./principal.js";
@@ -64,6 +66,11 @@ export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
   const byUserId = input.actor.kind === "staff" ? input.actor.user.id : null;
   const byMemberId = input.actor.kind === "member" ? input.actor.memberId : null;
 
+  // Phase 18 — site this ban applies to. For `scope_type='site'`
+  // bans this column IS the site identifier; for category /
+  // collection bans it scopes the slug to a particular tenant
+  // (the same `posts` collection slug exists on every site).
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .insert(nxBans)
     .values({
@@ -75,6 +82,7 @@ export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
       reason: input.reason ?? null,
       byUserId,
       byMemberId,
+      siteId,
     })
     .returning()) as NxBanRow[];
   if (!row) throw new Error("Ban insert returned no row");
@@ -107,6 +115,9 @@ export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
   // The `or()` helper wraps its branches in parens; a raw `sql` template
   // would let Postgres' AND-binds-tighter-than-OR rule re-associate
   // the predicate and leak active temp bans across members.
+  // Phase 18 — scope to the current tenant so a ban issued on
+  // tenant A doesn't surface in tenant B's mod surface.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const now = new Date();
   return (await db
     .select()
@@ -114,6 +125,7 @@ export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
     .where(
       and(
         eq(nxBans.memberId, memberId),
+        eq(nxBans.siteId, siteId),
         or(isNull(nxBans.expiresAt), gt(nxBans.expiresAt, now)),
       ),
     )

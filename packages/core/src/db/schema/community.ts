@@ -172,6 +172,15 @@ export const nxMemberRoles = pgTable(
     scopeType: nxMemberRoleScopeEnum("scope_type").notNull(),
     /** Nullable for `scope_type='site'`. Otherwise an opaque string id. */
     scopeId: text("scope_id"),
+    /**
+     * Phase 18 — the tenant the grant applies on. For
+     * `scope_type='site'` this column IS the site identifier
+     * (`scope_id` stays null because site is the root scope).
+     * For category / collection / thread grants, `site_id` says
+     * which tenant's category/collection/thread this row
+     * targets — the same slug exists on every site.
+     */
+    siteId: text("site_id").default("default").notNull(),
     grantedBy: uuid("granted_by").references(() => nxUsers.id),
     grantedAt: timestamp("granted_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
@@ -181,14 +190,14 @@ export const nxMemberRoles = pgTable(
     // do?" (memberId scan) and "who mods this scope?" (scope scan).
     index("nx_member_roles_member_idx").on(table.memberId),
     index("nx_member_roles_scope_idx").on(table.scopeType, table.scopeId),
-    // `scope_id` is null for site-wide grants. Postgres treats NULL as
-    // distinct from NULL in a unique constraint by default, which would
-    // let a member be granted `community-mod` (site) twice. NULLS NOT
-    // DISTINCT (Postgres 15+) makes the two NULL rows collide so the
-    // unique constraint actually enforces "one grant per (member, role,
-    // scope)" the way the design intends.
+    index("nx_member_roles_site_idx").on(table.siteId, table.memberId),
+    // `scope_id` is null for site-wide grants. NULLS NOT
+    // DISTINCT makes two null `scope_id`s collide so the
+    // unique constraint enforces "one grant per (member, role,
+    // scope, site)." `site_id` widens the key so the same
+    // member can hold the same role on different tenants.
     unique("nx_member_roles_grant_uq")
-      .on(table.memberId, table.role, table.scopeType, table.scopeId)
+      .on(table.memberId, table.role, table.scopeType, table.scopeId, table.siteId)
       .nullsNotDistinct(),
   ],
 );
@@ -234,11 +243,20 @@ export const nxComments = pgTable(
     hiddenByMemberId: uuid("hidden_by_member_id").references((): AnyPgColumn => nxMembers.id),
     hiddenReason: text("hidden_reason"),
     editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
+    /**
+     * Phase 18 — site this comment belongs to. Filled at insert
+     * time from the target document's site (canonical) so a
+     * forged request resolver can't smuggle a comment into the
+     * wrong site. Defaults to `'default'` for legacy single-
+     * tenant rows so the migration backfill is a no-op.
+     */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_comments_target_idx").on(table.targetType, table.targetId, table.createdAt),
     index("nx_comments_member_idx").on(table.memberId, table.createdAt),
+    index("nx_comments_site_idx").on(table.siteId, table.createdAt),
   ],
 );
 
@@ -262,10 +280,13 @@ export const nxReactions = pgTable(
       .notNull()
       .references(() => nxMembers.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
+    /** Phase 18 — site this reaction belongs to (derived from target). */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_reactions_target_idx").on(table.targetType, table.targetId),
+    index("nx_reactions_site_idx").on(table.siteId),
     unique("nx_reactions_unique").on(table.targetType, table.targetId, table.memberId, table.kind),
   ],
 );
@@ -291,11 +312,26 @@ export const nxFollows = pgTable(
       .references(() => nxMembers.id, { onDelete: "cascade" }),
     targetType: text("target_type").notNull(),
     targetId: text("target_id").notNull(),
+    /**
+     * Phase 18 — site the follow happened on. The same global
+     * member can follow on multiple sites and each row scopes
+     * to where the click happened (so site-scoped notifications
+     * + activity feeds don't leak cross-tenant). The unique
+     * key is widened to include site_id so the same follower
+     * can have parallel follow rows under different tenants.
+     */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_follows_target_idx").on(table.targetType, table.targetId),
-    unique("nx_follows_unique").on(table.followerId, table.targetType, table.targetId),
+    index("nx_follows_site_idx").on(table.siteId),
+    unique("nx_follows_unique").on(
+      table.followerId,
+      table.targetType,
+      table.targetId,
+      table.siteId,
+    ),
   ],
 );
 
@@ -323,10 +359,18 @@ export const nxMemberMutes = pgTable(
     targetId: uuid("target_id")
       .notNull()
       .references(() => nxMembers.id, { onDelete: "cascade" }),
+    /**
+     * Phase 18 — site the mute applies to. A muter can choose
+     * to silence someone on one tenant without affecting their
+     * other tenants. PK is widened to include site_id so the
+     * same `(member, target)` pair can hold parallel rows per
+     * site.
+     */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.memberId, table.targetId] }),
+    primaryKey({ columns: [table.memberId, table.targetId, table.siteId] }),
     index("nx_member_mutes_target_idx").on(table.targetId),
   ],
 );
@@ -350,10 +394,18 @@ export const nxNotifications = pgTable(
     kind: text("kind").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
     readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
+    /**
+     * Phase 18 — site this notification belongs to. A member
+     * who's active on multiple tenants gets one inbox per site
+     * (the inbox API filters by current site) so cross-tenant
+     * activity doesn't bleed into the wrong site's UI.
+     */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_notifications_inbox_idx").on(table.memberId, table.readAt, table.createdAt),
+    index("nx_notifications_site_inbox_idx").on(table.siteId, table.memberId, table.readAt),
   ],
 );
 
@@ -381,11 +433,18 @@ export const nxReports = pgTable(
     resolvedByUserId: uuid("resolved_by_user_id").references(() => nxUsers.id),
     resolvedByMemberId: uuid("resolved_by_member_id").references((): AnyPgColumn => nxMembers.id),
     resolution: text("resolution"),
+    /**
+     * Phase 18 — site this report belongs to. The mod queue
+     * is per-site so a category-mod on tenant A doesn't see
+     * tenant B's reports.
+     */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_reports_queue_idx").on(table.resolvedAt, table.createdAt),
     index("nx_reports_target_idx").on(table.targetType, table.targetId),
+    index("nx_reports_site_queue_idx").on(table.siteId, table.resolvedAt),
   ],
 );
 
@@ -441,10 +500,21 @@ export const nxBans = pgTable(
     reason: text("reason"),
     byUserId: uuid("by_user_id").references(() => nxUsers.id),
     byMemberId: uuid("by_member_id").references((): AnyPgColumn => nxMembers.id),
+    /**
+     * Phase 18 — the tenant this ban applies to. Pre-Phase 18
+     * `scope_type='site'` rows had `scope_id=null` because
+     * "site" was the singular root scope; with multi-tenancy
+     * the column tells `assertNotBanned` WHICH site the ban
+     * blocks writes on. Category / collection scopes resolve
+     * per-site too — the same `posts` collection slug exists
+     * on every tenant.
+     */
+    siteId: text("site_id").default("default").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_bans_member_scope_idx").on(table.memberId, table.scopeType, table.scopeId),
     index("nx_bans_active_idx").on(table.memberId, table.expiresAt),
+    index("nx_bans_site_idx").on(table.siteId, table.memberId),
   ],
 );

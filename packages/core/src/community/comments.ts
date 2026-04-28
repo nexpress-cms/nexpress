@@ -8,6 +8,9 @@ import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.
 
 import { getLogger } from "../observability/logger.js";
 
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { getCurrentSiteId } from "../sites/context.js";
+
 import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
@@ -232,6 +235,16 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   const initialStatus: CommentStatus = flaggedBy.length > 0 ? "pending" : "visible";
 
   const html = renderCommentMarkdown(input.bodyMd);
+  // Phase 18 — derive site_id from the target document, which
+  // already carries the canonical site (collections gained
+  // `site_id` in Phase 15). Falls back to the request resolver
+  // and finally to the default site so legacy single-tenant
+  // tests / scripts (which don't seed a site_id on the target)
+  // still produce a valid row.
+  const targetSiteId =
+    typeof targetDoc.siteId === "string" && targetDoc.siteId.length > 0
+      ? targetDoc.siteId
+      : ((await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID);
   const [row] = (await db
     .insert(nxComments)
     .values({
@@ -242,6 +255,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
       bodyMd: input.bodyMd,
       bodyHtml: html,
       status: initialStatus,
+      siteId: targetSiteId,
     })
     .returning()) as Array<NxCommentRow>;
   if (!row) throw new Error("Comment insert returned no row");
