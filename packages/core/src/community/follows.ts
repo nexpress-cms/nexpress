@@ -104,6 +104,7 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
       await createNotification({
         memberId: input.targetId,
         kind: "follow.received",
+        actorMemberId: input.followerId,
         payload: { followerId: input.followerId },
       });
     }

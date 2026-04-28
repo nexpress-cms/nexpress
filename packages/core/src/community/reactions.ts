@@ -132,6 +132,7 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
       await createNotification({
         memberId: comment.memberId,
         kind: "reaction.received",
+        actorMemberId: input.memberId,
         payload: {
           reactorId: input.memberId,
           targetType: input.targetType,
@@ -251,10 +252,7 @@ export async function listMemberReactions(
  * `discussions` collection), so widening this surface is on hold
  * until a separate threads design.
  */
-export async function assertReactableExists(
-  targetType: string,
-  targetId: string,
-): Promise<void> {
+export async function assertReactableExists(targetType: string, targetId: string): Promise<void> {
   if (targetType !== "comment") {
     throw new NxValidationError("Invalid input", [
       {

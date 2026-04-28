@@ -141,6 +141,13 @@
       "when": 1777267450922,
       "tag": "0019_loving_vapor",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1777335947331,
+      "tag": "0020_fair_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

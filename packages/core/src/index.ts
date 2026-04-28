@@ -50,12 +50,7 @@ export type {
 export { ROLE_HIERARCHY, hasRole, isStaffMod } from "./config/types.js";
 export { defineConfig } from "./config/define-config.js";
 export { defineCollection } from "./config/define-collection.js";
-export {
-  authenticated,
-  isAdmin,
-  isEditorOrAbove,
-  isOwnerOrAdmin,
-} from "./config/access.js";
+export { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./config/access.js";
 
 export {
   NxError,
@@ -223,10 +218,7 @@ export {
   revokeUserIdentity,
   revokeMemberIdentity,
 } from "./auth/identities-admin.js";
-export type {
-  NxUserIdentityRow,
-  NxMemberIdentityRow,
-} from "./auth/identities-admin.js";
+export type { NxUserIdentityRow, NxMemberIdentityRow } from "./auth/identities-admin.js";
 export {
   createPasswordResetToken,
   requestPasswordReset,
@@ -234,10 +226,7 @@ export {
 } from "./auth/reset-token.js";
 export { signMemberToken, verifyMemberToken } from "./auth/member-token.js";
 export type { NxMemberTokenPayload } from "./auth/member-token.js";
-export {
-  getMemberFromTokenPayload,
-  invalidateAllMemberSessions,
-} from "./auth/member-session.js";
+export { getMemberFromTokenPayload, invalidateAllMemberSessions } from "./auth/member-session.js";
 export type { NxMemberAuthRow } from "./auth/member-session.js";
 export {
   createMemberEmailVerifyToken,
@@ -290,7 +279,13 @@ export { LocalStorageAdapter } from "./storage/local.js";
 export { S3StorageAdapter } from "./storage/s3.js";
 export { createStorageAdapter } from "./storage/index.js";
 
-export type { NxEmailAdapter, NxEmailMessage, NxEmailTemplate, NxPasswordResetTemplateData, SmtpEmailAdapterOptions } from "./email/index.js";
+export type {
+  NxEmailAdapter,
+  NxEmailMessage,
+  NxEmailTemplate,
+  NxPasswordResetTemplateData,
+  SmtpEmailAdapterOptions,
+} from "./email/index.js";
 export {
   NoopEmailAdapter,
   SmtpEmailAdapter,
@@ -313,10 +308,7 @@ export {
   listMedia,
   cleanupDeletedMedia,
 } from "./media/service.js";
-export type {
-  NxMediaUploader,
-  NxMediaUploaderKindFilter,
-} from "./media/service.js";
+export type { NxMediaUploader, NxMediaUploaderKindFilter } from "./media/service.js";
 export { processImage, DEFAULT_IMAGE_SIZES } from "./media/processor.js";
 export type { NxProcessedImageVariant, NxProcessedImageResult } from "./media/processor.js";
 export { extractMediaIds } from "./media/refs.js";
@@ -387,11 +379,7 @@ export {
 } from "./sites/memberships.js";
 export type { SiteMembership } from "./sites/memberships.js";
 
-export {
-  setI18nConfig,
-  getI18nConfig,
-  resetI18nConfig,
-} from "./i18n/registry.js";
+export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./i18n/registry.js";
 export {
   addStrings,
   setStrings,
@@ -404,10 +392,7 @@ export {
   type NxTranslationParams,
 } from "./i18n/strings.js";
 export type { NxTranslationBundle } from "./i18n/strings.js";
-export {
-  getLocaleDirection,
-  type NxLocaleDirection,
-} from "./i18n/direction.js";
+export { getLocaleDirection, type NxLocaleDirection } from "./i18n/direction.js";
 export {
   loadStringOverridesForSite,
   getStringOverridesForSite,
@@ -532,6 +517,11 @@ export {
   listMemberRoleGrants,
   revokeMemberRole,
   purgeMemberContent,
+  muteMember,
+  unmuteMember,
+  isMuted,
+  getMutedTargetIds,
+  listMutes,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -590,4 +580,8 @@ export type {
   GrantMemberRoleInput,
   RevokeMemberRoleInput,
   NxMemberPurgeResult,
+  NxMemberMuteRow,
+  NxMemberMuteSummary,
+  MuteMemberInput,
+  ListMutesOptions,
 } from "./community/index.js";
