@@ -35,13 +35,13 @@ function parseBaseUrl(): URL | null {
   return new URL(raw);
 }
 
-export function getBaseDatabaseName(): string | null {
+function getBaseDatabaseName(): string | null {
   const u = parseBaseUrl();
   if (!u) return null;
   return u.pathname.replace(/^\//, "");
 }
 
-export function getTemplateDatabaseName(): string | null {
+function getTemplateDatabaseName(): string | null {
   const base = getBaseDatabaseName();
   return base ? `${base}_template` : null;
 }
@@ -61,7 +61,7 @@ export function getTestDatabaseUrl(): string | null {
   return u.toString();
 }
 
-export function getAdminDatabaseUrl(): string | null {
+function getAdminDatabaseUrl(): string | null {
   const u = parseBaseUrl();
   if (!u) return null;
   u.pathname = "/postgres";
@@ -122,7 +122,11 @@ export async function getTestDb(): Promise<NodePgDatabase<Record<string, unknown
     throw new Error("TEST_DATABASE_URL not set — did you forget to call skipIfNoTestDb()?");
   }
   await ensureWorkerDatabase();
-  pool = new pg.Pool({ connectionString: url, max: 5 });
+  // max=3 keeps the per-fork connection budget tight: with 8 forks ×
+  // (3 harness + 4 bootstrap) + admin pools we stay comfortably below
+  // Postgres' default max_connections=100 (CI containers often ship
+  // with the default).
+  pool = new pg.Pool({ connectionString: url, max: 3 });
   db = drizzle(pool);
   setDb(db);
   setMediaDb(db);
@@ -241,9 +245,17 @@ export function skipIfNoTestDb(): boolean {
 /**
  * Used by the vitest globalSetup hook in both apps/web and packages/core
  * integration configs. Drops any leftover worker DBs from a prior run,
- * recreates the template DB from the migration SQL files, and marks it
- * with `IS_TEMPLATE = true` so subsequent CREATE DATABASE … TEMPLATE
- * clones don't require ownership rights. Idempotent.
+ * then recreates `${base}_template` from the migration SQL files.
+ * Idempotent. CREATE DATABASE … TEMPLATE only needs the caller to be the
+ * template owner — we don't flag IS_TEMPLATE so this stays compatible
+ * with managed Postgres (RDS / Cloud SQL) where pg_database catalog
+ * writes require superuser.
+ *
+ * The LIKE patterns use `\_` to escape the literal underscore from
+ * Postgres' metacharacter so `nexpress_test_w%` doesn't accidentally
+ * match unrelated DBs that happen to have similar prefixes. Patterns
+ * are passed via $1 binds so they aren't subject to host-side string
+ * escape processing.
  */
 export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
   const baseUrl = process.env.TEST_DATABASE_URL;
@@ -255,6 +267,7 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
   const base = getBaseDatabaseName()!;
   const template = getTemplateDatabaseName()!;
   const adminUrl = getAdminDatabaseUrl()!;
+  const workerLikePattern = `${base}\\_w%`;
 
   const adminPool = new pg.Pool({ connectionString: adminUrl, max: 1 });
   try {
@@ -262,7 +275,7 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     // dangling connections first so DROP doesn't wedge.
     const leftover = await adminPool.query<{ datname: string }>(
       "SELECT datname FROM pg_database WHERE datname LIKE $1",
-      [`${base}\\_w%`],
+      [workerLikePattern],
     );
     for (const { datname } of leftover.rows) {
       await adminPool.query(
@@ -273,14 +286,24 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     }
 
     // Recreate template fresh on every run so schema drift never lingers.
-    // Disable IS_TEMPLATE first so DROP works.
-    await adminPool.query(
-      `UPDATE pg_database SET datistemplate = false WHERE datname = '${template}'`,
-    );
     await adminPool.query(
       "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
       [template],
     );
+    // Earlier iterations of this hook flagged the template DB with
+    // `datistemplate=true`, which Postgres refuses to DROP. Clear the
+    // flag if it lingers from a prior run. This is a catalog write
+    // (superuser-only) — managed Postgres rejects it, but those envs
+    // never set the flag in the first place so the subsequent DROP
+    // still succeeds. Swallow the error either way.
+    try {
+      await adminPool.query(
+        "UPDATE pg_database SET datistemplate = false WHERE datname = $1",
+        [template],
+      );
+    } catch {
+      /* see comment above */
+    }
     await adminPool.query(`DROP DATABASE IF EXISTS "${template}"`);
     await adminPool.query(`CREATE DATABASE "${template}"`);
   } finally {
@@ -314,18 +337,6 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     await tplPool.end();
   }
 
-  // Mark as template once migrated. This both flags it for the planner
-  // (future template clones don't need to be DB owner) and prevents
-  // accidental writes.
-  const adminPool2 = new pg.Pool({ connectionString: adminUrl, max: 1 });
-  try {
-    await adminPool2.query(
-      `UPDATE pg_database SET datistemplate = true WHERE datname = '${template}'`,
-    );
-  } finally {
-    await adminPool2.end();
-  }
-
   process.env.NX_TEST_TEMPLATE_READY = "1";
 
   return async () => {
@@ -335,7 +346,7 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     try {
       const { rows } = await cleanupPool.query<{ datname: string }>(
         "SELECT datname FROM pg_database WHERE datname LIKE $1",
-        [`${base}\\_w%`],
+        [workerLikePattern],
       );
       for (const { datname } of rows) {
         await cleanupPool.query(
