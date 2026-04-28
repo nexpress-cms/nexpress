@@ -4,6 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxFollows, nxMembers } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { assertNotBanned } from "./can.js";
 import { createNotification } from "./notifications.js";
@@ -88,12 +90,19 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
   // `onConflict` the loser of a race would bubble the raw
   // pg 23505 instead of the intended idempotent success (#124,
   // mirrors the reactions write path).
+  // Phase 18 — site_id is part of the unique key now, so a
+  // global member can hold parallel follow rows on different
+  // tenants. The site comes from the request resolver (the
+  // click happened on this tenant); falls back to the default
+  // site for callers without a resolved site (scripts, jobs).
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [inserted] = (await db
     .insert(nxFollows)
     .values({
       followerId: input.followerId,
       targetType: input.targetType,
       targetId: input.targetId,
+      siteId,
     })
     .onConflictDoNothing()
     .returning()) as NxFollowRow[];
@@ -122,6 +131,7 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
         eq(nxFollows.followerId, input.followerId),
         eq(nxFollows.targetType, input.targetType),
         eq(nxFollows.targetId, input.targetId),
+        eq(nxFollows.siteId, siteId),
       ),
     )
     .limit(1)) as NxFollowRow[];
@@ -137,6 +147,7 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
 export async function unfollow(input: NxFollowInput): Promise<void> {
   assertSupportedTarget(input.targetType);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   await db
     .delete(nxFollows)
     .where(
@@ -144,6 +155,7 @@ export async function unfollow(input: NxFollowInput): Promise<void> {
         eq(nxFollows.followerId, input.followerId),
         eq(nxFollows.targetType, input.targetType),
         eq(nxFollows.targetId, input.targetId),
+        eq(nxFollows.siteId, siteId),
       ),
     );
 }
@@ -151,6 +163,7 @@ export async function unfollow(input: NxFollowInput): Promise<void> {
 export async function isFollowing(input: NxFollowInput): Promise<boolean> {
   assertSupportedTarget(input.targetType);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ id: nxFollows.id })
     .from(nxFollows)
@@ -159,6 +172,7 @@ export async function isFollowing(input: NxFollowInput): Promise<boolean> {
         eq(nxFollows.followerId, input.followerId),
         eq(nxFollows.targetType, input.targetType),
         eq(nxFollows.targetId, input.targetId),
+        eq(nxFollows.siteId, siteId),
       ),
     )
     .limit(1)) as Array<{ id: string }>;
@@ -176,9 +190,18 @@ export async function listFollowing(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
+  // Phase 18 — scope to current site. A member who follows on
+  // tenant A and tenant B should see two separate "Following"
+  // lists, one per site. Falls back to the default site when
+  // the resolver isn't wired (scripts).
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const where = options.targetType
-    ? and(eq(nxFollows.followerId, followerId), eq(nxFollows.targetType, options.targetType))
-    : eq(nxFollows.followerId, followerId);
+    ? and(
+        eq(nxFollows.followerId, followerId),
+        eq(nxFollows.targetType, options.targetType),
+        eq(nxFollows.siteId, siteId),
+      )
+    : and(eq(nxFollows.followerId, followerId), eq(nxFollows.siteId, siteId));
   const rows = (await db
     .select()
     .from(nxFollows)

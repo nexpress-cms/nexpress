@@ -5,11 +5,9 @@ import { NxForbiddenError } from "../errors.js";
 
 import { getDb } from "../collections/pipeline.js";
 import { nxBans, nxMemberRoles } from "../db/schema/community.js";
-import {
-  type CommunityCapability,
-  type CommunityScope,
-  getCommunityRole,
-} from "./roles.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { type CommunityCapability, type CommunityScope, getCommunityRole } from "./roles.js";
 
 /**
  * Active-ban probe shared by `memberCan` and direct write-path
@@ -37,6 +35,11 @@ export async function isMemberBanned(
   now: Date = new Date(),
 ): Promise<boolean> {
   const handle = db ?? (getDb() as unknown as NodePgDatabase<Record<string, unknown>>);
+  // Phase 18 — bans are tenant-scoped. A site-wide ban on
+  // tenant A doesn't block writes on tenant B; the ban row
+  // includes `site_id` and we filter by the resolver's
+  // current value.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const bans = (await handle
     .select({
       scopeType: nxBans.scopeType,
@@ -46,6 +49,7 @@ export async function isMemberBanned(
     .where(
       and(
         eq(nxBans.memberId, memberId),
+        eq(nxBans.siteId, siteId),
         or(isNull(nxBans.expiresAt), gt(nxBans.expiresAt, now)),
       ),
     )) as Array<{
@@ -151,10 +155,12 @@ export async function memberCan(
     return Boolean(target.ownerId) && target.ownerId === memberId;
   }
 
-  // Step 3+4: walk grants. Pull all of the member's unexpired grants
-  // and match them against (the requested action, the target's scope
-  // chain). Site-wide grants always match; scoped grants must align
-  // with one of the target's scopes.
+  // Step 3+4: walk grants. Pull the member's unexpired grants
+  // on the current tenant only — a community-mod on tenant A
+  // shouldn't authorize actions on tenant B. Site-wide grants
+  // (scope_type='site') still match every action on the
+  // resolved tenant.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const grants = (await db
     .select({
       role: nxMemberRoles.role,
@@ -165,6 +171,7 @@ export async function memberCan(
     .where(
       and(
         eq(nxMemberRoles.memberId, memberId),
+        eq(nxMemberRoles.siteId, siteId),
         or(isNull(nxMemberRoles.expiresAt), gt(nxMemberRoles.expiresAt, now)),
       ),
     )) as Array<{
