@@ -280,7 +280,22 @@ the endpoint directly if needed.
   for a long time, the worker isn't draining
 - `GET /api/admin/jobs/health` (editor+) returns the live
   heartbeat snapshot — `aliveCount: 0` plus stale
-  `newestHeartbeat` confirms a dead worker (Phase 19)
+  `newestHeartbeat` confirms a dead worker (Phase 19).
+  `pause.paused: true` (Phase 20.2) means the worker is
+  alive but the operator paused the queue.
+
+**Maintenance window — pause processing**
+
+- `POST /api/admin/jobs/pause` (admin + CSRF). Optional
+  `{ "reason": "DB migration #123" }` body for the audit
+  trail. The flag persists in `nx_settings` so a worker
+  restart while paused stays paused.
+- In-flight jobs run to completion; producers keep
+  enqueueing. The pg-boss queue accumulates pending jobs.
+- `POST /api/admin/jobs/resume` to start draining again.
+- Multi-pod operators: today only the pod that handled the
+  API call applies the flag in-process. Restart other
+  worker pods to pick up the persisted flag (see §12).
 
 **Backlog after an outage (hundreds of failed jobs)**
 
@@ -320,12 +335,23 @@ Open follow-ups, in rough order of impact:
 - **Per-job logs** — handler `console.log` calls go to the
   worker's stdout, not associated with the job row in the
   admin. Linking them would help post-mortems.
-- **Pause / resume queue** — no way to globally pause job
-  processing from the admin (e.g. during a maintenance
-  window).
+- **Multi-pod pause sync** — Phase 20.2 ships pause/resume
+  but only applies the flag to the worker pod that received
+  the API call. Other worker pods see the flag on their
+  next restart. A periodic poll (piggy-backed on the
+  heartbeat tick) would close this gap. Single-pod
+  deployments work fully today.
 
 ### Recently closed
 
+- **Pause / resume queue** — Phase 20.2. `POST /api/admin/jobs/pause`
+  and `POST /api/admin/jobs/resume` (admin + CSRF) flip a
+  `nx_settings("_system", "jobs.paused")` flag and call
+  `boss.offWork()` / `boss.work()` on every registered
+  queue. In-flight jobs run to completion; producers keep
+  enqueueing while paused. The state is read on worker
+  startup so a paused worker stays paused after a restart.
+  See multi-pod caveat above.
 - **Rate-limit on retry / enqueue endpoints** — Phase 20.1.
   `apps/web/src/proxy.ts` now imposes tighter buckets above
   the general `/api/admin/` 60/min limit:

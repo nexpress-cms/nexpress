@@ -8,13 +8,13 @@ import { type NxJobType } from "../config/types.js";
  * know the storage split.
  */
 export type NxJobState =
-  | "created"   // queued, not yet started
-  | "active"    // worker is processing
+  | "created" // queued, not yet started
+  | "active" // worker is processing
   | "completed" // succeeded
-  | "failed"    // hit max retries
-  | "retry"     // failed once, scheduled to retry
+  | "failed" // hit max retries
+  | "retry" // failed once, scheduled to retry
   | "cancelled" // explicitly cancelled
-  | "expired";  // exceeded keepUntil
+  | "expired"; // exceeded keepUntil
 
 export interface NxJobSummary {
   id: string;
@@ -94,6 +94,17 @@ export interface NxJobQueue {
    * in code.
    */
   listSchedules?(): Promise<NxScheduleSummary[]>;
+  /**
+   * Phase 20.2 — stop the worker from claiming new jobs without
+   * tearing down the queue. In-flight jobs run to completion;
+   * the producer keeps enqueueing. Optional on the interface
+   * because non-pg-boss test stubs don't implement it.
+   */
+  pauseProcessing?(): Promise<void>;
+  /** Phase 20.2 — undo `pauseProcessing()`. Idempotent. */
+  resumeProcessing?(): Promise<void>;
+  /** Phase 20.2 — `true` when this adapter is currently paused. */
+  isProcessingPaused?(): boolean;
 }
 
 let jobQueue: NxJobQueue | null = null;

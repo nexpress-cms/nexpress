@@ -1,7 +1,9 @@
 import { registerBuiltinHandlers } from "./builtin-handlers.js";
 import { startHeartbeatLoop } from "./heartbeat.js";
+import { getJobsPauseState } from "./pause-state.js";
 import { PgBossAdapter } from "./pg-boss-adapter.js";
 import { setJobQueue } from "./queue.js";
+import { getLogger } from "../observability/logger.js";
 
 let workerAdapter: PgBossAdapter | null = null;
 let producerAdapter: PgBossAdapter | null = null;
@@ -28,6 +30,27 @@ export async function startWorker(
 
   await workerAdapter.start();
   await workerAdapter.scheduleRecurring();
+
+  // Phase 20.2 — if the operator paused processing while the
+  // worker was offline, honor it on boot. The flag is global
+  // (in `nx_settings` siteId="_system") so it survives worker
+  // restarts. We swallow read errors because a pre-migrate DB
+  // would otherwise stop the worker from starting at all —
+  // safer to default to "running" than to refuse to boot.
+  try {
+    const pauseState = await getJobsPauseState();
+    if (pauseState.paused) {
+      await workerAdapter.pauseProcessing();
+      getLogger().info("Worker booted in paused state", {
+        changedAt: pauseState.changedAt,
+        reason: pauseState.reason,
+      });
+    }
+  } catch (err) {
+    getLogger().warn("Could not read jobs pause state on worker boot", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Phase 19 — start the heartbeat loop AFTER pg-boss is up so
   // a misconfigured DB surfaces as a `boss.start()` throw

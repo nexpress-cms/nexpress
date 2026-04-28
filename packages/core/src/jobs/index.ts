@@ -15,3 +15,9 @@ export {
   type NxWorkerHeartbeat,
   type NxWorkerHealthSummary,
 } from "./heartbeat.js";
+export {
+  getJobsPauseState,
+  setJobsPauseState,
+  type NxJobsPauseState,
+  type SetJobsPauseStateInput,
+} from "./pause-state.js";

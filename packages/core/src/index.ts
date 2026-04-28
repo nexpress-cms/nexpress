@@ -271,6 +271,8 @@ export {
   countAliveWorkers,
   WORKER_HEARTBEAT_INTERVAL_MS,
   WORKER_STALE_THRESHOLD_MS,
+  getJobsPauseState,
+  setJobsPauseState,
 } from "./jobs/index.js";
 export type {
   NxJobHandler,
@@ -282,6 +284,8 @@ export type {
   NxScheduleSummary,
   NxWorkerHeartbeat,
   NxWorkerHealthSummary,
+  NxJobsPauseState,
+  SetJobsPauseStateInput,
 } from "./jobs/index.js";
 
 export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
