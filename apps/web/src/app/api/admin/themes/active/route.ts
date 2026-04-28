@@ -41,9 +41,7 @@ export async function GET(request: NextRequest) {
     const activeId = await getActiveThemeId();
     return nxSuccessResponse({ activeId });
   } catch (error) {
-    return nxErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -91,7 +89,7 @@ export async function PUT(request: NextRequest) {
     try {
       const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
       const { revalidatePath, revalidateTag } = await import("next/cache");
-      revalidateTag(themeCacheTag(siteId));
+      revalidateTag(themeCacheTag(siteId), "default");
       revalidatePath("/", "layout");
     } catch {
       // ignore — see comment above
@@ -99,9 +97,7 @@ export async function PUT(request: NextRequest) {
 
     return nxSuccessResponse({ activeId: id });
   } catch (error) {
-    return nxErrorResponse(
-      error instanceof Error ? error : new Error("Unknown error"),
-    );
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

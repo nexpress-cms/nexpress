@@ -67,13 +67,10 @@ function assertCap(pluginId: string, capabilities: readonly string[], required: 
   }
 }
 
-async function loadOptionalNextCache(): Promise<
-  | {
-      revalidatePath?: (path: string) => void;
-      revalidateTag?: (tag: string) => void;
-    }
-  | null
-> {
+async function loadOptionalNextCache(): Promise<{
+  revalidatePath?: (path: string) => void;
+  revalidateTag?: (tag: string) => void;
+} | null> {
   try {
     // Indirect specifier so TypeScript doesn't try to resolve
     // `next/cache` at compile time — `@nexpress/core` doesn't
@@ -112,10 +109,9 @@ async function loadOptionalNextCache(): Promise<
  * plugin that only declares `content:read` can't reach into
  * `media:upload` etc. without explicit opt-in.
  */
-export function createPluginRuntimeContext(
-  options: BuildContextOptions,
-): Record<string, unknown> {
-  const { pluginId, capabilities, allowedHosts, config, registration, lookupRegistration } = options;
+export function createPluginRuntimeContext(options: BuildContextOptions): Record<string, unknown> {
+  const { pluginId, capabilities, allowedHosts, config, registration, lookupRegistration } =
+    options;
   const db = (): NodePgDatabase<Record<string, unknown>> => getDb();
   const principal = pluginPrincipal(pluginId);
 
@@ -161,12 +157,7 @@ export function createPluginRuntimeContext(
     },
 
     media: {
-      async list(query?: {
-        page?: number;
-        limit?: number;
-        mimeType?: string;
-        folder?: string;
-      }) {
+      async list(query?: { page?: number; limit?: number; mimeType?: string; folder?: string }) {
         assertCap(pluginId, capabilities, "media:read");
         return coreListMedia({
           page: query?.page,
@@ -191,9 +182,7 @@ export function createPluginRuntimeContext(
         metadata: { filename: string; mimeType: string; folder?: string },
       ) {
         assertCap(pluginId, capabilities, "media:write");
-        const buffer = Buffer.from(
-          file instanceof ArrayBuffer ? new Uint8Array(file) : file,
-        );
+        const buffer = Buffer.from(file instanceof ArrayBuffer ? new Uint8Array(file) : file);
         return coreUploadMedia(
           {
             buffer,
@@ -243,8 +232,7 @@ export function createPluginRuntimeContext(
       },
       async set(key: string, value: unknown, opts?: { ttl?: number }): Promise<void> {
         assertCap(pluginId, capabilities, "storage:kv");
-        const expiresAt =
-          opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
+        const expiresAt = opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
         await db()
           .insert(nxPluginStorage)
           .values({
@@ -263,9 +251,7 @@ export function createPluginRuntimeContext(
         assertCap(pluginId, capabilities, "storage:kv");
         await db()
           .delete(nxPluginStorage)
-          .where(
-            and(eq(nxPluginStorage.pluginId, pluginId), eq(nxPluginStorage.key, key)),
-          );
+          .where(and(eq(nxPluginStorage.pluginId, pluginId), eq(nxPluginStorage.key, key)));
       },
       async list(prefix?: string): Promise<string[]> {
         assertCap(pluginId, capabilities, "storage:kv");
@@ -398,7 +384,8 @@ export function createPluginRuntimeContext(
           .from(nxSettings)
           .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")));
         const existing =
-          rows[0] && (rows[0] as { value?: unknown }).value &&
+          rows[0] &&
+          (rows[0] as { value?: unknown }).value &&
           typeof (rows[0] as { value?: unknown }).value === "object" &&
           !Array.isArray((rows[0] as { value?: unknown }).value)
             ? ((rows[0] as { value: unknown }).value as Record<string, unknown>)
@@ -432,7 +419,11 @@ export function createPluginRuntimeContext(
         try {
           target = new URL(url);
         } catch {
-          throw new NxError(`[plugin:${pluginId}] http.fetch: invalid URL "${url}"`, "INVALID_URL", 400);
+          throw new NxError(
+            `[plugin:${pluginId}] http.fetch: invalid URL "${url}"`,
+            "INVALID_URL",
+            400,
+          );
         }
         const hostMatches = allowedHosts.some((pattern) => {
           if (pattern === target.hostname) return true;
@@ -514,16 +505,23 @@ export function createPluginRuntimeContext(
       },
       async revalidateTag(tag: string): Promise<void> {
         const mod = await loadOptionalNextCache();
-        mod?.revalidateTag?.(tag);
+        const fn = mod?.revalidateTag;
+        if (typeof fn !== "function") return;
+        // Next 16 widened the signature to `(tag, profile)`.
+        // Forward `"default"` when the runtime accepts the
+        // extra arg so plugins keep their single-arg ergonomics.
+        if (fn.length >= 2) {
+          (fn as (tag: string, profile: string) => void)(tag, "default");
+        } else {
+          (fn as (tag: string) => void)(tag);
+        }
       },
     },
 
     actions: {
       register(
         actionName: string,
-        handler: (
-          data: unknown,
-        ) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
+        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
       ): void {
         registration.actions.set(actionName, handler);
       },
@@ -535,7 +533,10 @@ export function createPluginRuntimeContext(
         const target = lookupRegistration(targetPluginId);
         const action = target?.actions.get(actionName);
         if (!action) {
-          return { ok: false, error: `Action "${actionName}" not found on plugin "${targetPluginId}"` };
+          return {
+            ok: false,
+            error: `Action "${actionName}" not found on plugin "${targetPluginId}"`,
+          };
         }
         return action(data);
       },

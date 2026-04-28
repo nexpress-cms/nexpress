@@ -119,7 +119,7 @@ function resolveSiteLocale(pathname: string): {
   return { locale: i18nConfig.defaultLocale, rewrite: null };
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
 
@@ -169,10 +169,7 @@ export function middleware(request: NextRequest) {
   // ALLOWED to operate on this site happens at the resolver
   // layer in core, not here — the middleware just forwards.
   const adminSite = request.cookies.get("nx-admin-site")?.value;
-  if (
-    adminSite &&
-    (pathname.startsWith("/admin") || pathname.startsWith("/api/admin"))
-  ) {
+  if (adminSite && (pathname.startsWith("/admin") || pathname.startsWith("/api/admin"))) {
     requestHeaders.set("x-nx-admin-site", adminSite);
   }
 
@@ -202,16 +199,16 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api/users");
   if (isPrivateRoute) {
     response.headers.set("Cache-Control", "private, no-store, must-revalidate");
-  } else if (
-    !pathname.startsWith("/api/") &&
-    !pathname.startsWith("/_next/")
-  ) {
+  } else if (!pathname.startsWith("/api/") && !pathname.startsWith("/_next/")) {
     // Public site routes — let the per-route Cache-Control
     // (set by sitemap.xml / feed.xml / etc.) win when present;
     // otherwise just declare what the response varies on.
     const existingVary = response.headers.get("Vary");
     const varyDirectives = new Set(
-      (existingVary ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+      (existingVary ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
     );
     varyDirectives.add("Cookie");
     varyDirectives.add("Accept-Language");
@@ -222,7 +219,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

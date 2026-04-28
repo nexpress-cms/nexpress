@@ -41,9 +41,7 @@ export async function GET(request: NextRequest) {
     const [row] = await db
       .select()
       .from(nxNavigation)
-      .where(
-        and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)),
-      )
+      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)))
       .limit(1);
 
     return nxSuccessResponse(row ?? { location, items: [] });
@@ -64,9 +62,7 @@ export async function PUT(request: NextRequest) {
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const items = body.items;
     const location =
-      typeof body.location === "string" && body.location.trim()
-        ? body.location.trim()
-        : "main";
+      typeof body.location === "string" && body.location.trim() ? body.location.trim() : "main";
 
     if (!Array.isArray(items) || !items.every(isNavItem)) {
       throw new NxValidationError("Invalid input", [
@@ -100,7 +96,7 @@ export async function PUT(request: NextRequest) {
     // context (test harness, scripts).
     try {
       const { revalidateTag } = await import("next/cache");
-      revalidateTag(navCacheTag(siteId, location));
+      revalidateTag(navCacheTag(siteId, location), "default");
     } catch {
       // ignore
     }
