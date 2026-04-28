@@ -293,12 +293,13 @@ isolation know where the boundary stops:
   want shared state. Plugins use `ctx.storage` and pass
   the active site through automatically.
 - **`nx_comments` / `nx_reactions` / `nx_follows` /
-  `nx_mutes` / `nx_notifications`** — Phase 18 added
-  `site_id` columns + indexes so per-site queues, mutes,
-  and notification inboxes are first-class. `nx_members`
-  is intentionally still global (one identity, many
-  tenants); per-site member roles live in
-  `nx_member_roles` keyed on `(site_id, member_id)`.
+  `nx_member_mutes` / `nx_notifications` / `nx_reports` /
+  `nx_bans`** — Phase 18 added `site_id` columns + indexes
+  so per-site queues, mutes, mod reports, and notification
+  inboxes are first-class. `nx_members` is intentionally
+  still global (one identity, many tenants); per-site
+  member roles live in `nx_member_roles` keyed on
+  `(site_id, member_id)`.
 
 ---
 

@@ -436,9 +436,9 @@ In rough order of likely impact:
   `thread` / `reply` as report target types.
 - **Site-scoped community tables** — Phase 18 (#211)
   added `site_id` to `nx_comments`, `nx_reactions`,
-  `nx_follows`, `nx_mutes`, `nx_notifications`, etc.
-  Multi-tenant member surfaces still share `nx_members`
-  (one identity, many tenants).
+  `nx_follows`, `nx_member_mutes`, `nx_notifications`,
+  `nx_reports`, and `nx_bans`. `nx_members` itself is
+  still global (one identity, many tenants).
 
 These aren't blockers. The shipped surface is enough to run
 a real community site; each item above becomes obvious only
