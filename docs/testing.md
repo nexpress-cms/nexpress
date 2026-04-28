@@ -10,11 +10,18 @@ Live next to the source they test as `<name>.test.ts`. Run with `pnpm test`
 these mock the DB / filesystem / network where needed.
 
 Use unit tests for:
+
 - Pure functions (templates, guards, schema validation, helpers).
 - Logic that can be verified against mocks (hook ordering, payload shape,
   capability checks).
 
-Current count: **112 tests** across `@nexpress/core` and `@nexpress/next`.
+Current size (post-Phase 19): roughly **230+ unit tests** across
+`@nexpress/core`, `@nexpress/next`, `@nexpress/plugin-sdk`,
+`@nexpress/plugin-oauth-github`, `@nexpress/plugin-oauth-google`, and
+`create-nexpress`. Plus ~350 integration tests under
+`packages/core/src/integration/` and `apps/web/tests/` (gated on
+`TEST_DATABASE_URL`). Run `pnpm test` for current totals — file counts
+drift quickly.
 
 ## Integration tests (`pnpm test:integration`)
 
@@ -74,13 +81,7 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
 ```ts
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 
-import {
-  closeTestDb,
-  ensureMigrated,
-  getTestDb,
-  skipIfNoTestDb,
-  truncateAll,
-} from "./setup.js";
+import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 describe.skipIf(skipIfNoTestDb())("my thing", () => {
   beforeAll(async () => {
@@ -102,16 +103,24 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 
 ### Current integration coverage
 
-**Core pipeline (30 tests, `packages/core/src/integration/`):**
+> **Catalog drift warning.** The tables below were accurate through
+> Phase 13. Phases 14–19 added more integration files (worker
+> heartbeat, plugin schedules, site-scoped community/audit/storage,
+> notification preferences, etc.) that are NOT enumerated here. For
+> the live list, run `ls packages/core/src/integration/` and
+> `ls apps/web/tests/`. The categories (pipeline / CLI / API) still
+> describe the structure — it's only the per-file detail that drifts.
 
-| File | Covers |
-|------|--------|
-| `plugin-storage.integration.test.ts` (6) | ctx.storage set/get/delete/list/has + TTL expiry via `nx_plugin_storage` |
-| `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence |
-| `reset-token.integration.test.ts` (5) | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete |
-| `pipeline.integration.test.ts` (4) | saveDocument create/update, revision versioning, findDocuments round-trip, deleteDocument |
-| `scheduled.integration.test.ts` (4) | pipeline coerces published+future → scheduled; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with full doc, idempotent |
-| `ctx-settings.integration.test.ts` (6) | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate |
+**Core pipeline (30+ tests, `packages/core/src/integration/`):**
+
+| File                                         | Covers                                                                                                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugin-storage.integration.test.ts` (6)     | ctx.storage set/get/delete/list/has + TTL expiry via `nx_plugin_storage`                                                                            |
+| `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence                                                                                    |
+| `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                     |
+| `pipeline.integration.test.ts` (4)           | saveDocument create/update, revision versioning, findDocuments round-trip, deleteDocument                                                           |
+| `scheduled.integration.test.ts` (4)          | pipeline coerces published+future → scheduled; publishScheduledDocuments flips due rows, fires afterUpdate + afterPublish with full doc, idempotent |
+| `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                      |
 
 **CLI templates (6 tests, `packages/cli/src/templates.test.ts`):**
 
@@ -121,13 +130,13 @@ typechecking + `next build`. Tests catch regressions like the stub
 top-level narrowing creeping back, or the admin login `onSubmit`
 losing its void wrapper.
 
-**API routes (14 tests, `apps/web/tests/`):**
+**API routes (14+ tests, `apps/web/tests/`):**
 
-| File | Covers |
-|------|--------|
-| `health.integration.test.ts` (1) | `/api/health` smoke (no DB) |
-| `auth.integration.test.ts` (3) | `/api/auth/me` with valid/missing/tampered session cookie |
-| `collections.integration.test.ts` (3) | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth |
+| File                                    | Covers                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `health.integration.test.ts` (1)        | `/api/health` smoke (no DB)                                                                      |
+| `auth.integration.test.ts` (3)          | `/api/auth/me` with valid/missing/tampered session cookie                                        |
+| `collections.integration.test.ts` (3)   | `/api/collections/[slug]` + `/[id]` — POST/GET round-trip, PATCH, DELETE, 401 without auth       |
 | `import-export.integration.test.ts` (7) | export full / partial / unknown-slug / non-admin; import dry-run / partial filter / unknown-slug |
 
 Run the API suite with the same `TEST_DATABASE_URL` — `pnpm test`
@@ -154,6 +163,10 @@ excludes `src/integration/` so the cross-directory import doesn't trip
 
 ## CI
 
-`.github/workflows/ci.yml` currently runs `pnpm test` on every push/PR. It
-does **not** run integration tests yet — they require Postgres in the
-runner, which is a separate workflow change.
+`.github/workflows/ci.yml` runs install → build → typecheck → `pnpm test`
+on Ubuntu (Node 22, pnpm 10.33). Currently `workflow_dispatch` only
+(manual) while the repo's Actions billing is being resolved — push /
+pull_request triggers will be re-enabled without other changes once
+the billing question is settled. Integration tests are still **not**
+in CI; they require Postgres in the runner, which is a separate
+workflow change.

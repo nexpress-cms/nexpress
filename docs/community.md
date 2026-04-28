@@ -84,18 +84,19 @@ Sign in / Register links for anonymous visitors.
 
 Standard email + password flow plus optional SSO:
 
-| Endpoint                              | Purpose                              |
-| ------------------------------------- | ------------------------------------ |
-| `POST /api/members/register`          | Create account, send verify email   |
-| `GET  /api/members/verify?token=…`    | Consume email-verify token          |
-| `POST /api/members/login`             | Email + password → access + refresh |
-| `POST /api/members/logout`            | Revoke session row + clear cookies  |
-| `POST /api/members/refresh`           | Rotate refresh → new access token   |
-| `POST /api/members/forgot-password`   | Request reset email                 |
-| `POST /api/members/reset-password`    | Consume reset token                 |
-| `GET  /api/members/me`                | Profile of the authenticated member |
+| Endpoint                            | Purpose                             |
+| ----------------------------------- | ----------------------------------- |
+| `POST /api/members/register`        | Create account, send verify email   |
+| `GET  /api/members/verify?token=…`  | Consume email-verify token          |
+| `POST /api/members/login`           | Email + password → access + refresh |
+| `POST /api/members/logout`          | Revoke session row + clear cookies  |
+| `POST /api/members/refresh`         | Rotate refresh → new access token   |
+| `POST /api/members/forgot-password` | Request reset email                 |
+| `POST /api/members/reset-password`  | Consume reset token                 |
+| `GET  /api/members/me`              | Profile of the authenticated member |
 
 Tokens:
+
 - **Access JWT** (`nx-mb-session`) — signed by `NX_SECRET`,
   short TTL.
 - **Refresh JWT** (`nx-mb-refresh`) — long TTL, rotates per
@@ -143,6 +144,7 @@ The plugin auto-registers the provider; the site login page
 picks it up via `listOAuthProviders()`.
 
 Linked identities surface in:
+
 - **Admin Members → detail page** → "Linked identities" panel
   (Phase 9.6i) — staff can revoke an OAuth link
 - **Admin Users → detail page** — same surface for staff users
@@ -194,12 +196,13 @@ the next render (no realtime push).
 ## 7. Notifications
 
 `nx_notifications` rows fire on:
+
 - Comment under your own thread / reply / member doc
 - Reply to your comment
 - Reaction on your comment / doc
 - New follow
-- Mention (planned — `@handle` syntax not yet wired into the
-  notification fan-out)
+- Mention — Phase 16.2 wired `@handle` parsing into the
+  notification fan-out, firing `notification:mention` rows.
 
 Each row has `kind`, `actor_id`, `target_type`, `target_id`,
 `payload` JSON, `read_at`. Members read their own via
@@ -238,7 +241,7 @@ the comment surface:
 - Rich-text editor (`@nexpress/editor`) with image upload
   (Phase 9.7j; image uploads go through the member upload
   endpoint with the `community.memberUploadQuota.{perDay,
-  total}` rate limit from Phase 9.7p).
+total}` rate limit from Phase 9.7p).
 
 ---
 
@@ -246,13 +249,13 @@ the comment surface:
 
 Three admin pages:
 
-| Page                              | What it shows                       |
-| --------------------------------- | ----------------------------------- |
-| `/admin/community/reports`        | Open reports queue (Phase 9.5)     |
-| `/admin/community/comments`       | Comments table with hide / restore |
-| `/admin/community/pending`        | Member-authored docs awaiting review |
-| `/admin/community/bans`           | Active bans + revoke               |
-| `/admin/community/settings`       | Community config                    |
+| Page                        | What it shows                        |
+| --------------------------- | ------------------------------------ |
+| `/admin/community/reports`  | Open reports queue (Phase 9.5)       |
+| `/admin/community/comments` | Comments table with hide / restore   |
+| `/admin/community/pending`  | Member-authored docs awaiting review |
+| `/admin/community/bans`     | Active bans + revoke                 |
+| `/admin/community/settings` | Community config                     |
 
 Per-member actions on `/admin/members/[id]`:
 
@@ -394,9 +397,14 @@ Surfaces in `/admin/audit` (filtered list). The actor
 reference is polymorphic: staff (`user.id`), member
 (`member.id`), or `system` for adapter-driven actions.
 
-Note: audit events are **NOT** site-scoped (Phase 15 audit
-gap). Multi-tenant operators can't filter audit by site
-without manual joins through the affected entity.
+Phase 17 added a nullable `site_id` column to `nx_audit_events`
+and an index on `(site_id, created_at)`. `recordAuditEvent`
+fills it from the current request's site (resolved by the
+multi-site middleware), so multi-tenant operators can now
+filter audit events by site without joining through the
+target. Events that don't belong to a single site
+(super-admin actions, scripts, background jobs without a
+request scope) leave `site_id` null.
 
 ---
 
@@ -404,31 +412,33 @@ without manual joins through the affected entity.
 
 In rough order of likely impact:
 
-- **Member-to-member block / mute** — no P2P "block this
-  user" yet. Staff bans cover spam/abuse from the platform
-  side but users can't filter peers.
-- **`@mention` notifications** — `@handle` syntax doesn't
-  fire `notification:mention` rows. Notifications pipeline
-  has the `kind` reserved.
-- **Email digest / batched notifications** — every event
-  fires its own email job. No "daily digest" option per
-  member.
-- **Notification preferences UI** — members can't opt out
-  per `kind` (e.g. "follows yes, replies no"). All-or-
-  nothing today.
-- **Reports for thread / reply targets** —
-  `community/reports.ts:217` defers these because the
-  forum's thread / reply tables don't exist (forum reuses
-  comments). A forum-specific report shape is the natural
-  follow-up.
-- **Comment sort orders** — chronological only. "Top",
-  "controversial", "newest" not surfaced.
 - **Real-time push** — counts and lists update on next
   render, no WebSocket / SSE.
+- **Comment sort orders beyond `top`** — Phase 16
+  added `top` (sort by reaction count, #201) on top of
+  chronological. "Controversial" / "newest" still not
+  surfaced.
 - **DMs / private messaging** — design doc explicitly
   defers; out of scope.
 - **Federated identity (ActivityPub)** — design doc defers;
   out of scope.
+
+### Recently closed
+
+- **Member-to-member block / mute** — Phase 16.1 (#204).
+- **`@mention` notifications** — Phase 16.2 (#205).
+  `@handle` fan-out fires `notification:mention` rows.
+- **Email digest / batched notifications** — Phase 16.4
+  (#207). Per-member opt-in to a daily digest.
+- **Notification preferences UI** — Phase 16.3 (#206).
+  Members can opt out per `kind`.
+- **Reports for thread / reply targets** — #197 enabled
+  `thread` / `reply` as report target types.
+- **Site-scoped community tables** — Phase 18 (#211)
+  added `site_id` to `nx_comments`, `nx_reactions`,
+  `nx_follows`, `nx_member_mutes`, `nx_notifications`,
+  `nx_reports`, and `nx_bans`. `nx_members` itself is
+  still global (one identity, many tenants).
 
 These aren't blockers. The shipped surface is enough to run
 a real community site; each item above becomes obvious only

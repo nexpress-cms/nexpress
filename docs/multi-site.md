@@ -18,7 +18,7 @@
 7. [Admin Workflow](#7-admin-workflow)
 8. [CLI](#8-cli)
 9. [Operational Notes](#9-operational-notes)
-9.5. [What's NOT Site-Scoped (Yet)](#95-whats-not-site-scoped-yet)
+   9.5. [What's NOT Site-Scoped (Yet)](#95-whats-not-site-scoped-yet)
 10. [Single-Tenant Sites Are Unaffected](#10-single-tenant-sites-are-unaffected)
 
 ---
@@ -42,6 +42,7 @@ sites** keyed by hostname. Each site has its own:
   strings independently.
 
 Shared across all sites:
+
 - **Plugin and theme code** (installed once at deploy time)
 - **User accounts** (`nx_users`)
 - **Media** (`nx_media`) — uploaded files are global; each
@@ -65,6 +66,7 @@ nx_sites          ← one row per tenant
 ```
 
 **Why this model**:
+
 - One DB / schema simplifies migrations (no per-tenant
   schema drift).
 - `site_id` columns + per-query filters give tenant
@@ -74,6 +76,7 @@ nx_sites          ← one row per tenant
   auto-filter, write helpers auto-stamp.
 
 **Tradeoffs**:
+
 - Every collection query carries a `WHERE site_id = $1`
   clause. Index your collection tables on `(site_id, …)` for
   the columns you actually query (the codegen does this for
@@ -100,7 +103,7 @@ Per-request, in priority order:
    `resolveSiteForHostname()` which queries `nx_sites` for
    a matching row.
 3. **Fallback to the default site** (`NX_DEFAULT_SITE_ID =
-   "default"`). Always exists — migration 0015 seeds it.
+"default"`). Always exists — migration 0015 seeds it.
 
 Sites match the hostname **case-insensitively**. Multiple
 hostnames pointing at the same site are not supported in
@@ -117,6 +120,7 @@ Codegen unconditionally adds `site_id text NOT NULL DEFAULT
 collections — Phase 12.1 slot stays).
 
 Pipeline behavior:
+
 - **Writes**: `site_id` is stamped from `getCurrentSiteId()`
   on creates; updates inherit the original row's site (body
   fields can't reassign).
@@ -134,6 +138,7 @@ Pipeline behavior:
 all auto-scope via `getCurrentSiteId()`.
 
 This means each site can:
+
 - Pick its own active theme (Phase 11.4 switcher writes per-
   site `activeTheme`)
 - Customize theme tokens independently (Phase 11.x token
@@ -158,6 +163,7 @@ Three tiers, in priority order:
    (no memberships) operate entirely off this.
 
 Helper APIs:
+
 - `resolveUserRoleOnSite(user, siteId)` — full chain.
 - `hasRoleOnSite(user, minRole, siteId?)` — site-scoped
   variant of `hasRole()`.
@@ -275,21 +281,25 @@ isolation know where the boundary stops:
   site's content references media by id; the same image
   can be reused across tenants. A future "per-site media
   ownership" surface would need a new column +
-  access-control hook.
-- **`nx_audit_events`** — the audit log doesn't carry a
-  `site_id` column. Multi-tenant operators can't yet
-  filter audit by site without a manual join through the
-  affected entity. Documented gap.
-- **`nx_plugin_storage`** — plugin storage rows aren't
-  site-scoped. A plugin that wants per-site state has to
-  prefix its keys with the siteId itself today.
+  access-control hook. **Still a gap.**
+- **`nx_audit_events`** — Phase 17 added a nullable
+  `site_id` column + index. `recordAuditEvent` fills it
+  from the current request's resolved site, so the audit
+  list can filter by tenant. Events without a request
+  scope (super-admin actions, scripts) leave it null.
+- **`nx_plugin_storage`** — Phase 17 made the table
+  site-scoped: PK is `(plugin_id, site_id, key)` with a
+  default of `NX_GLOBAL_PLUGIN_SITE_ID` for plugins that
+  want shared state. Plugins use `ctx.storage` and pass
+  the active site through automatically.
 - **`nx_comments` / `nx_reactions` / `nx_follows` /
-  `nx_notifications` / `nx_reports` / `nx_members`** —
-  community tables don't carry a `site_id`. Comments and
-  reactions are indirectly scoped because their target row
-  belongs to a site (collection scan filters by site_id),
-  but members themselves are global. Multi-tenant SaaS
-  scenarios that need per-site member bases need more work.
+  `nx_member_mutes` / `nx_notifications` / `nx_reports` /
+  `nx_bans`** — Phase 18 added `site_id` columns + indexes
+  so per-site queues, mutes, mod reports, and notification
+  inboxes are first-class. `nx_members` is intentionally
+  still global (one identity, many tenants); per-site
+  member roles live in `nx_member_roles` keyed on
+  `(site_id, member_id)`.
 
 ---
 
@@ -297,6 +307,7 @@ isolation know where the boundary stops:
 
 Every multi-site mechanism degrades cleanly for single-tenant
 deployments:
+
 - The migration seeds a default site row, so existing single-
   tenant code keeps writing to `site_id = 'default'`
   transparently.

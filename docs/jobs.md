@@ -273,14 +273,17 @@ the endpoint directly if needed.
 ## 11. Operations Playbook
 
 **Worker silently stopped processing**
+
 - Check the worker process is alive (e.g. `docker ps`)
 - Confirm `NX_ENABLE_JOBS=1` is set in the worker env
 - Watch the Pending tab — if jobs are stuck in `created`
   for a long time, the worker isn't draining
-- Heartbeat / liveness endpoint isn't built; this is a
-  known gap (§12)
+- `GET /api/admin/jobs/health` (editor+) returns the live
+  heartbeat snapshot — `aliveCount: 0` plus stale
+  `newestHeartbeat` confirms a dead worker (Phase 19)
 
 **Backlog after an outage (hundreds of failed jobs)**
+
 - Fix the upstream issue first (don't retry into a still-
   broken dependency)
 - Use Failed tab → "Retry all failed" repeatedly until the
@@ -288,12 +291,14 @@ the endpoint directly if needed.
 - Watch Active / Completed to confirm jobs are draining
 
 **Misconfigured cron**
+
 - Scheduled tab → "Cron schedules" card shows the registered
   cron expressions. If a job you expect isn't there, it
   hasn't been registered with `boss.schedule()` — check
   worker startup logs.
 
 **Job stuck in `active` forever**
+
 - Typically means the handler crashed without releasing the
   lock, or the worker was killed mid-job. pg-boss has a
   built-in expiration that flips long-running active jobs
@@ -301,6 +306,7 @@ the endpoint directly if needed.
   `pgboss.job.expire_in`.
 
 **Investigating a single failure**
+
 - Failed tab → click the row's `<details>` toggle to see
   the payload + the inline error message. Cross-reference
   the worker logs (filter on `jobId`).
@@ -311,13 +317,6 @@ the endpoint directly if needed.
 
 Open follow-ups, in rough order of impact:
 
-- **Worker heartbeat / liveness** — admin can't tell if the
-  worker process is alive. Today the only signal is
-  "Pending stays high while Completed doesn't grow."
-- **Plugin-declared cron schedules** — currently plugins
-  have to call `boss.schedule()` directly via `getBoss()`.
-  A first-class `definePlugin({ schedules: [...] })`
-  surface would be cleaner.
 - **Per-job logs** — handler `console.log` calls go to the
   worker's stdout, not associated with the job row in the
   admin. Linking them would help post-mortems.
@@ -327,6 +326,20 @@ Open follow-ups, in rough order of impact:
 - **Rate-limit on retry / enqueue endpoints** — admin can
   hammer "Retry" / "Enqueue" without throttle. Probably
   fine for the operator audience, but worth noting.
+
+### Recently closed
+
+- **Worker heartbeat / liveness** — Phase 19 (#212). The
+  worker upserts to `nx_worker_heartbeats` every 30s; alive
+  = `running` AND last-seen within 90s. Surfaced via
+  `GET /api/admin/jobs/health`. Operations playbook above
+  should be updated when the admin UI exposes the health
+  endpoint visually.
+- **Plugin-declared cron schedules** — Phase 19 (#212).
+  `definePlugin({ scheduled: [...] })` is now read by the
+  host; pg-boss adapter registers the cron rows on worker
+  start. `boss.schedule()` via `getBoss()` still works as
+  the escape hatch.
 - **Dead-letter queue inspection** — pg-boss archives
   failed jobs after `keepUntil`; the admin doesn't expose
   the archive separately from `failed`. Today they're

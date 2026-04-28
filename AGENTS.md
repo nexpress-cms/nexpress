@@ -2,7 +2,7 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Generated:** 2026-04-22 | **Commit:** 2e07135 | **Branch:** main
+**Last refreshed:** 2026-04-29 (Phase 19 worker heartbeat + plugin cron)
 
 ## Commands
 
@@ -21,7 +21,7 @@ pnpm dev                                                # turbo watch: runs tsup
 - `pnpm typecheck` — **maps to `turbo run lint`**, which runs `tsc --noEmit` in each package (not ESLint). The `lint` turbo task in each package is `tsc --noEmit`; the root `lint` script is the ESLint one. Both exist, and they are not the same thing.
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier
-- No tests exist yet. `pnpm test` runs `turbo run test` but no package defines a `test` script. No test runner (vitest/jest) is configured.
+- `pnpm test` runs the vitest unit suite across every workspace (no DB required). `pnpm test:integration` runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` (skips silently when unset). See `docs/testing.md` for setup.
 
 Running a single package's build/typecheck:
 
@@ -120,23 +120,23 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 ## WHERE TO LOOK
 
-| Task                                             | Location                                                | Notes                                              |
-| ------------------------------------------------ | ------------------------------------------------------- | -------------------------------------------------- |
-| Add/modify a collection                          | `apps/web/src/collections/*.ts`                         | Run `pnpm db:generate && pnpm db:migrate` after    |
-| Change content pipeline (ACL, hooks, validation) | `packages/core/src/collections/pipeline.ts`             | 1043 lines — the critical write path               |
-| Add a block type                                 | `packages/blocks/src/blocks/`                           | Register in `registry.ts` `getDefaultBlocks()`     |
-| Modify rich-text rendering (SSR)                 | `packages/editor/src/render-rich-text.tsx`              | Server-safe; used by blocks and site pages         |
-| Add editor toolbar features                      | `packages/editor/src/toolbar-plugin.tsx`                | Client-only; exports via `./client`                |
-| Add admin UI field type                          | `packages/admin/src/collections/field-renderer.tsx`     | Add component in `fields/`, update renderer switch |
-| Add admin UI primitive                           | `packages/admin/src/ui/`                                | shadcn pattern: Radix + cva + cn()                 |
+| Task                                             | Location                                                | Notes                                                                                                                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add/modify a collection                          | `apps/web/src/collections/*.ts`                         | Run `pnpm db:generate && pnpm db:migrate` after                                                                                                                                 |
+| Change content pipeline (ACL, hooks, validation) | `packages/core/src/collections/pipeline.ts`             | 1043 lines — the critical write path                                                                                                                                            |
+| Add a block type                                 | `packages/blocks/src/blocks/`                           | Register in `registry.ts` `getDefaultBlocks()`                                                                                                                                  |
+| Modify rich-text rendering (SSR)                 | `packages/editor/src/render-rich-text.tsx`              | Server-safe; used by blocks and site pages                                                                                                                                      |
+| Add editor toolbar features                      | `packages/editor/src/toolbar-plugin.tsx`                | Client-only; exports via `./client`                                                                                                                                             |
+| Add admin UI field type                          | `packages/admin/src/collections/field-renderer.tsx`     | Add component in `fields/`, update renderer switch                                                                                                                              |
+| Add admin UI primitive                           | `packages/admin/src/ui/`                                | shadcn pattern: Radix + cva + cn()                                                                                                                                              |
 | Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`       | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin). |
-| Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts` | JWT sign/verify in core; cookie helpers in next    |
-| Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                 | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`) |
-| Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory        |
-| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | nxUsers, nxMedia, nxRevisions, nxSettings          |
-| Scaffold templates (create-nexpress)             | `packages/cli/src/templates.ts`                         | 1664 lines of string templates                     |
-| Theme token → CSS mapping                        | `packages/theme/src/generate-css.ts`                    | Custom properties under `:root`                    |
-| Docker / deployment                              | `docker/Dockerfile`                                     | Multi-stage, uses Next standalone output           |
+| Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts` | JWT sign/verify in core; cookie helpers in next                                                                                                                                 |
+| Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                 | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                         |
+| Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory                                                                                                                                     |
+| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | nxUsers, nxMedia, nxRevisions, nxSettings                                                                                                                                       |
+| Scaffold templates (create-nexpress)             | `packages/cli/src/templates.ts`                         | 1664 lines of string templates                                                                                                                                                  |
+| Theme token → CSS mapping                        | `packages/theme/src/generate-css.ts`                    | Custom properties under `:root`                                                                                                                                                 |
+| Docker / deployment                              | `docker/Dockerfile`                                     | Multi-stage, uses Next standalone output                                                                                                                                        |
 
 ## Conventions
 
@@ -160,7 +160,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 ## NOTES
 
-- **No CI pipeline exists** — no `.github/workflows/`. Build/lint/test are local-only for now.
+- **CI** — `.github/workflows/ci.yml` runs install → build → typecheck → `pnpm test` on Ubuntu (Node 22, pnpm 10.33). Currently `workflow_dispatch` only (manual) while Actions billing is sorted; push/PR triggers will be re-enabled without other changes. Integration tests are not run in CI yet — they require Postgres in the runner.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`pnpm typecheck` vs `pnpm lint`** — confusing naming. `typecheck` runs `turbo run lint` (which is `tsc --noEmit` per package). `pnpm lint` runs ESLint at root. They are different commands with overlapping names.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
