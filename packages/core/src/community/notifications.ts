@@ -29,14 +29,40 @@ export interface NxNotificationRow {
 }
 
 export interface CreateNotificationInput {
+  /** The recipient — whose inbox this lands in. */
   memberId: string;
   kind: string;
   payload?: Record<string, unknown>;
+  /**
+   * Phase 16.1 — the member whose action triggered the
+   * notification (e.g. the comment author, the reactor, the
+   * follower). When set, the recipient's mute list is
+   * consulted: if the recipient has muted the actor, the
+   * notification is silently dropped. Returns `null` from
+   * the call site.
+   *
+   * Optional because some kinds are actor-less (system
+   * notices, scheduled reminders).
+   */
+  actorMemberId?: string | null;
 }
 
 export async function createNotification(
   input: CreateNotificationInput,
-): Promise<NxNotificationRow> {
+): Promise<NxNotificationRow | null> {
+  // Mute check — defer the import to avoid a notifications →
+  // mutes circular at module load. Mutes module imports
+  // nothing back from here, but TypeScript sometimes flags
+  // the cycle anyway depending on resolver order.
+  if (input.actorMemberId && input.actorMemberId !== input.memberId) {
+    const { isMuted } = await import("./mutes.js");
+    const muted = await isMuted({
+      memberId: input.memberId,
+      targetId: input.actorMemberId,
+    });
+    if (muted) return null;
+  }
+
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
     .insert(nxNotifications)
@@ -93,9 +119,9 @@ export async function listNotifications(
   const [unreadRow] = (await db
     .select({ total: count() })
     .from(nxNotifications)
-    .where(
-      and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)),
-    )) as Array<{ total: number | string }>;
+    .where(and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)))) as Array<{
+    total: number | string;
+  }>;
 
   return {
     notifications: rows,
@@ -109,9 +135,9 @@ export async function unreadNotificationCount(memberId: string): Promise<number>
   const [row] = (await db
     .select({ total: count() })
     .from(nxNotifications)
-    .where(
-      and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)),
-    )) as Array<{ total: number | string }>;
+    .where(and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)))) as Array<{
+    total: number | string;
+  }>;
   return Number(row?.total ?? 0);
 }
 
@@ -166,9 +192,7 @@ export async function markAllNotificationsRead(memberId: string): Promise<number
   await db
     .update(nxNotifications)
     .set({ readAt: new Date() })
-    .where(
-      and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)),
-    );
+    .where(and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)));
   return before;
 }
 

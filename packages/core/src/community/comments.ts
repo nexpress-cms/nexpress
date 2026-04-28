@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, notInArray, sql, type SQL } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getCollectionConfig } from "../collections/registry.js";
@@ -11,6 +11,7 @@ import { getLogger } from "../observability/logger.js";
 import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned, memberCan } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
+import { getMutedTargetIds } from "./mutes.js";
 import { createNotification } from "./notifications.js";
 import { getProfanityAdapter } from "./profanity-adapter.js";
 import { applyReputation } from "./reputation.js";
@@ -94,9 +95,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   // comment; collection-scoped bans block writes to that collection.
   // (#53 — without this, banned members kept commenting because
   // `createComment` never went through `memberCan`.)
-  await assertNotBanned(input.memberId, [
-    { type: "collection", id: input.targetType },
-  ]);
+  await assertNotBanned(input.memberId, [{ type: "collection", id: input.targetType }]);
 
   // Target document must actually exist. Without this guard, members
   // could insert orphan comment rows under random UUIDs for any
@@ -203,9 +202,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     throw new NxValidationError("Invalid input", [
       {
         field: "bodyMd",
-        message:
-          profanityVerdict.reason ??
-          "Comment contains prohibited language",
+        message: profanityVerdict.reason ?? "Comment contains prohibited language",
       },
     ]);
   }
@@ -224,8 +221,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     throw new NxValidationError("Invalid input", [
       {
         field: "bodyMd",
-        message:
-          spamVerdict.reason ?? "Comment was rejected by the site's spam filter",
+        message: spamVerdict.reason ?? "Comment was rejected by the site's spam filter",
       },
     ]);
   }
@@ -300,14 +296,11 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   // confusing. If a mod later restores the row to visible, that's
   // when it makes sense to notify; the moderation surface owns that
   // decision.
-  if (
-    initialStatus === "visible" &&
-    parentAuthorId &&
-    parentAuthorId !== input.memberId
-  ) {
+  if (initialStatus === "visible" && parentAuthorId && parentAuthorId !== input.memberId) {
     await createNotification({
       memberId: parentAuthorId,
       kind: "comment.reply",
+      actorMemberId: input.memberId,
       payload: {
         commentId: row.id,
         replyAuthorId: input.memberId,
@@ -342,6 +335,13 @@ export interface NxCommentListOptions {
   order?: NxCommentSort;
   /** Override visibility — staff/mods may want to see hidden rows. */
   includeHidden?: boolean;
+  /**
+   * Phase 16.1 — when set, the viewer's mute list is applied
+   * so authors they've muted disappear from the result. The
+   * filter only kicks in for the logged-in viewer; anonymous
+   * viewers see every visible comment.
+   */
+  viewerMemberId?: string;
 }
 
 export interface NxCommentListResult {
@@ -359,9 +359,23 @@ export async function listComments(
   const offset = Math.max(options.offset ?? 0, 0);
   const order = options.order ?? "newest";
 
-  const where = options.includeHidden
+  // Phase 16.1 — apply viewer mute list as a NOT IN clause.
+  // We resolve the muted ids once per call (single SELECT
+  // bounded by the viewer's own mute list); for the typical
+  // member with a handful of mutes the cost is trivial.
+  // Empty mute list short-circuits — no NOT IN clause is
+  // appended.
+  const mutedAuthorIds: string[] = options.viewerMemberId
+    ? Array.from(await getMutedTargetIds(options.viewerMemberId))
+    : [];
+  const muteFilter: SQL | undefined =
+    mutedAuthorIds.length > 0 ? notInArray(nxComments.memberId, mutedAuthorIds) : undefined;
+
+  const baseWhere = options.includeHidden
     ? and(eq(nxComments.targetType, targetType), eq(nxComments.targetId, targetId))
     : sql`${eq(nxComments.targetType, targetType)} and ${eq(nxComments.targetId, targetId)} and ${eq(nxComments.status, "visible")}`;
+
+  const where = muteFilter ? and(baseWhere, muteFilter) : baseWhere;
 
   // `top` orders by reaction count via a correlated subquery,
   // then created_at DESC as a stable tiebreaker. The subquery
@@ -383,10 +397,9 @@ export async function listComments(
     .limit(limit)
     .offset(offset)) as NxCommentRow[];
 
-  const [totalRow] = (await db
-    .select({ total: count() })
-    .from(nxComments)
-    .where(where)) as Array<{ total: number | string }>;
+  const [totalRow] = (await db.select({ total: count() }).from(nxComments).where(where)) as Array<{
+    total: number | string;
+  }>;
 
   return { comments: rows, totalDocs: Number(totalRow?.total ?? 0) };
 }
@@ -452,15 +465,15 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
     targetId: existing.targetId,
     parentId: existing.parentId,
   };
-  let profanityFlag: { reason: string | null; metadata: Record<string, unknown> | null } | null = null;
+  let profanityFlag: { reason: string | null; metadata: Record<string, unknown> | null } | null =
+    null;
   try {
     const verdict = await getProfanityAdapter().check(input.bodyMd, ctx);
     if (verdict.kind === "reject") {
       throw new NxValidationError("Invalid input", [
         {
           field: "bodyMd",
-          message:
-            verdict.reason ?? "Comment contains prohibited language",
+          message: verdict.reason ?? "Comment contains prohibited language",
         },
       ]);
     }
@@ -484,8 +497,7 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
       throw new NxValidationError("Invalid input", [
         {
           field: "bodyMd",
-          message:
-            verdict.reason ?? "Comment was rejected by the site's spam filter",
+          message: verdict.reason ?? "Comment was rejected by the site's spam filter",
         },
       ]);
     }
@@ -719,10 +731,7 @@ export async function staffHideComment(
   });
 }
 
-export async function staffRestoreComment(
-  commentId: string,
-  staffUserId: string,
-): Promise<void> {
+export async function staffRestoreComment(commentId: string, staffUserId: string): Promise<void> {
   const existing = await loadCommentForStaffOp(commentId);
   // A "deleted" comment had its body wiped — flipping it back to visible
   // would surface a ghost row (author + timestamp intact, body empty).
@@ -755,10 +764,7 @@ export async function staffRestoreComment(
   });
 }
 
-export async function staffDeleteComment(
-  commentId: string,
-  staffUserId: string,
-): Promise<void> {
+export async function staffDeleteComment(commentId: string, staffUserId: string): Promise<void> {
   const existing = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
