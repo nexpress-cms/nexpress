@@ -142,3 +142,13 @@ export type {
   MuteMemberInput,
   ListMutesOptions,
 } from "./mutes.js";
+
+export {
+  MENTION_HANDLE_RE,
+  extractMentionHandles,
+  extractMentionHandlesFromRichText,
+  extractMentionHandlesFromDocData,
+  resolveMentionedMembers,
+  fanOutMentionNotifications,
+} from "./mentions.js";
+export type { NxMentionTarget, FanOutMentionsInput } from "./mentions.js";
