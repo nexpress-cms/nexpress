@@ -176,6 +176,13 @@
       "when": 1777355745326,
       "tag": "0024_sparkling_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1777417783700,
+      "tag": "0025_famous_ronan",
+      "breakpoints": true
     }
   ]
 }

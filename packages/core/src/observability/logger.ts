@@ -37,6 +37,36 @@ function emitConsole(level: NxLogLevel, message: string, context?: Record<string
   } else {
     fn(`[${level}] ${message}`);
   }
+  // Phase 20.3 — when emitted from inside a job handler, also
+  // tee the line into `nx_job_logs`. Dynamic import is
+  // deliberate: the job-log module pulls in the schema (pg),
+  // and the logger module is imported by code paths (CLI
+  // scaffolds, pure-function tests) that don't have a DB. Lazy
+  // import + fire-and-forget keeps `getLogger().info(...)` calls
+  // synchronous and free of cost outside worker contexts.
+  void teeToJobLog(level, message, context);
+}
+
+let teeImportPromise: Promise<typeof import("../jobs/job-log.js")> | null = null;
+async function teeToJobLog(
+  level: NxLogLevel,
+  message: string,
+  context?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    if (!teeImportPromise) {
+      teeImportPromise = import("../jobs/job-log.js");
+    }
+    const mod = await teeImportPromise;
+    if (mod.getCurrentJobId() !== null) {
+      await mod.recordJobLog(level, message, context);
+    }
+  } catch {
+    // Already wrote to console; swallow secondary failures so
+    // the logger never throws. recordJobLog already has internal
+    // try/catch around the DB write — this catch is for the
+    // dynamic import itself.
+  }
 }
 
 /** Default logger — emits to `console`. Replaceable via `setLogger`. */
