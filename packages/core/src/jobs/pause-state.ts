@@ -137,6 +137,11 @@ export function startPauseSyncLoop(
     }
   };
 
+  // Tick once immediately so a worker booted just before a
+  // pause API call doesn't process up to one full interval's
+  // worth of jobs before it sees the flag. Mirrors the pattern
+  // in `startHeartbeatLoop`.
+  void tick();
   const timer = setInterval(() => {
     void tick();
   }, intervalMs);
