@@ -68,8 +68,7 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
       actor(),
       { status: "published" },
     );
-    const groupId = (en.doc as { translationGroupId: string })
-      .translationGroupId;
+    const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
     await saveDocument(
       "localized-pages",
       null,
@@ -155,5 +154,53 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
     expect(isLocale("fr")).toBe(false);
     expect(isLocale("")).toBe(false);
     expect(isLocale(123)).toBe(false);
+  });
+
+  it("resolveAvailableLocales returns sibling locales for an i18n doc with multiple translations", async () => {
+    const { resolveAvailableLocales } = await import("@nexpress/next");
+    const { saveDocument } = await import("@nexpress/core");
+    const en = await saveDocument(
+      "localized-pages",
+      null,
+      { title: "About", body: "english", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
+    await saveDocument(
+      "localized-pages",
+      null,
+      { title: "About", body: "korean", locale: "ko", translationGroupId: groupId },
+      actor(),
+      { status: "published" },
+    );
+
+    const locales = await resolveAvailableLocales("/en/about");
+    expect(locales).not.toBeNull();
+    expect(locales!.sort()).toEqual(["en", "ko"]);
+  });
+
+  it("resolveAvailableLocales returns only the doc's own locale for solo translations", async () => {
+    const { resolveAvailableLocales } = await import("@nexpress/next");
+    const { saveDocument } = await import("@nexpress/core");
+    await saveDocument(
+      "localized-pages",
+      null,
+      { title: "Solo Page", body: "only en", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const locales = await resolveAvailableLocales("/en/solo-page");
+    expect(locales).toEqual(["en"]);
+  });
+
+  it("resolveAvailableLocales returns every configured locale for static / non-i18n paths", async () => {
+    const { resolveAvailableLocales } = await import("@nexpress/next");
+    const home = await resolveAvailableLocales("/");
+    const blog = await resolveAvailableLocales("/blog");
+    const ko = await resolveAvailableLocales("/ko");
+    expect(home?.sort()).toEqual(["en", "ko"]);
+    expect(blog?.sort()).toEqual(["en", "ko"]);
+    expect(ko?.sort()).toEqual(["en", "ko"]);
   });
 });
