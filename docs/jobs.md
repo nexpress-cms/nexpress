@@ -323,12 +323,16 @@ Open follow-ups, in rough order of impact:
 - **Pause / resume queue** — no way to globally pause job
   processing from the admin (e.g. during a maintenance
   window).
-- **Rate-limit on retry / enqueue endpoints** — admin can
-  hammer "Retry" / "Enqueue" without throttle. Probably
-  fine for the operator audience, but worth noting.
 
 ### Recently closed
 
+- **Rate-limit on retry / enqueue endpoints** — Phase 20.1.
+  `apps/web/src/proxy.ts` now imposes tighter buckets above
+  the general `/api/admin/` 60/min limit:
+  `retry-all` 5/min, `enqueue` 10/min, per-row `retry`
+  30/min. Each call still requires admin role + CSRF — the
+  rate limit is defense-in-depth against accidental loops
+  and runaway scripts.
 - **Worker heartbeat / liveness** — Phase 19 (#212). The
   worker upserts to `nx_worker_heartbeats` every 30s; alive
   = `running` AND last-seen within 90s. Surfaced via
