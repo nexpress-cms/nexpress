@@ -564,6 +564,7 @@ export type NxJobType =
   | "plugin:scheduledTask"
   | "system:revisionPrune"
   | "system:sessionCleanup"
+  | "system:jobLogPrune"
   | "auth:sendPasswordReset"
   | "members:sendVerifyEmail"
   | "members:sendPasswordReset"

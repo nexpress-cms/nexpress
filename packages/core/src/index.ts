@@ -275,6 +275,13 @@ export {
   setJobsPauseState,
   startPauseSyncLoop,
   PAUSE_SYNC_INTERVAL_MS,
+  recordJobLog,
+  listJobLogs,
+  countJobLogs,
+  pruneJobLogsOlderThan,
+  runInJobContext,
+  getCurrentJobId,
+  DEFAULT_JOB_LOG_RETENTION_MS,
 } from "./jobs/index.js";
 export type {
   NxJobHandler,
@@ -289,6 +296,8 @@ export type {
   NxJobsPauseState,
   SetJobsPauseStateInput,
   PauseSyncLoopHandle,
+  NxJobLogEntry,
+  ListJobLogsOptions,
 } from "./jobs/index.js";
 
 export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
