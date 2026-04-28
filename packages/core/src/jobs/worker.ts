@@ -1,11 +1,14 @@
 import { registerBuiltinHandlers } from "./builtin-handlers.js";
 import { startHeartbeatLoop } from "./heartbeat.js";
+import { getJobsPauseState, startPauseSyncLoop, type PauseSyncLoopHandle } from "./pause-state.js";
 import { PgBossAdapter } from "./pg-boss-adapter.js";
 import { setJobQueue } from "./queue.js";
+import { getLogger } from "../observability/logger.js";
 
 let workerAdapter: PgBossAdapter | null = null;
 let producerAdapter: PgBossAdapter | null = null;
 let heartbeatHandle: { stop(): Promise<void> } | null = null;
+let pauseSyncHandle: PauseSyncLoopHandle | null = null;
 
 export async function startWorker(
   connectionString: string,
@@ -29,6 +32,27 @@ export async function startWorker(
   await workerAdapter.start();
   await workerAdapter.scheduleRecurring();
 
+  // Phase 20.2 — if the operator paused processing while the
+  // worker was offline, honor it on boot. The flag is global
+  // (in `nx_settings` siteId="_system") so it survives worker
+  // restarts. We swallow read errors because a pre-migrate DB
+  // would otherwise stop the worker from starting at all —
+  // safer to default to "running" than to refuse to boot.
+  try {
+    const pauseState = await getJobsPauseState();
+    if (pauseState.paused) {
+      await workerAdapter.pauseProcessing();
+      getLogger().info("Worker booted in paused state", {
+        changedAt: pauseState.changedAt,
+        reason: pauseState.reason,
+      });
+    }
+  } catch (err) {
+    getLogger().warn("Could not read jobs pause state on worker boot", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // Phase 19 — start the heartbeat loop AFTER pg-boss is up so
   // a misconfigured DB surfaces as a `boss.start()` throw
   // rather than a heartbeat row that lies about a worker that
@@ -38,6 +62,13 @@ export async function startWorker(
   if (heartbeatOpt !== false) {
     const meta = typeof heartbeatOpt === "object" ? (heartbeatOpt.meta ?? {}) : {};
     heartbeatHandle = startHeartbeatLoop(meta);
+    // Phase 20.2 — multi-pod pause sync. Each tick reads the
+    // persisted flag and applies any divergence to the local
+    // adapter, so an operator pause on one pod propagates to
+    // the rest within ~30 s. Same gate as the heartbeat — if
+    // the operator opted out of background loops (tests), we
+    // skip this too.
+    pauseSyncHandle = startPauseSyncLoop(workerAdapter);
   }
 }
 
@@ -75,6 +106,15 @@ export async function stopWorker(): Promise<void> {
   if (heartbeatHandle) {
     await heartbeatHandle.stop();
     heartbeatHandle = null;
+  }
+
+  // Phase 20.2 — pause sync interval is just an in-memory
+  // timer; clear it before tearing down the queue so a
+  // late-firing tick doesn't try to call pauseProcessing on a
+  // half-shut-down adapter.
+  if (pauseSyncHandle) {
+    pauseSyncHandle.stop();
+    pauseSyncHandle = null;
   }
 
   await workerAdapter.stop();

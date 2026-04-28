@@ -280,7 +280,22 @@ the endpoint directly if needed.
   for a long time, the worker isn't draining
 - `GET /api/admin/jobs/health` (editor+) returns the live
   heartbeat snapshot — `aliveCount: 0` plus stale
-  `newestHeartbeat` confirms a dead worker (Phase 19)
+  `newestHeartbeat` confirms a dead worker (Phase 19).
+  `pause.paused: true` (Phase 20.2) means the worker is
+  alive but the operator paused the queue.
+
+**Maintenance window — pause processing**
+
+- `POST /api/admin/jobs/pause` (admin + CSRF). Optional
+  `{ "reason": "DB migration #123" }` body for the audit
+  trail. The flag persists in `nx_settings` so a worker
+  restart while paused stays paused.
+- In-flight jobs run to completion; producers keep
+  enqueueing. The pg-boss queue accumulates pending jobs.
+- `POST /api/admin/jobs/resume` to start draining again.
+- Multi-pod deployments converge in ≤ 30 s — each worker
+  pod polls the persisted flag on its heartbeat tick and
+  applies any state change locally.
 
 **Backlog after an outage (hundreds of failed jobs)**
 
@@ -320,12 +335,19 @@ Open follow-ups, in rough order of impact:
 - **Per-job logs** — handler `console.log` calls go to the
   worker's stdout, not associated with the job row in the
   admin. Linking them would help post-mortems.
-- **Pause / resume queue** — no way to globally pause job
-  processing from the admin (e.g. during a maintenance
-  window).
 
 ### Recently closed
 
+- **Pause / resume queue** — Phase 20.2. `POST /api/admin/jobs/pause`
+  and `POST /api/admin/jobs/resume` (admin + CSRF) flip a
+  `nx_settings("_system", "jobs.paused")` flag and call
+  `boss.offWork()` / `boss.work()` on every registered
+  queue. In-flight jobs run to completion; producers keep
+  enqueueing while paused. The state is read on worker
+  startup so a paused worker stays paused after a restart.
+  Multi-pod deployments converge automatically: each worker
+  re-reads the persisted flag every 30 s (piggy-backed on
+  the heartbeat tick) and applies any divergence locally.
 - **Rate-limit on retry / enqueue endpoints** — Phase 20.1.
   `apps/web/src/proxy.ts` now imposes tighter buckets above
   the general `/api/admin/` 60/min limit:
