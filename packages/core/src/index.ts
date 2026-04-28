@@ -528,6 +528,11 @@ export {
   extractMentionHandlesFromDocData,
   resolveMentionedMembers,
   fanOutMentionNotifications,
+  registerNotificationKind,
+  listNotificationKinds,
+  getMemberNotificationPrefs,
+  setMemberNotificationPrefs,
+  isNotificationKindEnabled,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -592,4 +597,7 @@ export type {
   ListMutesOptions,
   NxMentionTarget,
   FanOutMentionsInput,
+  NxNotificationKindMeta,
+  NxNotificationPrefs,
+  SetMemberNotificationPrefsInput,
 } from "./community/index.js";
