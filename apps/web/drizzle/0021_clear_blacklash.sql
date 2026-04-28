@@ -1,0 +1,1 @@
+ALTER TABLE "nx_members" ADD COLUMN "notification_prefs" jsonb DEFAULT '{}'::jsonb NOT NULL;

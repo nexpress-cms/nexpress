@@ -152,3 +152,16 @@ export {
   fanOutMentionNotifications,
 } from "./mentions.js";
 export type { NxMentionTarget, FanOutMentionsInput } from "./mentions.js";
+
+export {
+  registerNotificationKind,
+  listNotificationKinds,
+  getMemberNotificationPrefs,
+  setMemberNotificationPrefs,
+  isNotificationKindEnabled,
+} from "./notification-prefs.js";
+export type {
+  NxNotificationKindMeta,
+  NxNotificationPrefs,
+  SetMemberNotificationPrefsInput,
+} from "./notification-prefs.js";
