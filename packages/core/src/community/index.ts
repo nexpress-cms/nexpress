@@ -4,19 +4,11 @@ export {
   registerCommunityRole,
   resetCommunityRoles,
 } from "./roles.js";
-export type {
-  CommunityCapability,
-  CommunityRoleDefinition,
-  CommunityScope,
-} from "./roles.js";
+export type { CommunityCapability, CommunityRoleDefinition, CommunityScope } from "./roles.js";
 
 export { memberCan, assertNotBanned } from "./can.js";
 
-export {
-  setSpamAdapter,
-  getSpamAdapter,
-  resetSpamAdapter,
-} from "./spam-adapter.js";
+export { setSpamAdapter, getSpamAdapter, resetSpamAdapter } from "./spam-adapter.js";
 export type {
   NxSpamAdapter,
   NxSpamCheckContext,
@@ -41,10 +33,7 @@ export {
   getReputationAdapter,
   resetReputationAdapter,
 } from "./reputation-adapter.js";
-export type {
-  NxReputationAdapter,
-  NxReputationEvent,
-} from "./reputation-adapter.js";
+export type { NxReputationAdapter, NxReputationEvent } from "./reputation-adapter.js";
 export { applyReputation } from "./reputation.js";
 
 export {
@@ -53,10 +42,7 @@ export {
   updateCommunitySettings,
   validateCommunitySettingsPatch,
 } from "./settings.js";
-export type {
-  NxCommunitySettings,
-  NxMemberUploadQuota,
-} from "./settings.js";
+export type { NxCommunitySettings, NxMemberUploadQuota } from "./settings.js";
 
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
@@ -127,12 +113,7 @@ export type {
   ListAuditOptions,
 } from "./audit.js";
 
-export {
-  fileReport,
-  listReports,
-  resolveReport,
-  unresolvedReportCount,
-} from "./reports.js";
+export { fileReport, listReports, resolveReport, unresolvedReportCount } from "./reports.js";
 export type {
   NxReportRow,
   FileReportInput,
@@ -143,23 +124,21 @@ export type {
 
 export { issueBan, listBansForMember, revokeBan } from "./bans.js";
 
-export {
-  grantMemberRole,
-  listMemberRoleGrants,
-  revokeMemberRole,
-} from "./grants.js";
+export { grantMemberRole, listMemberRoleGrants, revokeMemberRole } from "./grants.js";
 export type {
   NxMemberRoleGrantRow,
   GrantMemberRoleInput,
   RevokeMemberRoleInput,
 } from "./grants.js";
-export type {
-  NxBanRow,
-  BanScope,
-  BanKind,
-  IssueBanInput,
-  RevokeBanInput,
-} from "./bans.js";
+export type { NxBanRow, BanScope, BanKind, IssueBanInput, RevokeBanInput } from "./bans.js";
 
 export { purgeMemberContent } from "./member-admin.js";
 export type { NxMemberPurgeResult } from "./member-admin.js";
+
+export { muteMember, unmuteMember, isMuted, getMutedTargetIds, listMutes } from "./mutes.js";
+export type {
+  NxMemberMuteRow,
+  NxMemberMuteSummary,
+  MuteMemberInput,
+  ListMutesOptions,
+} from "./mutes.js";

@@ -35,6 +35,7 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [memberKnown, setMemberKnown] = useState<boolean | null>(null);
+  const [viewerMemberId, setViewerMemberId] = useState<string | null>(null);
   const [sort, setSort] = useState<CommentSort>("oldest");
 
   const refresh = useCallback(async () => {
@@ -56,7 +57,16 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
   // until we move to Suspense + a data layer.
   useEffect(() => {
     fetch("/api/members/me", { credentials: "include" })
-      .then((res) => setMemberKnown(res.ok))
+      .then(async (res) => {
+        if (!res.ok) {
+          setMemberKnown(false);
+          return;
+        }
+        setMemberKnown(true);
+        const body = (await res.json().catch(() => null)) as { member?: { id?: unknown } } | null;
+        const id = body?.member?.id;
+        if (typeof id === "string") setViewerMemberId(id);
+      })
       .catch(() => setMemberKnown(false));
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
@@ -78,7 +88,9 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
         body: JSON.stringify({ bodyMd }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
       }
       setBodyMd("");
@@ -102,9 +114,7 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
           flexWrap: "wrap",
         }}
       >
-        <h2 style={{ fontSize: "1.25rem", margin: 0 }}>
-          Comments {total > 0 ? `(${total})` : ""}
-        </h2>
+        <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Comments {total > 0 ? `(${total})` : ""}</h2>
         {total > 1 ? (
           <div
             style={{ display: "inline-flex", gap: "0.25rem", fontSize: "0.875rem" }}
@@ -128,11 +138,7 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
                   fontWeight: sort === value ? 600 : 400,
                 }}
               >
-                {value === "oldest"
-                  ? "Oldest"
-                  : value === "newest"
-                    ? "Newest"
-                    : "Top"}
+                {value === "oldest" ? "Oldest" : value === "newest" ? "Newest" : "Top"}
               </button>
             ))}
           </div>
@@ -148,6 +154,8 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
               key={c.id}
               comment={c}
               memberKnown={memberKnown}
+              viewerMemberId={viewerMemberId}
+              onMuted={refresh}
             />
           ))}
         </ul>
@@ -170,7 +178,12 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
             onChange={(event) => setBodyMd(event.target.value)}
             placeholder="Write a comment… **bold**, *italic*, `code` supported."
             rows={3}
-            style={{ padding: "0.75rem", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit" }}
+            style={{
+              padding: "0.75rem",
+              borderRadius: 6,
+              border: "1px solid #cbd5e1",
+              fontFamily: "inherit",
+            }}
             maxLength={5000}
           />
           {error ? <p style={{ color: "#dc2626", fontSize: "0.875rem" }}>{error}</p> : null}
@@ -198,10 +211,14 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
 interface CommentItemProps {
   comment: CommentRow;
   memberKnown: boolean | null;
+  viewerMemberId: string | null;
+  onMuted: () => void | Promise<void>;
 }
 
-function CommentItem({ comment, memberKnown }: CommentItemProps) {
+function CommentItem({ comment, memberKnown, viewerMemberId, onMuted }: CommentItemProps) {
   const [reportOpen, setReportOpen] = useState(false);
+  const canMute =
+    memberKnown === true && viewerMemberId !== null && viewerMemberId !== comment.memberId;
   return (
     <li
       style={{
@@ -215,10 +232,7 @@ function CommentItem({ comment, memberKnown }: CommentItemProps) {
         {new Date(comment.createdAt).toLocaleString()}
         {comment.editedAt ? " · edited" : null}
       </div>
-      <div
-        className="nx-comment-body"
-        dangerouslySetInnerHTML={{ __html: comment.bodyHtml }}
-      />
+      <div className="nx-comment-body" dangerouslySetInnerHTML={{ __html: comment.bodyHtml }} />
       <div
         style={{
           display: "flex",
@@ -245,6 +259,7 @@ function CommentItem({ comment, memberKnown }: CommentItemProps) {
             Report
           </button>
         ) : null}
+        {canMute ? <MuteButton targetMemberId={comment.memberId} onMuted={onMuted} /> : null}
       </div>
       {reportOpen ? (
         <ReportDialog
@@ -254,6 +269,76 @@ function CommentItem({ comment, memberKnown }: CommentItemProps) {
         />
       ) : null}
     </li>
+  );
+}
+
+interface MuteButtonProps {
+  targetMemberId: string;
+  onMuted: () => void | Promise<void>;
+}
+
+function MuteButton({ targetMemberId, onMuted }: MuteButtonProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mute = async () => {
+    if (busy) return;
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(
+        "Mute this member? Their comments and reaction notifications will be hidden from you. You can unmute later from your profile.",
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const csrf = readCookie("nx-mb-csrf");
+      const res = await fetch("/api/members/me/mutes", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
+        body: JSON.stringify({ targetId: targetMemberId }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      await onMuted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to mute member");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+      <button
+        type="button"
+        onClick={() => {
+          void mute();
+        }}
+        disabled={busy}
+        title="Mute this member"
+        style={{
+          border: 0,
+          background: "transparent",
+          color: "#64748b",
+          cursor: busy ? "default" : "pointer",
+          padding: "0.25rem 0.4rem",
+          fontSize: "0.85rem",
+          opacity: busy ? 0.7 : 1,
+        }}
+      >
+        {busy ? "Muting…" : "Mute"}
+      </button>
+      {error ? <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span> : null}
+    </span>
   );
 }
 
@@ -320,9 +405,9 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
         });
       }
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
       }
       await load();
@@ -357,9 +442,7 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
       >
         👍 {count}
       </button>
-      {error ? (
-        <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span>
-      ) : null}
+      {error ? <span style={{ color: "#dc2626", fontSize: "0.8rem" }}>{error}</span> : null}
     </span>
   );
 }
@@ -409,7 +492,9 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
         body: JSON.stringify({ targetType, targetId, reason }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
       }
       setDone(true);

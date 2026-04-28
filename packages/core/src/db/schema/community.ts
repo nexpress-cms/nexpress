@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -90,12 +91,8 @@ export const nxMembers = pgTable(
     }),
     /** Plugin-extensible bag — preferences, custom profile fields, etc. */
     meta: jsonb("meta").$type<Record<string, unknown>>().default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [index("nx_members_status_idx").on(table.status)],
 );
@@ -109,9 +106,7 @@ export const nxMemberSessions = pgTable("nx_member_sessions", {
   userAgent: text("user_agent"),
   ip: text("ip"),
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-    .defaultNow()
-    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
 
 /**
@@ -139,12 +134,8 @@ export const nxMemberIdentities = pgTable(
     email: text("email"),
     /** Free-form per-provider metadata (avatar URL, scopes granted, etc.). */
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     unique("nx_member_identities_provider_subject_uq").on(table.provider, table.subject),
@@ -172,9 +163,7 @@ export const nxMemberRoles = pgTable(
     /** Nullable for `scope_type='site'`. Otherwise an opaque string id. */
     scopeId: text("scope_id"),
     grantedBy: uuid("granted_by").references(() => nxUsers.id),
-    grantedAt: timestamp("granted_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    grantedAt: timestamp("granted_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
@@ -232,21 +221,13 @@ export const nxComments = pgTable(
     bodyHtml: text("body_html").notNull(),
     status: nxCommentStatusEnum("status").default("visible").notNull(),
     hiddenByUserId: uuid("hidden_by_user_id").references(() => nxUsers.id),
-    hiddenByMemberId: uuid("hidden_by_member_id").references(
-      (): AnyPgColumn => nxMembers.id,
-    ),
+    hiddenByMemberId: uuid("hidden_by_member_id").references((): AnyPgColumn => nxMembers.id),
     hiddenReason: text("hidden_reason"),
     editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_comments_target_idx").on(
-      table.targetType,
-      table.targetId,
-      table.createdAt,
-    ),
+    index("nx_comments_target_idx").on(table.targetType, table.targetId, table.createdAt),
     index("nx_comments_member_idx").on(table.memberId, table.createdAt),
   ],
 );
@@ -271,18 +252,11 @@ export const nxReactions = pgTable(
       .notNull()
       .references(() => nxMembers.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_reactions_target_idx").on(table.targetType, table.targetId),
-    unique("nx_reactions_unique").on(
-      table.targetType,
-      table.targetId,
-      table.memberId,
-      table.kind,
-    ),
+    unique("nx_reactions_unique").on(table.targetType, table.targetId, table.memberId, table.kind),
   ],
 );
 
@@ -307,13 +281,43 @@ export const nxFollows = pgTable(
       .references(() => nxMembers.id, { onDelete: "cascade" }),
     targetType: text("target_type").notNull(),
     targetId: text("target_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_follows_target_idx").on(table.targetType, table.targetId),
     unique("nx_follows_unique").on(table.followerId, table.targetType, table.targetId),
+  ],
+);
+
+/**
+ * Phase 16.1 — member-to-member mute. One-directional: A muting
+ * B means A doesn't see B's comments and doesn't get
+ * notifications about B's actions (replies, reactions, follows
+ * targeted at A's content). B isn't told and can keep posting
+ * normally — Twitter-style soft-block.
+ *
+ * Self-mute is rejected at the API layer. The composite PK on
+ * `(memberId, targetId)` enforces idempotence: muting the same
+ * person twice is a no-op rather than two rows.
+ *
+ * Distinct from `nx_bans` — bans are staff-issued and global
+ * (block writes). Mutes are member-issued and personal (hide
+ * reads).
+ */
+export const nxMemberMutes = pgTable(
+  "nx_member_mutes",
+  {
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => nxMembers.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references(() => nxMembers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.memberId, table.targetId] }),
+    index("nx_member_mutes_target_idx").on(table.targetId),
   ],
 );
 
@@ -336,16 +340,10 @@ export const nxNotifications = pgTable(
     kind: text("kind").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
     readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_notifications_inbox_idx").on(
-      table.memberId,
-      table.readAt,
-      table.createdAt,
-    ),
+    index("nx_notifications_inbox_idx").on(table.memberId, table.readAt, table.createdAt),
   ],
 );
 
@@ -371,13 +369,9 @@ export const nxReports = pgTable(
     reason: text("reason").notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
     resolvedByUserId: uuid("resolved_by_user_id").references(() => nxUsers.id),
-    resolvedByMemberId: uuid("resolved_by_member_id").references(
-      (): AnyPgColumn => nxMembers.id,
-    ),
+    resolvedByMemberId: uuid("resolved_by_member_id").references((): AnyPgColumn => nxMembers.id),
     resolution: text("resolution"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_reports_queue_idx").on(table.resolvedAt, table.createdAt),
@@ -401,16 +395,12 @@ export const nxAuditEvents = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     actorKind: text("actor_kind").notNull(),
     actorUserId: uuid("actor_user_id").references(() => nxUsers.id),
-    actorMemberId: uuid("actor_member_id").references(
-      (): AnyPgColumn => nxMembers.id,
-    ),
+    actorMemberId: uuid("actor_member_id").references((): AnyPgColumn => nxMembers.id),
     action: text("action").notNull(),
     targetType: text("target_type"),
     targetId: text("target_id"),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_audit_target_idx").on(table.targetType, table.targetId, table.createdAt),
@@ -433,9 +423,7 @@ export const nxBans = pgTable(
     reason: text("reason"),
     byUserId: uuid("by_user_id").references(() => nxUsers.id),
     byMemberId: uuid("by_member_id").references((): AnyPgColumn => nxMembers.id),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .defaultNow()
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
     index("nx_bans_member_scope_idx").on(table.memberId, table.scopeType, table.scopeId),

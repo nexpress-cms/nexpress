@@ -25,10 +25,7 @@ export async function GET(
     const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
     const orderParam = url.searchParams.get("order");
-    const order =
-      orderParam === "oldest" || orderParam === "top"
-        ? orderParam
-        : "newest";
+    const order = orderParam === "oldest" || orderParam === "top" ? orderParam : "newest";
 
     // Hidden rows are mod-only. The original guard only checked
     // "is any member logged in?", which leaked hidden/deleted/pending
@@ -49,6 +46,11 @@ export async function GET(
       offset: Number.isFinite(offset) ? offset : undefined,
       order,
       includeHidden,
+      // Phase 16.1 — apply viewer's mute list. Anonymous
+      // viewers see the unfiltered feed; mod-mode
+      // (`includeHidden=true`) bypasses mutes because mods
+      // need to see everything.
+      ...(member && !includeHidden ? { viewerMemberId: member.id } : {}),
     });
     return nxSuccessResponse(result);
   } catch (error) {
@@ -66,9 +68,7 @@ export async function POST(
     requireMemberCsrf(request);
 
     const { slug, id } = await params;
-    const body = (await readJsonBody(request)) as
-      | { bodyMd?: unknown; parentId?: unknown }
-      | null;
+    const body = (await readJsonBody(request)) as { bodyMd?: unknown; parentId?: unknown } | null;
     const bodyMd = typeof body?.bodyMd === "string" ? body.bodyMd : "";
     const parentId =
       typeof body?.parentId === "string" && body.parentId.length > 0 ? body.parentId : null;
