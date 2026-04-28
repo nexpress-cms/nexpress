@@ -315,3 +315,27 @@ export const nxPluginStorage = pgTable(
     siteIdx: index("nx_plugin_storage_site_idx").on(table.siteId),
   }),
 );
+
+/**
+ * Phase 19 — worker liveness heartbeat. Each worker process
+ * upserts a row keyed on its self-generated id (hostname + pid)
+ * every `WORKER_HEARTBEAT_INTERVAL_MS` (30s). Admin reads this
+ * to tell whether the queue actually has a process draining
+ * jobs — without it the only signal was "Pending stays high
+ * while Completed doesn't grow," which a stuck DB or a stopped
+ * worker look identical from outside.
+ *
+ * Stale rows (no heartbeat for > 90s) are reported as
+ * `unhealthy`; they survive in the table for forensic review
+ * until an operator GCs them or a fresh worker reuses the id.
+ */
+export const nxWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
+  id: text("id").primaryKey(),
+  status: text("status").default("running").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
+    .notNull(),
+  /** Free-form metadata (worker version, hostname, env). */
+  meta: jsonb("meta").$type<Record<string, unknown>>().default({}).notNull(),
+});

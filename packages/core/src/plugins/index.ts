@@ -10,6 +10,8 @@ export {
   getDashboardWidgetsFromPlugins,
   dispatchPluginAction,
   schedulePluginTask,
+  getRegisteredPluginSchedules,
+  runPluginScheduledTask,
   resetPlugins,
 } from "./host.js";
 
@@ -19,6 +21,7 @@ export type {
   PluginRouteRequest,
   PluginRouteResponse,
   PluginAdminExtension,
+  PluginScheduleHandler,
   ResolvedCollectionTab,
   ResolvedDashboardWidget,
 } from "./host.js";

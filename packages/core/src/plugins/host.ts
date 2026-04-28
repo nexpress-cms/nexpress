@@ -110,6 +110,23 @@ export interface PluginAdminExtension {
   }>;
 }
 
+/**
+ * Phase 19 — first-class plugin cron schedules. Plugins
+ * declare `scheduled: [{ id, cron, handler }]` in their
+ * definition; the host stores the list here and pg-boss
+ * registers one recurring schedule per entry. The handler
+ * runs in the same context shape `setup()` saw, so plugins
+ * already familiar with `ctx.content` / `ctx.storage` /
+ * `ctx.next` use the same surface from a cron tick.
+ */
+export interface PluginScheduleHandler {
+  pluginId: string;
+  taskId: string;
+  cron: string;
+  description?: string;
+  handler: (ctx: Record<string, unknown>) => unknown;
+}
+
 interface PluginRegistration {
   id: string;
   name: string;
@@ -121,6 +138,7 @@ interface PluginRegistration {
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
+  schedules: Map<string, PluginScheduleHandler>;
 }
 
 /**
@@ -253,10 +271,14 @@ function registerHookHandler(
 function createPluginContext(pluginId: string, registration: PluginRegistration): NxPluginContext {
   return {
     addCollection: () => {
-      throw new Error(`[plugin:${pluginId}] Runtime collection registration not supported in v1. Add collections to nexpress.config.ts.`);
+      throw new Error(
+        `[plugin:${pluginId}] Runtime collection registration not supported in v1. Add collections to nexpress.config.ts.`,
+      );
     },
     addBlock: () => {
-      throw new Error(`[plugin:${pluginId}] Runtime block registration not supported in v1. Add blocks to nexpress.config.ts.`);
+      throw new Error(
+        `[plugin:${pluginId}] Runtime block registration not supported in v1. Add blocks to nexpress.config.ts.`,
+      );
     },
     addHook: (collection: string, event: string, hook) => {
       // Legacy API: collection is the docs' collection ("posts"), event is the
@@ -296,9 +318,37 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     hooks: new Map(),
     routes: [],
     actions: new Map(),
+    schedules: new Map(),
   };
 
   pluginRegistry.set(manifest.id, registration);
+
+  // Phase 19 — first-class cron schedules. Each entry maps to
+  // one pg-boss schedule. Duplicates within a plugin overwrite
+  // (idempotent across hot reloads); cross-plugin id collisions
+  // are fine because the queue name namespaces by plugin id.
+  const scheduledRaw = (plugin as { scheduled?: unknown }).scheduled;
+  if (Array.isArray(scheduledRaw)) {
+    for (const entry of scheduledRaw) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as {
+        id?: unknown;
+        cron?: unknown;
+        handler?: unknown;
+        description?: unknown;
+      };
+      if (typeof e.id !== "string" || e.id.length === 0) continue;
+      if (typeof e.cron !== "string" || e.cron.length === 0) continue;
+      if (typeof e.handler !== "function") continue;
+      registration.schedules.set(e.id, {
+        pluginId: manifest.id,
+        taskId: e.id,
+        cron: e.cron,
+        description: typeof e.description === "string" ? e.description : undefined,
+        handler: e.handler as PluginScheduleHandler["handler"],
+      });
+    }
+  }
 
   for (const [hookName, rawHandler] of Object.entries(plugin.hooks ?? {})) {
     if (typeof rawHandler !== "function") continue;
@@ -348,8 +398,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   // priority. Plugin authors typically namespace their keys
   // (e.g. `forum.replyButton`) to avoid collisions across
   // unrelated plugins.
-  const i18nBundles = (plugin as { i18n?: Record<string, Record<string, string>> })
-    .i18n;
+  const i18nBundles = (plugin as { i18n?: Record<string, Record<string, string>> }).i18n;
   if (i18nBundles && typeof i18nBundles === "object") {
     const { addStrings } = await import("../i18n/strings.js");
     for (const [locale, bundle] of Object.entries(i18nBundles)) {
@@ -366,9 +415,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   // active theme — the theme just stays authoritative. Re-
   // registering the same plugin overwrites its previous
   // entries (idempotent across hot reloads).
-  const pluginTemplates = (
-    plugin as { templates?: Record<string, Record<string, unknown>> }
-  ).templates;
+  const pluginTemplates = (plugin as { templates?: Record<string, Record<string, unknown>> })
+    .templates;
   if (pluginTemplates && typeof pluginTemplates === "object") {
     const { registerPluginTemplates } = await import("./templates.js");
     registerPluginTemplates(manifest.id, pluginTemplates);
@@ -376,7 +424,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
 
   // Invoke optional setup() after hooks + routes are registered so setup can
   // call ctx.actions.register(…) and have it visible to subsequent dispatches.
-  const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> }).setup;
+  const setup = (plugin as { setup?: (ctx: Record<string, unknown>) => void | Promise<void> })
+    .setup;
   if (typeof setup === "function") {
     const ctx = await buildCtxFor(manifest.id);
     await setup(ctx);
@@ -392,6 +441,7 @@ async function loadLegacyPlugin(plugin: NxPluginConfig): Promise<void> {
     hooks: new Map(),
     routes: [],
     actions: new Map(),
+    schedules: new Map(),
   };
 
   pluginRegistry.set(plugin.id, registration);
@@ -587,6 +637,43 @@ export async function dispatchPluginAction(
 export async function schedulePluginTask(pluginId: string, taskId: string): Promise<void> {
   const { enqueueJob } = await import("../jobs/queue.js");
   await enqueueJob("plugin:scheduledTask", { pluginId, taskId });
+}
+
+/**
+ * Phase 19 — return every registered schedule across loaded
+ * plugins. The pg-boss adapter calls this from
+ * `scheduleRecurring()` so each `definePlugin({ scheduled })`
+ * entry becomes a real cron in `pgboss.schedule`.
+ */
+export function getRegisteredPluginSchedules(): PluginScheduleHandler[] {
+  const out: PluginScheduleHandler[] = [];
+  for (const reg of pluginRegistry.values()) {
+    for (const schedule of reg.schedules.values()) {
+      out.push(schedule);
+    }
+  }
+  return out;
+}
+
+/**
+ * Phase 19 — runs the handler for one plugin's scheduled task.
+ * Called from the `plugin:scheduledTask` job handler when a
+ * tick fires. Builds the same plugin context the `setup()`
+ * call sees so handlers reuse `ctx.content` / `ctx.storage` /
+ * etc. Throws when the plugin or task isn't registered so the
+ * worker's retry policy surfaces the misconfiguration.
+ */
+export async function runPluginScheduledTask(pluginId: string, taskId: string): Promise<void> {
+  const registration = pluginRegistry.get(pluginId);
+  if (!registration) {
+    throw new Error(`Plugin "${pluginId}" is not registered`);
+  }
+  const entry = registration.schedules.get(taskId);
+  if (!entry) {
+    throw new Error(`Plugin "${pluginId}" has no scheduled task with id "${taskId}"`);
+  }
+  const ctx = await buildCtxFor(pluginId);
+  await entry.handler(ctx);
 }
 
 export function resetPlugins(): void {
