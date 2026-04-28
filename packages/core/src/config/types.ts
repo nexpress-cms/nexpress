@@ -339,14 +339,7 @@ export interface NxCollectionConfig {
      * collection's content changes. Optional — Google now
      * largely ignores it but other crawlers still honor it.
      */
-    changefreq?:
-      | "always"
-      | "hourly"
-      | "daily"
-      | "weekly"
-      | "monthly"
-      | "yearly"
-      | "never";
+    changefreq?: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
     /**
      * Sitemap priority hint, 0.0–1.0. Optional, same caveat as
      * changefreq.
@@ -440,11 +433,7 @@ export interface NxResolvedPluginLike {
 export interface NxPluginContext {
   addCollection: (config: NxCollectionConfig) => void;
   addBlock: (config: NxBlockConfig) => void;
-  addHook: (
-    collection: string,
-    event: string,
-    hook: NxCollectionHook,
-  ) => void;
+  addHook: (collection: string, event: string, hook: NxCollectionHook) => void;
 }
 
 export interface NxNavItem {
@@ -577,7 +566,8 @@ export type NxJobType =
   | "system:sessionCleanup"
   | "auth:sendPasswordReset"
   | "members:sendVerifyEmail"
-  | "members:sendPasswordReset";
+  | "members:sendPasswordReset"
+  | "notifications:sendDigest";
 
 export interface NxFindOptions {
   page?: number;
@@ -614,12 +604,7 @@ export interface NxFindResult<T = Record<string, unknown>> {
  * invisible to anonymous and non-staff members until a mod
  * promotes them.
  */
-export type NxDocumentStatus =
-  | "draft"
-  | "scheduled"
-  | "published"
-  | "archived"
-  | "pending";
+export type NxDocumentStatus = "draft" | "scheduled" | "published" | "archived" | "pending";
 
 export interface NxSaveOptions {
   status?: NxDocumentStatus;

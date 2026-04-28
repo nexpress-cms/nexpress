@@ -159,9 +159,20 @@ export {
   getMemberNotificationPrefs,
   setMemberNotificationPrefs,
   isNotificationKindEnabled,
+  recordDigestSent,
 } from "./notification-prefs.js";
 export type {
   NxNotificationKindMeta,
   NxNotificationPrefs,
+  NxDigestCadence,
   SetMemberNotificationPrefsInput,
 } from "./notification-prefs.js";
+
+export { buildDigestEmail, runDigestSweep } from "./digest.js";
+export type {
+  NxDigestEmailContent,
+  NxDigestNotificationSummary,
+  BuildDigestEmailInput,
+  RunDigestSweepInput,
+  RunDigestSweepResult,
+} from "./digest.js";
