@@ -339,3 +339,35 @@ export const nxWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
   /** Free-form metadata (worker version, hostname, env). */
   meta: jsonb("meta").$type<Record<string, unknown>>().default({}).notNull(),
 });
+
+/**
+ * Phase 20.3 — per-job log capture. Each row is one structured
+ * log entry recorded during a handler invocation. The framework
+ * wraps every `boss.work()` callback in an AsyncLocalStorage
+ * context so handlers calling `recordJobLog()` (or going through
+ * the framework `getLogger()`) get their entries automatically
+ * stamped with the running job's id.
+ *
+ * The `job_id` column is `text` (not `uuid`) because pg-boss job
+ * ids are returned as strings and we want the relationship to
+ * mirror what's surfaced to the admin without translation.
+ *
+ * Indexes target the two queries the admin will run:
+ *   - "logs for this job" → (job_id, created_at)
+ *   - "prune logs older than X" → (created_at)
+ */
+export const nxJobLogs = pgTable(
+  "nx_job_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: text("job_id").notNull(),
+    level: text("level").notNull(),
+    message: text("message").notNull(),
+    context: jsonb("context").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("nx_job_logs_job_idx").on(table.jobId, table.createdAt),
+    index("nx_job_logs_created_idx").on(table.createdAt),
+  ],
+);

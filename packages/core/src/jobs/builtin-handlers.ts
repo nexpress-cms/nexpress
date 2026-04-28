@@ -80,6 +80,7 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("plugin:scheduledTask", handlePluginScheduledTask);
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
   registerJobHandler("system:sessionCleanup", handleSessionCleanup);
+  registerJobHandler("system:jobLogPrune", handleJobLogPrune);
   registerJobHandler("auth:sendPasswordReset", handleAuthSendPasswordReset);
   registerJobHandler("members:sendVerifyEmail", handleMemberSendVerifyEmail);
   registerJobHandler("members:sendPasswordReset", handleMemberSendPasswordReset);
@@ -178,6 +179,22 @@ async function handleRevisionPrune(_: unknown): Promise<void> {
 
 async function handleSessionCleanup(_: unknown): Promise<void> {
   await builtinJobContext.cleanupSessions?.();
+}
+
+/**
+ * Phase 20.3 — keep `nx_job_logs` from growing unbounded.
+ * Default retention is 14 days; the cron registration in
+ * `pg-boss-adapter.scheduleRecurring()` runs this at 03:30 UTC
+ * daily (offset from `system:revisionPrune` at 03:00 so the two
+ * cleanup jobs don't pile DB load on the same minute).
+ */
+async function handleJobLogPrune(_: unknown): Promise<void> {
+  const { pruneJobLogsOlderThan, DEFAULT_JOB_LOG_RETENTION_MS } = await import("./job-log.js");
+  const cutoff = new Date(Date.now() - DEFAULT_JOB_LOG_RETENTION_MS);
+  const deleted = await pruneJobLogsOlderThan(cutoff);
+  if (deleted > 0) {
+    console.info(`[nexpress] system:jobLogPrune deleted ${deleted} log row(s)`);
+  }
 }
 
 interface PasswordResetJobData {

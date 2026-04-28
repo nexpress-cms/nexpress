@@ -3,6 +3,7 @@ import { type NxJobType } from "../config/types.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { getAllJobHandlers } from "./handlers.js";
+import { recordJobLog, runInJobContext } from "./job-log.js";
 import {
   type NxJobListOptions,
   type NxJobListResult,
@@ -74,24 +75,37 @@ export class PgBossAdapter implements NxJobQueue {
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
           for (const job of jobs) {
-            try {
-              await handler(job.data);
-            } catch (error) {
-              // Surface job failures to logs + the configured error reporter.
-              // Re-throw so pg-boss applies its retry/dead-letter policy.
-              const err = error instanceof Error ? error : new Error(String(error));
-              getLogger().error("Job handler threw", {
-                type,
-                jobId: job.id,
-                error: err.message,
-                stack: err.stack,
-              });
-              void reportError(err, {
-                tags: { source: "worker", jobType: type },
-                extra: { jobId: job.id },
-              });
-              throw err;
-            }
+            // Phase 20.3 — every handler invocation runs inside an
+            // AsyncLocalStorage context keyed on the pg-boss job id
+            // so `recordJobLog()` calls (from the framework or
+            // plugin code) get stamped automatically.
+            await runInJobContext(job.id, async () => {
+              try {
+                await handler(job.data);
+              } catch (error) {
+                // Surface job failures to logs + the configured error reporter.
+                // Re-throw so pg-boss applies its retry/dead-letter policy.
+                const err = error instanceof Error ? error : new Error(String(error));
+                getLogger().error("Job handler threw", {
+                  type,
+                  jobId: job.id,
+                  error: err.message,
+                  stack: err.stack,
+                });
+                // Phase 20.3 — capture the failure on the job's
+                // own log stream too. Operator opens the row in
+                // the admin → sees the error message inline.
+                await recordJobLog("error", `Job handler threw: ${err.message}`, {
+                  type,
+                  stack: err.stack,
+                });
+                void reportError(err, {
+                  tags: { source: "worker", jobType: type },
+                  extra: { jobId: job.id },
+                });
+                throw err;
+              }
+            });
           }
         });
       };
@@ -112,27 +126,34 @@ export class PgBossAdapter implements NxJobQueue {
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
           for (const job of jobs) {
-            try {
-              await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
-            } catch (error) {
-              const err = error instanceof Error ? error : new Error(String(error));
-              getLogger().error("Plugin scheduled task threw", {
-                pluginId: schedule.pluginId,
-                taskId: schedule.taskId,
-                jobId: job.id,
-                error: err.message,
-                stack: err.stack,
-              });
-              void reportError(err, {
-                tags: {
-                  source: "worker",
+            await runInJobContext(job.id, async () => {
+              try {
+                await runPluginScheduledTask(schedule.pluginId, schedule.taskId);
+              } catch (error) {
+                const err = error instanceof Error ? error : new Error(String(error));
+                getLogger().error("Plugin scheduled task threw", {
                   pluginId: schedule.pluginId,
                   taskId: schedule.taskId,
-                },
-                extra: { jobId: job.id },
-              });
-              throw err;
-            }
+                  jobId: job.id,
+                  error: err.message,
+                  stack: err.stack,
+                });
+                await recordJobLog("error", `Plugin scheduled task threw: ${err.message}`, {
+                  pluginId: schedule.pluginId,
+                  taskId: schedule.taskId,
+                  stack: err.stack,
+                });
+                void reportError(err, {
+                  tags: {
+                    source: "worker",
+                    pluginId: schedule.pluginId,
+                    taskId: schedule.taskId,
+                  },
+                  extra: { jobId: job.id },
+                });
+                throw err;
+              }
+            });
           }
         });
       };
@@ -182,6 +203,10 @@ export class PgBossAdapter implements NxJobQueue {
   async scheduleRecurring(): Promise<void> {
     await this.boss.schedule(toQueueName("system:revisionPrune"), "0 3 * * *", {});
     await this.boss.schedule(toQueueName("system:sessionCleanup"), "0 * * * *", {});
+    // Phase 20.3 — daily nx_job_logs retention sweep at 03:30 UTC.
+    // Offset 30 min from revisionPrune so the two cleanup jobs
+    // don't pile DB load on the same minute.
+    await this.boss.schedule(toQueueName("system:jobLogPrune"), "30 3 * * *", {});
     // Phase 16.4 — daily digest at 08:00 UTC, weekly digest Mondays
     // 08:00 UTC. Members opt in via their notification prefs;
     // the handler short-circuits when nobody matches.

@@ -105,9 +105,7 @@ async function ensureWorkerDatabase(): Promise<void> {
       // already constrained to [A-Za-z0-9_] via the deterministic
       // prefix/suffix construction above, so direct interpolation is
       // safe here.
-      await adminPool.query(
-        `CREATE DATABASE "${workerDb}" TEMPLATE "${template}"`,
-      );
+      await adminPool.query(`CREATE DATABASE "${workerDb}" TEMPLATE "${template}"`);
     }
   } finally {
     await adminPool.end();
@@ -205,6 +203,7 @@ export async function truncateAll(): Promise<void> {
     "nx_plugin_storage",
     "nx_plugins",
     "nx_worker_heartbeats",
+    "nx_job_logs",
     "nx_settings",
     "nx_navigation",
     "nx_media_refs",
@@ -297,10 +296,9 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     // never set the flag in the first place so the subsequent DROP
     // still succeeds. Swallow the error either way.
     try {
-      await adminPool.query(
-        "UPDATE pg_database SET datistemplate = false WHERE datname = $1",
-        [template],
-      );
+      await adminPool.query("UPDATE pg_database SET datistemplate = false WHERE datname = $1", [
+        template,
+      ]);
     } catch {
       /* see comment above */
     }

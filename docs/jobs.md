@@ -117,6 +117,8 @@ The framework registers a handful of system handlers via
   retention policy (cron: `0 3 * * *`)
 - `system:sessionCleanup` — delete expired sessions
   (cron: `0 * * * *`)
+- `system:jobLogPrune` — sweep `nx_job_logs` rows older
+  than 14 days (cron: `30 3 * * *`, Phase 20.3a)
 - `notification:email` — send queued notification emails
 - `plugin:scheduledTask` — fan-out for plugin-registered
   scheduled tasks
@@ -332,11 +334,22 @@ the endpoint directly if needed.
 
 Open follow-ups, in rough order of impact:
 
-- **Per-job logs** — handler `console.log` calls go to the
-  worker's stdout, not associated with the job row in the
-  admin. Linking them would help post-mortems.
+- **Per-job logs admin UI** — Phase 20.3a captures logs into
+  `nx_job_logs` (see "Recently closed" below) but the admin
+  view doesn't render them yet. Phase 20.3b will add the
+  panel + `GET /api/admin/jobs/{id}/logs` endpoint.
 
 ### Recently closed
+
+- **Per-job log capture** — Phase 20.3a. `nx_job_logs` table
+  - `recordJobLog(level, message, context?)` helper. The
+    pg-boss adapter wraps every handler invocation in an
+    AsyncLocalStorage context so `getLogger()` calls inside
+    the handler are auto-tee'd into the job's log stream
+    (alongside the configured global logger). Handler errors
+    are recorded automatically. Retention defaults to 14
+    days, swept by `system:jobLogPrune` cron daily at
+    03:30 UTC.
 
 - **Pause / resume queue** — Phase 20.2. `POST /api/admin/jobs/pause`
   and `POST /api/admin/jobs/resume` (admin + CSRF) flip a

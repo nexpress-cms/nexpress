@@ -24,3 +24,14 @@ export {
   type SetJobsPauseStateInput,
   type PauseSyncLoopHandle,
 } from "./pause-state.js";
+export {
+  recordJobLog,
+  listJobLogs,
+  countJobLogs,
+  pruneJobLogsOlderThan,
+  runInJobContext,
+  getCurrentJobId,
+  DEFAULT_JOB_LOG_RETENTION_MS,
+  type NxJobLogEntry,
+  type ListJobLogsOptions,
+} from "./job-log.js";
