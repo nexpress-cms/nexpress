@@ -7,13 +7,10 @@ import {
   getTestDb,
   readJson,
   registerTestCollections,
+  seedActiveMember as harnessSeedActiveMember,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
-
-import { POST as registerPOST } from "@/app/api/members/register/route";
-import { POST as verifyPOST } from "@/app/api/members/verify/route";
-import { POST as loginPOST } from "@/app/api/members/login/route";
 import {
   POST as commentsPOST,
   GET as commentsGET,
@@ -48,41 +45,13 @@ async function seedActiveMember(
   handle: string,
   email: string,
 ): Promise<{ memberId: string; sessionCookie: string; csrfCookie: string }> {
-  const password = "password-12345";
-  const reg = await registerPOST(
-    jsonRequest("/api/members/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password, handle, displayName: handle }),
-    }),
-  );
-  if (reg.status !== 200) throw new Error(`register failed: ${await reg.text()}`);
-
-  const db = await getTestDb();
-  const { createMemberEmailVerifyToken, nxMembers } = await import("@nexpress/core");
-  const { eq } = await import("drizzle-orm");
-  const [row] = (await db
-    .select({ id: nxMembers.id })
-    .from(nxMembers)
-    .where(eq(nxMembers.handle, handle))
-    .limit(1)) as Array<{ id: string }>;
-  const issued = await createMemberEmailVerifyToken(db as never, row.id, 60_000);
-  await verifyPOST(
-    jsonRequest("/api/members/verify", {
-      method: "POST",
-      body: JSON.stringify({ token: issued.token }),
-    }),
-  );
-  const login = await loginPOST(
-    jsonRequest("/api/members/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
-  );
-  const sc = login.headers.get("set-cookie");
+  // Speedup A — direct-insert harness helper. Skips the
+  // register → verify → login endpoint chain (~150ms / call).
+  const session = await harnessSeedActiveMember({ handle, email });
   return {
-    memberId: row.id,
-    sessionCookie: cookieValue(sc, "nx-mb-session")!,
-    csrfCookie: cookieValue(sc, "nx-mb-csrf")!,
+    memberId: session.memberId,
+    sessionCookie: session.sessionCookie,
+    csrfCookie: session.csrfCookie,
   };
 }
 

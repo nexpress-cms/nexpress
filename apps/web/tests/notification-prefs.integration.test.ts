@@ -7,13 +7,11 @@ import {
   getTestDb,
   readJson,
   registerTestCollections,
+  seedActiveMember as harnessSeedActiveMember,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
 
-import { POST as registerPOST } from "@/app/api/members/register/route";
-import { POST as verifyPOST } from "@/app/api/members/verify/route";
-import { POST as loginPOST } from "@/app/api/members/login/route";
 import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments/route";
 import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import { POST as reactionsPOST } from "@/app/api/reactions/route";
@@ -28,57 +26,15 @@ function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = 
   return new NextRequest(`http://localhost:3000${path}`, { ...init, headers });
 }
 
-function cookieValue(setCookieHeader: string | string[] | null, name: string): string | undefined {
-  const headers = Array.isArray(setCookieHeader)
-    ? setCookieHeader
-    : setCookieHeader
-      ? [setCookieHeader]
-      : [];
-  for (const line of headers) {
-    const m = new RegExp(`${name}=([^;]+)`).exec(line);
-    if (m) return m[1];
-  }
-  return undefined;
-}
-
 async function seedActiveMember(
   handle: string,
 ): Promise<{ memberId: string; sessionCookie: string; csrfCookie: string; handle: string }> {
-  const password = "password-12345";
-  const email = `${handle}@example.com`;
-  await registerPOST(
-    jsonRequest("/api/members/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password, handle, displayName: handle }),
-    }),
-  );
-  const db = await getTestDb();
-  const { createMemberEmailVerifyToken, nxMembers } = await import("@nexpress/core");
-  const { eq } = await import("drizzle-orm");
-  const [row] = (await db
-    .select({ id: nxMembers.id })
-    .from(nxMembers)
-    .where(eq(nxMembers.handle, handle))
-    .limit(1)) as Array<{ id: string }>;
-  const issued = await createMemberEmailVerifyToken(db as never, row.id, 60_000);
-  await verifyPOST(
-    jsonRequest("/api/members/verify", {
-      method: "POST",
-      body: JSON.stringify({ token: issued.token }),
-    }),
-  );
-  const login = await loginPOST(
-    jsonRequest("/api/members/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
-  );
-  const setCookies = login.headers.get("set-cookie");
+  const session = await harnessSeedActiveMember({ handle });
   return {
-    memberId: row.id,
-    handle,
-    sessionCookie: cookieValue(setCookies, "nx-mb-session")!,
-    csrfCookie: cookieValue(setCookies, "nx-mb-csrf")!,
+    memberId: session.memberId,
+    handle: session.handle,
+    sessionCookie: session.sessionCookie,
+    csrfCookie: session.csrfCookie,
   };
 }
 
