@@ -4,6 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxMemberMutes, nxMembers } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Phase 16.1 — member-to-member mute. One-directional: A
@@ -52,12 +54,16 @@ export async function muteMember(input: MuteMemberInput): Promise<void> {
     .limit(1)) as Array<{ id: string; status: string }>;
   if (!target) throw new NxNotFoundError("member", input.targetId);
 
-  // Idempotent: muting twice doesn't error and doesn't double-row.
+  // Phase 18 — site_id is part of the PK so the same muter can
+  // hold a separate "muted-on-site-A" / "muted-on-site-B" set.
+  // Idempotent: muting twice on the same site doesn't error.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   await db
     .insert(nxMemberMutes)
     .values({
       memberId: input.memberId,
       targetId: input.targetId,
+      siteId,
     })
     .onConflictDoNothing();
 }
@@ -69,10 +75,15 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
     ]);
   }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const result = (await db
     .delete(nxMemberMutes)
     .where(
-      and(eq(nxMemberMutes.memberId, input.memberId), eq(nxMemberMutes.targetId, input.targetId)),
+      and(
+        eq(nxMemberMutes.memberId, input.memberId),
+        eq(nxMemberMutes.targetId, input.targetId),
+        eq(nxMemberMutes.siteId, siteId),
+      ),
     )
     .returning({ memberId: nxMemberMutes.memberId })) as Array<{
     memberId: string;
@@ -81,34 +92,40 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
 }
 
 /**
- * `true` when `memberId` has muted `targetId`. Used by
- * comment listing + notification fan-out to filter views and
- * skip alerts.
+ * `true` when `memberId` has muted `targetId` on the current
+ * site. Used by comment listing + notification fan-out to
+ * filter views and skip alerts.
  */
 export async function isMuted(input: MuteMemberInput): Promise<boolean> {
   if (input.memberId === input.targetId) return false;
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ memberId: nxMemberMutes.memberId })
     .from(nxMemberMutes)
     .where(
-      and(eq(nxMemberMutes.memberId, input.memberId), eq(nxMemberMutes.targetId, input.targetId)),
+      and(
+        eq(nxMemberMutes.memberId, input.memberId),
+        eq(nxMemberMutes.targetId, input.targetId),
+        eq(nxMemberMutes.siteId, siteId),
+      ),
     )
     .limit(1)) as Array<{ memberId: string }>;
   return !!row;
 }
 
 /**
- * Returns the set of `targetId`s the given member has muted.
- * Used to filter listComments output in one DB round-trip
- * rather than `isMuted()` per row.
+ * Returns the set of `targetId`s the given member has muted on
+ * the current site. Used to filter listComments output in one
+ * DB round-trip rather than `isMuted()` per row.
  */
 export async function getMutedTargetIds(memberId: string): Promise<Set<string>> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const rows = (await db
     .select({ targetId: nxMemberMutes.targetId })
     .from(nxMemberMutes)
-    .where(eq(nxMemberMutes.memberId, memberId))) as Array<{
+    .where(and(eq(nxMemberMutes.memberId, memberId), eq(nxMemberMutes.siteId, siteId)))) as Array<{
     targetId: string;
   }>;
   return new Set(rows.map((r) => r.targetId));
@@ -137,6 +154,9 @@ export async function listMutes(
 ): Promise<NxMemberMuteSummary[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  // Phase 18 — settings list is per-site. The same muter can
+  // see different lists on different tenants.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const rows = (await db
     .select({
       targetId: nxMemberMutes.targetId,
@@ -146,7 +166,7 @@ export async function listMutes(
     })
     .from(nxMemberMutes)
     .innerJoin(nxMembers, eq(nxMemberMutes.targetId, nxMembers.id))
-    .where(eq(nxMemberMutes.memberId, memberId))
+    .where(and(eq(nxMemberMutes.memberId, memberId), eq(nxMemberMutes.siteId, siteId)))
     .orderBy(desc(nxMemberMutes.createdAt))
     .limit(limit)) as Array<{
     targetId: string;

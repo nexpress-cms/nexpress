@@ -2,13 +2,12 @@ import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
-import {
-  getCollectionRegistration,
-  getCollectionTable,
-} from "../collections/registry.js";
+import { getCollectionRegistration, getCollectionTable } from "../collections/registry.js";
 import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { assertNotBanned } from "./can.js";
@@ -87,6 +86,9 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
   await assertReportTargetExists(input.targetType, targetId);
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Phase 18 — file the report under the current tenant so the
+  // mod queue surfaces it on the right site.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .insert(nxReports)
     .values({
@@ -94,6 +96,7 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
       targetType: input.targetType,
       targetId,
       reason,
+      siteId,
     })
     .returning()) as NxReportRow[];
   if (!row) throw new Error("Report insert returned no row");
@@ -114,6 +117,13 @@ export interface ListReportsOptions {
   status?: "unresolved" | "resolved" | "all";
   /** Filter to a specific target type. */
   targetType?: string;
+  /**
+   * Phase 18 — site scope. `undefined` (default) → use the
+   * request resolver's site. Pass an explicit string to view
+   * another tenant's queue (super-admin) or `null` to skip
+   * the filter entirely.
+   */
+  siteId?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -123,9 +133,7 @@ export interface ListReportsResult {
   totalDocs: number;
 }
 
-export async function listReports(
-  options: ListReportsOptions = {},
-): Promise<ListReportsResult> {
+export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
@@ -137,6 +145,17 @@ export async function listReports(
   } else filters.push(isNull(nxReports.resolvedAt));
   if (options.targetType) filters.push(eq(nxReports.targetType, options.targetType));
 
+  // Phase 18 — scope to current tenant so mods on tenant A
+  // don't see tenant B's queue. Pass `siteId: null` to skip
+  // (super-admin cross-tenant triage); otherwise use the
+  // resolver. Mirrors the pattern from Phase 17 audit.
+  if (options.siteId !== null) {
+    const resolvedSite = options.siteId !== undefined ? options.siteId : await getCurrentSiteId();
+    if (resolvedSite !== null) {
+      filters.push(eq(nxReports.siteId, resolvedSite));
+    }
+  }
+
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const reports = (await db
@@ -147,10 +166,9 @@ export async function listReports(
     .limit(limit)
     .offset(offset)) as NxReportRow[];
 
-  const [totalRow] = (await db
-    .select({ total: count() })
-    .from(nxReports)
-    .where(where)) as Array<{ total: number }>;
+  const [totalRow] = (await db.select({ total: count() }).from(nxReports).where(where)) as Array<{
+    total: number;
+  }>;
 
   return { reports, totalDocs: Number(totalRow?.total ?? 0) };
 }
@@ -234,10 +252,7 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
  *     pass that through as `targetType`. Falls back to a
  *     clear "no such collection" error when unregistered.
  */
-async function assertReportTargetExists(
-  targetType: string,
-  targetId: string,
-): Promise<void> {
+async function assertReportTargetExists(targetType: string, targetId: string): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   if (targetType === "comment" || targetType === "reply") {
     const [row] = (await db
@@ -300,9 +315,13 @@ async function assertReportTargetExists(
 /** Cheap "is anything in the queue?" probe for the admin badge. */
 export async function unresolvedReportCount(): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Phase 18 — count only the current tenant's queue.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })
     .from(nxReports)
-    .where(isNull(nxReports.resolvedAt))) as Array<{ total: number }>;
+    .where(and(eq(nxReports.siteId, siteId), isNull(nxReports.resolvedAt)))) as Array<{
+    total: number;
+  }>;
   return Number(row?.total ?? 0);
 }

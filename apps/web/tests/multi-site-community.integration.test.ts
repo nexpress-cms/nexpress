@@ -1,0 +1,303 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  closeTestDb,
+  ensureMigrated,
+  getTestDb,
+  registerTestCollections,
+  seedUser,
+  skipIfNoTestDb,
+  truncateAll,
+} from "./harness.js";
+
+/**
+ * Phase 18 — community-table site scope (A plan).
+ *
+ * Members are global; comments / reactions / follows /
+ * notifications / reports / mutes / bans / role-grants now carry
+ * `site_id` so per-tenant queries don't leak cross-site rows.
+ *
+ * Tests pin the current site via `withCurrentSite()` from the
+ * source tree (the test runner imports services through `dist`
+ * AND through source paths in different places — using the same
+ * source-side resolver everywhere keeps the module-level state
+ * coherent; see Phase 17 tests for the same gymnastics).
+ */
+describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
+  beforeAll(async () => {
+    await ensureMigrated();
+    registerTestCollections();
+    const { ensureCoreServices } = await import("@/lib/init-core");
+    ensureCoreServices();
+  });
+  beforeEach(async () => {
+    await truncateAll();
+  });
+  afterAll(async () => {
+    await closeTestDb();
+  });
+
+  async function seedMember(handle: string): Promise<string> {
+    const db = await getTestDb();
+    const { hashPassword, nxMembers } = await import("@nexpress/core");
+    const password = await hashPassword("password-12345");
+    const [row] = (await db
+      .insert(nxMembers)
+      .values({
+        email: `${handle}@example.com`,
+        password,
+        handle,
+        displayName: handle,
+        emailVerified: true,
+        status: "active",
+      })
+      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+    return row.id;
+  }
+
+  async function seedStaffPostId(slug: string, siteId = "default"): Promise<string> {
+    const session = await seedUser({ role: "admin" });
+    const { saveDocument } = await import("@nexpress/core");
+    const { withCurrentSite } = await import("@nexpress/core");
+    const actor = {
+      id: session.userId,
+      email: session.email,
+      name: "Test",
+      role: session.role,
+      tokenVersion: 0,
+    };
+    const out = await withCurrentSite(siteId, () =>
+      saveDocument(
+        "posts",
+        null,
+        {
+          title: `Mention target ${slug}`,
+          slug,
+          content: { root: { type: "root", children: [] } },
+        },
+        actor,
+        { status: "published" },
+      ),
+    );
+    return (out.doc as { id: string }).id;
+  }
+
+  it("notification fan-out scopes to the actor's current site", async () => {
+    const { withCurrentSite } = await import("@nexpress/core");
+    const author = await seedMember("phase18a");
+    const reactor = await seedMember("phase18b");
+    const postId = await seedStaffPostId("p18-fanout", "default");
+
+    // Author posts a comment on tenant `default`.
+    const { createComment, addReaction, listNotifications } = await import("@nexpress/core");
+    const comment = await withCurrentSite("default", () =>
+      createComment({
+        targetType: "posts",
+        targetId: postId,
+        memberId: author,
+        bodyMd: "hello",
+      }),
+    );
+
+    // Reactor reacts on tenant `other-site`.
+    await withCurrentSite("other-site", () =>
+      addReaction({
+        memberId: reactor,
+        targetType: "comment",
+        targetId: comment.id,
+        kind: "like",
+      }),
+    );
+
+    // Author's inbox on `default` shouldn't see the reaction
+    // (it landed on `other-site`).
+    const inboxDefault = await withCurrentSite("default", () => listNotifications(author));
+    expect(inboxDefault.unread).toBe(0);
+
+    // Author's inbox on `other-site` does.
+    const inboxOther = await withCurrentSite("other-site", () => listNotifications(author));
+    expect(inboxOther.unread).toBe(1);
+    expect(inboxOther.notifications[0]?.kind).toBe("reaction.received");
+  });
+
+  it("reports filed on one site don't appear in another site's queue", async () => {
+    const { withCurrentSite } = await import("@nexpress/core");
+    const reporter = await seedMember("phase18reporter");
+    const target = await seedMember("phase18target");
+    const { fileReport, listReports } = await import("@nexpress/core");
+
+    await withCurrentSite("default", () =>
+      fileReport({
+        reporterId: reporter,
+        targetType: "member",
+        targetId: target,
+        reason: "spam on default",
+      }),
+    );
+    await withCurrentSite("tenant-b", () =>
+      fileReport({
+        reporterId: reporter,
+        targetType: "member",
+        targetId: target,
+        reason: "spam on tenant-b",
+      }),
+    );
+
+    const onDefault = await withCurrentSite("default", () => listReports({}));
+    expect(onDefault.totalDocs).toBe(1);
+    expect(onDefault.reports[0]?.reason).toBe("spam on default");
+
+    const onB = await withCurrentSite("tenant-b", () => listReports({}));
+    expect(onB.totalDocs).toBe(1);
+    expect(onB.reports[0]?.reason).toBe("spam on tenant-b");
+
+    // siteId: null surfaces both for super-admin triage.
+    const all = await withCurrentSite("default", () => listReports({ siteId: null }));
+    expect(all.totalDocs).toBe(2);
+  });
+
+  it("site-wide ban on tenant A does NOT block writes on tenant B", async () => {
+    const session = await seedUser({ role: "admin" });
+    const { withCurrentSite } = await import("@nexpress/core");
+    const member = await seedMember("phase18banned");
+    const { issueBan, assertNotBanned } = await import("@nexpress/core");
+    const staffActor = {
+      kind: "staff" as const,
+      user: {
+        id: session.userId,
+        email: session.email,
+        name: "Test",
+        role: session.role,
+        tokenVersion: 0,
+      },
+    };
+
+    // Issue a site-wide ban on tenant A.
+    await withCurrentSite("tenant-a", () =>
+      issueBan({
+        memberId: member,
+        scopeType: "site",
+        kind: "permanent",
+        reason: "spamming",
+        actor: staffActor,
+      }),
+    );
+
+    // `assertNotBanned` throws on tenant A (banned) but
+    // resolves on tenant B (no scope match).
+    let aThrew = false;
+    try {
+      await withCurrentSite("tenant-a", () => assertNotBanned(member));
+    } catch {
+      aThrew = true;
+    }
+    expect(aThrew).toBe(true);
+    await expect(
+      withCurrentSite("tenant-b", () => assertNotBanned(member)),
+    ).resolves.toBeUndefined();
+  });
+
+  it("role grant on tenant A does NOT authorize on tenant B", async () => {
+    const session = await seedUser({ role: "admin" });
+    const { withCurrentSite } = await import("@nexpress/core");
+    const member = await seedMember("phase18mod");
+    const { grantMemberRole, memberCan } = await import("@nexpress/core");
+
+    // Grant community-mod on tenant A.
+    await withCurrentSite("tenant-a", () =>
+      grantMemberRole({
+        memberId: member,
+        role: "community-mod",
+        scopeType: "site",
+        grantedByUserId: session.userId,
+      }),
+    );
+
+    // Tenant A: capability resolves.
+    const canHideOnA = await withCurrentSite("tenant-a", () =>
+      memberCan(member, "hide-comment", {
+        type: "comment",
+        id: "00000000-0000-0000-0000-000000000001",
+        scopes: [{ type: "collection", id: "posts" }],
+      }),
+    );
+    // Tenant B: same member, same role definition, different
+    // tenant — no grant exists here so the check fails.
+    const canHideOnB = await withCurrentSite("tenant-b", () =>
+      memberCan(member, "hide-comment", {
+        type: "comment",
+        id: "00000000-0000-0000-0000-000000000001",
+        scopes: [{ type: "collection", id: "posts" }],
+      }),
+    );
+    expect(canHideOnA).toBe(true);
+    expect(canHideOnB).toBe(false);
+  });
+
+  it("a comment inherits the target document's site_id (not just the resolver)", async () => {
+    const { withCurrentSite } = await import("@nexpress/core");
+    const author = await seedMember("phase18comment");
+    // Document seeded under `tenant-a`.
+    const postId = await seedStaffPostId("p18-comment", "tenant-a");
+
+    // Comment write happens with the resolver pinned to a
+    // DIFFERENT tenant — the canonical source is the target
+    // document, so the comment's site_id should be `tenant-a`.
+    const { createComment } = await import("@nexpress/core");
+    const comment = await withCurrentSite("tenant-b", () =>
+      createComment({
+        targetType: "posts",
+        targetId: postId,
+        memberId: author,
+        bodyMd: "from b but landed on a",
+      }),
+    );
+
+    const db = await getTestDb();
+    const { nxComments } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const [row] = (await db
+      .select()
+      .from(nxComments)
+      .where(eq(nxComments.id, comment.id))) as Array<{ siteId: string }>;
+    expect(row.siteId).toBe("tenant-a");
+  });
+
+  it("mutes are per-site: muting on A doesn't silence B", async () => {
+    const { withCurrentSite } = await import("@nexpress/core");
+    const muter = await seedMember("phase18muter");
+    const noisy = await seedMember("phase18noisy");
+    const { muteMember, isMuted } = await import("@nexpress/core");
+
+    await withCurrentSite("site-a", () => muteMember({ memberId: muter, targetId: noisy }));
+
+    const onA = await withCurrentSite("site-a", () =>
+      isMuted({ memberId: muter, targetId: noisy }),
+    );
+    const onB = await withCurrentSite("site-b", () =>
+      isMuted({ memberId: muter, targetId: noisy }),
+    );
+    expect(onA).toBe(true);
+    expect(onB).toBe(false);
+  });
+
+  it("follows are per-site: following on A doesn't follow on B", async () => {
+    const { withCurrentSite } = await import("@nexpress/core");
+    const follower = await seedMember("phase18flwr");
+    const target = await seedMember("phase18tgt");
+    const { follow, isFollowing } = await import("@nexpress/core");
+
+    await withCurrentSite("site-a", () =>
+      follow({ followerId: follower, targetType: "member", targetId: target }),
+    );
+
+    const onA = await withCurrentSite("site-a", () =>
+      isFollowing({ followerId: follower, targetType: "member", targetId: target }),
+    );
+    const onB = await withCurrentSite("site-b", () =>
+      isFollowing({ followerId: follower, targetType: "member", targetId: target }),
+    );
+    expect(onA).toBe(true);
+    expect(onB).toBe(false);
+  });
+});

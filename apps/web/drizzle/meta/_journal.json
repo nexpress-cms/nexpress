@@ -162,6 +162,13 @@
       "when": 1777347403540,
       "tag": "0022_whole_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777351911661,
+      "tag": "0023_lumpy_overlord",
+      "breakpoints": true
     }
   ]
 }

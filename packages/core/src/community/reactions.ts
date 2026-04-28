@@ -4,6 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxReactions } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { assertNotBanned } from "./can.js";
 import { createNotification } from "./notifications.js";
@@ -79,6 +81,23 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
+  // Phase 18 — derive site_id from the target so the reaction
+  // is grouped with its target's tenant. Today only `comment`
+  // targets are wired; the lookup is a single PK select. Falls
+  // back to the request resolver / default site so legacy
+  // single-tenant rows still get a valid value.
+  let targetSiteId: string;
+  if (input.targetType === "comment") {
+    const [t] = (await db
+      .select({ siteId: nxComments.siteId })
+      .from(nxComments)
+      .where(eq(nxComments.id, input.targetId))
+      .limit(1)) as Array<{ siteId: string }>;
+    targetSiteId = t?.siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  } else {
+    targetSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  }
+
   // Idempotent insert via ON CONFLICT. The previous select-then-insert
   // pattern lost a race when two identical clicks arrived in parallel —
   // both selects found nothing, both inserts ran, one hit the unique
@@ -96,6 +115,7 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
       targetId: input.targetId,
       memberId: input.memberId,
       kind: input.kind,
+      siteId: targetSiteId,
     })
     .onConflictDoNothing()
     .returning()) as NxReactionRow[];

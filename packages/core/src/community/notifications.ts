@@ -4,6 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxNotifications } from "../db/schema/community.js";
 import { NxForbiddenError, NxValidationError } from "../errors.js";
+import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Per-member notification inbox. v1 is synchronous: every event that
@@ -74,12 +76,18 @@ export async function createNotification(
   }
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Phase 18 — site comes from the request resolver. The
+  // notification belongs to the tenant where the actor's
+  // action happened (a reaction on tenant A → notification
+  // shows up in the recipient's tenant-A inbox).
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .insert(nxNotifications)
     .values({
       memberId: input.memberId,
       kind: input.kind,
       payload: input.payload ?? {},
+      siteId,
     })
     .returning()) as NxNotificationRow[];
   if (!row) throw new Error("Notification insert returned no row");
@@ -109,9 +117,11 @@ export async function listNotifications(
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 
-  const where = options.unreadOnly
-    ? and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt))
-    : eq(nxNotifications.memberId, memberId);
+  // Phase 18 — inbox is per-site. A member who's active on
+  // multiple tenants sees a separate notification list on each.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const baseWhere = and(eq(nxNotifications.memberId, memberId), eq(nxNotifications.siteId, siteId));
+  const where = options.unreadOnly ? and(baseWhere, isNull(nxNotifications.readAt)) : baseWhere;
 
   const rows = (await db
     .select()
@@ -129,7 +139,7 @@ export async function listNotifications(
   const [unreadRow] = (await db
     .select({ total: count() })
     .from(nxNotifications)
-    .where(and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)))) as Array<{
+    .where(and(baseWhere, isNull(nxNotifications.readAt)))) as Array<{
     total: number | string;
   }>;
 
@@ -142,12 +152,18 @@ export async function listNotifications(
 
 export async function unreadNotificationCount(memberId: string): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Phase 18 — count only notifications on the current site.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })
     .from(nxNotifications)
-    .where(and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)))) as Array<{
-    total: number | string;
-  }>;
+    .where(
+      and(
+        eq(nxNotifications.memberId, memberId),
+        eq(nxNotifications.siteId, siteId),
+        isNull(nxNotifications.readAt),
+      ),
+    )) as Array<{ total: number | string }>;
   return Number(row?.total ?? 0);
 }
 
@@ -198,11 +214,21 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
 
 export async function markAllNotificationsRead(memberId: string): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Phase 18 — "mark all read" only marks the current site's
+  // inbox so a member doesn't accidentally clear another
+  // tenant's unread count when toggling on this one.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const before = await unreadNotificationCount(memberId);
   await db
     .update(nxNotifications)
     .set({ readAt: new Date() })
-    .where(and(eq(nxNotifications.memberId, memberId), isNull(nxNotifications.readAt)));
+    .where(
+      and(
+        eq(nxNotifications.memberId, memberId),
+        eq(nxNotifications.siteId, siteId),
+        isNull(nxNotifications.readAt),
+      ),
+    );
   return before;
 }
 
