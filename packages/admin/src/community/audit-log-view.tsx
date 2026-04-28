@@ -43,6 +43,9 @@ export function AuditLogView() {
     targetId: "",
     actorUserId: "",
     actorMemberId: "",
+    action: "",
+    since: "",
+    until: "",
   });
   const [pendingFilters, setPendingFilters] = useState(filters);
   const [loading, setLoading] = useState(true);
@@ -60,6 +63,16 @@ export function AuditLogView() {
       if (filters.targetId) params.set("targetId", filters.targetId);
       if (filters.actorUserId) params.set("actorUserId", filters.actorUserId);
       if (filters.actorMemberId) params.set("actorMemberId", filters.actorMemberId);
+      if (filters.action) params.set("action", filters.action);
+      if (filters.since) {
+        // datetime-local inputs return "YYYY-MM-DDTHH:mm" without
+        // tz; coerce to ISO so the server's `new Date()` is
+        // unambiguous.
+        params.set("since", new Date(filters.since).toISOString());
+      }
+      if (filters.until) {
+        params.set("until", new Date(filters.until).toISOString());
+      }
 
       const res = await nxFetch(`/api/admin/audit?${params.toString()}`);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -80,6 +93,7 @@ export function AuditLogView() {
   }, [page, filters]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
@@ -156,13 +170,54 @@ export function AuditLogView() {
                 placeholder="uuid"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-action">Action</Label>
+              <Input
+                id="filter-action"
+                value={pendingFilters.action}
+                onChange={(event) =>
+                  setPendingFilters((prev) => ({ ...prev, action: event.target.value }))
+                }
+                placeholder="member.ban.issue / comment.hide / …"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-since">Since</Label>
+              <Input
+                id="filter-since"
+                type="datetime-local"
+                value={pendingFilters.since}
+                onChange={(event) =>
+                  setPendingFilters((prev) => ({ ...prev, since: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-until">Until</Label>
+              <Input
+                id="filter-until"
+                type="datetime-local"
+                value={pendingFilters.until}
+                onChange={(event) =>
+                  setPendingFilters((prev) => ({ ...prev, until: event.target.value }))
+                }
+              />
+            </div>
             <div className="md:col-span-2 lg:col-span-4 flex gap-2">
               <Button type="submit">Apply</Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  const empty = { targetType: "", targetId: "", actorUserId: "", actorMemberId: "" };
+                  const empty = {
+                    targetType: "",
+                    targetId: "",
+                    actorUserId: "",
+                    actorMemberId: "",
+                    action: "",
+                    since: "",
+                    until: "",
+                  };
                   setPendingFilters(empty);
                   setFilters(empty);
                   setPage(1);

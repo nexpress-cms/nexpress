@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
@@ -77,6 +77,16 @@ export interface ListAuditOptions {
   /** Filter to events caused by a specific actor. */
   actorUserId?: string;
   actorMemberId?: string;
+  /**
+   * Filter to events whose `action` matches. Common operational
+   * query: "show every ban issued this week" →
+   * `action="member.ban.issue"` plus `since`.
+   */
+  action?: string;
+  /** Lower-bound `created_at` (inclusive). */
+  since?: Date;
+  /** Upper-bound `created_at` (exclusive). */
+  until?: Date;
   limit?: number;
   offset?: number;
 }
@@ -93,6 +103,9 @@ export async function listAuditEvents(
   if (options.targetId) filters.push(eq(nxAuditEvents.targetId, options.targetId));
   if (options.actorUserId) filters.push(eq(nxAuditEvents.actorUserId, options.actorUserId));
   if (options.actorMemberId) filters.push(eq(nxAuditEvents.actorMemberId, options.actorMemberId));
+  if (options.action) filters.push(eq(nxAuditEvents.action, options.action));
+  if (options.since) filters.push(gte(nxAuditEvents.createdAt, options.since));
+  if (options.until) filters.push(lt(nxAuditEvents.createdAt, options.until));
 
   const where = filters.length > 0 ? and(...filters) : undefined;
 
