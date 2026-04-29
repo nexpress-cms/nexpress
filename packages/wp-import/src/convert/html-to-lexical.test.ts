@@ -116,4 +116,57 @@ describe("htmlToLexical", () => {
     expect(children[0]).toMatchObject({ text: "bold", format: 1 });
     expect(children[1]).toMatchObject({ text: " plain", format: 0 });
   });
+
+  describe("Phase 21.15 — Gutenberg block fences", () => {
+    it("converts wp:paragraph into a paragraph block", () => {
+      const out = htmlToLexical("<!-- wp:paragraph --><p>Hello</p><!-- /wp:paragraph -->");
+      expect(out.root.children).toHaveLength(1);
+      expect(out.root.children[0]?.type).toBe("paragraph");
+    });
+
+    it("honors wp:heading {level} when the fence and markup disagree", () => {
+      // Markup says h2, fence says h4 — fence wins.
+      const out = htmlToLexical(
+        '<!-- wp:heading {"level":4} --><h2>Title</h2><!-- /wp:heading -->',
+      );
+      expect(out.root.children[0]?.type).toBe("heading");
+      expect(out.root.children[0]?.tag).toBe("h4");
+    });
+
+    it("synthesises a heading when the fence inner is plain text", () => {
+      const out = htmlToLexical(
+        '<!-- wp:heading {"level":3} -->Just text<!-- /wp:heading -->',
+      );
+      const block = out.root.children[0];
+      expect(block?.type).toBe("heading");
+      expect(block?.tag).toBe("h3");
+      expect(block?.children?.[0]).toMatchObject({ text: "Just text" });
+    });
+
+    it("flips list type when the fence's `ordered` flag overrides the markup", () => {
+      const out = htmlToLexical(
+        '<!-- wp:list {"ordered":true} --><ul><li>a</li></ul><!-- /wp:list -->',
+      );
+      expect(out.root.children[0]?.type).toBe("list");
+      expect(out.root.children[0]?.listType).toBe("number");
+    });
+
+    it("maps wp:separator (self-closing) to horizontalrule", () => {
+      const out = htmlToLexical(
+        "<!-- wp:paragraph --><p>before</p><!-- /wp:paragraph --><!-- wp:separator /--><!-- wp:paragraph --><p>after</p><!-- /wp:paragraph -->",
+      );
+      expect(out.root.children.map((c) => c.type)).toEqual([
+        "paragraph",
+        "horizontalrule",
+        "paragraph",
+      ]);
+    });
+
+    it("falls through to the classic converter for unknown blocks", () => {
+      const out = htmlToLexical(
+        "<!-- wp:custom-foo --><blockquote>cite</blockquote><!-- /wp:custom-foo -->",
+      );
+      expect(out.root.children[0]?.type).toBe("quote");
+    });
+  });
 });
