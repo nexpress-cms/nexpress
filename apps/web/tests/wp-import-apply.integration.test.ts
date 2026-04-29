@@ -14,7 +14,7 @@ import {
   truncateAll,
 } from "./harness.js";
 
-import { type NxAuthUser, findDocuments, nxUsers } from "@nexpress/core";
+import { type NxAuthUser, findDocuments, nxMedia, nxUsers, uploadMedia } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { applyBundle, parseWxr } from "@nexpress/wp-import";
 
@@ -68,7 +68,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
 
     // Attachment record skipped with the right reason.
     const skippedReasons = report.skipped.map((s) => s.reason);
-    expect(skippedReasons).toContain("attachment — handled by 21.5 media pipeline");
+    expect(skippedReasons).toContain("attachment — handled by media pipeline");
 
     // Verify the actual rows landed.
     const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
@@ -150,5 +150,93 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
 
     const report = await applyBundle(bundle, { actor, dryRun: true });
     expect(report.notes.some((n) => n.includes("Phase 21.8"))).toBe(true);
+  });
+
+  it("21.5 — runs the media pipeline, wires coverImage, and rewrites Lexical img mediaId", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-media@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const tinyJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const downloaded: string[] = [];
+
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      media: {
+        download: async (url) => {
+          downloaded.push(url);
+          return { buffer: tinyJpeg, mimeType: "image/jpeg", filename: "hero.jpg" };
+        },
+        upload: async (file) => {
+          const result = await uploadMedia(
+            { buffer: file.buffer, originalFilename: file.originalFilename, mimeType: file.mimeType },
+            actor.id,
+          );
+          return { id: result.id };
+        },
+      },
+    });
+
+    expect(report.errors).toEqual([]);
+    expect(report.media?.uploaded).toBe(1);
+    expect(downloaded).toHaveLength(1);
+
+    const heroUrl = "https://acme.example.com/wp-content/uploads/2025/04/hero.jpg";
+    const mediaId = report.media?.resolution.byUrl.get(heroUrl);
+    expect(mediaId).toBeTruthy();
+    expect(report.media?.resolution.byAttachmentId.get(42)).toBe(mediaId);
+
+    // Hello World post: coverImage on the doc, mediaId stamped on the
+    // inline `<img>` Lexical node.
+    const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const post = posts.docs[0]!;
+    expect(post.coverImage).toBe(mediaId);
+
+    const content = post.content as { root: { children: Array<{ type: string; children?: Array<Record<string, unknown>> }> } };
+    const para = content.root.children[0];
+    const img = para?.children?.find((c) => c.type === "image");
+    expect(img?.mediaId).toBe(mediaId);
+    expect(img?.src).toBe(heroUrl);
+
+    // Confirm the nx_media row exists and is owned by the importer.
+    const db = await getTestDb();
+    const [row] = await db.select().from(nxMedia).where(eq(nxMedia.id, mediaId!)).limit(1);
+    expect(row).toBeDefined();
+  });
+
+  it("21.5 — leaves Lexical untouched when a media URL fails to download", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-media-fail@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      media: {
+        download: async () => {
+          throw new Error("simulated network failure");
+        },
+        upload: async () => {
+          throw new Error("upload should not be reached");
+        },
+      },
+    });
+
+    expect(report.errors).toEqual([]); // doc-level errors empty
+    expect(report.media?.uploaded).toBe(0);
+    expect(report.media?.errors.length).toBeGreaterThan(0);
+
+    const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const post = posts.docs[0]!;
+    // No coverImage wired when the source asset never resolved.
+    expect(post.coverImage).toBeFalsy();
+    // Lexical img keeps its original src for SSR fallback rendering.
+    const content = post.content as { root: { children: Array<{ children?: Array<Record<string, unknown>> }> } };
+    const img = content.root.children[0]?.children?.find((c) => c.type === "image");
+    expect(img?.mediaId).toBeUndefined();
+    expect(img?.src).toBe("https://acme.example.com/wp-content/uploads/2025/04/hero.jpg");
   });
 });

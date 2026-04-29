@@ -100,7 +100,7 @@ export function formatSummary(args: {
  */
 function typeAnnotation(wpType: string, _records: WpImportRecord[]): string {
   if (wpType === "attachment") {
-    return "(handled by the media pipeline in 21.5)";
+    return "(downloaded + uploaded by the media pipeline)";
   }
   return "";
 }
@@ -166,6 +166,19 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
     for (const err of report.errors) {
       lines.push(`  ${err.slug}: ${err.message}`);
     }
+  }
+
+  lines.push("");
+  if (report.media) {
+    const m = report.media;
+    lines.push(
+      `Media: ${m.uploaded} uploaded, ${m.skipped} skipped (dry run), ${m.errors.length} errors`,
+    );
+    for (const err of m.errors) {
+      lines.push(`  ${err.url}: ${err.reason}`);
+    }
+  } else {
+    lines.push("Media: pipeline not run (no upload hook supplied)");
   }
 
   if (report.notes.length > 0) {

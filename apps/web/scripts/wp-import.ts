@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { type NxAuthUser, createDbConnection, nxUsers } from "@nexpress/core";
+import { type NxAuthUser, createDbConnection, nxUsers, uploadMedia } from "@nexpress/core";
 import { applyBundle, runCli } from "@nexpress/wp-import";
 
 import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
@@ -10,6 +10,10 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * `@nexpress/wp-import`; this file's only job is to bootstrap the
  * framework's core services + plug the apply hooks back into the
  * CLI so it can write to the DB.
+ *
+ * Phase 21.5 — also plug in the media deps so the importer can
+ * download + upload assets through the framework's media service
+ * (Sharp pipeline, storage adapter, audit refs all run as normal).
  *
  * For dry-run-summary mode (the default with no flags) the shim
  * doesn't strictly need the bootstrap — but doing it
@@ -32,6 +36,15 @@ const code = await runCli(process.argv.slice(2), undefined, {
       actor: ctx.actor,
       dryRun: ctx.dryRun,
       log: ctx.log,
+      media: {
+        upload: async (file) => {
+          const result = await uploadMedia(
+            { buffer: file.buffer, originalFilename: file.originalFilename, mimeType: file.mimeType },
+            ctx.actor.id,
+          );
+          return { id: result.id };
+        },
+      },
     }),
   resolveActor: async () => {
     const actor = await findFirstAdmin();
