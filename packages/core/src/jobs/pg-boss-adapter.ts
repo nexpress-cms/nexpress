@@ -275,28 +275,50 @@ export class PgBossAdapter implements NxJobQueue {
     // Schema name defaults to `pgboss` but can be overridden
     // via constructor options. We didn't pass `schema`, so the
     // default is in effect.
+    //
+    // Phase 20.4 — when `options.source` is set we narrow the
+    // UNION to that single table; otherwise we keep the
+    // historical "show everything" union. The `source` column on
+    // each row is what the admin uses to split live vs archive
+    // visually without an extra round trip.
+    const liveSelect = `
+      SELECT id, name, state, data, retry_count,
+             output::text AS output, created_on, started_on, completed_on,
+             'live' AS source
+        FROM pgboss.job`;
+    const archiveSelect = `
+      SELECT id, name, state, data, retry_count,
+             output::text AS output, created_on, started_on, completed_on,
+             'archive' AS source
+        FROM pgboss.archive`;
+    const innerUnion =
+      options.source === "live"
+        ? liveSelect
+        : options.source === "archive"
+          ? archiveSelect
+          : `${liveSelect}\n        UNION ALL${archiveSelect}`;
     const listSql = `
       SELECT id, name, state::text AS state, data, retry_count,
-             output, created_on, started_on, completed_on
+             output, created_on, started_on, completed_on, source
       FROM (
-        SELECT id, name, state, data, retry_count,
-               output::text AS output, created_on, started_on, completed_on
-          FROM pgboss.job
-        UNION ALL
-        SELECT id, name, state, data, retry_count,
-               output::text AS output, created_on, started_on, completed_on
-          FROM pgboss.archive
+        ${innerUnion}
       ) jobs
       ${whereSql}
       ORDER BY created_on DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
+    const liveCount = `SELECT id, name, state, data, created_on, 'live' AS source FROM pgboss.job`;
+    const archiveCount = `SELECT id, name, state, data, created_on, 'archive' AS source FROM pgboss.archive`;
+    const countUnion =
+      options.source === "live"
+        ? liveCount
+        : options.source === "archive"
+          ? archiveCount
+          : `${liveCount} UNION ALL ${archiveCount}`;
     const countSql = `
       SELECT COUNT(*)::bigint AS total
       FROM (
-        SELECT id, name, state, data, created_on FROM pgboss.job
-        UNION ALL
-        SELECT id, name, state, data, created_on FROM pgboss.archive
+        ${countUnion}
       ) jobs
       ${whereSql}
     `;
@@ -405,6 +427,8 @@ interface PgBossRow {
   created_on?: Date | string | null;
   started_on?: Date | string | null;
   completed_on?: Date | string | null;
+  /** Phase 20.4 — `live` (pgboss.job) or `archive` (pgboss.archive). */
+  source?: string;
 }
 
 interface PgBossScheduleRow {
@@ -438,6 +462,7 @@ function rowToSummary(row: PgBossRow): NxJobSummary {
     createdOn: toIso(row.created_on) ?? new Date(0).toISOString(),
     startedOn: toIso(row.started_on),
     completedOn: toIso(row.completed_on),
+    source: row.source === "archive" ? "archive" : row.source === "live" ? "live" : undefined,
   };
 }
 
