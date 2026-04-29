@@ -5,6 +5,7 @@ import {
   createDbConnection,
   findDocuments,
   getDb,
+  hashPassword,
   nxComments,
   nxMembers,
   nxUsers,
@@ -37,6 +38,13 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * `createComment` because that path runs spam/profanity adapters
  * and fans out notifications — neither is appropriate for
  * archived content.
+ *
+ * Phase 21.8 — wire the authors resolver. Default behavior creates
+ * a NexPress staff user with `role: "viewer"` for each WP author,
+ * tagged with a flagged email so the operator can promote them
+ * after the import. The CLI flag `--no-create-authors` swaps in a
+ * resolver that always returns null so posts come in without an
+ * author and are credited to the import operator.
  *
  * For dry-run-summary mode (the default with no flags) the shim
  * doesn't strictly need the bootstrap — but doing it
@@ -155,6 +163,36 @@ const code = await runCli(process.argv.slice(2), undefined, {
         },
         renderBody: (source) => renderCommentMarkdown(source),
       },
+      authors: ctx.createAuthors
+        ? {
+            resolveAuthor: async ({ wpAuthorLogin, wpAuthor }) => {
+              const db = getDb();
+              const email = wpAuthor?.email
+                ? flagImportedEmail(wpAuthor.email)
+                : `${wpAuthorLogin}@wp-import.invalid`;
+              const [existing] = await db
+                .select({ id: nxUsers.id })
+                .from(nxUsers)
+                .where(eq(nxUsers.email, email))
+                .limit(1);
+              if (existing) return { id: existing.id };
+              const password = await hashPassword(
+                `wp-import-${wpAuthorLogin}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+              );
+              const [inserted] = await db
+                .insert(nxUsers)
+                .values({
+                  email,
+                  password,
+                  name: wpAuthor?.displayName || wpAuthorLogin,
+                  role: "viewer",
+                })
+                .returning({ id: nxUsers.id });
+              if (!inserted) throw new Error("staff user insert returned no row");
+              return { id: inserted.id };
+            },
+          }
+        : { resolveAuthor: () => Promise.resolve(null) },
     }),
   resolveActor: async () => {
     const actor = await findFirstAdmin();
@@ -165,6 +203,22 @@ const code = await runCli(process.argv.slice(2), undefined, {
   },
 });
 process.exit(code);
+
+/**
+ * Phase 21.8 — flag the WP author's email so the imported staff
+ * row can't accidentally be confused with a live account. We
+ * splice `+wp-import` into the local part: that's RFC-5321
+ * sub-addressing which most providers route to the same inbox,
+ * but the addresses are distinct enough that the operator can
+ * filter / clean up later.
+ */
+function flagImportedEmail(original: string): string {
+  const at = original.indexOf("@");
+  if (at < 0) return `${original}+wp-import@wp-import.invalid`;
+  const local = original.slice(0, at);
+  const domain = original.slice(at + 1);
+  return `${local}+wp-import@${domain}`;
+}
 
 async function isEmailFree(email: string): Promise<boolean> {
   const db = getDb();

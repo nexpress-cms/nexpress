@@ -74,4 +74,54 @@ describe("runCli", () => {
     expect(out).toHaveLength(0);
     expect(err.join("\n")).toContain("--apply requires the shim");
   });
+
+  it("21.8 — passes ctx.createAuthors=false when --no-create-authors is set", async () => {
+    const { io } = captureIo();
+    const received: { createAuthors?: boolean } = {};
+    const code = await runCli(
+      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply", "--no-create-authors"],
+      io,
+      {
+        applyBundle: (_b, ctx) => {
+          received.createAuthors = ctx.createAuthors;
+          return Promise.resolve({
+            applied: [], skipped: [], errors: [],
+            attachments: { byId: new Map(), byUrl: new Map() },
+            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+          });
+        },
+        resolveActor: () =>
+          Promise.resolve({
+            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+          }),
+      },
+    );
+    expect(code).toBe(0);
+    expect(received.createAuthors).toBe(false);
+  });
+
+  it("21.8 — defaults ctx.createAuthors=true when --no-create-authors is omitted", async () => {
+    const { io } = captureIo();
+    const received: { createAuthors?: boolean } = {};
+    const code = await runCli(
+      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"],
+      io,
+      {
+        applyBundle: (_b, ctx) => {
+          received.createAuthors = ctx.createAuthors;
+          return Promise.resolve({
+            applied: [], skipped: [], errors: [],
+            attachments: { byId: new Map(), byUrl: new Map() },
+            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+          });
+        },
+        resolveActor: () =>
+          Promise.resolve({
+            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+          }),
+      },
+    );
+    expect(code).toBe(0);
+    expect(received.createAuthors).toBe(true);
+  });
 });

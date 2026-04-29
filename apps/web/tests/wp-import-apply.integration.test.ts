@@ -345,6 +345,47 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     );
   });
 
+  it("21.8 — resolves WP authors and stamps post.author with the resulting user id", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-authors@example.com", role: "admin" });
+    const actor = await asActor(session);
+    const db = await getTestDb();
+
+    let nextId = 1;
+    const seenLogins: string[] = [];
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      authors: {
+        resolveAuthor: async ({ wpAuthorLogin }) => {
+          seenLogins.push(wpAuthorLogin);
+          // Insert a real nx_users row so the post.author FK resolves.
+          const [inserted] = await db
+            .insert(nxUsers)
+            .values({
+              email: `${wpAuthorLogin}-${nextId++}@wp-import.invalid`,
+              password: "x",
+              name: wpAuthorLogin,
+              role: "viewer",
+            })
+            .returning({ id: nxUsers.id });
+          return { id: inserted!.id };
+        },
+      },
+    });
+
+    expect(report.errors).toEqual([]);
+    expect(seenLogins).toEqual(["alice"]); // single unique author in fixture
+    expect(report.authors?.authorIds.size).toBe(1);
+
+    const helloRow = report.applied.find((r) => r.slug === "hello-world");
+    expect(helloRow?.authorId).toBe(report.authors?.authorIds.get("alice"));
+
+    const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    expect(posts.docs[0]?.author).toBe(helloRow?.authorId);
+  });
+
   it("21.7 — surfaces a notes line when comments exist but no comments deps were supplied", async () => {
     const xml = readFileSync(FIXTURE, "utf8");
     const bundle = parseWxr(xml);
