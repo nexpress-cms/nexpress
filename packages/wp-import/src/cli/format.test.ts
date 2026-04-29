@@ -53,7 +53,7 @@ describe("formatSummary", () => {
         "",
         "Comments: 2 across 1 record",
         "",
-        "This was a dry run; no DB writes happened.",
+        "This was a dry run. Pass --apply to write to the database.",
       ].join("\n"),
     );
   });
@@ -65,7 +65,7 @@ describe("formatSummary", () => {
       dryRun: false,
     });
     expect(out.startsWith("WordPress import\n")).toBe(true);
-    expect(out).toContain("Applier not yet implemented (Phase 21.4)");
+    expect(out).toContain("Pass --apply to write to the database");
     expect(out).not.toContain("dry run");
   });
 

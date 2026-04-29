@@ -17,5 +17,18 @@ export type {
   WpSiteInfo,
   WpTerm,
 } from "./parse/types.js";
-export { runCli, type CliIo } from "./cli/index.js";
-export { formatSummary } from "./cli/format.js";
+export { runCli, type CliIo, type CliApplyHooks } from "./cli/index.js";
+export { formatApplyReport, formatSummary } from "./cli/format.js";
+export {
+  applyBundle,
+  type ApplyOptions,
+  type ApplyReport,
+  type AppliedRow,
+  type SkippedRow,
+} from "./apply/index.js";
+export {
+  buildAttachmentIndex,
+  type AttachmentEntry,
+  type AttachmentIndex,
+} from "./apply/attachment-index.js";
+export { htmlToLexical } from "./convert/html-to-lexical.js";

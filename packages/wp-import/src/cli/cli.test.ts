@@ -66,4 +66,12 @@ describe("runCli", () => {
     expect(code).toBe(2);
     expect(err.join("\n")).toContain("Usage:");
   });
+
+  it("exits 1 with a clear hint when --apply is used without the shim's hooks", async () => {
+    const { io, out, err } = captureIo();
+    const code = await runCli([path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"], io);
+    expect(code).toBe(1);
+    expect(out).toHaveLength(0);
+    expect(err.join("\n")).toContain("--apply requires the shim");
+  });
 });

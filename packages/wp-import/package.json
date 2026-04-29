@@ -23,7 +23,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.5.8"
+    "@nexpress/core": "workspace:*",
+    "fast-xml-parser": "^5.5.8",
+    "node-html-parser": "^7.0.1"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
