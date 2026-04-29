@@ -1,6 +1,9 @@
 import {
   createDbConnection,
   createStorageAdapter,
+  hasRole,
+  isSuperAdmin,
+  listMembershipsForUser,
   listPluginStates,
   loadPlugins,
   registerCollection,
@@ -13,12 +16,14 @@ import {
   setStorageAdapter,
   startProducer,
   syncPluginRegistrations,
+  verifyTokenFull,
   NX_DEFAULT_SITE_ID,
+  type NxAuthUser,
   type NxConfig,
   type NxPluginConfig,
   type NxResolvedPluginLike,
 } from "@nexpress/core";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 function resolvePluginId(plugin: NxPluginConfig | NxResolvedPluginLike): string {
   return "manifest" in plugin ? plugin.manifest.id : plugin.id;
@@ -54,6 +59,27 @@ export type Bootstrap = {
 
 function toCamelCase(slug: string): string {
   return slug.replace(/[-_](.)/g, (_, ch: string) => ch.toUpperCase());
+}
+
+/**
+ * Issue #221 — central access predicate the resolver uses to
+ * confirm the authenticated session is allowed to operate on the
+ * site id pulled from `nx-admin-site`. Mirrors the rule in the
+ * `/api/admin/sites/active` setter so the two paths can't drift:
+ *
+ *   - Super-admin can switch to anywhere.
+ *   - A site membership grants access to that site.
+ *   - A global admin keeps the default-site fallback so single-
+ *     tenant deployments aren't broken by this guard.
+ *
+ * Anyone else falls through and the resolver drops the override.
+ */
+async function canActorUseSite(user: NxAuthUser, siteId: string): Promise<boolean> {
+  if (await isSuperAdmin(user)) return true;
+  const memberships = await listMembershipsForUser(user.id);
+  if (memberships.some((m) => m.siteId === siteId)) return true;
+  if (siteId === NX_DEFAULT_SITE_ID && hasRole(user, "admin")) return true;
+  return false;
 }
 
 function resolveTable(
@@ -153,9 +179,46 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // contexts (background workers, scripts) just see a
     // null site id, which downstream callers treat as
     // "use default".
+    //
+    // Issue #221 — the override cookie is *untrusted input*.
+    // The setter route validates membership before writing,
+    // but the cookie itself is plain-text and anyone who
+    // knows a target site id can forge `nx-admin-site=<id>`.
+    // We re-validate the override against the current
+    // session here: load the access JWT, call
+    // `assertCanUseSite()`, and only honor the override when
+    // the session can actually act on that site. Forged or
+    // stale-membership requests fall back to host-based
+    // resolution silently — defense in depth, no error
+    // surface that helps an attacker probe.
+    // Validation inputs that can vary across requests inside the
+    // same process: the cookie value and the auth secret. We call
+    // it on every `getCurrentSiteId()`, which is fine — JWT verify
+    // is microseconds and `listMembershipsForUser` is one indexed
+    // SELECT. No memo to avoid leaking across requests.
+    const validateOverride = async (
+      siteId: string,
+      sessionToken: string | null,
+    ): Promise<string | null> => {
+      if (!sessionToken) return null;
+      const secret = config.auth?.secret;
+      if (!secret) return null;
+      try {
+        const user = await verifyTokenFull(
+          sessionToken,
+          secret,
+          getDbInstance() as never,
+          "access",
+        );
+        if (!user) return null;
+        return (await canActorUseSite(user, siteId)) ? siteId : null;
+      } catch {
+        return null;
+      }
+    };
     setCurrentSiteResolver(async () => {
       try {
-        const headerList = await headers();
+        const [headerList, cookieJar] = await Promise.all([headers(), cookies()]);
         // Phase 15.6 — the admin site-picker cookie wins over
         // hostname mapping inside admin paths. The middleware
         // only forwards `x-nx-admin-site` for /admin and
@@ -164,7 +227,13 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         // picker cookie set.
         const adminOverride = headerList.get("x-nx-admin-site");
         if (adminOverride) {
-          return adminOverride;
+          const sessionToken = cookieJar.get("nx-session")?.value ?? null;
+          const validated = await validateOverride(adminOverride, sessionToken);
+          if (validated) return validated;
+          // Drop through to host-based resolution when the
+          // override fails validation (forged cookie, expired
+          // session, lost membership). Don't leak an explicit
+          // 403; that just helps an attacker enumerate.
         }
         const host = headerList.get("x-nx-host");
         if (!host) return NX_DEFAULT_SITE_ID;
