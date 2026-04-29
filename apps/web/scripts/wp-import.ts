@@ -4,7 +4,11 @@ import {
   type NxAuthUser,
   createDbConnection,
   findDocuments,
+  getDb,
+  nxComments,
+  nxMembers,
   nxUsers,
+  renderCommentMarkdown,
   saveDocument,
   uploadMedia,
 } from "@nexpress/core";
@@ -26,6 +30,13 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * app's `taxonomies` collection. User projects with their own
  * taxonomy storage swap this hook out (or skip it entirely; the
  * importer drops terms with a single notes line).
+ *
+ * Phase 21.7 — wire the comments deps. Imported members land
+ * directly in `nx_members` with status="imported"; comments land
+ * in `nx_comments` via the framework's DB handle. We bypass
+ * `createComment` because that path runs spam/profanity adapters
+ * and fans out notifications — neither is appropriate for
+ * archived content.
  *
  * For dry-run-summary mode (the default with no flags) the shim
  * doesn't strictly need the bootstrap — but doing it
@@ -95,6 +106,55 @@ const code = await runCli(process.argv.slice(2), undefined, {
           return { id: createdId };
         },
       },
+      comments: {
+        ensureImportedMember: async ({ handle, email, displayName }) => {
+          const db = getDb();
+          const [existing] = await db
+            .select({ id: nxMembers.id })
+            .from(nxMembers)
+            .where(eq(nxMembers.handle, handle))
+            .limit(1);
+          if (existing) return { id: existing.id };
+          // No password, no verified email — `imported` status
+          // already blocks login. Email collisions are rare for
+          // imported guests but possible if a live member already
+          // owns the address; in that case fall through with a
+          // synthetic placeholder so the unique index on
+          // nx_members.email doesn't reject the insert.
+          const safeEmail = email && (await isEmailFree(email)) ? email : `${handle}@imported.invalid`;
+          const [inserted] = await db
+            .insert(nxMembers)
+            .values({
+              handle,
+              email: safeEmail,
+              displayName,
+              status: "imported",
+              emailVerified: false,
+            })
+            .returning({ id: nxMembers.id });
+          if (!inserted) throw new Error("imported member insert returned no row");
+          return { id: inserted.id };
+        },
+        insertComment: async ({ targetType, targetId, parentId, memberId, bodyMd, bodyHtml, createdAt }) => {
+          const db = getDb();
+          const [row] = await db
+            .insert(nxComments)
+            .values({
+              targetType,
+              targetId,
+              parentId,
+              memberId,
+              bodyMd,
+              bodyHtml,
+              status: "visible",
+              createdAt,
+            })
+            .returning({ id: nxComments.id });
+          if (!row) throw new Error("comment insert returned no row");
+          return { id: row.id };
+        },
+        renderBody: (source) => renderCommentMarkdown(source),
+      },
     }),
   resolveActor: async () => {
     const actor = await findFirstAdmin();
@@ -105,6 +165,16 @@ const code = await runCli(process.argv.slice(2), undefined, {
   },
 });
 process.exit(code);
+
+async function isEmailFree(email: string): Promise<boolean> {
+  const db = getDb();
+  const [hit] = await db
+    .select({ id: nxMembers.id })
+    .from(nxMembers)
+    .where(eq(nxMembers.email, email))
+    .limit(1);
+  return !hit;
+}
 
 async function findFirstAdmin(): Promise<NxAuthUser | null> {
   const db = createDbConnection({ connectionString: databaseUrl! });

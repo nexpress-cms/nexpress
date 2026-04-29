@@ -197,6 +197,19 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
     lines.push("Taxonomies: resolver not supplied — terms dropped");
   }
 
+  lines.push("");
+  if (report.comments) {
+    const c = report.comments;
+    lines.push(
+      `Comments: ${c.applied} imported, ${c.skippedUnapproved} unapproved, ${c.errors.length} errors`,
+    );
+    for (const err of c.errors) {
+      lines.push(`  #${err.wpCommentId}: ${err.reason}`);
+    }
+  } else {
+    lines.push("Comments: deps not supplied — comments dropped");
+  }
+
   if (report.notes.length > 0) {
     lines.push("");
     lines.push("Notes");
