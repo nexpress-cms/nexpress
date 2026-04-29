@@ -29,6 +29,16 @@ export interface NxJobSummary {
   createdOn: string;
   startedOn?: string | null;
   completedOn?: string | null;
+  /**
+   * Phase 20.4 — which pg-boss table the row was read from.
+   * `"live"` = pgboss.job (still pending / active / retry),
+   * `"archive"` = pgboss.archive (rolled out by pg-boss after
+   * `keepUntil`). The admin Jobs view uses this to split the
+   * Failed tab into "live failures" (still actionable via
+   * `/api/admin/jobs/{id}/retry`) vs "archived" (kept for
+   * forensics; retry would re-create the row in `job`).
+   */
+  source?: "live" | "archive";
 }
 
 export interface NxJobListOptions {
@@ -46,6 +56,16 @@ export interface NxJobListOptions {
    * the last 24 hours" without paging through history.
    */
   since?: Date;
+  /**
+   * Phase 20.4 — partition the result by pg-boss table:
+   *   - `"live"` — pending / active / retry rows still in
+   *     `pgboss.job`. Retryable.
+   *   - `"archive"` — rolled rows in `pgboss.archive`. Read-only
+   *     (pg-boss won't pick them up; retry routes refuse to
+   *     touch archive rows).
+   * Default (undefined) keeps the historical UNION behavior.
+   */
+  source?: "live" | "archive";
 }
 
 export interface NxJobListResult {

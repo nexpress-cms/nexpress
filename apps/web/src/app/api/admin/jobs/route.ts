@@ -67,11 +67,18 @@ export async function GET(request: NextRequest) {
     const since = sinceRaw ? new Date(sinceRaw) : null;
     const validSince =
       since && !Number.isNaN(since.getTime()) ? since : undefined;
+    // Phase 20.4 — `?source=live|archive` partitions the result
+    // by pg-boss table. Unrecognised values fall through to the
+    // historical UNION behavior.
+    const sourceRaw = params.get("source");
+    const source =
+      sourceRaw === "live" || sourceRaw === "archive" ? sourceRaw : undefined;
 
     const result = await queue.listJobs({
       ...(name ? { name } : {}),
       ...(state ? { state } : {}),
       ...(validSince ? { since: validSince } : {}),
+      ...(source ? { source } : {}),
       limit,
       offset,
     });
