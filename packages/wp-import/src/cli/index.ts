@@ -34,6 +34,13 @@ const DEFAULT_IO: CliIo = {
 const CLI_OPTIONS = {
   "dry-run": { type: "boolean" as const, default: true },
   apply: { type: "boolean" as const, default: false },
+  /**
+   * Phase 21.8 — opt out of staff-user creation. With this flag the
+   * shim swaps in a resolver that returns null for every author, so
+   * imported posts have no `author` set and are attributed to the
+   * import operator via `createdBy` / `updatedBy`.
+   */
+  "no-create-authors": { type: "boolean" as const, default: false },
   help: { type: "boolean" as const, short: "h" },
 };
 
@@ -46,7 +53,13 @@ const CLI_OPTIONS = {
 export interface CliApplyHooks {
   applyBundle: (
     bundle: WpImportBundle,
-    ctx: { actor: NxAuthUser; dryRun: boolean; log: (line: string) => void },
+    ctx: {
+      actor: NxAuthUser;
+      dryRun: boolean;
+      log: (line: string) => void;
+      /** Phase 21.8 — true when the operator passed `--no-create-authors`. */
+      createAuthors: boolean;
+    },
   ) => Promise<ApplyReport>;
   resolveActor: () => Promise<NxAuthUser>;
 }
@@ -129,6 +142,7 @@ export async function runCli(
     actor,
     dryRun: parsed.values["dry-run"],
     log: (line) => io.stdout(line),
+    createAuthors: !parsed.values["no-create-authors"],
   });
 
   io.stdout(formatApplyReport(report, { dryRun: parsed.values["dry-run"] }));
@@ -136,7 +150,7 @@ export async function runCli(
   return report.errors.length > 0 ? 1 : 0;
 }
 
-const USAGE = `Usage: wp-import <wxr-file> [--apply] [--dry-run]
+const USAGE = `Usage: wp-import <wxr-file> [--apply] [--dry-run] [--no-create-authors]
 
 Reads a WordPress eXtended RSS export and either prints a summary
 of what would be imported (default) or applies it to the database
@@ -144,10 +158,15 @@ of what would be imported (default) or applies it to the database
 records and surface skip / collision decisions without writing.
 
 Options:
-  --apply           Run the applier (writes via @nexpress/core).
-                    Without this flag only the parsed summary is
-                    printed.
-  --dry-run         When combined with --apply, walk records but
-                    skip the actual writes. Useful for previewing
-                    what the import will do against a real DB.
-  -h, --help        Show this help message.`;
+  --apply               Run the applier (writes via @nexpress/core).
+                        Without this flag only the parsed summary
+                        is printed.
+  --dry-run             When combined with --apply, walk records
+                        but skip the actual writes. Useful for
+                        previewing what the import will do against
+                        a real DB.
+  --no-create-authors   Skip creating staff users for WP authors.
+                        Imported posts come in without an author
+                        wired and the import operator takes credit
+                        via createdBy / updatedBy (Phase 21.8).
+  -h, --help            Show this help message.`;

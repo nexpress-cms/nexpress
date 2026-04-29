@@ -47,6 +47,12 @@ export {
   type CommentInsertInput,
   type ImportedMemberInput,
 } from "./apply/comments.js";
+export {
+  resolveAuthors,
+  type AuthorResolution,
+  type AuthorResolveInput,
+  type AuthorResolver,
+} from "./apply/authors.js";
 export { htmlToLexical, type LexicalRoot } from "./convert/html-to-lexical.js";
 export {
   downloadMedia,

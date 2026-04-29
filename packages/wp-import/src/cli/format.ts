@@ -210,6 +210,22 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
     lines.push("Comments: deps not supplied — comments dropped");
   }
 
+  lines.push("");
+  if (report.authors) {
+    const a = report.authors;
+    lines.push(
+      `Authors: ${a.authorIds.size} resolved, ${a.skipped.length} skipped, ${a.errors.length} errors`,
+    );
+    for (const err of a.errors) {
+      lines.push(`  ${err.login}: ${err.reason}`);
+    }
+    for (const skip of a.skipped) {
+      lines.push(`  skipped ${skip}`);
+    }
+  } else {
+    lines.push("Authors: resolver not supplied — posts attributed to the import actor");
+  }
+
   if (report.notes.length > 0) {
     lines.push("");
     lines.push("Notes");

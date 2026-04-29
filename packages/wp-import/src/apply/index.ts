@@ -12,6 +12,11 @@ import { rewriteLexicalMedia } from "../media/rewrite.js";
 import { type WpImportBundle, type WpImportRecord, type WpPostStatus } from "../parse/types.js";
 import { type AttachmentIndex, buildAttachmentIndex } from "./attachment-index.js";
 import {
+  resolveAuthors,
+  type AuthorResolution,
+  type AuthorResolver,
+} from "./authors.js";
+import {
   emptyCommentPlan,
   importPostComments,
   type CommentDeps,
@@ -52,9 +57,18 @@ import {
  * and notification fan-out are bypassed — this is archived content,
  * not new community activity.
  *
- * Out of scope here: author wiring (21.8), custom post types (21.9).
- * Records of those types are still skipped with a one-line note in
- * the report.
+ * Phase 21.8 layer: when an `authors` resolver is supplied, every
+ * unique `<dc:creator>` login is resolved once into a NexPress
+ * user id and stamped onto the post's `author` relationship field.
+ * The shim's default resolver creates a `role: "viewer"` user with
+ * a flagged email so the operator can promote them after the
+ * import. The `--no-create-authors` opt-out swaps in a resolver
+ * that returns `null` for every login — posts then go in without
+ * an author and the import actor takes the credit via
+ * `createdBy` / `updatedBy`.
+ *
+ * Out of scope here: custom post types (21.9). Records of those
+ * types are still skipped with a one-line note in the report.
  */
 
 export interface ApplyOptions {
@@ -84,6 +98,14 @@ export interface ApplyOptions {
    * imports entirely.
    */
   comments?: CommentDeps;
+  /**
+   * Phase 21.8 — when supplied, the applier resolves each WP
+   * author once and stamps the resulting NexPress user id onto
+   * the post's `author` relationship field. Without it the
+   * dropped-author note continues to surface and posts come in
+   * without an author wired.
+   */
+  authors?: AuthorResolver;
 }
 
 export interface AppliedRow {
@@ -98,6 +120,8 @@ export interface AppliedRow {
   categoryIds?: string[];
   /** Phase 21.6 — taxonomy ids attached to this row's `tags` field. */
   tagIds?: string[];
+  /** Phase 21.8 — NexPress user id stamped onto the row's `author` field. */
+  authorId?: string;
 }
 
 export interface SkippedRow {
@@ -132,6 +156,11 @@ export interface ApplyReport {
   /** Phase 21.7 — comment import outcome. `null` when no comments deps. */
   comments: CommentImportPlan | null;
   /**
+   * Phase 21.8 — resolved-author summary. `null` when the caller
+   * didn't supply an `authors` resolver.
+   */
+  authors: AuthorResolution | null;
+  /**
    * One-time observations the operator should know about — drops
    * we made silently per-record but want surfaced once aggregated.
    * Examples: original authors dropped (21.8), `private` status
@@ -163,6 +192,11 @@ export async function applyBundle(
   let taxonomies: TaxonomyResolution | null = null;
   if (options.taxonomies && !dryRun) {
     taxonomies = await resolveTaxonomies(bundle.records, bundle.terms, options.taxonomies);
+  }
+
+  let authors: AuthorResolution | null = null;
+  if (options.authors && !dryRun) {
+    authors = await resolveAuthors(bundle, options.authors);
   }
 
   const commentsPlan: CommentImportPlan | null =
@@ -231,7 +265,9 @@ export async function applyBundle(
 
       if (record.status === "private") privateCount++;
       else if (record.status === "pending") pendingCount++;
-      if (record.wpAuthorLogin) droppedAuthorCount++;
+      if (record.wpAuthorLogin && !authors?.authorIds.has(record.wpAuthorLogin)) {
+        droppedAuthorCount++;
+      }
 
       const coverImageId = resolveCoverImageId(record, resolution);
       if (collection === "posts") {
@@ -246,6 +282,10 @@ export async function applyBundle(
         collection === "posts" && taxonomies
           ? pickPostTermIds(record, taxonomies)
           : { categoryIds: [], tagIds: [] };
+      const authorId =
+        collection === "posts" && authors && record.wpAuthorLogin
+          ? authors.authorIds.get(record.wpAuthorLogin) ?? undefined
+          : undefined;
 
       if (dryRun) {
         applied.push({
@@ -257,12 +297,13 @@ export async function applyBundle(
           coverImageId,
           categoryIds: termIds.categoryIds,
           tagIds: termIds.tagIds,
+          authorId,
         });
         log(`plan  ${collection}/${record.slug}`);
         continue;
       }
 
-      const data = buildDocData(record, resolution, collection, coverImageId, termIds);
+      const data = buildDocData(record, resolution, collection, coverImageId, termIds, authorId);
       const saved = await saveDocument(collection, null, data, options.actor, {
         status: mapStatusToFramework(record.status),
       });
@@ -275,6 +316,7 @@ export async function applyBundle(
         coverImageId,
         categoryIds: termIds.categoryIds,
         tagIds: termIds.tagIds,
+        authorId,
       });
       log(`write ${collection}/${record.slug}`);
 
@@ -315,7 +357,9 @@ export async function applyBundle(
   }
   if (droppedAuthorCount > 0) {
     notes.push(
-      `${droppedAuthorCount} record${droppedAuthorCount === 1 ? "" : "s"} dropped their original WP author (Phase 21.8 wires authorship; today imports are attributed to the import operator).`,
+      authors
+        ? `${droppedAuthorCount} record${droppedAuthorCount === 1 ? "" : "s"} dropped their original WP author (resolver returned null for the matching login).`
+        : `${droppedAuthorCount} record${droppedAuthorCount === 1 ? "" : "s"} dropped their original WP author — opt in by passing \`authors\` to \`applyBundle\` (Phase 21.8).`,
     );
   }
   if (coverWiredCount > 0) {
@@ -361,6 +405,14 @@ export async function applyBundle(
     );
   }
 
+  if (authors) {
+    if (authors.errors.length > 0) {
+      notes.push(
+        `${authors.errors.length} author${authors.errors.length === 1 ? "" : "s"} failed to resolve — see Authors section.`,
+      );
+    }
+  }
+
   return {
     applied,
     skipped,
@@ -369,6 +421,7 @@ export async function applyBundle(
     media,
     taxonomies,
     comments: commentsPlan,
+    authors,
     notes,
   };
 }
@@ -379,6 +432,7 @@ function buildDocData(
   collection: string,
   coverImageId: string | undefined,
   termIds: { categoryIds: string[]; tagIds: string[] },
+  authorId: string | undefined,
 ): Record<string, unknown> {
   const lexical = htmlToLexical(record.rawContent);
   const rewritten: LexicalRoot = rewriteLexicalMedia(lexical, resolution);
@@ -396,6 +450,7 @@ function buildDocData(
   if (collection === "posts") {
     if (termIds.categoryIds.length > 0) data.categories = termIds.categoryIds;
     if (termIds.tagIds.length > 0) data.tags = termIds.tagIds;
+    if (authorId) data.author = authorId;
   }
   // <wp:post_date_gmt> arrives as "YYYY-MM-DD HH:mm:ss" without a
   // timezone marker. Treat as UTC (the GMT in the tag name is
