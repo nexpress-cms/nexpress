@@ -24,8 +24,15 @@ export {
   type ApplyOptions,
   type ApplyReport,
   type AppliedRow,
+  type CollectionMapping,
   type SkippedRow,
 } from "./apply/index.js";
+export {
+  loadConfigFromPath,
+  parseConfig,
+  WpImportConfigError,
+  type WpImportConfig,
+} from "./cli/config.js";
 export {
   buildAttachmentIndex,
   type AttachmentEntry,

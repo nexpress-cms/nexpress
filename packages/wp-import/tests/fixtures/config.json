@@ -1,0 +1,11 @@
+{
+  "mappings": [
+    {
+      "wpType": "product",
+      "collection": "products",
+      "fieldOverrides": {
+        "_price": "price"
+      }
+    }
+  ]
+}

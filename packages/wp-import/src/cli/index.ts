@@ -3,9 +3,10 @@ import { parseArgs } from "node:util";
 
 import type { NxAuthUser } from "@nexpress/core";
 
-import { type ApplyReport } from "../apply/index.js";
+import { type ApplyReport, type CollectionMapping } from "../apply/index.js";
 import { type WpImportBundle } from "../parse/types.js";
 import { parseWxr } from "../parse/wxr.js";
+import { loadConfigFromPath, WpImportConfigError } from "./config.js";
 import { formatApplyReport, formatSummary } from "./format.js";
 
 /**
@@ -41,6 +42,14 @@ const CLI_OPTIONS = {
    * import operator via `createdBy` / `updatedBy`.
    */
   "no-create-authors": { type: "boolean" as const, default: false },
+  /**
+   * Phase 21.9 — path to a JSON config file that declares custom-
+   * post-type → collection mappings and optional postmeta-key →
+   * field-name overrides. Records whose `wpType` isn't in the
+   * config (and isn't post / page / attachment) are skipped with a
+   * warning.
+   */
+  config: { type: "string" as const },
   help: { type: "boolean" as const, short: "h" },
 };
 
@@ -59,6 +68,11 @@ export interface CliApplyHooks {
       log: (line: string) => void;
       /** Phase 21.8 — true when the operator passed `--no-create-authors`. */
       createAuthors: boolean;
+      /**
+       * Phase 21.9 — operator-supplied custom-post-type mappings.
+       * Empty object when no `--config` file was passed.
+       */
+      collectionMappings: Record<string, CollectionMapping>;
     },
   ) => Promise<ApplyReport>;
   resolveActor: () => Promise<NxAuthUser>;
@@ -114,6 +128,20 @@ export async function runCli(
     return 1;
   }
 
+  let collectionMappings: Record<string, CollectionMapping> = {};
+  if (parsed.values.config) {
+    try {
+      collectionMappings = loadConfigFromPath(parsed.values.config).collectionMappings;
+    } catch (error) {
+      io.stderr(
+        error instanceof WpImportConfigError
+          ? `wp-import: ${error.message}`
+          : `wp-import: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 1;
+    }
+  }
+
   // Default mode: parse + summary only. No DB touch.
   if (!parsed.values.apply) {
     io.stdout(formatSummary({ bundle, sourcePath, dryRun: parsed.values["dry-run"] }));
@@ -143,6 +171,7 @@ export async function runCli(
     dryRun: parsed.values["dry-run"],
     log: (line) => io.stdout(line),
     createAuthors: !parsed.values["no-create-authors"],
+    collectionMappings,
   });
 
   io.stdout(formatApplyReport(report, { dryRun: parsed.values["dry-run"] }));
@@ -169,4 +198,9 @@ Options:
                         Imported posts come in without an author
                         wired and the import operator takes credit
                         via createdBy / updatedBy (Phase 21.8).
+  --config <path>       Path to a JSON config file declaring
+                        custom-post-type mappings. Each mapping
+                        routes a wpType into a NexPress collection
+                        and optionally maps WP postmeta keys to
+                        collection field names (Phase 21.9).
   -h, --help            Show this help message.`;
