@@ -225,20 +225,29 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     const actor = await asActor(session);
 
     const created: Array<{ taxonomy: string; slug: string }> = [];
-    let nextId = 1;
     const idsBySlug = new Map<string, string>();
+    const { saveDocument } = await import("@nexpress/core");
 
     const report = await applyBundle(bundle, {
       actor,
       dryRun: false,
       taxonomies: {
-        findOrCreate: async ({ taxonomy, slug }) => {
+        findOrCreate: async ({ taxonomy, slug, name }) => {
           const cached = idsBySlug.get(slug);
           if (cached) return { id: cached };
-          const id = `tax-${nextId++}`;
+          // Insert a real taxonomy row so the post.categories /
+          // post.tags FK + UUID validation pass.
+          const result = await saveDocument(
+            "taxonomies",
+            null,
+            { name, slug, taxonomy },
+            actor,
+            { status: "published" },
+          );
+          const id = (result.doc as { id: string }).id;
           idsBySlug.set(slug, id);
           created.push({ taxonomy, slug });
-          return Promise.resolve({ id });
+          return { id };
         },
       },
     });
