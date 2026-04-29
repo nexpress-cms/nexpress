@@ -440,3 +440,14 @@ this doc — "this lands the parser side of §4", "this fills the
 TODO at §11.1", etc. If you're picking up a sub-phase, start by
 re-reading §10 to find your slot, then §11 to see what's still
 unresolved in your section.
+
+---
+
+## 14. After Phase 21 ships
+
+Sub-phases 21.1–21.10 all landed. The operator-facing runbook is
+`docs/wordpress-import-guide.md` — read that to actually run an
+import; this doc stays as the design rationale for reviewers and
+future contributors. Outstanding follow-ups (cross-run media
+dedup, Gutenberg block-fence parsing, resume markers, per-doc
+visibility) are tracked in the project memory file.

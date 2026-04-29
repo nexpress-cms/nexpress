@@ -118,6 +118,26 @@ export interface ApplyOptions {
    * table, it doesn't override the defaults.
    */
   collectionMappings?: Record<string, CollectionMapping>;
+  /**
+   * Phase 21.10 — when supplied, the applier emits an audit event
+   * for every document it writes (action `import.wp.applied`),
+   * skips for already-imported slugs (`import.wp.skipped`), and
+   * record-level errors (`import.wp.error`). The shim wires this
+   * to `recordAuditEvent` from `@nexpress/core` so the entries
+   * land in `nx_audit_events` alongside the rest of the operator
+   * trail. Audit failures NEVER abort the import — see the
+   * deps's contract.
+   */
+  audit?: AuditDeps;
+}
+
+export interface AuditDeps {
+  record: (event: {
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    payload?: Record<string, unknown>;
+  }) => Promise<void>;
 }
 
 export interface CollectionMapping {
@@ -280,6 +300,7 @@ export async function applyBundle(
         options.actor,
       );
       if (exists.docs.length > 0) {
+        const existingId = typeof exists.docs[0]?.id === "string" ? exists.docs[0]?.id : undefined;
         skipped.push({
           wpId: record.wpId,
           wpType: record.wpType,
@@ -287,6 +308,17 @@ export async function applyBundle(
           reason: "slug already exists",
         });
         log(`skip  ${collection}/${record.slug} (already exists)`);
+        await emitAudit(options.audit, {
+          action: "import.wp.skipped",
+          targetType: collection,
+          targetId: existingId,
+          payload: {
+            wpId: record.wpId,
+            wpType: record.wpType,
+            slug: record.slug,
+            reason: "slug already exists",
+          },
+        });
         continue;
       }
 
@@ -342,6 +374,7 @@ export async function applyBundle(
       const saved = await saveDocument(collection, null, data, options.actor, {
         status: mapStatusToFramework(record.status),
       });
+      const savedId = typeof saved.doc.id === "string" ? saved.doc.id : undefined;
       applied.push({
         wpId: record.wpId,
         wpType: record.wpType,
@@ -354,6 +387,21 @@ export async function applyBundle(
         authorId,
       });
       log(`write ${collection}/${record.slug}`);
+      await emitAudit(options.audit, {
+        action: "import.wp.applied",
+        targetType: collection,
+        targetId: savedId,
+        payload: {
+          wpId: record.wpId,
+          wpType: record.wpType,
+          slug: record.slug,
+          title: record.title,
+          coverImageId,
+          categoryIds: termIds.categoryIds,
+          tagIds: termIds.tagIds,
+          authorId,
+        },
+      });
 
       // Phase 21.7 — pull the post id from the save result and
       // walk this record's comments. Comments only land for posts
@@ -376,6 +424,16 @@ export async function applyBundle(
       const message = err instanceof Error ? err.message : String(err);
       errors.push({ wpId: record.wpId, slug: record.slug, message });
       log(`error ${collection}/${record.slug}: ${message}`);
+      await emitAudit(options.audit, {
+        action: "import.wp.error",
+        targetType: collection,
+        payload: {
+          wpId: record.wpId,
+          wpType: record.wpType,
+          slug: record.slug,
+          message,
+        },
+      });
     }
   }
 
@@ -563,4 +621,29 @@ function mapStatusToFramework(status: WpPostStatus): "draft" | "published" {
 
 function noop(): void {
   /* default log sink */
+}
+
+/**
+ * Phase 21.10 — fire an audit event when the caller supplied an
+ * audit deps object. Audit failures are swallowed: a forensic gap
+ * is preferable to aborting an import mid-run with hundreds of
+ * already-written rows.
+ */
+async function emitAudit(
+  deps: AuditDeps | undefined,
+  event: {
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    payload?: Record<string, unknown>;
+  },
+): Promise<void> {
+  if (!deps) return;
+  try {
+    await deps.record(event);
+  } catch {
+    // Audit insert errors land in the framework's logger via
+    // recordAuditEvent's own catch — swallow here so the import
+    // doesn't abort.
+  }
 }
