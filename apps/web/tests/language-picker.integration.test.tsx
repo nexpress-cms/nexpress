@@ -22,7 +22,7 @@ vi.mock("next/link", () => ({
 
 const { usePathname } = await import("next/navigation");
 const { LanguagePicker } =
-  await import("../../../packages/theme-default/src/components/language-picker.js");
+  await import("../../../packages/themes/default/src/components/language-picker.js");
 
 /**
  * Phase 12.6a — visitor-facing language picker. Tests pin the

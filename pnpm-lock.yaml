@@ -85,16 +85,16 @@ importers:
         version: link:../../packages/theme
       '@nexpress/theme-default':
         specifier: workspace:*
-        version: link:../../packages/theme-default
+        version: link:../../packages/themes/default
       '@nexpress/theme-magazine':
         specifier: workspace:*
-        version: link:../../packages/theme-magazine
+        version: link:../../packages/themes/magazine
       '@nexpress/theme-minimal':
         specifier: workspace:*
-        version: link:../../packages/theme-minimal
+        version: link:../../packages/themes/minimal
       '@nexpress/theme-portfolio':
         specifier: workspace:*
-        version: link:../../packages/theme-portfolio
+        version: link:../../packages/themes/portfolio
       '@nexpress/wp-import':
         specifier: workspace:*
         version: link:../../packages/wp-import
@@ -545,20 +545,20 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/theme-default:
+  packages/themes/default:
     dependencies:
       '@nexpress/blocks':
         specifier: workspace:*
-        version: link:../blocks
+        version: link:../../blocks
       '@nexpress/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@nexpress/next':
         specifier: workspace:*
-        version: link:../next
+        version: link:../../next
       '@nexpress/theme':
         specifier: workspace:*
-        version: link:../theme
+        version: link:../../theme
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -582,23 +582,23 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/theme-magazine:
+  packages/themes/magazine:
     dependencies:
       '@nexpress/blocks':
         specifier: workspace:*
-        version: link:../blocks
+        version: link:../../blocks
       '@nexpress/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@nexpress/editor':
         specifier: workspace:*
-        version: link:../editor
+        version: link:../../editor
       '@nexpress/next':
         specifier: workspace:*
-        version: link:../next
+        version: link:../../next
       '@nexpress/theme':
         specifier: workspace:*
-        version: link:../theme
+        version: link:../../theme
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -622,14 +622,14 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/theme-minimal:
+  packages/themes/minimal:
     dependencies:
       '@nexpress/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@nexpress/theme':
         specifier: workspace:*
-        version: link:../theme
+        version: link:../../theme
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -650,20 +650,20 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
-  packages/theme-portfolio:
+  packages/themes/portfolio:
     dependencies:
       '@nexpress/blocks':
         specifier: workspace:*
-        version: link:../blocks
+        version: link:../../blocks
       '@nexpress/core':
         specifier: workspace:*
-        version: link:../core
+        version: link:../../core
       '@nexpress/next':
         specifier: workspace:*
-        version: link:../next
+        version: link:../../next
       '@nexpress/theme':
         specifier: workspace:*
-        version: link:../theme
+        version: link:../../theme
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
