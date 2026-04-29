@@ -206,6 +206,58 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(row).toBeDefined();
   });
 
+  it("21.6 — resolves WP categories/tags via taxonomies resolver and attaches term ids to posts", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-tax@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const created: Array<{ taxonomy: string; slug: string }> = [];
+    let nextId = 1;
+    const idsBySlug = new Map<string, string>();
+
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      taxonomies: {
+        findOrCreate: async ({ taxonomy, slug }) => {
+          const cached = idsBySlug.get(slug);
+          if (cached) return { id: cached };
+          const id = `tax-${nextId++}`;
+          idsBySlug.set(slug, id);
+          created.push({ taxonomy, slug });
+          return Promise.resolve({ id });
+        },
+      },
+    });
+
+    // The fixture has one category (news) and one tag (launch),
+    // both attached to the hello-world post.
+    expect(report.errors).toEqual([]);
+    expect(created).toEqual(
+      expect.arrayContaining([
+        { taxonomy: "category", slug: "news" },
+        { taxonomy: "post_tag", slug: "launch" },
+      ]),
+    );
+    expect(report.taxonomies?.termIds.size).toBe(2);
+
+    const helloRow = report.applied.find((r) => r.slug === "hello-world");
+    expect(helloRow?.categoryIds).toEqual([idsBySlug.get("news")]);
+    expect(helloRow?.tagIds).toEqual([idsBySlug.get("launch")]);
+  });
+
+  it("21.6 — surfaces a notes line when terms exist but no resolver is supplied", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-tax-skip@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const report = await applyBundle(bundle, { actor, dryRun: false });
+    expect(report.taxonomies).toBeNull();
+    expect(report.notes.some((n) => n.includes("no taxonomy resolver"))).toBe(true);
+  });
+
   it("21.5 — leaves Lexical untouched when a media URL fails to download", async () => {
     const xml = readFileSync(FIXTURE, "utf8");
     const bundle = parseWxr(xml);

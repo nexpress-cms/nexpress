@@ -13,6 +13,7 @@ import {
   localizedPagesTable,
   pagesTable,
   postsTable,
+  taxonomiesTable,
 } from "../../../../apps/web/src/db/generated/collections.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { postsCollection } from "../../../../apps/web/src/collections/posts.js";
@@ -20,6 +21,8 @@ import { postsCollection } from "../../../../apps/web/src/collections/posts.js";
 import { pagesCollection } from "../../../../apps/web/src/collections/pages.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { localizedPagesCollection } from "../../../../apps/web/src/collections/localized-pages.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { taxonomiesCollection } from "../../../../apps/web/src/collections/taxonomies.js";
 import { registerCollection } from "../collections/registry.js";
 import { setI18nConfig } from "../i18n/registry.js";
 import type { NxCollectionConfig } from "../config/types.js";
@@ -61,9 +64,19 @@ export function registerTestCollections(): void {
   };
   registerCollection("localized-pages", localizedPagesTable as never, localizedConfig);
 
+  // Phase 21.6 — taxonomies collection. Posts reference it via the
+  // `categories` / `tags` relationship fields, so saving a post
+  // with terms requires this registration to be present.
+  const taxonomiesConfig: NxCollectionConfig = {
+    ...taxonomiesCollection,
+    access: undefined,
+    hooks: undefined,
+  };
+  registerCollection("taxonomies", taxonomiesTable as never, taxonomiesConfig);
+
   setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
 
   registered = true;
 }
 
-export { localizedPagesTable, pagesTable, postsTable };
+export { localizedPagesTable, pagesTable, postsTable, taxonomiesTable };

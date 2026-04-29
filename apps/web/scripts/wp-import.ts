@@ -1,6 +1,13 @@
 import { eq } from "drizzle-orm";
 
-import { type NxAuthUser, createDbConnection, nxUsers, uploadMedia } from "@nexpress/core";
+import {
+  type NxAuthUser,
+  createDbConnection,
+  findDocuments,
+  nxUsers,
+  saveDocument,
+  uploadMedia,
+} from "@nexpress/core";
 import { applyBundle, runCli } from "@nexpress/wp-import";
 
 import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
@@ -14,6 +21,11 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * Phase 21.5 — also plug in the media deps so the importer can
  * download + upload assets through the framework's media service
  * (Sharp pipeline, storage adapter, audit refs all run as normal).
+ *
+ * Phase 21.6 — wire the taxonomy resolver against the reference
+ * app's `taxonomies` collection. User projects with their own
+ * taxonomy storage swap this hook out (or skip it entirely; the
+ * importer drops terms with a single notes line).
  *
  * For dry-run-summary mode (the default with no flags) the shim
  * doesn't strictly need the bootstrap — but doing it
@@ -43,6 +55,44 @@ const code = await runCli(process.argv.slice(2), undefined, {
             ctx.actor.id,
           );
           return { id: result.id };
+        },
+      },
+      taxonomies: {
+        findOrCreate: async ({ taxonomy, slug, name }) => {
+          // Look up by slug first (the slugField is unique on the
+          // taxonomies collection). If a row already exists with a
+          // different `taxonomy` field we bail rather than collide;
+          // this is rare in practice — slugs are taxonomy-scoped on
+          // a real WP site — but the warning is more useful than a
+          // silent stomp.
+          const existing = await findDocuments(
+            "taxonomies",
+            { where: { slug }, limit: 1 },
+            ctx.actor,
+          );
+          const hit = existing.docs[0];
+          if (hit) {
+            const id = typeof hit.id === "string" ? hit.id : null;
+            if (id) {
+              if (hit.taxonomy !== taxonomy) {
+                throw new Error(
+                  `slug "${slug}" already maps to taxonomy "${String(hit.taxonomy)}", not "${taxonomy}"`,
+                );
+              }
+              return { id };
+            }
+          }
+          const created = await saveDocument(
+            "taxonomies",
+            null,
+            { name, slug, taxonomy },
+            ctx.actor,
+            { status: "published" },
+          );
+          const createdId =
+            typeof created.doc.id === "string" ? created.doc.id : null;
+          if (!createdId) throw new Error("taxonomies create returned no id");
+          return { id: createdId };
         },
       },
     }),
