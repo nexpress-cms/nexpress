@@ -300,4 +300,80 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
     expect(onA).toBe(true);
     expect(onB).toBe(false);
   });
+
+  // ============== Issue #215 ==============
+
+  it("Issue #215 — createComment rejects cross-site target documents", async () => {
+    const { createSite, withCurrentSite } = await import("@nexpress/core");
+    await createSite({ id: "site-x215", name: "X" });
+    const member = await seedMember("phase215a");
+    // Post lives on site-x215; the request runs under default.
+    const postId = await seedStaffPostId("p215-cross", "site-x215");
+    const { createComment } = await import("@nexpress/core");
+    await expect(
+      withCurrentSite("default", () =>
+        createComment({
+          targetType: "posts",
+          targetId: postId,
+          memberId: member,
+          bodyMd: "should be rejected",
+        }),
+      ),
+    ).rejects.toThrow(/Forbidden|cross-site/);
+  });
+
+  it("Issue #215 — addReaction rejects cross-site target comments", async () => {
+    const { createSite, withCurrentSite } = await import("@nexpress/core");
+    await createSite({ id: "site-x215b", name: "X" });
+    const author = await seedMember("phase215b1");
+    const reactor = await seedMember("phase215b2");
+    // Comment lives on site-x215b.
+    const postId = await seedStaffPostId("p215-react", "site-x215b");
+    const { createComment, addReaction } = await import("@nexpress/core");
+    const comment = await withCurrentSite("site-x215b", () =>
+      createComment({
+        targetType: "posts",
+        targetId: postId,
+        memberId: author,
+        bodyMd: "owner",
+      }),
+    );
+    await expect(
+      withCurrentSite("default", () =>
+        addReaction({
+          targetType: "comment",
+          targetId: comment.id,
+          memberId: reactor,
+          kind: "like",
+        }),
+      ),
+    ).rejects.toThrow(/Forbidden|cross-site/);
+  });
+
+  it("Issue #215 — fileReport rejects cross-site target comments", async () => {
+    const { createSite, withCurrentSite } = await import("@nexpress/core");
+    await createSite({ id: "site-x215c", name: "X" });
+    const author = await seedMember("phase215c1");
+    const reporter = await seedMember("phase215c2");
+    const postId = await seedStaffPostId("p215-report", "site-x215c");
+    const { createComment, fileReport } = await import("@nexpress/core");
+    const comment = await withCurrentSite("site-x215c", () =>
+      createComment({
+        targetType: "posts",
+        targetId: postId,
+        memberId: author,
+        bodyMd: "owner",
+      }),
+    );
+    await expect(
+      withCurrentSite("default", () =>
+        fileReport({
+          reporterId: reporter,
+          targetType: "comment",
+          targetId: comment.id,
+          reason: "test",
+        }),
+      ),
+    ).rejects.toThrow(/Forbidden|cross-site/);
+  });
 });
