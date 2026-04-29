@@ -7,6 +7,14 @@ interface CommentRow {
   bodyHtml: string;
   memberId: string;
   status: string;
+  /**
+   * Phase 21.11 — author's `nx_members.status`. `null` for live
+   * comments today since `nx_member_status` doesn't have a chip
+   * for the regular flow; `"imported"` flags WordPress-archived
+   * authors so the public site can render an `(imported)` badge
+   * next to the timestamp.
+   */
+  authorStatus?: string | null;
   createdAt: string;
   editedAt: string | null;
 }
@@ -231,6 +239,26 @@ function CommentItem({ comment, memberKnown, viewerMemberId, onMuted }: CommentI
       <div style={{ fontSize: "0.85rem", color: "#64748b", marginBottom: "0.25rem" }}>
         {new Date(comment.createdAt).toLocaleString()}
         {comment.editedAt ? " · edited" : null}
+        {comment.authorStatus === "imported" ? (
+          <span
+            // Phase 21.11 — visual cue that this thread came from a
+            // WP import, not the live community. Keeps archived
+            // discussion legible without making it look like new
+            // activity.
+            title="Imported from a WordPress export"
+            style={{
+              marginLeft: "0.5rem",
+              padding: "0.1rem 0.4rem",
+              borderRadius: 4,
+              fontSize: "0.75rem",
+              background: "#f1f5f9",
+              color: "#475569",
+              fontWeight: 500,
+            }}
+          >
+            imported
+          </span>
+        ) : null}
       </div>
       <div className="nx-comment-body" dangerouslySetInnerHTML={{ __html: comment.bodyHtml }} />
       <div

@@ -59,6 +59,17 @@ export const postsCollection = defineCollection({
       relationTo: "users",
     },
     {
+      // Phase 21.11 — preserves the original WP byline when the
+      // importer can't resolve `author` to an `nx_users` row (the
+      // `--no-create-authors` opt-out, or a custom resolver that
+      // returns null for a specific login). Empty when the staff
+      // link survived. Themes that want to surface "Originally
+      // by …" lines read this field as a fallback.
+      type: "text",
+      name: "wpOriginalAuthor",
+      admin: { description: "WP author byline preserved from import — read-only in admin." },
+    },
+    {
       type: "relationship",
       name: "categories",
       relationTo: "taxonomies",
