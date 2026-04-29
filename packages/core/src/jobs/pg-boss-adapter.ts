@@ -210,12 +210,25 @@ export class PgBossAdapter implements NxJobQueue {
     // Phase 16.4 — daily digest at 08:00 UTC, weekly digest Mondays
     // 08:00 UTC. Members opt in via their notification prefs;
     // the handler short-circuits when nobody matches.
-    await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * *", {
-      cadence: "daily",
+    //
+    // Issue #217 — pg-boss `pgboss.schedule` rows are uniquely
+    // keyed by `(name, key)`. Without an explicit `key`, both
+    // calls write to `(notifications:sendDigest, '')` and the
+    // weekly upsert silently overwrites the daily one. Pass
+    // `{ key }` so the two cadences live in distinct rows;
+    // both schedules still fire jobs into the same queue name
+    // (handler discriminates by `data.cadence`). The empty-key
+    // legacy row from earlier deploys is removed below so a
+    // re-deploy converges on the correct shape.
+    const digestQueue = toQueueName("notifications:sendDigest");
+    await this.boss.unschedule(digestQueue).catch(() => {
+      // First-deploy systems have no row to remove. Older
+      // deploys may have one; clear it so the new
+      // `(name, key='daily')` and `(name, key='weekly')` rows
+      // don't coexist alongside an orphan empty-key row.
     });
-    await this.boss.schedule(toQueueName("notifications:sendDigest"), "0 8 * * 1", {
-      cadence: "weekly",
-    });
+    await this.boss.schedule(digestQueue, "0 8 * * *", { cadence: "daily" }, { key: "daily" });
+    await this.boss.schedule(digestQueue, "0 8 * * 1", { cadence: "weekly" }, { key: "weekly" });
     // Phase 19 — first-class plugin cron schedules. Each entry
     // declared via `definePlugin({ scheduled: [...] })` becomes
     // one row in `pgboss.schedule`. We share the `plugin:scheduledTask`
@@ -358,9 +371,9 @@ export class PgBossAdapter implements NxJobQueue {
       }
     ).db;
     const result = await db.executeSql(
-      `SELECT name, cron, timezone, data, created_on, updated_on
+      `SELECT name, key, cron, timezone, data, created_on, updated_on
          FROM pgboss.schedule
-        ORDER BY name ASC`,
+        ORDER BY name ASC, key ASC`,
     );
     return (result.rows ?? []).map(scheduleRowToSummary);
   }
@@ -433,6 +446,7 @@ interface PgBossRow {
 
 interface PgBossScheduleRow {
   name: string;
+  key?: string | null;
   cron: string;
   timezone?: string | null;
   data?: unknown;
@@ -443,6 +457,7 @@ interface PgBossScheduleRow {
 function scheduleRowToSummary(row: PgBossScheduleRow): NxScheduleSummary {
   return {
     name: row.name,
+    key: row.key ?? "",
     cron: row.cron,
     timezone: row.timezone ?? null,
     data: row.data ?? null,

@@ -39,6 +39,12 @@ type WindowMode = "all" | "24h";
 
 interface ScheduleSummary {
   name: string;
+  /**
+   * Issue #217 — second half of pgboss.schedule's primary key.
+   * Empty for single-cadence schedules; non-empty for cron rows
+   * that share a queue name (e.g. daily / weekly digest).
+   */
+  key: string;
   cron: string;
   timezone: string | null;
   data: unknown;
@@ -552,9 +558,17 @@ function SchedulesPanel({
             ) : (
               <ul className="divide-y divide-border/60">
                 {schedules.map((schedule) => (
-                  <li key={schedule.name} className="space-y-1 px-5 py-3">
+                  <li
+                    key={`${schedule.name}#${schedule.key}`}
+                    className="space-y-1 px-5 py-3"
+                  >
                     <div className="flex flex-wrap items-baseline gap-2">
                       <code className="font-mono text-xs">{schedule.name}</code>
+                      {schedule.key ? (
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                          {schedule.key}
+                        </code>
+                      ) : null}
                       <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
                         {schedule.cron}
                       </code>
