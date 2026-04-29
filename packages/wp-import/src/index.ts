@@ -31,4 +31,21 @@ export {
   type AttachmentEntry,
   type AttachmentIndex,
 } from "./apply/attachment-index.js";
-export { htmlToLexical } from "./convert/html-to-lexical.js";
+export { htmlToLexical, type LexicalRoot } from "./convert/html-to-lexical.js";
+export {
+  downloadMedia,
+  isAllowedMimeType,
+  WpMediaDownloadError,
+  type DownloadOptions,
+  type DownloadResult,
+} from "./media/download.js";
+export {
+  runMediaPipeline,
+  type MediaPipelineDeps,
+  type MediaPipelineError,
+  type MediaPipelineOptions,
+  type MediaPipelineReport,
+  type MediaResolution,
+  type MediaUploadInput,
+} from "./media/pipeline.js";
+export { rewriteLexicalMedia } from "./media/rewrite.js";
