@@ -57,6 +57,15 @@ export {
   type ImportedMemberInput,
 } from "./apply/comments.js";
 export {
+  documentKey,
+  emptyResumeState,
+  loadResumeState,
+  persistResumeState,
+  ResumeStateError,
+  type ResumeDeps,
+  type ResumeState,
+} from "./apply/resume.js";
+export {
   resolveAuthors,
   type AuthorResolution,
   type AuthorResolveInput,

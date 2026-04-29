@@ -217,6 +217,31 @@ describe("runCli", () => {
     expect(captured.reportHtmlPath).toBeNull();
   });
 
+  it("21.14 — passes ctx.resumeStatePath when --resume is set", async () => {
+    const { io } = captureIo();
+    const captured: { resumeStatePath?: string | null } = {};
+    const code = await runCli(
+      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply", "--resume"],
+      io,
+      {
+        applyBundle: (_b, ctx) => {
+          captured.resumeStatePath = ctx.resumeStatePath;
+          return Promise.resolve({
+            applied: [], skipped: [], errors: [],
+            attachments: { byId: new Map(), byUrl: new Map() },
+            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+          });
+        },
+        resolveActor: () =>
+          Promise.resolve({
+            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+          }),
+      },
+    );
+    expect(code).toBe(0);
+    expect(captured.resumeStatePath).toMatch(/\.import-state\.json$/);
+  });
+
   it("21.9 — exits 1 with a clear message when --config points at a malformed file", async () => {
     const { io, err } = captureIo();
     const configPath = path.join(FIXTURES_DIR, "config-bad.json");

@@ -64,6 +64,8 @@ written.
 | `--update` | off | Rewrite the existing document instead of skipping when a slug collides. Comments are NOT re-imported on an update pass — that needs the per-comment idempotency keys landing in 21.14. |
 | `--report-html` | off | Write a side-by-side HTML/Lexical diff of every imported record so you can spot-check the conversion. Defaults to `<wxr>.report.html`. |
 | `--report-html-path <path>` | — | Override the default report path. Implies `--report-html`. |
+| `--resume` | off | Read + persist a sidecar resume marker so re-runs skip already-imported documents and dedupe comments by `wpCommentId`. Defaults to `<wxr>.import-state.json`. |
+| `--resume-state <path>` | — | Override the default resume-marker path. Implies `--resume`. |
 | `--help` | — | Show the usage block. |
 
 ---
@@ -121,12 +123,12 @@ Re-running the same WXR against the same DB:
 
 | What | Behavior |
 |------|----------|
-| Documents | Skipped on slug match. Listed under `Skipped` with reason "slug already exists". |
+| Documents | Skipped on slug match (or by resume marker when `--resume` is on). Listed under `Skipped` with reason "slug already exists" or "resume marker — already imported". |
 | Authors | Skipped on email match (the `+wp-import` flagged variant). |
 | Taxonomy terms | Skipped on slug match. |
 | Imported members | Skipped on handle match. |
-| Comments | Only land for posts the applier created in this run, so re-runs naturally skip them. |
-| Media | Re-downloaded (Phase 21.5 doesn't cross-run dedupe). Hash dedup landing alongside resume markers is on the long-tail follow-up list. |
+| Comments | Skipped on `wpCommentId` match when the resume marker is enabled (Phase 21.14). Without `--resume`, comments only land for posts the applier created in this run. |
+| Media | Cross-run dedup via byte-hash lookup against `nx_media.hash` (Phase 21.13). Identical bytes reuse an existing row instead of producing a duplicate. |
 
 The audit log carries the full forensic trail — query `nx_audit_events` filtered by `action LIKE 'import.wp.%'` to see what each run did.
 

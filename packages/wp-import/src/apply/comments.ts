@@ -1,4 +1,5 @@
 import type { WpComment, WpImportRecord } from "../parse/types.js";
+import type { ResumeDeps } from "./resume.js";
 
 /**
  * Phase 21.7 — wire WP comments into NexPress's `nx_comments` plus
@@ -48,6 +49,8 @@ export interface CommentImportPlan {
   applied: number;
   skippedUnapproved: number;
   skippedNoMember: number;
+  /** Phase 21.14 — comments the resume marker said were already imported. */
+  skippedByResume: number;
   errors: Array<{ wpCommentId: number; reason: string }>;
 }
 
@@ -62,8 +65,10 @@ export async function importPostComments(args: {
   deps: CommentDeps;
   plan: CommentImportPlan;
   log?: (line: string) => void;
+  /** Phase 21.14 — when supplied, dedupes by `wpCommentId`. */
+  resume?: ResumeDeps;
 }): Promise<void> {
-  const { record, postId, collection, deps, plan } = args;
+  const { record, postId, collection, deps, plan, resume } = args;
   const log = args.log ?? noop;
   if (record.comments.length === 0) return;
 
@@ -72,8 +77,21 @@ export async function importPostComments(args: {
   // the parent-resolution map below.
   const ordered = [...record.comments].sort((a, b) => a.wpId - b.wpId);
   const wpToNexpressId = new Map<number, string>();
+  // Phase 21.14 — seed the parent-resolution map with anything
+  // from the resume marker so a partial-failure mid-thread can
+  // still resolve replies under the previously-inserted parent.
+  if (resume) {
+    for (const c of ordered) {
+      const prior = resume.state.comments[c.wpId];
+      if (prior) wpToNexpressId.set(c.wpId, prior);
+    }
+  }
 
   for (const wpComment of ordered) {
+    if (resume?.state.comments[wpComment.wpId]) {
+      plan.skippedByResume++;
+      continue;
+    }
     if (!wpComment.approved) {
       plan.skippedUnapproved++;
       continue;
@@ -102,6 +120,10 @@ export async function importPostComments(args: {
       wpToNexpressId.set(wpComment.wpId, inserted.id);
       plan.applied++;
       log(`comment write ${collection}/${record.slug} #${wpComment.wpId}`);
+      if (resume) {
+        resume.state.comments[wpComment.wpId] = inserted.id;
+        resume.persist();
+      }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       plan.errors.push({ wpCommentId: wpComment.wpId, reason });
@@ -154,7 +176,7 @@ function parseWpDate(raw: string): Date {
 }
 
 export function emptyCommentPlan(): CommentImportPlan {
-  return { applied: 0, skippedUnapproved: 0, skippedNoMember: 0, errors: [] };
+  return { applied: 0, skippedUnapproved: 0, skippedNoMember: 0, skippedByResume: 0, errors: [] };
 }
 
 function noop(): void {

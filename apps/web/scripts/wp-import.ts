@@ -19,7 +19,10 @@ import {
 } from "@nexpress/core";
 import {
   applyBundle,
+  loadResumeState,
+  persistResumeState,
   type ReportHtmlDeps,
+  type ResumeDeps,
   runCli,
 } from "@nexpress/wp-import";
 
@@ -78,6 +81,17 @@ await ensurePluginsLoaded();
 const code = await runCli(process.argv.slice(2), undefined, {
   applyBundle: async (bundle, ctx) => {
     const reportHtml = ctx.reportHtmlPath ? openReportFile(ctx.reportHtmlPath) : null;
+    const resume: ResumeDeps | undefined = ctx.resumeStatePath
+      ? (() => {
+          const path = ctx.resumeStatePath;
+          if (!path) return undefined;
+          const state = loadResumeState(path, path);
+          return {
+            state,
+            persist: () => persistResumeState(path, state),
+          };
+        })()
+      : undefined;
     try {
       return await applyBundle(bundle, {
         actor: ctx.actor,
@@ -86,6 +100,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
         strict: ctx.strict,
         update: ctx.update,
         reportHtml: reportHtml?.deps,
+        resume,
       media: {
         upload: async (file) => {
           const result = await uploadMedia(
