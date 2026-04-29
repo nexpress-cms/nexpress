@@ -95,6 +95,9 @@ importers:
       '@nexpress/theme-portfolio':
         specifier: workspace:*
         version: link:../../packages/theme-portfolio
+      '@nexpress/wp-import':
+        specifier: workspace:*
+        version: link:../../packages/wp-import
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
