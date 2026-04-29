@@ -44,7 +44,7 @@ describe("formatSummary", () => {
         "  post_tag     1",
         "",
         "Records (3)",
-        "  attachment   1  (handled by the media pipeline in 21.5)",
+        "  attachment   1  (downloaded + uploaded by the media pipeline)",
         "  page         1",
         "  post         1",
         "",
