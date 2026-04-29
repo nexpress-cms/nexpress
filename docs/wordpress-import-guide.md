@@ -58,8 +58,12 @@ written.
 |------|---------|--------|
 | `--apply` | off | Switch from preview-only to applier mode. Without this flag the importer parses + summarises without touching the DB. |
 | `--dry-run` | on (with `--apply`) | When combined with `--apply`, walks records + media but skips the actual writes. Useful for spotting collisions on a real DB. |
-| `--no-create-authors` | off | Don't create `nx_users` rows for WP authors. Imported posts come in without an author wired and the import operator gets the credit via `createdBy` / `updatedBy`. |
+| `--no-create-authors` | off | Don't create `nx_users` rows for WP authors. Imported posts come in without an author wired and the original byline lands on `wpOriginalAuthor`. |
 | `--config <path>` | none | Load custom-post-type → collection mappings from a JSON file (see §6). |
+| `--strict` | off | Escalate sub-pipeline warnings (media 4xx / MIME reject / taxonomy / author resolver failures) into errors so the CLI exits non-zero. Use for "clean import or nothing" runs. |
+| `--update` | off | Rewrite the existing document instead of skipping when a slug collides. Comments are NOT re-imported on an update pass — that needs the per-comment idempotency keys landing in 21.14. |
+| `--report-html` | off | Write a side-by-side HTML/Lexical diff of every imported record so you can spot-check the conversion. Defaults to `<wxr>.report.html`. |
+| `--report-html-path <path>` | — | Override the default report path. Implies `--report-html`. |
 | `--help` | — | Show the usage block. |
 
 ---

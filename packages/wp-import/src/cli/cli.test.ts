@@ -152,6 +152,71 @@ describe("runCli", () => {
     expect(captured.mappings?.product?.collection).toBe("products");
   });
 
+  it("21.12 — passes ctx.strict / ctx.update / ctx.reportHtmlPath when the flags are set", async () => {
+    const { io } = captureIo();
+    const captured: { strict?: boolean; update?: boolean; reportHtmlPath?: string | null } = {};
+    const code = await runCli(
+      [
+        path.join(FIXTURES_DIR, "minimal.wxr.xml"),
+        "--apply",
+        "--strict",
+        "--update",
+        "--report-html",
+      ],
+      io,
+      {
+        applyBundle: (_b, ctx) => {
+          captured.strict = ctx.strict;
+          captured.update = ctx.update;
+          captured.reportHtmlPath = ctx.reportHtmlPath;
+          return Promise.resolve({
+            applied: [], skipped: [], errors: [],
+            attachments: { byId: new Map(), byUrl: new Map() },
+            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+          });
+        },
+        resolveActor: () =>
+          Promise.resolve({
+            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+          }),
+      },
+    );
+    expect(code).toBe(0);
+    expect(captured.strict).toBe(true);
+    expect(captured.update).toBe(true);
+    // Default path is `<wxr>.report.html` when --report-html has no value.
+    expect(captured.reportHtmlPath).toMatch(/\.report\.html$/);
+  });
+
+  it("21.12 — defaults ctx.strict / ctx.update / ctx.reportHtmlPath off when flags omitted", async () => {
+    const { io } = captureIo();
+    const captured: { strict?: boolean; update?: boolean; reportHtmlPath?: string | null } = {};
+    const code = await runCli(
+      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply"],
+      io,
+      {
+        applyBundle: (_b, ctx) => {
+          captured.strict = ctx.strict;
+          captured.update = ctx.update;
+          captured.reportHtmlPath = ctx.reportHtmlPath;
+          return Promise.resolve({
+            applied: [], skipped: [], errors: [],
+            attachments: { byId: new Map(), byUrl: new Map() },
+            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+          });
+        },
+        resolveActor: () =>
+          Promise.resolve({
+            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+          }),
+      },
+    );
+    expect(code).toBe(0);
+    expect(captured.strict).toBe(false);
+    expect(captured.update).toBe(false);
+    expect(captured.reportHtmlPath).toBeNull();
+  });
+
   it("21.9 — exits 1 with a clear message when --config points at a malformed file", async () => {
     const { io, err } = captureIo();
     const configPath = path.join(FIXTURES_DIR, "config-bad.json");

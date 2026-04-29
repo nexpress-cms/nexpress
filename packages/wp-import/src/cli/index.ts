@@ -50,6 +50,31 @@ const CLI_OPTIONS = {
    * warning.
    */
   config: { type: "string" as const },
+  /**
+   * Phase 21.12 — escalate sub-pipeline warnings (media 4xx, MIME
+   * reject, taxonomy/author resolver failures) into errors so the
+   * CLI exits non-zero. Useful for "clean import or fail" scripts.
+   */
+  strict: { type: "boolean" as const, default: false },
+  /**
+   * Phase 21.12 — rewrite the existing document instead of
+   * skipping when a slug collides. Comments are NOT re-imported on
+   * an update pass — that needs the per-comment idempotency keys
+   * landing in 21.14.
+   */
+  update: { type: "boolean" as const, default: false },
+  /**
+   * Phase 21.12 — write a side-by-side HTML/Lexical diff for every
+   * imported record so the operator can spot-check the conversion.
+   * Defaults to writing `<wxr>.report.html` next to the source.
+   */
+  "report-html": { type: "boolean" as const, default: false },
+  /**
+   * Phase 21.12 — override the default `<wxr>.report.html` path.
+   * Implies `--report-html`; passing a path without the flag is
+   * fine too.
+   */
+  "report-html-path": { type: "string" as const },
   help: { type: "boolean" as const, short: "h" },
 };
 
@@ -73,6 +98,17 @@ export interface CliApplyHooks {
        * Empty object when no `--config` file was passed.
        */
       collectionMappings: Record<string, CollectionMapping>;
+      /** Phase 21.12 — set when the operator passed `--strict`. */
+      strict: boolean;
+      /** Phase 21.12 — set when the operator passed `--update`. */
+      update: boolean;
+      /**
+       * Phase 21.12 — when set, the operator wants a side-by-side
+       * HTML/Lexical diff written somewhere. The CLI passes the
+       * resolved file path; the shim is responsible for opening
+       * the file and producing the deps. `null` means "don't emit".
+       */
+      reportHtmlPath: string | null;
     },
   ) => Promise<ApplyReport>;
   resolveActor: () => Promise<NxAuthUser>;
@@ -166,12 +202,27 @@ export async function runCli(
     return 1;
   }
 
+  // Phase 21.12 — `--report-html` enables the diff; `--report-html-path`
+  // optionally overrides the default `<wxr>.report.html` location. Either
+  // flag implies "emit a report", so a path without the boolean is also
+  // valid.
+  const reportHtmlPathOverride = parsed.values["report-html-path"];
+  const reportHtmlPath: string | null =
+    reportHtmlPathOverride && reportHtmlPathOverride.length > 0
+      ? reportHtmlPathOverride
+      : parsed.values["report-html"]
+        ? `${sourcePath}.report.html`
+        : null;
+
   const report = await hooks.applyBundle(bundle, {
     actor,
     dryRun: parsed.values["dry-run"],
     log: (line) => io.stdout(line),
     createAuthors: !parsed.values["no-create-authors"],
     collectionMappings,
+    strict: parsed.values.strict,
+    update: parsed.values.update,
+    reportHtmlPath,
   });
 
   io.stdout(formatApplyReport(report, { dryRun: parsed.values["dry-run"] }));
@@ -179,7 +230,7 @@ export async function runCli(
   return report.errors.length > 0 ? 1 : 0;
 }
 
-const USAGE = `Usage: wp-import <wxr-file> [--apply] [--dry-run] [--no-create-authors]
+const USAGE = `Usage: wp-import <wxr-file> [--apply] [--dry-run] [--strict] [--update] [--no-create-authors] [--report-html] [--report-html-path <path>]
 
 Reads a WordPress eXtended RSS export and either prints a summary
 of what would be imported (default) or applies it to the database
@@ -203,4 +254,19 @@ Options:
                         routes a wpType into a NexPress collection
                         and optionally maps WP postmeta keys to
                         collection field names (Phase 21.9).
+  --strict              Escalate sub-pipeline warnings (media 4xx,
+                        MIME reject, taxonomy / author resolver
+                        failures) into errors so the CLI exits
+                        non-zero (Phase 21.12).
+  --update              Rewrite the existing document instead of
+                        skipping when a slug collides. Comments
+                        are NOT re-imported on an update pass
+                        (Phase 21.12).
+  --report-html         Write a side-by-side HTML/Lexical diff of
+                        every imported record so the operator can
+                        spot-check the conversion. Defaults to
+                        <wxr>.report.html (Phase 21.12).
+  --report-html-path <path>
+                        Override the default report path. Implies
+                        --report-html.
   -h, --help            Show this help message.`;

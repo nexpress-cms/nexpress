@@ -1,3 +1,5 @@
+import { closeSync, openSync, writeSync } from "node:fs";
+
 import { eq } from "drizzle-orm";
 
 import {
@@ -14,7 +16,11 @@ import {
   saveDocument,
   uploadMedia,
 } from "@nexpress/core";
-import { applyBundle, runCli } from "@nexpress/wp-import";
+import {
+  applyBundle,
+  type ReportHtmlDeps,
+  runCli,
+} from "@nexpress/wp-import";
 
 import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
 
@@ -47,6 +53,12 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * resolver that always returns null so posts come in without an
  * author and are credited to the import operator.
  *
+ * Phase 21.12 — wire the new operator-control flags:
+ *   --strict       escalate sub-pipeline warnings to fatal errors
+ *   --update       rewrite slug-collisions instead of skipping
+ *   --report-html  emit a side-by-side HTML/Lexical diff next to
+ *                  the WXR for spot-checking conversions
+ *
  * For dry-run-summary mode (the default with no flags) the shim
  * doesn't strictly need the bootstrap — but doing it
  * unconditionally keeps the script's behavior predictable and
@@ -63,11 +75,16 @@ ensureCoreServices();
 await ensurePluginsLoaded();
 
 const code = await runCli(process.argv.slice(2), undefined, {
-  applyBundle: async (bundle, ctx) =>
-    applyBundle(bundle, {
-      actor: ctx.actor,
-      dryRun: ctx.dryRun,
-      log: ctx.log,
+  applyBundle: async (bundle, ctx) => {
+    const reportHtml = ctx.reportHtmlPath ? openReportFile(ctx.reportHtmlPath) : null;
+    try {
+      return await applyBundle(bundle, {
+        actor: ctx.actor,
+        dryRun: ctx.dryRun,
+        log: ctx.log,
+        strict: ctx.strict,
+        update: ctx.update,
+        reportHtml: reportHtml?.deps,
       media: {
         upload: async (file) => {
           const result = await uploadMedia(
@@ -206,7 +223,11 @@ const code = await runCli(process.argv.slice(2), undefined, {
             },
           }
         : { resolveAuthor: () => Promise.resolve(null) },
-    }),
+      });
+    } finally {
+      reportHtml?.close();
+    }
+  },
   resolveActor: async () => {
     const actor = await findFirstAdmin();
     if (!actor) {
@@ -216,6 +237,57 @@ const code = await runCli(process.argv.slice(2), undefined, {
   },
 });
 process.exit(code);
+
+/**
+ * Phase 21.12 — open a report file at `path` and return a
+ * ReportHtmlDeps that emits one `<section>` per imported record,
+ * plus a close handle the shim calls when the apply pass
+ * finishes (success OR failure — wrap in try/finally so a thrown
+ * error still flushes the trailing `</body>`). The file is
+ * truncated on open, so re-running the importer overwrites the
+ * previous artifact.
+ */
+function openReportFile(path: string): { deps: ReportHtmlDeps; close: () => void } {
+  const fd = openSync(path, "w");
+  writeSync(
+    fd,
+    `<!doctype html><html><head><meta charset="utf-8"><title>wp-import HTML/Lexical diff</title>` +
+      `<style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:1200px}` +
+      `section{margin-bottom:3rem;border-bottom:1px solid #e2e8f0;padding-bottom:2rem}` +
+      `h2{font-size:1.1rem;margin-bottom:0.5rem}` +
+      `.cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem}` +
+      `.col{border:1px solid #cbd5e1;border-radius:6px;padding:1rem;background:#f8fafc}` +
+      `.col h3{margin:0 0 0.5rem;font-size:0.85rem;color:#64748b;text-transform:uppercase}` +
+      `pre{background:#0f172a;color:#e2e8f0;padding:0.75rem;border-radius:4px;overflow:auto;font-size:0.8rem}` +
+      `</style></head><body>`,
+  );
+  const deps: ReportHtmlDeps = {
+    emit: ({ wpId, wpType, slug, title, rawContent, lexical }) => {
+      const safeTitle = String(title).replace(/[<>&]/g, (c) =>
+        c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
+      );
+      const escapedJson = JSON.stringify(lexical, null, 2)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      writeSync(
+        fd,
+        `<section><h2>[${wpType}#${wpId}] ${safeTitle} — ${slug}</h2>` +
+          `<div class="cols">` +
+          `<div class="col"><h3>WP source HTML</h3><div>${rawContent}</div></div>` +
+          `<div class="col"><h3>Lexical AST</h3><pre>${escapedJson}</pre></div>` +
+          `</div></section>`,
+      );
+    },
+  };
+  return {
+    deps,
+    close: () => {
+      writeSync(fd, `</body></html>`);
+      closeSync(fd);
+    },
+  };
+}
 
 /**
  * Phase 21.8 — flag the WP author's email so the imported staff
