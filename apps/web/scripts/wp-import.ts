@@ -163,6 +163,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
         },
         renderBody: (source) => renderCommentMarkdown(source),
       },
+      collectionMappings: ctx.collectionMappings,
       authors: ctx.createAuthors
         ? {
             resolveAuthor: async ({ wpAuthorLogin, wpAuthor }) => {
