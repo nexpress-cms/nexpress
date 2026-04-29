@@ -3,10 +3,11 @@ import {
   NxForbiddenError,
   NxValidationError,
   type NxAuthUser,
+  ROLE_HIERARCHY,
   deleteSite,
+  getMembership,
   getSiteById,
   hasRole,
-  hasRoleOnSite,
   isSuperAdmin,
   updateSite,
 } from "@nexpress/core";
@@ -40,7 +41,16 @@ import { ensureWriteReady } from "@/lib/init-core";
 async function canManageSite(user: NxAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
   if (siteId === NX_DEFAULT_SITE_ID && hasRole(user, "admin")) return true;
-  return hasRoleOnSite(user, "admin", siteId);
+  // Issue #216 — `hasRoleOnSite` falls back to the user's
+  // global role when no explicit membership exists on the
+  // target site, which would let any global admin manage
+  // every site (the bug this issue closes). Read membership
+  // directly so the gate only opens for users with an
+  // explicit `nx_site_memberships` row at admin rank or
+  // above on this specific site.
+  const membership = await getMembership(siteId, user.id);
+  if (!membership) return false;
+  return ROLE_HIERARCHY[membership.role] >= ROLE_HIERARCHY.admin;
 }
 
 export async function GET(

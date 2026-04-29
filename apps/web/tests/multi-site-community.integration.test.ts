@@ -82,13 +82,19 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
     return (out.doc as { id: string }).id;
   }
 
-  it("notification fan-out scopes to the actor's current site", async () => {
+  it("notification fan-out lands on the same tenant as the reaction target", async () => {
+    // Issue #215 — the system used to allow cross-site
+    // reactions and route the side-effects to the target's
+    // tenant. After #215 cross-site writes are rejected
+    // outright. The remaining invariant — that a reaction
+    // performed under the same tenant as the target lands its
+    // notification under that tenant — is what this test now
+    // pins.
     const { withCurrentSite } = await import("@nexpress/core");
     const author = await seedMember("phase18a");
     const reactor = await seedMember("phase18b");
     const postId = await seedStaffPostId("p18-fanout", "default");
 
-    // Author posts a comment on tenant `default`.
     const { createComment, addReaction, listNotifications } = await import("@nexpress/core");
     const comment = await withCurrentSite("default", () =>
       createComment({
@@ -99,8 +105,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
       }),
     );
 
-    // Reactor reacts on tenant `other-site`.
-    await withCurrentSite("other-site", () =>
+    await withCurrentSite("default", () =>
       addReaction({
         memberId: reactor,
         targetType: "comment",
@@ -109,15 +114,9 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
       }),
     );
 
-    // Author's inbox on `default` shouldn't see the reaction
-    // (it landed on `other-site`).
-    const inboxDefault = await withCurrentSite("default", () => listNotifications(author));
-    expect(inboxDefault.unread).toBe(0);
-
-    // Author's inbox on `other-site` does.
-    const inboxOther = await withCurrentSite("other-site", () => listNotifications(author));
-    expect(inboxOther.unread).toBe(1);
-    expect(inboxOther.notifications[0]?.kind).toBe("reaction.received");
+    const inbox = await withCurrentSite("default", () => listNotifications(author));
+    expect(inbox.unread).toBe(1);
+    expect(inbox.notifications[0]?.kind).toBe("reaction.received");
   });
 
   it("reports filed on one site don't appear in another site's queue", async () => {
@@ -234,22 +233,25 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
     expect(canHideOnB).toBe(false);
   });
 
-  it("a comment inherits the target document's site_id (not just the resolver)", async () => {
-    const { withCurrentSite } = await import("@nexpress/core");
+  it("a comment inherits the target document's site_id under same-tenant writes", async () => {
+    // Issue #215 — cross-tenant writes are rejected, but
+    // same-tenant writes still need to surface `site_id` from
+    // the target so a request that doesn't pin the resolver
+    // (e.g. a script-driven seed) doesn't drop down to the
+    // default. Tests the canonical-target propagation that
+    // remained after the cross-tenant guard landed.
+    const { withCurrentSite, createSite } = await import("@nexpress/core");
+    await createSite({ id: "tenant-a", name: "A" });
     const author = await seedMember("phase18comment");
-    // Document seeded under `tenant-a`.
     const postId = await seedStaffPostId("p18-comment", "tenant-a");
 
-    // Comment write happens with the resolver pinned to a
-    // DIFFERENT tenant — the canonical source is the target
-    // document, so the comment's site_id should be `tenant-a`.
     const { createComment } = await import("@nexpress/core");
-    const comment = await withCurrentSite("tenant-b", () =>
+    const comment = await withCurrentSite("tenant-a", () =>
       createComment({
         targetType: "posts",
         targetId: postId,
         memberId: author,
-        bodyMd: "from b but landed on a",
+        bodyMd: "from a, landed on a",
       }),
     );
 

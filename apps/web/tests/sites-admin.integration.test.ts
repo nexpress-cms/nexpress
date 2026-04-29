@@ -97,7 +97,9 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   });
 
   it("Issue #216 — POST forbids global admin without super-admin", async () => {
-    const admin = await seedSuperAdmin();
+    // Intentionally NOT a super-admin: a plain global admin
+    // shouldn't be able to create a new site.
+    const admin = await seedUser({ role: "admin" });
     const { POST } = await import("@/app/api/admin/sites/route");
     const req = buildRequest("/api/admin/sites", {
       session: admin,
@@ -152,7 +154,9 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   });
 
   it("Issue #216 — PATCH rejects a global admin without membership on the target site", async () => {
-    const admin = await seedSuperAdmin();
+    // Plain global admin (no super-admin flag, no explicit
+    // membership on `foreign-patch`) — must be rejected.
+    const admin = await seedUser({ role: "admin" });
     const { createSite } = await import("@nexpress/core");
     await createSite({ id: "foreign-patch", name: "Foreign" });
     const { PATCH } = await import("@/app/api/admin/sites/[id]/route");

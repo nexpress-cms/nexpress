@@ -250,10 +250,16 @@ export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDig
         member: { displayName: member.displayName, handle: member.handle },
         notifications,
         cadence: input.cadence,
-        // Prefer the per-site name; fall back to caller override
-        // for single-tenant deploys that pass `siteName`
-        // explicitly.
-        siteName: typeof site.name === "string" && site.name.length > 0 ? site.name : input.siteName,
+        // Caller-supplied `siteName` is an explicit override
+        // (single-tenant deploys, tests pinning a friendly
+        // brand name); the per-site `name` is the natural
+        // multi-tenant default.
+        siteName:
+          input.siteName && input.siteName.length > 0
+            ? input.siteName
+            : typeof site.name === "string" && site.name.length > 0
+              ? site.name
+              : undefined,
       });
 
       try {
