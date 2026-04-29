@@ -527,6 +527,76 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     }
   });
 
+  it("21.12 — --update rewrites slug-collisions instead of skipping them", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-update@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    // First run lays down the post.
+    await applyBundle(bundle, { actor, dryRun: false });
+    const beforePosts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const beforeId = beforePosts.docs[0]?.id as string;
+    expect(beforeId).toBeTruthy();
+
+    // Second run with --update rewrites the row in place — the
+    // document id stays stable.
+    const report = await applyBundle(bundle, { actor, dryRun: false, update: true });
+    expect(report.errors).toEqual([]);
+    expect(report.applied).toHaveLength(2); // both records rewritten
+    expect(report.skipped.filter((s) => s.reason === "slug already exists")).toHaveLength(0);
+
+    const afterPosts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    expect(afterPosts.docs[0]?.id).toBe(beforeId);
+  });
+
+  it("21.12 — --strict promotes media errors to record-level errors", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-strict@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      strict: true,
+      media: {
+        download: () => Promise.reject(new Error("simulated failure")),
+        upload: () => Promise.reject(new Error("upload should not run")),
+      },
+    });
+
+    // Without --strict the failed download is just a media error.
+    // With --strict it bubbles up as a record-level error so the
+    // CLI exits non-zero.
+    expect(report.errors.length).toBeGreaterThan(0);
+    expect(report.errors[0]?.message).toContain("media:");
+  });
+
+  it("21.12 — reportHtml deps fires once per imported record", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-report@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const samples: Array<{ slug: string; lexicalChildrenLen: number }> = [];
+    await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      reportHtml: {
+        emit: ({ slug, lexical }) => {
+          samples.push({ slug, lexicalChildrenLen: lexical.root.children.length });
+        },
+      },
+    });
+
+    const slugs = samples.map((s) => s.slug).sort();
+    expect(slugs).toEqual(["about", "hello-world"]);
+    // The hello-world fixture's body wraps "Welcome to Acme. <img/> More text."
+    // in a single paragraph, so the Lexical root has one block child.
+    expect(samples.find((s) => s.slug === "hello-world")?.lexicalChildrenLen).toBeGreaterThan(0);
+  });
+
   it("21.5 — leaves Lexical untouched when a media URL fails to download", async () => {
     const xml = readFileSync(FIXTURE, "utf8");
     const bundle = parseWxr(xml);
