@@ -1,5 +1,7 @@
 import { type HTMLElement, type Node, NodeType, parse } from "node-html-parser";
 
+import { isGutenbergSource, parseGutenbergBlocks, type GutenbergBlock } from "./gutenberg.js";
+
 /**
  * Phase 21.4 — HTML → Lexical AST.
  *
@@ -74,12 +76,23 @@ export function htmlToLexical(html: string): LexicalRoot {
     return emptyDocument();
   }
 
-  // `parse()` wraps the input in a synthetic root element. Walk
-  // its children as top-level blocks.
-  const parsed = parse(trimmed, { lowerCaseTagName: true });
+  // Phase 21.15 — when the source carries Gutenberg block fences,
+  // route through the block-aware converter so we honor the JSON
+  // attribute payload (heading levels, ordered-list flag, etc.).
+  // Sources without a `<!-- wp:` fence keep going through the
+  // legacy classic-editor path — same shape, same behavior.
   const blocks: LexicalBlock[] = [];
-  for (const child of parsed.childNodes) {
-    convertTopLevel(child, blocks);
+  if (isGutenbergSource(trimmed)) {
+    for (const block of parseGutenbergBlocks(trimmed)) {
+      convertGutenbergBlock(block, blocks);
+    }
+  } else {
+    // `parse()` wraps the input in a synthetic root element. Walk
+    // its children as top-level blocks.
+    const parsed = parse(trimmed, { lowerCaseTagName: true });
+    for (const child of parsed.childNodes) {
+      convertTopLevel(child, blocks);
+    }
   }
 
   if (blocks.length === 0) {
@@ -96,6 +109,109 @@ export function htmlToLexical(html: string): LexicalRoot {
       children: blocks,
     },
   };
+}
+
+/**
+ * Phase 21.15 — turn a single Gutenberg block into one or more
+ * Lexical blocks. Most blocks bottom out in the existing per-tag
+ * converters (`convertTopLevel`), so this function's job is just
+ * to reach in for the block-attribute hints (heading level, list
+ * ordering) and override what `convertTopLevel` would have
+ * inferred from the markup alone.
+ */
+function convertGutenbergBlock(block: GutenbergBlock, out: LexicalBlock[]): void {
+  // Self-closing structural blocks land directly. Today only
+  // `wp:separator` has a clear Lexical analog; others (spacer,
+  // page-break) fall through to plain paragraphs so the document
+  // shape survives.
+  if (block.selfClosing) {
+    if (block.name === "separator") {
+      out.push({
+        type: "horizontalrule",
+        version: 1,
+        format: "",
+        indent: 0,
+        direction: null,
+      });
+    }
+    return;
+  }
+
+  // Loose content (the synthetic name parseGutenbergBlocks emits
+  // for text between fences) — fall through to the classic path.
+  if (block.name === "gutenberg-loose") {
+    runClassicPath(block.innerHtml, out);
+    return;
+  }
+
+  switch (block.name) {
+    case "heading": {
+      // The fence may pin a level (1–6); if absent we fall back to
+      // whatever <h*> tag the inner markup carries.
+      const innerBlocks: LexicalBlock[] = [];
+      runClassicPath(block.innerHtml, innerBlocks);
+      const heading = innerBlocks.find((b) => b.type === "heading");
+      if (heading) {
+        const lvl = block.attrs.level;
+        if (typeof lvl === "number" && lvl >= 1 && lvl <= 6) {
+          heading.tag = `h${lvl}`;
+        }
+        out.push(heading);
+        // Anything else (rare — should be empty) tags along.
+        for (const b of innerBlocks) if (b !== heading) out.push(b);
+      } else {
+        // Fence said heading but inner has none — synthesise one
+        // at the requested level using the inner text.
+        const lvl = typeof block.attrs.level === "number" ? block.attrs.level : 2;
+        out.push({
+          type: "heading",
+          version: 1,
+          format: "",
+          indent: 0,
+          direction: null,
+          tag: `h${Math.min(6, Math.max(1, lvl))}`,
+          children: [textNode(stripTags(block.innerHtml), 0)],
+        });
+      }
+      return;
+    }
+    case "list": {
+      // The fence's `ordered: true` flag wins over the markup
+      // when they disagree — markup edits sometimes lose the
+      // <ol>/<ul> swap and trust the attribute instead.
+      const innerBlocks: LexicalBlock[] = [];
+      runClassicPath(block.innerHtml, innerBlocks);
+      const list = innerBlocks.find((b) => b.type === "list");
+      if (list) {
+        if (block.attrs.ordered === true) list.listType = "number";
+        else if (block.attrs.ordered === false) list.listType = "bullet";
+        out.push(list);
+      } else {
+        runClassicPath(block.innerHtml, out);
+      }
+      return;
+    }
+    default:
+      // Most blocks (paragraph, quote, code, image, gallery,
+      // group, columns, ...) carry markup that the classic
+      // converter already maps cleanly. Recurse and let the
+      // existing path handle them.
+      runClassicPath(block.innerHtml, out);
+  }
+}
+
+function runClassicPath(html: string, out: LexicalBlock[]): void {
+  const parsed = parse(html, { lowerCaseTagName: true });
+  for (const child of parsed.childNodes) {
+    convertTopLevel(child, out);
+  }
+}
+
+function stripTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
 }
 
 function emptyDocument(): LexicalRoot {
