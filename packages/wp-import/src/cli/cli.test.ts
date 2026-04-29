@@ -124,4 +124,46 @@ describe("runCli", () => {
     expect(code).toBe(0);
     expect(received.createAuthors).toBe(true);
   });
+
+  it("21.9 — loads collection mappings from --config and forwards them to applyBundle", async () => {
+    const { io, err } = captureIo();
+    const configPath = path.join(FIXTURES_DIR, "config.json");
+    const captured: { mappings?: Record<string, { collection: string }> } = {};
+    const code = await runCli(
+      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply", "--config", configPath],
+      io,
+      {
+        applyBundle: (_b, ctx) => {
+          captured.mappings = ctx.collectionMappings;
+          return Promise.resolve({
+            applied: [], skipped: [], errors: [],
+            attachments: { byId: new Map(), byUrl: new Map() },
+            media: null, taxonomies: null, comments: null, authors: null, notes: [],
+          });
+        },
+        resolveActor: () =>
+          Promise.resolve({
+            id: "u1", email: "x@y.com", name: "x", role: "admin", tokenVersion: 0,
+          }),
+      },
+    );
+    expect(err).toEqual([]);
+    expect(code).toBe(0);
+    expect(captured.mappings?.product?.collection).toBe("products");
+  });
+
+  it("21.9 — exits 1 with a clear message when --config points at a malformed file", async () => {
+    const { io, err } = captureIo();
+    const configPath = path.join(FIXTURES_DIR, "config-bad.json");
+    const code = await runCli(
+      [path.join(FIXTURES_DIR, "minimal.wxr.xml"), "--apply", "--config", configPath],
+      io,
+      {
+        applyBundle: () => Promise.reject(new Error("should not run")),
+        resolveActor: () => Promise.reject(new Error("should not run")),
+      },
+    );
+    expect(code).toBe(1);
+    expect(err.join("\n")).toMatch(/wpType|invalid JSON|cannot read/);
+  });
 });

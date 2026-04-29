@@ -106,6 +106,30 @@ export interface ApplyOptions {
    * without an author wired.
    */
   authors?: AuthorResolver;
+  /**
+   * Phase 21.9 — operator-supplied mapping table for custom WP
+   * post types. Without an entry here the applier skips the
+   * record with a warning. Keys are WP `<wp:post_type>` values
+   * (e.g. `"product"`); values declare the NexPress collection to
+   * route the record into and an optional `fieldOverrides` map
+   * that maps WP post-meta keys onto NexPress collection field
+   * names. Built-in post / page mappings are always applied first
+   * and take precedence — this option only widens the routing
+   * table, it doesn't override the defaults.
+   */
+  collectionMappings?: Record<string, CollectionMapping>;
+}
+
+export interface CollectionMapping {
+  collection: string;
+  /**
+   * Maps WP `<wp:postmeta>` keys to NexPress collection field
+   * names. Each mapped meta value is copied verbatim onto the
+   * document data; values are not coerced (the framework's Zod
+   * validation will reject mismatched types and surface a
+   * per-record error in the report).
+   */
+  fieldOverrides?: Record<string, string>;
 }
 
 export interface AppliedRow {
@@ -212,7 +236,10 @@ export async function applyBundle(
   let coverMissingCount = 0;
 
   for (const record of bundle.records) {
-    const collection = TYPE_TO_COLLECTION[record.wpType];
+    const builtin = TYPE_TO_COLLECTION[record.wpType];
+    const customMapping =
+      !builtin && options.collectionMappings ? options.collectionMappings[record.wpType] : undefined;
+    const collection = builtin ?? customMapping?.collection;
     if (!collection) {
       skipped.push({
         wpId: record.wpId,
@@ -221,7 +248,7 @@ export async function applyBundle(
         reason:
           record.wpType === "attachment"
             ? "attachment — handled by media pipeline"
-            : `unmapped wpType "${record.wpType}" (custom post types land in 21.9)`,
+            : `unmapped wpType "${record.wpType}" — add an entry to wp-import config to route it`,
       });
       continue;
     }
@@ -303,7 +330,15 @@ export async function applyBundle(
         continue;
       }
 
-      const data = buildDocData(record, resolution, collection, coverImageId, termIds, authorId);
+      const data = buildDocData(
+        record,
+        resolution,
+        collection,
+        coverImageId,
+        termIds,
+        authorId,
+        customMapping?.fieldOverrides,
+      );
       const saved = await saveDocument(collection, null, data, options.actor, {
         status: mapStatusToFramework(record.status),
       });
@@ -433,6 +468,7 @@ function buildDocData(
   coverImageId: string | undefined,
   termIds: { categoryIds: string[]; tagIds: string[] },
   authorId: string | undefined,
+  fieldOverrides: Record<string, string> | undefined,
 ): Record<string, unknown> {
   const lexical = htmlToLexical(record.rawContent);
   const rewritten: LexicalRoot = rewriteLexicalMedia(lexical, resolution);
@@ -451,6 +487,21 @@ function buildDocData(
     if (termIds.categoryIds.length > 0) data.categories = termIds.categoryIds;
     if (termIds.tagIds.length > 0) data.tags = termIds.tagIds;
     if (authorId) data.author = authorId;
+  }
+  // Phase 21.9 — copy mapped post-meta values onto the document.
+  // Only keys with a non-empty WP value land; the override never
+  // shadows a field we already populated above (title / slug /
+  // content stay protected so a misconfigured override can't
+  // overwrite the post body).
+  if (fieldOverrides) {
+    const protectedFields = new Set(["title", "slug", "content", "excerpt", "publishedAt", "coverImage", "categories", "tags", "author"]);
+    for (const [metaKey, fieldName] of Object.entries(fieldOverrides)) {
+      if (protectedFields.has(fieldName)) continue;
+      const value = record.meta[metaKey];
+      if (typeof value === "string" && value.length > 0) {
+        data[fieldName] = value;
+      }
+    }
   }
   // <wp:post_date_gmt> arrives as "YYYY-MM-DD HH:mm:ss" without a
   // timezone marker. Treat as UTC (the GMT in the tag name is
