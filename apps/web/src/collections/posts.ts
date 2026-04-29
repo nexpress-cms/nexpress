@@ -58,5 +58,19 @@ export const postsCollection = defineCollection({
       name: "author",
       relationTo: "users",
     },
+    {
+      type: "relationship",
+      name: "categories",
+      relationTo: "taxonomies",
+      hasMany: true,
+      filterOptions: { taxonomy: "category" },
+    },
+    {
+      type: "relationship",
+      name: "tags",
+      relationTo: "taxonomies",
+      hasMany: true,
+      filterOptions: { taxonomy: "post_tag" },
+    },
   ],
 });
