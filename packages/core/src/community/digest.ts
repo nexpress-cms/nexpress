@@ -5,6 +5,7 @@ import { getDb } from "../collections/pipeline.js";
 import { nxMembers, nxNotifications } from "../db/schema/community.js";
 import { getEmailAdapter } from "../email/service.js";
 import { getLogger } from "../observability/logger.js";
+import { listSites, NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { type NxDigestCadence, recordDigestSent } from "./notification-prefs.js";
 
@@ -121,12 +122,6 @@ interface MemberDigestRow {
   prefs: Record<string, unknown>;
 }
 
-interface MemberDigestPlan {
-  member: MemberDigestRow;
-  since: Date;
-  cadence: NxDigestCadence;
-}
-
 function fallbackWindow(cadence: NxDigestCadence, now: Date): Date {
   const ms = cadence === "weekly" ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
   return new Date(now.getTime() - ms);
@@ -170,6 +165,7 @@ async function listMembersForCadence(
 async function fetchUnreadSince(
   db: NodePgDatabase<Record<string, unknown>>,
   memberId: string,
+  siteId: string,
   since: Date,
 ): Promise<NxDigestNotificationSummary[]> {
   const rows = (await db
@@ -183,6 +179,11 @@ async function fetchUnreadSince(
     .where(
       and(
         eq(nxNotifications.memberId, memberId),
+        // Issue #218 — scope to the site we're sweeping. Without
+        // this the digest mixed inboxes across tenants and the
+        // recipient saw notifications from sites they don't even
+        // know exist.
+        eq(nxNotifications.siteId, siteId),
         // Unread + within the window. If the member already read
         // everything in the inbox the digest would be noise, so we
         // skip silently (caller increments `skipped` when the list
@@ -214,54 +215,99 @@ export interface RunDigestSweepResult {
 export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDigestSweepResult> {
   const now = input.now ?? new Date();
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const members = await listMembersForCadence(db, input.cadence);
   const adapter = getEmailAdapter();
   const log = getLogger();
 
+  // Issue #218 — fan-out per site. The previous implementation
+  // ran a single sweep that mixed every tenant's inbox into one
+  // digest and stamped one global `lastDigestAt`; advancing it
+  // for tenant A would suppress tenant B's next digest entirely.
+  // We now iterate the site registry and run an independent
+  // sweep per (site, member) — same email cadence, but each
+  // recipient gets one email per site they have unread
+  // notifications on.
+  const sites = await listSites();
+  const candidateSites = sites.length > 0 ? sites : [{ id: NX_DEFAULT_SITE_ID, name: "" }];
+  const members = await listMembersForCadence(db, input.cadence);
+
+  let considered = 0;
   let sent = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (const member of members) {
-    const lastRaw = member.prefs?.lastDigestAt;
-    const lastSent = typeof lastRaw === "string" ? new Date(lastRaw) : null;
-    const since =
-      lastSent && Number.isFinite(lastSent.getTime())
-        ? lastSent
-        : fallbackWindow(input.cadence, now);
-    const plan: MemberDigestPlan = { member, since, cadence: input.cadence };
+  for (const site of candidateSites) {
+    for (const member of members) {
+      considered += 1;
+      const since = lastDigestSinceFor(member, site.id, input.cadence, now);
 
-    const notifications = await fetchUnreadSince(db, member.id, plan.since);
-    if (notifications.length === 0) {
-      skipped += 1;
-      continue;
-    }
+      const notifications = await fetchUnreadSince(db, member.id, site.id, since);
+      if (notifications.length === 0) {
+        skipped += 1;
+        continue;
+      }
 
-    const email = buildDigestEmail({
-      member: { displayName: member.displayName, handle: member.handle },
-      notifications,
-      cadence: input.cadence,
-      siteName: input.siteName,
-    });
-
-    try {
-      await adapter.send({
-        to: member.email,
-        subject: email.subject,
-        text: email.text,
-        html: email.html,
-      });
-      await recordDigestSent(member.id, now);
-      sent += 1;
-    } catch (err) {
-      failed += 1;
-      log.warn("digest send failed", {
-        memberId: member.id,
+      const email = buildDigestEmail({
+        member: { displayName: member.displayName, handle: member.handle },
+        notifications,
         cadence: input.cadence,
-        error: err instanceof Error ? err.message : String(err),
+        // Prefer the per-site name; fall back to caller override
+        // for single-tenant deploys that pass `siteName`
+        // explicitly.
+        siteName: typeof site.name === "string" && site.name.length > 0 ? site.name : input.siteName,
       });
+
+      try {
+        await adapter.send({
+          to: member.email,
+          subject: email.subject,
+          text: email.text,
+          html: email.html,
+        });
+        await recordDigestSent(member.id, now, { siteId: site.id, cadence: input.cadence });
+        sent += 1;
+      } catch (err) {
+        failed += 1;
+        log.warn("digest send failed", {
+          memberId: member.id,
+          siteId: site.id,
+          cadence: input.cadence,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
-  return { considered: members.length, sent, skipped, failed };
+  return { considered, sent, skipped, failed };
+}
+
+/**
+ * Issue #218 — pick the right "since" cutoff for one (site,
+ * member, cadence) sweep. Reads precedence:
+ *   1. `lastDigestAtBySite[siteId][cadence]` — the per-site
+ *      timestamp the new sweep writes after each successful send.
+ *   2. legacy `lastDigestAt` — single-tenant deploys without
+ *      site-scoped writes still keep their existing window.
+ *   3. fallback window (24h / 7d) — a member who has never
+ *      received any digest.
+ */
+function lastDigestSinceFor(
+  member: MemberDigestRow,
+  siteId: string,
+  cadence: NxDigestCadence,
+  now: Date,
+): Date {
+  const prefs = (member.prefs ?? {}) as Record<string, unknown>;
+  const bySite = prefs.lastDigestAtBySite as
+    | Record<string, Partial<Record<string, string>>>
+    | undefined;
+  const perSite = bySite?.[siteId]?.[cadence];
+  if (typeof perSite === "string") {
+    const parsed = new Date(perSite);
+    if (Number.isFinite(parsed.getTime())) return parsed;
+  }
+  if (typeof prefs.lastDigestAt === "string") {
+    const parsed = new Date(prefs.lastDigestAt);
+    if (Number.isFinite(parsed.getTime())) return parsed;
+  }
+  return fallbackWindow(cadence, now);
 }
