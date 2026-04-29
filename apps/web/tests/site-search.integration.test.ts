@@ -137,13 +137,13 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       { params: Promise.resolve({ slug: "posts" }) },
     );
 
-    // Picked "walnut" intentionally — the search vector is stored
-    // raw (no `to_tsvector('english', …)` stemming) but the query
-    // goes through `plainto_tsquery('english', …)` which stems.
-    // Words whose snowball stem differs from the surface form
-    // (e.g. "pineapple" → "pineappl") miss; "walnut" stays
-    // "walnut" so the index hit lands. A unified-stemming pass is
-    // a pre-existing follow-up on the search-api module.
+    // Phase 10.7 unified the write path with the read path:
+    // `buildWeightedSearchVectorSql` wraps each bucket in
+    // `to_tsvector('english', …)` (matching the
+    // `plainto_tsquery('english', …)` on the read side), so
+    // stem-divergent words now hit. "walnut" is stem-stable
+    // either way; see the dedicated regression below for a
+    // word whose stem actually differs from its surface form.
     const res = await searchAPIGET(
       new NextRequest("http://localhost:3000/api/search?q=walnut"),
     );
@@ -156,6 +156,36 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
     expect(body.total).toBeGreaterThanOrEqual(1);
     expect(body.results[0]?.collection).toBe("posts");
     expect(body.perCollection.posts).toBeGreaterThanOrEqual(1);
+  });
+
+  it("stem-divergent surface form matches stored content (Phase 10.7 regression)", async () => {
+    // Regression for the pre-Phase-10.7 mismatch where stored
+    // vectors were RAW tsvector text but queries ran through
+    // `plainto_tsquery('english', …)`. After 10.7 both sides go
+    // through the english snowball stemmer, so a doc indexed
+    // with the plural ("pineapples") MUST be hit by a query for
+    // the singular ("pineapple") — both reduce to lexeme
+    // `pineappl`. If a future refactor regresses the write path
+    // back to RAW, this assertion will fail.
+    const staff = await seedUser({ role: "editor" });
+    await collectionPOST(
+      staffPostsRequest(staff, {
+        title: "Tropical pineapples are delicious",
+        slug: "tropical-pineapples",
+        content: { root: { type: "root", children: [] } },
+        _status: "published",
+      }),
+      { params: Promise.resolve({ slug: "posts" }) },
+    );
+
+    const { searchCollections } = await import("@nexpress/core");
+    const result = await searchCollections({ q: "pineapple" });
+    const hit = result.results.find(
+      (r) =>
+        r.collection === "posts" &&
+        (r.doc as { slug?: string }).slug?.startsWith("tropical-pineapple"),
+    );
+    expect(hit).toBeDefined();
   });
 
   it("empty query returns an empty result envelope", async () => {

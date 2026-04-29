@@ -161,10 +161,15 @@ export const magazineCss = `
 }
 .nx-magazine-feature-body > p:first-of-type::first-letter {
   font-family: var(--nx-font-heading, "Fraunces", Georgia, serif);
-  float: left;
+  /* Drop cap on the leading edge under both LTR and RTL — uses
+     logical-property equivalents of the older physical-direction
+     rules so the cap mirrors with the document direction. Same
+     pattern as @nexpress/theme-default. */
+  float: inline-start;
   font-size: 4rem;
   line-height: 0.85;
-  margin: 0.4rem 0.6rem 0 0;
+  margin-block: 0.4rem 0;
+  margin-inline: 0 0.6rem;
   font-weight: 700;
   color: var(--nx-color-accent, #0f766e);
 }
