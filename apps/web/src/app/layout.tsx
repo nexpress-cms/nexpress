@@ -36,7 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const lang = headerList.get("x-nx-locale") ?? i18nConfig.defaultLocale;
   const dir = getLocaleDirection(lang);
   return (
-    <html lang={lang} dir={dir}>
+    <html lang={lang} dir={dir} suppressHydrationWarning>
       <body>
         <NxColorSchemeScript />
         {children}
