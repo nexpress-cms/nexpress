@@ -1,16 +1,15 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+// Must be the first import — populates process.env before any
+// other module evaluation reads it. seed-admin doesn't import
+// the config so it would have worked without this, but the
+// shared loader keeps both seed scripts on the same shape.
+import "./_load-env.js";
+
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-import { config as loadEnv } from "dotenv";
 import { count, eq } from "drizzle-orm";
 
 import { createDbConnection, hashPassword, nxUsers } from "@nexpress/core";
-
-const here = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(here, "../../../.env") });
-loadEnv({ path: resolve(here, "../.env"), override: false });
 
 const databaseUrl = process.env.DATABASE_URL;
 
