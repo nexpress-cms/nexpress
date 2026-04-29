@@ -38,17 +38,4 @@ export const DEFAULT_THEME: NxThemeTokens = {
     shadowMd: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
     shadowLg: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
   },
-  darkMode: {
-    colors: {
-      background: "oklch(0.145 0.004 285.823)",
-      foreground: "oklch(0.985 0.001 106.423)",
-      muted: "oklch(0.269 0.006 286.033)",
-      mutedForeground: "oklch(0.711 0.008 285.879)",
-      border: "oklch(0.269 0.006 286.033)",
-      card: "oklch(0.145 0.004 285.823)",
-      cardForeground: "oklch(0.985 0.001 106.423)",
-      accent: "oklch(0.269 0.006 286.033)",
-      accentForeground: "oklch(0.985 0.001 106.423)",
-    },
-  },
 };

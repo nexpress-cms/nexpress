@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { NxThemeTokens } from "@nexpress/core";
 import {
   Download,
-  Moon,
   Palette,
   RotateCcw,
   Save,
@@ -22,7 +21,6 @@ import {
 } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
-import { Switch } from "../ui/switch.js";
 import { nxFetch } from "../lib/api-client.js";
 import {
   PARSE_ERROR_MESSAGES,
@@ -68,21 +66,6 @@ const defaultTheme: NxThemeTokens = {
     shadowSm: "0 1px 2px rgba(15, 23, 42, 0.08)",
     shadowMd: "0 18px 40px rgba(15, 23, 42, 0.12)",
     shadowLg: "0 26px 80px rgba(15, 23, 42, 0.18)",
-  },
-  darkMode: {
-    colors: {
-      background: "#020617",
-      foreground: "#f8fafc",
-      card: "#0f172a",
-      cardForeground: "#f8fafc",
-      muted: "#1e293b",
-      mutedForeground: "#cbd5e1",
-      border: "#334155",
-      primary: "#f8fafc",
-      primaryForeground: "#020617",
-      accent: "#14b8a6",
-      accentForeground: "#042f2e",
-    },
   },
 };
 
@@ -350,76 +333,6 @@ export function ThemeEditor() {
               ))}
             </div>
 
-            <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="flex items-center gap-2 font-medium text-foreground">
-                    <Moon className="h-4 w-4" />
-                    Dark mode override
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Enable a second palette for darker surfaces and richer contrast.
-                  </p>
-                </div>
-                <Switch
-                  checked={Boolean(theme.darkMode)}
-                  onCheckedChange={(checked) =>
-                    setTheme((current) => ({
-                      ...current,
-                      darkMode: checked ? current.darkMode ?? { colors: {} } : undefined,
-                    }))
-                  }
-                />
-              </div>
-
-              {theme.darkMode ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {(() => {
-                    const darkColors = theme.darkMode?.colors ?? {};
-
-                    return colorFields.map(({ key, label }) => (
-                      <div key={`dark-${key}`} className="space-y-2">
-                        <Label htmlFor={`theme-dark-${key}`}>{label}</Label>
-                        <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/60 p-3">
-                          <input
-                            id={`theme-dark-${key}`}
-                            type="color"
-                            value={darkColors[key] ?? theme.colors[key]}
-                            onChange={(event) =>
-                              setTheme((current) => ({
-                                ...current,
-                                darkMode: {
-                                  colors: {
-                                    ...current.darkMode?.colors,
-                                    [key]: event.target.value,
-                                  },
-                                },
-                              }))
-                            }
-                            className="h-10 w-12 rounded border border-border bg-transparent"
-                          />
-                          <Input
-                            value={darkColors[key] ?? theme.colors[key]}
-                            onChange={(event) =>
-                              setTheme((current) => ({
-                                ...current,
-                                darkMode: {
-                                  colors: {
-                                    ...current.darkMode?.colors,
-                                    [key]: event.target.value,
-                                  },
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              ) : null}
-            </div>
-
             <div className="flex flex-wrap justify-end gap-3">
               <input
                 ref={fileInputRef}
@@ -552,11 +465,6 @@ function normalizeTheme(payload: unknown): NxThemeTokens {
     colors: mergeColors(source.colors),
     typography: mergeTypography(source.typography),
     shape: mergeShape(source.shape),
-    darkMode: isRecord(source.darkMode)
-      ? {
-          colors: mergePartialColors(source.darkMode.colors),
-        }
-      : undefined,
   };
 }
 
@@ -604,24 +512,6 @@ function mergeShape(incoming: unknown): NxThemeTokens["shape"] {
   }
 
   for (const { key } of shapeFields) {
-    const value = incoming[key];
-
-    if (typeof value === "string") {
-      next[key] = value;
-    }
-  }
-
-  return next;
-}
-
-function mergePartialColors(incoming: unknown) {
-  if (!isRecord(incoming)) {
-    return {};
-  }
-
-  const next: Partial<NxThemeTokens["colors"]> = {};
-
-  for (const { key } of colorFields) {
     const value = incoming[key];
 
     if (typeof value === "string") {

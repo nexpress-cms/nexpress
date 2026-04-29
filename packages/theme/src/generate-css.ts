@@ -66,6 +66,19 @@ function formatDeclaration(name: string, value: string): string {
   return `    ${name}: ${sanitizeTokenValue(value)};`;
 }
 
+/**
+ * Emits the active theme's tokens as CSS custom properties
+ * under `:root`, wrapped in `@layer nx-theme` so site CSS can
+ * reliably override them.
+ *
+ * Color-scheme variants (light/dark) are intentionally not
+ * generated here — the framework no longer prescribes a
+ * dark-mode shape. Themes that opt into a color-mode toggle
+ * mount `<NxColorSchemeScript />` inside their own shell and
+ * ship a `[data-theme="dark"] { … }` block in their own CSS
+ * (`impl.css`), so each theme controls exactly which tokens
+ * flip and how.
+ */
 export function generateThemeCss(theme: NxThemeTokens): string {
   const rootDeclarations = [
     ...COLOR_KEYS.map((key) => formatDeclaration(`--nx-color-${camelToKebab(key)}`, theme.colors[key])),
@@ -73,23 +86,5 @@ export function generateThemeCss(theme: NxThemeTokens): string {
     ...SHAPE_KEYS.map((key) => formatDeclaration(`--nx-${camelToKebab(key)}`, theme.shape[key])),
   ];
 
-  const darkModeOverrides = COLOR_KEYS.flatMap((key) => {
-    const value = theme.darkMode?.colors?.[key];
-
-    if (value === undefined) {
-      return [];
-    }
-
-    return [formatDeclaration(`--nx-color-${camelToKebab(key)}`, value)];
-  });
-
-  const sections = ["@layer nx-theme {", "  :root {", ...rootDeclarations, "  }"];
-
-  if (darkModeOverrides.length > 0) {
-    sections.push("  [data-theme=\"dark\"] {", ...darkModeOverrides, "  }");
-  }
-
-  sections.push("}");
-
-  return sections.join("\n");
+  return ["@layer nx-theme {", "  :root {", ...rootDeclarations, "  }", "}"].join("\n");
 }

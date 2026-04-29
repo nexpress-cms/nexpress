@@ -142,31 +142,22 @@ serving with no CDN; that's fine for development.
 ## What's NOT cached (yet)
 
 - **Catch-all page render** (`/[[...slug]]`) — every (site)
-  route is dynamic. The proximate cause is the `force-dynamic`
-  on `(site)/layout.tsx`, but that's redundant: the **root
-  layout** (`app/layout.tsx`) calls `cookies()` (Phase 11.5,
-  for the dark-mode initial paint that prevents a flash of
-  light theme) and `headers()` (Phase 12.2, for `<html lang>`).
-  Both are dynamic APIs, so every child route is auto-marked
-  dynamic regardless of what the (site) layout says.
+  route is dynamic because the **root layout** (`app/layout.tsx`)
+  calls `headers()` (Phase 12.2, for `<html lang>`), which is a
+  dynamic API and auto-marks every child route dynamic regardless
+  of what the (site) layout says.
 
-  Lifting either call to ISR-compatible territory carries a
-  trade-off:
+  Lifting that call would lose locale-correct `lang` attributes
+  for crawlers and screen readers — SEO-impacting, not a free
+  trade. Public pages stay dynamic until a deeper redesign.
+  Documented as future work; not blocking.
 
-  - **Drop `cookies()` for dark mode** — the inline
-    `<NxColorSchemeScript />` already handles
-    prefers-color-scheme + saved cookies on the client side
-    in a single synchronous frame. Server-rendering the
-    `data-theme` attribute is a perf optimization, not a
-    correctness one. Trade: a one-frame flash of light theme
-    on first paint for visitors with a saved dark preference.
-  - **Drop `headers()` for `<html lang>`** — would lose
-    locale-correct `lang` attributes for crawlers and screen
-    readers. SEO-impacting; not a free trade.
-
-  Plausible path: drop `cookies()` (small UX trade) but keep
-  `headers()` and accept that public pages stay dynamic until
-  a deeper redesign. Documented as future work; not blocking.
+  Note: dark-mode initial paint no longer ties the framework to
+  `cookies()` either — color-scheme handling is now an opt-in
+  theme-level concern (`<NxColorSchemeScript />` mounted by the
+  theme's shell) that runs entirely client-side, so themes can
+  ship saved-choice dark mode without forcing the root layout
+  dynamic.
 - **Search responses** (`/api/search`) — query strings make
   caching tricky; the pluggable adapter from 10.6 may handle
   its own cache. A simple short-TTL wrapper for the
