@@ -275,6 +275,63 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     expect(capture.sent).toHaveLength(0);
   });
 
+  it("Issue #218 — runDigestSweep emails one digest per site for the same member", async () => {
+    // Two sites, two posts, one member opted-in receives unread
+    // notifications on both. Expect two separate digest emails
+    // (one per site), and `lastDigestAtBySite` carries both.
+    const { createSite, deleteSite, withCurrentSite, createNotification } = await import(
+      "@nexpress/core"
+    );
+    await createSite({ id: "site-218-a", name: "Alpha" });
+    await createSite({ id: "site-218-b", name: "Bravo" });
+
+    const subscriber = await seedActiveMember("digest218");
+    await prefsPUT(
+      jsonRequest("/api/members/me/notification-prefs", {
+        method: "PUT",
+        cookies: [`nx-mb-session=${subscriber.sessionCookie}`, `nx-mb-csrf=${subscriber.csrfCookie}`],
+        headers: { "x-csrf-token": subscriber.csrfCookie },
+        body: JSON.stringify({ digest: "daily" }),
+      }),
+    );
+
+    // One unread notification per site for this member.
+    await withCurrentSite("site-218-a", () =>
+      createNotification({ memberId: subscriber.memberId, kind: "system", payload: {} }),
+    );
+    await withCurrentSite("site-218-b", () =>
+      createNotification({ memberId: subscriber.memberId, kind: "system", payload: {} }),
+    );
+
+    capture.sent.length = 0;
+    const { runDigestSweep } = await import("@nexpress/core");
+    const result = await runDigestSweep({ cadence: "daily" });
+    // Each (site × member) is "considered". 4 sites total
+    // (default + 218-a + 218-b + any leftover) × 1 member.
+    // Sent should be exactly 2 (one per site that had unread).
+    expect(result.sent).toBe(2);
+    const subjects = capture.sent.map((s) => s.subject).sort();
+    expect(subjects.join("\n")).toContain("Alpha");
+    expect(subjects.join("\n")).toContain("Bravo");
+
+    // Confirm the per-site stamp landed.
+    const db = await getTestDb();
+    const { nxMembers } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const [row] = (await db
+      .select({ prefs: nxMembers.notificationPrefs })
+      .from(nxMembers)
+      .where(eq(nxMembers.id, subscriber.memberId))) as Array<{ prefs: Record<string, unknown> }>;
+    const bySite = row.prefs.lastDigestAtBySite as Record<string, Record<string, string>>;
+    expect(typeof bySite["site-218-a"]?.daily).toBe("string");
+    expect(typeof bySite["site-218-b"]?.daily).toBe("string");
+
+    // Clean up so subsequent tests in this file don't see the
+    // extra sites in their `runDigestSweep` iteration.
+    await deleteSite("site-218-a", { cascade: true });
+    await deleteSite("site-218-b", { cascade: true });
+  });
+
   it("buildDigestEmail renders subject + plain text + html for one notification", async () => {
     const { buildDigestEmail } = await import("@nexpress/core");
     const out = buildDigestEmail({

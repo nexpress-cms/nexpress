@@ -101,14 +101,28 @@ export interface NxNotificationPrefs {
    * members aren't repeatedly emailed about the same row. Stored
    * as ISO-8601 string in the JSONB blob; `null` for accounts
    * that have never received a digest.
+   *
+   * Issue #218 — superseded by `lastDigestAtBySite` once a member
+   * receives a digest under the per-site fan-out path. The legacy
+   * field is preserved for forward-compat reads (single-site
+   * deploys still see + write it via the fallback chain) and as
+   * a "any digest, ever?" marker for analytics.
    */
   lastDigestAt: string | null;
+  /**
+   * Issue #218 — per-(site, cadence) timestamp map. Replaces the
+   * single `lastDigestAt` for multi-site deployments. Empty when
+   * the member has never received a digest under the site-scoped
+   * sweep.
+   */
+  lastDigestAtBySite: Record<string, Partial<Record<NxDigestCadence, string>>>;
 }
 
 const EMPTY_PREFS: NxNotificationPrefs = {
   disabled: [],
   digest: "off",
   lastDigestAt: null,
+  lastDigestAtBySite: {},
 };
 
 function normalizeDigest(raw: unknown): NxDigestCadence {
@@ -119,8 +133,27 @@ function normalizeLastDigestAt(raw: unknown): string | null {
   return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
+function normalizeLastDigestBySite(
+  raw: unknown,
+): Record<string, Partial<Record<NxDigestCadence, string>>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, Partial<Record<NxDigestCadence, string>>> = {};
+  for (const [siteId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const inner: Partial<Record<NxDigestCadence, string>> = {};
+    for (const [cadence, ts] of Object.entries(value as Record<string, unknown>)) {
+      if (!DIGEST_CADENCES.includes(cadence as NxDigestCadence)) continue;
+      if (typeof ts === "string" && ts.length > 0) {
+        inner[cadence as NxDigestCadence] = ts;
+      }
+    }
+    if (Object.keys(inner).length > 0) out[siteId] = inner;
+  }
+  return out;
+}
+
 function normalizePrefs(raw: unknown): NxNotificationPrefs {
-  if (!raw || typeof raw !== "object") return { ...EMPTY_PREFS };
+  if (!raw || typeof raw !== "object") return { ...EMPTY_PREFS, lastDigestAtBySite: {} };
   const obj = raw as Record<string, unknown>;
   const disabled = Array.isArray(obj.disabled)
     ? obj.disabled.filter((k): k is string => typeof k === "string")
@@ -129,6 +162,7 @@ function normalizePrefs(raw: unknown): NxNotificationPrefs {
     disabled,
     digest: normalizeDigest(obj.digest),
     lastDigestAt: normalizeLastDigestAt(obj.lastDigestAt),
+    lastDigestAtBySite: normalizeLastDigestBySite(obj.lastDigestAtBySite),
   };
 }
 
@@ -221,8 +255,19 @@ export async function setMemberNotificationPrefs(
  * after a successful email send. Stamps `lastDigestAt` so the
  * next run scopes its query to the correct window. Read-merge
  * to preserve other JSONB keys.
+ *
+ * Issue #218 — when a `siteId` + `cadence` pair is supplied,
+ * the per-site / per-cadence map is updated so the next sweep
+ * for that tenant scopes to the correct "since" window. The
+ * legacy single `lastDigestAt` field is also stamped for
+ * forward-compat with single-site deploys (and as a "received
+ * any digest, ever?" marker for analytics).
  */
-export async function recordDigestSent(memberId: string, sentAt: Date): Promise<void> {
+export async function recordDigestSent(
+  memberId: string,
+  sentAt: Date,
+  scope?: { siteId: string; cadence: NxDigestCadence },
+): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select({ prefs: nxMembers.notificationPrefs })
@@ -230,10 +275,19 @@ export async function recordDigestSent(memberId: string, sentAt: Date): Promise<
     .where(eq(nxMembers.id, memberId))
     .limit(1)) as Array<{ prefs: Record<string, unknown> }>;
   if (!existing) return;
-  const merged = {
-    ...(existing.prefs ?? {}),
+  const prior = existing.prefs ?? {};
+  const merged: Record<string, unknown> = {
+    ...prior,
     lastDigestAt: sentAt.toISOString(),
   };
+  if (scope) {
+    const priorBySite = normalizeLastDigestBySite(
+      (prior as { lastDigestAtBySite?: unknown }).lastDigestAtBySite,
+    );
+    const siteSlot = { ...(priorBySite[scope.siteId] ?? {}) };
+    siteSlot[scope.cadence] = sentAt.toISOString();
+    merged.lastDigestAtBySite = { ...priorBySite, [scope.siteId]: siteSlot };
+  }
   await db
     .update(nxMembers)
     .set({ notificationPrefs: merged, updatedAt: new Date() })
