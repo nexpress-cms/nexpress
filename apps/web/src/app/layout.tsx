@@ -1,5 +1,4 @@
 import { getLocaleDirection } from "@nexpress/core";
-import { NxColorSchemeScript } from "@nexpress/theme";
 import { headers } from "next/headers";
 
 import "./globals.css";
@@ -13,23 +12,30 @@ import { i18nConfig } from "@/i18n.config";
  * rendering. Falls back to the default locale on any path the
  * proxy skipped (admin / API / static).
  *
- * Color scheme — `<NxColorSchemeScript />` runs as the first
- * body child to read the `nx-color-scheme` cookie + storage and
- * apply the right `data-theme` attribute on `<html>`
- * synchronously. We DON'T read the cookie server-side anymore
- * (Sprint S, doc caching.md §"What's NOT cached"): server
- * rendering the attribute would mean every (site) page is
- * dynamic via `cookies()`. Trade: visitors with a saved dark
- * preference see ~one frame of the light layer before the
- * script flips it. The script runs before paint in modern
- * browsers, so the flash is rarely perceptible.
- *
  * Phase 12.8 — text direction. `getLocaleDirection()` resolves
  * the lang's BCP-47 tag against CLDR's `textInfo` so RTL
  * locales (`ar`, `he`, `fa`, `ur`, …) automatically render
  * mirrored without each site declaring per-locale `dir`
  * config. Themes get `[dir="rtl"]` to scope flipped CSS rules
  * (e.g. `flex-direction: row-reverse` for the header).
+ *
+ * Color scheme handling intentionally lives outside the
+ * framework: themes that want light/dark switching mount
+ * `<NxColorSchemeScript />` (re-exported from `@nexpress/theme`)
+ * inside their own shell and ship their own CSS overrides.
+ * The framework no longer prescribes a dark-mode shape so
+ * each theme can choose whatever color-mode policy fits its
+ * design (saved choice, time-of-day, seasonal palette, none
+ * at all).
+ *
+ * `<html suppressHydrationWarning>` is the escape hatch for
+ * themes that mutate attributes on the root element before
+ * hydration (the canonical case is the color-scheme script
+ * adding `data-theme="dark"`). React's flag only silences the
+ * attribute-level diff on `<html>` itself — child mismatches
+ * still surface as warnings — so it's a low-cost concession to
+ * keep the door open for theme-level color-mode policies
+ * without bleeding the policy into the framework.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headerList = await headers();
@@ -37,10 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const dir = getLocaleDirection(lang);
   return (
     <html lang={lang} dir={dir} suppressHydrationWarning>
-      <body>
-        <NxColorSchemeScript />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

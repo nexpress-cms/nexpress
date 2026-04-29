@@ -1,18 +1,28 @@
+import { NxColorSchemeScript } from "@nexpress/theme";
 import type { ReactNode } from "react";
 
 import type { NxThemeShellProps } from "@nexpress/theme";
 
 /**
- * Default theme shell — renders the document chrome around
- * every (site) route. Mirrors what `apps/web/src/app/(site)/
- * layout.tsx` did pre-Phase 11.1 (header → main → footer)
- * but the actual header / footer pieces live in their own
- * slot components so themes can selectively override one
- * without re-implementing the whole shell.
+ * Default theme shell — wraps every (site) route. The shell
+ * also owns this theme's color-mode policy: it mounts
+ * `<NxColorSchemeScript />` so the saved `nx-color-scheme`
+ * cookie / `prefers-color-scheme` choice is applied to
+ * `<html data-theme="…">` before first paint, and the dark
+ * variants ride on the rules in `defaultThemeCss`.
  *
- * Phase 11.2 will wire this up — until then the apps/web
- * layout still calls these components directly.
+ * Dark mode is no longer auto-wired by the framework — every
+ * theme decides whether to ship light/dark switching, what
+ * tokens it flips, and how the toggle UX looks. Themes that
+ * want a different policy (no dark mode, time-of-day,
+ * seasonal palette, …) simply omit this script and the
+ * dark CSS overrides.
  */
 export function DefaultShell({ children }: NxThemeShellProps): ReactNode {
-  return <>{children}</>;
+  return (
+    <>
+      <NxColorSchemeScript />
+      {children}
+    </>
+  );
 }

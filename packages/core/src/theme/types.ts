@@ -42,7 +42,4 @@ export interface NxThemeTokens {
   colors: NxThemeColors;
   typography: NxThemeTypography;
   shape: NxThemeShape;
-  darkMode?: {
-    colors?: Partial<NxThemeColors>;
-  };
 }
