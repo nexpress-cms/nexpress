@@ -119,6 +119,11 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     const magazineCss = magazineTheme.impl.css ?? "";
     const portfolioCss = portfolioTheme.impl.css ?? "";
 
+    // NOTE: these regexes inspect the raw CSS string, so any
+    // mention of e.g. `float: left` inside a CSS COMMENT will
+    // also trip them. Phrase RTL fixes accordingly — describe
+    // the fix in terms of "leading edge" / "logical-property
+    // equivalents" rather than the physical-direction names.
     for (const css of [magazineCss, portfolioCss]) {
       // Disallow `float: left|right` (use `float: inline-start|end`).
       expect(css).not.toMatch(/float:\s*(left|right)\b/);
@@ -127,6 +132,11 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
       // etc.) are required.
       expect(css).not.toMatch(/\bmargin-(left|right)\s*:/);
       expect(css).not.toMatch(/\bpadding-(left|right)\s*:/);
+      // Disallow physical `text-align: left|right` (use `start`
+      // / `end` so the alignment flips with the document
+      // direction). `text-align: center` and `justify` are
+      // bidi-safe and stay allowed.
+      expect(css).not.toMatch(/text-align:\s*(left|right)\b/);
     }
 
     // Magazine specifically depends on a leading-edge drop cap;
