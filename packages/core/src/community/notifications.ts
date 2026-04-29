@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, sql, inArray } from "drizzle-orm";
+import { and, count, desc, eq, isNull, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
@@ -180,36 +180,28 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
     ]);
   }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  // Scope the update to the member's own ids — a leaked notification
-  // id can't be marked read by another member.
-  const result = await db
+  // Issue #219 — scope the update to the current site so a member
+  // active on multiple tenants can't mark IDs read across tenants
+  // by passing a site-A request that names site-B notification ids.
+  // The caller's existing `memberId` predicate covered ownership
+  // but not tenant; without this, unread counts on the other site
+  // would silently drop. Using `returning({ id })` also gives us
+  // an exact count instead of a follow-up SELECT — replaces the
+  // pre-existing best-effort COUNT round trip.
+  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const updated = (await db
     .update(nxNotifications)
     .set({ readAt: new Date() })
     .where(
       and(
         eq(nxNotifications.memberId, input.memberId),
+        eq(nxNotifications.siteId, siteId),
         inArray(nxNotifications.id, input.notificationIds),
         isNull(nxNotifications.readAt),
       ),
-    );
-  // drizzle's `update().where()` doesn't return a rowCount in our
-  // adapter type. Use a follow-up SELECT-COUNT-not-null variant when
-  // we need exact numbers; for the API response a "best-effort"
-  // count is fine.
-  void result;
-  // Caller sees how many rows the predicate matched via a tiny extra
-  // round-trip:
-  const [confirm] = (await db
-    .select({ total: count() })
-    .from(nxNotifications)
-    .where(
-      and(
-        eq(nxNotifications.memberId, input.memberId),
-        inArray(nxNotifications.id, input.notificationIds),
-        sql`${nxNotifications.readAt} is not null`,
-      ),
-    )) as Array<{ total: number | string }>;
-  return Number(confirm?.total ?? 0);
+    )
+    .returning({ id: nxNotifications.id })) as Array<{ id: string }>;
+  return updated.length;
 }
 
 export async function markAllNotificationsRead(memberId: string): Promise<number> {

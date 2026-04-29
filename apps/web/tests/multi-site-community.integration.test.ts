@@ -350,6 +350,37 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
     ).rejects.toThrow(/Forbidden|cross-site/);
   });
 
+  it("Issue #219 — markNotificationsRead is scoped to the current site", async () => {
+    const { createSite, withCurrentSite, createNotification, markNotificationsRead } = await import("@nexpress/core");
+    await createSite({ id: "site-a219", name: "A" });
+    await createSite({ id: "site-b219", name: "B" });
+    const member = await seedMember("phase219");
+    // One notification on each site for the same member. Both
+    // calls return non-null because the member has no mutes /
+    // disabled kinds — the `?? throw` keeps the test type-safe.
+    const a = await withCurrentSite("site-a219", () =>
+      createNotification({ memberId: member, kind: "system", payload: {} }),
+    );
+    const b = await withCurrentSite("site-b219", () =>
+      createNotification({ memberId: member, kind: "system", payload: {} }),
+    );
+    if (!a || !b) throw new Error("createNotification returned null");
+
+    // Run mark-read under site-a219 with both ids — should only
+    // touch the site-a219 row, returning 1 (not 2).
+    const updated = await withCurrentSite("site-a219", () =>
+      markNotificationsRead({ memberId: member, notificationIds: [a.id, b.id] }),
+    );
+    expect(updated).toBe(1);
+
+    // Confirm the site-b219 row is still unread.
+    const { listNotifications } = await import("@nexpress/core");
+    const listB = await withCurrentSite("site-b219", () =>
+      listNotifications(member, { unreadOnly: true }),
+    );
+    expect(listB.notifications.some((n) => n.id === b.id)).toBe(true);
+  });
+
   it("Issue #215 — fileReport rejects cross-site target comments", async () => {
     const { createSite, withCurrentSite } = await import("@nexpress/core");
     await createSite({ id: "site-x215c", name: "X" });
