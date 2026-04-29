@@ -1,0 +1,1 @@
+ALTER TYPE "public"."nx_member_status" ADD VALUE 'imported';
