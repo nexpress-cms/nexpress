@@ -82,6 +82,14 @@ export interface NxJobListResult {
 export interface NxScheduleSummary {
   /** pg-boss queue name (after `:` → `.` translation). */
   name: string;
+  /**
+   * Issue #217 — the second half of `pgboss.schedule`'s primary
+   * key. Empty string for single-cadence schedules; `"daily"` /
+   * `"weekly"` (etc.) for jobs that need multiple cadences under
+   * one queue name. The admin UI uses `(name, key)` as a stable
+   * React key so duplicate-name rows render cleanly.
+   */
+  key: string;
   /** Cron expression as registered. */
   cron: string;
   /** Timezone the cron runs in (defaults to UTC in pg-boss). */
