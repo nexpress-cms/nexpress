@@ -1,3 +1,4 @@
+import { type ApplyReport } from "../apply/index.js";
 import { type WpImportBundle, type WpImportRecord } from "../parse/types.js";
 
 /**
@@ -84,9 +85,9 @@ export function formatSummary(args: {
 
   lines.push("");
   if (dryRun) {
-    lines.push("This was a dry run; no DB writes happened.");
+    lines.push("This was a dry run. Pass --apply to write to the database.");
   } else {
-    lines.push("Applier not yet implemented (Phase 21.4). Re-run with --dry-run.");
+    lines.push("Pass --apply to write to the database, or omit it to keep this summary view.");
   }
 
   return lines.join("\n");
@@ -127,4 +128,53 @@ function collectInlineMediaUrls(records: WpImportRecord[]): Set<string> {
     }
   }
   return out;
+}
+
+/**
+ * Phase 21.4 — render the result of `applyBundle()`. Operator-
+ * facing summary printed after the apply pass finishes.
+ */
+export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }): string {
+  const lines: string[] = [];
+  lines.push(args.dryRun ? "Apply — dry run" : "Apply");
+  lines.push("");
+
+  lines.push(`${args.dryRun ? "Would write" : "Written"}: ${report.applied.length}`);
+  for (const row of report.applied) {
+    lines.push(`  ${row.collection.padEnd(8)} ${row.slug}  "${row.title}"`);
+  }
+  if (report.applied.length === 0) {
+    lines.push("  (none)");
+  }
+
+  lines.push("");
+  lines.push(`Skipped: ${report.skipped.length}`);
+  const reasonCounts = new Map<string, number>();
+  for (const row of report.skipped) {
+    reasonCounts.set(row.reason, (reasonCounts.get(row.reason) ?? 0) + 1);
+  }
+  for (const [reason, count] of [...reasonCounts.entries()].sort()) {
+    lines.push(`  ${count.toString().padStart(3)}  ${reason}`);
+  }
+  if (report.skipped.length === 0) {
+    lines.push("  (none)");
+  }
+
+  if (report.errors.length > 0) {
+    lines.push("");
+    lines.push(`Errors: ${report.errors.length}`);
+    for (const err of report.errors) {
+      lines.push(`  ${err.slug}: ${err.message}`);
+    }
+  }
+
+  if (report.notes.length > 0) {
+    lines.push("");
+    lines.push("Notes");
+    for (const note of report.notes) {
+      lines.push(`  - ${note}`);
+    }
+  }
+
+  return lines.join("\n");
 }

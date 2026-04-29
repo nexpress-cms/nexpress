@@ -9,9 +9,15 @@
  * run inside the monorepo where apps/web's source is on-disk.
  */
 // eslint-disable-next-line import-x/no-relative-packages
-import { postsTable, localizedPagesTable } from "../../../../apps/web/src/db/generated/collections.js";
+import {
+  localizedPagesTable,
+  pagesTable,
+  postsTable,
+} from "../../../../apps/web/src/db/generated/collections.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { postsCollection } from "../../../../apps/web/src/collections/posts.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { pagesCollection } from "../../../../apps/web/src/collections/pages.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { localizedPagesCollection } from "../../../../apps/web/src/collections/localized-pages.js";
 import { registerCollection } from "../collections/registry.js";
@@ -41,20 +47,23 @@ export function registerTestCollections(): void {
   };
   registerCollection("posts", postsTable as never, postsConfig);
 
+  const pagesConfig: NxCollectionConfig = {
+    ...pagesCollection,
+    access: undefined,
+    hooks: undefined,
+  };
+  registerCollection("pages", pagesTable as never, pagesConfig);
+
   const localizedConfig: NxCollectionConfig = {
     ...localizedPagesCollection,
     access: undefined,
     hooks: undefined,
   };
-  registerCollection(
-    "localized-pages",
-    localizedPagesTable as never,
-    localizedConfig,
-  );
+  registerCollection("localized-pages", localizedPagesTable as never, localizedConfig);
 
   setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
 
   registered = true;
 }
 
-export { postsTable, localizedPagesTable };
+export { localizedPagesTable, pagesTable, postsTable };
