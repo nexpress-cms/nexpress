@@ -43,8 +43,19 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     await closeTestDb();
   });
 
-  it("GET /api/admin/sites returns the seed default site", async () => {
-    const admin = await seedUser({ role: "admin" });
+  // Issue #216 — list / create / delete are super-admin only;
+  // per-site read+update accept super-admin OR matching
+  // membership (with the legacy default-site fallback for
+  // single-tenant global admins).
+  async function seedSuperAdmin() {
+    const user = await seedUser({ role: "admin" });
+    const { setSuperAdmin } = await import("@nexpress/core");
+    await setSuperAdmin(user.userId, true);
+    return user;
+  }
+
+  it("GET /api/admin/sites returns the seed default site (super-admin)", async () => {
+    const admin = await seedSuperAdmin();
     const { GET } = await import("@/app/api/admin/sites/route");
     const req = buildRequest("/api/admin/sites", { session: admin });
     const res = await GET(req);
@@ -55,8 +66,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(body.docs?.find((s) => s.isDefault)?.id).toBe("default");
   });
 
-  it("POST /api/admin/sites creates a site", async () => {
-    const admin = await seedUser({ role: "admin" });
+  it("POST /api/admin/sites creates a site (super-admin)", async () => {
+    const admin = await seedSuperAdmin();
     const { POST } = await import("@/app/api/admin/sites/route");
     const req = buildRequest("/api/admin/sites", {
       session: admin,
@@ -85,8 +96,21 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(status).toBe(403);
   });
 
-  it("PATCH /api/admin/sites/[id] updates name + hostname", async () => {
-    const admin = await seedUser({ role: "admin" });
+  it("Issue #216 — POST forbids global admin without super-admin", async () => {
+    const admin = await seedSuperAdmin();
+    const { POST } = await import("@/app/api/admin/sites/route");
+    const req = buildRequest("/api/admin/sites", {
+      session: admin,
+      method: "POST",
+      body: { id: "blocked-by-issue-216", name: "Blocked" },
+    });
+    const res = await POST(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
+
+  it("PATCH /api/admin/sites/[id] updates name + hostname (super-admin)", async () => {
+    const admin = await seedSuperAdmin();
     const { createSite } = await import("@nexpress/core");
     await createSite({ id: "patch-target", name: "Old" });
 
@@ -108,8 +132,44 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(body.hostname).toBe("patched.example.com");
   });
 
-  it("DELETE /api/admin/sites/[id] removes a non-default site", async () => {
-    const admin = await seedUser({ role: "admin" });
+  it("Issue #216 — PATCH allows a per-site admin via membership (no super-admin)", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const { createSite, grantSiteMembership } = await import("@nexpress/core");
+    await createSite({ id: "membership-patch", name: "Membership Patch" });
+    await grantSiteMembership("membership-patch", editor.userId, "admin");
+
+    const { PATCH } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest("/api/admin/sites/membership-patch", {
+      session: editor,
+      method: "PATCH",
+      body: { name: "Renamed" },
+    });
+    const res = await PATCH(req, {
+      params: Promise.resolve({ id: "membership-patch" }),
+    });
+    const { status } = await readJson(res);
+    expect(status).toBe(200);
+  });
+
+  it("Issue #216 — PATCH rejects a global admin without membership on the target site", async () => {
+    const admin = await seedSuperAdmin();
+    const { createSite } = await import("@nexpress/core");
+    await createSite({ id: "foreign-patch", name: "Foreign" });
+    const { PATCH } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest("/api/admin/sites/foreign-patch", {
+      session: admin,
+      method: "PATCH",
+      body: { name: "Should not land" },
+    });
+    const res = await PATCH(req, {
+      params: Promise.resolve({ id: "foreign-patch" }),
+    });
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
+
+  it("DELETE /api/admin/sites/[id] removes a non-default site (super-admin)", async () => {
+    const admin = await seedSuperAdmin();
     const { createSite, getSiteById } = await import("@nexpress/core");
     await createSite({ id: "throwaway", name: "Throwaway" });
 
@@ -126,8 +186,25 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(await getSiteById("throwaway")).toBeNull();
   });
 
-  it("DELETE refuses to remove the default site", async () => {
-    const admin = await seedUser({ role: "admin" });
+  it("Issue #216 — DELETE rejects per-site admin (super-admin only)", async () => {
+    const editor = await seedUser({ role: "editor" });
+    const { createSite, grantSiteMembership } = await import("@nexpress/core");
+    await createSite({ id: "no-delete-by-member", name: "" });
+    await grantSiteMembership("no-delete-by-member", editor.userId, "admin");
+    const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest("/api/admin/sites/no-delete-by-member", {
+      session: editor,
+      method: "DELETE",
+    });
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: "no-delete-by-member" }),
+    });
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
+
+  it("DELETE refuses to remove the default site (super-admin)", async () => {
+    const admin = await seedSuperAdmin();
     const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
     const req = buildRequest("/api/admin/sites/default", {
       session: admin,
@@ -153,7 +230,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
    * Phase 15.9 — usage summary + cascade safety net.
    */
   it("GET /api/admin/sites/[id]/usage returns row counts per site-scoped table", async () => {
-    const admin = await seedUser({ role: "admin" });
+    const admin = await seedSuperAdmin();
     const { createSite, getDb, nxSettings } = await import("@nexpress/core");
     const created = await createSite({
       id: "usage-target",
@@ -196,7 +273,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   });
 
   it("DELETE refuses when site has attached rows and no cascade flag", async () => {
-    const admin = await seedUser({ role: "admin" });
+    const admin = await seedSuperAdmin();
     const { createSite, getDb, nxSettings } = await import("@nexpress/core");
     const created = await createSite({
       id: "no-cascade",
@@ -239,7 +316,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   });
 
   it("DELETE ?cascade=true removes attached rows and the site", async () => {
-    const admin = await seedUser({ role: "admin" });
+    const admin = await seedSuperAdmin();
     const {
       createSite,
       getDb,
@@ -288,7 +365,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   });
 
   it("DELETE without cascade succeeds when no attached rows exist (backwards-compat)", async () => {
-    const admin = await seedUser({ role: "admin" });
+    const admin = await seedSuperAdmin();
     const { createSite, getSiteById } = await import("@nexpress/core");
     const created = await createSite({
       id: "empty-site",
