@@ -1,6 +1,6 @@
 import { closeSync, openSync, writeSync } from "node:fs";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import {
   type NxAuthUser,
@@ -9,6 +9,7 @@ import {
   getDb,
   hashPassword,
   nxComments,
+  nxMedia,
   nxMembers,
   nxUsers,
   recordAuditEvent,
@@ -92,6 +93,20 @@ const code = await runCli(process.argv.slice(2), undefined, {
             ctx.actor.id,
           );
           return { id: result.id };
+        },
+        // Phase 21.13 — cross-run dedup. The framework's media
+        // service computes the SHA-256 on insert, so a second
+        // import of the same WXR finds the existing row and
+        // skips both download + upload. `deletedAt IS NULL` keeps
+        // soft-deleted media from being silently revived.
+        findExistingByHash: async (sha256) => {
+          const db = getDb();
+          const [hit] = await db
+            .select({ id: nxMedia.id })
+            .from(nxMedia)
+            .where(and(eq(nxMedia.hash, sha256), isNull(nxMedia.deletedAt)))
+            .limit(1);
+          return hit ? { id: hit.id } : null;
         },
       },
       taxonomies: {

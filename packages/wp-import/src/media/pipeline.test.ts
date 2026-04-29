@@ -97,6 +97,83 @@ describe("runMediaPipeline", () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it("21.13 — reuses an existing nx_media row when findExistingByHash returns a hit", async () => {
+    const { bundle, attachments } = loadBundle();
+    const upload = vi.fn(() => Promise.resolve({ id: "fresh-id" }));
+    const findExistingByHash = vi.fn(() => Promise.resolve({ id: "reused-id" }));
+    const report = await runMediaPipeline(bundle, attachments, {
+      download: () =>
+        Promise.resolve({
+          buffer: Buffer.from([1, 2, 3]),
+          mimeType: "image/jpeg",
+          filename: "hero.jpg",
+        }),
+      upload,
+      findExistingByHash,
+    });
+    expect(report.uploaded).toBe(0);
+    expect(report.reused).toBe(1);
+    expect(upload).not.toHaveBeenCalled();
+    // Hash deps received the SHA-256 of [1, 2, 3].
+    expect(findExistingByHash).toHaveBeenCalledWith(
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    );
+    // Resolution still points at the reused id, not a new one.
+    expect(report.resolution.byUrl.get(HERO_URL)).toBe("reused-id");
+  });
+
+  it("21.13 — runs same-host downloads in parallel up to perHostConcurrency", async () => {
+    // Synthetic bundle with three URLs on the same host. Track
+    // overlap by counting how many downloads are in-flight at once.
+    const xml = `<?xml version="1.0"?>
+<rss version="2.0"
+  xmlns:wp="http://wordpress.org/export/1.2/"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+  <title>X</title>
+  <link>https://x.example.com</link>
+  <description></description>
+  <wp:base_site_url>https://x.example.com</wp:base_site_url>
+  <wp:base_blog_url>https://x.example.com</wp:base_blog_url>
+  <item>
+    <title>Many images</title>
+    <dc:creator>alice</dc:creator>
+    <content:encoded><![CDATA[<p><img src="https://x.example.com/a.jpg"/><img src="https://x.example.com/b.jpg"/><img src="https://x.example.com/c.jpg"/></p>]]></content:encoded>
+    <wp:post_id>1</wp:post_id>
+    <wp:post_date_gmt>2025-04-01 12:00:00</wp:post_date_gmt>
+    <wp:post_modified_gmt>2025-04-01 12:00:00</wp:post_modified_gmt>
+    <wp:post_name>many-images</wp:post_name>
+    <wp:status>publish</wp:status>
+    <wp:post_type>post</wp:post_type>
+  </item>
+</channel>
+</rss>`;
+    const bundle = parseWxr(xml);
+    const attachments = buildAttachmentIndex(bundle);
+    let inflight = 0;
+    let peak = 0;
+    const download = vi.fn(async () => {
+      inflight++;
+      peak = Math.max(peak, inflight);
+      // Yield to the event loop so other workers can pick up.
+      await new Promise((r) => setTimeout(r, 5));
+      inflight--;
+      return { buffer: Buffer.from([0]), mimeType: "image/jpeg", filename: "x.jpg" };
+    });
+    let counter = 0;
+    const upload = vi.fn(() => Promise.resolve({ id: `m-${counter++}` }));
+    const report = await runMediaPipeline(
+      bundle,
+      attachments,
+      { download, upload },
+      { perHostConcurrency: 2 },
+    );
+    expect(report.uploaded).toBe(3);
+    // With concurrency=2, two downloads should be in flight at once.
+    expect(peak).toBe(2);
+  });
+
   it("flags featured-image refs whose attachment record is missing", async () => {
     // A WXR that references a _thumbnail_id but never declares the
     // attachment record. Hand-build a minimal bundle for this.
