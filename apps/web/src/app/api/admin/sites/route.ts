@@ -2,7 +2,7 @@ import {
   NxForbiddenError,
   NxValidationError,
   createSite,
-  hasRole,
+  isSuperAdmin,
   listSites,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
@@ -18,16 +18,19 @@ import { ensureWriteReady } from "@/lib/init-core";
  *   GET  /api/admin/sites           list every site
  *   POST /api/admin/sites           create a site
  *
- * Both gated to admin-or-above. v1 uses the existing global
- * admin role; the per-site role tier (15.5) will replace this
- * with a super-admin gate so per-site admins can't elevate to
- * site management for other tenants.
+ * Issue #216 — both endpoints are super-admin only. The
+ * cross-tenant management surface should not be available to
+ * per-site admins or to global-admin users without a super-admin
+ * flag, otherwise tenant isolation is one missed gate away from
+ * leaking. The picker dropdown reads from
+ * `/api/admin/sites/accessible` which still respects per-site
+ * memberships, so single-tenant operators don't lose visibility.
  */
 export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!(await isSuperAdmin(user))) {
       throw new NxForbiddenError("sites", "list");
     }
     const sites = await listSites();
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
     await ensureWriteReady();
     const user = await requireAuth(request);
     requireCsrf(request);
-    if (!hasRole(user, "admin")) {
+    if (!(await isSuperAdmin(user))) {
       throw new NxForbiddenError("sites", "create");
     }
     const body = await readJsonBody(request);
