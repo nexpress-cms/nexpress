@@ -56,6 +56,13 @@ export interface ApplyReport {
    * the CLI can show a meaningful summary even on a dry run.
    */
   attachments: AttachmentIndex;
+  /**
+   * One-time observations the operator should know about — drops
+   * we made silently per-record but want surfaced once aggregated.
+   * Examples: original authors dropped (21.8), `private` status
+   * coerced to draft (design §11.5).
+   */
+  notes: string[];
 }
 
 const TYPE_TO_COLLECTION: Readonly<Record<string, string>> = {
@@ -74,6 +81,9 @@ export async function applyBundle(
   const applied: AppliedRow[] = [];
   const skipped: SkippedRow[] = [];
   const errors: Array<{ wpId: number; slug: string; message: string }> = [];
+  let privateCount = 0;
+  let pendingCount = 0;
+  let droppedAuthorCount = 0;
 
   for (const record of bundle.records) {
     const collection = TYPE_TO_COLLECTION[record.wpType];
@@ -127,6 +137,10 @@ export async function applyBundle(
         continue;
       }
 
+      if (record.status === "private") privateCount++;
+      else if (record.status === "pending") pendingCount++;
+      if (record.wpAuthorLogin) droppedAuthorCount++;
+
       if (dryRun) {
         applied.push({
           wpId: record.wpId,
@@ -157,7 +171,24 @@ export async function applyBundle(
     }
   }
 
-  return { applied, skipped, errors, attachments };
+  const notes: string[] = [];
+  if (privateCount > 0) {
+    notes.push(
+      `${privateCount} record${privateCount === 1 ? "" : "s"} with WP status "private" imported as draft (design §11.5 — per-doc visibility is a separate phase).`,
+    );
+  }
+  if (pendingCount > 0) {
+    notes.push(
+      `${pendingCount} record${pendingCount === 1 ? "" : "s"} with WP status "pending" imported as draft.`,
+    );
+  }
+  if (droppedAuthorCount > 0) {
+    notes.push(
+      `${droppedAuthorCount} record${droppedAuthorCount === 1 ? "" : "s"} dropped their original WP author (Phase 21.8 wires authorship; today imports are attributed to the import operator).`,
+    );
+  }
+
+  return { applied, skipped, errors, attachments, notes };
 }
 
 function buildDocData(record: WpImportRecord): Record<string, unknown> {

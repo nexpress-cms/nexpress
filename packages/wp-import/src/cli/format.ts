@@ -168,5 +168,13 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
     }
   }
 
+  if (report.notes.length > 0) {
+    lines.push("");
+    lines.push("Notes");
+    for (const note of report.notes) {
+      lines.push(`  - ${note}`);
+    }
+  }
+
   return lines.join("\n");
 }

@@ -141,4 +141,14 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
       "https://acme.example.com/wp-content/uploads/2025/04/hero.jpg",
     );
   });
+
+  it("surfaces a notes line when records had original WP authors", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-notes@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const report = await applyBundle(bundle, { actor, dryRun: true });
+    expect(report.notes.some((n) => n.includes("Phase 21.8"))).toBe(true);
+  });
 });
