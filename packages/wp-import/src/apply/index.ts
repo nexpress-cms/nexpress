@@ -144,6 +144,47 @@ export interface ApplyOptions {
    * existing schemas keep round-tripping unchanged.
    */
   preserveOriginalAuthor?: Record<string, string>;
+  /**
+   * Phase 21.12 — when true, the applier rewrites content for
+   * documents whose slug already exists instead of skipping them.
+   * The existing `nx_c_*` row keeps its id (so revisions and
+   * `nx_media_refs` pointers stay intact); the `data` payload —
+   * title, content, excerpt, coverImage, taxonomies, author,
+   * publishedAt — is overwritten. Comments are NOT re-imported on
+   * an update pass; existing rows under that document stay put.
+   * Without the flag the historical skip-on-collision behavior
+   * holds.
+   */
+  update?: boolean;
+  /**
+   * Phase 21.12 — when true, downstream warnings escalate to
+   * `errors` so the CLI exits non-zero. Specifically: any media
+   * pipeline error (4xx, MIME reject, missing attachment) and
+   * any taxonomy / author resolver failure becomes a record-level
+   * error rather than a soft note. Useful for migration scripts
+   * that need a clean import or nothing — the operator wants the
+   * pipeline to abort rather than silently skip an asset.
+   */
+  strict?: boolean;
+  /**
+   * Phase 21.12 — when supplied, the applier emits a side-by-side
+   * conversion sample for every imported record so an operator can
+   * spot-check the WP HTML → Lexical roundtrip. The deps object
+   * receives the source content + the resulting Lexical AST; the
+   * shim writes them out as an HTML diff page next to the WXR.
+   */
+  reportHtml?: ReportHtmlDeps;
+}
+
+export interface ReportHtmlDeps {
+  emit: (sample: {
+    wpId: number;
+    wpType: string;
+    slug: string;
+    title: string;
+    rawContent: string;
+    lexical: LexicalRoot;
+  }) => void;
 }
 
 export interface AuditDeps {
@@ -314,8 +355,12 @@ export async function applyBundle(
         { where: { slug: record.slug }, limit: 1 },
         options.actor,
       );
-      if (exists.docs.length > 0) {
-        const existingId = typeof exists.docs[0]?.id === "string" ? exists.docs[0]?.id : undefined;
+      const existingId =
+        exists.docs.length > 0 && typeof exists.docs[0]?.id === "string"
+          ? exists.docs[0]?.id
+          : undefined;
+      const updateMode = options.update === true && existingId !== undefined;
+      if (exists.docs.length > 0 && !updateMode) {
         skipped.push({
           wpId: record.wpId,
           wpType: record.wpType,
@@ -393,9 +438,15 @@ export async function applyBundle(
           ? { field: originalAuthorField, value: originalAuthorName }
           : undefined,
       );
-      const saved = await saveDocument(collection, null, data, options.actor, {
-        status: mapStatusToFramework(record.status),
-      });
+      const saved = await saveDocument(
+        collection,
+        updateMode && existingId ? existingId : null,
+        data,
+        options.actor,
+        {
+          status: mapStatusToFramework(record.status),
+        },
+      );
       const savedId = typeof saved.doc.id === "string" ? saved.doc.id : undefined;
       applied.push({
         wpId: record.wpId,
@@ -408,9 +459,17 @@ export async function applyBundle(
         tagIds: termIds.tagIds,
         authorId,
       });
-      log(`write ${collection}/${record.slug}`);
+      log(updateMode ? `update ${collection}/${record.slug}` : `write ${collection}/${record.slug}`);
+      options.reportHtml?.emit({
+        wpId: record.wpId,
+        wpType: record.wpType,
+        slug: record.slug,
+        title: record.title,
+        rawContent: record.rawContent,
+        lexical: data.content as LexicalRoot,
+      });
       await emitAudit(options.audit, {
-        action: "import.wp.applied",
+        action: updateMode ? "import.wp.updated" : "import.wp.applied",
         targetType: collection,
         targetId: savedId,
         payload: {
@@ -426,10 +485,11 @@ export async function applyBundle(
       });
 
       // Phase 21.7 — pull the post id from the save result and
-      // walk this record's comments. Comments only land for posts
-      // we just created — re-runs skip on slug collision and
-      // therefore skip their archived comments too.
-      if (commentsPlan && options.comments && collection === "posts") {
+      // walk this record's comments. On `--update` re-runs we
+      // intentionally skip the comment pass because the importer
+      // doesn't carry per-comment idempotency keys yet (Phase
+      // 21.14) — re-running comments would create duplicates.
+      if (commentsPlan && options.comments && collection === "posts" && !updateMode) {
         const postId = typeof saved.doc.id === "string" ? saved.doc.id : null;
         if (postId) {
           await importPostComments({
@@ -525,6 +585,42 @@ export async function applyBundle(
       notes.push(
         `${authors.errors.length} author${authors.errors.length === 1 ? "" : "s"} failed to resolve — see Authors section.`,
       );
+    }
+  }
+
+  // Phase 21.12 — escalate sub-pipeline failures to record-level
+  // errors when the operator passed `--strict`. The CLI exits
+  // non-zero when `errors.length > 0`, so this turns a soft media
+  // 404 / taxonomy collision / author-create failure into a
+  // hard import abort signal.
+  if (options.strict) {
+    if (media) {
+      for (const e of media.errors) {
+        errors.push({ wpId: 0, slug: e.url, message: `media: ${e.reason}` });
+      }
+    }
+    if (taxonomies) {
+      for (const e of taxonomies.errors) {
+        errors.push({
+          wpId: 0,
+          slug: `${e.key.taxonomy}/${e.key.slug}`,
+          message: `taxonomy: ${e.reason}`,
+        });
+      }
+    }
+    if (authors) {
+      for (const e of authors.errors) {
+        errors.push({ wpId: 0, slug: e.login, message: `author: ${e.reason}` });
+      }
+    }
+    if (commentsPlan) {
+      for (const e of commentsPlan.errors) {
+        errors.push({
+          wpId: 0,
+          slug: `comment#${e.wpCommentId}`,
+          message: `comment: ${e.reason}`,
+        });
+      }
     }
   }
 
