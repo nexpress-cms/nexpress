@@ -270,48 +270,66 @@ so the dropdown stays in sync with whichever theme is active.
 
 ---
 
-## 7. Dark Mode
+## 7. Color Scheme (Light / Dark)
 
-Themes opt into dark mode by populating
-`darkMode.colors` in their `tokens` (or in the admin's saved
-theme — admin overrides win). The framework's CSS generator
-emits the color overrides under a `[data-theme="dark"]`
-selector:
+Color-mode handling is opt-in per theme. The framework no
+longer prescribes a dark-mode shape on `NxThemeTokens`, no
+longer auto-emits a `[data-theme="dark"]` block, and no
+longer mounts a global init script — every theme picks its
+own policy (saved choice, time-of-day, seasonal palette,
+none at all) and ships the matching CSS.
 
-```css
-@layer nx-theme {
-  :root {
-    --nx-color-background: oklch(1 0 0);
-    /* … light values … */
-  }
-  [data-theme="dark"] {
-    --nx-color-background: oklch(0.145 0.004 285.823);
-    /* … dark overrides only for keys provided … */
-  }
+The theme system exposes three small primitives so themes
+that *do* want a saved-choice toggle don't have to reinvent
+the wheel:
+
+| Export                        | From                       | Purpose                                                   |
+| ----------------------------- | -------------------------- | --------------------------------------------------------- |
+| `<NxColorSchemeScript />`     | `@nexpress/theme`          | Inline pre-paint script that flips `<html data-theme>` based on cookie / localStorage / `prefers-color-scheme`. |
+| `COLOR_SCHEME_COOKIE` / `COLOR_SCHEME_STORAGE_KEY` | `@nexpress/theme/client` | Shared key names so the toggle, server reads, and script all agree. |
+| `isColorScheme` / `NxColorScheme` | `@nexpress/theme/client` | Type guard + union for `"dark" \| "light"`.            |
+
+A typical opt-in shell looks like this:
+
+```tsx
+// theme/src/shell.tsx
+import { NxColorSchemeScript } from "@nexpress/theme";
+
+export function MyShell({ children }: NxThemeShellProps) {
+  return (
+    <>
+      <NxColorSchemeScript />
+      {children}
+    </>
+  );
 }
 ```
 
-Activation is wired in the framework, not the theme:
+```css
+/* theme/src/styles.ts */
+[data-theme="dark"] {
+  --nx-color-background: oklch(0.145 0.004 285.823);
+  --nx-color-foreground: oklch(0.985 0.001 106.423);
+  /* … flip whichever tokens this theme cares about … */
+}
+```
 
-- The root layout reads the `nx-color-scheme` cookie and sets
-  `<html data-theme="...">` server-side, so repeat visitors
-  paint with the right palette before the body renders.
-- `<NxColorSchemeScript />` (auto-mounted by the root layout)
-  runs synchronously as the first body child to detect
-  `prefers-color-scheme` for first-time visitors with no
-  cookie set — single-frame correction at worst, no FOUC for
-  saved choices.
-- The toggle component (theme-default ships
-  `<DarkModeToggle />` in its header slot) writes the cookie
-  + localStorage and flips the `data-theme` attribute. Themes
-  that want their own toggle UI can replace the default
-  header slot and call the same `nx-color-scheme` cookie
-  contract.
+`@nexpress/theme-default` bundles the script in its shell, a
+dark variant of the design tokens in its CSS, and a
+`<DarkModeToggle />` in its header slot — copy that pattern
+when you want the same UX. A theme that omits all three is
+permanently in light mode (or whatever palette the tokens
+declare); the framework adds nothing.
 
-A theme that doesn't ship `darkMode.colors` simply doesn't
-emit the dark block; the toggle becomes a no-op. The default
-theme bundles a sensible dark palette so the feature works
-out of the box.
+Because `<html>` ends up with a `data-theme` attribute that
+the server didn't render, React would normally log a
+hydration warning. The reference root layout sets
+`<html suppressHydrationWarning>` as a generic escape hatch
+for *any* theme that mutates `<html>` attributes pre-hydration
+— it covers the color-scheme script case without the
+framework knowing about the policy specifically. The flag
+only silences the attribute diff on `<html>` itself; the rest
+of the tree still surfaces hydration mismatches normally.
 
 ---
 

@@ -186,4 +186,21 @@ export const defaultThemeCss = `
   font-weight: 600;
   background: var(--nx-color-muted, #f8fafc);
 }
+
+/* Dark mode — owned by this theme. The shell mounts
+   <NxColorSchemeScript /> which sets <html data-theme="dark">
+   based on the saved cookie / prefers-color-scheme, and these
+   rules flip the design tokens. Themes that want a different
+   color-mode policy (or none) simply omit this block. */
+[data-theme="dark"] {
+  --nx-color-background: oklch(0.145 0.004 285.823);
+  --nx-color-foreground: oklch(0.985 0.001 106.423);
+  --nx-color-muted: oklch(0.269 0.006 286.033);
+  --nx-color-muted-foreground: oklch(0.711 0.008 285.879);
+  --nx-color-border: oklch(0.269 0.006 286.033);
+  --nx-color-card: oklch(0.145 0.004 285.823);
+  --nx-color-card-foreground: oklch(0.985 0.001 106.423);
+  --nx-color-accent: oklch(0.269 0.006 286.033);
+  --nx-color-accent-foreground: oklch(0.985 0.001 106.423);
+}
 `.trim();
