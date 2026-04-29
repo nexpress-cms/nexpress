@@ -75,6 +75,15 @@ const CLI_OPTIONS = {
    * fine too.
    */
   "report-html-path": { type: "string" as const },
+  /**
+   * Phase 21.14 — load + persist a sidecar resume marker so re-runs
+   * skip work that already landed and dedupe comments by
+   * `wpCommentId`. Defaults the marker path to
+   * `<wxr>.import-state.json`; override with `--resume-state`.
+   */
+  resume: { type: "boolean" as const, default: false },
+  /** Phase 21.14 — override the default resume-marker path. */
+  "resume-state": { type: "string" as const },
   help: { type: "boolean" as const, short: "h" },
 };
 
@@ -109,6 +118,12 @@ export interface CliApplyHooks {
        * the file and producing the deps. `null` means "don't emit".
        */
       reportHtmlPath: string | null;
+      /**
+       * Phase 21.14 — when set, the operator wants a resume marker
+       * loaded + persisted at the named path. `null` means
+       * "don't load or write a marker".
+       */
+      resumeStatePath: string | null;
     },
   ) => Promise<ApplyReport>;
   resolveActor: () => Promise<NxAuthUser>;
@@ -214,6 +229,17 @@ export async function runCli(
         ? `${sourcePath}.report.html`
         : null;
 
+  // Phase 21.14 — resolve the resume marker path the same way:
+  // explicit path wins; bare `--resume` falls back to a sibling of
+  // the WXR.
+  const resumeStatePathOverride = parsed.values["resume-state"];
+  const resumeStatePath: string | null =
+    resumeStatePathOverride && resumeStatePathOverride.length > 0
+      ? resumeStatePathOverride
+      : parsed.values.resume
+        ? `${sourcePath}.import-state.json`
+        : null;
+
   const report = await hooks.applyBundle(bundle, {
     actor,
     dryRun: parsed.values["dry-run"],
@@ -223,6 +249,7 @@ export async function runCli(
     strict: parsed.values.strict,
     update: parsed.values.update,
     reportHtmlPath,
+    resumeStatePath,
   });
 
   io.stdout(formatApplyReport(report, { dryRun: parsed.values["dry-run"] }));
@@ -230,7 +257,7 @@ export async function runCli(
   return report.errors.length > 0 ? 1 : 0;
 }
 
-const USAGE = `Usage: wp-import <wxr-file> [--apply] [--dry-run] [--strict] [--update] [--no-create-authors] [--report-html] [--report-html-path <path>]
+const USAGE = `Usage: wp-import <wxr-file> [--apply] [--dry-run] [--strict] [--update] [--no-create-authors] [--report-html] [--report-html-path <path>] [--resume] [--resume-state <path>]
 
 Reads a WordPress eXtended RSS export and either prints a summary
 of what would be imported (default) or applies it to the database
@@ -269,4 +296,11 @@ Options:
   --report-html-path <path>
                         Override the default report path. Implies
                         --report-html.
+  --resume              Read + persist a sidecar resume marker so
+                        re-runs skip work that already landed and
+                        dedupe comments by wpCommentId. Defaults
+                        to <wxr>.import-state.json (Phase 21.14).
+  --resume-state <path>
+                        Override the default resume-marker path.
+                        Implies --resume.
   -h, --help            Show this help message.`;
