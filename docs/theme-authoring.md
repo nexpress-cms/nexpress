@@ -51,7 +51,7 @@ In WordPress terms: themes are like "themes", tokens are like
 A minimal theme package looks like:
 
 ```
-packages/theme-mybrand/
+packages/themes/mybrand/
 ├── package.json
 ├── tsup.config.ts
 ├── tsconfig.json
