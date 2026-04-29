@@ -8,6 +8,7 @@ import {
   registerTestCollections,
   seedUser,
   skipIfNoTestDb,
+  type TestUserSession,
   truncateAll,
 } from "./harness.js";
 
@@ -24,6 +25,33 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     const { ensureCoreServices } = await import("@/lib/init-core");
     ensureCoreServices();
   });
+
+  // Helper: hydrate the test session into an NxAuthUser so core
+  // predicates that take `user` (canActorUseSite, etc.) can run.
+  // Reads `name` + `tokenVersion` from the row the harness wrote
+  // since `seedUser` only returns the JWT-facing slice.
+  async function asActorForUser(session: {
+    userId: string;
+    email: string;
+    role: TestUserSession["role"];
+  }) {
+    const { getTestDb } = await import("./harness.js");
+    const { nxUsers } = await import("@nexpress/core");
+    const { eq } = await import("drizzle-orm");
+    const db = await getTestDb();
+    const [row] = await db
+      .select({ name: nxUsers.name, tokenVersion: nxUsers.tokenVersion })
+      .from(nxUsers)
+      .where(eq(nxUsers.id, session.userId));
+    if (!row) throw new Error("seed user missing");
+    return {
+      id: session.userId,
+      email: session.email,
+      name: row.name,
+      role: session.role,
+      tokenVersion: row.tokenVersion,
+    };
+  }
   beforeEach(async () => {
     await truncateAll();
     const { listSites, deleteSite } = await import("@nexpress/core");
@@ -98,65 +126,67 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
   });
 
   // Issue #221 — admin override cookie / header is untrusted.
-  // The resolver re-validates against the session before honoring
-  // the override so a forged `nx-admin-site` value can't change
-  // the tenant context.
-  it("forged x-nx-admin-site header is dropped when the user lacks access (#221)", async () => {
+  // The bootstrap resolver re-validates against the session
+  // before honoring the override so a forged `nx-admin-site`
+  // value can't change the tenant context.
+  //
+  // Note: the resolver itself reads `next/headers()` /
+  // `next/cookies()`, which only work inside a real Next.js
+  // request scope — vitest's direct route-handler invocation
+  // doesn't set that scope up, so we can't pin the full
+  // resolver behavior end-to-end here. The actual decision
+  // function (`canActorUseSite`) lives behind a clean predicate
+  // contract; we unit-test it directly so the rule itself is
+  // pinned (super-admin / membership / default-site fallback /
+  // anonymous-rejection) without relying on the request scope.
+  it("Issue #221 — canActorUseSite: super-admin is allowed on any site", async () => {
     const user = await seedUser({ role: "viewer" });
-    const { createSite } = await import("@nexpress/core");
+    const { setSuperAdmin, createSite } = await import("@nexpress/core");
+    await setSuperAdmin(user.userId, true);
     await createSite({ id: "alpha", name: "Alpha" });
-    // No membership granted — the user has no business resolving
-    // to "alpha". The resolver must fall back to the default site
-    // even though the override header is set.
-    const { GET } = await import("@/app/api/admin/sites/accessible/route");
-    const req = buildRequest("/api/admin/sites/accessible", {
-      session: user,
-      headers: { "x-nx-admin-site": "alpha" },
-    });
-    const res = await GET(req);
-    const { body } = await readJson<{ currentId?: string }>(res);
-    expect(body.currentId).not.toBe("alpha");
-    expect(body.currentId).toBe("default");
+    const actor = await asActorForUser(user);
+    const { canActorUseSite } = await import("@nexpress/next");
+    expect(await canActorUseSite(actor, "alpha")).toBe(true);
+    expect(await canActorUseSite(actor, "default")).toBe(true);
+    expect(await canActorUseSite(actor, "non-existent-site")).toBe(true);
   });
 
-  it("x-nx-admin-site is honored when the session has membership (#221)", async () => {
+  it("Issue #221 — canActorUseSite: explicit membership grants access to that site only", async () => {
     const user = await seedUser({ role: "editor" });
     const { createSite, grantSiteMembership } = await import("@nexpress/core");
     await createSite({ id: "alpha", name: "Alpha" });
+    await createSite({ id: "beta", name: "Beta" });
     await grantSiteMembership("alpha", user.userId, "admin");
-    const { GET } = await import("@/app/api/admin/sites/accessible/route");
-    const req = buildRequest("/api/admin/sites/accessible", {
-      session: user,
-      headers: { "x-nx-admin-site": "alpha" },
-    });
-    const res = await GET(req);
-    const { body } = await readJson<{ currentId?: string }>(res);
-    expect(body.currentId).toBe("alpha");
+    const actor = await asActorForUser(user);
+    const { canActorUseSite } = await import("@nexpress/next");
+    expect(await canActorUseSite(actor, "alpha")).toBe(true);
+    expect(await canActorUseSite(actor, "beta")).toBe(false);
   });
 
-  it("x-nx-admin-site without a session is dropped (#221)", async () => {
+  it("Issue #221 — canActorUseSite: global admin keeps default-site fallback", async () => {
+    const user = await seedUser({ role: "admin" });
+    const actor = await asActorForUser(user);
+    const { canActorUseSite } = await import("@nexpress/next");
+    expect(await canActorUseSite(actor, "default")).toBe(true);
+  });
+
+  it("Issue #221 — canActorUseSite: plain admin without membership is rejected on a non-default site", async () => {
+    const user = await seedUser({ role: "admin" });
     const { createSite } = await import("@nexpress/core");
     await createSite({ id: "alpha", name: "Alpha" });
-    // Anonymous request: no `nx-session` cookie. The resolver
-    // can't verify membership so the override falls through.
-    const { GET } = await import("@/app/api/admin/sites/accessible/route");
-    const req = buildRequest("/api/admin/sites/accessible", {
-      headers: { "x-nx-admin-site": "alpha" },
-    });
-    // requireAuth() returns 401 — but the resolver already
-    // dropped the override before that. We assert via the public
-    // settings route which doesn't gate on auth.
-    const { GET: settingsGet } = await import("@/app/api/settings/route");
-    const settingsReq = buildRequest("/api/settings", {
-      headers: { "x-nx-admin-site": "alpha" },
-    });
-    const settingsRes = await settingsGet(settingsReq);
-    // The settings route returns under the resolved site; if the
-    // override leaked, the response would be tied to "alpha".
-    // We assert it's the default site by verifying the response
-    // succeeds without crashing on the unknown site id.
-    expect(settingsRes.status).toBeLessThan(500);
-    void res;
+    const actor = await asActorForUser(user);
+    const { canActorUseSite } = await import("@nexpress/next");
+    expect(await canActorUseSite(actor, "alpha")).toBe(false);
+  });
+
+  it("Issue #221 — canActorUseSite: viewer with no flags is rejected everywhere", async () => {
+    const user = await seedUser({ role: "viewer" });
+    const { createSite } = await import("@nexpress/core");
+    await createSite({ id: "alpha", name: "Alpha" });
+    const actor = await asActorForUser(user);
+    const { canActorUseSite } = await import("@nexpress/next");
+    expect(await canActorUseSite(actor, "alpha")).toBe(false);
+    expect(await canActorUseSite(actor, "default")).toBe(false);
   });
 
   // ============== /api/admin/sites/active ==============

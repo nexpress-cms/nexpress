@@ -1,6 +1,7 @@
 import {
   createDbConnection,
   createStorageAdapter,
+  getDb,
   hasRole,
   isSuperAdmin,
   listMembershipsForUser,
@@ -74,7 +75,10 @@ function toCamelCase(slug: string): string {
  *
  * Anyone else falls through and the resolver drops the override.
  */
-async function canActorUseSite(user: NxAuthUser, siteId: string): Promise<boolean> {
+export async function canActorUseSite(
+  user: NxAuthUser,
+  siteId: string,
+): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
   const memberships = await listMembershipsForUser(user.id);
   if (memberships.some((m) => m.siteId === siteId)) return true;
@@ -204,10 +208,20 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const secret = config.auth?.secret;
       if (!secret) return null;
       try {
+        // Use the singleton db (`getDb()`), not the bootstrap's
+        // lazy-init `getDbInstance()`. Test harnesses call
+        // `setDb(testPool)` to switch the singleton, but the
+        // bootstrap's cache predates that swap and would point
+        // at the dev DB pool instead — verification would never
+        // find the test session row. The singleton is also what
+        // `listMembershipsForUser` (called via `canActorUseSite`)
+        // sees, so both halves of the validation read the same
+        // DB.
+        const db = getDb();
         const user = await verifyTokenFull(
           sessionToken,
           secret,
-          getDbInstance() as never,
+          db as never,
           "access",
         );
         if (!user) return null;

@@ -36,7 +36,13 @@ export {
   type RevalidationMap,
 } from "./revalidate.js";
 
-export { createBootstrap, type Bootstrap, type BootstrapOptions, type NxDb } from "./bootstrap.js";
+export {
+  canActorUseSite,
+  createBootstrap,
+  type Bootstrap,
+  type BootstrapOptions,
+  type NxDb,
+} from "./bootstrap.js";
 
 export { toClientCollectionConfig } from "./client-safe.js";
 
