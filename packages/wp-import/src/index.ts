@@ -7,6 +7,13 @@
  */
 
 export { parseWxr } from "./parse/wxr.js";
+export {
+  parseWxrStream,
+  WpImportStreamError,
+  type WpImportStream,
+  type WpImportStreamHeader,
+  type WpImportStreamOptions,
+} from "./parse/wxr-stream.js";
 export type {
   WpAuthor,
   WpComment,
