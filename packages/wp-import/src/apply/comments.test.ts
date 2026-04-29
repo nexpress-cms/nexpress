@@ -6,6 +6,7 @@ import {
   importPostComments,
   type CommentDeps,
 } from "./comments.js";
+import { emptyResumeState, type ResumeDeps } from "./resume.js";
 
 function makeComment(partial: Partial<WpComment>): WpComment {
   return {
@@ -177,5 +178,60 @@ describe("importPostComments", () => {
     expect(renderBody).toHaveBeenCalledWith("hi *there*");
     expect(captured.bodyMd).toBe("hi *there*");
     expect(captured.bodyHtml).toBe("<rendered>hi *there*</rendered>");
+  });
+
+  it("21.14 — skips comments whose wpCommentId is already in the resume marker", async () => {
+    const record = makeRecord([
+      makeComment({ wpId: 10 }),
+      makeComment({ wpId: 11, parentWpId: 10, content: "reply" }),
+    ]);
+    const ensureImportedMember = vi.fn(() => Promise.resolve({ id: "m" }));
+    const insertComment = vi.fn(() => Promise.resolve({ id: "should-not-run" }));
+    const state = emptyResumeState("/wxr.xml");
+    state.comments[10] = "previous-cmt";
+    state.comments[11] = "previous-cmt-reply";
+    const persisted: number[] = [];
+    const resume: ResumeDeps = {
+      state,
+      persist: () => persisted.push(Date.now()),
+    };
+    const plan = emptyCommentPlan();
+    await importPostComments({
+      record,
+      postId: "post-1",
+      collection: "posts",
+      deps: { ensureImportedMember, insertComment, renderBody: passthroughRender },
+      plan,
+      resume,
+    });
+    expect(plan.applied).toBe(0);
+    expect(plan.skippedByResume).toBe(2);
+    expect(insertComment).not.toHaveBeenCalled();
+  });
+
+  it("21.14 — persists newly-inserted wpCommentId → id mapping into the marker", async () => {
+    const record = makeRecord([makeComment({ wpId: 99 })]);
+    const ensureImportedMember = vi.fn(() => Promise.resolve({ id: "m" }));
+    const insertComment = vi.fn(() => Promise.resolve({ id: "fresh-cmt" }));
+    const state = emptyResumeState("/wxr.xml");
+    let persistCalls = 0;
+    const resume: ResumeDeps = {
+      state,
+      persist: () => {
+        persistCalls++;
+      },
+    };
+    const plan = emptyCommentPlan();
+    await importPostComments({
+      record,
+      postId: "post-1",
+      collection: "posts",
+      deps: { ensureImportedMember, insertComment, renderBody: passthroughRender },
+      plan,
+      resume,
+    });
+    expect(plan.applied).toBe(1);
+    expect(state.comments[99]).toBe("fresh-cmt");
+    expect(persistCalls).toBeGreaterThanOrEqual(1);
   });
 });

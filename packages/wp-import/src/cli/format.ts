@@ -201,7 +201,7 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
   if (report.comments) {
     const c = report.comments;
     lines.push(
-      `Comments: ${c.applied} imported, ${c.skippedUnapproved} unapproved, ${c.errors.length} errors`,
+      `Comments: ${c.applied} imported, ${c.skippedUnapproved} unapproved, ${c.skippedByResume} resume-skipped, ${c.errors.length} errors`,
     );
     for (const err of c.errors) {
       lines.push(`  #${err.wpCommentId}: ${err.reason}`);

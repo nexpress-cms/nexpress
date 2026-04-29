@@ -22,6 +22,7 @@ import {
   type CommentDeps,
   type CommentImportPlan,
 } from "./comments.js";
+import { documentKey, type ResumeDeps } from "./resume.js";
 import {
   pickPostTermIds,
   resolveTaxonomies,
@@ -144,6 +145,15 @@ export interface ApplyOptions {
    * existing schemas keep round-tripping unchanged.
    */
   preserveOriginalAuthor?: Record<string, string>;
+  /**
+   * Phase 21.14 — when supplied, the applier reads + writes a
+   * resume marker so re-runs skip work that already landed.
+   * Documents are matched by `(collection, slug)`, comments by WP
+   * comment id. The marker is persisted after each record-level
+   * success; a crash mid-import resumes from the last persisted
+   * row instead of starting over.
+   */
+  resume?: ResumeDeps;
   /**
    * Phase 21.12 — when true, the applier rewrites content for
    * documents whose slug already exists instead of skipping them.
@@ -350,11 +360,18 @@ export async function applyBundle(
     }
 
     try {
-      const exists = await findDocuments(
-        collection,
-        { where: { slug: record.slug }, limit: 1 },
-        options.actor,
-      );
+      // Phase 21.14 — when a resume marker is present, the
+      // (collection, slug) → id lookup is authoritative. Querying
+      // the DB on every record adds a round trip per-record at
+      // no benefit if the marker already says where the row lives.
+      const markerId = options.resume?.state.documents[documentKey(collection, record.slug)];
+      const exists = markerId
+        ? { docs: [{ id: markerId }] }
+        : await findDocuments(
+            collection,
+            { where: { slug: record.slug }, limit: 1 },
+            options.actor,
+          );
       const existingId =
         exists.docs.length > 0 && typeof exists.docs[0]?.id === "string"
           ? exists.docs[0]?.id
@@ -365,9 +382,9 @@ export async function applyBundle(
           wpId: record.wpId,
           wpType: record.wpType,
           slug: record.slug,
-          reason: "slug already exists",
+          reason: markerId ? "resume marker — already imported" : "slug already exists",
         });
-        log(`skip  ${collection}/${record.slug} (already exists)`);
+        log(`skip  ${collection}/${record.slug} (${markerId ? "resume marker" : "already exists"})`);
         await emitAudit(options.audit, {
           action: "import.wp.skipped",
           targetType: collection,
@@ -376,7 +393,7 @@ export async function applyBundle(
             wpId: record.wpId,
             wpType: record.wpType,
             slug: record.slug,
-            reason: "slug already exists",
+            reason: markerId ? "resume marker" : "slug already exists",
           },
         });
         continue;
@@ -483,13 +500,21 @@ export async function applyBundle(
           authorId,
         },
       });
+      // Phase 21.14 — persist the marker after every successful
+      // save so a crash mid-import resumes from the last persisted
+      // row. Only `documents` is updated here; comments / media
+      // are stamped into the marker by their respective passes.
+      if (options.resume && savedId) {
+        options.resume.state.documents[documentKey(collection, record.slug)] = savedId;
+        options.resume.persist();
+      }
 
       // Phase 21.7 — pull the post id from the save result and
-      // walk this record's comments. On `--update` re-runs we
-      // intentionally skip the comment pass because the importer
-      // doesn't carry per-comment idempotency keys yet (Phase
-      // 21.14) — re-running comments would create duplicates.
-      if (commentsPlan && options.comments && collection === "posts" && !updateMode) {
+      // walk this record's comments. The resume marker (Phase
+      // 21.14) makes the comment pass idempotent across re-runs;
+      // on `--update` we still walk it so newly-added WP comments
+      // land, but already-imported wpCommentIds are skipped.
+      if (commentsPlan && options.comments && collection === "posts") {
         const postId = typeof saved.doc.id === "string" ? saved.doc.id : null;
         if (postId) {
           await importPostComments({
@@ -499,6 +524,7 @@ export async function applyBundle(
             deps: options.comments,
             plan: commentsPlan,
             log,
+            resume: options.resume,
           });
         }
       }
