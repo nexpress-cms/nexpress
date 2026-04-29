@@ -1,4 +1,12 @@
-import { NxForbiddenError, hasRole, isStaffMod, listAuditEvents } from "@nexpress/core";
+import {
+  NX_DEFAULT_SITE_ID,
+  NxForbiddenError,
+  hasRole,
+  hasRoleOnSite,
+  isStaffMod,
+  isSuperAdmin,
+  listAuditEvents,
+} from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -38,14 +46,40 @@ export async function GET(request: NextRequest) {
 
     // Phase 17 — site scope. By default `listAuditEvents`
     // filters to the current request's site (resolved by
-    // the multi-site proxy). Admin-role users can pin a
-    // specific site (`siteId=<id>`) or skip the filter
-    // entirely (`siteId=all`) for super-admin cross-tenant
-    // triage. Mods stay confined to their current site.
+    // the multi-site proxy).
+    //
+    // Issue #216 — `siteId=all` is super-admin only. The
+    // original gate was `hasRole(user, "admin")` which let any
+    // global admin enumerate cross-tenant audit data, even
+    // tenants they had no membership on. A specific
+    // `siteId=<id>` other than the user's accessible set is
+    // also rejected so a per-site admin can't probe foreign
+    // tenants through this endpoint.
     const rawSiteFilter = params.get("siteId")?.trim();
     let siteIdFilter: string | null | undefined;
-    if (rawSiteFilter && hasRole(user, "admin")) {
-      siteIdFilter = rawSiteFilter === "all" ? null : rawSiteFilter;
+    if (rawSiteFilter) {
+      const superAdmin = await isSuperAdmin(user);
+      if (rawSiteFilter === "all") {
+        if (!superAdmin) {
+          throw new NxForbiddenError("audit", "cross-site");
+        }
+        siteIdFilter = null;
+      } else if (superAdmin) {
+        siteIdFilter = rawSiteFilter;
+      } else if (
+        rawSiteFilter === NX_DEFAULT_SITE_ID &&
+        hasRole(user, "admin")
+      ) {
+        // Single-tenant compatibility: a global admin without
+        // any explicit memberships keeps audit access on the
+        // default site.
+        siteIdFilter = rawSiteFilter;
+      } else if (await hasRoleOnSite(user, "moderator", rawSiteFilter)) {
+        // Per-site mod-or-above can read their own site's audit.
+        siteIdFilter = rawSiteFilter;
+      } else {
+        throw new NxForbiddenError("audit", "cross-site");
+      }
     }
 
     const result = await listAuditEvents({
