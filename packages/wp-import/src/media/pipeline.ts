@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { AttachmentIndex } from "../apply/attachment-index.js";
 import type { WpImportBundle } from "../parse/types.js";
 import { downloadMedia, isAllowedMimeType, WpMediaDownloadError } from "./download.js";
@@ -18,10 +20,18 @@ import { downloadMedia, isAllowedMimeType, WpMediaDownloadError } from "./downlo
  *   - `byAttachmentId` — WP attachment id → media id. Used by the
  *     applier for `_thumbnail_id` featured-image lookup.
  *
- * Within-run dedupe: the same source URL appearing on two records
- * downloads + uploads exactly once. Cross-run dedupe (re-running the
- * importer against the same WXR + same DB) lands in 21.10 with the
- * resume marker; for now the second run will create new rows.
+ * Phase 21.13 layered two prod-grade concerns on top:
+ *
+ *   - **Per-host concurrency cap.** Each unique URL host gets a
+ *     small fixed-size queue (default 4) so a 50-image post on the
+ *     same wp-content domain doesn't open 50 sockets in parallel.
+ *     URLs from different hosts run independently.
+ *   - **Cross-run hash dedup.** When the caller supplies
+ *     `findExistingByHash`, the pipeline computes the SHA-256 of
+ *     the downloaded bytes and looks the row up by hash before
+ *     uploading. Re-running the importer against the same WXR
+ *     therefore reuses existing `nx_media` rows instead of
+ *     producing byte-identical duplicates.
  */
 
 export interface MediaUploadInput {
@@ -38,6 +48,13 @@ export interface MediaPipelineDeps {
    * Returns the new media row id.
    */
   upload: (input: MediaUploadInput) => Promise<{ id: string }>;
+  /**
+   * Phase 21.13 — when supplied, the pipeline asks the caller to
+   * look up an existing `nx_media` row by SHA-256 hash before
+   * uploading. Returning a row reuses it (cross-run idempotency);
+   * returning null falls through to upload as normal.
+   */
+  findExistingByHash?: (sha256: string) => Promise<{ id: string } | null>;
 }
 
 export interface MediaResolution {
@@ -54,6 +71,8 @@ export interface MediaPipelineReport {
   resolution: MediaResolution;
   uploaded: number;
   skipped: number;
+  /** Phase 21.13 — count of URLs whose bytes matched an existing media row. */
+  reused: number;
   errors: MediaPipelineError[];
 }
 
@@ -62,7 +81,15 @@ export interface MediaPipelineOptions {
   dryRun?: boolean;
   /** Optional progress sink. */
   log?: (line: string) => void;
+  /**
+   * Phase 21.13 — concurrent-download cap per source-URL host.
+   * Default 4 mirrors the design doc §6 recommendation; tests pass
+   * 1 to keep ordering deterministic.
+   */
+  perHostConcurrency?: number;
 }
+
+const DEFAULT_PER_HOST_CONCURRENCY = 4;
 
 /**
  * Walk every record's media refs + the attachment index, fetch each
@@ -83,44 +110,61 @@ export async function runMediaPipeline(
   const log = options.log ?? noop;
   const dryRun = options.dryRun ?? false;
   const download = deps.download ?? ((url: string) => downloadMedia(url));
+  const concurrency = Math.max(1, options.perHostConcurrency ?? DEFAULT_PER_HOST_CONCURRENCY);
 
   const byUrl = new Map<string, string>();
   const byAttachmentId = new Map<number, string>();
   const errors: MediaPipelineError[] = [];
   let uploaded = 0;
   let skipped = 0;
+  let reused = 0;
 
   // Build a unique list of {url, wpAttachmentId} pairs to fetch.
   const targets = collectTargets(bundle, attachments);
 
+  // Surface missing-attachment errors up front; they don't go through
+  // the per-host queue (no URL to fetch).
+  const fetchable: MediaTarget[] = [];
   for (const target of targets) {
     if (!target.url) {
-      // Featured-image references that point at an attachment id we
-      // never saw an attachment record for. Nothing to download.
       errors.push({
         url: `(wp-attachment-id ${target.wpAttachmentId})`,
         reason: "attachment record missing from WXR — cannot resolve URL",
       });
       continue;
     }
+    fetchable.push(target);
+  }
+
+  // Group remaining targets by host so we can rate-limit per-host
+  // concurrency without throttling cross-host fan-out. Targets with
+  // an unparseable URL fall into a synthetic "(invalid)" bucket so
+  // they don't block other hosts; their failures surface as normal
+  // per-target errors.
+  const byHost = new Map<string, MediaTarget[]>();
+  for (const target of fetchable) {
+    const host = parseHost(target.url);
+    const list = byHost.get(host);
+    if (list) list.push(target);
+    else byHost.set(host, [target]);
+  }
+
+  // For each host, run a small fixed-size worker pool over its
+  // targets; promise-merge across hosts so distinct hosts download
+  // concurrently. The processing function below mutates the shared
+  // resolution + counters.
+  const processOne = async (target: MediaTarget): Promise<void> => {
     if (byUrl.has(target.url)) {
-      // Already resolved by an earlier target sharing the same URL.
-      // Mirror the id onto byAttachmentId if this target carried one.
       if (target.wpAttachmentId !== null) {
         byAttachmentId.set(target.wpAttachmentId, byUrl.get(target.url)!);
       }
-      continue;
+      return;
     }
-
     if (dryRun) {
       log(`media plan  ${target.url}`);
-      // We can't allocate a real id without a DB write; leave the
-      // resolution maps empty for the URL so the applier doesn't
-      // rewrite Lexical to point at a phantom id.
       skipped++;
-      continue;
+      return;
     }
-
     try {
       const result = await download(target.url);
       if (!isAllowedMimeType(result.mimeType)) {
@@ -128,19 +172,37 @@ export async function runMediaPipeline(
           url: target.url,
           reason: `disallowed MIME type "${result.mimeType}"`,
         });
-        continue;
+        return;
       }
-      const upload = await deps.upload({
-        buffer: result.buffer,
-        originalFilename: result.filename,
-        mimeType: result.mimeType,
-      });
-      byUrl.set(target.url, upload.id);
+      // Phase 21.13 — hash-based cross-run dedup. Compute the
+      // canonical SHA-256 of the bytes (same algorithm `uploadMedia`
+      // uses internally) and ask the caller whether a matching row
+      // already exists. The hook is optional so tests can still run
+      // without a DB.
+      let mediaId: string | null = null;
+      if (deps.findExistingByHash) {
+        const sha256 = createHash("sha256").update(result.buffer).digest("hex");
+        const existing = await deps.findExistingByHash(sha256);
+        if (existing) {
+          mediaId = existing.id;
+          reused++;
+          log(`media reuse ${target.url} → ${existing.id}`);
+        }
+      }
+      if (!mediaId) {
+        const upload = await deps.upload({
+          buffer: result.buffer,
+          originalFilename: result.filename,
+          mimeType: result.mimeType,
+        });
+        mediaId = upload.id;
+        uploaded++;
+        log(`media write ${target.url} → ${upload.id}`);
+      }
+      byUrl.set(target.url, mediaId);
       if (target.wpAttachmentId !== null) {
-        byAttachmentId.set(target.wpAttachmentId, upload.id);
+        byAttachmentId.set(target.wpAttachmentId, mediaId);
       }
-      uploaded++;
-      log(`media write ${target.url} → ${upload.id}`);
     } catch (err) {
       const reason =
         err instanceof WpMediaDownloadError
@@ -148,17 +210,36 @@ export async function runMediaPipeline(
             ? `HTTP ${err.status}: ${err.message}`
             : err.message
           : err instanceof Error
-          ? err.message
-          : String(err);
+            ? err.message
+            : String(err);
       errors.push({ url: target.url, reason });
       log(`media error ${target.url}: ${reason}`);
     }
-  }
+  };
+
+  // Run each host's queue in order with a fixed worker pool of
+  // `concurrency` workers. Within a host we pop targets off a shared
+  // queue; across hosts the runs proceed in parallel via Promise.all.
+  await Promise.all(
+    Array.from(byHost.entries()).map(async ([_host, queue]) => {
+      let cursor = 0;
+      const next = async (): Promise<void> => {
+        while (cursor < queue.length) {
+          const i = cursor++;
+          const target = queue[i];
+          if (target) await processOne(target);
+        }
+      };
+      const workers = Array.from({ length: Math.min(concurrency, queue.length) }, () => next());
+      await Promise.all(workers);
+    }),
+  );
 
   return {
     resolution: { byUrl, byAttachmentId },
     uploaded,
     skipped,
+    reused,
     errors,
   };
 }
@@ -213,6 +294,14 @@ function collectTargets(bundle: WpImportBundle, attachments: AttachmentIndex): M
   }
 
   return targets;
+}
+
+function parseHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "(invalid)";
+  }
 }
 
 function noop(): void {

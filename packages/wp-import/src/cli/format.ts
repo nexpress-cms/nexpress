@@ -172,7 +172,7 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
   if (report.media) {
     const m = report.media;
     lines.push(
-      `Media: ${m.uploaded} uploaded, ${m.skipped} skipped (dry run), ${m.errors.length} errors`,
+      `Media: ${m.uploaded} uploaded, ${m.reused} reused (hash match), ${m.skipped} skipped (dry run), ${m.errors.length} errors`,
     );
     for (const err of m.errors) {
       lines.push(`  ${err.url}: ${err.reason}`);
