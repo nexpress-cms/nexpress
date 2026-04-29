@@ -383,10 +383,19 @@ honest about what's missing rather than letting it drift.
   host; pg-boss adapter registers the cron rows on worker
   start. `boss.schedule()` via `getBoss()` still works as
   the escape hatch.
-- **Dead-letter queue inspection** — pg-boss archives
-  failed jobs after `keepUntil`; the admin doesn't expose
-  the archive separately from `failed`. Today they're
-  lumped in the Failed tab.
+- **Dead-letter queue inspection** — Phase 20.4. The admin
+  Jobs page has a dedicated **Archive** tab that reads from
+  `pgboss.archive` only, with a banner explaining that
+  retrying an archived row re-enqueues a fresh row in
+  `pgboss.job` (the archive itself is read-only). Other tabs
+  pin `?source=live` so a row that pg-boss has already
+  rolled out doesn't double up under both Failed (live) and
+  Archive.
+- **Worker health widget** — Phase 20.4. A small card above
+  the tabs surfaces `aliveCount / totalCount`, the most
+  recent heartbeat age, and the global queue-paused pill.
+  Refresh fires another `/api/admin/jobs/health` round trip
+  on demand.
 
 These aren't blockers — every shipped feature works without
 them. They're the obvious next steps if a real production

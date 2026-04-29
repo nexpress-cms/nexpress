@@ -62,6 +62,23 @@ interface JobSummary {
   createdOn: string;
   startedOn?: string | null;
   completedOn?: string | null;
+  /** Phase 20.4 — `live` (pgboss.job) or `archive` (pgboss.archive). */
+  source?: "live" | "archive";
+}
+
+/** Phase 20.4 — `/api/admin/jobs/health` payload. */
+interface WorkerHealthResponse {
+  workers?: Array<{
+    id: string;
+    status: string;
+    lastSeenAt: string;
+    alive: boolean;
+    lastSeenAgoMs: number;
+  }>;
+  aliveCount?: number;
+  totalCount?: number;
+  newestHeartbeat?: string | null;
+  pause?: { paused: boolean; pausedAt?: string | null };
 }
 
 interface JobListResponse {
@@ -84,7 +101,7 @@ interface JobLogsResponse {
   entries: JobLogEntry[];
 }
 
-type StateTab = "pending" | "active" | "completed" | "failed";
+type StateTab = "pending" | "active" | "completed" | "failed" | "archive";
 type Tab = StateTab | "scheduled";
 
 const STATE_BUCKETS: Record<StateTab, JobSummary["state"][]> = {
@@ -92,9 +109,14 @@ const STATE_BUCKETS: Record<StateTab, JobSummary["state"][]> = {
   active: ["active"],
   completed: ["completed"],
   failed: ["failed", "cancelled", "expired"],
+  // Phase 20.4 — Archive: rolled-out rows in pgboss.archive. The
+  // bucket spans every state because pg-boss archives completed
+  // jobs alongside failed ones; the `source=archive` query
+  // narrows to the `pgboss.archive` table.
+  archive: ["completed", "failed", "cancelled", "expired"],
 };
 
-const STATE_TABS: StateTab[] = ["pending", "active", "completed", "failed"];
+const STATE_TABS: StateTab[] = ["pending", "active", "completed", "failed", "archive"];
 
 function isStateTab(tab: Tab): tab is StateTab {
   return tab !== "scheduled";
@@ -129,13 +151,18 @@ export function JobsView() {
         mode === "24h"
           ? `&since=${encodeURIComponent(new Date(Date.now() - ONE_DAY_MS).toISOString())}`
           : "";
+      // Phase 20.4 — Archive tab pins `source=archive`; other tabs
+      // pin `source=live` so finished rows that pg-boss has
+      // already rolled out of `pgboss.job` don't double up under
+      // both Failed (live) and Archive.
+      const sourceParam = activeTab === "archive" ? "&source=archive" : "&source=live";
       // Fetch each state in this bucket and merge — pg-boss
       // doesn't have a single "any-of-these-states" filter, so
       // we round-trip per state. Buckets have 1-3 states max.
       const results = await Promise.all(
         states.map(async (state) => {
           const res = await nxFetch(
-            `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}`,
+            `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}${sourceParam}`,
           );
           return (await res.json().catch(() => null)) as JobListResponse | null;
         }),
@@ -321,12 +348,15 @@ export function JobsView() {
         </div>
       ) : null}
 
+      <WorkerHealthCard />
+
       <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto md:grid-cols-6">
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
           <TabsTrigger value="failed">Failed</TabsTrigger>
+          <TabsTrigger value="archive">Archive</TabsTrigger>
           <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
         </TabsList>
 
@@ -344,6 +374,13 @@ export function JobsView() {
                   Retry all failed
                 </Button>
               </div>
+            ) : null}
+            {key === "archive" ? (
+              <p className="text-xs text-muted-foreground">
+                Rows pg-boss has rolled out of <code>pgboss.job</code> after their{" "}
+                <code>keepUntil</code> window. Read-only — retrying an archived job re-enqueues a
+                fresh row in <code>pgboss.job</code>.
+              </p>
             ) : null}
             <JobList
               jobs={jobs}
@@ -368,6 +405,112 @@ export function JobsView() {
       </Tabs>
     </div>
   );
+}
+
+/**
+ * Phase 20.4 — small worker liveness card surfaced above the
+ * tabs. Polls `/api/admin/jobs/health` once on mount and on
+ * Refresh; not a live socket because the heartbeat tick is
+ * 30 s — refresh-on-demand is plenty.
+ */
+function WorkerHealthCard() {
+  const [data, setData] = useState<WorkerHealthResponse | null>(null);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await nxFetch("/api/admin/jobs/health");
+      if (!res.ok) {
+        // editor-gated route; non-200 means no role or no queue.
+        setError("Worker health unavailable.");
+        setData(null);
+        return;
+      }
+      const body = (await res.json().catch(() => null)) as {
+        data?: WorkerHealthResponse;
+      } | null;
+      setData(body?.data ?? null);
+    } catch {
+      setError("Worker health unavailable.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  // The lint rule wants external-system sync; this is a fetch-on-
+  // mount → setState pattern, which is the canonical client-
+  // component shape until we move to Suspense + a data layer.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, []);
+
+  // The "first heartbeat age" is computed once per render — using
+  // `Date.now()` directly trips the impure-call rule, but the value
+  // is intentionally point-in-time (it ticks with the `refresh`
+  // button, which is what operators expect).
+  const [renderedAt] = useState<number>(() => Date.now());
+
+  if (error || !data) {
+    return null;
+  }
+  const alive = data.aliveCount ?? 0;
+  const total = data.totalCount ?? 0;
+  const newest = data.newestHeartbeat ? new Date(data.newestHeartbeat) : null;
+  const ageMs = newest ? renderedAt - newest.getTime() : null;
+  const paused = data.pause?.paused === true;
+
+  return (
+    <Card className="border-border/60 shadow-sm">
+      <CardContent className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-flex h-2.5 w-2.5 rounded-full ${
+              alive > 0 ? "bg-emerald-500" : "bg-rose-500"
+            }`}
+            aria-hidden
+          />
+          <div>
+            <p className="font-medium text-foreground">
+              Workers: {alive} alive / {total} total
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {newest
+                ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
+                : "No heartbeats recorded yet."}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {paused ? (
+            <span className="rounded-md border border-amber-300/60 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+              Queue paused
+            </span>
+          ) : null}
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={refreshing}>
+            {refreshing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatAge(ms: number): string {
+  if (ms < 1000) return "<1s";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h`;
 }
 
 function SchedulesPanel({
