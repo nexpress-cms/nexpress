@@ -3,7 +3,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDb, getDocumentById } from "../collections/pipeline.js";
-import { nxComments, nxReactions } from "../db/schema/community.js";
+import { nxComments, nxMembers, nxReactions } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 
 import { getLogger } from "../observability/logger.js";
@@ -47,6 +47,15 @@ export interface NxCommentRow {
   hiddenReason: string | null;
   editedAt: Date | null;
   createdAt: Date;
+  /**
+   * Phase 21.11 — author's `nx_members.status` at read time.
+   * `listComments` joins against `nx_members` so callers can render
+   * a `(imported)` badge without a second round trip. Older callers
+   * that don't read this field stay unaffected — the column is
+   * nullable on the type because the underlying join is `LEFT JOIN`
+   * and `createComment` returns the row before the join is wired.
+   */
+  authorStatus?: string | null;
 }
 
 export interface NxCommentCreateInput {
@@ -425,13 +434,29 @@ export async function listComments(
         ? asc(nxComments.createdAt)
         : desc(nxComments.createdAt);
 
-  const rows = (await db
-    .select()
+  // Phase 21.11 — LEFT JOIN against `nx_members` so the response
+  // carries the author's status (most callers want to render an
+  // `(imported)` chip without a second round trip). The join is
+  // bounded by `limit` (≤200), so the cost is the page-size lookup
+  // rather than a table scan.
+  const joinedRows = (await db
+    .select({
+      comment: nxComments,
+      authorStatus: nxMembers.status,
+    })
     .from(nxComments)
+    .leftJoin(nxMembers, eq(nxComments.memberId, nxMembers.id))
     .where(where)
     .orderBy(orderBy)
     .limit(limit)
-    .offset(offset)) as NxCommentRow[];
+    .offset(offset)) as Array<{
+    comment: NxCommentRow;
+    authorStatus: string | null;
+  }>;
+  const rows: NxCommentRow[] = joinedRows.map(({ comment, authorStatus }) => ({
+    ...comment,
+    authorStatus,
+  }));
 
   const [totalRow] = (await db.select({ total: count() }).from(nxComments).where(where)) as Array<{
     total: number | string;

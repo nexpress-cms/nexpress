@@ -129,6 +129,21 @@ export interface ApplyOptions {
    * deps's contract.
    */
   audit?: AuditDeps;
+  /**
+   * Phase 21.11 — when supplied, the applier writes the original
+   * WP author display name (or login when no display name is set)
+   * to the named field on every imported document, so the byline
+   * is preserved even when `--no-create-authors` strips the
+   * `nx_users` link. Operators add a matching `text` field to
+   * their collection and declare the mapping here, e.g.:
+   *
+   *   { posts: "wpOriginalAuthor" }
+   *
+   * Collections without an entry skip the field write — the
+   * applier only touches columns the operator opted into, so
+   * existing schemas keep round-tripping unchanged.
+   */
+  preserveOriginalAuthor?: Record<string, string>;
 }
 
 export interface AuditDeps {
@@ -362,6 +377,10 @@ export async function applyBundle(
         continue;
       }
 
+      const originalAuthorField = options.preserveOriginalAuthor?.[collection];
+      const originalAuthorName = originalAuthorField
+        ? resolveOriginalAuthorName(record, bundle)
+        : undefined;
       const data = buildDocData(
         record,
         resolution,
@@ -370,6 +389,9 @@ export async function applyBundle(
         termIds,
         authorId,
         customMapping?.fieldOverrides,
+        originalAuthorField && originalAuthorName
+          ? { field: originalAuthorField, value: originalAuthorName }
+          : undefined,
       );
       const saved = await saveDocument(collection, null, data, options.actor, {
         status: mapStatusToFramework(record.status),
@@ -527,6 +549,7 @@ function buildDocData(
   termIds: { categoryIds: string[]; tagIds: string[] },
   authorId: string | undefined,
   fieldOverrides: Record<string, string> | undefined,
+  originalAuthor: { field: string; value: string } | undefined,
 ): Record<string, unknown> {
   const lexical = htmlToLexical(record.rawContent);
   const rewritten: LexicalRoot = rewriteLexicalMedia(lexical, resolution);
@@ -561,6 +584,13 @@ function buildDocData(
       }
     }
   }
+  // Phase 21.11 — preserve the original WP author byline. Runs after
+  // the field-overrides pass so a misconfigured override can't
+  // shadow it; runs before the publishedAt write so the timestamp
+  // logic stays last.
+  if (originalAuthor) {
+    data[originalAuthor.field] = originalAuthor.value;
+  }
   // <wp:post_date_gmt> arrives as "YYYY-MM-DD HH:mm:ss" without a
   // timezone marker. Treat as UTC (the GMT in the tag name is
   // explicit). publishedAt is required for the posts collection's
@@ -587,6 +617,19 @@ function hasAnyTerm(bundle: WpImportBundle): boolean {
 
 function hasAnyComment(bundle: WpImportBundle): boolean {
   return bundle.records.some((r) => r.comments.length > 0 && r.wpType !== "attachment");
+}
+
+/**
+ * Phase 21.11 — pick the most readable label for the original WP
+ * author. Prefers the channel-level <wp:author_display_name>
+ * because that's what ran on the site; falls back to the login
+ * (<dc:creator>) when no <wp:author> entry was emitted.
+ */
+function resolveOriginalAuthorName(record: WpImportRecord, bundle: WpImportBundle): string | undefined {
+  const login = record.wpAuthorLogin;
+  if (!login) return undefined;
+  const match = bundle.authors.find((a) => a.login === login);
+  return match?.displayName?.trim() || login;
 }
 
 /**

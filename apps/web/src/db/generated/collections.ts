@@ -27,6 +27,7 @@ export const postsTable = pgTable(
     content: jsonb("content").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     author: uuid("author").references(() => nxUsers.id),
+    wpOriginalAuthor: text("wp_original_author"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
