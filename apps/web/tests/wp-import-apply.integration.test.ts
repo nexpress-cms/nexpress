@@ -17,10 +17,12 @@ import {
 import {
   type NxAuthUser,
   findDocuments,
+  listAuditEvents,
   nxComments,
   nxMedia,
   nxMembers,
   nxUsers,
+  recordAuditEvent,
   renderCommentMarkdown,
   uploadMedia,
 } from "@nexpress/core";
@@ -384,6 +386,52 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
 
     const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
     expect(posts.docs[0]?.author).toBe(helloRow?.authorId);
+  });
+
+  it("21.10 — emits import.wp.applied audit events for every imported document", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-audit@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      audit: {
+        record: ({ action, targetType, targetId, payload }) =>
+          recordAuditEvent({
+            actor: { kind: "staff", userId: actor.id },
+            action,
+            targetType,
+            targetId,
+            payload,
+          }),
+      },
+    });
+
+    const events = await listAuditEvents({ action: "import.wp.applied", limit: 50 });
+    const slugs = events.events
+      .map((e) => (e.payload as Record<string, unknown>).slug)
+      .filter((s): s is string => typeof s === "string");
+    expect(slugs.sort()).toEqual(["about", "hello-world"]);
+
+    // Re-run lands "skipped" events for both posts.
+    await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      audit: {
+        record: ({ action, targetType, targetId, payload }) =>
+          recordAuditEvent({
+            actor: { kind: "staff", userId: actor.id },
+            action,
+            targetType,
+            targetId,
+            payload,
+          }),
+      },
+    });
+    const skipEvents = await listAuditEvents({ action: "import.wp.skipped", limit: 50 });
+    expect(skipEvents.events.length).toBeGreaterThanOrEqual(2);
   });
 
   it("21.7 — surfaces a notes line when comments exist but no comments deps were supplied", async () => {

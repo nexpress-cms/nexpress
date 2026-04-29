@@ -24,6 +24,7 @@ export {
   type ApplyOptions,
   type ApplyReport,
   type AppliedRow,
+  type AuditDeps,
   type CollectionMapping,
   type SkippedRow,
 } from "./apply/index.js";

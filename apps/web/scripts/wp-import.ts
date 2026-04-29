@@ -9,6 +9,7 @@ import {
   nxComments,
   nxMembers,
   nxUsers,
+  recordAuditEvent,
   renderCommentMarkdown,
   saveDocument,
   uploadMedia,
@@ -164,6 +165,16 @@ const code = await runCli(process.argv.slice(2), undefined, {
         renderBody: (source) => renderCommentMarkdown(source),
       },
       collectionMappings: ctx.collectionMappings,
+      audit: {
+        record: ({ action, targetType, targetId, payload }) =>
+          recordAuditEvent({
+            actor: { kind: "staff", userId: ctx.actor.id },
+            action,
+            targetType,
+            targetId,
+            payload,
+          }),
+      },
       authors: ctx.createAuthors
         ? {
             resolveAuthor: async ({ wpAuthorLogin, wpAuthor }) => {
