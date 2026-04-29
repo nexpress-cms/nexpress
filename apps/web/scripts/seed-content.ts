@@ -1,7 +1,8 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+// Must be the first import — populates process.env (NX_SECRET,
+// DATABASE_URL, …) before `nexpress.config.ts` evaluates and
+// validates them at module-load time.
+import "./_load-env.js";
 
-import { config as loadEnv } from "dotenv";
 import { eq, sql } from "drizzle-orm";
 
 import {
@@ -31,10 +32,6 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * to create one). The seeded content is authored by the first
  * admin so revision history and audit log have a sensible owner.
  */
-
-const here = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(here, "../../../.env") });
-loadEnv({ path: resolve(here, "../.env"), override: false });
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
