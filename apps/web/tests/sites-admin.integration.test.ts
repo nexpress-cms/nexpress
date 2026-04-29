@@ -272,6 +272,175 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(body.usage?.total).toBeGreaterThanOrEqual(1);
   });
 
+  it("Issue #220 — usage summary includes plugin storage + community tables", async () => {
+    const admin = await seedSuperAdmin();
+    const {
+      createSite,
+      getDb,
+      nxSettings,
+      nxNotifications,
+      nxAuditEvents,
+      nxPluginStorage,
+      hashPassword,
+      nxMembers,
+    } = await import("@nexpress/core");
+    const created = await createSite({
+      id: "usage-220",
+      name: "Usage 220",
+      hostname: "usage220.example.com",
+    });
+    const db = getDb();
+    // One settings row + one notification + one audit event +
+    // one plugin storage row, all on the new site.
+    const password = await hashPassword("password-12345");
+    const [member] = (await db
+      .insert(nxMembers)
+      .values({
+        email: "u220@example.com",
+        password,
+        handle: "u220",
+        displayName: "U",
+        emailVerified: true,
+        status: "active",
+      })
+      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+    await db.insert(nxSettings).values({
+      siteId: created.id,
+      key: "site",
+      value: { name: "Usage 220" },
+      updatedAt: new Date(),
+    });
+    await db.insert(nxNotifications).values({
+      memberId: member!.id,
+      kind: "system",
+      payload: {},
+      siteId: created.id,
+    });
+    await db.insert(nxAuditEvents).values({
+      actorKind: "system",
+      action: "test.usage",
+      payload: {},
+      siteId: created.id,
+    });
+    await db.insert(nxPluginStorage).values({
+      pluginId: "phase220-test",
+      key: "k",
+      value: {},
+      siteId: created.id,
+    });
+
+    const { GET } = await import("@/app/api/admin/sites/[id]/usage/route");
+    const req = buildRequest(`/api/admin/sites/${created.id}/usage`, {
+      session: admin,
+    });
+    const res = await GET(req, {
+      params: Promise.resolve({ id: created.id }),
+    });
+    const { status, body } = await readJson<{
+      usage?: {
+        settings: number;
+        notifications: number;
+        auditEvents: number;
+        pluginStorage: number;
+        total: number;
+      };
+    }>(res);
+    expect(status).toBe(200);
+    expect(body.usage?.settings).toBe(1);
+    expect(body.usage?.notifications).toBe(1);
+    expect(body.usage?.auditEvents).toBe(1);
+    expect(body.usage?.pluginStorage).toBe(1);
+    expect(body.usage?.total).toBeGreaterThanOrEqual(4);
+  });
+
+  it("Issue #220 — DELETE ?cascade=true clears community + plugin storage rows too", async () => {
+    const admin = await seedSuperAdmin();
+    const {
+      createSite,
+      getDb,
+      nxSettings,
+      nxNotifications,
+      nxAuditEvents,
+      nxPluginStorage,
+      hashPassword,
+      nxMembers,
+      getSiteById,
+    } = await import("@nexpress/core");
+    const created = await createSite({
+      id: "cascade-220",
+      name: "Cascade 220",
+      hostname: "cascade220.example.com",
+    });
+    const db = getDb();
+    const password = await hashPassword("password-12345");
+    const [member] = (await db
+      .insert(nxMembers)
+      .values({
+        email: "c220@example.com",
+        password,
+        handle: "c220",
+        displayName: "C",
+        emailVerified: true,
+        status: "active",
+      })
+      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+    await db.insert(nxSettings).values({
+      siteId: created.id,
+      key: "site",
+      value: {},
+      updatedAt: new Date(),
+    });
+    await db.insert(nxNotifications).values({
+      memberId: member!.id,
+      kind: "system",
+      payload: {},
+      siteId: created.id,
+    });
+    await db.insert(nxAuditEvents).values({
+      actorKind: "system",
+      action: "test.cascade",
+      payload: {},
+      siteId: created.id,
+    });
+    await db.insert(nxPluginStorage).values({
+      pluginId: "phase220-cascade",
+      key: "k",
+      value: {},
+      siteId: created.id,
+    });
+
+    const { DELETE } = await import("@/app/api/admin/sites/[id]/route");
+    const req = buildRequest(`/api/admin/sites/${created.id}?cascade=true`, {
+      session: admin,
+      method: "DELETE",
+    });
+    const res = await DELETE(req, {
+      params: Promise.resolve({ id: created.id }),
+    });
+    const { status } = await readJson(res);
+    expect(status).toBe(200);
+    expect(await getSiteById(created.id)).toBeNull();
+
+    // Confirm orphan rows were cleaned up.
+    const { eq, count, sql } = await import("drizzle-orm");
+    void sql;
+    const [{ value: notifLeft }] = (await db
+      .select({ value: count() })
+      .from(nxNotifications)
+      .where(eq(nxNotifications.siteId, created.id))) as Array<{ value: number }>;
+    const [{ value: auditLeft }] = (await db
+      .select({ value: count() })
+      .from(nxAuditEvents)
+      .where(eq(nxAuditEvents.siteId, created.id))) as Array<{ value: number }>;
+    const [{ value: pluginLeft }] = (await db
+      .select({ value: count() })
+      .from(nxPluginStorage)
+      .where(eq(nxPluginStorage.siteId, created.id))) as Array<{ value: number }>;
+    expect(notifLeft).toBe(0);
+    expect(auditLeft).toBe(0);
+    expect(pluginLeft).toBe(0);
+  });
+
   it("DELETE refuses when site has attached rows and no cascade flag", async () => {
     const admin = await seedSuperAdmin();
     const { createSite, getDb, nxSettings } = await import("@nexpress/core");

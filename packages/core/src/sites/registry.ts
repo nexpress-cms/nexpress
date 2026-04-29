@@ -1,4 +1,4 @@
-import { eq, asc, sql } from "drizzle-orm";
+import { and, eq, asc, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import {
@@ -8,7 +8,19 @@ import {
 } from "../collections/registry.js";
 import { getDb } from "../collections/pipeline.js";
 import {
+  nxAuditEvents,
+  nxBans,
+  nxComments,
+  nxFollows,
+  nxMemberMutes,
+  nxMemberRoles,
+  nxNotifications,
+  nxReactions,
+  nxReports,
+} from "../db/schema/community.js";
+import {
   nxNavigation,
+  nxPluginStorage,
   nxSettings,
   nxSiteMemberships,
   nxSites,
@@ -234,13 +246,21 @@ export async function updateSite(
  * Includes:
  *   - per-collection row counts (codegen'd `nx_c_*` tables)
  *   - system tables that carry `site_id`: settings,
- *     navigation, memberships, string overrides
+ *     navigation, memberships, string overrides, plugin
+ *     storage (Issue #220)
+ *   - community tables that carry `site_id`: comments,
+ *     reactions, follows, mutes, notifications, reports,
+ *     audit events, bans, member roles (Issue #220)
  *
  * Does NOT include things that aren't site-scoped:
  *   - users (`nx_users` is global)
+ *   - members (`nx_members` is global; per-site enrollment
+ *     happens through the site-scoped `bans` / `member_roles`
+ *     tables which DO appear in usage)
  *   - media (`nx_media` is global)
- *   - audit events / plugin storage / community rows (the
- *     audit notes these as future work)
+ *   - audit events with `site_id IS NULL` — those are
+ *     intentional super-admin / background-job events that
+ *     don't belong to any tenant.
  */
 export interface NxSiteUsage {
   collections: Record<string, number>;
@@ -248,6 +268,17 @@ export interface NxSiteUsage {
   navigation: number;
   memberships: number;
   stringOverrides: number;
+  /** Issue #220 — newly-included site-scoped tables. */
+  pluginStorage: number;
+  comments: number;
+  reactions: number;
+  follows: number;
+  mutes: number;
+  notifications: number;
+  reports: number;
+  auditEvents: number;
+  bans: number;
+  memberRoles: number;
   /** Sum of every count above. Convenience for "is anything here?" checks. */
   total: number;
 }
@@ -272,27 +303,53 @@ export async function getSiteUsageSummary(id: string): Promise<NxSiteUsage> {
     }
   }
 
-  const [settingsRow] = (await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(nxSettings)
-    .where(eq(nxSettings.siteId, id))) as Array<{ count: number }>;
-  const [navigationRow] = (await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(nxNavigation)
-    .where(eq(nxNavigation.siteId, id))) as Array<{ count: number }>;
-  const [membershipsRow] = (await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(nxSiteMemberships)
-    .where(eq(nxSiteMemberships.siteId, id))) as Array<{ count: number }>;
-  const [overridesRow] = (await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(nxStringOverrides)
-    .where(eq(nxStringOverrides.siteId, id))) as Array<{ count: number }>;
+  const countWhere = async (
+    table: PgTable,
+    where: ReturnType<typeof eq> | ReturnType<typeof and>,
+  ): Promise<number> => {
+    const [row] = (await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(table)
+      .where(where)) as Array<{ count: number }>;
+    return row?.count ?? 0;
+  };
 
-  const settings = settingsRow?.count ?? 0;
-  const navigation = navigationRow?.count ?? 0;
-  const memberships = membershipsRow?.count ?? 0;
-  const stringOverrides = overridesRow?.count ?? 0;
+  const settings = await countWhere(nxSettings, eq(nxSettings.siteId, id));
+  const navigation = await countWhere(nxNavigation, eq(nxNavigation.siteId, id));
+  const memberships = await countWhere(
+    nxSiteMemberships,
+    eq(nxSiteMemberships.siteId, id),
+  );
+  const stringOverrides = await countWhere(
+    nxStringOverrides,
+    eq(nxStringOverrides.siteId, id),
+  );
+  // Issue #220 — include the tables that landed after Phase 15.9
+  // shipped. Without them a site looks "empty" in the admin
+  // even though it owns thousands of community rows; deleting
+  // it would silently leave them orphaned.
+  const pluginStorage = await countWhere(
+    nxPluginStorage,
+    eq(nxPluginStorage.siteId, id),
+  );
+  const comments = await countWhere(nxComments, eq(nxComments.siteId, id));
+  const reactions = await countWhere(nxReactions, eq(nxReactions.siteId, id));
+  const follows = await countWhere(nxFollows, eq(nxFollows.siteId, id));
+  const mutes = await countWhere(nxMemberMutes, eq(nxMemberMutes.siteId, id));
+  const notifications = await countWhere(
+    nxNotifications,
+    eq(nxNotifications.siteId, id),
+  );
+  const reports = await countWhere(nxReports, eq(nxReports.siteId, id));
+  // Audit events with `site_id IS NULL` are the cross-tenant /
+  // background-job rows; we deliberately don't count them here.
+  const auditEvents = await countWhere(
+    nxAuditEvents,
+    eq(nxAuditEvents.siteId, id),
+  );
+  const bans = await countWhere(nxBans, eq(nxBans.siteId, id));
+  const memberRoles = await countWhere(nxMemberRoles, eq(nxMemberRoles.siteId, id));
+
   const collectionsTotal = Object.values(collections).reduce(
     (sum, n) => sum + n,
     0,
@@ -304,8 +361,32 @@ export async function getSiteUsageSummary(id: string): Promise<NxSiteUsage> {
     navigation,
     memberships,
     stringOverrides,
+    pluginStorage,
+    comments,
+    reactions,
+    follows,
+    mutes,
+    notifications,
+    reports,
+    auditEvents,
+    bans,
+    memberRoles,
     total:
-      collectionsTotal + settings + navigation + memberships + stringOverrides,
+      collectionsTotal +
+      settings +
+      navigation +
+      memberships +
+      stringOverrides +
+      pluginStorage +
+      comments +
+      reactions +
+      follows +
+      mutes +
+      notifications +
+      reports +
+      auditEvents +
+      bans +
+      memberRoles,
   };
 }
 
@@ -370,11 +451,13 @@ export async function deleteSite(
   }
 
   if (options?.cascade) {
-    // Order: collection content first, then system tables, then
-    // the site row itself. Collection deletes go through the
-    // raw table (no hook firing) — site teardown isn't a
-    // pipeline write and there's no doc-level afterDelete hook
-    // expected here.
+    // Order: collection content first, then community rows that
+    // reference comments / members polymorphically (so we don't
+    // leave orphan reactions pointing at deleted comments mid-
+    // sweep), then community parent tables, then system tables.
+    // Collection deletes go through the raw table (no hook
+    // firing) — site teardown isn't a pipeline write and there's
+    // no doc-level afterDelete hook expected here.
     for (const slug of Object.keys(usage.collections)) {
       try {
         const table = getCollectionTable(slug) as PgTable;
@@ -386,9 +469,27 @@ export async function deleteSite(
         // unregistered between the usage scan and the delete.
       }
     }
+    // Issue #220 — community rows. Order:
+    //   reactions/follows/mutes/notifications/reports/audit/bans/
+    //   member_roles → comments → string_overrides/navigation/
+    //   settings/plugin_storage/memberships → nx_sites.
+    // Reactions reference comment ids polymorphically, so they
+    // go before comments to keep the DB clean even though there's
+    // no FK to enforce ordering.
+    await db.delete(nxReactions).where(eq(nxReactions.siteId, id));
+    await db.delete(nxFollows).where(eq(nxFollows.siteId, id));
+    await db.delete(nxMemberMutes).where(eq(nxMemberMutes.siteId, id));
+    await db.delete(nxNotifications).where(eq(nxNotifications.siteId, id));
+    await db.delete(nxReports).where(eq(nxReports.siteId, id));
+    await db.delete(nxAuditEvents).where(eq(nxAuditEvents.siteId, id));
+    await db.delete(nxBans).where(eq(nxBans.siteId, id));
+    await db.delete(nxMemberRoles).where(eq(nxMemberRoles.siteId, id));
+    await db.delete(nxComments).where(eq(nxComments.siteId, id));
+
     await db.delete(nxStringOverrides).where(eq(nxStringOverrides.siteId, id));
     await db.delete(nxNavigation).where(eq(nxNavigation.siteId, id));
     await db.delete(nxSettings).where(eq(nxSettings.siteId, id));
+    await db.delete(nxPluginStorage).where(eq(nxPluginStorage.siteId, id));
     await db.delete(nxSiteMemberships).where(eq(nxSiteMemberships.siteId, id));
   }
 
