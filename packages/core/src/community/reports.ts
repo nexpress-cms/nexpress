@@ -5,7 +5,7 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import { getCollectionRegistration, getCollectionTable } from "../collections/registry.js";
 import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -83,12 +83,21 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
   // the moderation queue with reports against UUIDs that point at
   // nothing — and the audit log captures the phantom target id too,
   // making forensic review noisy. (#52)
-  await assertReportTargetExists(input.targetType, targetId);
+  //
+  // Issue #215 — `assertReportTargetExists` now also returns the
+  // target's canonical site so we can reject cross-tenant reports.
+  // A member on site A who guessed at a comment id on site B
+  // shouldn't be able to file a report under either tenant — this
+  // path stays single-tenant.
+  const target = await assertReportTargetExists(input.targetType, targetId);
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Phase 18 — file the report under the current tenant so the
   // mod queue surfaces it on the right site.
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  if (target.siteId !== null && target.siteId !== siteId) {
+    throw new NxForbiddenError("report", "cross-site");
+  }
   const [row] = (await db
     .insert(nxReports)
     .values({
@@ -252,16 +261,26 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
  *     pass that through as `targetType`. Falls back to a
  *     clear "no such collection" error when unregistered.
  */
-async function assertReportTargetExists(targetType: string, targetId: string): Promise<void> {
+/**
+ * Issue #215 — verify the target exists AND surface its canonical
+ * site id so the caller can reject cross-tenant report attempts.
+ * Returns the target's `siteId` (or `null` for `member` targets,
+ * which aren't site-scoped today). The site comparison happens at
+ * the call site so the error message stays specific to "reports".
+ */
+async function assertReportTargetExists(
+  targetType: string,
+  targetId: string,
+): Promise<{ siteId: string | null }> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   if (targetType === "comment" || targetType === "reply") {
     const [row] = (await db
-      .select({ id: nxComments.id })
+      .select({ id: nxComments.id, siteId: nxComments.siteId })
       .from(nxComments)
       .where(eq(nxComments.id, targetId))
-      .limit(1)) as Array<{ id: string }>;
+      .limit(1)) as Array<{ id: string; siteId: string }>;
     if (!row) throw new NxNotFoundError(targetType, targetId);
-    return;
+    return { siteId: row.siteId };
   }
   if (targetType === "member") {
     const [row] = (await db
@@ -270,7 +289,9 @@ async function assertReportTargetExists(targetType: string, targetId: string): P
       .where(eq(nxMembers.id, targetId))
       .limit(1)) as Array<{ id: string }>;
     if (!row) throw new NxNotFoundError("member", targetId);
-    return;
+    // Members aren't site-scoped (one nx_members row can have
+    // memberships across sites); skip the cross-site check.
+    return { siteId: null };
   }
   if (targetType === "thread") {
     // Resolve to a registered collection that opts in to
@@ -296,13 +317,14 @@ async function assertReportTargetExists(targetType: string, targetId: string): P
     }
     const table = getCollectionTable(slug) as PgTable;
     const idCol = (table as unknown as Record<string, unknown>).id;
+    const siteCol = (table as unknown as Record<string, unknown>).siteId;
     const [row] = (await db
-      .select({ id: idCol as never })
+      .select({ id: idCol as never, siteId: siteCol as never })
       .from(table)
       .where(eq(idCol as never, targetId))
-      .limit(1)) as Array<{ id: string }>;
+      .limit(1)) as Array<{ id: string; siteId: string | null }>;
     if (!row) throw new NxNotFoundError("thread", targetId);
-    return;
+    return { siteId: row.siteId ?? null };
   }
   throw new NxValidationError("Invalid input", [
     {
