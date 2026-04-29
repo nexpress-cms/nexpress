@@ -17,3 +17,5 @@ export type {
   WpSiteInfo,
   WpTerm,
 } from "./parse/types.js";
+export { runCli, type CliIo } from "./cli/index.js";
+export { formatSummary } from "./cli/format.js";
