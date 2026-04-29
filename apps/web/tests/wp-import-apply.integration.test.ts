@@ -18,6 +18,7 @@ import {
   type NxAuthUser,
   findDocuments,
   listAuditEvents,
+  listComments,
   nxComments,
   nxMedia,
   nxMembers,
@@ -443,6 +444,87 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     const report = await applyBundle(bundle, { actor, dryRun: false });
     expect(report.comments).toBeNull();
     expect(report.notes.some((n) => n.includes("no comments deps"))).toBe(true);
+  });
+
+  it("21.11 — preserves the original WP author display name on `wpOriginalAuthor`", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-original-author@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    // Run with no authors resolver — author column stays empty,
+    // but the byline must survive on the dedicated text field.
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      preserveOriginalAuthor: { posts: "wpOriginalAuthor" },
+    });
+    expect(report.errors).toEqual([]);
+
+    const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const post = posts.docs[0]!;
+    // The fixture's <wp:author_display_name> is "Alice Author".
+    expect(post.wpOriginalAuthor).toBe("Alice Author");
+    expect(post.author).toBeFalsy();
+  });
+
+  it("21.11 — listComments returns authorStatus so the public site can render a badge", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-imported-badge@example.com", role: "admin" });
+    const actor = await asActor(session);
+    const db = await getTestDb();
+
+    await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      comments: {
+        ensureImportedMember: async ({ handle, email, displayName }) => {
+          const [existing] = await db
+            .select({ id: nxMembers.id })
+            .from(nxMembers)
+            .where(eq(nxMembers.handle, handle))
+            .limit(1);
+          if (existing) return { id: existing.id };
+          const [inserted] = await db
+            .insert(nxMembers)
+            .values({
+              handle,
+              email: email ?? `${handle}@imported.invalid`,
+              displayName,
+              status: "imported",
+              emailVerified: false,
+            })
+            .returning({ id: nxMembers.id });
+          return { id: inserted!.id };
+        },
+        insertComment: async (input) => {
+          const [row] = await db
+            .insert(nxComments)
+            .values({
+              targetType: input.targetType,
+              targetId: input.targetId,
+              parentId: input.parentId,
+              memberId: input.memberId,
+              bodyMd: input.bodyMd,
+              bodyHtml: input.bodyHtml,
+              status: "visible",
+              createdAt: input.createdAt,
+            })
+            .returning({ id: nxComments.id });
+          return { id: row!.id };
+        },
+        renderBody: (s) => renderCommentMarkdown(s),
+      },
+    });
+
+    const posts = await findDocuments("posts", { where: { slug: "hello-world" }, limit: 1 }, actor);
+    const postId = posts.docs[0]!.id as string;
+    const result = await listComments("posts", postId, { order: "oldest" });
+    expect(result.comments).toHaveLength(2);
+    for (const row of result.comments) {
+      expect(row.authorStatus).toBe("imported");
+    }
   });
 
   it("21.5 — leaves Lexical untouched when a media URL fails to download", async () => {

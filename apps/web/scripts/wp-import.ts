@@ -165,6 +165,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
         renderBody: (source) => renderCommentMarkdown(source),
       },
       collectionMappings: ctx.collectionMappings,
+      preserveOriginalAuthor: { posts: "wpOriginalAuthor" },
       audit: {
         record: ({ action, targetType, targetId, payload }) =>
           recordAuditEvent({

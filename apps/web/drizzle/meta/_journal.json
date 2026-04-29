@@ -197,6 +197,13 @@
       "when": 1777429063553,
       "tag": "0027_clean_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1777432994712,
+      "tag": "0028_powerful_talon",
+      "breakpoints": true
     }
   ]
 }
