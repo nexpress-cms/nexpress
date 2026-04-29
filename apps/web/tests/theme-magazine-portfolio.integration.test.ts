@@ -104,4 +104,34 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     expect(magazineCss).not.toContain(".nx-portfolio");
     expect(portfolioCss).not.toContain(".nx-magazine");
   });
+
+  it("example themes use logical (RTL-safe) properties for directional layout", async () => {
+    // Sprint S RTL audit follow-up — physical-direction CSS
+    // (`float: left/right`, `margin-left/right`, etc.) breaks
+    // RTL locales because the leading edge flips. The default
+    // theme already uses logical equivalents (`float: inline-*`,
+    // `margin-inline-*`); this test pins the same expectation
+    // on the example themes so a future hand-edit can't
+    // regress to physical properties without the suite catching
+    // it.
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
+    const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    const magazineCss = magazineTheme.impl.css ?? "";
+    const portfolioCss = portfolioTheme.impl.css ?? "";
+
+    for (const css of [magazineCss, portfolioCss]) {
+      // Disallow `float: left|right` (use `float: inline-start|end`).
+      expect(css).not.toMatch(/float:\s*(left|right)\b/);
+      // Disallow physical margin/padding sides; logical
+      // equivalents (`margin-inline-start`, `padding-inline-end`,
+      // etc.) are required.
+      expect(css).not.toMatch(/\bmargin-(left|right)\s*:/);
+      expect(css).not.toMatch(/\bpadding-(left|right)\s*:/);
+    }
+
+    // Magazine specifically depends on a leading-edge drop cap;
+    // assert the logical-property migration is present so a
+    // refactor that strips the comment can't silently revert.
+    expect(magazineCss).toContain("float: inline-start");
+  });
 });
