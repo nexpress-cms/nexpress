@@ -3,7 +3,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxReactions } from "../db/schema/community.js";
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -86,6 +86,15 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
   // targets are wired; the lookup is a single PK select. Falls
   // back to the request resolver / default site so legacy
   // single-tenant rows still get a valid value.
+  //
+  // Issue #215 — also enforce that the request's tenant matches
+  // the target's. A member acting on site A can't react to
+  // site B's content just by passing B's UUID; without this,
+  // the reaction lands under B (correct grouping) but still
+  // fans out a notification through A's request context, and
+  // we expose no UI affordance that would justify the cross-
+  // tenant call. Reject outright.
+  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   let targetSiteId: string;
   if (input.targetType === "comment") {
     const [t] = (await db
@@ -93,9 +102,12 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
       .from(nxComments)
       .where(eq(nxComments.id, input.targetId))
       .limit(1)) as Array<{ siteId: string }>;
-    targetSiteId = t?.siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    targetSiteId = t?.siteId ?? requestSiteId;
   } else {
-    targetSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    targetSiteId = requestSiteId;
+  }
+  if (targetSiteId !== requestSiteId) {
+    throw new NxForbiddenError("reaction", "cross-site");
   }
 
   // Idempotent insert via ON CONFLICT. The previous select-then-insert

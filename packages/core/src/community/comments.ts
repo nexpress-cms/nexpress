@@ -121,6 +121,21 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
     throw new NxNotFoundError(input.targetType, input.targetId);
   }
 
+  // Issue #215 — reject cross-tenant writes. A member on site A
+  // shouldn't be able to comment on site B's content just by
+  // passing B's document UUID. Compare the target doc's
+  // canonical `siteId` to the request resolver's site; bail
+  // early before the locked / parent / spam / profanity passes
+  // run so we don't log adapter calls on rejected requests.
+  const requestSiteId = await getCurrentSiteId();
+  if (
+    requestSiteId &&
+    typeof targetDoc.siteId === "string" &&
+    targetDoc.siteId !== requestSiteId
+  ) {
+    throw new NxForbiddenError("comment", "cross-site");
+  }
+
   // Forum-style "locked" guard: collections that opted into a `locked`
   // checkbox on their schema (e.g. `defineDiscussionsCollection`) flip
   // it to true to prevent new comments. The flag lives at the document
