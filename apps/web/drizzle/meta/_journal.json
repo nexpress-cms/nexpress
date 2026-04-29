@@ -183,6 +183,13 @@
       "when": 1777417783700,
       "tag": "0025_famous_ronan",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777428505211,
+      "tag": "0026_even_the_renegades",
+      "breakpoints": true
     }
   ]
 }

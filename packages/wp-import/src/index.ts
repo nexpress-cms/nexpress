@@ -31,6 +31,14 @@ export {
   type AttachmentEntry,
   type AttachmentIndex,
 } from "./apply/attachment-index.js";
+export {
+  pickPostTermIds,
+  resolveTaxonomies,
+  termCacheKey,
+  type TaxonomyKey,
+  type TaxonomyResolution,
+  type TaxonomyResolver,
+} from "./apply/taxonomies.js";
 export { htmlToLexical, type LexicalRoot } from "./convert/html-to-lexical.js";
 export {
   downloadMedia,

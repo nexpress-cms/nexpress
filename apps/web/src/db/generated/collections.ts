@@ -42,6 +42,38 @@ export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
   author: one(nxUsers, { fields: [postsTable.author], references: [nxUsers.id] }),
 }));
 
+export const postsCategoriesTable = pgTable(
+  "nx_c_posts__categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    postsId: uuid("posts_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id").notNull().references(() => taxonomiesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [index("nx_c_posts__categories_posts_id_idx").on(table.postsId), uniqueIndex("nx_c_posts__categories_parent_target_uidx").on(table.postsId, table.targetId)],
+);
+
+export const postsCategoriesTableRelations = relations(postsCategoriesTable, ({ many, one }) => ({
+  parent: one(postsTable, { fields: [postsCategoriesTable.postsId], references: [postsTable.id] }),
+  target: one(taxonomiesTable, { fields: [postsCategoriesTable.targetId], references: [taxonomiesTable.id] }),
+}));
+
+export const postsTagsTable = pgTable(
+  "nx_c_posts__tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    postsId: uuid("posts_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id").notNull().references(() => taxonomiesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [index("nx_c_posts__tags_posts_id_idx").on(table.postsId), uniqueIndex("nx_c_posts__tags_parent_target_uidx").on(table.postsId, table.targetId)],
+);
+
+export const postsTagsTableRelations = relations(postsTagsTable, ({ many, one }) => ({
+  parent: one(postsTable, { fields: [postsTagsTable.postsId], references: [postsTable.id] }),
+  target: one(taxonomiesTable, { fields: [postsTagsTable.targetId], references: [taxonomiesTable.id] }),
+}));
+
 export const pagesTable = pgTable(
   "nx_c_pages",
   {
@@ -92,6 +124,30 @@ export const localizedPagesTable = pgTable(
 export const localizedPagesTableRelations = relations(localizedPagesTable, ({ many, one }) => ({
   createdByUser: one(nxUsers, { fields: [localizedPagesTable.createdBy], references: [nxUsers.id] }),
   updatedByUser: one(nxUsers, { fields: [localizedPagesTable.updatedBy], references: [nxUsers.id] }),
+}));
+
+export const taxonomiesTable = pgTable(
+  "nx_c_taxonomies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    name: text("name").notNull(),
+    taxonomy: text("taxonomy").notNull(),
+    description: text("description"),
+    slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [index("nx_c_taxonomies_status_idx").on(table.status), uniqueIndex("nx_c_taxonomies_site_slug_idx").on(table.siteId, table.slug), index("nx_c_taxonomies_site_idx").on(table.siteId)],
+);
+
+export const taxonomiesTableRelations = relations(taxonomiesTable, ({ many, one }) => ({
+  createdByUser: one(nxUsers, { fields: [taxonomiesTable.createdBy], references: [nxUsers.id] }),
+  updatedByUser: one(nxUsers, { fields: [taxonomiesTable.updatedBy], references: [nxUsers.id] }),
 }));
 
 export const discussionsTable = pgTable(

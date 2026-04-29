@@ -181,6 +181,22 @@ export function formatApplyReport(report: ApplyReport, args: { dryRun: boolean }
     lines.push("Media: pipeline not run (no upload hook supplied)");
   }
 
+  lines.push("");
+  if (report.taxonomies) {
+    const t = report.taxonomies;
+    lines.push(
+      `Taxonomies: ${t.termIds.size} resolved, ${t.skipped.length} skipped, ${t.errors.length} errors`,
+    );
+    for (const err of t.errors) {
+      lines.push(`  ${err.key.taxonomy}/${err.key.slug}: ${err.reason}`);
+    }
+    for (const skip of t.skipped) {
+      lines.push(`  skipped ${skip.taxonomy}/${skip.slug}`);
+    }
+  } else {
+    lines.push("Taxonomies: resolver not supplied — terms dropped");
+  }
+
   if (report.notes.length > 0) {
     lines.push("");
     lines.push("Notes");

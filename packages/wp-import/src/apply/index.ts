@@ -11,6 +11,12 @@ import {
 import { rewriteLexicalMedia } from "../media/rewrite.js";
 import { type WpImportBundle, type WpImportRecord, type WpPostStatus } from "../parse/types.js";
 import { type AttachmentIndex, buildAttachmentIndex } from "./attachment-index.js";
+import {
+  pickPostTermIds,
+  resolveTaxonomies,
+  type TaxonomyResolution,
+  type TaxonomyResolver,
+} from "./taxonomies.js";
 
 /**
  * Phase 21.4 — write posts and pages from a parsed bundle into
@@ -24,9 +30,18 @@ import { type AttachmentIndex, buildAttachmentIndex } from "./attachment-index.j
  * runs end-to-end, but image refs render as raw source-URL `<img>`
  * tags (the pre-21.5 behavior).
  *
- * Out of scope here: author wiring (21.8), tags/categories (21.6),
- * comments (21.7), custom post types (21.9). Records of those types
- * are still skipped with a one-line note in the report.
+ * Phase 21.6 layer: when a `taxonomies` resolver is supplied, the
+ * applier resolves every WP `<category>` / `<post_tag>` term once
+ * through the resolver and stamps the resulting NexPress term ids
+ * onto each post's `categories` / `tags` relationship fields. The
+ * reference app's shim points the resolver at a `taxonomies`
+ * collection; user projects with their own taxonomy storage swap
+ * in their own resolver. Without a resolver the applier records a
+ * single notes line and posts go in without their terms wired.
+ *
+ * Out of scope here: author wiring (21.8), comments (21.7),
+ * custom post types (21.9). Records of those types are still
+ * skipped with a one-line note in the report.
  */
 
 export interface ApplyOptions {
@@ -42,6 +57,13 @@ export interface ApplyOptions {
    * leaves Lexical image src as the original WP URL).
    */
   media?: MediaPipelineDeps;
+  /**
+   * Phase 21.6 — when supplied, the applier resolves every WP
+   * category/tag through this hook and stamps the resulting ids
+   * onto post `categories` / `tags` fields. Omit to skip term
+   * wiring (the report surfaces a one-line note about it).
+   */
+  taxonomies?: TaxonomyResolver;
 }
 
 export interface AppliedRow {
@@ -52,6 +74,10 @@ export interface AppliedRow {
   title: string;
   /** Set when the post had a featured image and the applier wired `coverImage`. */
   coverImageId?: string;
+  /** Phase 21.6 — taxonomy ids attached to this row's `categories` field. */
+  categoryIds?: string[];
+  /** Phase 21.6 — taxonomy ids attached to this row's `tags` field. */
+  tagIds?: string[];
 }
 
 export interface SkippedRow {
@@ -77,6 +103,12 @@ export interface ApplyReport {
    * cleanly with a "media pipeline not run" line.
    */
   media: MediaPipelineReport | null;
+  /**
+   * Phase 21.6 — resolved-taxonomy summary. `null` when the caller
+   * didn't supply a `taxonomies` resolver. Useful for audits and
+   * for the CLI to render the term-resolution outcome.
+   */
+  taxonomies: TaxonomyResolution | null;
   /**
    * One-time observations the operator should know about — drops
    * we made silently per-record but want surfaced once aggregated.
@@ -104,6 +136,11 @@ export async function applyBundle(
   if (options.media) {
     media = await runMediaPipeline(bundle, attachments, options.media, { dryRun, log });
     resolution = media.resolution;
+  }
+
+  let taxonomies: TaxonomyResolution | null = null;
+  if (options.taxonomies && !dryRun) {
+    taxonomies = await resolveTaxonomies(bundle.records, bundle.terms, options.taxonomies);
   }
 
   const applied: AppliedRow[] = [];
@@ -180,6 +217,11 @@ export async function applyBundle(
         }
       }
 
+      const termIds =
+        collection === "posts" && taxonomies
+          ? pickPostTermIds(record, taxonomies)
+          : { categoryIds: [], tagIds: [] };
+
       if (dryRun) {
         applied.push({
           wpId: record.wpId,
@@ -188,12 +230,14 @@ export async function applyBundle(
           slug: record.slug,
           title: record.title,
           coverImageId,
+          categoryIds: termIds.categoryIds,
+          tagIds: termIds.tagIds,
         });
         log(`plan  ${collection}/${record.slug}`);
         continue;
       }
 
-      const data = buildDocData(record, resolution, collection, coverImageId);
+      const data = buildDocData(record, resolution, collection, coverImageId, termIds);
       await saveDocument(collection, null, data, options.actor, {
         status: mapStatusToFramework(record.status),
       });
@@ -204,6 +248,8 @@ export async function applyBundle(
         slug: record.slug,
         title: record.title,
         coverImageId,
+        categoryIds: termIds.categoryIds,
+        tagIds: termIds.tagIds,
       });
       log(`write ${collection}/${record.slug}`);
     } catch (err) {
@@ -239,8 +285,24 @@ export async function applyBundle(
       `${coverMissingCount} post${coverMissingCount === 1 ? "" : "s"} declared a WP featured image but the source asset was not resolvable (download failed, MIME rejected, or attachment record missing).`,
     );
   }
+  if (taxonomies) {
+    if (taxonomies.errors.length > 0) {
+      notes.push(
+        `${taxonomies.errors.length} taxonomy term${taxonomies.errors.length === 1 ? "" : "s"} failed to resolve — see Taxonomies section.`,
+      );
+    }
+    if (taxonomies.skipped.length > 0) {
+      notes.push(
+        `${taxonomies.skipped.length} taxonomy term${taxonomies.skipped.length === 1 ? "" : "s"} skipped by the resolver (likely a custom taxonomy the project doesn't track).`,
+      );
+    }
+  } else if (hasAnyTerm(bundle)) {
+    notes.push(
+      "Categories/tags found in the WXR but no taxonomy resolver was supplied — terms were dropped (Phase 21.6 — opt in by passing `taxonomies` to `applyBundle`).",
+    );
+  }
 
-  return { applied, skipped, errors, attachments, media, notes };
+  return { applied, skipped, errors, attachments, media, taxonomies, notes };
 }
 
 function buildDocData(
@@ -248,6 +310,7 @@ function buildDocData(
   resolution: MediaResolution,
   collection: string,
   coverImageId: string | undefined,
+  termIds: { categoryIds: string[]; tagIds: string[] },
 ): Record<string, unknown> {
   const lexical = htmlToLexical(record.rawContent);
   const rewritten: LexicalRoot = rewriteLexicalMedia(lexical, resolution);
@@ -261,6 +324,10 @@ function buildDocData(
   }
   if (collection === "posts" && coverImageId) {
     data.coverImage = coverImageId;
+  }
+  if (collection === "posts") {
+    if (termIds.categoryIds.length > 0) data.categories = termIds.categoryIds;
+    if (termIds.tagIds.length > 0) data.tags = termIds.tagIds;
   }
   // <wp:post_date_gmt> arrives as "YYYY-MM-DD HH:mm:ss" without a
   // timezone marker. Treat as UTC (the GMT in the tag name is
@@ -279,6 +346,11 @@ function buildDocData(
 
 function recordHasFeaturedImage(record: WpImportRecord): boolean {
   return record.mediaRefs.some((ref) => ref.kind === "featured");
+}
+
+function hasAnyTerm(bundle: WpImportBundle): boolean {
+  if (bundle.terms.length > 0) return true;
+  return bundle.records.some((r) => r.terms.length > 0 && r.wpType !== "attachment");
 }
 
 /**

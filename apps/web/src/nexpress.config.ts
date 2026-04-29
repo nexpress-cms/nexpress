@@ -15,6 +15,7 @@ import { portfolioTheme } from "@nexpress/theme-portfolio";
 import { localizedPagesCollection } from "./collections/localized-pages";
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
+import { taxonomiesCollection } from "./collections/taxonomies";
 import { i18nConfig } from "./i18n.config";
 
 const discussionsCollection = defineDiscussionsCollection({
@@ -55,6 +56,7 @@ export default defineConfig({
     postsCollection,
     pagesCollection,
     localizedPagesCollection,
+    taxonomiesCollection,
     discussionsCollection,
   ],
   // Phase 12.1 — i18n config. Required when any collection
