@@ -14,7 +14,16 @@ import {
   truncateAll,
 } from "./harness.js";
 
-import { type NxAuthUser, findDocuments, nxMedia, nxUsers, uploadMedia } from "@nexpress/core";
+import {
+  type NxAuthUser,
+  findDocuments,
+  nxComments,
+  nxMedia,
+  nxMembers,
+  nxUsers,
+  renderCommentMarkdown,
+  uploadMedia,
+} from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { applyBundle, parseWxr } from "@nexpress/wp-import";
 
@@ -256,6 +265,95 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     const report = await applyBundle(bundle, { actor, dryRun: false });
     expect(report.taxonomies).toBeNull();
     expect(report.notes.some((n) => n.includes("no taxonomy resolver"))).toBe(true);
+  });
+
+  it("21.7 — imports approved comments under imported members and skips unapproved", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-comments@example.com", role: "admin" });
+    const actor = await asActor(session);
+    const db = await getTestDb();
+
+    const report = await applyBundle(bundle, {
+      actor,
+      dryRun: false,
+      comments: {
+        ensureImportedMember: async ({ handle, email, displayName }) => {
+          const [existing] = await db
+            .select({ id: nxMembers.id })
+            .from(nxMembers)
+            .where(eq(nxMembers.handle, handle))
+            .limit(1);
+          if (existing) return { id: existing.id };
+          const [inserted] = await db
+            .insert(nxMembers)
+            .values({
+              handle,
+              email: email ?? `${handle}@imported.invalid`,
+              displayName,
+              status: "imported",
+              emailVerified: false,
+            })
+            .returning({ id: nxMembers.id });
+          return { id: inserted!.id };
+        },
+        insertComment: async (input) => {
+          const [row] = await db
+            .insert(nxComments)
+            .values({
+              targetType: input.targetType,
+              targetId: input.targetId,
+              parentId: input.parentId,
+              memberId: input.memberId,
+              bodyMd: input.bodyMd,
+              bodyHtml: input.bodyHtml,
+              status: "visible",
+              createdAt: input.createdAt,
+            })
+            .returning({ id: nxComments.id });
+          return { id: row!.id };
+        },
+        renderBody: (s) => renderCommentMarkdown(s),
+      },
+    });
+
+    expect(report.errors).toEqual([]);
+    expect(report.comments?.applied).toBe(2); // both fixture comments approved
+    expect(report.comments?.skippedUnapproved).toBe(0);
+    expect(report.comments?.errors).toEqual([]);
+
+    // Verify the rows landed and the parent map resolved.
+    const rows = (await db.select().from(nxComments)) as Array<{
+      bodyMd: string;
+      parentId: string | null;
+      id: string;
+      memberId: string;
+    }>;
+    expect(rows).toHaveLength(2);
+    const top = rows.find((r) => r.bodyMd === "Great post!");
+    const reply = rows.find((r) => r.bodyMd === "Thanks Bob!");
+    expect(top?.parentId).toBeNull();
+    expect(reply?.parentId).toBe(top?.id);
+
+    // Two distinct authors → two imported member rows.
+    const members = (await db
+      .select()
+      .from(nxMembers)
+      .where(eq(nxMembers.status, "imported"))) as Array<{ handle: string }>;
+    expect(members.map((m) => m.handle).sort()).toEqual(
+      ["alice-example-com-wpimp", "bob-example-com-wpimp"].sort(),
+    );
+  });
+
+  it("21.7 — surfaces a notes line when comments exist but no comments deps were supplied", async () => {
+    const xml = readFileSync(FIXTURE, "utf8");
+    const bundle = parseWxr(xml);
+    const session = await seedUser({ email: "wp-comments-skip@example.com", role: "admin" });
+    const actor = await asActor(session);
+
+    const report = await applyBundle(bundle, { actor, dryRun: false });
+    expect(report.comments).toBeNull();
+    expect(report.notes.some((n) => n.includes("no comments deps"))).toBe(true);
   });
 
   it("21.5 — leaves Lexical untouched when a media URL fails to download", async () => {

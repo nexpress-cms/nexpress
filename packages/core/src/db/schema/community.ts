@@ -24,11 +24,20 @@ import { nxUsers } from "./system.js";
  * is granted via `nx_member_roles` instead. See `docs/community-design.md`.
  */
 
+/**
+ * Phase 21.7 — `imported` is a member created by the WordPress
+ * importer to attribute archived guest comments. Imported members
+ * cannot log in (no usable password set) and don't fire community
+ * notifications when content tags them. Default themes render the
+ * member's handle with an `(imported)` suffix so visitors can tell
+ * archived discussion apart from live activity.
+ */
 export const nxMemberStatusEnum = pgEnum("nx_member_status", [
   "active",
   "pending",
   "suspended",
   "deleted",
+  "imported",
 ]);
 
 export const nxBanScopeEnum = pgEnum("nx_ban_scope", ["site", "category", "collection"]);

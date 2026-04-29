@@ -12,6 +12,12 @@ import { rewriteLexicalMedia } from "../media/rewrite.js";
 import { type WpImportBundle, type WpImportRecord, type WpPostStatus } from "../parse/types.js";
 import { type AttachmentIndex, buildAttachmentIndex } from "./attachment-index.js";
 import {
+  emptyCommentPlan,
+  importPostComments,
+  type CommentDeps,
+  type CommentImportPlan,
+} from "./comments.js";
+import {
   pickPostTermIds,
   resolveTaxonomies,
   type TaxonomyResolution,
@@ -39,9 +45,16 @@ import {
  * in their own resolver. Without a resolver the applier records a
  * single notes line and posts go in without their terms wired.
  *
- * Out of scope here: author wiring (21.8), comments (21.7),
- * custom post types (21.9). Records of those types are still
- * skipped with a one-line note in the report.
+ * Phase 21.7 layer: when a `comments` deps object is supplied, the
+ * applier walks each freshly created post's comments, find-or-
+ * creates an `imported` member per author, and inserts each comment
+ * directly into `nx_comments` via the deps. Spam/profanity adapters
+ * and notification fan-out are bypassed — this is archived content,
+ * not new community activity.
+ *
+ * Out of scope here: author wiring (21.8), custom post types (21.9).
+ * Records of those types are still skipped with a one-line note in
+ * the report.
  */
 
 export interface ApplyOptions {
@@ -64,6 +77,13 @@ export interface ApplyOptions {
    * wiring (the report surfaces a one-line note about it).
    */
   taxonomies?: TaxonomyResolver;
+  /**
+   * Phase 21.7 — when supplied, every newly created post's WP
+   * comments are imported as `nx_comments` rows, with imported
+   * members find-or-created via the deps. Omit to skip comment
+   * imports entirely.
+   */
+  comments?: CommentDeps;
 }
 
 export interface AppliedRow {
@@ -109,6 +129,8 @@ export interface ApplyReport {
    * for the CLI to render the term-resolution outcome.
    */
   taxonomies: TaxonomyResolution | null;
+  /** Phase 21.7 — comment import outcome. `null` when no comments deps. */
+  comments: CommentImportPlan | null;
   /**
    * One-time observations the operator should know about — drops
    * we made silently per-record but want surfaced once aggregated.
@@ -142,6 +164,9 @@ export async function applyBundle(
   if (options.taxonomies && !dryRun) {
     taxonomies = await resolveTaxonomies(bundle.records, bundle.terms, options.taxonomies);
   }
+
+  const commentsPlan: CommentImportPlan | null =
+    options.comments && !dryRun ? emptyCommentPlan() : null;
 
   const applied: AppliedRow[] = [];
   const skipped: SkippedRow[] = [];
@@ -238,7 +263,7 @@ export async function applyBundle(
       }
 
       const data = buildDocData(record, resolution, collection, coverImageId, termIds);
-      await saveDocument(collection, null, data, options.actor, {
+      const saved = await saveDocument(collection, null, data, options.actor, {
         status: mapStatusToFramework(record.status),
       });
       applied.push({
@@ -252,6 +277,24 @@ export async function applyBundle(
         tagIds: termIds.tagIds,
       });
       log(`write ${collection}/${record.slug}`);
+
+      // Phase 21.7 — pull the post id from the save result and
+      // walk this record's comments. Comments only land for posts
+      // we just created — re-runs skip on slug collision and
+      // therefore skip their archived comments too.
+      if (commentsPlan && options.comments && collection === "posts") {
+        const postId = typeof saved.doc.id === "string" ? saved.doc.id : null;
+        if (postId) {
+          await importPostComments({
+            record,
+            postId,
+            collection,
+            deps: options.comments,
+            plan: commentsPlan,
+            log,
+          });
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       errors.push({ wpId: record.wpId, slug: record.slug, message });
@@ -301,8 +344,33 @@ export async function applyBundle(
       "Categories/tags found in the WXR but no taxonomy resolver was supplied — terms were dropped (Phase 21.6 — opt in by passing `taxonomies` to `applyBundle`).",
     );
   }
+  if (commentsPlan) {
+    if (commentsPlan.skippedUnapproved > 0) {
+      notes.push(
+        `${commentsPlan.skippedUnapproved} comment${commentsPlan.skippedUnapproved === 1 ? "" : "s"} dropped because <wp:comment_approved> was not "1".`,
+      );
+    }
+    if (commentsPlan.errors.length > 0) {
+      notes.push(
+        `${commentsPlan.errors.length} comment${commentsPlan.errors.length === 1 ? "" : "s"} failed to insert — see Comments section.`,
+      );
+    }
+  } else if (hasAnyComment(bundle)) {
+    notes.push(
+      "Comments found in the WXR but no comments deps were supplied — comments were dropped (Phase 21.7 — opt in by passing `comments` to `applyBundle`).",
+    );
+  }
 
-  return { applied, skipped, errors, attachments, media, taxonomies, notes };
+  return {
+    applied,
+    skipped,
+    errors,
+    attachments,
+    media,
+    taxonomies,
+    comments: commentsPlan,
+    notes,
+  };
 }
 
 function buildDocData(
@@ -351,6 +419,10 @@ function recordHasFeaturedImage(record: WpImportRecord): boolean {
 function hasAnyTerm(bundle: WpImportBundle): boolean {
   if (bundle.terms.length > 0) return true;
   return bundle.records.some((r) => r.terms.length > 0 && r.wpType !== "attachment");
+}
+
+function hasAnyComment(bundle: WpImportBundle): boolean {
+  return bundle.records.some((r) => r.comments.length > 0 && r.wpType !== "attachment");
 }
 
 /**

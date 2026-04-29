@@ -39,6 +39,14 @@ export {
   type TaxonomyResolution,
   type TaxonomyResolver,
 } from "./apply/taxonomies.js";
+export {
+  emptyCommentPlan,
+  importPostComments,
+  type CommentDeps,
+  type CommentImportPlan,
+  type CommentInsertInput,
+  type ImportedMemberInput,
+} from "./apply/comments.js";
 export { htmlToLexical, type LexicalRoot } from "./convert/html-to-lexical.js";
 export {
   downloadMedia,
