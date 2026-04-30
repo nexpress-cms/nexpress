@@ -6,7 +6,7 @@
   "bin": {
     "create-nexpress": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": ["dist", "templates"],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch --no-clean",

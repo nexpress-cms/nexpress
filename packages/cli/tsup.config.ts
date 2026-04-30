@@ -1,4 +1,6 @@
 import { defineConfig } from "tsup";
+import { cpSync } from "node:fs";
+import { resolve } from "node:path";
 
 export default defineConfig({
   entry: { index: "src/index.ts" },
@@ -7,4 +9,11 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   banner: { js: "#!/usr/bin/env node" },
+  // #268 — copy on-disk templates into dist/ so the published CLI
+  // tarball can read them at runtime. See `src/template-loader.ts`.
+  onSuccess: async () => {
+    cpSync(resolve("templates"), resolve("dist/templates"), {
+      recursive: true,
+    });
+  },
 });
