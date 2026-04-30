@@ -167,7 +167,10 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 ## NOTES
 
-- **CI** — `.github/workflows/ci.yml` runs install → build → typecheck → `pnpm test` on Ubuntu (Node 22, pnpm 10.33). Currently `workflow_dispatch` only (manual) while Actions billing is sorted; push/PR triggers will be re-enabled without other changes. Integration tests are not run in CI yet — they require Postgres in the runner.
+- **CI** — `.github/workflows/ci.yml` defines two jobs on Ubuntu (Node 22, pnpm 10.33):
+  1. `checks` — install → build → typecheck → `pnpm test` (unit suite).
+  2. `integration` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
+  Currently `workflow_dispatch` only (manual) while Actions billing is sorted; push/PR triggers will be re-enabled without other changes.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.

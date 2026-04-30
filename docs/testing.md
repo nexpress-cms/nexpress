@@ -163,10 +163,17 @@ excludes `src/integration/` so the cross-directory import doesn't trip
 
 ## CI
 
-`.github/workflows/ci.yml` runs install → build → typecheck → `pnpm test`
-on Ubuntu (Node 22, pnpm 10.33). Currently `workflow_dispatch` only
-(manual) while the repo's Actions billing is being resolved — push /
-pull_request triggers will be re-enabled without other changes once
-the billing question is settled. Integration tests are still **not**
-in CI; they require Postgres in the runner, which is a separate
-workflow change.
+`.github/workflows/ci.yml` defines two jobs on Ubuntu (Node 22, pnpm
+10.33):
+
+1. `checks` — install → build → typecheck → `pnpm test` (unit suite).
+2. `integration` — boots a Postgres 16 service container, sets
+   `TEST_DATABASE_URL=postgres://nexpress:nexpress@localhost:5432/nexpress_test`,
+   and runs `pnpm test:integration` (#275). Covers the pipeline /
+   write-path code that mock-based unit tests can't.
+
+Currently `workflow_dispatch` only (manual) while the repo's Actions
+billing is being resolved — push / pull_request triggers will be
+re-enabled without other changes once the billing question is
+settled. After the integration job has been green for a few runs in
+manual mode, mark it required for merges to `main`.
