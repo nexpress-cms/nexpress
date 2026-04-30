@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { promises as dnsPromises } from "node:dns";
 
 /**
  * Phase 21.5 — fetch a media file from a WP source URL.
@@ -18,6 +19,29 @@ import { Buffer } from "node:buffer";
  *     etc.) doesn't leak through.
  *   - One retry on network/timeout failure. 4xx is terminal
  *     (matches the design doc §6 — 404 is treated as a hard skip).
+ *
+ * SSRF guard (#270):
+ *
+ *   - Scheme is restricted to http(s).
+ *   - The hostname is resolved via DNS and every returned address
+ *     is checked against private / loopback / link-local / CGNAT
+ *     / multicast / reserved CIDRs. Any private result rejects
+ *     the URL — we don't fall through to the public IPs because
+ *     a malicious DNS response can rebind between the check and
+ *     the fetch (TOCTOU). For the importer's purposes, hosting
+ *     media on a hostname that *also* has a private A record is
+ *     vanishingly rare; rejecting it is the safer default.
+ *   - Redirects are followed manually (`redirect: "manual"`),
+ *     capped at 3 hops, and each hop re-runs the DNS / private-IP
+ *     check. The platform `fetch` would otherwise silently follow
+ *     a public-IP 302 to `169.254.169.254`.
+ *   - `Content-Length` is checked against `maxBytes` *before* the
+ *     body is read so a slow-read attacker can't tie the worker up
+ *     past the timeout window.
+ *
+ *   The `allowPrivateHosts` option exists for tests and for
+ *   self-hosted deployments where the WXR is genuinely on the
+ *   same private network as the importer.
  */
 
 export interface DownloadResult {
@@ -29,14 +53,28 @@ export interface DownloadResult {
 export interface DownloadOptions {
   /** Override `globalThis.fetch` — used by tests. */
   fetchImpl?: typeof fetch;
+  /** Override DNS lookup — used by tests to drive private-IP rejection. */
+  dnsLookupImpl?: (hostname: string) => Promise<Array<{ address: string; family: number }>>;
   /** Per-request timeout in ms. Default 30s. */
   timeoutMs?: number;
   /** How many times to retry network/timeout failures before giving up. */
   retries?: number;
+  /** Maximum redirect hops. Default 3. Each hop re-validates the host. */
+  maxRedirects?: number;
+  /** Maximum response size in bytes. Default 100 MiB. */
+  maxBytes?: number;
+  /**
+   * Skip the private-IP check. ONLY for tests and self-hosted
+   * deployments where the source server lives on the same
+   * private network as the importer.
+   */
+  allowPrivateHosts?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 1;
+const DEFAULT_MAX_REDIRECTS = 3;
+const DEFAULT_MAX_BYTES = 100 * 1024 * 1024;
 
 export class WpMediaDownloadError extends Error {
   readonly url: string;
@@ -49,6 +87,20 @@ export class WpMediaDownloadError extends Error {
   }
 }
 
+/**
+ * Thrown when the URL or any redirect target resolves to a host we
+ * refuse to talk to (private IP, loopback, non-HTTP scheme, etc).
+ * A separate subclass so `downloadMedia`'s retry loop can recognise
+ * it and refuse to retry — re-resolving DNS won't make a `127.0.0.1`
+ * AAAA record any safer.
+ */
+export class WpMediaSsrfError extends WpMediaDownloadError {
+  constructor(url: string, message: string) {
+    super(url, message);
+    this.name = "WpMediaSsrfError";
+  }
+}
+
 export async function downloadMedia(url: string, opts: DownloadOptions = {}): Promise<DownloadResult> {
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   if (!fetchImpl) {
@@ -56,30 +108,31 @@ export async function downloadMedia(url: string, opts: DownloadOptions = {}): Pr
   }
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = opts.retries ?? DEFAULT_RETRIES;
+  const maxRedirects = opts.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+
+  // Validate the entry-point scheme up front so a bad URL fails
+  // before we burn a retry attempt on it.
+  assertHttpScheme(url);
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetchImpl(url, { signal: controller.signal });
-      // 4xx is terminal — design §6 treats 404 as skip-and-continue.
-      // We let the caller distinguish "missing" from "transient" by
-      // looking at `status`.
-      if (!res.ok) {
-        throw new WpMediaDownloadError(
-          url,
-          `source responded ${res.status} ${res.statusText || ""}`.trim(),
-          res.status,
-        );
-      }
-      const arrayBuffer = await res.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const mimeType = parseMime(res.headers.get("content-type"));
-      const filename = inferFilename(url);
-      return { buffer, mimeType, filename };
+      return await fetchWithRedirects(url, {
+        fetchImpl,
+        dnsLookupImpl: opts.dnsLookupImpl,
+        signal: controller.signal,
+        maxRedirects,
+        maxBytes,
+        allowPrivateHosts: opts.allowPrivateHosts ?? false,
+      });
     } catch (err) {
       lastError = err;
+      // SSRF / scheme rejections are deterministic — retrying
+      // won't change the answer.
+      if (err instanceof WpMediaSsrfError) throw err;
       // 4xx errors aren't worth retrying.
       if (err instanceof WpMediaDownloadError && err.status !== null && err.status >= 400 && err.status < 500) {
         throw err;
@@ -96,6 +149,241 @@ export async function downloadMedia(url: string, opts: DownloadOptions = {}): Pr
   }
   // unreachable — the loop either returns or throws.
   throw lastError instanceof Error ? lastError : new WpMediaDownloadError(url, "download failed");
+}
+
+interface FetchWithRedirectsOpts {
+  fetchImpl: typeof fetch;
+  dnsLookupImpl?: DownloadOptions["dnsLookupImpl"];
+  signal: AbortSignal;
+  maxRedirects: number;
+  maxBytes: number;
+  allowPrivateHosts: boolean;
+}
+
+async function fetchWithRedirects(
+  originalUrl: string,
+  opts: FetchWithRedirectsOpts,
+): Promise<DownloadResult> {
+  let currentUrl = originalUrl;
+  for (let hop = 0; hop <= opts.maxRedirects; hop++) {
+    if (!opts.allowPrivateHosts) {
+      await assertHostAllowed(currentUrl, opts.dnsLookupImpl);
+    }
+    const res = await opts.fetchImpl(currentUrl, {
+      signal: opts.signal,
+      redirect: "manual",
+    });
+    if (isRedirectStatus(res.status)) {
+      const next = res.headers.get("location");
+      if (!next) {
+        throw new WpMediaDownloadError(
+          currentUrl,
+          `redirect ${res.status} without Location header`,
+          res.status,
+        );
+      }
+      // `new URL(next, currentUrl)` resolves relative redirects
+      // against the prior hop, matching browser semantics.
+      currentUrl = new URL(next, currentUrl).toString();
+      assertHttpScheme(currentUrl);
+      continue;
+    }
+    if (!res.ok) {
+      throw new WpMediaDownloadError(
+        currentUrl,
+        `source responded ${res.status} ${res.statusText || ""}`.trim(),
+        res.status,
+      );
+    }
+    const declaredLength = res.headers.get("content-length");
+    if (declaredLength !== null) {
+      const n = Number(declaredLength);
+      if (Number.isFinite(n) && n > opts.maxBytes) {
+        throw new WpMediaDownloadError(
+          currentUrl,
+          `content-length ${n} exceeds maxBytes ${opts.maxBytes}`,
+        );
+      }
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength > opts.maxBytes) {
+      throw new WpMediaDownloadError(
+        currentUrl,
+        `body ${arrayBuffer.byteLength} bytes exceeds maxBytes ${opts.maxBytes}`,
+      );
+    }
+    const buffer = Buffer.from(arrayBuffer);
+    const mimeType = parseMime(res.headers.get("content-type"));
+    // Filename is derived from the URL the WXR pointed at — not the
+    // final hop. CDNs frequently rewrite paths in ways that lose the
+    // original basename ("a1b2c3.cdn.com/asset?id=42").
+    const filename = inferFilename(originalUrl);
+    return { buffer, mimeType, filename };
+  }
+  throw new WpMediaDownloadError(currentUrl, `too many redirects (max ${opts.maxRedirects})`);
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+function assertHttpScheme(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new WpMediaSsrfError(url, `invalid URL "${url}"`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new WpMediaSsrfError(url, `unsupported scheme "${parsed.protocol}" — only http(s) is allowed`);
+  }
+}
+
+async function assertHostAllowed(
+  url: string,
+  dnsLookupImpl?: DownloadOptions["dnsLookupImpl"],
+): Promise<void> {
+  const parsed = new URL(url);
+  // WHATWG URL keeps the brackets on `.hostname` for IPv6 literals
+  // (`http://[::1]/` → `[::1]`). Strip them before any classification
+  // or DNS lookup so the IPv6 detection branch matches.
+  const rawHostname = parsed.hostname;
+  const hostname =
+    rawHostname.startsWith("[") && rawHostname.endsWith("]")
+      ? rawHostname.slice(1, -1)
+      : rawHostname;
+
+  // Reject obvious sentinels before bothering with DNS.
+  const lowered = hostname.toLowerCase();
+  if (lowered === "localhost" || lowered.endsWith(".localhost")) {
+    throw new WpMediaSsrfError(url, `hostname "${hostname}" resolves to a private address`);
+  }
+
+  // If the URL host is itself an IP literal, check it directly.
+  const literal = classifyIpLiteral(hostname);
+  if (literal === "private") {
+    throw new WpMediaSsrfError(url, `hostname "${hostname}" resolves to a private address`);
+  }
+  if (literal === "public") {
+    return; // already a routable public IP, no DNS needed
+  }
+
+  // Hostname → DNS lookup.
+  const lookup = dnsLookupImpl ?? defaultDnsLookup;
+  let addrs: Array<{ address: string; family: number }>;
+  try {
+    addrs = await lookup(hostname);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new WpMediaSsrfError(url, `DNS lookup failed for "${hostname}": ${msg}`);
+  }
+  if (addrs.length === 0) {
+    throw new WpMediaSsrfError(url, `DNS returned no addresses for "${hostname}"`);
+  }
+  for (const { address, family } of addrs) {
+    const cls = classifyIpAddress(address, family);
+    if (cls === "private") {
+      throw new WpMediaSsrfError(
+        url,
+        `hostname "${hostname}" resolves to private address ${address}`,
+      );
+    }
+  }
+}
+
+async function defaultDnsLookup(
+  hostname: string,
+): Promise<Array<{ address: string; family: number }>> {
+  // `all: true` returns every A/AAAA record so a multi-homed
+  // hostname with a public A and a private AAAA (or vice versa)
+  // gets caught by the loop above.
+  return dnsPromises.lookup(hostname, { all: true });
+}
+
+/**
+ * Classify a string that *might* already be an IP address.
+ * Returns "private" / "public" / "not-an-ip".
+ */
+function classifyIpLiteral(input: string): "private" | "public" | "not-an-ip" {
+  if (looksLikeIpv4(input)) return classifyIpAddress(input, 4);
+  if (input.includes(":")) return classifyIpAddress(input, 6);
+  return "not-an-ip";
+}
+
+function classifyIpAddress(address: string, family: number): "private" | "public" {
+  if (family === 4) {
+    return isPrivateIpv4(address) ? "private" : "public";
+  }
+  if (family === 6) {
+    return isPrivateIpv6(address) ? "private" : "public";
+  }
+  // Unknown family — treat as private for safety.
+  return "private";
+}
+
+function looksLikeIpv4(s: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(s);
+}
+
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  let n = 0;
+  for (const part of parts) {
+    const v = Number(part);
+    if (!Number.isInteger(v) || v < 0 || v > 255) return null;
+    n = (n * 256 + v) >>> 0;
+  }
+  return n >>> 0;
+}
+
+const PRIVATE_IPV4_RANGES: ReadonlyArray<readonly [string, number]> = [
+  ["0.0.0.0", 8], //         "this network"
+  ["10.0.0.0", 8], //        RFC 1918
+  ["100.64.0.0", 10], //     CGNAT
+  ["127.0.0.0", 8], //       loopback
+  ["169.254.0.0", 16], //    link-local (incl. cloud metadata 169.254.169.254)
+  ["172.16.0.0", 12], //     RFC 1918
+  ["192.0.0.0", 24], //      protocol assignments
+  ["192.0.2.0", 24], //      TEST-NET-1
+  ["192.168.0.0", 16], //    RFC 1918
+  ["198.18.0.0", 15], //     benchmarking
+  ["198.51.100.0", 24], //   TEST-NET-2
+  ["203.0.113.0", 24], //    TEST-NET-3
+  ["224.0.0.0", 4], //       multicast
+  ["240.0.0.0", 4], //       reserved
+  ["255.255.255.255", 32], // broadcast
+];
+
+function isPrivateIpv4(ip: string): boolean {
+  const n = ipv4ToInt(ip);
+  if (n === null) return true; // unparseable → treat as private
+  for (const [base, bits] of PRIVATE_IPV4_RANGES) {
+    const baseN = ipv4ToInt(base);
+    if (baseN === null) continue;
+    // bits === 32 → mask = 0xFFFFFFFF; bits === 0 → mask = 0.
+    const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+    if ((n & mask) === (baseN & mask)) return true;
+  }
+  return false;
+}
+
+function isPrivateIpv6(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (lower === "::1" || lower === "::") return true;
+  // Unique local: fc00::/7 — any first byte 0xfc or 0xfd.
+  if (/^fc[0-9a-f]{2}:/.test(lower) || /^fd[0-9a-f]{2}:/.test(lower)) return true;
+  // Link-local: fe80::/10 — first 10 bits 1111111010.
+  if (/^fe[89ab][0-9a-f]:/.test(lower)) return true;
+  // Multicast: ff00::/8.
+  if (/^ff[0-9a-f]{2}:/.test(lower)) return true;
+  // IPv4-mapped: ::ffff:1.2.3.4 — delegate to v4 classification.
+  const v4Mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(lower);
+  if (v4Mapped) return isPrivateIpv4(v4Mapped[1]);
+  // IPv4-compat (deprecated): ::1.2.3.4
+  const v4Compat = /^::(\d+\.\d+\.\d+\.\d+)$/i.exec(lower);
+  if (v4Compat) return isPrivateIpv4(v4Compat[1]);
+  return false;
 }
 
 function parseMime(header: string | null): string {

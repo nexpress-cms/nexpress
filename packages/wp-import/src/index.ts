@@ -83,6 +83,7 @@ export {
   downloadMedia,
   isAllowedMimeType,
   WpMediaDownloadError,
+  WpMediaSsrfError,
   type DownloadOptions,
   type DownloadResult,
 } from "./media/download.js";
