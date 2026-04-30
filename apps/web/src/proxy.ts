@@ -86,14 +86,25 @@ function checkRateLimit(ip: string, path: string): { limited: boolean; retryAfte
   return { limited: false };
 }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore) {
-    if (now > entry.resetAt) {
-      rateLimitStore.delete(key);
+// Guard against HMR re-evaluating this module: each reload would
+// otherwise spawn a fresh interval and leak the previous one. The
+// production runtime evaluates the module once, so the guard is
+// only load-bearing in dev.
+declare global {
+  var __nx_rate_limit_cleanup_started: boolean | undefined;
+}
+
+if (!globalThis.__nx_rate_limit_cleanup_started) {
+  globalThis.__nx_rate_limit_cleanup_started = true;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitStore) {
+      if (now > entry.resetAt) {
+        rateLimitStore.delete(key);
+      }
     }
-  }
-}, 60_000);
+  }, 60_000);
+}
 
 /**
  * Phase 12.2 — pull the requested locale out of the URL path.
