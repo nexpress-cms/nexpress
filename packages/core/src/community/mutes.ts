@@ -4,7 +4,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxMemberMutes, nxMembers } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
-import { getCurrentSiteId } from "../sites/context.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
@@ -57,7 +57,8 @@ export async function muteMember(input: MuteMemberInput): Promise<void> {
   // Phase 18 — site_id is part of the PK so the same muter can
   // hold a separate "muted-on-site-A" / "muted-on-site-B" set.
   // Idempotent: muting twice on the same site doesn't error.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through to default site.
+  const siteId = await requireSiteId();
   await db
     .insert(nxMemberMutes)
     .values({
@@ -75,7 +76,8 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
     ]);
   }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through to default site.
+  const siteId = await requireSiteId();
   const result = (await db
     .delete(nxMemberMutes)
     .where(
