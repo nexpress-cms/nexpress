@@ -181,7 +181,7 @@ export * from "./db/schema/index.js";
 export { generateDrizzleSchema } from "./db/generator.js";
 export { generateTypeScript } from "./db/type-generator.js";
 
-export { signToken, verifyToken } from "./auth/token.js";
+export { signToken, verifyToken, isTokenVerificationError } from "./auth/token.js";
 export type { NxTokenPayload } from "./auth/token.js";
 export { hashPassword, verifyPassword, ARGON2_OPTIONS } from "./auth/password.js";
 export { verifyCsrf } from "./auth/csrf.js";
