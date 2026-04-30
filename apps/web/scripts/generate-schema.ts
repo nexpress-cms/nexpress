@@ -24,3 +24,13 @@ process.stdout.write(`✓ wrote ${outFile}\n`);
 process.stdout.write(
   `  collections: ${nexpressConfig.collections.map((c) => c.slug).join(", ")}\n`,
 );
+// #271 — when this script runs from the dev watcher, the dev was
+// almost certainly editing a collection definition. Remind them
+// of the follow-up so they don't trip over a Drizzle schema /
+// Postgres column mismatch on the next request.
+if (process.env.NX_SCHEMA_WATCH === "1") {
+  process.stdout.write(
+    "  if column shapes changed: run `pnpm db:generate && pnpm db:migrate` " +
+      "to produce + apply the migration (review the SQL first).\n",
+  );
+}

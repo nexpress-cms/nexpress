@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "concurrently -n next,schema -c blue,magenta -k \"next dev\" \"NX_SCHEMA_WATCH=1 tsx watch --watch-path=src/collections --watch-path=src/nexpress.config.ts scripts/generate-schema.ts\"",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next",
@@ -34,8 +34,8 @@
     "@nexpress/plugin-oauth-github": "workspace:*",
     "@nexpress/plugin-oauth-google": "workspace:*",
     "@nexpress/plugin-reading-time": "workspace:*",
-    "@nexpress/plugin-seo-audit": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
+    "@nexpress/plugin-seo-audit": "workspace:*",
     "@nexpress/theme": "workspace:*",
     "@nexpress/theme-default": "workspace:*",
     "@nexpress/theme-magazine": "workspace:*",
@@ -53,11 +53,12 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.2.4",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.20.6",
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.8.0"
   }
 }
