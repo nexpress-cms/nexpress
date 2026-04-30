@@ -61,8 +61,7 @@ Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`)
 
 `@nexpress/core` exposes a module-scoped singleton pattern:
 
-- `setDb(db)` / `getDb()` — Drizzle connection
-- `setMediaDb(db)` — media service's DB handle (often the same instance)
+- `setDb(db)` / `getDb()` — Drizzle connection (single source of truth shared by the pipeline, media service, and every other consumer)
 - `setStorageAdapter(adapter)` — local or S3
 - `setJobQueue(queue)` / `startWorker()` — pg-boss
 - `loadPlugins(plugins)` — registers hooks/routes/actions

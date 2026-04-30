@@ -7,7 +7,7 @@ import {
   getCollectionConfig,
   getCollectionTable,
 } from "./registry.js";
-import { getDb } from "./pipeline.js";
+import { getDb } from "../db/runtime.js";
 
 /**
  * Cross-collection pending queue (Phase 9.7e). Lists every

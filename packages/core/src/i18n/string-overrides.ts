@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxStringOverrides } from "../db/schema/system.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";

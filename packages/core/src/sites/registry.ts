@@ -6,7 +6,7 @@ import {
   getCollectionConfig,
   getCollectionTable,
 } from "../collections/registry.js";
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import {
   nxAuditEvents,
   nxBans,

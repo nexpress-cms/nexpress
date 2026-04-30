@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxMembers, nxNotifications } from "../db/schema/community.js";
 import { getEmailAdapter } from "../email/service.js";
 import { getLogger } from "../observability/logger.js";
