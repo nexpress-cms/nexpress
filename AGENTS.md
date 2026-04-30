@@ -92,7 +92,7 @@ Route groups:
 
 - `(site)` — public site. Catch-all `[[...slug]]` renders pages from the content service.
 - `(admin)/admin` — admin UI (Radix + Tailwind v4 via `@nexpress/admin`). Split into `login/` and `(protected)/`.
-- `api/` — REST endpoints. Rate limiting + security headers applied in `src/proxy.ts` (in-memory per-IP buckets, per-path-pattern limits). The file is the Next 16 rename of the legacy `middleware.ts` convention; behavior is identical.
+- `api/` — REST endpoints. Rate limiting + security headers applied in `src/proxy.ts` (in-memory per-IP buckets, per-path-pattern limits). The file is the Next 16 rename of the legacy `middleware.ts` convention; behavior is identical. **Rate limiting is per-process and intentional best-effort** — multi-node deployments need an upstream rate limiter (CDN / NGINX / Caddy). See `docs/deployment.md` "Multi-node notes" and issue #269.
 
 Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` that can be bumped to invalidate. CSRF is enforced on state-changing endpoints via `verifyCsrf`.
 
