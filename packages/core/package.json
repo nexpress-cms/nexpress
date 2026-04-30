@@ -24,7 +24,7 @@
     "build": "tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run -c vitest.integration.config.ts"

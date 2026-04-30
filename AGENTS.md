@@ -18,7 +18,7 @@ pnpm dev                                                # turbo watch: runs tsup
 
 - `pnpm build` / `pnpm dev` / `pnpm test` — turbo fan-out over all workspaces
 - `pnpm lint` — ESLint at the repo root (type-checked rules via `projectService`)
-- `pnpm typecheck` — **maps to `turbo run lint`**, which runs `tsc --noEmit` in each package (not ESLint). The `lint` turbo task in each package is `tsc --noEmit`; the root `lint` script is the ESLint one. Both exist, and they are not the same thing.
+- `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier
 - `pnpm test` runs the vitest unit suite across every workspace (no DB required). `pnpm test:integration` runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` (skips silently when unset). See `docs/testing.md` for setup.
@@ -27,7 +27,7 @@ Running a single package's build/typecheck:
 
 ```bash
 pnpm --filter @nexpress/core build
-pnpm --filter @nexpress/core lint     # tsc --noEmit for just that package
+pnpm --filter @nexpress/core typecheck # tsc --noEmit for just that package
 ```
 
 ## Architecture
@@ -161,7 +161,6 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 - **CI** — `.github/workflows/ci.yml` runs install → build → typecheck → `pnpm test` on Ubuntu (Node 22, pnpm 10.33). Currently `workflow_dispatch` only (manual) while Actions billing is sorted; push/PR triggers will be re-enabled without other changes. Integration tests are not run in CI yet — they require Postgres in the runner.
 - **No pre-commit hooks** — no husky or lint-staged configured.
-- **`pnpm typecheck` vs `pnpm lint`** — confusing naming. `typecheck` runs `turbo run lint` (which is `tsc --noEmit` per package). `pnpm lint` runs ESLint at root. They are different commands with overlapping names.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
-- **Turbo lint/test tasks depend on `^build`** — packages must be built before lint/test will run. This increases CI time.
+- **Turbo typecheck/test tasks depend on `^build`** — packages must be built before typecheck/test will run. This increases CI time.
