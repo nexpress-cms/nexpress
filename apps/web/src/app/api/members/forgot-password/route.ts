@@ -9,8 +9,7 @@ import { readJsonBody } from "@nexpress/next";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
-
-const RESET_TTL_MS = 1000 * 60 * 60; // 1h
+import { resetTtlMs } from "@/lib/token-ttl";
 
 function buildResetUrl(request: NextRequest, token: string): string {
   const base = process.env.SITE_URL ? new URL(process.env.SITE_URL) : new URL(request.url);
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    const result = await requestMemberPasswordReset(getDb(), email, RESET_TTL_MS);
+    const result = await requestMemberPasswordReset(getDb(), email, resetTtlMs);
     if (result.issued && result.email && result.displayName) {
       await enqueueJob("members:sendPasswordReset", {
         email: result.email,

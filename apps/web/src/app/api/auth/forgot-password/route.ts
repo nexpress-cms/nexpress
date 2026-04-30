@@ -5,9 +5,7 @@ import type { NextRequest } from "next/server";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
-
-// Browser typically completes password recovery within the hour.
-const RESET_TTL_MS = 1000 * 60 * 60;
+import { resetTtlMs } from "@/lib/token-ttl";
 
 function validateBody(body: unknown): { email: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -39,7 +37,7 @@ export async function POST(request: NextRequest) {
     await ensureWriteReady();
     const { email } = validateBody(await readJsonBody(request));
 
-    const result = await requestPasswordReset(getDb(), email, RESET_TTL_MS);
+    const result = await requestPasswordReset(getDb(), email, resetTtlMs);
 
     if (result.issued && result.email && result.name) {
       await enqueueJob("auth:sendPasswordReset", {

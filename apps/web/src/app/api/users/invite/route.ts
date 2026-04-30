@@ -19,6 +19,7 @@ import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
+import { inviteTtlMs } from "@/lib/token-ttl";
 
 const VALID_ROLES: readonly NxUserRole[] = [
   "admin",
@@ -27,9 +28,6 @@ const VALID_ROLES: readonly NxUserRole[] = [
   "author",
   "viewer",
 ];
-
-// 7 days to complete initial password setup.
-const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 // Invited users never log in with the placeholder password — they set their
 // own via the reset link before the hash is ever verified. Compute one
@@ -120,7 +118,7 @@ export async function POST(request: NextRequest) {
     const issued = await createPasswordResetToken(db, {
       userId: created.id,
       purpose: "invite",
-      ttlMs: INVITE_TTL_MS,
+      ttlMs: inviteTtlMs,
     });
 
     await enqueueJob("auth:sendPasswordReset", {
