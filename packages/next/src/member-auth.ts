@@ -1,6 +1,8 @@
 import {
   NxAuthError,
+  getLogger,
   getMemberFromTokenPayload,
+  isTokenVerificationError,
   verifyCsrf,
   verifyMemberToken,
   type NxMemberAuthRow,
@@ -89,8 +91,20 @@ export function createMemberAuthHelpers<DB>(
         return null;
       }
       return member;
-    } catch {
-      return null;
+    } catch (err) {
+      // Mirror staff `getSessionUser`: bad/forged tokens stay silent
+      // null (caller surfaces 401); DB / unexpected failures bubble
+      // so a real outage doesn't masquerade as "member logged out."
+      if (isTokenVerificationError(err)) {
+        getLogger().debug("member-auth: session token verification failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+      getLogger().error("member-auth: getSessionMember failed for non-token reason", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
   }
 

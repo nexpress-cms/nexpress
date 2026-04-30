@@ -1,5 +1,7 @@
 import {
   NxAuthError,
+  getLogger,
+  isTokenVerificationError,
   verifyCsrf,
   verifyTokenFull,
   type NxAuthUser,
@@ -93,11 +95,25 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     try {
       // Pass `"access"` so a refresh JWT (longer-lived `nx-refresh`
       // cookie) cannot be replayed in the session cookie. `verifyToken`
-      // throws `NxAuthError` on mismatch; the catch below maps any
-      // token failure to a clean null so the route layer surfaces 401.
+      // throws `NxAuthError` on mismatch.
       return await verifyTokenFull(token, readSecret(), options.getDb() as never, "access");
-    } catch {
-      return null;
+    } catch (err) {
+      // Distinguish "bad/forged token" (security signal, not an
+      // outage — caller still gets 401) from "DB or other infra
+      // failure" (real outage, must surface as 5xx so a Postgres
+      // blip doesn't masquerade as "user logged out"). Forged-token
+      // attempts get a debug log so the signal is at least visible
+      // in structured logs without spamming every legitimate 401.
+      if (isTokenVerificationError(err)) {
+        getLogger().debug("auth: session token verification failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+      getLogger().error("auth: getSessionUser failed for non-token reason", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
   }
 
