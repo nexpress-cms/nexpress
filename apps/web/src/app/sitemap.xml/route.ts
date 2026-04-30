@@ -2,7 +2,9 @@ import {
   NX_DEFAULT_SITE_ID,
   buildSitemap,
   getCurrentSiteId,
+  getI18nConfig,
   getSiteById,
+  renderSitemapIndexXml,
   renderSitemapXml,
 } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
@@ -70,16 +72,53 @@ async function resolveSiteOrigin(siteId: string): Promise<string> {
  * path when `unstable_cache` can't reach Next's incremental
  * cache (integration tests calling the route directly, scripts
  * invoking the handler outside a request scope).
+ *
+ * Phase 12.9 — when a `locale` is supplied, emits a per-locale
+ * `<urlset>` (i18n collections filtered to that locale,
+ * non-i18n collections only included for `defaultLocale`).
+ * `null` keeps the legacy single-file behavior used when i18n
+ * isn't configured.
  */
-async function buildSitemapDirect(origin: string): Promise<string> {
-  const dynamicEntries = await buildSitemap();
+async function buildSitemapDirect(
+  origin: string,
+  locale: string | null,
+): Promise<string> {
+  const dynamicEntries = await buildSitemap(locale ? { locale } : {});
+  // Static routes only belong in the default-locale sitemap (or
+  // the no-i18n single sitemap). Other locales' sitemaps would
+  // re-emit the same path and create duplicates the dedup pass
+  // can't catch across files.
+  const i18n = getI18nConfig();
+  const includeStatic =
+    !locale || (i18n != null && locale === i18n.defaultLocale);
   const seen = new Set<string>();
-  const all = [...STATIC_ROUTES, ...dynamicEntries].filter((entry) => {
+  const all = [
+    ...(includeStatic ? STATIC_ROUTES : []),
+    ...dynamicEntries,
+  ].filter((entry) => {
     if (seen.has(entry.loc)) return false;
     seen.add(entry.loc);
     return true;
   });
   return renderSitemapXml(origin, all);
+}
+
+/**
+ * Phase 12.9 — sitemap-index renderer for i18n sites. Emits one
+ * `<sitemap>` entry per configured locale pointing back at this
+ * route with `?locale=…` so each child sitemap stays under the
+ * sitemaps.org per-file cap.
+ */
+function buildSitemapIndexDirect(
+  origin: string,
+  locales: readonly string[],
+): string {
+  return renderSitemapIndexXml(
+    origin,
+    locales.map((locale) => ({
+      loc: `/sitemap.xml?locale=${encodeURIComponent(locale)}`,
+    })),
+  );
 }
 
 /**
@@ -105,18 +144,46 @@ async function buildSitemapDirect(origin: string): Promise<string> {
  * siteId still hit the same cache entry. Mirrors the 14.3
  * theme/nav pattern.
  */
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   ensureCoreServices();
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const origin = await resolveSiteOrigin(siteId);
-  const buildSitemapCached = unstable_cache(
-    () => buildSitemapDirect(origin),
-    ["nx-sitemap", siteId],
-    {
-      tags: [`nx:sitemap:${siteId}`, "nx:sitemap"],
-      revalidate: 600,
-    },
-  );
+  const i18n = getI18nConfig();
+
+  // Phase 12.9 — sitemap-index split for i18n sites. When the
+  // request lacks a `?locale=…` param and i18n is configured,
+  // we emit a `<sitemapindex>` whose entries point back at
+  // `?locale=…` so each child stays under sitemaps.org's
+  // per-file 50K cap. Otherwise (no i18n, or `?locale` is
+  // present) the route renders a `<urlset>` directly.
+  const url = new URL(req.url);
+  const requestedLocale = url.searchParams.get("locale");
+  if (i18n && requestedLocale && !i18n.locales.includes(requestedLocale)) {
+    return new Response("Unknown locale", { status: 404 });
+  }
+  const mode: "index" | "urlset" =
+    i18n && !requestedLocale ? "index" : "urlset";
+
+  // Cache key includes the resolved mode + locale so the index
+  // and each per-locale child get distinct cache entries (and
+  // the per-locale `revalidateTag("nx:sitemap:<siteId>")` blow
+  // still busts every variant for a site).
+  const cacheKeyParts = [
+    "nx-sitemap",
+    siteId,
+    mode,
+    requestedLocale ?? "",
+  ];
+  const buildBody = async (): Promise<string> => {
+    if (mode === "index") {
+      return buildSitemapIndexDirect(origin, i18n!.locales);
+    }
+    return buildSitemapDirect(origin, requestedLocale);
+  };
+  const buildSitemapCached = unstable_cache(buildBody, cacheKeyParts, {
+    tags: [`nx:sitemap:${siteId}`, "nx:sitemap"],
+    revalidate: 600,
+  });
   let body: string;
   try {
     body = await buildSitemapCached();
@@ -130,7 +197,7 @@ export async function GET(): Promise<Response> {
       error instanceof Error &&
       /incrementalCache/i.test(error.message)
     ) {
-      body = await buildSitemapDirect(origin);
+      body = await buildBody();
     } else {
       throw error;
     }
