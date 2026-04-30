@@ -6,9 +6,8 @@ export {
   getCollectionRegistration,
   getAllCollectionSlugs,
 } from "./registry.js";
+export { setDb, getDb } from "../db/runtime.js";
 export {
-  setDb,
-  getDb,
   saveDocument,
   createMemberDocument,
   updateMemberDocument,

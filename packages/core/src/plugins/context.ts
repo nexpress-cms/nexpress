@@ -16,7 +16,7 @@ import {
   uploadMedia as coreUploadMedia,
   getStorageAdapter,
 } from "../media/service.js";
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import {
   NX_GLOBAL_PLUGIN_SITE_ID,
   nxPluginStorage,

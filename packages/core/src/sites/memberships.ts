@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxSiteMemberships, nxUsers } from "../db/schema/system.js";
 import { NxValidationError } from "../errors.js";
 import type { NxAuthUser, NxUserRole } from "../config/types.js";

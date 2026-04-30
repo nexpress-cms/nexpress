@@ -5,7 +5,8 @@ import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.
 import { nxRevisions } from "../db/schema/system.js";
 import type { NxAuthUser, NxSaveResult } from "../config/types.js";
 import { getCollectionConfig } from "./registry.js";
-import { getDb, getDocumentById, saveDocument } from "./pipeline.js";
+import { getDocumentById, saveDocument } from "./pipeline.js";
+import { getDb } from "../db/runtime.js";
 
 export type NxRevisionStatus = "draft" | "published" | "autosave";
 

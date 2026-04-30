@@ -11,7 +11,7 @@ import {
 } from "../collections/index.js";
 import type { NxAuthUser } from "../config/types.js";
 import { NxNotFoundError } from "../errors.js";
-import { deleteMedia, getMediaDb } from "../media/service.js";
+import { deleteMedia } from "../media/service.js";
 import { nxComments, nxMembers } from "../db/schema/community.js";
 import { nxMedia } from "../db/schema/media.js";
 
@@ -133,7 +133,7 @@ export async function purgeMemberContent(
   //    a doc body, etc.) come back with `deleted: false` and
   //    `references` populated. Count those separately so the
   //    operator knows manual cleanup is still needed.
-  const mediaDb = getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const mediaDb = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const liveMedia = (await mediaDb
     .select({ id: nxMedia.id })
     .from(nxMedia)

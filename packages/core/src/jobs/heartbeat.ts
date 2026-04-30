@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { desc, eq, gt, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
 import { nxWorkerHeartbeats } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";

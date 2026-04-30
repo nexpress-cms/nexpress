@@ -10,7 +10,8 @@ import {
   getCollectionConfig,
   getCollectionTable,
 } from "./registry.js";
-import { getDb, getDocumentById, saveDocument } from "./pipeline.js";
+import { getDocumentById, saveDocument } from "./pipeline.js";
+import { getDb } from "../db/runtime.js";
 
 interface TranslationRow {
   id: string;

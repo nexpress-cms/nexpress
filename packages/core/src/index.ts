@@ -116,8 +116,6 @@ export {
   getCollectionTable,
   getCollectionRegistration,
   getAllCollectionSlugs,
-  setDb,
-  getDb,
   saveDocument,
   createMemberDocument,
   updateMemberDocument,
@@ -178,6 +176,7 @@ export { buildZodSchema, getCollectionZodSchema } from "./collections/validation
 export { collectionConfigSchema, nxConfigSchema } from "./config/validation.js";
 
 export { createDbConnection } from "./db/connection.js";
+export { setDb, getDb } from "./db/runtime.js";
 export * from "./db/schema/index.js";
 export { generateDrizzleSchema } from "./db/generator.js";
 export { generateTypeScript } from "./db/type-generator.js";
@@ -336,8 +335,6 @@ export {
 export {
   setStorageAdapter,
   getStorageAdapter,
-  setMediaDb,
-  getMediaDb,
   uploadMedia,
   processMediaImage,
   getMediaById,

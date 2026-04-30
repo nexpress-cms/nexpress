@@ -1,4 +1,4 @@
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxSettings } from "../db/schema/system.js";
 
 /**

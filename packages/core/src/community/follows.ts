@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxFollows, nxMembers } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";

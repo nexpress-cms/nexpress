@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import type { NxFieldConfig, NxPluginConfig, NxPluginContext } from "../config/types.js";
 import { nxPlugins } from "../db/schema/system.js";
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { createPluginRuntimeContext } from "./context.js";
 
 export interface PluginHookHandler {

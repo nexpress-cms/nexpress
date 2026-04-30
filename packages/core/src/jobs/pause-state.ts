@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxSettings } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
 import { type NxJobQueue } from "./queue.js";

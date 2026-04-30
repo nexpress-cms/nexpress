@@ -5,8 +5,7 @@ import path from "node:path";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 
-import { setDb } from "../collections/pipeline.js";
-import { setMediaDb } from "../media/service.js";
+import { setDb } from "../db/runtime.js";
 
 /**
  * Integration tests reuse the same Postgres that `docker compose up -d db`
@@ -127,7 +126,6 @@ export async function getTestDb(): Promise<NodePgDatabase<Record<string, unknown
   pool = new pg.Pool({ connectionString: url, max: 3 });
   db = drizzle(pool);
   setDb(db);
-  setMediaDb(db);
   return db;
 }
 

@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { getDb } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
 import { nxJobLogs } from "../db/schema/system.js";
 import { type NxLogLevel, getLogger } from "../observability/logger.js";

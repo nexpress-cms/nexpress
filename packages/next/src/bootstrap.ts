@@ -13,7 +13,6 @@ import {
   setCurrentSiteResolver,
   setDb,
   setI18nConfig,
-  setMediaDb,
   setStorageAdapter,
   startProducer,
   syncPluginRegistrations,
@@ -134,7 +133,6 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     if (servicesInitialized) return;
 
     setDb(instance);
-    setMediaDb(instance);
     setStorageAdapter(
       createStorageAdapter(
         config.storage ?? {
@@ -208,15 +206,6 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const secret = config.auth?.secret;
       if (!secret) return null;
       try {
-        // Use the singleton db (`getDb()`), not the bootstrap's
-        // lazy-init `getDbInstance()`. Test harnesses call
-        // `setDb(testPool)` to switch the singleton, but the
-        // bootstrap's cache predates that swap and would point
-        // at the dev DB pool instead — verification would never
-        // find the test session row. The singleton is also what
-        // `listMembershipsForUser` (called via `canActorUseSite`)
-        // sees, so both halves of the validation read the same
-        // DB.
         const db = getDb();
         const user = await verifyTokenFull(
           sessionToken,
@@ -267,7 +256,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     }
     ensureServices(db);
     ensureCollections();
-    return db;
+    // Always read through the core singleton. Test harnesses call
+    // `setDb(testPool)` to swap the singleton, and the bootstrap's
+    // closure-cached `db` would otherwise diverge — verification
+    // would never find the test session row. Returning `getDb()`
+    // keeps both halves of the runtime (singleton consumers vs.
+    // bootstrap consumers) reading the same handle. The cast is
+    // structural — `setDb()` accepts `NodePgDatabase<Record<string,
+    // unknown>>`, but the actual instance handed in here is the
+    // schema-typed `NxDb`, so the cast is a no-op at runtime.
+    return getDb() as NxDb;
   }
 
   async function ensurePluginsLoaded(): Promise<void> {
