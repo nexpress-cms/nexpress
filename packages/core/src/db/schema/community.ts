@@ -21,7 +21,7 @@ import { nxUsers } from "./system.js";
  * comment, react, follow, etc. Deliberately separate from `nx_users`
  * (CMS staff) — separate cookie family, separate JWT audience, no
  * `role` column on the member table itself. Scoped moderator authority
- * is granted via `nx_member_roles` instead. See `docs/community-design.md`.
+ * is granted via `nx_member_roles` instead. See `docs/design/community-design.md` (frozen design rationale) or `docs/community.md` (live behavior).
  */
 
 /**

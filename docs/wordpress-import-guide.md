@@ -1,8 +1,8 @@
 # WordPress Import — Operator Guide
 
 > Practical runbook for migrating a WordPress site into NexPress
-> using the Phase 21 importer. Pairs with
-> `docs/wordpress-import-design.md`, which is the design rationale.
+> using the Phase 21 importer. The design rationale lives in
+> `docs/design/wordpress-import-design.md` (frozen snapshot).
 > Read this when you're about to run an import.
 
 ---

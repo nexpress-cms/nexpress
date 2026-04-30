@@ -1,5 +1,15 @@
 # WordPress Import — Design
 
+> ⚠️ **Frozen design snapshot.** Phase 21 (the WordPress import path)
+> shipped 21.1–21.17 and the follow-up issues are closed. For live
+> usage see `docs/wordpress-import-guide.md`; this file is the
+> design rationale only.
+>
+> Last verified against: 3ee45df (2026-04-30) — design decisions
+> (job-queue-driven import, idempotent batch model, term/category
+> preservation) match implementation. Visibility flag and other
+> post-21 follow-ups landed without revising this file.
+
 > Phase 21 ships NexPress's WordPress migration path. This is the
 > design doc that frames Phase 21.1 → 21.x; sub-phase implementations
 > reference back to the decisions captured here. Read this before
