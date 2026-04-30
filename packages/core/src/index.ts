@@ -68,8 +68,16 @@ export {
   buildWeightedSearchVectorSql,
 } from "./collections/search.js";
 export type { NxSearchVectorParts } from "./collections/search.js";
-export { buildSitemap, renderSitemapXml } from "./seo/sitemap.js";
-export type { NxSitemapEntry, BuildSitemapOptions } from "./seo/sitemap.js";
+export {
+  buildSitemap,
+  renderSitemapXml,
+  renderSitemapIndexXml,
+} from "./seo/sitemap.js";
+export type {
+  NxSitemapEntry,
+  NxSitemapIndexEntry,
+  BuildSitemapOptions,
+} from "./seo/sitemap.js";
 export {
   DEFAULT_SITE_SEO_SETTINGS,
   buildPageMetadata,
@@ -419,6 +427,12 @@ export {
 } from "./i18n/strings.js";
 export type { NxTranslationBundle } from "./i18n/strings.js";
 export { getLocaleDirection, type NxLocaleDirection } from "./i18n/direction.js";
+export {
+  formatNumber,
+  formatDate,
+  formatRelativeTime,
+  resetIntlFormatterCache,
+} from "./i18n/format.js";
 export {
   loadStringOverridesForSite,
   getStringOverridesForSite,

@@ -1,5 +1,6 @@
 import { getAllCollectionSlugs, getCollectionConfig } from "../collections/registry.js";
 import { findDocuments } from "../collections/pipeline.js";
+import { getI18nConfig } from "../i18n/registry.js";
 
 /**
  * Phase 10.1 — sitemap entry shape. Mirrors the sitemap.org spec
@@ -35,14 +36,37 @@ export interface NxSitemapEntry {
 export interface BuildSitemapOptions {
   /**
    * Cap per-collection at this many rows so a 100K-document blog
-   * doesn't bring the sitemap.xml endpoint to its knees. Sites with
-   * more rows should split into multiple sitemaps via a sitemap
-   * index — that's a follow-up. Default 5000 is the sitemaps.org
-   * recommended max per file.
+   * doesn't bring the sitemap.xml endpoint to its knees. Default
+   * 5000 is the sitemaps.org recommended max per file. Sites with
+   * more rows than that per locale should pair this with the
+   * sitemap-index split (see `locale` below) so each child file
+   * stays under the cap.
    */
   perCollectionLimit?: number;
   /** Restrict to specific collection slugs (default: all). */
   collections?: string[];
+  /**
+   * Restrict to a single locale. When set:
+   *   - i18n collections filter rows to `locale = $locale` (so
+   *     each per-locale sitemap only enumerates its own URLs).
+   *   - non-i18n collections are emitted only for the configured
+   *     `defaultLocale`; other locales' sitemaps skip them so
+   *     a row never appears in two sibling sitemaps.
+   * Leaving this `undefined` keeps the unfiltered single-file
+   * behavior used when i18n is not configured.
+   */
+  locale?: string;
+}
+
+/**
+ * Sitemap-index entry — a pointer to a child `<urlset>` document
+ * (typically a per-locale sitemap). The `loc` is path-only; the
+ * renderer prepends the absolute origin.
+ */
+export interface NxSitemapIndexEntry {
+  loc: string;
+  /** Optional ISO timestamp for `<lastmod>` on the child sitemap. */
+  lastmod?: string;
 }
 
 const DEFAULT_LIMIT_PER_COLLECTION = 5_000;
@@ -67,6 +91,8 @@ export async function buildSitemap(
   const limit = options.perCollectionLimit ?? DEFAULT_LIMIT_PER_COLLECTION;
   const slugs = options.collections ?? getAllCollectionSlugs();
   const entries: NxSitemapEntry[] = [];
+  const i18n = getI18nConfig();
+  const localeFilter = options.locale;
 
   for (const slug of slugs) {
     let config;
@@ -78,11 +104,30 @@ export async function buildSitemap(
     const seo = config.seo;
     if (!seo?.urlPath) continue;
 
+    // Phase 12.9 — per-locale sitemap split. When the caller
+    // requests a specific locale, non-i18n collections only
+    // surface in the default-locale sitemap so a row never
+    // appears in two sibling sitemaps.
+    if (localeFilter && !config.i18n) {
+      if (!i18n || localeFilter !== i18n.defaultLocale) continue;
+    }
+
     let result;
     try {
       result = await findDocuments(
         slug,
-        { limit, page: 1, where: { status: "published" } },
+        {
+          limit,
+          page: 1,
+          where: { status: "published" },
+          // For i18n collections we deliberately fetch *every*
+          // locale's rows even when a localeFilter is set so the
+          // grouping pass below can still build a complete
+          // hreflang-alternates list. The emission step further
+          // down filters siblings to the requested locale before
+          // pushing entries. Non-i18n collections take the
+          // localeFilter path through the early `continue` above.
+        },
         // Anonymous — `access.read` must allow it for the row to
         // appear. Collections gated to authenticated users won't
         // throw here because the access check runs on the
@@ -127,6 +172,16 @@ export async function buildSitemap(
           }
         }
         for (const sibling of siblings) {
+          // Phase 12.9 — when emitting a per-locale sitemap, only
+          // push the sibling whose locale matches the filter; the
+          // alternates list still references every translation
+          // (built above) so crawlers discover the others through
+          // hreflang.
+          if (localeFilter) {
+            const siblingLocale =
+              typeof sibling.locale === "string" ? sibling.locale : null;
+            if (siblingLocale !== localeFilter) continue;
+          }
           const path = seo.urlPath(sibling);
           if (!path || !path.startsWith("/")) continue;
           entries.push({
@@ -139,6 +194,10 @@ export async function buildSitemap(
         }
       }
       for (const doc of orphans) {
+        if (localeFilter) {
+          const docLocale = typeof doc.locale === "string" ? doc.locale : null;
+          if (docLocale !== localeFilter) continue;
+        }
         const path = seo.urlPath(doc);
         if (!path || !path.startsWith("/")) continue;
         entries.push({
@@ -220,6 +279,38 @@ export function renderSitemapXml(
     lines.push("  </url>");
   }
   lines.push("</urlset>");
+  return lines.join("\n");
+}
+
+/**
+ * Phase 12.9 — render a sitemap-index document. Sites with i18n
+ * configured emit one of these at `/sitemap.xml` instead of a
+ * single `<urlset>`; each child sitemap holds the URLs for one
+ * locale so the per-file 50K-entry sitemaps.org cap is per-locale
+ * rather than shared across the whole site.
+ *
+ * The index itself is small (one `<sitemap>` per locale) so it
+ * doesn't need the `xhtml` namespace or alternates — those live
+ * inside the child `<urlset>` documents.
+ */
+export function renderSitemapIndexXml(
+  origin: string,
+  entries: NxSitemapIndexEntry[],
+): string {
+  const trimmed = origin.replace(/\/+$/, "");
+  const lines: string[] = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  ];
+  for (const entry of entries) {
+    lines.push("  <sitemap>");
+    lines.push(`    <loc>${escapeXml(`${trimmed}${entry.loc}`)}</loc>`);
+    if (entry.lastmod) {
+      lines.push(`    <lastmod>${entry.lastmod}</lastmod>`);
+    }
+    lines.push("  </sitemap>");
+  }
+  lines.push("</sitemapindex>");
   return lines.join("\n");
 }
 
