@@ -58,10 +58,50 @@ function configureEmailOnce(): void {
  * `NX_ENABLE_JOBS=1`, and installs the email adapter so invite / reset
  * emails go out. Without this, writes that go through the pipeline or
  * `uploadMedia` silently drop their follow-up jobs.
+ *
+ * Equivalent to `ensureFor("write")`; new code should prefer the
+ * intent-based form.
  */
 export async function ensureWriteReady(): Promise<void> {
   ensureCoreServices();
   configureEmailOnce();
   await ensurePluginsLoaded();
+  await ensureJobProducer();
+}
+
+/**
+ * Single typed entry point for bootstrap initialization (#266). One
+ * function with three explicit intents replaces the ad-hoc set of
+ * idempotent `ensure*` functions whose required combination each
+ * route had to memorize.
+ *
+ *   - `"read"`    — DB + storage + collections registered. Use for
+ *                   read-only RSC pages and GET API routes that
+ *                   don't need plugin hooks.
+ *   - `"plugins"` — read + plugin loading. Use when render or
+ *                   response generation needs `runHook` to fire
+ *                   (e.g. block/site pages with plugin-augmented
+ *                   rendering, OAuth callbacks).
+ *   - `"write"`   — plugins + email adapter + pg-boss producer.
+ *                   Use for any mutating API route, server action,
+ *                   or import script. Without this, writes that go
+ *                   through the pipeline or `uploadMedia` silently
+ *                   drop their follow-up jobs and emails.
+ *
+ * The legacy `ensureCoreServices` / `ensurePluginsLoaded` /
+ * `ensureJobProducer` / `ensureWriteReady` exports remain for now;
+ * new code should use `ensureFor`. A future PR will migrate the
+ * existing callsites and remove the legacy exports.
+ */
+export type NxBootstrapIntent = "read" | "plugins" | "write";
+
+export async function ensureFor(intent: NxBootstrapIntent): Promise<void> {
+  ensureCoreServices();
+  if (intent === "read") return;
+
+  await ensurePluginsLoaded();
+  if (intent === "plugins") return;
+
+  configureEmailOnce();
   await ensureJobProducer();
 }
