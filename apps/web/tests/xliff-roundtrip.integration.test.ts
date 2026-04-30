@@ -212,6 +212,92 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     expect(result.skipped[0]!.reason).toMatch(/all <target> elements/i);
   });
 
+  it("rejects trans-units whose id isn't a translatable field (no locale/groupId hijack)", async () => {
+    // Regression: a hand-edited / malicious XLIFF that ships
+    // `<trans-unit id="locale">` or `id="translationGroupId">`
+    // would, pre-fix, spread straight onto the merged sibling
+    // on the UPDATE path — corrupting the
+    // (locale, translation_group_id) sibling structure.
+    // Validate that those units land on `skipped` instead and
+    // the existing target row keeps its locale.
+    const { saveDocument, findDocuments } = await import("@nexpress/core");
+    const { importXliff } = await import("@nexpress/xliff");
+
+    // Set up: existing en + ko siblings.
+    const en = await saveDocument(
+      "localized-pages",
+      null,
+      { title: "Source", body: "Source body", locale: "en" },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
+    await saveDocument(
+      "localized-pages",
+      null,
+      {
+        title: "Target",
+        body: "Target body",
+        locale: "ko",
+        translationGroupId: groupId,
+      },
+      actor(),
+      { status: "published" },
+    );
+
+    // Hand-craft an XLIFF that names a non-translatable id —
+    // both `locale` (i18n column) and `translationGroupId`
+    // (sibling key) plus a real field for control. Any other
+    // odd id (e.g. unknown column) should also be rejected.
+    const malicious = `<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file source-language="en" target-language="ko" datatype="plaintext" original="localized-pages/${groupId}">
+    <body>
+      <trans-unit id="title">
+        <source>Source</source>
+        <target>새 제목</target>
+      </trans-unit>
+      <trans-unit id="locale">
+        <source>en</source>
+        <target>ja</target>
+      </trans-unit>
+      <trans-unit id="translationGroupId">
+        <source>${groupId}</source>
+        <target>00000000-0000-0000-0000-000000000000</target>
+      </trans-unit>
+      <trans-unit id="not_a_field">
+        <source>x</source>
+        <target>y</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>`;
+
+    const result = await importXliff({ xml: malicious, user: actor() });
+
+    // Exactly one applied write — `title` UPDATE on the ko
+    // sibling. The other three units land in `skipped`.
+    expect(result.applied).toHaveLength(1);
+    expect(result.applied[0]!.operation).toBe("update");
+    expect(result.applied[0]!.unitCount).toBe(1);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]!.reason).toMatch(/non-translatable id/);
+    expect(result.skipped[0]!.reason).toContain("locale");
+    expect(result.skipped[0]!.reason).toContain("translationGroupId");
+    expect(result.skipped[0]!.reason).toContain("not_a_field");
+
+    // The ko row's locale + translationGroupId stayed intact.
+    const koResult = await findDocuments("localized-pages", {
+      where: { translationGroupId: groupId },
+      locale: "ko",
+    });
+    expect(koResult.docs).toHaveLength(1);
+    const koDoc = koResult.docs[0] as Record<string, unknown>;
+    expect(koDoc.title).toBe("새 제목");
+    expect(koDoc.locale).toBe("ko");
+    expect(koDoc.translationGroupId).toBe(groupId);
+  });
+
   it("rejects an XLIFF file whose `original` references an unknown collection", async () => {
     const { importXliff } = await import("@nexpress/xliff");
     const xml = `<?xml version="1.0" encoding="UTF-8"?>

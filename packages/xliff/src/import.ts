@@ -9,6 +9,15 @@ import {
 
 import { parseXliff, type XliffFile } from "./format.js";
 
+/**
+ * Field types whose values round-trip through XLIFF — kept in
+ * sync with the export side so import accepts exactly what
+ * export emits. Hand-edited XLIFFs that reference non-string
+ * field types (richText, blocks, relationships, etc.) are
+ * rejected.
+ */
+const TRANSLATABLE_TYPES = new Set(["text", "textarea", "email"]);
+
 export interface XliffImportOptions {
   /** XLIFF 1.2 XML body to apply. */
   xml: string;
@@ -127,6 +136,21 @@ export async function importXliff(
       continue;
     }
 
+    // Whitelist of `trans-unit` ids the importer will honor —
+    // matches the export side's translatable-types contract
+    // (text / textarea / email). Anything else is rejected with
+    // a `skipped` entry rather than silently spread onto the
+    // row: a malicious or hand-edited XLIFF that ships e.g.
+    // `<trans-unit id="locale">` could otherwise mutate the
+    // sibling's locale or `translation_group_id` (i18n columns
+    // pass through Zod by design) and corrupt the
+    // (locale, translationGroupId) sibling structure.
+    const translatableNames = new Set(
+      config.fields
+        .filter((f) => "name" in f && TRANSLATABLE_TYPES.has(f.type))
+        .map((f) => (f as { name: string }).name),
+    );
+
     // Resolve the source sibling — needed both for the create
     // path (template for non-translatable fields) and as a
     // sanity check (no source means the file is stale or the
@@ -152,11 +176,25 @@ export async function importXliff(
       file.targetLocale,
     );
 
-    // Build the field overrides from non-empty `<target>` units.
+    // Build the field overrides from non-empty `<target>` units
+    // whose id matches a translatable field on this collection.
     const overrides: Record<string, string> = {};
+    const rejectedFieldIds: string[] = [];
     for (const unit of file.units) {
       if (unit.target.length === 0) continue;
+      if (!translatableNames.has(unit.id)) {
+        rejectedFieldIds.push(unit.id);
+        continue;
+      }
       overrides[unit.id] = unit.target;
+    }
+    if (rejectedFieldIds.length > 0) {
+      skipped.push({
+        reason: `Ignored ${rejectedFieldIds.length} unit${rejectedFieldIds.length === 1 ? "" : "s"} with non-translatable id: ${rejectedFieldIds.join(", ")}`,
+        collection,
+        groupId,
+        locale: file.targetLocale,
+      });
     }
     if (Object.keys(overrides).length === 0) {
       skipped.push({
