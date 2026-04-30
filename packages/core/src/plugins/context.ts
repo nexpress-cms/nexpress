@@ -25,6 +25,34 @@ import {
 } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
 import { getCurrentSiteId } from "../sites/context.js";
+import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+
+/**
+ * Two distinct fallbacks live here, intentionally:
+ *
+ *   - `resolveStorageSiteId` returns the `_global_` sentinel when no
+ *     site context is set. `nx_plugin_storage` is keyed by
+ *     `(plugin_id, site_id, key)` and the sentinel scopes data as
+ *     "process-wide / cross-site shared." Background workers, CLI
+ *     tasks, and migrations all run without a site resolver and
+ *     should land in the global keyspace by default.
+ *
+ *   - `resolveSettingsSiteId` returns the actual default site id
+ *     when no context is set. `nx_settings` rows ALWAYS belong to
+ *     a real site, so falling through to a sentinel would orphan
+ *     the row outside `nx_sites` and break joins.
+ *
+ * They look superficially the same — one helper per intent so the
+ * next reader doesn't have to reverse-engineer which fallback is
+ * which by reading both schema definitions.
+ */
+async function resolveStorageSiteId(): Promise<string> {
+  return (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+}
+
+async function resolveSettingsSiteId(): Promise<string> {
+  return (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+}
 
 /**
  * Plugin principal used when plugin-initiated operations need an NxAuthUser.
@@ -227,7 +255,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       // their existing keyspace.
       async get<T = unknown>(key: string): Promise<T | null> {
         assertCap(pluginId, capabilities, "storage:kv");
-        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+        const siteId = await resolveStorageSiteId();
         const now = new Date();
         const rows = await db()
           .select()
@@ -246,7 +274,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async set(key: string, value: unknown, opts?: { ttl?: number }): Promise<void> {
         assertCap(pluginId, capabilities, "storage:kv");
-        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+        const siteId = await resolveStorageSiteId();
         const expiresAt = opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
         await db()
           .insert(nxPluginStorage)
@@ -265,7 +293,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async delete(key: string): Promise<void> {
         assertCap(pluginId, capabilities, "storage:kv");
-        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+        const siteId = await resolveStorageSiteId();
         await db()
           .delete(nxPluginStorage)
           .where(
@@ -278,7 +306,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async list(prefix?: string): Promise<string[]> {
         assertCap(pluginId, capabilities, "storage:kv");
-        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+        const siteId = await resolveStorageSiteId();
         const now = new Date();
         const where = prefix
           ? and(
@@ -300,7 +328,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async has(key: string): Promise<boolean> {
         assertCap(pluginId, capabilities, "storage:kv");
-        const siteId = (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+        const siteId = await resolveStorageSiteId();
         const now = new Date();
         const rows = await db()
           .select({ key: nxPluginStorage.key })
@@ -357,9 +385,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     settings: {
       async getSite(): Promise<Record<string, unknown>> {
         assertCap(pluginId, capabilities, "settings:read");
-        const { getCurrentSiteId } = await import("../sites/context.js");
-        const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
-        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
           .from(nxSettings)
@@ -389,9 +415,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     theme: {
       async getTokens(): Promise<Record<string, unknown>> {
         assertCap(pluginId, capabilities, "theme:read");
-        const { getCurrentSiteId } = await import("../sites/context.js");
-        const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
-        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
           .from(nxSettings)
@@ -404,9 +428,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async setTokens(partial: Record<string, unknown>): Promise<void> {
         assertCap(pluginId, capabilities, "theme:write");
-        const { getCurrentSiteId } = await import("../sites/context.js");
-        const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
-        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
           .from(nxSettings)
