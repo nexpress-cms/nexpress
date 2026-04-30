@@ -1,6 +1,8 @@
 /**
  * `@nexpress/wp-import` — WordPress migration tooling for NexPress.
- * See `docs/wordpress-import-design.md` for the full design.
+ * See `docs/design/wordpress-import-design.md` for the full design
+ * (frozen Phase 21 snapshot) and `docs/wordpress-import-guide.md`
+ * for live usage.
  *
  * Phase 21.2 ships only the parser. Subsequent sub-phases bolt on
  * the CLI, content conversion, media pipeline, and DB applier.

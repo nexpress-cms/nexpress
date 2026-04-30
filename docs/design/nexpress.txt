@@ -1,3 +1,8 @@
+⚠ Frozen planning document (v3, 2026-04-17). Original product
+brief — preserved for historical motivation. Current
+architecture lives in AGENTS.md and the live guides under docs/.
+Last verified against: 3ee45df (2026-04-30).
+
 ⸻
 
 Next.js 기반 오픈소스 CMS 기획서 v3

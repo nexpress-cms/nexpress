@@ -1,3 +1,8 @@
+⚠ Frozen planning document (v3 summary, 2026-04-17). Companion
+to nexpress.txt. Preserved for historical motivation. Current
+architecture lives in AGENTS.md.
+Last verified against: 3ee45df (2026-04-30).
+
 ⸻
 
 NexPress 기획서 v3 — 요약본

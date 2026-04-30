@@ -81,7 +81,7 @@ The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access c
 
 ### Plugin model (v1)
 
-See `docs/plugin-system-design.md`. v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, and scheduled tasks at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
+For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04-17 snapshot — high-level decisions still apply, code samples may have drifted). v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, and scheduled tasks at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
 
 Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports.
 

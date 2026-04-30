@@ -2,7 +2,7 @@
  * Phase 21.2 — Intermediate Record (IR) types.
  *
  * The IR is the seam between the WXR parser and the importer. The
- * design doc (`docs/wordpress-import-design.md` §4) frames why this
+ * design doc (`docs/design/wordpress-import-design.md` §4) frames why this
  * lives between parse and apply: keeps the parser free of NexPress
  * concerns and lets future adapters (Ghost, Drupal, generic JSON)
  * plug into the same applier.

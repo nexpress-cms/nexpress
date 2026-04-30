@@ -1,5 +1,16 @@
 # Member system + community — design
 
+> ⚠️ **Frozen design snapshot.** This document captures the planning
+> phase for the community / member system. The implementation has
+> evolved since; for current behavior, read the code and the live
+> guide at `docs/community.md`. Use this file as historical
+> motivation only.
+>
+> Last verified against: 3ee45df (2026-04-30) — sections describing
+> high-level rationale (member vs staff split, role topology) still
+> match implementation. Specific schema / API field names may have
+> drifted.
+
 > Status: **draft** — first pass, soliciting feedback on the open decisions
 > at the bottom of this doc before any code lands. Nothing here is built
 > yet.
