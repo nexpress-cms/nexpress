@@ -1,5 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { readEnvPositiveInt } from "../config/env.js";
+
 /**
  * HMAC-signed state tokens for the OAuth start ↔ callback handshake.
  * The framework (not the provider) issues + verifies these — providers
@@ -15,9 +17,14 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * supporting PKCE (Google, etc.) hash into the authorize URL. Providers
  * that don't use PKCE (GitHub) ignore it. We always generate one so the
  * flow is uniform.
+ *
+ * Default state TTL is 10 minutes — long enough for slow IdP redirects
+ * (corporate SSO with MFA prompts), short enough that a stale state
+ * cookie doesn't sit around forever. Override via
+ * `NX_OAUTH_STATE_TTL_SECONDS`.
  */
 
-const STATE_TTL_SECONDS = 600;
+const STATE_TTL_SECONDS = readEnvPositiveInt("NX_OAUTH_STATE_TTL_SECONDS", 600);
 const CODE_VERIFIER_BYTES = 32;
 
 export interface OAuthStatePayload {
