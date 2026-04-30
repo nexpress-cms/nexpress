@@ -98,6 +98,9 @@ importers:
       '@nexpress/wp-import':
         specifier: workspace:*
         version: link:../../packages/wp-import
+      '@nexpress/xliff':
+        specifier: workspace:*
+        version: link:../../packages/xliff
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
@@ -698,6 +701,25 @@ importers:
       node-html-parser:
         specifier: ^7.0.1
         version: 7.1.0
+    devDependencies:
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
+  packages/xliff:
+    dependencies:
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../core
+      fast-xml-parser:
+        specifier: ^5.5.8
+        version: 5.5.8
     devDependencies:
       tsup:
         specifier: ^8.5.0
