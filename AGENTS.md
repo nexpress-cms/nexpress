@@ -13,7 +13,7 @@ pnpm install
 docker compose -f docker/docker-compose.yml up -d db   # Postgres 16 on :5433
 cp .env.example .env                                    # DATABASE_URL, NX_SECRET, SITE_URL
 pnpm build                                              # build all packages (dist/) — needed before dev
-pnpm dev                                                # turbo watch: runs tsup --watch per pkg + next dev
+pnpm dev                                                # turbo watch: tsup --watch per pkg + next dev + collection schema:gen on src/collections/* changes
 ```
 
 - `pnpm build` / `pnpm dev` / `pnpm test` — turbo fan-out over all workspaces
@@ -75,7 +75,7 @@ Collections are declared with `defineCollection({ slug, fields, ... })` and regi
 - `packages/core/src/db/generator.ts` → `generateDrizzleSchema()`
 - `packages/core/src/db/type-generator.ts` → `generateTypeScript()`
 
-Adding or changing a collection's fields requires regenerating the schema and running a migration (`pnpm db:generate && pnpm db:migrate`). A user project's collections live in `src/collections/` (see the `create-nexpress` scaffold); for this monorepo itself, collections for the reference app live in `apps/web/src/collections/`.
+Adding or changing a collection's fields requires regenerating the schema and running a migration. The Drizzle schema codegen step (`pnpm schema:gen`, which writes `src/db/generated/collections.ts`) runs automatically inside `pnpm dev` whenever a file under `src/collections/` or `src/nexpress.config.ts` changes (#271). The Postgres migration is still manual (`pnpm db:generate && pnpm db:migrate`) so the SQL gets a human review before it touches the DB. A user project's collections live in `src/collections/` (see the `create-nexpress` scaffold); for this monorepo itself, collections for the reference app live in `apps/web/src/collections/`.
 
 The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access control, hook invocation, validation via generated Zod schemas (`validation.ts`), revision tracking, media-ref tracking, and search-vector builds for every document write.
 
@@ -121,7 +121,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 | Task                                             | Location                                                | Notes                                                                                                                                                                           |
 | ------------------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add/modify a collection                          | `apps/web/src/collections/*.ts`                         | Run `pnpm db:generate && pnpm db:migrate` after                                                                                                                                 |
+| Add/modify a collection                          | `apps/web/src/collections/*.ts`                         | Drizzle schema codegen reruns automatically in `pnpm dev`; if column shapes changed, also run `pnpm db:generate && pnpm db:migrate`                                              |
 | Change content pipeline (ACL, hooks, validation) | `packages/core/src/collections/pipeline.ts`             | 1043 lines — the critical write path                                                                                                                                            |
 | Add a block type                                 | `packages/blocks/src/blocks/`                           | Register in `registry.ts` `getDefaultBlocks()`                                                                                                                                  |
 | Modify rich-text rendering (SSR)                 | `packages/editor/src/render-rich-text.tsx`              | Server-safe; used by blocks and site pages                                                                                                                                      |
