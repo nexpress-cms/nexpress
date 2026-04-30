@@ -225,9 +225,12 @@ export async function updateCommunitySettings(
   const current = await getCommunitySettings();
   const next = validateCommunitySettingsPatch(current, patch);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const { getCurrentSiteId } = await import("../sites/context.js");
-  const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through. A staff member
+  // on tenant A who saves community settings without a resolved
+  // site context would otherwise overwrite the default tenant's
+  // policy — silently and across tenants.
+  const { requireSiteId } = await import("../sites/context.js");
+  const siteId = await requireSiteId();
   await db
     .insert(nxSettings)
     .values({
