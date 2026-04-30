@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
-import { findDocuments, getDb } from "./pipeline.js";
+import { findDocuments } from "./pipeline.js";
+import { getDb } from "../db/runtime.js";
 import {
   getAllCollectionSlugs,
   getCollectionConfig,

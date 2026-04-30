@@ -29,8 +29,7 @@ import { runHook } from "../plugins/host.js";
 import { nxRevisions } from "../db/schema/system.js";
 import { nxComments, nxReactions, nxReports } from "../db/schema/community.js";
 import { nxMediaRefs } from "../db/schema/media.js";
-
-let dbInstance: NodePgDatabase<Record<string, unknown>> | null = null;
+import { getDb } from "../db/runtime.js";
 
 interface PreparedDocumentData {
   mainData: Record<string, unknown>;
@@ -72,18 +71,6 @@ interface DrizzleTransactionLike {
 
 interface DrizzleDatabaseLike extends DrizzleTransactionLike {
   transaction<T>(callback: (tx: DrizzleTransactionLike) => Promise<T>): Promise<T>;
-}
-
-export function setDb(db: NodePgDatabase<Record<string, unknown>>): void {
-  dbInstance = db;
-}
-
-export function getDb(): NodePgDatabase<Record<string, unknown>> {
-  if (!dbInstance) {
-    throw new Error("Database not initialized. Call setDb() first.");
-  }
-
-  return dbInstance;
 }
 
 /**

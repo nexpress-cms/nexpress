@@ -2,7 +2,8 @@ import { and, asc, count, desc, eq, notInArray, sql, type SQL } from "drizzle-or
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getCollectionConfig } from "../collections/registry.js";
-import { getDb, getDocumentById } from "../collections/pipeline.js";
+import { getDocumentById } from "../collections/pipeline.js";
+import { getDb } from "../db/runtime.js";
 import { nxComments, nxMembers, nxReactions } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 

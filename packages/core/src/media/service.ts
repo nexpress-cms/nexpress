@@ -14,6 +14,7 @@ import { nxMedia, nxMediaRefs } from "../db/schema/media.js";
 import { nxUsers } from "../db/schema/system.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { getLogger } from "../observability/logger.js";
+import { getDb } from "../db/runtime.js";
 import {
   DEFAULT_IMAGE_SIZES,
   processImage,
@@ -81,7 +82,6 @@ interface MediaRecord {
 }
 
 let storageAdapter: NxStorageAdapter | null = null;
-let dbInstance: NodePgDatabase<Record<string, unknown>> | null = null;
 
 export function setStorageAdapter(adapter: NxStorageAdapter): void {
   storageAdapter = adapter;
@@ -93,18 +93,6 @@ export function getStorageAdapter(): NxStorageAdapter {
   }
 
   return storageAdapter;
-}
-
-export function setMediaDb(db: NodePgDatabase<Record<string, unknown>>): void {
-  dbInstance = db;
-}
-
-export function getMediaDb(): NodePgDatabase<Record<string, unknown>> {
-  if (!dbInstance) {
-    throw new Error("Media database not initialized. Call setMediaDb() first.");
-  }
-
-  return dbInstance;
 }
 
 /**
@@ -182,7 +170,7 @@ export async function uploadMedia(
   // `status`. Hard delete is the right semantic.
   if (resolvedUploader && resolvedUploader.kind === "member") {
     const memberId = resolvedUploader.memberId;
-    const dbPg = getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+    const dbPg = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
     await dbPg.transaction(async (tx) => {
       // `pg_advisory_xact_lock` auto-releases on commit/rollback.
       // `hashtextextended` produces a stable int8 from a UUID
@@ -195,7 +183,7 @@ export async function uploadMedia(
       await tx.insert(nxMedia).values(insertValues);
     });
   } else {
-    const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+    const db = getDb() as unknown as DrizzleDatabaseLike;
     await db.insert(nxMedia).values(insertValues);
   }
 
@@ -215,7 +203,7 @@ export async function uploadMedia(
     // the original storage error to the caller, since that's
     // what they need to act on.
     try {
-      const cleanupDb = getMediaDb() as unknown as DrizzleDatabaseLike;
+      const cleanupDb = getDb() as unknown as DrizzleDatabaseLike;
       await cleanupDb.delete(nxMedia).where(eq(nxMedia.id, id));
     } catch (cleanupErr) {
       // Swallow so the original storage error reaches the
@@ -271,7 +259,7 @@ async function assertMemberUploadQuota(
   // shared media DB.
   const db =
     txDb ??
-    (getMediaDb() as unknown as NodePgDatabase<Record<string, unknown>>);
+    (getDb() as unknown as NodePgDatabase<Record<string, unknown>>);
 
   if (total !== null) {
     const [row] = (await db
@@ -316,7 +304,7 @@ export async function processMediaImage(
   mediaId: string,
   config: { sizes?: NxImageSize[]; format?: string; quality?: number },
 ): Promise<void> {
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
   const media = await getMediaRecordById(mediaId);
 
@@ -362,7 +350,7 @@ export async function processMediaImage(
 }
 
 export async function getMediaById(id: string): Promise<Record<string, unknown> | null> {
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
     .from(nxMedia)
@@ -375,7 +363,7 @@ export async function getMediaById(id: string): Promise<Record<string, unknown> 
 export async function deleteMedia(
   id: string,
 ): Promise<{ deleted: boolean; references?: unknown[] }> {
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
   const references = await db.select().from(nxMediaRefs).where(eq(nxMediaRefs.mediaId, id));
 
   if (references.length > 0) {
@@ -423,7 +411,7 @@ export async function listMedia(options: {
   uploaderKind?: NxMediaUploaderKindFilter;
   uploadedByMemberId?: string;
 }): Promise<NxFindResult> {
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
   const limit = normalizeLimit(options.limit);
   const offset = (page - 1) * limit;
@@ -532,7 +520,7 @@ export async function listMedia(options: {
 }
 
 export async function cleanupDeletedMedia(olderThanDays: number): Promise<number> {
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
   const threshold = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
   const rows = await db
@@ -566,7 +554,7 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
 }
 
 async function getMediaRecordById(id: string): Promise<MediaRecord | null> {
-  const db = getMediaDb() as unknown as DrizzleDatabaseLike;
+  const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
     .from(nxMedia)

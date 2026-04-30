@@ -9,7 +9,7 @@ import {
   getCollectionConfig,
   getCollectionTable,
 } from "./registry.js";
-import { getDb } from "./pipeline.js";
+import { getDb } from "../db/runtime.js";
 
 function hasPublishedAtField(fields: NxFieldConfig[]): boolean {
   for (const field of fields) {
