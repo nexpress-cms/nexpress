@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { nxMembers } from "../db/schema/community.js";
@@ -17,11 +17,16 @@ import { getDb } from "./pipeline.js";
  * either have no member-author column at all or aren't part of the
  * member-write surface.
  *
- * v1 collates results client-side after running one query per
- * collection. That's fine for a handful of forum/news collections;
- * sites with dozens of member-writable surfaces should switch to a
- * dedicated `nx_pending_queue` view (a future PR — out of scope
- * here).
+ * Phase 12.11 — replaced the v1 fan-out (one round trip per
+ * collection, no SQL `LIMIT`, JS-side merge + page) with a single
+ * `UNION ALL` query whose outer `LIMIT/OFFSET` runs at the database.
+ * The per-collection `(status, member_author_id)` is still
+ * status-indexed (`nx_c_<slug>_status_idx`), so each branch of the
+ * union narrows fast; the database does the cross-collection
+ * `ORDER BY created_at DESC` + paging. A site with dozens of
+ * member-writable surfaces no longer fans out N+2 round trips, and
+ * an unattended collection accumulating thousands of pendings can't
+ * blow heap by being read fully into memory.
  */
 export interface NxPendingDocSummary {
   id: string;
@@ -60,6 +65,46 @@ function getTableColumn(table: PgTable, name: string): unknown {
   return (table as unknown as Record<string, unknown>)[name];
 }
 
+/**
+ * Build one branch of the pending-queue UNION ALL: a SELECT against
+ * one member-write collection's table that projects the columns the
+ * outer query needs (`collection_slug`, `id`, `title`, `doc_slug`,
+ * `created_at`, `member_author_id`). Collections without a `title`
+ * column are skipped by the caller — there's nothing to display in
+ * the queue without it. Collections without a `slug` column emit
+ * `NULL::text` so the UNION ALL row shapes match.
+ */
+function buildPendingBranch(slug: string): SQL | null {
+  let config;
+  try {
+    config = getCollectionConfig(slug);
+  } catch {
+    return null;
+  }
+  if (!config.community?.memberWrite?.create) return null;
+
+  const table = getCollectionTable(slug) as PgTable;
+  const titleCol = getTableColumn(table, "title");
+  if (!titleCol) return null;
+  const slugCol = getTableColumn(table, "slug");
+  // The literal collection slug is bound as a parameter (no
+  // injection risk) so the same prepared statement shape can be
+  // reused across calls. `NULL::text` keeps the column type stable
+  // for collections without a `slug` field — UNION ALL requires
+  // type-aligned columns at each position.
+  return sql`
+    SELECT
+      ${slug}::text AS collection_slug,
+      id,
+      title,
+      ${slugCol ? sql`slug` : sql`NULL::text`} AS doc_slug,
+      created_at,
+      member_author_id
+    FROM ${table}
+    WHERE status = 'pending' AND member_author_id IS NOT NULL
+  `;
+}
+
 export async function listPendingMemberDocs(
   options: NxListPendingDocsOptions = {},
 ): Promise<NxListPendingDocsResult> {
@@ -72,108 +117,75 @@ export async function listPendingMemberDocs(
 
   const db = getDb();
 
-  // Fan out across collections. We collect per-collection rows then
-  // sort + paginate in JS — the per-collection queries are
-  // status-indexed (`nx_c_<slug>_status_idx`) so each is cheap, and
-  // the pending queue is small by definition (mods drain it). Note
-  // that the per-collection query has no SQL `LIMIT`: if a single
-  // collection accumulates an unreasonable number of pendings (a
-  // misbehaving spam adapter, no mod attention for weeks), this
-  // function would fetch every row into memory. Sites that hit
-  // that ceiling should switch to a dedicated `nx_pending_queue`
-  // materialized view — out of scope for v1.
-  const allRows: NxPendingDocSummary[] = [];
-  let totalDocs = 0;
-
+  const branches: SQL[] = [];
   for (const slug of slugs) {
-    let config;
-    try {
-      config = getCollectionConfig(slug);
-    } catch {
-      continue;
-    }
-    if (!config.community?.memberWrite?.create) continue;
-
-    const table = getCollectionTable(slug) as PgTable;
-    const statusCol = getTableColumn(table, "status") as never;
-    const memberAuthorCol = getTableColumn(table, "memberAuthorId") as never;
-    const idCol = getTableColumn(table, "id") as never;
-    const createdAtCol = getTableColumn(table, "createdAt") as never;
-    const titleCol = getTableColumn(table, "title") as never;
-    const slugCol = getTableColumn(table, "slug") as never;
-
-    // Skip collections that don't have a `title` field — there's
-    // nothing to display in the queue without it.
-    if (!titleCol) continue;
-
-    const where = and(eq(statusCol, "pending"), isNotNull(memberAuthorCol));
-
-    // Total count for this collection — paginate after fanning out.
-    const [count] = (await (db as unknown as {
-      select: (s: Record<string, unknown>) => {
-        from: (t: PgTable) => { where: (c: unknown) => Promise<Array<{ total: number | string }>> };
-      };
-    })
-      .select({ total: sql<number>`count(*)::int` })
-      .from(table)
-      .where(where)) as Array<{ total: number | string }>;
-    totalDocs += Number(count?.total ?? 0);
-
-    const rows = (await (db as unknown as {
-      select: (s: Record<string, unknown>) => {
-        from: (t: PgTable) => {
-          leftJoin: (j: PgTable, c: unknown) => {
-            where: (c: unknown) => {
-              orderBy: (o: unknown) => Promise<Array<Record<string, unknown>>>;
-            };
-          };
-        };
-      };
-    })
-      .select({
-        id: idCol,
-        title: titleCol,
-        slug: slugCol,
-        createdAt: createdAtCol,
-        memberId: nxMembers.id,
-        memberHandle: nxMembers.handle,
-        memberDisplayName: nxMembers.displayName,
-      })
-      .from(table)
-      .leftJoin(nxMembers, eq(memberAuthorCol, nxMembers.id))
-      .where(where)
-      .orderBy(desc(createdAtCol))) as Array<{
-      id: string;
-      title: string | null;
-      slug: string | null;
-      createdAt: Date;
-      memberId: string | null;
-      memberHandle: string | null;
-      memberDisplayName: string | null;
-    }>;
-
-    for (const row of rows) {
-      allRows.push({
-        id: row.id,
-        collectionSlug: slug,
-        title: typeof row.title === "string" && row.title.length > 0 ? row.title : "(untitled)",
-        slug: row.slug,
-        status: "pending",
-        createdAt: row.createdAt,
-        memberAuthor:
-          row.memberId && row.memberHandle && row.memberDisplayName
-            ? {
-                id: row.memberId,
-                handle: row.memberHandle,
-                displayName: row.memberDisplayName,
-              }
-            : null,
-      });
-    }
+    const branch = buildPendingBranch(slug);
+    if (branch) branches.push(branch);
   }
 
-  // Cross-collection sort by createdAt desc, then page.
-  allRows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const docs = allRows.slice(offset, offset + limit);
+  // Empty pool: caller asked for a slug that isn't member-writable
+  // (or the registry is empty). UNION ALL of zero subqueries is
+  // invalid SQL; bail with the empty envelope rather than crash.
+  if (branches.length === 0) {
+    return { docs: [], totalDocs: 0 };
+  }
+
+  const union = sql.join(branches, sql` UNION ALL `);
+
+  const [countRow] = (
+    (await db.execute(
+      sql`SELECT count(*)::int AS total FROM (${union}) p`,
+    )) as unknown as { rows: Array<{ total: number | string }> }
+  ).rows;
+  const totalDocs = Number(countRow?.total ?? 0);
+
+  const result = (await db.execute(sql`
+    SELECT
+      p.collection_slug AS collection_slug,
+      p.id AS id,
+      p.title AS title,
+      p.doc_slug AS doc_slug,
+      p.created_at AS created_at,
+      m.id AS member_id,
+      m.handle AS member_handle,
+      m.display_name AS member_display_name
+    FROM (${union}) p
+    LEFT JOIN ${nxMembers} m ON m.id = p.member_author_id
+    ORDER BY p.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `)) as unknown as {
+    rows: Array<{
+      collection_slug: string;
+      id: string;
+      title: string | null;
+      doc_slug: string | null;
+      created_at: Date | string;
+      member_id: string | null;
+      member_handle: string | null;
+      member_display_name: string | null;
+    }>;
+  };
+
+  const docs: NxPendingDocSummary[] = result.rows.map((row) => ({
+    id: row.id,
+    collectionSlug: row.collection_slug,
+    title:
+      typeof row.title === "string" && row.title.length > 0
+        ? row.title
+        : "(untitled)",
+    slug: row.doc_slug,
+    status: "pending",
+    createdAt:
+      row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
+    memberAuthor:
+      row.member_id && row.member_handle && row.member_display_name
+        ? {
+            id: row.member_id,
+            handle: row.member_handle,
+            displayName: row.member_display_name,
+          }
+        : null,
+  }));
+
   return { docs, totalDocs };
 }
