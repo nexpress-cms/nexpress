@@ -4,7 +4,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxBans } from "../db/schema/community.js";
 import { NxNotFoundError, NxValidationError } from "../errors.js";
-import { getCurrentSiteId } from "../sites/context.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
@@ -70,7 +70,10 @@ export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
   // bans this column IS the site identifier; for category /
   // collection bans it scopes the slug to a particular tenant
   // (the same `posts` collection slug exists on every site).
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write paths must NOT silently fall through to the
+  // default site. A ban issued without site context would land
+  // on tenant A's records when the staff member intended tenant B.
+  const siteId = await requireSiteId();
   const [row] = (await db
     .insert(nxBans)
     .values({
@@ -117,6 +120,10 @@ export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
   // the predicate and leak active temp bans across members.
   // Phase 18 — scope to the current tenant so a ban issued on
   // tenant A doesn't surface in tenant B's mod surface.
+  // #272 — read path: falling back to the default site is
+  // intentional. A worker-side reconciler running without site
+  // context should still see the default tenant's bans rather
+  // than crash.
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const now = new Date();
   return (await db

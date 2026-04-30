@@ -6,7 +6,7 @@ import { getCollectionRegistration, getCollectionTable } from "../collections/re
 import { getDb } from "../collections/pipeline.js";
 import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
 import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
-import { getCurrentSiteId } from "../sites/context.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
@@ -94,7 +94,9 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Phase 18 — file the report under the current tenant so the
   // mod queue surfaces it on the right site.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through; a misfiled
+  // report would surface in the wrong moderator's queue.
+  const siteId = await requireSiteId();
   if (target.siteId !== null && target.siteId !== siteId) {
     throw new NxForbiddenError("report", "cross-site");
   }

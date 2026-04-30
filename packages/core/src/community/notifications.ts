@@ -4,7 +4,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../collections/pipeline.js";
 import { nxNotifications } from "../db/schema/community.js";
 import { NxForbiddenError, NxValidationError } from "../errors.js";
-import { getCurrentSiteId } from "../sites/context.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
@@ -80,7 +80,10 @@ export async function createNotification(
   // notification belongs to the tenant where the actor's
   // action happened (a reaction on tenant A → notification
   // shows up in the recipient's tenant-A inbox).
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through; an actor on
+  // tenant A would otherwise create a notification on the
+  // default tenant.
+  const siteId = await requireSiteId();
   const [row] = (await db
     .insert(nxNotifications)
     .values({
@@ -188,7 +191,8 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
   // would silently drop. Using `returning({ id })` also gives us
   // an exact count instead of a follow-up SELECT — replaces the
   // pre-existing best-effort COUNT round trip.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through.
+  const siteId = await requireSiteId();
   const updated = (await db
     .update(nxNotifications)
     .set({ readAt: new Date() })
@@ -209,7 +213,8 @@ export async function markAllNotificationsRead(memberId: string): Promise<number
   // Phase 18 — "mark all read" only marks the current site's
   // inbox so a member doesn't accidentally clear another
   // tenant's unread count when toggling on this one.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  // #272 — write: must NOT silently fall through.
+  const siteId = await requireSiteId();
   const before = await unreadNotificationCount(memberId);
   await db
     .update(nxNotifications)

@@ -38,6 +38,38 @@ export async function getCurrentSiteId(): Promise<string | null> {
 }
 
 /**
+ * Like `getCurrentSiteId()` but throws when no site context is set.
+ *
+ * Use this on write paths that must NEVER silently fall through to
+ * the default site — community moderation, ban/mute writes, report
+ * creation, notification fan-out. Reading from the default site
+ * when context is missing is usually fine; *writing* to it is how
+ * cross-site data leaks happen.
+ *
+ * Background jobs / CLI scripts: stamp the originating `siteId`
+ * onto the job payload at enqueue time and wrap the handler in
+ * `withCurrentSite(siteId, fn)` so this helper resolves correctly.
+ *
+ * The error code `SITE_CONTEXT_MISSING` is deliberately distinct
+ * from `NxNotFoundError` / `NxValidationError` so handlers can
+ * convert it to a 500 (genuinely a server-side wiring bug) rather
+ * than a 4xx leaked to the user.
+ */
+export async function requireSiteId(): Promise<string> {
+  const id = await getCurrentSiteId();
+  if (!id) {
+    const err = new Error(
+      "site context required for this write but none is set — " +
+        "wrap the call in withCurrentSite() or stamp siteId on the job payload",
+    ) as Error & { code: string };
+    err.name = "NxSiteContextMissing";
+    err.code = "SITE_CONTEXT_MISSING";
+    throw err;
+  }
+  return id;
+}
+
+/**
  * Tests / scripts that want to pin the current site id
  * for the duration of a block can use the `withCurrentSite`
  * helper — it swaps in a constant resolver, runs `fn`, and
