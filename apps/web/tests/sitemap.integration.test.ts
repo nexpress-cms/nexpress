@@ -320,6 +320,31 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     );
   });
 
+  it("ignores ?locale= when i18n is not configured (flat-mode regression)", async () => {
+    // Non-i18n sites historically served `<urlset>` directly at
+    // /sitemap.xml. A stray `?locale=` from a crawler shouldn't
+    // collapse that into an empty document — the param is a
+    // 12.9 affordance, not a filter. Fix: ignore the param when
+    // `getI18nConfig()` returns null. This test reproduces a
+    // non-i18n environment by clearing the harness's i18n config
+    // for the duration of the assertion, then restores it so
+    // sibling tests stay green.
+    const { resetI18nConfig, setI18nConfig } = await import("@nexpress/core");
+    resetI18nConfig();
+    try {
+      const res = await sitemapGET(sitemapRequest("anything"));
+      expect(res.status).toBe(200);
+      const xml = await res.text();
+      // Flat urlset, NOT an index, AND static routes still present.
+      expect(xml).toContain("<urlset");
+      expect(xml).not.toContain("<sitemapindex");
+      expect(xml).toContain("<loc>http://localhost:3000/</loc>");
+      expect(xml).toContain("<loc>http://localhost:3000/blog</loc>");
+    } finally {
+      setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
+    }
+  });
+
   it("renderSitemapIndexXml emits a sitemap-index document with absolute URLs", async () => {
     const { renderSitemapIndexXml } = await import("@nexpress/core");
     const xml = renderSitemapIndexXml("https://example.com", [

@@ -157,7 +157,13 @@ export async function GET(req: Request): Promise<Response> {
   // per-file 50K cap. Otherwise (no i18n, or `?locale` is
   // present) the route renders a `<urlset>` directly.
   const url = new URL(req.url);
-  const requestedLocale = url.searchParams.get("locale");
+  // `?locale=` is meaningful only when i18n is configured. For
+  // non-i18n sites we ignore the param entirely (treat as the
+  // bare URL) so a stray query string returns the flat sitemap
+  // rather than an empty `<urlset>` — buildSitemap with a locale
+  // filter on a non-i18n site skips every collection AND drops
+  // the static routes, which would silently 200 with no entries.
+  const requestedLocale = i18n ? url.searchParams.get("locale") : null;
   if (i18n && requestedLocale && !i18n.locales.includes(requestedLocale)) {
     return new Response("Unknown locale", { status: 404 });
   }
