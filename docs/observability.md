@@ -135,3 +135,62 @@ setErrorReporter({
   tracker.
 
 Reset to defaults in tests via `resetLogger()` / `resetErrorReporter()`.
+
+---
+
+## Worker observability — three stores, one matrix (#274)
+
+Phase 19 + 20.3 added two NexPress-specific tables on top of pg-boss's
+own metadata. There are now three distinct "where do I look?" stories
+for queue / worker debugging. They cover different questions; the
+issue tracker calls out that this can confuse new operators, so the
+matrix below is the canonical reference until / unless they get
+unified into one subsystem.
+
+| Question                                            | Look here                                | Retention env                                                                                       |
+| --------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Is a job pending / completed / failed right now?    | pg-boss tables (`pgboss.job` + archive)  | pg-boss internal — controlled by pg-boss config, not NexPress envs                                  |
+| Is *any* worker process actually attached?          | `nx_worker_heartbeats`                   | `NX_WORKER_STALE_THRESHOLD_SECONDS` (default 90) — rows older than `STALE × 10` get GC'd by `purgeStaleWorkers` |
+| What did handler X log while processing job Y?      | `nx_job_logs`                            | `NX_JOB_LOG_RETENTION_DAYS` (default 14) — pruned by the `system:jobLogPrune` recurring job          |
+
+### Cadence envs
+
+| Env                              | Default | Effect                                                                  |
+| -------------------------------- | ------- | ----------------------------------------------------------------------- |
+| `NX_WORKER_HEARTBEAT_SECONDS`    | `30`    | How often a running worker upserts its `nx_worker_heartbeats` row.       |
+| `NX_WORKER_STALE_THRESHOLD_SECONDS` | `90` | After this with no heartbeat, the worker reports `unhealthy`.            |
+| `NX_JOB_LOG_RETENTION_DAYS`      | `14`    | Prune `nx_job_logs` rows older than this (recurring job).                |
+
+If you tune retention, tune all three to the same window if your
+storage policy is uniform, or document the divergence — they don't
+read from each other and a "we kept 30 days of pg-boss archive" claim
+won't hold if `NX_JOB_LOG_RETENTION_DAYS` is still 14.
+
+### Symptom → store
+
+- **"My pending count looks high but nothing's processing"** —
+  inspect `nx_worker_heartbeats`. `aliveCount: 0` means no worker is
+  attached; pg-boss alone won't tell you that.
+- **"A job failed but the API response was vague"** — query
+  `nx_job_logs` for that `jobId`. The structured `level` + `message`
+  + `context` triple is what `getLogger()` calls inside the handler
+  tee'd into.
+- **"A job completed but the side effect didn't fire"** — first check
+  pg-boss state (`completed` vs. `expired`). If the job ran, then
+  read `nx_job_logs` for the handler's own diagnostics.
+- **"A worker rebooted and now everything looks paused"** — the
+  pause flag (`nx_settings` `siteId="_system"` `key="jobs.paused"`)
+  is process-wide and survives restarts. Resume via the admin UI or
+  `setJobsPauseState({ paused: false })`. See `docs/jobs.md` for the
+  fuller pause / resume story.
+
+### Why three stores?
+
+pg-boss owns the queue itself; replacing it would mean reimplementing
+visibility timeouts and retry semantics. Heartbeats + job logs are
+operator-facing surfaces that pg-boss's archive doesn't give us:
+heartbeats answer "is anything attached?", job logs let operators
+read the handler's own logger output without grep'ing process
+stdout. The three coexist intentionally; #274 tracks whether they
+should later collapse into a single `worker-observability` module
+with one retention knob.
