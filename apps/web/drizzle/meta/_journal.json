@@ -204,6 +204,13 @@
       "when": 1777432994712,
       "tag": "0028_powerful_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1777518938511,
+      "tag": "0029_lowly_logan",
+      "breakpoints": true
     }
   ]
 }
