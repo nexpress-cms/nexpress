@@ -22,7 +22,7 @@
     "build": "tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "react": "^19.0.0",

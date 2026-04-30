@@ -13,7 +13,7 @@
     "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=20",
     "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint .",
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
-    "typecheck": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint",
+    "typecheck": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run typecheck",
     "test": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test",
     "test:integration": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test:integration --concurrency=1",
     "format": "prettier --write .",
