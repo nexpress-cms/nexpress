@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { jwtVerify, SignJWT, type JWTPayload } from "jose";
+import { jwtVerify, SignJWT, errors as joseErrors, type JWTPayload } from "jose";
 
 import type { NxUserRole } from "../config/types.js";
 import { NxAuthError } from "../errors.js";
@@ -97,4 +97,23 @@ export async function verifyToken(
     );
   }
   return { ...typed, use };
+}
+
+/**
+ * True when `err` represents a token-verification failure rather than
+ * an unrelated runtime fault (DB outage, misconfiguration, …). Auth
+ * helpers use this to keep the existing "bad token → 401" behavior
+ * silent while letting infrastructure failures surface as 5xx.
+ *
+ * Covers:
+ *   - `NxAuthError` — `verifyToken` / `verifyMemberToken` rejecting a
+ *     missing or wrong `use` claim, or `verifyCsrf` failing.
+ *   - `jose.errors.JOSEError` — every JWT signature / format /
+ *     expiration failure, including subclasses like `JWTExpired`,
+ *     `JWSSignatureVerificationFailed`, `JWTInvalid`.
+ */
+export function isTokenVerificationError(err: unknown): boolean {
+  if (err instanceof NxAuthError) return true;
+  if (err instanceof joseErrors.JOSEError) return true;
+  return false;
 }
