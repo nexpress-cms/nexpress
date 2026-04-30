@@ -26,7 +26,13 @@ export function buildZodSchema(
 }
 
 export function getCollectionZodSchema(config: NxCollectionConfig): z.ZodSchema {
-  const base = buildZodSchema(config.fields);
+  const base = buildZodSchema(config.fields).extend({
+    // Phase 21.17 — per-doc visibility flag. Optional on writes;
+    // the pipeline lets the column default to "public" when the
+    // caller doesn't specify. Allowed values are the same
+    // codegen enum from `getBaseColumns`.
+    visibility: z.enum(["public", "private"]).optional(),
+  });
   // Phase 12.1 — i18n collections accept `locale` and an
   // optional `translationGroupId` on writes. zod's default
   // strip behavior would otherwise drop them before the

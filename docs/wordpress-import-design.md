@@ -396,10 +396,12 @@ here so reviewers can challenge them early.
    correctly because they live in different collections; same-
    type collisions in WP would already be invalid.
 5. **`status: "private"` posts.** WP private posts are visible to
-   logged-in users. NexPress doesn't have a per-document
-   visibility flag yet (collection-level access controls only).
-   For Phase 21.4 we coerce private → draft and log a warning.
-   Adding per-doc visibility is a separate phase.
+   logged-in users. Phase 21.17 added a `visibility` column to
+   every collection and `findDocuments` auto-filters anonymous
+   reads to `visibility = "public"`. Private WP posts now
+   round-trip as `status="published", visibility="private"` —
+   a member or staff principal sees them, anonymous visitors
+   and crawlers don't. The Phase 21.4 draft-coercion is gone.
 6. **Imported member status enum.** Adding "imported" requires a
    schema migration. Need to confirm with project conventions
    that extending an existing enum mid-flight is acceptable
