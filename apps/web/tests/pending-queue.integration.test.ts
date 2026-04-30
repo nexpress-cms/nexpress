@@ -285,6 +285,30 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
     expect(b2.body.docs).toHaveLength(1);
   });
 
+  it("respects SQL limit even when many pending rows exist (Phase 12.11 regression)", async () => {
+    // Pre-12.11 the function fanned out one query per collection
+    // with no SQL `LIMIT`, then sliced in JS — meaning every
+    // pending row was loaded into memory regardless of `?limit=`.
+    // Seed enough rows to make a JS-only limit visibly different
+    // from a SQL-side one, then assert the response carries
+    // exactly `limit` docs while `totalDocs` reflects the full
+    // count.
+    const mod = await seedUser({ role: "moderator" });
+    const member = await seedActiveMember("queue-large");
+    const SEED = 30;
+    for (let i = 0; i < SEED; i++) {
+      await seedPendingDoc(member, `large-${i}`, `large doc ${i}`);
+    }
+
+    const res = await pendingGET(
+      staffRequest("/api/admin/collections/pending?limit=5", mod),
+    );
+    const body = await readJson<{ docs: unknown[]; totalDocs: number }>(res);
+    expect(body.status).toBe(200);
+    expect(body.body.docs).toHaveLength(5);
+    expect(body.body.totalDocs).toBe(SEED);
+  });
+
   it("orders newest-first across collections", async () => {
     const mod = await seedUser({ role: "moderator" });
     const a = await seedActiveMember("order-a");
