@@ -134,7 +134,7 @@ my-site/
 | `pnpm build`       | Build all packages and applications                       |
 | `pnpm dev`         | Start development servers for all packages                |
 | `pnpm lint`        | Run root ESLint (type-aware lint rules)                   |
-| `pnpm typecheck`   | Run workspace `tsc --noEmit` via Turbo (`turbo run lint`) |
+| `pnpm typecheck`   | Run workspace `tsc --noEmit` via Turbo (`turbo run typecheck`) |
 | `pnpm test`        | Run workspace test scripts (`turbo run test`)             |
 | `pnpm db:generate` | Generate Drizzle migrations                               |
 | `pnpm db:migrate`  | Apply database migrations                                 |
