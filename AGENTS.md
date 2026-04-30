@@ -66,7 +66,13 @@ Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`)
 - `setJobQueue(queue)` / `startWorker()` — pg-boss
 - `loadPlugins(plugins)` — registers hooks/routes/actions
 
-The reference app wires these up in `apps/web/src/lib/init-core.ts` via `ensureCoreServices()` and `ensurePluginsLoaded()`. Any route/server-component touching collections, media, or plugins must first call `ensureCoreServices()` or the singletons will be null. This is the idiomatic pattern — don't create parallel DB connections from elsewhere.
+The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code should use the single intent-based entry point `ensureFor("read" | "plugins" | "write")`:
+
+  - `await ensureFor("read")` — DB + storage + collections (read-only RSC, GET routes).
+  - `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
+  - `await ensureFor("write")` — plugins + email + pg-boss producer (any mutating API route / server action / import).
+
+The legacy `ensureCoreServices()` / `ensurePluginsLoaded()` / `ensureJobProducer()` / `ensureWriteReady()` functions still exist for backwards compatibility (#266); existing routes will be migrated to `ensureFor` in a follow-up. Either way, any route/server-component touching collections, media, or plugins MUST initialize before reading the singletons or they will be null. Don't create parallel DB connections from elsewhere.
 
 ### Collections = codegen, not runtime
 
