@@ -166,3 +166,19 @@ separate machine with `supercronic`, or use Fly's [scheduled machines](https://f
 - **pg-boss leader election** — the worker uses Postgres advisory locks,
   so multiple nodes can run `NX_ENABLE_JOBS=1` simultaneously. Only one
   picks up each job.
+- **Rate limiting is per-process.** `apps/web/src/proxy.ts` keeps its
+  IP/path bucket counters in an in-memory `Map`. With N instances behind
+  a load balancer the effective limit is `N × configured`, so a 10/min
+  cap on `/api/auth/login` lets through 40 requests on a 4-node cluster.
+  This is by design, not a bug — but you need to layer a real rate
+  limiter upstream:
+  - **Cloudflare / Vercel** — configure rate limit rules at the edge
+    (IP + path pattern). The in-process `Map` becomes a defence-in-depth
+    fallback.
+  - **NGINX** — `limit_req_zone $binary_remote_addr zone=api:10m rate=10r/m;`
+    plus `limit_req zone=api burst=20 nodelay;` on `location /api/auth`.
+  - **Caddy** — the [`rate_limit`](https://caddyserver.com/docs/modules/http.handlers.rate_limit)
+    handler, scoped per route.
+  - **Single-node deployments** — the in-process map is sufficient.
+  See issue #269 for the design discussion (Postgres-backed rate
+  limiting is intentionally not recommended).
