@@ -41,3 +41,55 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # #275 — the critical write path (pipeline.ts at 2,185 lines and
+  # everything around it) is exercised primarily by `pnpm test:integration`
+  # against a real Postgres. Mock-based unit tests don't catch real schema
+  # mismatches, FK violations, transaction-isolation issues, or pg-boss
+  # interactions, so a green `pnpm test` was misleading. This job runs the
+  # integration suite against a Postgres service container.
+  integration:
+    name: integration tests (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nexpress
+          POSTGRES_PASSWORD: nexpress
+          POSTGRES_DB: nexpress_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexpress"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Integration tests
+        # Sequential by design — see docs/testing.md "Behaviour".
+        run: pnpm test:integration
