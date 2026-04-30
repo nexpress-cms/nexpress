@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 
 import type { AttachmentIndex } from "../apply/attachment-index.js";
 import type { WpImportBundle } from "../parse/types.js";
-import { downloadMedia, isAllowedMimeType, WpMediaDownloadError } from "./download.js";
+import {
+  downloadMedia,
+  isAllowedMimeType,
+  resolveEnvDownloadOptions,
+  WpMediaDownloadError,
+} from "./download.js";
 
 /**
  * Phase 21.5 — orchestrates download + upload of every media URL the
@@ -109,7 +114,14 @@ export async function runMediaPipeline(
 ): Promise<MediaPipelineReport> {
   const log = options.log ?? noop;
   const dryRun = options.dryRun ?? false;
-  const download = deps.download ?? ((url: string) => downloadMedia(url));
+  // The default download honours NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS and
+  // NX_WP_IMPORT_MAX_BYTES so self-hosted operators can opt into
+  // private-network sources without having to inject `deps.download`.
+  // Resolve once per pipeline run so a single env read covers every
+  // target — re-reading per URL would only reward someone toggling env
+  // mid-run, which is not a real workflow.
+  const envDefaults = resolveEnvDownloadOptions();
+  const download = deps.download ?? ((url: string) => downloadMedia(url, envDefaults));
   const concurrency = Math.max(1, options.perHostConcurrency ?? DEFAULT_PER_HOST_CONCURRENCY);
 
   const byUrl = new Map<string, string>();
