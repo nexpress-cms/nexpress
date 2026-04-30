@@ -405,7 +405,6 @@ import {
   getCollectionConfig,
   getDocumentById,
   startWorker,
-  stopWorker,
 } from "@nexpress/core";
 
 import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/bootstrap";
@@ -447,16 +446,12 @@ async function main() {
     },
   });
 
+  // startWorker installs SIGINT / SIGTERM handlers itself that
+  // call stopWorker() before process.exit(0) — the heartbeat
+  // row flips to "stopped" cleanly instead of drifting to
+  // "unhealthy" on graceful shutdown.
   await startWorker(databaseUrl);
   console.log("[nexpress] worker started — press Ctrl+C to stop");
-
-  const shutdown = async (signal: string) => {
-    console.log(\`\\n[nexpress] received \${signal}, stopping…\`);
-    await stopWorker();
-    process.exit(0);
-  };
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 main().catch((error) => {

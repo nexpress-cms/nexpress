@@ -9,12 +9,59 @@ let workerAdapter: PgBossAdapter | null = null;
 let producerAdapter: PgBossAdapter | null = null;
 let heartbeatHandle: { stop(): Promise<void> } | null = null;
 let pauseSyncHandle: PauseSyncLoopHandle | null = null;
+let signalHandlersInstalled = false;
+const installedSignalHandlers = new Map<NodeJS.Signals, () => void>();
+
+function installShutdownSignalHandlers(): void {
+  if (signalHandlersInstalled) return;
+  signalHandlersInstalled = true;
+
+  // Ensure the heartbeat row flips to `stopped` synchronously
+  // before the process exits, even on signal-driven shutdown.
+  // Without this a SIGTERM-driven shutdown raced with the
+  // event-loop stopping and the row drifted into `unhealthy`
+  // for a full WORKER_STALE_THRESHOLD_MS window.
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    const handler = (): void => {
+      void (async () => {
+        try {
+          await stopWorker();
+        } catch (err) {
+          getLogger().warn("Worker shutdown handler failed", {
+            signal,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          process.exit(0);
+        }
+      })();
+    };
+    process.on(signal, handler);
+    installedSignalHandlers.set(signal, handler);
+  }
+}
+
+function removeShutdownSignalHandlers(): void {
+  if (!signalHandlersInstalled) return;
+  for (const [signal, handler] of installedSignalHandlers) {
+    process.off(signal, handler);
+  }
+  installedSignalHandlers.clear();
+  signalHandlersInstalled = false;
+}
 
 export async function startWorker(
   connectionString: string,
   options?: {
     schema?: string;
     heartbeat?: boolean | { meta?: Record<string, unknown> };
+    /**
+     * When true (default), startWorker installs SIGINT / SIGTERM
+     * listeners that call `stopWorker()` and `process.exit(0)`.
+     * Set false in environments that manage their own shutdown
+     * sequencing (custom supervisors, embedded test harnesses).
+     */
+    installSignalHandlers?: boolean;
   },
 ): Promise<void> {
   if (workerAdapter) {
@@ -70,6 +117,10 @@ export async function startWorker(
     // skip this too.
     pauseSyncHandle = startPauseSyncLoop(workerAdapter);
   }
+
+  if (options?.installSignalHandlers !== false) {
+    installShutdownSignalHandlers();
+  }
 }
 
 /**
@@ -119,6 +170,7 @@ export async function stopWorker(): Promise<void> {
 
   await workerAdapter.stop();
   workerAdapter = null;
+  removeShutdownSignalHandlers();
 }
 
 export async function stopProducer(): Promise<void> {
