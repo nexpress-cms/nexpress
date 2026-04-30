@@ -14,10 +14,10 @@ import { readJsonBody } from "@nexpress/next";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
+import { verifyTtlMs } from "@/lib/token-ttl";
 
 const MIN_PASSWORD_LENGTH = 8;
 const HANDLE_RE = /^[a-z0-9][a-z0-9_-]{2,29}$/;
-const VERIFY_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 
 interface RegisterBody {
   email: string;
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
 
     if (!created) throw new Error("Failed to create member");
 
-    const issued = await createMemberEmailVerifyToken(db, created.id, VERIFY_TTL_MS);
+    const issued = await createMemberEmailVerifyToken(db, created.id, verifyTtlMs);
 
     await enqueueJob("members:sendVerifyEmail", {
       email: body.email,
