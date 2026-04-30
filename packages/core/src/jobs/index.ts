@@ -9,7 +9,6 @@ export {
   recordHeartbeat,
   markWorkerStopped,
   listWorkerHealth,
-  startHeartbeatLoop,
   purgeStaleWorkers,
   countAliveWorkers,
   type NxWorkerHeartbeat,
@@ -18,11 +17,9 @@ export {
 export {
   getJobsPauseState,
   setJobsPauseState,
-  startPauseSyncLoop,
   PAUSE_SYNC_INTERVAL_MS,
   type NxJobsPauseState,
   type SetJobsPauseStateInput,
-  type PauseSyncLoopHandle,
 } from "./pause-state.js";
 export {
   recordJobLog,
