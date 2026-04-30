@@ -118,6 +118,45 @@ function actorPrincipal(actor: SaveActor): NxHookPrincipal {
     : { kind: "member", memberId: actor.memberId };
 }
 
+/**
+ * Run a side-effect that fires AFTER the document transaction has
+ * already committed (job enqueue, plugin hook). The doc is durable
+ * by this point — surfacing the error to the caller would make a
+ * successful save look like a failure, so we swallow and surface
+ * via the framework logger instead.
+ *
+ * Operators rely on this log line to discover skipped follow-ups
+ * (search reindex, mention fanout, cache invalidation, etc.) and
+ * replay manually. The full outbox-pattern fix lives in #277; this
+ * is the minimum viable visibility shim.
+ *
+ * @internal — exported so the unit test can verify the
+ * swallow + log contract directly. Not part of the package's
+ * public API; do not use from outside `@nexpress/core`.
+ */
+export async function runPostCommit(
+  label: string,
+  context: { collection: string; documentId: string; operation?: string },
+  fn: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    const { getLogger } = await import("../observability/logger.js");
+    getLogger().error(
+      `post-commit ${label} failed — document persisted, follow-up skipped`,
+      {
+        collection: context.collection,
+        documentId: context.documentId,
+        operation: context.operation,
+        label,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+    );
+  }
+}
+
 export async function saveDocument(
   collection: string,
   docId: string | null,
@@ -755,30 +794,37 @@ async function saveDocumentImpl(
     return persistedDoc;
   });
   const savedDocId = getRecordId(savedDoc);
+  const postCommitCtx = { collection, documentId: savedDocId, operation };
 
-  await enqueueJob("content:afterSave", {
-    collection,
-    documentId: savedDocId,
-    operation,
-    userId: actorUserId(actor),
-  });
+  await runPostCommit("enqueue:content:afterSave", postCommitCtx, () =>
+    enqueueJob("content:afterSave", {
+      collection,
+      documentId: savedDocId,
+      operation,
+      userId: actorUserId(actor),
+    }),
+  );
 
   const pluginHookName = operation === "create" ? "content:afterCreate" : "content:afterUpdate";
-  await runHook(pluginHookName, {
-    collection,
-    doc: savedDoc,
-    operation,
-    user: userForHooks,
-    principal,
-  });
-  if (publishTransition) {
-    await runHook("content:afterPublish", {
+  await runPostCommit(`hook:${pluginHookName}`, postCommitCtx, () =>
+    runHook(pluginHookName, {
       collection,
       doc: savedDoc,
       operation,
       user: userForHooks,
       principal,
-    });
+    }),
+  );
+  if (publishTransition) {
+    await runPostCommit("hook:content:afterPublish", postCommitCtx, () =>
+      runHook("content:afterPublish", {
+        collection,
+        doc: savedDoc,
+        operation,
+        user: userForHooks,
+        principal,
+      }),
+    );
   }
 
   return {
@@ -1262,18 +1308,23 @@ async function deleteDocumentImpl(
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   });
 
-  await enqueueJob("content:afterDelete", {
-    collection,
-    documentId: docId,
-    userId: actorUserId(actor),
-  });
+  const postCommitCtx = { collection, documentId: docId, operation: "delete" };
+  await runPostCommit("enqueue:content:afterDelete", postCommitCtx, () =>
+    enqueueJob("content:afterDelete", {
+      collection,
+      documentId: docId,
+      userId: actorUserId(actor),
+    }),
+  );
 
-  await runHook("content:afterDelete", {
-    collection,
-    documentId: docId,
-    user: userForHooks,
-    principal,
-  });
+  await runPostCommit("hook:content:afterDelete", postCommitCtx, () =>
+    runHook("content:afterDelete", {
+      collection,
+      documentId: docId,
+      user: userForHooks,
+      principal,
+    }),
+  );
 }
 
 export async function findDocuments(
