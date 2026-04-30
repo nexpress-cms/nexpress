@@ -157,6 +157,87 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
     ).rejects.toThrow(/visibility/i);
   });
 
+  it("UPDATE preserves visibility unless the caller explicitly changes it", async () => {
+    const { saveDocument, findDocuments } = await import("@nexpress/core");
+    const created = await saveDocument(
+      "posts",
+      null,
+      {
+        title: "UpdMe",
+        slug: "upd",
+        content: { root: { type: "root", children: [] } },
+        publishedAt: new Date().toISOString(),
+        author: admin.userId,
+        visibility: "private",
+      },
+      actor(),
+      { status: "published" },
+    );
+    const id = created.doc.id as string;
+
+    // Update without touching visibility — sticky private.
+    await saveDocument(
+      "posts",
+      id,
+      {
+        title: "UpdMe (edited)",
+        slug: "upd",
+        content: { root: { type: "root", children: [] } },
+        publishedAt: new Date().toISOString(),
+        author: admin.userId,
+      },
+      actor(),
+    );
+    let anon = await findDocuments("posts", {});
+    expect(anon.docs).toHaveLength(0); // still hidden
+
+    // Flip back to public via UPDATE.
+    await saveDocument(
+      "posts",
+      id,
+      {
+        title: "UpdMe (public)",
+        slug: "upd",
+        content: { root: { type: "root", children: [] } },
+        publishedAt: new Date().toISOString(),
+        author: admin.userId,
+        visibility: "public",
+      },
+      actor(),
+    );
+    anon = await findDocuments("posts", {});
+    expect(anon.docs).toHaveLength(1);
+    expect((anon.docs[0] as { visibility: string }).visibility).toBe("public");
+  });
+
+  it("i18n collections honor the same visibility rules", async () => {
+    // Codegen adds the column to every collection — pin the
+    // expectation that an i18n collection (`localized-pages`)
+    // gets the same anon-hides-private behavior, so a
+    // future codegen split that excluded i18n tables would
+    // fail this suite.
+    const { saveDocument, findDocuments } = await import("@nexpress/core");
+    await saveDocument(
+      "localized-pages",
+      null,
+      { title: "MemberOnly", body: "shh", locale: "en", visibility: "private" },
+      actor(),
+      { status: "published" },
+    );
+    const anon = await findDocuments("localized-pages", { locale: "en" });
+    expect(anon.docs).toHaveLength(0);
+
+    const authed = await findDocuments(
+      "localized-pages",
+      { locale: "en" },
+      actor(),
+    );
+    expect(authed.docs).toHaveLength(1);
+    expect((authed.docs[0] as { visibility: string }).visibility).toBe(
+      "private",
+    );
+  });
+
   it("WP-import: status='private' lands as published+private and stays anonymous-hidden", async () => {
     const { applyBundle } = await import("@nexpress/wp-import");
     const { findDocuments } = await import("@nexpress/core");
