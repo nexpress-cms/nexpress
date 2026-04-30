@@ -129,8 +129,12 @@ function actorPrincipal(actor: SaveActor): NxHookPrincipal {
  * (search reindex, mention fanout, cache invalidation, etc.) and
  * replay manually. The full outbox-pattern fix lives in #277; this
  * is the minimum viable visibility shim.
+ *
+ * @internal — exported so the unit test can verify the
+ * swallow + log contract directly. Not part of the package's
+ * public API; do not use from outside `@nexpress/core`.
  */
-async function runPostCommit(
+export async function runPostCommit(
   label: string,
   context: { collection: string; documentId: string; operation?: string },
   fn: () => Promise<unknown>,
