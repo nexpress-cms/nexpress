@@ -82,6 +82,7 @@ export { htmlToLexical, type LexicalRoot } from "./convert/html-to-lexical.js";
 export {
   downloadMedia,
   isAllowedMimeType,
+  resolveEnvDownloadOptions,
   WpMediaDownloadError,
   WpMediaSsrfError,
   type DownloadOptions,

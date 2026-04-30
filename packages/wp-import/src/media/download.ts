@@ -407,6 +407,40 @@ function inferFilename(url: string): string {
 }
 
 /**
+ * Resolve the SSRF-related download options from process env.
+ * `runMediaPipeline`'s default download wires this in so a
+ * self-hosted operator can opt into private-network imports
+ * without having to pass `deps.download` themselves.
+ *
+ *   - `NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS=1` (or `true`) skips the
+ *     DNS / private-IP rejection step. ONLY use this when the
+ *     source WXR genuinely lives on the same trusted private
+ *     network as the importer.
+ *   - `NX_WP_IMPORT_MAX_BYTES=<int>` overrides the 100 MiB
+ *     body-size cap. Bumping this is the right knob for sites
+ *     with large video assets.
+ *
+ * Invalid values (non-numeric `MAX_BYTES`, etc.) fall back to
+ * the secure defaults silently — the goal is "don't refuse to
+ * boot," not "reward typos with bigger surface area."
+ */
+export function resolveEnvDownloadOptions(env: NodeJS.ProcessEnv = process.env): DownloadOptions {
+  const opts: DownloadOptions = {};
+  const allow = env.NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS;
+  if (allow === "1" || allow === "true") {
+    opts.allowPrivateHosts = true;
+  }
+  const maxBytesRaw = env.NX_WP_IMPORT_MAX_BYTES;
+  if (maxBytesRaw) {
+    const n = Number.parseInt(maxBytesRaw, 10);
+    if (Number.isFinite(n) && n > 0) {
+      opts.maxBytes = n;
+    }
+  }
+  return opts;
+}
+
+/**
  * The framework's upload routes accept image/*, video/*, and
  * application/pdf. Mirror that here so the importer doesn't push
  * anything through that the upload route would reject.
