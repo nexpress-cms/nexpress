@@ -60,6 +60,9 @@ export {
   NxAuthError,
   NxConflictError,
   NxRateLimitError,
+  NxSiteContextMissingError,
+  type NxErrorCode,
+  type NxErrorCodeInput,
 } from "./errors.js";
 
 export {

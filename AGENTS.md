@@ -140,7 +140,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 ## Conventions
 
-- **Error types**: throw `NxForbiddenError` / `NxNotFoundError` / `NxValidationError` / `NxAuthError` / `NxConflictError` from `@nexpress/core`. The API layer converts these to HTTP responses.
+- **Error types**: throw `NxForbiddenError` / `NxNotFoundError` / `NxValidationError` / `NxAuthError` / `NxConflictError` / `NxRateLimitError` / `NxSiteContextMissingError` from `@nexpress/core`. The API layer converts these to HTTP responses with stable `code` strings — see `docs/api-error-codes.md` for the catalogue and stability guarantee. New codes extend the `NxErrorCode` union (#290).
 - **Type-only imports**: enforced by ESLint (`@typescript-eslint/consistent-type-imports` with inline fix style). Prefer `import { type Foo } from "..."`.
 - **No import cycles**: enforced by `import-x/no-cycle`.
 - **React packages** declare React as a `peerDependency`; do not bundle it.
