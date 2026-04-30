@@ -1,4 +1,5 @@
 import type { ProjectConfig } from "./prompts.js";
+import { readTemplate } from "./template-loader.js";
 
 type TemplateConfig = ProjectConfig & {
   secret: string;
@@ -544,11 +545,14 @@ main().catch((error) => {
 }
 
 function dockerComposeTemplate(): string {
-  return `services:\n  db:\n    image: postgres:16-alpine\n    ports:\n      - "\${NEXPRESS_DB_PORT:-5433}:5432"\n    environment:\n      POSTGRES_DB: nexpress\n      POSTGRES_USER: nexpress\n      POSTGRES_PASSWORD: nexpress\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n\nvolumes:\n  pgdata:\n`;
+  // #268 — first template migrated to a real on-disk file. The
+  // string-function shape is kept so `getProjectFiles` doesn't
+  // change; the body just delegates to the template loader.
+  return readTemplate("docker/docker-compose.yml");
 }
 
 function dockerfileTemplate(): string {
-  return `FROM node:22-alpine AS base\nRUN corepack enable\n\nFROM base AS deps\nWORKDIR /app\nCOPY package.json pnpm-lock.yaml ./\nRUN pnpm install --frozen-lockfile\n\nFROM base AS builder\nWORKDIR /app\nCOPY --from=deps /app/node_modules ./node_modules\nCOPY . .\nRUN pnpm build\n\nFROM base AS runner\nWORKDIR /app\nENV NODE_ENV=production\nCOPY --from=builder /app/.next/standalone ./\nCOPY --from=builder /app/.next/static ./.next/static\nCOPY --from=builder /app/public ./public\nEXPOSE 3000\nCMD ["node", "server.js"]\n`;
+  return readTemplate("docker/Dockerfile");
 }
 
 function envExampleTemplate(config: TemplateConfig): string {

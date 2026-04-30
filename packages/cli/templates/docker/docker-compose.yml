@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "${NEXPRESS_DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: nexpress
+      POSTGRES_USER: nexpress
+      POSTGRES_PASSWORD: nexpress
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
