@@ -8,6 +8,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import type { NxFindResult, NxImageSize } from "../config/types.js";
+import { readEnvPositiveInt } from "../config/env.js";
 import { nxMembers } from "../db/schema/community.js";
 import { nxMedia, nxMediaRefs } from "../db/schema/media.js";
 import { nxUsers } from "../db/schema/system.js";
@@ -18,6 +19,16 @@ import {
   type NxProcessedImageResult,
 } from "./processor.js";
 import type { NxStorageAdapter } from "../storage/types.js";
+
+/**
+ * Trailing-window for member upload quotas (`perDay` in
+ * `nxMemberUploadQuota`). Default 24h matches the historical
+ * "daily quota" semantics; override via
+ * `NX_MEMBER_QUOTA_WINDOW_HOURS` to shift to weekly or hourly
+ * caps without touching code.
+ */
+const MEMBER_QUOTA_WINDOW_MS =
+  readEnvPositiveInt("NX_MEMBER_QUOTA_WINDOW_HOURS", 24) * 60 * 60 * 1000;
 
 interface SelectQuery extends Promise<unknown[]> {
   where(condition: ReturnType<typeof and> | ReturnType<typeof isNull>): SelectQuery;
@@ -270,7 +281,7 @@ async function assertMemberUploadQuota(
   }
 
   if (perDay !== null) {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = new Date(Date.now() - MEMBER_QUOTA_WINDOW_MS);
     const [row] = (await db
       .select({ value: count() })
       .from(nxMedia)

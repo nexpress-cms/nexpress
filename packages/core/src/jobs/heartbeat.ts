@@ -5,6 +5,7 @@ import { desc, eq, gt, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
+import { readEnvPositiveInt } from "../config/env.js";
 import { nxWorkerHeartbeats } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
 
@@ -25,8 +26,22 @@ import { getLogger } from "../observability/logger.js";
  * naturally reclaims its row instead of stacking duplicates.
  */
 
-export const WORKER_HEARTBEAT_INTERVAL_MS = 30_000;
-export const WORKER_STALE_THRESHOLD_MS = 90_000;
+/**
+ * How often a running worker pings its row. Tightening lets
+ * `lastSeenAt` track wall-clock more closely; loosening cuts
+ * write traffic on idle workers. `NX_WORKER_HEARTBEAT_SECONDS`.
+ */
+export const WORKER_HEARTBEAT_INTERVAL_MS =
+  readEnvPositiveInt("NX_WORKER_HEARTBEAT_SECONDS", 30) * 1_000;
+
+/**
+ * After how long with no heartbeat a worker is treated as
+ * unhealthy in the admin UI / health check. Default 90s is
+ * `3 × HEARTBEAT_INTERVAL` so a single missed beat doesn't trip
+ * the alarm. `NX_WORKER_STALE_THRESHOLD_SECONDS`.
+ */
+export const WORKER_STALE_THRESHOLD_MS =
+  readEnvPositiveInt("NX_WORKER_STALE_THRESHOLD_SECONDS", 90) * 1_000;
 
 export interface NxWorkerHeartbeat {
   id: string;

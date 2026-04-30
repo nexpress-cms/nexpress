@@ -4,6 +4,7 @@ import { and, asc, eq, gte, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../collections/pipeline.js";
+import { readEnvPositiveInt } from "../config/env.js";
 import { nxJobLogs } from "../db/schema/system.js";
 import { type NxLogLevel, getLogger } from "../observability/logger.js";
 
@@ -129,7 +130,13 @@ export async function listJobLogs(
   }));
 }
 
-export const DEFAULT_JOB_LOG_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+/**
+ * How long per-job log rows survive before the cleanup handler
+ * deletes them. Compliance regimes (GDPR, SOX) frequently dictate
+ * a specific window — override via `NX_JOB_LOG_RETENTION_DAYS`.
+ */
+export const DEFAULT_JOB_LOG_RETENTION_MS =
+  readEnvPositiveInt("NX_JOB_LOG_RETENTION_DAYS", 14) * 24 * 60 * 60 * 1000;
 
 /**
  * Delete log rows older than the cutoff. Safe to call from a
