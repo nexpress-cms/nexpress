@@ -185,6 +185,7 @@ export { signToken, verifyToken, isTokenVerificationError } from "./auth/token.j
 export type { NxTokenPayload } from "./auth/token.js";
 export { hashPassword, verifyPassword, ARGON2_OPTIONS } from "./auth/password.js";
 export { verifyCsrf } from "./auth/csrf.js";
+export { can, type NxCapability } from "./auth/capabilities.js";
 export {
   registerOAuthProvider,
   getOAuthProvider,
