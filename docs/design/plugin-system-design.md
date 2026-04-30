@@ -1,5 +1,18 @@
 # NexPress Plugin System Design
 
+> ⚠️ **Frozen design snapshot.** This is the original 2026-04-17
+> planning document for the plugin system. v1 plugins shipped (see
+> `AGENTS.md` "Plugin model" section + `docs/plugin-admin.md` for
+> the live behavior); the doc retains the rationale (npm-package
+> + rebuild over hot-load, no sandbox in v1, hooks/actions/routes/
+> scheduled-tasks surfaces) but specifics have drifted. Don't rely
+> on this file for current API shape.
+>
+> Last verified against: 3ee45df (2026-04-30) — design intent
+> (rebuild model, host invariants, host vs sandbox tradeoffs)
+> matches implementation. Code samples and `definePlugin()` shape
+> may have drifted from live `@nexpress/plugin-sdk`.
+
 > Version: 0.1 (Draft)
 > Date: 2026-04-17
 > Status: Design phase — no code written yet

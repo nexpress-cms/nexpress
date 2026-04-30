@@ -1,5 +1,18 @@
 # NexPress Core System Design
 
+> ⚠️ **Frozen design snapshot.** This is the original 2026-04-17
+> planning document. NexPress has shipped through Phase 21+ since;
+> the implementation diverges from this doc in many specifics
+> (schema names, API surfaces, plugin model). For current
+> architecture see `AGENTS.md` (live "Architecture" section); for
+> live guides see the rest of `docs/`. This file is preserved as
+> historical motivation.
+>
+> Last verified against: 3ee45df (2026-04-30) — high-level structure
+> (server-only core, codegen-first collections, plugin host, JWT +
+> Argon2 auth) still applies. File paths, function signatures, and
+> schema field lists are likely stale.
+
 > Version: 0.1 (Draft)
 > Date: 2026-04-17
 > Status: Design phase — no code written yet
