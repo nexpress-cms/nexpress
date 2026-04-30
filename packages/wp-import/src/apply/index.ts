@@ -455,13 +455,18 @@ export async function applyBundle(
           ? { field: originalAuthorField, value: originalAuthorName }
           : undefined,
       );
+      const mappedStatus = mapStatusToFramework(record.status);
       const saved = await saveDocument(
         collection,
         updateMode && existingId ? existingId : null,
-        data,
+        // Phase 21.17 — visibility rides the data payload (it's a
+        // collection column, validated by the Zod schema), while
+        // status stays as the saveDocument opts override. Both
+        // are derived from the WP record's `<wp:status>` here.
+        { ...data, visibility: mappedStatus.visibility },
         options.actor,
         {
-          status: mapStatusToFramework(record.status),
+          status: mappedStatus.status,
         },
       );
       const savedId = typeof saved.doc.id === "string" ? saved.doc.id : undefined;
@@ -548,7 +553,7 @@ export async function applyBundle(
   const notes: string[] = [];
   if (privateCount > 0) {
     notes.push(
-      `${privateCount} record${privateCount === 1 ? "" : "s"} with WP status "private" imported as draft (design §11.5 — per-doc visibility is a separate phase).`,
+      `${privateCount} record${privateCount === 1 ? "" : "s"} with WP status "private" imported as published with visibility=private (Phase 21.17).`,
     );
   }
   if (pendingCount > 0) {
@@ -777,11 +782,20 @@ function resolveCoverImageId(
   return undefined;
 }
 
-function mapStatusToFramework(status: WpPostStatus): "draft" | "published" {
-  // Only "publish" lands as published. "private" coerces to draft
-  // per design doc §11.5 (we don't have per-doc visibility yet);
-  // "pending" / "draft" stay as draft.
-  return status === "publish" ? "published" : "draft";
+function mapStatusToFramework(status: WpPostStatus): {
+  status: "draft" | "published";
+  visibility: "public" | "private";
+} {
+  // Phase 21.17 — `private` posts now round-trip with
+  // visibility=private + status=published (anonymous reads
+  // auto-filter to visibility=public; authenticated members /
+  // staff see both, matching WP's "logged-in users see private
+  // posts" rule). "publish" stays public-published; "pending" /
+  // "draft" stay as draft with public visibility (drafts aren't
+  // shown to anonymous regardless).
+  if (status === "publish") return { status: "published", visibility: "public" };
+  if (status === "private") return { status: "published", visibility: "private" };
+  return { status: "draft", visibility: "public" };
 }
 
 function noop(): void {

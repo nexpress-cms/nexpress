@@ -455,10 +455,23 @@ function getBaseColumns(collection: NxCollectionConfig): string[] {
   columns.push('createdBy: uuid("created_by").references(() => nxUsers.id)');
   columns.push('updatedBy: uuid("updated_by").references(() => nxUsers.id)');
 
+  // Phase 21.17 — per-doc visibility flag. Orthogonal to
+  // `status` (workflow state): a row can be published-public,
+  // published-private, draft-public, etc. Anonymous reads in
+  // `findDocuments` auto-filter to `visibility = "public"` so a
+  // newly-imported "private" row never leaks to crawlers; an
+  // authenticated principal (member or staff) sees both. WP
+  // imports use this to round-trip `<wp:status>private</wp:status>`
+  // posts as `status=published, visibility=private` rather than
+  // the old draft-coercion that lost the publish state.
+  const visibility =
+    'visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull()';
+
   if (collection.timestamps === false) {
-    return [columns[0], columns[1], columns[4], columns[5]];
+    return [columns[0], columns[1], columns[4], columns[5], visibility];
   }
 
+  columns.push(visibility);
   return columns;
 }
 

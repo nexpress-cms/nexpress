@@ -1321,6 +1321,24 @@ export async function findDocuments(
     effectiveWhere = rest;
   }
 
+  // Phase 21.17 — per-doc visibility filter. Anonymous reads
+  // (no `user` argument, e.g. site-side `findDocuments` from
+  // the catch-all renderer or the sitemap) auto-restrict to
+  // `visibility = "public"` so a private row never leaks to
+  // a crawler / unauthenticated visitor. Authenticated
+  // principals (any signed-in member or staff) see both
+  // public and private — matching WordPress's "logged-in
+  // users see private posts" semantics. Callers that want
+  // explicit control (admin queries, bulk export) pass
+  // `where.visibility` and bypass the gate.
+  if (effectiveWhere.visibility === undefined && !user) {
+    effectiveWhere = { ...effectiveWhere, visibility: "public" };
+  } else if (effectiveWhere.visibility === "*") {
+    const { visibility: _vis, ...rest } = effectiveWhere;
+    void _vis;
+    effectiveWhere = rest;
+  }
+
   const effectiveOptions: NxFindOptions = {
     ...options,
     where: effectiveWhere,
@@ -1803,6 +1821,14 @@ function prepareDocumentData(
   // Phase 15.2 — siteId is also non-field but framework-managed.
   if (typeof data.siteId === "string") {
     prepared.mainData.siteId = data.siteId;
+  }
+  // Phase 21.17 — visibility is a non-field framework-managed
+  // column (codegen'd onto every collection by `getBaseColumns`).
+  // Let it through so `createMainDocument` / `updateMainDocument`
+  // can persist it; the Zod schema already validated the value
+  // is `"public" | "private"`.
+  if (typeof data.visibility === "string") {
+    prepared.mainData.visibility = data.visibility;
   }
 
   return prepared;
