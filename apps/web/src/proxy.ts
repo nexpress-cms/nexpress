@@ -31,6 +31,41 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
+const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Routes the proxy's auto-CSRF check skips. Each entry is a
+ * deliberate decision, not an oversight:
+ *
+ *   - Pre-auth flows (login / register / refresh / password
+ *     reset / email verify): the user has no nx-csrf cookie
+ *     yet, so a same-site CSRF check is meaningless. These
+ *     routes have their own anti-replay (per-IP rate limit on
+ *     /api/auth/*, single-use email tokens for reset / verify).
+ *   - `/api/internal/*`: bearer-token auth via NX_SCHEDULER_TOKEN.
+ *     No browser session involved.
+ *   - `/api/plugins/<id>/<...>` for `<...>` other than the
+ *     standard CRUD (`./route.ts`) and `actions/*`: the plugin
+ *     proxy is for plugin-supplied endpoints (often webhooks
+ *     with HMAC signatures), and plugins enforce their own
+ *     authentication. The CRUD + actions endpoints are NOT in
+ *     this list — they go through the standard CSRF check.
+ *   - `/api/openapi.json`: read-only, but listed for clarity.
+ */
+const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
+  /^\/api\/auth\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
+  /^\/api\/members\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
+  /^\/api\/internal\//,
+  // plugins/<id>/<segment>/... where <segment> != "actions" — the
+  // catch-all proxy. plugins/<id> (CRUD) and plugins/<id>/actions/<id>
+  // both require CSRF and don't match this pattern.
+  /^\/api\/plugins\/[^/]+\/(?!actions(\/|$))/,
+];
+
+function isCsrfExempt(pathname: string): boolean {
+  return CSRF_EXEMPT_PATTERNS.some((p) => p.test(pathname));
+}
+
 const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> = [
   { pattern: /^\/api\/auth\//, limit: 10, windowMs: 60_000 },
   { pattern: /^\/api\/media\/upload/, limit: 20, windowMs: 60_000 },
@@ -157,6 +192,38 @@ export function proxy(request: NextRequest) {
           },
         },
       );
+    }
+
+    // #281 — auto-CSRF for /api/* mutations. Until this guard
+    // landed, every state-changing handler had to remember to
+    // call `requireCsrf(request)`; a missed line passed code
+    // review and tests silently and shipped without the check.
+    // The list of exempt patterns is deliberately small and
+    // explicit — pre-auth flows that have no nx-csrf cookie
+    // yet, scheduler-token-authenticated internals, and the
+    // plugin proxy where plugins handle their own auth.
+    // Per-handler `requireCsrf` calls remain in place as
+    // defense in depth; removing them is a follow-up.
+    if (!CSRF_SAFE_METHODS.has(request.method) && !isCsrfExempt(pathname)) {
+      const headerToken = request.headers.get("x-csrf-token");
+      const staffCookie = request.cookies.get("nx-csrf")?.value;
+      const memberCookie = request.cookies.get("nx-mb-csrf")?.value;
+      // Either staff or member CSRF cookie can satisfy the check —
+      // proxy doesn't know which lane the request is on, and the
+      // per-handler auth still enforces the right session shape.
+      // Header must be non-empty; a `undefined === undefined` slip
+      // would let cookieless requests pass.
+      const ok = Boolean(
+        headerToken &&
+          ((staffCookie && staffCookie === headerToken) ||
+            (memberCookie && memberCookie === headerToken)),
+      );
+      if (!ok) {
+        return NextResponse.json(
+          { error: { code: "CSRF_INVALID", message: "Invalid CSRF token" }, status: 403 },
+          { status: 403, headers: securityHeaders },
+        );
+      }
     }
   }
 
