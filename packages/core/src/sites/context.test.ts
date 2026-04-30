@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { NxSiteContextMissingError } from "../errors.js";
 import {
   getCurrentSiteId,
   requireSiteId,
@@ -8,7 +9,7 @@ import {
   withCurrentSite,
 } from "./context.js";
 
-describe("requireSiteId (#272)", () => {
+describe("requireSiteId (#272 / #290)", () => {
   afterEach(() => {
     resetCurrentSiteResolver();
   });
@@ -23,10 +24,12 @@ describe("requireSiteId (#272)", () => {
     expect(await requireSiteId()).toBe("tenant-b");
   });
 
-  it("throws SITE_CONTEXT_MISSING when no resolver is set", async () => {
+  it("throws an NxSiteContextMissingError (status 500) when no resolver is set", async () => {
+    await expect(requireSiteId()).rejects.toBeInstanceOf(NxSiteContextMissingError);
     await expect(requireSiteId()).rejects.toMatchObject({
-      name: "NxSiteContextMissing",
+      name: "NxSiteContextMissingError",
       code: "SITE_CONTEXT_MISSING",
+      statusCode: 500,
     });
   });
 
