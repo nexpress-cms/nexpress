@@ -13,6 +13,7 @@ import { nxMembers } from "../db/schema/community.js";
 import { nxMedia, nxMediaRefs } from "../db/schema/media.js";
 import { nxUsers } from "../db/schema/system.js";
 import { enqueueJob } from "../jobs/queue.js";
+import { getLogger } from "../observability/logger.js";
 import {
   DEFAULT_IMAGE_SIZES,
   processImage,
@@ -216,8 +217,18 @@ export async function uploadMedia(
     try {
       const cleanupDb = getMediaDb() as unknown as DrizzleDatabaseLike;
       await cleanupDb.delete(nxMedia).where(eq(nxMedia.id, id));
-    } catch {
-      // swallow — the storage error matters more
+    } catch (cleanupErr) {
+      // Swallow so the original storage error reaches the
+      // caller — that's what they need to act on. But don't go
+      // silent: a failed cleanup leaves a permanent ghost row
+      // in `processing` that eats the member's quota with no
+      // storage object to inspect and no job ever enqueued.
+      // Operators need a signal to find and remediate it.
+      getLogger().error("media upload cleanup failed", {
+        mediaId: id,
+        storageKey,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
     }
     throw err;
   }
