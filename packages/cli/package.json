@@ -24,8 +24,7 @@
     "create-nexpress": "./dist/index.js"
   },
   "files": [
-    "dist",
-    "templates"
+    "dist"
   ],
   "engines": {
     "node": ">=20"
