@@ -6,7 +6,7 @@ export {
 } from "./roles.js";
 export type { CommunityCapability, CommunityRoleDefinition, CommunityScope } from "./roles.js";
 
-export { memberCan, assertNotBanned } from "./can.js";
+export { memberCan, assertNotBanned, withMemberWrite } from "./can.js";
 
 export { setSpamAdapter, getSpamAdapter, resetSpamAdapter } from "./spam-adapter.js";
 export type {
