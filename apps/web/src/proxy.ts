@@ -85,6 +85,17 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   { pattern: /^\/api\/media\/upload/, limit: 20, windowMs: 60_000 },
   { pattern: /^\/api\/import/, limit: 5, windowMs: 60_000 },
   { pattern: /^\/api\/collections\//, limit: 100, windowMs: 60_000 },
+  // The plugin proxy catch-all (`/api/plugins/<id>/<...>` for paths
+  // other than the CRUD route and `actions/*`) is exempt from CSRF
+  // and frequently exposes webhook / public surfaces. Plugins
+  // enforce their own auth, so the framework's default needs to be
+  // tighter than the staff-session paths above (#316). 30 req/min/IP
+  // is a sane upper bound for typical webhook / health-check traffic;
+  // plugins that need more should rate-limit inside their handler.
+  { pattern: /^\/api\/plugins\/[^/]+\/(?!actions(\/|$))/, limit: 30, windowMs: 60_000 },
+  // CRUD on the plugin metadata + plugin actions stay on the staff-
+  // session limit (these go through requireAuth, so the IP bucket is
+  // belt-and-braces to the session).
   { pattern: /^\/api\/plugins(?:\/|$)/, limit: 60, windowMs: 60_000 },
   { pattern: /^\/api\/users(?:\/|$)/, limit: 30, windowMs: 60_000 },
   { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000 },
