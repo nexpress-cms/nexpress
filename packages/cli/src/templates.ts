@@ -142,33 +142,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
 }
 
 function drizzleConfigTemplate(): string {
-  return `import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-
-import { config as loadEnv } from "dotenv";
-import { defineConfig } from "drizzle-kit";
-
-const here = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(here, ".env") });
-
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set — copy .env.example to .env first.");
-}
-
-export default defineConfig({
-  schema: [
-    "./node_modules/@nexpress/core/dist/db-schema.js",
-    "./src/db/generated/*.ts",
-  ],
-  out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: { url: connectionString },
-  strict: true,
-  verbose: true,
-});
-`;
+  return readTemplate("config/drizzle.config.ts");
 }
 
 function bootstrapLibTemplate(): string {
@@ -587,84 +561,23 @@ function envTemplate(config: TemplateConfig): string {
 }
 
 function nextConfigTemplate(): string {
-  return `import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  output: "standalone",
-  transpilePackages: [
-    "@nexpress/admin",
-    "@nexpress/editor",
-    "@nexpress/blocks",
-    "@nexpress/theme",
-    "@nexpress/next",
-    "@nexpress/plugin-sdk",
-  ],
-  serverExternalPackages: [
-    "@nexpress/core",
-    "@node-rs/argon2",
-    "pg",
-    "pg-boss",
-    "sharp",
-  ],
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = config.externals || [];
-      if (Array.isArray(config.externals)) {
-        config.externals.push("@node-rs/argon2", "pg-native", "sharp");
-      }
-    }
-    return config;
-  },
-};
-
-export default nextConfig;
-`;
+  return readTemplate("config/next.config.ts");
 }
 
 function tsconfigTemplate(): string {
-  return `{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "jsx": "preserve",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "incremental": true,
-    "allowJs": true,
-    "noEmit": true,
-    "paths": { "@/*": ["./src/*"] },
-    "plugins": [{ "name": "next" }]
-  },
-  "include": ["src", "scripts", "next-env.d.ts", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
-}
-`;
+  return readTemplate("config/tsconfig.json");
 }
 
 function postcssConfigTemplate(): string {
-  return `export default {\n  plugins: {\n    "@tailwindcss/postcss": {},\n  },\n};\n`;
+  return readTemplate("config/postcss.config.mjs");
 }
 
 function gitignoreTemplate(): string {
-  return `node_modules/
-.next/
-dist/
-.env
-*.tsbuildinfo
-src/db/generated/*.ts
-!src/db/generated/.gitkeep
-uploads/
-`;
+  return readTemplate("config/.gitignore");
 }
 
 function nextEnvTemplate(): string {
-  return `/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n`;
+  return readTemplate("config/next-env.d.ts");
 }
 
 function rootLayoutTemplate(config: TemplateConfig): string {
