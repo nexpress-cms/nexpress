@@ -22,6 +22,7 @@ pnpm dev                                                # turbo watch: tsup --wa
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier
 - `pnpm test` runs the vitest unit suite across every workspace (no DB required). `pnpm test:integration` runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` (skips silently when unset). See `docs/testing.md` for setup.
+- `pnpm changeset` opens the changesets prompt — run it whenever you make a user-facing change to a `@nexpress/*` package (Phase 22.1). The generated file in `.changeset/` is committed with the code. See `.changeset/README.md` for the rule of thumb on when a changeset is needed.
 
 Running a single package's build/typecheck:
 
