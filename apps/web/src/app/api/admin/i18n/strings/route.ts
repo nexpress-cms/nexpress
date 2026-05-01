@@ -115,6 +115,31 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * #339 — reject locale values that aren't in the configured
+ * `i18n.locales` list. Without this gate an admin typo would
+ * persist a row that no template lookup ever consults
+ * (`allStrings[locale]` silently misses unrecognized keys), and
+ * `nx_string_overrides` accumulates orphaned rows the next
+ * operator can't tell apart from intentional overrides.
+ *
+ * When the site has no `i18n` block configured, only the
+ * implicit default locale (`"en"`) is allowed — same shape the
+ * read path uses on line 80.
+ */
+function assertConfiguredLocale(locale: string): void {
+  const i18n = getI18nConfig();
+  const configured = i18n?.locales ?? ["en"];
+  if (!configured.includes(locale)) {
+    throw new NxValidationError("Invalid input", [
+      {
+        field: "locale",
+        message: `Locale "${locale}" is not configured. Allowed: ${configured.join(", ")}.`,
+      },
+    ]);
+  }
+}
+
 export async function PUT(request: NextRequest) {
   try {
     await ensureFor("write");
@@ -135,6 +160,7 @@ export async function PUT(request: NextRequest) {
         { field: "body", message: "locale + key are required" },
       ]);
     }
+    assertConfiguredLocale(locale);
     const value =
       typeof body.value === "string"
         ? body.value
@@ -172,6 +198,7 @@ export async function DELETE(request: NextRequest) {
         { field: "query", message: "locale + key query params are required" },
       ]);
     }
+    assertConfiguredLocale(locale);
     await deleteStringOverride(locale, key);
     return nxSuccessResponse({ ok: true });
   } catch (error) {
