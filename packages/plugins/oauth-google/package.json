@@ -1,8 +1,27 @@
 {
   "name": "@nexpress/plugin-oauth-google",
   "version": "0.1.0",
-  "private": true,
+  "description": "Google OAuth provider plugin for NexPress.",
+  "license": "MIT",
+  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/plugins/oauth-google"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "plugin",
+    "oauth",
+    "google"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,18 +29,11 @@
       "default": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
@@ -33,5 +45,14 @@
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.4"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build"
   }
 }

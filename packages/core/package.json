@@ -1,8 +1,27 @@
 {
   "name": "@nexpress/core",
   "version": "0.0.0",
-  "private": true,
+  "description": "Server-side core for NexPress — collections pipeline, auth, jobs, media, plugins, observability.",
+  "license": "MIT",
+  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "cms",
+    "headless",
+    "nextjs"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -55,25 +74,11 @@
       "default": "./dist/seo.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:integration": "vitest run -c vitest.integration.config.ts"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.20.0",
-    "drizzle-kit": "^0.31.10",
-    "tsup": "^8.5.0",
-    "typescript": "^5.8.0"
+  "engines": {
+    "node": ">=20"
   },
   "peerDependencies": {
     "nodemailer": "^7.0.0"
@@ -94,5 +99,21 @@
     "pg-boss": "^12.15.0",
     "sharp": "^0.34.2",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "prepublishOnly": "pnpm build"
   }
 }

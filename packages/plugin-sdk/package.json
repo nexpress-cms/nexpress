@@ -1,24 +1,37 @@
 {
   "name": "@nexpress/plugin-sdk",
   "version": "0.0.0",
-  "private": true,
+  "description": "Plugin SDK for NexPress (definePlugin).",
+  "license": "MIT",
+  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "plugin",
+    "sdk"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
@@ -27,5 +40,14 @@
   "devDependencies": {
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build"
   }
 }

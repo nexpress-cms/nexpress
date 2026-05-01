@@ -1,0 +1,43 @@
+---
+"@nexpress/core": minor
+"@nexpress/admin": minor
+"@nexpress/blocks": minor
+"@nexpress/editor": minor
+"@nexpress/next": minor
+"@nexpress/plugin-sdk": minor
+"@nexpress/theme": minor
+"@nexpress/wp-import": minor
+"@nexpress/xliff": minor
+"create-nexpress": minor
+"@nexpress/plugin-forum": minor
+"@nexpress/plugin-oauth-github": minor
+"@nexpress/plugin-oauth-google": minor
+"@nexpress/plugin-reading-time": minor
+"@nexpress/plugin-seo-audit": minor
+"@nexpress/theme-default": minor
+"@nexpress/theme-magazine": minor
+"@nexpress/theme-minimal": minor
+"@nexpress/theme-portfolio": minor
+---
+
+Publish-readiness sweep — package metadata, license, and publishability.
+
+Every `@nexpress/*` library and `create-nexpress` becomes publishable
+to npm: `"private": true` removed, full metadata added (description,
+license, repository with `directory`, author, bugs, homepage, keywords,
+engines.node), and a `prepublishOnly: "pnpm build"` safety net so a
+one-off `pnpm publish` from inside a package directory still rebuilds
+before tarball.
+
+A repo-root `LICENSE` (MIT) is added and copied into every published
+package's directory so each tarball ships its own license file (npm
+auto-includes LICENSE at the package root, but only if the file
+actually lives there — repo-root licenses don't propagate).
+
+`apps/web` (the reference app) stays `"private": true` — it's not a
+distributable package.
+
+No code change; this is publish-bookkeeping only. Versions move from
+`0.0.0` (or `0.1.0` for the existing plugin packages) to a coherent
+`0.1.0` floor when `pnpm changeset version` runs against all currently
+queued changesets.
