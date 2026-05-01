@@ -21,6 +21,7 @@ behavior they describe changes.
 | [jobs.md](jobs.md) | pg-boss-backed job queue |
 | [multi-site.md](multi-site.md) | Multi-tenant site model |
 | [observability.md](observability.md) | Logging, heartbeats, job logs |
+| [operations.md](operations.md) | Operations runbook — incident recipes, boot warnings, recovery |
 | [plugin-admin.md](plugin-admin.md) | Plugin admin UI surface |
 | [plugin-render.md](plugin-render.md) | Plugin render hooks |
 | [scheduled-publishing.md](scheduled-publishing.md) | Scheduled publish flow |
