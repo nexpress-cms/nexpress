@@ -1,9 +1,9 @@
 import {
   NxForbiddenError,
   NxNotFoundError,
-  hasRole,
   getMediaById,
   deleteMedia,
+  can,
 } from "@nexpress/core";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -23,7 +23,7 @@ export async function GET(
     // raw metadata. Require an editor session — symmetric with the
     // list endpoint (#73).
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media", "read");
     }
     ensureCoreServices();
@@ -48,7 +48,7 @@ export async function DELETE(
     const { id } = await params;
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("media", "delete");
     }
 

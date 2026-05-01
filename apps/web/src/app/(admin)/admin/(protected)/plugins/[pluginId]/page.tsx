@@ -4,8 +4,8 @@ import {
   getPluginAdminExtension,
   getPluginRegistration,
   getPluginState,
-  hasRole,
   verifyTokenFull,
+  can,
 } from "@nexpress/core";
 import { PluginAdminPage } from "@nexpress/admin/client";
 
@@ -26,7 +26,7 @@ export default async function PluginAdminRoute({ params }: PageProps) {
   const token = (await cookies()).get("nx-session")?.value;
   const { secret } = getAuthRuntimeConfig();
   const user = token ? await verifyTokenFull(token, secret, getDb()) : null;
-  if (!user || !hasRole(user, "admin")) {
+  if (!user || !can(user, "admin.manage")) {
     notFound();
   }
 

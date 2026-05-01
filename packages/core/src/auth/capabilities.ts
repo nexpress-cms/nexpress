@@ -3,25 +3,12 @@ import type { NxAuthUser } from "../config/types.js";
 /**
  * Capability-based authorization (#273).
  *
- * The legacy model exposes two parallel role-check primitives:
- *
- *   - `hasRole(user, minRole)`  — linear comparison along
- *                                 viewer < author < editor < admin.
- *                                 `moderator` is intentionally absent
- *                                 from the hierarchy.
- *   - `isStaffMod(user)`        — admin | editor | moderator
- *                                 (community-moderation axis).
- *
- * Call sites have to remember which axis applies to the action they're
- * gating, and a `hasRole(user, "editor")` check that should have
- * included moderators silently drops them. `can(user, capability)`
- * names the *behavior* instead of the role hierarchy, so a reviewer
- * spots `can(user, "community.moderate")` on a comment-mod path
- * regardless of how the role table evolves later.
- *
- * This module is the new entry point. The legacy `hasRole` /
- * `isStaffMod` exports remain for backwards compatibility while the
- * existing 130+ call sites migrate to `can()`.
+ * Replaced the previous parallel `hasRole(user, minRole)` /
+ * `isStaffMod(user)` model. Naming the *behavior* instead of a role
+ * hierarchy means a reviewer spots `can(user, "community.moderate")`
+ * on a comment-mod path regardless of how the role table evolves
+ * later — and the previous trap where a `hasRole(user, "editor")`
+ * check silently dropped moderators is gone by construction.
  *
  * Capability vocabulary:
  *   - `content.publish`    — change publication state on staff-owned

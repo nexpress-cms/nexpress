@@ -1,8 +1,8 @@
 import {
   NxForbiddenError,
   getOptionalJobQueue,
-  hasRole,
   type NxJobState,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("jobs", "retry-all");
     }
     const queue = getOptionalJobQueue();

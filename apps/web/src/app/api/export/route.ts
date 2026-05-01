@@ -1,7 +1,6 @@
 import {
   NxForbiddenError,
   NxValidationError,
-  hasRole,
   nxMedia,
   nxMediaRefs,
   nxPlugins,
@@ -10,6 +9,7 @@ import {
   getAllCollectionSlugs,
   getPluginRegistration,
   findDocuments,
+  can,
 } from "@nexpress/core";
 import { and, inArray, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("export", "read");
     }
 

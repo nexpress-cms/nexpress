@@ -1,10 +1,9 @@
 import {
   NxForbiddenError,
   NxNotFoundError,
-  hasRole,
-  isStaffMod,
   nxMembers,
   verifyTokenFull,
+  can,
 } from "@nexpress/core";
 import {
   LinkedIdentitiesPanel,
@@ -36,7 +35,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const db = getDb();
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
-  if (!hasRole(user, "editor")) {
+  if (!can(user, "content.publish")) {
     throw new NxForbiddenError("member", "read");
   }
 
@@ -85,7 +84,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
       <LinkedIdentitiesPanel
         subjectKind="member"
         subjectId={row.id}
-        canRevoke={hasRole(user, "admin")}
+        canRevoke={can(user, "admin.manage")}
       />
 
       {/*
@@ -97,7 +96,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
       <MemberRolesPanel
         memberId={row.id}
         memberHandle={row.handle}
-        canModify={hasRole(user, "admin")}
+        canModify={can(user, "admin.manage")}
       />
 
       {/*
@@ -108,7 +107,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
       <MemberBansPanel
         memberId={row.id}
         memberHandle={row.handle}
-        canModify={isStaffMod(user)}
+        canModify={can(user, "community.moderate")}
       />
 
       {/*
@@ -117,7 +116,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         moderation surfaces. Shown last so the page reads
         identity-first, dangerous-action-last.
       */}
-      {hasRole(user, "admin") ? (
+      {can(user, "admin.manage") ? (
         <MemberPurgePanel memberId={row.id} memberHandle={row.handle} />
       ) : null}
     </div>

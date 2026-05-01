@@ -1,11 +1,10 @@
 import {
   NX_DEFAULT_SITE_ID,
   NxForbiddenError,
-  hasRole,
   hasRoleOnSite,
-  isStaffMod,
   isSuperAdmin,
   listAuditEvents,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -24,7 +23,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("audit", "read");
     }
 
@@ -49,7 +48,7 @@ export async function GET(request: NextRequest) {
     // the multi-site proxy).
     //
     // Issue #216 — `siteId=all` is super-admin only. The
-    // original gate was `hasRole(user, "admin")` which let any
+    // original gate was `can(user, "admin.manage")` which let any
     // global admin enumerate cross-tenant audit data, even
     // tenants they had no membership on. A specific
     // `siteId=<id>` other than the user's accessible set is
@@ -68,7 +67,7 @@ export async function GET(request: NextRequest) {
         siteIdFilter = rawSiteFilter;
       } else if (
         rawSiteFilter === NX_DEFAULT_SITE_ID &&
-        hasRole(user, "admin")
+        can(user, "admin.manage")
       ) {
         // Single-tenant compatibility: a global admin without
         // any explicit memberships keeps audit access on the

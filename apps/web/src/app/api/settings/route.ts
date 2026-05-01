@@ -3,9 +3,9 @@ import {
   NxForbiddenError,
   NxValidationError,
   getCurrentSiteId,
-  hasRole,
   nxSettings,
   validateSeoSettingsPatch,
+  can,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("settings", "read");
     }
 
@@ -41,7 +41,7 @@ export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("settings", "update");
     }
 

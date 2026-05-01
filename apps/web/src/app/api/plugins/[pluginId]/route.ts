@@ -4,9 +4,9 @@ import {
   NxValidationError,
   getPluginRegistration,
   getPluginState,
-  hasRole,
   updatePluginState,
   type NxPluginStateUpdate,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
@@ -53,7 +53,7 @@ export async function GET(
 ) {
   try {
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("plugins", "read");
     }
 
@@ -76,7 +76,7 @@ export async function PATCH(
 ) {
   try {
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("plugins", "update");
     }
 

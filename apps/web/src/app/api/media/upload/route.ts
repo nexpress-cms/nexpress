@@ -4,12 +4,12 @@ import { extname } from "node:path";
 import {
   NxForbiddenError,
   NxValidationError,
-  hasRole,
   nxMedia,
   nxMediaFolders,
   runHook,
   uploadMedia,
   getStorageAdapter,
+  can,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media", "upload");
     }
 

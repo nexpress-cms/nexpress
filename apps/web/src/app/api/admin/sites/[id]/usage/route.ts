@@ -3,7 +3,7 @@ import {
   NxValidationError,
   getSiteById,
   getSiteUsageSummary,
-  hasRole,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -29,7 +29,7 @@ export async function GET(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("sites/usage", "read");
     }
     const { id } = await context.params;
