@@ -13,6 +13,46 @@
       "types": "./dist/db-schema.d.ts",
       "import": "./dist/db-schema.js",
       "default": "./dist/db-schema.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js",
+      "default": "./dist/auth.js"
+    },
+    "./community": {
+      "types": "./dist/community.d.ts",
+      "import": "./dist/community.js",
+      "default": "./dist/community.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "import": "./dist/db.js",
+      "default": "./dist/db.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "import": "./dist/i18n.js",
+      "default": "./dist/i18n.js"
+    },
+    "./jobs": {
+      "types": "./dist/jobs.d.ts",
+      "import": "./dist/jobs.js",
+      "default": "./dist/jobs.js"
+    },
+    "./media": {
+      "types": "./dist/media.d.ts",
+      "import": "./dist/media.js",
+      "default": "./dist/media.js"
+    },
+    "./observability": {
+      "types": "./dist/observability.d.ts",
+      "import": "./dist/observability.js",
+      "default": "./dist/observability.js"
+    },
+    "./seo": {
+      "types": "./dist/seo.d.ts",
+      "import": "./dist/seo.js",
+      "default": "./dist/seo.js"
     }
   },
   "main": "./dist/index.js",
