@@ -1,8 +1,26 @@
 {
   "name": "@nexpress/theme",
   "version": "0.0.0",
-  "private": true,
+  "description": "Theme engine for NexPress — CSS custom property generation from design tokens.",
+  "license": "MIT",
+  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/theme"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "theme",
+    "css"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,16 +31,11 @@
       "import": "./dist/client.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+  "engines": {
+    "node": ">=20"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -38,5 +51,12 @@
     "react-dom": "^19.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
   }
 }
