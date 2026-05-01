@@ -177,8 +177,8 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
       discussionsTable as never,
       { ...config, access: undefined, hooks: undefined },
     );
-    const { ensureCoreServices } = await import("@/lib/bootstrap");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
     // Re-register after ensureCoreServices ran (it would have
     // overwritten the test fixture with the bootstrap default).
     registerCollection(

@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       throw new NxForbiddenError("plugins", "read");
     }
 
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     const states = await listPluginStates(getDb());
 
     const items = states

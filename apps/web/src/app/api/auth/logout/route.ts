@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { clearAuthCookies, optionalAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Per-device logout. Clears the current `nx-session` / `nx-refresh` /
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     const user = await optionalAuth(request);
 
     if (user) {
-      await ensurePluginsLoaded();
+      await ensureFor("plugins");
       await runHook("auth:beforeLogout", {
         user: {
           id: user.id,

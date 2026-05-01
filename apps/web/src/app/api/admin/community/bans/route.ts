@@ -10,7 +10,7 @@ import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 const VALID_SCOPES = ["site", "category", "collection"] as const;
 type BanScope = (typeof VALID_SCOPES)[number];
@@ -26,7 +26,7 @@ interface BanBody {
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("bans", "list");
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("bans", "create");

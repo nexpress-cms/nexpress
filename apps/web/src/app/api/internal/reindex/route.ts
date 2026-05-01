@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Bearer-token-protected search-vector reindex trigger. Useful after bulk
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       throw new NxAuthError("Unauthorized");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
 
     const requested = request.nextUrl.searchParams.get("collection")?.trim();
     const slugs = requested ? [requested] : getAllCollectionSlugs();

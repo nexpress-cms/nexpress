@@ -5,12 +5,12 @@ import { PluginsManager } from "@nexpress/admin/client";
 
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/db";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
 export default async function PluginsPage() {
-  ensureCoreServices();
+  await ensureFor("read");
 
   const token = (await cookies()).get("nx-session")?.value;
   const { secret } = getAuthRuntimeConfig();

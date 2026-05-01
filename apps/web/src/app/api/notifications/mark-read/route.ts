@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
 /**
@@ -19,7 +19,7 @@ import { requireMember } from "@/lib/member-auth-helpers";
  */
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const body = (await readJsonBody(request).catch(() => null)) as
       | { all?: unknown; ids?: unknown }

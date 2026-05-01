@@ -1,7 +1,7 @@
 import { NxValidationError, type NxDocumentStatus, type NxSaveOptions } from "@nexpress/core";
 import { createCollectionHelpers } from "@nexpress/next";
 
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const {
   parseFindOptions,
@@ -10,7 +10,7 @@ export const {
   saveCollectionDocument,
   deleteCollectionDocument,
 } = createCollectionHelpers({
-  ensureReady: ensureWriteReady,
+  ensureReady: () => ensureFor("write"),
 });
 
 const VALID_STATUSES: readonly NxDocumentStatus[] = [

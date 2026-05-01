@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 15.6 — DELETE /api/admin/sites/{id}/memberships/{userId}
@@ -21,7 +21,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string; userId: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     const { id, userId } = await context.params;
 

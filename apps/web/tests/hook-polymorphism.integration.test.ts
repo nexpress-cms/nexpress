@@ -139,8 +139,8 @@ describe.skipIf(skipIfNoTestDb())("hook polymorphism (Phase 9.7o)", () => {
       },
     } as Parameters<typeof registerCollection>[2];
     registerCollection("discussions", discussionsTable as never, hooked);
-    const { ensureCoreServices } = await import("@/lib/bootstrap");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
     // Re-register after ensureCoreServices runs nexpressConfig.collections,
     // otherwise the hooks would be overwritten. Same dance the cascade
     // tests do.

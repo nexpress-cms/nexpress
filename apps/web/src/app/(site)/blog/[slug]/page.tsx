@@ -3,7 +3,7 @@ import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import { NxImage, getMediaUrl } from "@/components/nx-image";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import {
   RenderBodyEnd,
   RenderHead,
@@ -19,8 +19,7 @@ interface PostPageProps {
 }
 
 export default async function PostPage({ params }: PostPageProps) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { slug } = await params;
   const { isEnabled: isDraft } = await draftMode();
   const post = await getPostBySlug(slug, { draft: isDraft });
@@ -94,7 +93,7 @@ export default async function PostPage({ params }: PostPageProps) {
 export async function generateMetadata({
   params,
 }: PostPageProps): Promise<Metadata> {
-  ensureCoreServices();
+  await ensureFor("read");
   const { slug } = await params;
   const { isEnabled: isDraft } = await draftMode();
   const post = await getPostBySlug(slug, { draft: isDraft });

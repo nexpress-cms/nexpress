@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ResetPasswordForm } from "@/components/member-reset-password-form";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 interface ResetPasswordPageProps {
   searchParams: Promise<{ token?: string }>;
@@ -10,7 +10,7 @@ interface ResetPasswordPageProps {
 export default async function MemberResetPasswordPage({
   searchParams,
 }: ResetPasswordPageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { token } = await searchParams;
 
   if (!token) {

@@ -15,7 +15,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase D — UI string overrides admin surface.
@@ -53,7 +53,7 @@ import { ensureWriteReady } from "@/lib/init-core";
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("i18n/strings", "list");
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("i18n/strings", "update");
@@ -158,7 +158,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("i18n/strings", "delete");

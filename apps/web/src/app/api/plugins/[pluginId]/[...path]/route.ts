@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { getPluginRoutes } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import { optionalAuth } from "@/lib/auth-helpers";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +11,7 @@ async function handlePluginRoute(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string; path: string[] }> },
 ) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { pluginId, path } = await params;
   const routePath = `/${path.join("/")}`;
   const method = request.method;

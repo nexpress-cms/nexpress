@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Returns the registered community role definitions so the admin
@@ -15,7 +15,7 @@ import { ensureWriteReady } from "@/lib/init-core";
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("communityRoles", "list");

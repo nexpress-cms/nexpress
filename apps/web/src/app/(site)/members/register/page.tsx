@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { RegisterForm } from "@/components/member-register-form";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { nextQuery, safeNext } from "@/lib/safe-next";
 import { getSiteMember } from "@/lib/site-member";
 
@@ -11,7 +11,7 @@ interface RegisterPageProps {
 }
 
 export default async function MemberRegisterPage({ searchParams }: RegisterPageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { next } = await searchParams;
   const member = await getSiteMember();
   if (member) {

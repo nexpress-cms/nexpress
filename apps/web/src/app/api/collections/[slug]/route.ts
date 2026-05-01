@@ -16,7 +16,7 @@ import {
   parseFindOptions,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
-import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { optionalMember } from "@/lib/member-auth-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
 
@@ -37,7 +37,7 @@ export async function GET(
     // requests. Authenticated callers (any staff role) can still
     // filter all statuses explicitly via `?where=`.
     if (!user) {
-      ensureCoreServices();
+      await ensureFor("read");
       const config = getCollectionConfig(slug);
       if (config.versions?.drafts) {
         findOptions.where = { ...(findOptions.where ?? {}), status: "published" };
@@ -80,7 +80,7 @@ export async function POST(
     const member = await optionalMember(request);
     if (!member) throw new NxAuthError();
 
-    ensureCoreServices();
+    await ensureFor("read");
     const config = getCollectionConfig(slug);
     if (!config.community?.memberWrite?.create) {
       // Surface as 403 not 401 — the member is authenticated; the
@@ -88,7 +88,7 @@ export async function POST(
       throw new NxForbiddenError(slug, "create");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
     const result = await createMemberDocument(slug, data, member.id, saveOptions);

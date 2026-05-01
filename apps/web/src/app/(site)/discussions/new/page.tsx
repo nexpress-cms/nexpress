@@ -1,12 +1,12 @@
 import Link from "next/link";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getSiteMember } from "@/lib/site-member";
 
 import { DiscussionForm } from "@/components/discussion-form";
 
 export default async function NewDiscussionPage() {
-  ensureCoreServices();
+  await ensureFor("read");
   const member = await getSiteMember();
 
   if (!member) {

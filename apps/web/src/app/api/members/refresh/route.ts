@@ -15,7 +15,7 @@ import { NextResponse } from "next/server";
 import { nxErrorResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { getMemberAuthRuntimeConfig, setMemberAuthCookies } from "@/lib/member-auth-helpers";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Member refresh-token rotation. Validates the refresh JWT signature,
@@ -29,7 +29,7 @@ import { ensureCoreServices } from "@/lib/init-core";
  */
 export async function POST(request: NextRequest) {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
     const refreshToken = request.cookies.get("nx-mb-refresh")?.value;
     if (!refreshToken) throw new NxAuthError();
 

@@ -13,7 +13,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 11.4 — read/write the active theme id.
@@ -33,7 +33,7 @@ import { ensureWriteReady } from "@/lib/init-core";
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("themes/active", "read");
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("themes/active", "update");

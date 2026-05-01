@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { verifyTokenFull, type NxCollectionConfig } from "@nexpress/core";
 import { AdminShell } from "@nexpress/admin/client";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/db";
 
@@ -15,7 +15,7 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  ensureCoreServices();
+  await ensureFor("read");
 
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-session")?.value;

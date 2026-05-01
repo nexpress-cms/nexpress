@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 12.3 — translations sub-resource for an i18n
@@ -33,7 +33,7 @@ export async function GET(
   context: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("translations", "list");
@@ -53,7 +53,7 @@ export async function POST(
   context: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("translations", "create");

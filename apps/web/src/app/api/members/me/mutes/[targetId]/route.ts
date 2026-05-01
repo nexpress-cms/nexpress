@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireMember } from "@/lib/member-auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 16.1 — unmute a previously muted target. Idempotent:
@@ -16,7 +16,7 @@ export async function DELETE(
   context: { params: Promise<{ targetId: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const { targetId } = await context.params;
     const removed = await unmuteMember({ memberId: member.id, targetId });

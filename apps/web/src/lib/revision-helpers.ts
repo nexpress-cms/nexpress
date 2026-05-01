@@ -1,6 +1,6 @@
 import { createRevisionHelpers } from "@nexpress/next";
 
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const {
   parseRevisionListOptions,
@@ -8,5 +8,5 @@ export const {
   getDocumentRevision,
   restoreDocumentRevision,
 } = createRevisionHelpers({
-  ensureReady: ensureWriteReady,
+  ensureReady: () => ensureFor("write"),
 });

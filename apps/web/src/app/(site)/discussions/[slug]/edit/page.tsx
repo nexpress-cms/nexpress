@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DiscussionForm } from "@/components/discussion-form";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getSiteMember } from "@/lib/site-member";
 import type { NxRichTextContent } from "@nexpress/editor";
 
@@ -12,7 +12,7 @@ interface EditDiscussionPageProps {
 }
 
 export default async function EditDiscussionPage({ params }: EditDiscussionPageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { slug } = await params;
   const member = await getSiteMember();
   if (!member) {

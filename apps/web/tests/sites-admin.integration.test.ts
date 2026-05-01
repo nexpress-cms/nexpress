@@ -21,8 +21,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

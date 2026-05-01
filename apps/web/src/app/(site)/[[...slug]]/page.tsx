@@ -17,7 +17,7 @@ import type { NxPageBlocks } from "@nexpress/blocks";
 import { DefaultHomePage } from "@/components/default-home-page";
 import { JsonLd } from "@/components/json-ld";
 import { i18nConfig, isLocale } from "@/i18n.config";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 12.2 — peel a locale prefix off the path. Returns
@@ -64,7 +64,7 @@ interface PageProps {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  ensureCoreServices();
+  await ensureFor("read");
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
   const { locale, path } = splitLocaleFromPath(rawPath);
@@ -103,8 +103,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function CatchAllPage({ params }: PageProps) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
   // Phase 12.2 — strip the locale prefix BEFORE looking the

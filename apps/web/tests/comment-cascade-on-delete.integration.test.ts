@@ -145,8 +145,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
       discussionsTable as never,
       { ...config, access: undefined, hooks: undefined },
     );
-    const { ensureCoreServices } = await import("@/lib/bootstrap");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
     registerCollection(
       "discussions",
       discussionsTable as never,

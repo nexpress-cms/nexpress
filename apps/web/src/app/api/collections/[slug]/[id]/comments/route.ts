@@ -3,7 +3,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { optionalMember, requireMember } from "@/lib/member-auth-helpers";
 
 /**
@@ -17,7 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const { slug, id } = await params;
     const member = await optionalMember(request);
 
@@ -63,7 +63,7 @@ export async function POST(
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
 
     const { slug, id } = await params;

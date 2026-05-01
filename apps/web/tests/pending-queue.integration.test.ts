@@ -113,8 +113,8 @@ describe.skipIf(skipIfNoTestDb())("admin pending queue (Phase 9.7e)", () => {
     registerTestCollections();
     // Prime app bootstrap so the beforeEach override of
     // `defaultStatus="pending"` lands AFTER the baseline registration.
-    const { ensureCoreServices } = await import("@/lib/bootstrap");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

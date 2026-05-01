@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireMember } from "@/lib/member-auth-helpers";
-import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 16.1 — self-service mute list.
@@ -20,7 +20,7 @@ import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
 
 export async function GET(request: NextRequest) {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
     const member = await requireMember(request);
     const mutes = await listMutes(member.id);
     return nxSuccessResponse({ mutes });
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const targetId = body.targetId;

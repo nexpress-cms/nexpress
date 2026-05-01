@@ -9,7 +9,7 @@ import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { revalidateCollection } from "@/lib/revalidate";
 
 const MAX_IDS = 100;
@@ -57,7 +57,7 @@ export async function POST(
 ) {
   try {
     const user = await requireAuth(request);
-    await ensureWriteReady();
+    await ensureFor("write");
 
     const { slug } = await params;
     const { action, ids } = validateBody(await readJsonBody(request));

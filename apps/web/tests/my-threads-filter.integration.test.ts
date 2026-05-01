@@ -71,8 +71,8 @@ describe.skipIf(skipIfNoTestDb())("findDocuments memberAuthorId filter (Phase 9.
       discussionsTable as never,
       { ...config, access: undefined, hooks: undefined },
     );
-    const { ensureCoreServices } = await import("@/lib/bootstrap");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

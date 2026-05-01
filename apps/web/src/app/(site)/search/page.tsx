@@ -5,7 +5,7 @@ import {
 } from "@nexpress/core";
 import Link from "next/link";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { highlightMatches } from "@/lib/search-highlight";
 
 interface SearchPageProps {
@@ -34,7 +34,7 @@ export const metadata = {
  * crawlable surface, so a result link would dead-end).
  */
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { q: qRaw, page: pageRaw } = await searchParams;
   const q = (qRaw ?? "").trim();
   const page = parsePage(pageRaw);

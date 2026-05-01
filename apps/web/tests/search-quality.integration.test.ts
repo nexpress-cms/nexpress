@@ -25,8 +25,8 @@ describe.skipIf(skipIfNoTestDb())("search quality (Phase 10.7)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

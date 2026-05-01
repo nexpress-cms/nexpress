@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Bearer-token-protected trigger for the scheduled-publishing sweep. Designed
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       throw new NxAuthError("Unauthorized");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
     const result = await publishScheduledDocuments();
     return nxSuccessResponse(result);
   } catch (error) {
