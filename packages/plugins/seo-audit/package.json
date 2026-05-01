@@ -1,8 +1,26 @@
 {
   "name": "@nexpress/plugin-seo-audit",
   "version": "0.1.0",
-  "private": true,
+  "description": "SEO audit plugin for NexPress — page-level SEO checks in the admin.",
+  "license": "MIT",
+  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/plugins/seo-audit"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "plugin",
+    "seo"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,14 +28,11 @@
       "default": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch --no-clean",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@nexpress/plugin-sdk": "workspace:*"
@@ -26,5 +41,12 @@
     "@types/node": "^22.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
   }
 }
