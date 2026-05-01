@@ -47,6 +47,23 @@ cli  (standalone scaffolder, no workspace deps)
 
 `@nexpress/core` is **server-only**. It imports `pg`, `sharp`, `@node-rs/argon2`, `pg-boss`, `jose`. `apps/web/next.config.ts` declares it in `serverExternalPackages`; all other `@nexpress/*` packages live in `transpilePackages`. Do not import `@nexpress/core` from a client component — it will break the build.
 
+#### Subpath imports (preferred for new code)
+
+`@nexpress/core` exposes domain-bounded subpath entries (Phase 22.6). New code should reach in through the subpath that fits the call site rather than the catch-all root, so the v1 commitment surface is bounded by domain:
+
+| Subpath                       | Domain                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `@nexpress/core/auth`         | capability checks, JWT/OAuth, password, sessions, principal             |
+| `@nexpress/core/community`    | comments, reactions, follows, reports, bans, audit, mentions, digests   |
+| `@nexpress/core/db`           | connection factory, runtime accessors, schema codegen                   |
+| `@nexpress/core/i18n`         | locale registry, translations, formatting, per-site overrides           |
+| `@nexpress/core/jobs`         | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs     |
+| `@nexpress/core/media`        | media service, processor, ref tracking                                  |
+| `@nexpress/core/observability`| logger, error reporter, `verifyStartupSafety`                           |
+| `@nexpress/core/seo`          | sitemap, page metadata, Atom feeds, JSON-LD                             |
+
+The root `@nexpress/core` keeps re-exporting everything for back-compat; existing call sites are not forced to migrate. Treat the root as the lowest-common-denominator surface and the subpaths as the canonical domain APIs.
+
 ### Module system — `.js` extensions in TS imports
 
 All packages set `"module": "NodeNext"` and `"type": "module"`. Relative imports inside packages must use `.js` extensions even in `.ts` source:

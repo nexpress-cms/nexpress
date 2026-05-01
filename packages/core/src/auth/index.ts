@@ -1,10 +1,81 @@
-export * from "./access.js";
-export * from "./csrf.js";
-export * from "./oauth-arctic.js";
-export * from "./oauth-providers.js";
-export * from "./oauth-resolve.js";
-export * from "./oauth-resolve-member.js";
-export * from "./oauth-state.js";
-export * from "./password.js";
-export * from "./session.js";
-export * from "./token.js";
+/**
+ * `@nexpress/core/auth` — authentication, authorization, sessions.
+ *
+ * Capability checks (`can`), JWT signing/verification, OAuth provider
+ * registry, password hashing, member-side auth, password reset flow,
+ * identity admin. The principal type unifies staff vs member callers.
+ */
+
+export { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./access.js";
+export { can } from "./capabilities.js";
+export type { NxCapability } from "./capabilities.js";
+export { verifyCsrf } from "./csrf.js";
+export {
+  listMemberIdentities,
+  listUserIdentities,
+  revokeMemberIdentity,
+  revokeUserIdentity,
+} from "./identities-admin.js";
+export type { NxMemberIdentityRow, NxUserIdentityRow } from "./identities-admin.js";
+export {
+  consumeMemberEmailVerifyToken,
+  consumeMemberPasswordReset,
+  createMemberEmailVerifyToken,
+  requestMemberPasswordReset,
+} from "./member-credentials.js";
+export type {
+  NxConsumeMemberEmailVerifyResult,
+  NxConsumeMemberResetResult,
+  NxIssuedMemberToken,
+  NxMemberResetRequestResult,
+} from "./member-credentials.js";
+export { getMemberFromTokenPayload, invalidateAllMemberSessions } from "./member-session.js";
+export type { NxMemberAuthRow } from "./member-session.js";
+export { signMemberToken, verifyMemberToken } from "./member-token.js";
+export type { NxMemberTokenPayload } from "./member-token.js";
+export { fromArctic } from "./oauth-arctic.js";
+export type { ArcticLikeProvider, ArcticLikeTokens, FromArcticOptions } from "./oauth-arctic.js";
+export {
+  getOAuthProvider,
+  listOAuthProviders,
+  registerOAuthProvider,
+  resetOAuthProviders,
+} from "./oauth-providers.js";
+export type {
+  OAuthAuthorizeParams,
+  OAuthExchangeParams,
+  OAuthProfile,
+  OAuthProvider,
+} from "./oauth-providers.js";
+export { resolveMemberOAuthLogin } from "./oauth-resolve-member.js";
+export type {
+  ResolveMemberOAuthLoginInput,
+  ResolveMemberOAuthLoginResult,
+  ResolvedOAuthMember,
+} from "./oauth-resolve-member.js";
+export { resolveOAuthLogin } from "./oauth-resolve.js";
+export type {
+  ResolveOAuthLoginInput,
+  ResolveOAuthLoginResult,
+  ResolvedOAuthUser,
+} from "./oauth-resolve.js";
+export { issueOAuthState, verifyOAuthState } from "./oauth-state.js";
+export type { IssuedOAuthState, OAuthStatePayload, VerifyOAuthStateResult } from "./oauth-state.js";
+export { ARGON2_OPTIONS, hashPassword, verifyPassword } from "./password.js";
+export type { NxPrincipal } from "./principal.js";
+export {
+  consumePasswordResetToken,
+  createPasswordResetToken,
+  requestPasswordReset,
+} from "./reset-token.js";
+export type {
+  NxConsumeResetTokenOptions,
+  NxConsumeResetTokenResult,
+  NxCreateResetTokenOptions,
+  NxIssuedResetToken,
+  NxPasswordResetPurpose,
+  NxResetRequestResult,
+} from "./reset-token.js";
+export { invalidateAllSessions, sha256, verifyTokenFull } from "./session.js";
+export { isTokenVerificationError, signToken, verifyToken } from "./token.js";
+export type { NxTokenPayload } from "./token.js";
