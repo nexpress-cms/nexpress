@@ -46,7 +46,15 @@ export function NxRichTextEditor({ value, onChange, config }: NxRichTextEditorPr
       namespace: "nexpress-editor",
       nodes: NODES,
       editable: !config?.readOnly,
-      onError(error) {
+      onError(error: Error) {
+        // Surface the failure first — without this hook a Lexical
+        // crash unmounts the editor mid-edit and the operator
+        // never hears about the underlying error (#344). The
+        // browser console is the only target we can reach from a
+        // client bundle without a logger dep; production sites
+        // can pipe `window.onerror` into their tracker. Re-throw
+        // so React's error boundary still applies.
+        console.error("[nx-editor] Lexical error:", error);
         throw error;
       },
     }),
