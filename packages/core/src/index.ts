@@ -505,6 +505,7 @@ export {
   resetCommunityRoles,
   memberCan,
   assertNotBanned,
+  withMemberWrite,
   setSpamAdapter,
   getSpamAdapter,
   resetSpamAdapter,

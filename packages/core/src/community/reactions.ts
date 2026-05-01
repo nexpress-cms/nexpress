@@ -7,7 +7,7 @@ import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
-import { assertNotBanned } from "./can.js";
+import { withMemberWrite } from "./can.js";
 import { createNotification } from "./notifications.js";
 import { applyReputation } from "./reputation.js";
 import { getCommunitySettings } from "./settings.js";
@@ -73,12 +73,16 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
     ]);
   }
 
-  // Banned members can't react. We don't know the target's collection
-  // from a polymorphic reaction, so site-wide bans are the only scope
-  // that applies here — collection-scoped bans on reactions need
-  // future plumbing to thread the collection slug into this call. (#53)
-  await assertNotBanned(input.memberId);
+  // #311 — withMemberWrite enforces the ban gate by structure. Site-
+  // wide bans are the only scope that applies; collection-scoped
+  // bans on reactions need future plumbing to thread the collection
+  // slug into this call. (#53)
+  return withMemberWrite(input.memberId, [], async () => {
+    return doAddReaction(input);
+  });
+}
 
+async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
   // Phase 18 — derive site_id from the target so the reaction

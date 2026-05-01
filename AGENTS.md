@@ -103,6 +103,8 @@ Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` 
 
 For role checks new code should prefer `can(user, capability)` from `@nexpress/core/auth/capabilities.js` over the legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy helpers remain in place; existing call sites will be migrated in a follow-up.
 
+Member-side write services (comments, reactions, reports, follows) MUST go through `withMemberWrite(memberId, scopes, async () => { ... })` from `@nexpress/core/community` (#311). The wrapper enforces the ban-check gate by structure — adding a new write path without `withMemberWrite` is impossible to do silently. Pre-validation that doesn't write (input shape, target lookup) can run before the call; the wrapper guards the moment between "we know enough to attempt the write" and the first DB mutation.
+
 ### Frontend package split — client/server boundary
 
 Packages that contain React UI split exports to keep client-only code out of RSC bundles:
