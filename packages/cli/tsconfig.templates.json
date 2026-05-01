@@ -21,7 +21,7 @@
       "@/*": ["./templates/_typecheck/*", "./templates/*"]
     }
   },
-  "include": ["templates/lib/**/*.ts"],
+  "include": ["templates/lib/**/*.ts", "templates/scripts/**/*.ts"],
   "files": [
     "templates/_typecheck/db/generated/collections.ts",
     "templates/_typecheck/nexpress.config.ts"
