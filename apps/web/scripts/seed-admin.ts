@@ -24,7 +24,7 @@ async function promptLine(question: string, options?: { mask?: boolean }): Promi
   const rl = createInterface({ input: stdin, output: stdout });
 
   if (options?.mask) {
-    rl.output.write(question);
+    stdout.write(question);
     stdin.resume();
     stdin.setEncoding("utf8");
     if (typeof (stdin as NodeJS.ReadStream & { setRawMode?: (v: boolean) => void }).setRawMode === "function") {
@@ -41,7 +41,7 @@ async function promptLine(question: string, options?: { mask?: boolean }): Promi
             }
             stdin.removeListener("data", onData);
             stdin.pause();
-            rl.output.write("\n");
+            stdout.write("\n");
             rl.close();
             resolvePrompt(value);
             return;
