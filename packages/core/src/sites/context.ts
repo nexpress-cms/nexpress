@@ -72,10 +72,43 @@ export async function requireSiteId(): Promise<string> {
 }
 
 /**
- * Tests / scripts that want to pin the current site id
- * for the duration of a block can use the `withCurrentSite`
- * helper — it swaps in a constant resolver, runs `fn`, and
- * restores the previous resolver on exit.
+ * Tests / scripts that want to pin the current site id for the
+ * duration of a block use the `withCurrentSite` helper — it swaps
+ * in a constant resolver, runs `fn`, and restores the previous
+ * resolver on exit.
+ *
+ * Contract — read this carefully (#320):
+ *
+ *   `withCurrentSite` covers ONLY work that completes (synchronously
+ *   or via `await`) before `fn` returns. Any fire-and-forget async
+ *   work spawned inside `fn` runs AFTER the `finally` block has
+ *   already restored the previous resolver, so it sees the OUTER
+ *   site context — typically `null` for a CLI / job, or the wrong
+ *   site for a request that was acting on a different tenant.
+ *
+ *   Concretely:
+ *     - `enqueueJob(...)` persists the row immediately but the
+ *       handler runs later in the worker. The worker has no
+ *       resolver wired, so `getCurrentSiteId()` returns `null`
+ *       and `requireSiteId()` throws — even though the enqueuer
+ *       was inside a `withCurrentSite` block.
+ *     - `void someAsyncFn()` patterns inside `fn` are similarly
+ *       exposed.
+ *
+ *   How to do it safely:
+ *     - Stamp `siteId` explicitly onto every job payload at
+ *       enqueue time. The handler reads it back from the payload
+ *       and wraps its own work in `withCurrentSite(payload.siteId,
+ *       handlerBody)`.
+ *     - `await` everything that needs the site context inside
+ *       `fn`. Don't return from `fn` while a site-dependent
+ *       operation is still pending.
+ *
+ *   This is a fundamental limit of plain module-scoped state. A
+ *   future refactor could switch the resolver to
+ *   `AsyncLocalStorage` so the site follows the async boundary
+ *   automatically — that's tracked under #320 but out of scope
+ *   for this helper today.
  */
 export async function withCurrentSite<T>(
   siteId: string,
