@@ -80,6 +80,31 @@ export async function assertNotBanned(
 }
 
 /**
+ * Structural enforcement of the ban-check gate (#311). Every
+ * community write service should run inside this wrapper — the ban
+ * check fires before `fn` and a service author can't accidentally
+ * ship a new write path that skips it.
+ *
+ * Pre-validation that doesn't write (input shape, target lookup
+ * existence) can run *before* this call; the gate is specifically
+ * for the moment between "we know enough to attempt the write" and
+ * the first DB mutation.
+ *
+ * `scopes` is the same chain `assertNotBanned` accepts — pass
+ * `[{ type: "collection", id: targetType }]` for collection-scoped
+ * actions, leave empty for site-wide-only enforcement (e.g. follows,
+ * polymorphic-target reactions where no obvious scope chain exists).
+ */
+export async function withMemberWrite<T>(
+  memberId: string,
+  scopes: ReadonlyArray<{ type: CommunityScope; id: string }>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  await assertNotBanned(memberId, scopes);
+  return fn();
+}
+
+/**
  * Action a member is attempting. Most actions are real
  * `CommunityCapability` literals — those map 1:1 to a role's
  * capability list. The two exceptions are `"edit-own"` and

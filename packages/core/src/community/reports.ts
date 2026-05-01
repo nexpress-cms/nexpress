@@ -10,7 +10,7 @@ import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
-import { assertNotBanned } from "./can.js";
+import { withMemberWrite } from "./can.js";
 import type { Principal } from "./principal.js";
 
 const MAX_REASON_LENGTH = 1000;
@@ -73,12 +73,19 @@ export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
     ]);
   }
 
-  // Banned members can't file reports — site-wide bans block every
-  // community write, including the report queue (#53). We don't have
-  // an obvious scope chain for a polymorphic report target, so just
-  // check site-wide.
-  await assertNotBanned(input.reporterId);
+  // #311 — withMemberWrite enforces the ban gate by structure.
+  // Site-wide bans block every community write including reports
+  // (#53); no obvious scope chain for a polymorphic report target.
+  return withMemberWrite(input.reporterId, [], async () => {
+    return doFileReport(input, targetId, reason);
+  });
+}
 
+async function doFileReport(
+  input: FileReportInput,
+  targetId: string,
+  reason: string,
+): Promise<NxReportRow> {
   // Verify the target actually exists. Without this, members can fill
   // the moderation queue with reports against UUIDs that point at
   // nothing — and the audit log captures the phantom target id too,

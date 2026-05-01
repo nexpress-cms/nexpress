@@ -13,7 +13,7 @@ import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
 
 import { recordAuditEvent } from "./audit.js";
-import { assertNotBanned, memberCan } from "./can.js";
+import { memberCan, withMemberWrite } from "./can.js";
 import { renderCommentMarkdown } from "./markdown.js";
 import { extractMentionHandles, fanOutMentionNotifications } from "./mentions.js";
 import { getMutedTargetIds } from "./mutes.js";
@@ -105,12 +105,19 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   validateBody(input.bodyMd);
   assertCollectionAcceptsComments(input.targetType);
 
-  // Reject banned members before any IO. Site-wide bans block every
-  // comment; collection-scoped bans block writes to that collection.
-  // (#53 — without this, banned members kept commenting because
-  // `createComment` never went through `memberCan`.)
-  await assertNotBanned(input.memberId, [{ type: "collection", id: input.targetType }]);
+  // #311 — withMemberWrite enforces the ban gate by structure.
+  // Site-wide bans block every comment; collection-scoped bans
+  // block writes to that collection (#53 — without the gate,
+  // banned members kept commenting because createComment never
+  // went through memberCan).
+  return withMemberWrite(
+    input.memberId,
+    [{ type: "collection", id: input.targetType }],
+    async () => doCreateComment(input),
+  );
+}
 
+async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRow> {
   // Target document must actually exist. Without this guard, members
   // could insert orphan comment rows under random UUIDs for any
   // comment-enabled collection (#49). We use the public read path

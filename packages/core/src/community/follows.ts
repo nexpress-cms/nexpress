@@ -7,7 +7,7 @@ import { NxNotFoundError, NxValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
-import { assertNotBanned } from "./can.js";
+import { withMemberWrite } from "./can.js";
 import { createNotification } from "./notifications.js";
 
 /**
@@ -47,13 +47,22 @@ function assertSupportedTarget(targetType: string): asserts targetType is Follow
 
 export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
   assertSupportedTarget(input.targetType);
-  // Banned members can't grow their follow graph (#53).
-  await assertNotBanned(input.followerId);
   if (input.targetType === "member" && input.targetId === input.followerId) {
     throw new NxValidationError("Invalid input", [
       { field: "targetId", message: "Members can't follow themselves." },
     ]);
   }
+
+  // #311 — withMemberWrite enforces the ban gate by structure: a
+  // future write path that forgets the gate can't compile against
+  // this helper. Site-wide bans block follows (no obvious scope
+  // chain for a polymorphic follow target).
+  return withMemberWrite(input.followerId, [], async () => {
+    return doFollow(input);
+  });
+}
+
+async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
