@@ -1267,11 +1267,11 @@ export const DELETE = handle;
 }
 
 function postsCollectionTemplate(): string {
-  return `import { defineCollection } from "@nexpress/core";\n\nexport const postsCollection = defineCollection({\n  slug: "posts",\n  labels: { singular: "Post", plural: "Posts" },\n  slugField: { useField: "title", unique: true },\n  admin: {\n    defaultSort: "-publishedAt",\n    listColumns: ["title", "status", "publishedAt"],\n    description: "Blog posts.",\n  },\n  versions: { drafts: true },\n  access: {\n    read: () => true,\n  },\n  fields: [\n    { name: "title", type: "text", required: true },\n    { name: "excerpt", type: "textarea" },\n    { name: "content", type: "richText", required: true },\n    { name: "publishedAt", type: "date" },\n  ],\n});\n`;
+  return readTemplate("collections/posts.ts");
 }
 
 function pagesCollectionTemplate(): string {
-  return `import { defineCollection } from "@nexpress/core";\n\nexport const pagesCollection = defineCollection({\n  slug: "pages",\n  labels: { singular: "Page", plural: "Pages" },\n  slugField: { useField: "title", unique: true },\n  admin: {\n    defaultSort: "title",\n    listColumns: ["title", "updatedAt"],\n    description: "Static pages.",\n  },\n  versions: { drafts: true },\n  access: {\n    read: () => true,\n  },\n  fields: [\n    { name: "title", type: "text", required: true },\n    { name: "summary", type: "textarea" },\n    { name: "blocks", type: "blocks" },\n  ],\n});\n`;
+  return readTemplate("collections/pages.ts");
 }
 
 function readmeTemplate(config: TemplateConfig): string {
