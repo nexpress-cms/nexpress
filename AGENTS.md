@@ -2,7 +2,7 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-04-30 (Phase 20 jobs admin + Phase 21 WP import + audit cycle)
+**Last refreshed:** 2026-05-02 (publish-readiness sweep — subpath exports, metadata, Stability section)
 
 ## Commands
 
@@ -119,7 +119,7 @@ Route groups:
 
 Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` that can be bumped to invalidate. CSRF is enforced on state-changing endpoints via `verifyCsrf`.
 
-For role checks new code should prefer `can(user, capability)` from `@nexpress/core/auth/capabilities.js` over the legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy helpers remain in place; existing call sites will be migrated in a follow-up. Client UI components (e.g. `AdminShell`) MUST receive resolved capability flags as props from a server parent — calling `can()` from a client component drags `@nexpress/core` into the browser bundle (#343).
+Role checks go through `can(user, capability)` from `@nexpress/core/auth` (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers were retired — they no longer exist on the public surface. Client UI components (e.g. `AdminShell`) MUST receive resolved capability flags as props from a server parent — calling `can()` from a client component drags `@nexpress/core` into the browser bundle (#343).
 
 The "actor on an operation" is modeled as a single union `NxPrincipal = { kind: "staff"; user } | { kind: "member"; memberId }` (#319). The pipeline, plugin hooks (`NxHookPrincipal` is the same shape under a historical name), and `principalCan()` all consume this union. Adding a new variant requires updating every `switch (principal.kind)` site — exhaustive switches with `_exhaustive: never` (#313) deliberately fail to compile when the union grows.
 
@@ -200,6 +200,43 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 - **Never create parallel DB connections** — call `ensureFor(...)` (or rely on the routes that do) and read from the `getDb()` singleton. One pool per process.
 - **Never run `pnpm db:generate` without reviewing output** — destructive schema changes are not auto-applied.
 - **Never assume `withCurrentSite` covers fire-and-forget async work** (#320) — it restores the previous resolver as soon as the callback returns, so any pending `void someAsyncFn()` or already-enqueued pg-boss handler runs with the OUTER site context (typically `null` in a worker). Stamp `siteId` onto job payloads at enqueue time and have the handler wrap its own work in `withCurrentSite(payload.siteId, ...)`.
+
+## STABILITY (v0.1)
+
+What v0.1 of the published `@nexpress/*` packages commits to. Anything not on this list is either internal-by-default or hasn't yet earned a stability promise — treat as moveable.
+
+### Stable surface
+
+These are the public APIs we'll honor with semver and migration notes. Breaking them rides a **minor bump pre-1.0** and ships a CHANGELOG line operators can search for.
+
+- **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NxTextField`, `NxRichTextField`, `NxRelationshipField`, `NxBlocksField`, `NxArrayField`, `NxGroupField`, `NxRowField`, `NxCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
+- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, scheduled })`. The hook names `content:beforeSave`, `content:afterSave`, `content:beforeDelete`, `content:afterDelete` are stable. Member / media hooks (`member:*`, `media:*`) are stable; new hook names will be added with the same prefix scheme.
+- **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
+- **Error classes + codes** — `NxForbiddenError`, `NxNotFoundError`, `NxValidationError`, `NxAuthError`, `NxConflictError`, `NxRateLimitError`, `NxSiteContextMissingError`, and the `NxErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
+- **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
+- **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/i18n`, `/jobs`, `/media`, `/observability`, `/seo`. Symbols inside each are stable per the rules above.
+- **Adapters** — `NxStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NxJobQueue` (with `PgBossAdapter`), `NxLogger` + `setLogger`, `NxErrorReporter` + `setErrorReporter`, `NxEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NxJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **`NxPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
+
+### Experimental — no stability promise
+
+These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
+
+- **Lexical content shape** — `NxRichTextContent` is whatever Lexical's serializer emits. We track Lexical upstream; their JSON shape is not part of NexPress's commitment.
+- **Block definition shape** — `NxBlockDefinition` is the v1 shape, but the field schema *inside* a block may grow new branches as we add block types.
+- **Theme token names** — `colors`, `fonts`, `radii`, etc. are stable as a *category*, but specific token keys may be renamed if a token system overhaul lands before 1.0.
+- **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
+- **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
+- **Bootstrap singletons exposed at the root** — `setDb`, `getDb`, `setStorageAdapter`, `setJobQueue`, `loadPlugins`, `runHook`, `createDbConnection`. Required for `@nexpress/next`'s `createBootstrap()`; not intended for app-level use. May move to an `@internal` or `@nexpress/core/bootstrap` subpath in a later 0.x.
+- **Internal auth helpers** — `signToken`, `verifyToken`, `hashPassword`, `ARGON2_OPTIONS`. Keep using `verifyTokenFull` (which is part of the auth subpath); the lower-level helpers may be removed from the public surface.
+
+### Removed in 0.1
+
+- `hasRole(user, minRole)` / `isStaffMod(user)` — replaced by `can(user, capability)` (#273).
+
+### What this section is NOT
+
+It's not a roadmap. It says what's pinned today, not what 1.0 will look like. The Lexical and theme-token entries are the most likely to evolve before 1.0; the rest of the experimental list is expected to either firm up (move to stable) or shrink (move to internal).
 
 ## NOTES
 
