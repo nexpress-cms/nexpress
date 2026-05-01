@@ -11,7 +11,7 @@
     "build": "tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.templates.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -19,8 +19,12 @@
     "prompts": "^2.4.2"
   },
   "devDependencies": {
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/core": "workspace:*",
+    "@nexpress/next": "workspace:*",
     "@types/prompts": "^2.4.9",
     "@types/node": "^22.0.0",
+    "next": "^16.2.4",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
   }

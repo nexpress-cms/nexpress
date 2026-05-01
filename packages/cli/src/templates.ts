@@ -146,208 +146,27 @@ function drizzleConfigTemplate(): string {
 }
 
 function bootstrapLibTemplate(): string {
-  return `import { createBootstrap } from "@nexpress/next";
-
-import nexpressConfig from "@/nexpress.config";
-import * as generatedSchema from "@/db/generated/collections";
-
-const bootstrap = createBootstrap({
-  config: nexpressConfig,
-  generatedSchema: generatedSchema as unknown as Record<string, unknown>,
-});
-
-export const { getDb } = bootstrap;
-
-/**
- * Single typed entry point for bootstrap initialization.
- *
- *   - \`"read"\`    — DB + storage + collections registered. Use for
- *                   read-only RSC pages and GET API routes.
- *   - \`"plugins"\` — read + plugin loading. Use when render or
- *                   response generation needs \`runHook\` to fire.
- *   - \`"write"\`   — plugins + pg-boss producer. Use for any
- *                   mutating API route, server action, or import.
- */
-export type NxBootstrapIntent = "read" | "plugins" | "write";
-
-export async function ensureFor(intent: NxBootstrapIntent): Promise<void> {
-  bootstrap.await ensureFor("read");
-  if (intent === "read") return;
-
-  await bootstrap.ensurePluginsLoaded();
-  if (intent === "plugins") return;
-
-  await bootstrap.ensureJobProducer();
-}
-
-export type { NxDb } from "@nexpress/next";
-export { nexpressConfig };
-`;
+  return readTemplate("lib/bootstrap.ts");
 }
 
 function authHelpersLibTemplate(): string {
-  return `import { createAuthHelpers } from "@nexpress/next";
-
-import { getDb } from "@/lib/bootstrap";
-
-export const {
-  getAuthRuntimeConfig,
-  requireAuth,
-  optionalAuth,
-  requireCsrf,
-  setAuthCookies,
-  clearAuthCookies,
-} = createAuthHelpers({ getDb });
-
-export type { AuthCookieTokens, AuthRuntimeConfig } from "@nexpress/next";
-`;
+  return readTemplate("lib/auth-helpers.ts");
 }
 
 function apiResponseLibTemplate(): string {
-  return `export { nxSuccessResponse, nxErrorResponse, type NxApiError } from "@nexpress/next";
-`;
+  return readTemplate("lib/api-response.ts");
 }
 
 function collectionHelpersLibTemplate(): string {
-  return `import { createCollectionHelpers } from "@nexpress/next";
-
-import { ensureFor } from "@/lib/bootstrap";
-
-export const {
-  parseFindOptions,
-  findCollectionDocuments,
-  getCollectionDocument,
-  saveCollectionDocument,
-  deleteCollectionDocument,
-} = createCollectionHelpers({
-  ensureReady: () => ensureFor("write"),
-});
-`;
+  return readTemplate("lib/collection-helpers.ts");
 }
 
 function revalidateLibTemplate(): string {
-  return `import {
-  defaultRevalidationRules,
-  revalidateCollection as coreRevalidateCollection,
-} from "@nexpress/next";
-
-export function revalidateCollection(
-  slug: string,
-  doc?: Record<string, unknown> | null,
-): void {
-  coreRevalidateCollection(defaultRevalidationRules, slug, doc);
-}
-`;
+  return readTemplate("lib/revalidate.ts");
 }
 
 function manifestLibTemplate(): string {
-  return `import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
-import type { NxBlockDefinition, NxBlockPropField } from "@nexpress/blocks";
-
-export interface NxFieldManifest {
-  name: string;
-  type: NxFieldConfig["type"];
-  label?: string;
-  description?: string;
-  required?: boolean;
-  defaultValue?: unknown;
-  options?: Array<{ label: string; value: string }>;
-  relationTo?: string | string[];
-  hasMany?: boolean;
-  integerOnly?: boolean;
-  fields?: NxFieldManifest[];
-}
-
-export interface NxCollectionManifest {
-  slug: string;
-  labels: { singular: string; plural: string };
-  description?: string;
-  slug_auto?: boolean;
-  versions: { drafts: boolean; max?: number };
-  fields: NxFieldManifest[];
-}
-
-export interface NxBlockManifest {
-  type: string;
-  label: string;
-  description?: string;
-  icon?: string;
-  propsSchema: NxBlockPropField[];
-}
-
-export interface NxPluginManifest {
-  id: string;
-  name: string;
-  version?: string;
-  description?: string;
-  capabilities: string[];
-  hooks: string[];
-  routes: Array<{ method: string; path: string }>;
-}
-
-export function collectionToManifest(config: NxCollectionConfig): NxCollectionManifest {
-  return {
-    slug: config.slug,
-    labels: config.labels,
-    description: config.admin?.description,
-    slug_auto: Boolean(config.slugField),
-    versions: { drafts: Boolean(config.versions?.drafts), max: config.versions?.max },
-    fields: config.fields.map(fieldToManifest),
-  };
-}
-
-function fieldToManifest(field: NxFieldConfig): NxFieldManifest {
-  if (field.type === "row" || field.type === "collapsible") {
-    return {
-      name: field.type === "collapsible" ? field.label : "row",
-      type: field.type,
-      fields: field.fields.map(fieldToManifest),
-    };
-  }
-
-  const base: NxFieldManifest = {
-    name: field.name,
-    type: field.type,
-    label: field.label,
-    description: field.admin?.description,
-    required: field.required,
-    defaultValue: field.defaultValue,
-  };
-
-  switch (field.type) {
-    case "select":
-    case "radio":
-      base.options = field.options;
-      break;
-    case "relationship":
-      base.relationTo = field.relationTo;
-      base.hasMany = field.hasMany;
-      break;
-    case "upload":
-      base.relationTo = field.relationTo;
-      break;
-    case "number":
-      base.integerOnly = field.integerOnly;
-      break;
-    case "group":
-    case "array":
-      base.fields = field.fields.map(fieldToManifest);
-      break;
-  }
-
-  return base;
-}
-
-export function blockToManifest(definition: NxBlockDefinition): NxBlockManifest {
-  return {
-    type: definition.type,
-    label: definition.label,
-    description: definition.description,
-    icon: definition.icon,
-    propsSchema: definition.propsSchema,
-  };
-}
-`;
+  return readTemplate("lib/manifest.ts");
 }
 
 function generateSchemaScriptTemplate(): string {
