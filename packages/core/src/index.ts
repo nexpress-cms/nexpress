@@ -490,12 +490,14 @@ export {
   reportError,
   resetErrorReporter,
   setErrorReporter,
+  verifyStartupSafety,
 } from "./observability/index.js";
 export type {
   NxLogLevel,
   NxLogger,
   NxErrorReporter,
   NxErrorReportContext,
+  NxStartupSafetyInput,
 } from "./observability/index.js";
 
 export {

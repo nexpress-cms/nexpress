@@ -15,3 +15,6 @@ export {
   setErrorReporter,
 } from "./error-reporter.js";
 export type { NxErrorReporter, NxErrorReportContext } from "./error-reporter.js";
+
+export { verifyStartupSafety } from "./safety-check.js";
+export type { NxStartupSafetyInput } from "./safety-check.js";
