@@ -1,4 +1,4 @@
-import { NxForbiddenError, isStaffMod, revokeBan } from "@nexpress/core";
+import { can, NxForbiddenError, revokeBan } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -12,7 +12,7 @@ export async function DELETE(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("bans", "delete");
     }
 

@@ -2,8 +2,8 @@ import {
   NxForbiddenError,
   NxNotFoundError,
   NxValidationError,
-  hasRole,
   nxMediaFolders,
+  can,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     // Folder structure is admin-library state — same gate as the
     // media listing (#73).
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media-folders", "list");
     }
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media-folders", "create");
     }
 

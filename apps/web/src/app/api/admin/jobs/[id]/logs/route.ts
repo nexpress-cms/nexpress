@@ -2,8 +2,8 @@ import {
   NxForbiddenError,
   NxValidationError,
   countJobLogs,
-  hasRole,
   listJobLogs,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   try {
     ensureCoreServices();
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("job-logs", "read");
     }
     const { id } = await context.params;

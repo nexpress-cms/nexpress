@@ -4,8 +4,8 @@ import {
   enqueueJob,
   getAllJobHandlers,
   getOptionalJobQueue,
-  hasRole,
   type NxJobType,
+  can,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("jobs", "enqueue");
     }
     const queue = getOptionalJobQueue();

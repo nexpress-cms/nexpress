@@ -1,8 +1,8 @@
 import {
-  hasRole,
   NxForbiddenError,
   nxMembers,
   verifyTokenFull,
+  can,
 } from "@nexpress/core";
 import { MembersListView, type MemberListRow } from "@nexpress/admin/client";
 import { and, desc, ilike, or, sql, type SQL } from "drizzle-orm";
@@ -42,7 +42,7 @@ export default async function MembersAdminPage({
   const db = getDb();
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
-  if (!hasRole(user, "editor")) {
+  if (!can(user, "content.publish")) {
     // Editor-or-above can browse members. Per-row mod actions
     // (ban, role grant, purge) gate independently on the detail
     // page — admin for grants/purge, staff-mod for bans.

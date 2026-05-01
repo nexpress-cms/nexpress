@@ -2,7 +2,7 @@ import {
   NxForbiddenError,
   NxValidationError,
   getThemeTemplateSummaries,
-  hasRole,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("themeTemplates", "list");
     }
     const collection = request.nextUrl.searchParams.get("collection");

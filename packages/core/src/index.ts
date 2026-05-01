@@ -47,7 +47,8 @@ export type {
   NxDocumentStatus,
 } from "./config/types.js";
 
-export { ROLE_HIERARCHY, hasRole, isStaffMod } from "./config/types.js";
+// `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
+export { ROLE_HIERARCHY } from "./config/types.js";
 export { defineConfig } from "./config/define-config.js";
 export { defineCollection } from "./config/define-collection.js";
 export { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./config/access.js";

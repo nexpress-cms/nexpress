@@ -1,9 +1,9 @@
 import {
   NxForbiddenError,
   NxNotFoundError,
-  hasRole,
   nxUsers,
   verifyTokenFull,
+  can,
 } from "@nexpress/core";
 import { LinkedIdentitiesPanel } from "@nexpress/admin/client";
 import { eq } from "drizzle-orm";
@@ -33,7 +33,7 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   // List of identities is admin-only — provider subjects can be used
   // to pivot back to provider accounts, so the read surface is gated
   // tighter than the member side.
-  if (!hasRole(user, "admin")) {
+  if (!can(user, "admin.manage")) {
     throw new NxForbiddenError("user", "read");
   }
 

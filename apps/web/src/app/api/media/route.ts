@@ -1,4 +1,4 @@
-import { NxForbiddenError, NxValidationError, hasRole, listMedia } from "@nexpress/core";
+import { can, NxForbiddenError, NxValidationError, listMedia } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     // serves storage URLs directly; no anonymous client needs the
     // admin-library shape. Require at least an editor session.
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media", "list");
     }
     ensureCoreServices();

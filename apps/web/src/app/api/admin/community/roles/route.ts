@@ -1,4 +1,4 @@
-import { NxForbiddenError, isStaffMod, listCommunityRoles } from "@nexpress/core";
+import { can, NxForbiddenError, listCommunityRoles } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("communityRoles", "list");
     }
     const docs = listCommunityRoles();

@@ -1,7 +1,7 @@
 import {
   NxForbiddenError,
-  hasRole,
   revokeUserIdentity,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -22,7 +22,7 @@ export async function DELETE(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("user.identities", "revoke");
     }
     const { id, identityId } = await context.params;

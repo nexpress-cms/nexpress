@@ -1,4 +1,5 @@
-import { isStaffMod, type NxAuthUser } from "../config/types.js";
+import { type NxAuthUser } from "../config/types.js";
+import { can } from "../auth/capabilities.js";
 
 import { memberCan } from "./can.js";
 import type { MemberAction, MemberCanTarget } from "./can.js";
@@ -40,7 +41,7 @@ export async function principalCan(
   }
 
   if (principal.kind === "staff") {
-    return isStaffMod(principal.user);
+    return can(principal.user, "community.moderate");
   }
 
   return memberCan(principal.memberId, action, target);

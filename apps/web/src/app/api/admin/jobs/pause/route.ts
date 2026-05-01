@@ -1,4 +1,4 @@
-import { NxForbiddenError, getOptionalJobQueue, hasRole, setJobsPauseState } from "@nexpress/core";
+import { can, NxForbiddenError, getOptionalJobQueue, setJobsPauseState } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("jobs", "pause");
     }
 

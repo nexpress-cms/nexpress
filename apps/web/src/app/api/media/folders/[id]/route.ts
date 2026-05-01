@@ -3,9 +3,9 @@ import {
   NxForbiddenError,
   NxNotFoundError,
   NxValidationError,
-  hasRole,
   nxMedia,
   nxMediaFolders,
+  can,
 } from "@nexpress/core";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -24,7 +24,7 @@ export async function PATCH(
     const { id } = await params;
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media-folders", "update");
     }
 
@@ -62,7 +62,7 @@ export async function DELETE(
     const { id } = await params;
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("media-folders", "delete");
     }
 

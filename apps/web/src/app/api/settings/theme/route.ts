@@ -3,9 +3,9 @@ import {
   NxForbiddenError,
   NxValidationError,
   getCurrentSiteId,
-  hasRole,
   nxSettings,
   DEFAULT_THEME,
+  can,
 } from "@nexpress/core";
 import type { NxThemeTokens } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("settings/theme", "update");
     }
 

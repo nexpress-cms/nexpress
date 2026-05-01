@@ -3,9 +3,9 @@ import {
   NxForbiddenError,
   NxValidationError,
   getSiteById,
-  hasRole,
   isSuperAdmin,
   listMembershipsForUser,
+  can,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       const memberships = await listMembershipsForUser(user.id);
       const hasMembership = memberships.some((m) => m.siteId === id);
       const isDefaultGlobalAdmin =
-        id === NX_DEFAULT_SITE_ID && hasRole(user, "admin");
+        id === NX_DEFAULT_SITE_ID && can(user, "admin.manage");
       if (!hasMembership && !isDefaultGlobalAdmin) {
         throw new NxForbiddenError("sites/active", "switch");
       }

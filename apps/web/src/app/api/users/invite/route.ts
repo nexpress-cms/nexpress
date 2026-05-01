@@ -5,11 +5,11 @@ import {
   NxValidationError,
   createPasswordResetToken,
   enqueueJob,
-  hasRole,
   hashPassword,
   nxUsers,
   runHook,
   type NxUserRole,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("users", "create");
     }
 

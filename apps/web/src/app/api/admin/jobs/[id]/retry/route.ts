@@ -2,7 +2,7 @@ import {
   NxForbiddenError,
   NxValidationError,
   getOptionalJobQueue,
-  hasRole,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -24,7 +24,7 @@ export async function POST(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("jobs", "retry");
     }
     const { id } = await context.params;

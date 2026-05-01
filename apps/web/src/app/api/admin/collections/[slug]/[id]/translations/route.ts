@@ -3,7 +3,7 @@ import {
   NxValidationError,
   createTranslation,
   findTranslations,
-  hasRole,
+  can,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -35,7 +35,7 @@ export async function GET(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("translations", "list");
     }
     const { slug, id } = await context.params;
@@ -55,7 +55,7 @@ export async function POST(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("translations", "create");
     }
     const { slug, id } = await context.params;

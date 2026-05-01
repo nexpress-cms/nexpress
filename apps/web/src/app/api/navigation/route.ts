@@ -3,8 +3,8 @@ import {
   NxForbiddenError,
   NxValidationError,
   getCurrentSiteId,
-  hasRole,
   nxNavigation,
+  can,
 } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
 import { navCacheTag, readJsonBody } from "@nexpress/next";
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("navigation", "update");
     }
 

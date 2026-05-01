@@ -21,7 +21,7 @@ import {
 import type { NxAuthUser, NxCollectionConfig } from "@nexpress/core";
 
 // Inlined to keep `@nexpress/core` (server-only) out of the client bundle.
-// Mirrors `isStaffMod` / `hasRole(user, "editor")` from core/config/types.ts.
+// Mirrors `isStaffMod` / `can(user, "content.publish")` from core/config/types.ts.
 const STAFF_MOD_ROLES = new Set(["admin", "editor", "moderator"]);
 const EDITOR_OR_ABOVE = new Set(["admin", "editor"]);
 
