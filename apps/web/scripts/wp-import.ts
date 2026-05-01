@@ -26,7 +26,7 @@ import {
   runCli,
 } from "@nexpress/wp-import";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
+import { ensureFor } from "../src/lib/init-core";
 
 /**
  * Phase 21.4 — `pnpm wp-import` shim. The CLI logic lives in
@@ -75,8 +75,8 @@ if (!databaseUrl) {
   process.exit(2);
 }
 
-ensureCoreServices();
-await ensurePluginsLoaded();
+await ensureFor("read");
+await ensureFor("plugins");
 
 const code = await runCli(process.argv.slice(2), undefined, {
   applyBundle: async (bundle, ctx) => {

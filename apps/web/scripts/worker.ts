@@ -10,7 +10,7 @@ import {
   startWorker,
 } from "@nexpress/core";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/bootstrap";
+import { ensureFor } from "../src/lib/init-core";
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../../../.env") });
@@ -26,38 +26,45 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
 
   configureBuiltinJobContext({
     async resolveContentAfterSaveContext({ collection, documentId, userId }) {
       const config = getCollectionConfig(collection);
       const doc = await getDocumentById(collection, documentId);
       if (!doc) return null;
+      // Phase 9.7o widened ResolvedHookContext with `principal`.
+      // Stub it as staff using the saved userId — sites with
+      // member-authored writes should derive the actor from the
+      // doc's `member_author_id` instead. (#332)
+      const user = {
+        id: userId,
+        email: "",
+        name: "",
+        role: "admin" as const,
+        tokenVersion: 0,
+      };
       return {
         collectionConfig: config,
         data: doc,
-        user: {
-          id: userId,
-          email: "",
-          name: "",
-          role: "admin",
-          tokenVersion: 0,
-        },
+        user,
+        principal: { kind: "staff", user },
       };
     },
     async resolveContentAfterDeleteContext({ collection, documentId, userId }) {
       const config = getCollectionConfig(collection);
+      const user = {
+        id: userId,
+        email: "",
+        name: "",
+        role: "admin" as const,
+        tokenVersion: 0,
+      };
       return {
         collectionConfig: config,
         data: { id: documentId },
-        user: {
-          id: userId,
-          email: "",
-          name: "",
-          role: "admin",
-          tokenVersion: 0,
-        },
+        user,
+        principal: { kind: "staff", user },
       };
     },
   });
