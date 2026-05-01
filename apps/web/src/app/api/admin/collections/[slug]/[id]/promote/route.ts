@@ -6,7 +6,7 @@ import {
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 import { revalidateCollection } from "@/lib/revalidate";
 
@@ -28,7 +28,6 @@ export async function POST(
     if (!isStaffMod(user)) {
       throw new NxForbiddenError("document", "promote");
     }
-    requireCsrf(request);
     const { slug, id } = await context.params;
     const result = await promoteMemberDocument(slug, id, user.id);
     revalidateCollection(slug, result.doc);

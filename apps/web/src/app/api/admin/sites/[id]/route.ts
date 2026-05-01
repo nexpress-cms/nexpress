@@ -15,7 +15,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -85,7 +85,6 @@ export async function PATCH(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    requireCsrf(request);
     const { id } = await context.params;
     if (!(await canManageSite(user, id))) {
       throw new NxForbiddenError("sites", "update");
@@ -119,7 +118,6 @@ export async function DELETE(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    requireCsrf(request);
     // Issue #216 — site deletion is a registry-level operation.
     // Even a per-site admin shouldn't be able to remove the
     // tenant they happen to manage; super-admin only.

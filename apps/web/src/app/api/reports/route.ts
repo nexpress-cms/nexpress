@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
-import { requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { requireMember } from "@/lib/member-auth-helpers";
 
 interface ReportBody {
   targetType?: unknown;
@@ -16,7 +16,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const body = (await readJsonBody(request)) as ReportBody | null;
     const targetType = typeof body?.targetType === "string" ? body.targetType : "";
     const targetId = typeof body?.targetId === "string" ? body.targetId : "";

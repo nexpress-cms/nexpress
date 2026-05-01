@@ -11,7 +11,7 @@ import { navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { optionalAuth, requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-    requireCsrf(request);
 
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("navigation", "update");

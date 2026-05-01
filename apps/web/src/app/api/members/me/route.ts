@@ -12,7 +12,7 @@ import { NextResponse } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { clearMemberAuthCookies, requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { clearMemberAuthCookies, requireMember } from "@/lib/member-auth-helpers";
 import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -102,7 +102,6 @@ export async function PATCH(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const patch = validatePatch(await readJsonBody(request));
     const db = getDb();
 
@@ -164,7 +163,6 @@ export async function DELETE(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const db = getDb();
 
     await db

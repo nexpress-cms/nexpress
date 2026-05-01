@@ -367,18 +367,10 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("missing CSRF rejected (401)", async () => {
-    const admin = await seedUser({ role: "admin" });
-    const member = await seedActiveMember("csrf-t");
-    const req = jsonRequest(`/api/admin/members/${member.memberId}/purge-content`, {
-      method: "POST",
-      cookies: [`nx-session=${admin.accessToken}`, `nx-csrf=${admin.csrfToken}`],
-    });
-    const res = await purgePOST(req, {
-      params: Promise.resolve({ id: member.memberId }),
-    });
-    expect(res.status).toBe(401);
-  });
+  // CSRF enforcement moved to apps/web/src/proxy.ts (#281). The
+  // handler unit test bypasses the proxy by invoking the handler
+  // directly, so the missing-CSRF case no longer makes sense at
+  // this layer.
 
   it("404 on non-existent member id", async () => {
     const admin = await seedUser({ role: "admin" });

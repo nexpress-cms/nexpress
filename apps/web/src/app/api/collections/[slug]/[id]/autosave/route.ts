@@ -2,7 +2,7 @@ import { NxValidationError, autosaveRevision } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
 
@@ -21,7 +21,6 @@ export async function POST(
 ) {
   try {
     const user = await requireAuth(request);
-    requireCsrf(request);
     await ensureWriteReady();
 
     const { slug, id } = await params;

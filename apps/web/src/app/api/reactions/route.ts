@@ -14,7 +14,6 @@ import { ensureWriteReady } from "@/lib/init-core";
 import {
   optionalMember,
   requireMember,
-  requireMemberCsrf,
 } from "@/lib/member-auth-helpers";
 
 /**
@@ -85,7 +84,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const target = readTargetFromBody(await readJsonBody(request));
     await assertReactableExists(target.targetType, target.targetId);
     const row = await addReaction({
@@ -104,7 +102,6 @@ export async function DELETE(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const target = readTargetFromQuery(request);
     await removeReaction({
       targetType: target.targetType,

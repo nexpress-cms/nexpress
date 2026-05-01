@@ -44,7 +44,7 @@ export default async function PostPage({ params }: PostPageProps) {
     headline: post.title as string,
     description:
       typeof post.excerpt === "string" && post.excerpt
-        ? (post.excerpt as string)
+        ? (post.excerpt)
         : null,
     image:
       typeof post.coverImage === "string" && post.coverImage
@@ -52,7 +52,7 @@ export default async function PostPage({ params }: PostPageProps) {
         : null,
     datePublished:
       post.publishedAt instanceof Date
-        ? (post.publishedAt as Date)
+        ? (post.publishedAt)
         : (post.createdAt as Date | undefined) ?? null,
     dateModified: (post.updatedAt as Date | undefined) ?? null,
     type: "BlogPosting",

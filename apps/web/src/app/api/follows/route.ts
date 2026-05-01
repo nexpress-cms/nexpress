@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
-import { requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { requireMember } from "@/lib/member-auth-helpers";
 
 const SUPPORTED = ["member", "thread", "tag"] as const;
 type FollowTarget = (typeof SUPPORTED)[number];
@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const { targetType, targetId } = readTarget(await readJsonBody(request));
     const row = await follow({ followerId: member.id, targetType, targetId });
     return nxSuccessResponse(row, { status: 201 });
@@ -68,7 +67,6 @@ export async function DELETE(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const url = request.nextUrl;
     const targetType = url.searchParams.get("targetType");
     const targetId = url.searchParams.get("targetId");

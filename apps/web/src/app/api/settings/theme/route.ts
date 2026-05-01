@@ -12,7 +12,7 @@ import { readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
@@ -45,7 +45,6 @@ export async function GET(_request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-    requireCsrf(request);
 
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("settings/theme", "update");

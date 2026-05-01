@@ -3,7 +3,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { requireMember } from "@/lib/member-auth-helpers";
 import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const targetId = body.targetId;
     if (typeof targetId !== "string" || targetId.length === 0) {

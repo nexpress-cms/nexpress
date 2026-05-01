@@ -206,21 +206,9 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
     expect(res.status).toBe(401);
   });
 
-  it("missing CSRF rejected (401)", async () => {
-    const mod = await seedUser({ role: "moderator" });
-    const member = await seedActiveMember("promo-csrf");
-    const { id: docId } = await seedPendingDoc(member, "promo-csrf-slug");
-
-    // Cookies present, x-csrf-token header absent.
-    const req = jsonRequest(`/api/admin/collections/discussions/${docId}/promote`, {
-      method: "POST",
-      cookies: [`nx-session=${mod.accessToken}`, `nx-csrf=${mod.csrfToken}`],
-    });
-    const res = await promotePOST(req, {
-      params: Promise.resolve({ slug: "discussions", id: docId }),
-    });
-    expect(res.status).toBe(401);
-  });
+  // CSRF enforcement moved to apps/web/src/proxy.ts (#281); the
+  // handler unit test no longer covers it since direct handler
+  // invocation bypasses the proxy.
 
   it("404 when doc id doesn't exist", async () => {
     const mod = await seedUser({ role: "moderator" });
