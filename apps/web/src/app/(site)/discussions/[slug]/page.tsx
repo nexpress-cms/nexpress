@@ -40,17 +40,17 @@ export async function generateMetadata({
   // crawlers fetching just the head still need a sane title.
   return (await buildPageMetadata({
     title:
-      typeof doc?.title === "string" ? (doc.title as string) : "Discussion",
+      typeof doc?.title === "string" ? (doc.title) : "Discussion",
     description:
       typeof doc?.excerpt === "string" && doc.excerpt
-        ? (doc.excerpt as string)
+        ? (doc.excerpt)
         : null,
     path: `/discussions/${slug}`,
     ogType: "article",
     publishedTime:
-      doc?.createdAt instanceof Date ? (doc.createdAt as Date) : null,
+      doc?.createdAt instanceof Date ? (doc.createdAt) : null,
     modifiedTime:
-      doc?.updatedAt instanceof Date ? (doc.updatedAt as Date) : null,
+      doc?.updatedAt instanceof Date ? (doc.updatedAt) : null,
   })) as Metadata;
 }
 
@@ -116,7 +116,7 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
           headline: doc.title as string,
           description:
             typeof doc.excerpt === "string" && doc.excerpt
-              ? (doc.excerpt as string)
+              ? (doc.excerpt)
               : null,
           datePublished:
             (doc.createdAt as Date | undefined) ?? null,

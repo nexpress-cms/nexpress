@@ -8,7 +8,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { clearAuthCookies, requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { clearAuthCookies, requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
@@ -49,7 +49,6 @@ export async function PATCH(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    requireCsrf(request);
 
     const { currentPassword, newPassword } = validateChangePasswordBody(await readJsonBody(request));
     const db = getDb();

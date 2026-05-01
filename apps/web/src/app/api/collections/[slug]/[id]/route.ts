@@ -9,7 +9,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { optionalAuth, requireCsrf } from "@/lib/auth-helpers";
+import { optionalAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import {
   deleteCollectionDocument,
@@ -19,7 +19,7 @@ import {
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
 import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
-import { optionalMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { optionalMember } from "@/lib/member-auth-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
 
 export async function GET(
@@ -70,7 +70,6 @@ export async function PATCH(
     // Staff takes precedence when both are present.
     const staffUser = await optionalAuth(request);
     if (staffUser) {
-      requireCsrf(request);
       const data = parseBodyRecord(await readJsonBody(request));
       const saveOptions = extractSaveOptions(data);
       const previous = await getCollectionDocument(slug, id, staffUser);
@@ -92,7 +91,6 @@ export async function PATCH(
       throw new NxForbiddenError(slug, "update");
     }
 
-    requireMemberCsrf(request);
     await ensureWriteReady();
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
@@ -118,7 +116,6 @@ export async function DELETE(
 
     const staffUser = await optionalAuth(request);
     if (staffUser) {
-      requireCsrf(request);
       const previous = await getCollectionDocument(slug, id, staffUser);
       await deleteCollectionDocument(slug, id, staffUser);
       revalidateCollection(slug, previous);
@@ -134,7 +131,6 @@ export async function DELETE(
       throw new NxForbiddenError(slug, "delete");
     }
 
-    requireMemberCsrf(request);
     await ensureWriteReady();
     const previous = await getCollectionDocument(slug, id, null);
     await deleteMemberDocument(slug, id, member.id);

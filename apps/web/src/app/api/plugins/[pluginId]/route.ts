@@ -11,7 +11,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
@@ -80,7 +80,6 @@ export async function PATCH(
       throw new NxForbiddenError("plugins", "update");
     }
 
-    requireCsrf(request);
 
     const { pluginId } = await params;
     const body = parseBodyRecord(await readJsonBody(request));

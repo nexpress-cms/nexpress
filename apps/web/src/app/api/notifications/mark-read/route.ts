@@ -8,7 +8,7 @@ import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
-import { requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { requireMember } from "@/lib/member-auth-helpers";
 
 /**
  * Two modes:
@@ -21,7 +21,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const body = (await readJsonBody(request).catch(() => null)) as
       | { all?: unknown; ids?: unknown }
       | null;

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { restoreDocumentRevision } from "@/lib/revision-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
@@ -13,7 +13,6 @@ export async function POST(
     const { slug, id, revisionId } = await params;
     const user = await requireAuth(request);
 
-    requireCsrf(request);
 
     const result = await restoreDocumentRevision(slug, id, revisionId, user);
 

@@ -14,7 +14,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
@@ -52,7 +52,6 @@ function buildResetUrl(request: NextRequest, token: string): string {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-    requireCsrf(request);
 
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("users", "create");

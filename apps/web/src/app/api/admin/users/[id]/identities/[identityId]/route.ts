@@ -6,7 +6,7 @@ import {
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -25,7 +25,6 @@ export async function DELETE(
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("user.identities", "revoke");
     }
-    requireCsrf(request);
     const { id, identityId } = await context.params;
     await revokeUserIdentity(id, identityId, { staffUserId: user.id });
     return nxSuccessResponse({ ok: true });

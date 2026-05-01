@@ -253,33 +253,9 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       expect(remaining).toHaveLength(1);
     });
 
-    it("missing CSRF header rejected (401 NxAuthError)", async () => {
-      const admin = await seedUser({ role: "admin" });
-      const target = await seedUser({ email: "csrf@example.com" });
-      const identityId = await seedUserIdentity(target.userId, "github", "gh-csrf");
-      // Cookie present, header absent → CSRF mismatch.
-      const req = jsonRequest(
-        `/api/admin/users/${target.userId}/identities/${identityId}`,
-        {
-          method: "DELETE",
-          cookies: [`nx-session=${admin.accessToken}`, `nx-csrf=${admin.csrfToken}`],
-        },
-      );
-      const res = await userIdentityDELETE(req, {
-        params: Promise.resolve({ id: target.userId, identityId }),
-      });
-      expect(res.status).toBe(401);
-
-      // Identity NOT deleted.
-      const db = await getTestDb();
-      const { nxUserOAuthIdentities } = await import("@nexpress/core");
-      const { eq } = await import("drizzle-orm");
-      const remaining = (await db
-        .select()
-        .from(nxUserOAuthIdentities)
-        .where(eq(nxUserOAuthIdentities.id, identityId))) as Array<unknown>;
-      expect(remaining).toHaveLength(1);
-    });
+    // CSRF enforcement moved to apps/web/src/proxy.ts (#281); the
+    // handler unit test no longer covers it since direct handler
+    // invocation bypasses the proxy.
   });
 
   describe("/api/admin/members/[id]/identities", () => {

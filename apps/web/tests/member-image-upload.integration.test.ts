@@ -129,15 +129,10 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("missing CSRF rejected (401)", async () => {
-    const member = await seedActiveMember("upload-csrf");
-    const res = await uploadPOST(
-      uploadRequest(member, { name: "csrf.png", type: "image/png", bytes: TINY_PNG }, {
-        skipCsrf: true,
-      }),
-    );
-    expect(res.status).toBe(401);
-  });
+  // CSRF enforcement moved to apps/web/src/proxy.ts (#281); the
+  // handler unit test no longer covers it because it bypasses the
+  // proxy by calling the handler directly. Proxy-level coverage
+  // belongs in an end-to-end test, not here.
 
   it("non-image mime type rejected (400)", async () => {
     const member = await seedActiveMember("upload-mime");

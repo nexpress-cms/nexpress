@@ -5,7 +5,7 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { ensurePluginsLoaded } from "@/lib/init-core";
@@ -30,7 +30,6 @@ export async function POST(
       throw new NxForbiddenError("plugin action", "dispatch");
     }
 
-    requireCsrf(request);
     await ensurePluginsLoaded();
 
     const { pluginId, actionId } = await params;

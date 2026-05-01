@@ -198,12 +198,12 @@ export function proxy(request: NextRequest) {
     // landed, every state-changing handler had to remember to
     // call `requireCsrf(request)`; a missed line passed code
     // review and tests silently and shipped without the check.
-    // The list of exempt patterns is deliberately small and
-    // explicit — pre-auth flows that have no nx-csrf cookie
-    // yet, scheduler-token-authenticated internals, and the
-    // plugin proxy where plugins handle their own auth.
-    // Per-handler `requireCsrf` calls remain in place as
-    // defense in depth; removing them is a follow-up.
+    // Now that this proxy is the single enforcement point, the
+    // per-handler calls have been removed. The list of exempt
+    // patterns is deliberately small and explicit — pre-auth
+    // flows that have no nx-csrf cookie yet, scheduler-token-
+    // authenticated internals, and the plugin proxy where
+    // plugins handle their own auth.
     if (!CSRF_SAFE_METHODS.has(request.method) && !isCsrfExempt(pathname)) {
       const headerToken = request.headers.get("x-csrf-token");
       const staffCookie = request.cookies.get("nx-csrf")?.value;

@@ -12,7 +12,7 @@ import type { NextRequest } from "next/server";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady } from "@/lib/init-core";
-import { requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { requireMember } from "@/lib/member-auth-helpers";
 
 /**
  * Member-side image upload (Phase 9.7j). The discussion form's
@@ -105,7 +105,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
 
     // Banned members can't upload, even if their session is still
     // live. The check is the same one the comment + doc-create

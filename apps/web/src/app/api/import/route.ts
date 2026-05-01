@@ -16,7 +16,7 @@ import type { NextRequest } from "next/server";
 
 const SUPPORTED_EXPORT_VERSION = "1";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureWriteReady } from "@/lib/init-core";
@@ -194,7 +194,6 @@ function parseCollectionsFilter(
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-    requireCsrf(request);
 
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("import", "create");

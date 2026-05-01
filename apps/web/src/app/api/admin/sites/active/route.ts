@@ -11,7 +11,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    requireCsrf(request);
 
     const body = (await readJsonBody(request)) as { id?: unknown };
     const id = typeof body.id === "string" ? body.id : null;
@@ -95,7 +94,6 @@ export async function DELETE(request: NextRequest) {
   try {
     await ensureWriteReady();
     await requireAuth(request);
-    requireCsrf(request);
 
     const response = nxSuccessResponse({ ok: true });
     response.cookies.delete("nx-admin-site");
