@@ -145,11 +145,61 @@ separate machine with `supercronic`, or use Fly's [scheduled machines](https://f
 2. Seed the initial admin user with `pnpm --filter @nexpress/web seed:admin`
    (set `NX_ADMIN_EMAIL`, `NX_ADMIN_NAME`, `NX_ADMIN_PASSWORD` first), or
    register via `/admin/login` if your config allows it.
-3. Confirm `/api/health` returns `{"status":"ok"}`.
+3. Confirm `/api/health` returns `{"status":"ok"}` and `/api/health/ready`
+   returns 200 with every probe `ok: true`. The readiness probe pings
+   the DB and (when wired) the pg-boss queue (Phase 22.4) — a 503 here
+   means traffic should not be routed to this node yet.
 4. Confirm `/api/openapi.json` lists every collection — agents and the
    admin both rely on it being accurate (no cache, rebuilt per request).
 5. Wire scheduled publishing if your collections use `_status: "scheduled"`.
 6. (If using SMTP) trigger a password reset and confirm an email arrives.
+7. Tail the boot logs for warnings emitted by `verifyStartupSafety`
+   (Phase 22.2). Each warning carries a `check` id (see
+   [operations.md § Boot warnings](./operations.md#boot-warnings)) and
+   names a fix. A clean boot has none.
+
+---
+
+## Structured logging
+
+The default `consoleLogger` is fine for development and small self-hosted
+deployments. Production deployments that already run a log pipeline
+(pino, Datadog, Axiom, …) should swap in a custom logger so framework
+warnings — including the Phase 22.2 boot checks and the pg-boss handler
+errors — land in the same stream as application logs.
+
+Install once at app boot, before the first `ensureFor(...)` call. The
+canonical install location in the reference app is
+`apps/web/src/lib/init-core.ts`, next to the email-adapter setup:
+
+```ts
+import { setLogger } from "@nexpress/core";
+import pino from "pino";
+
+const root = pino({ level: process.env.LOG_LEVEL ?? "info" });
+setLogger({
+  debug: (msg, ctx) => root.debug(ctx ?? {}, msg),
+  info: (msg, ctx) => root.info(ctx ?? {}, msg),
+  warn: (msg, ctx) => root.warn(ctx ?? {}, msg),
+  error: (msg, ctx) => root.error(ctx ?? {}, msg),
+  // Optional but recommended — `getScopedLogger({...})` calls forward
+  // bindings here so plugin / boot / job logs carry their subsystem
+  // tag through your pipeline.
+  child: (bindings) => {
+    const c = root.child(bindings);
+    return {
+      debug: (msg, ctx) => c.debug(ctx ?? {}, msg),
+      info: (msg, ctx) => c.info(ctx ?? {}, msg),
+      warn: (msg, ctx) => c.warn(ctx ?? {}, msg),
+      error: (msg, ctx) => c.error(ctx ?? {}, msg),
+    };
+  },
+});
+```
+
+For a Sentry / pino / Datadog-specific recipe and the matching
+`setErrorReporter` setup, see
+[observability.md](./observability.md).
 
 ---
 
