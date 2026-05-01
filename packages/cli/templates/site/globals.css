@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@layer nx-base, nx-blocks, nx-theme, nx-overrides;
+
+@layer nx-base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--nx-font-body, system-ui, sans-serif);
+    font-size: var(--nx-font-size-base, 16px);
+    line-height: var(--nx-line-height, 1.6);
+    color: var(--nx-color-foreground, #0f172a);
+    background: var(--nx-color-background, #fff);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

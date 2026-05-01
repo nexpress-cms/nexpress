@@ -291,12 +291,21 @@ importers:
       '@nexpress/next':
         specifier: workspace:*
         version: link:../next
+      '@nexpress/theme':
+        specifier: workspace:*
+        version: link:../theme
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.14)
       dotenv:
         specifier: ^17.2.4
         version: 17.4.2
@@ -306,6 +315,12 @@ importers:
       next:
         specifier: ^16.2.4
         version: 16.2.4(@babel/core@7.29.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.5(react@19.2.5)
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)

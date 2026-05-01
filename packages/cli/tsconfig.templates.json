@@ -14,7 +14,8 @@
     "rootDir": "templates",
     "moduleResolution": "Bundler",
     "module": "ESNext",
-    "lib": ["ES2022"],
+    "jsx": "preserve",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
@@ -25,7 +26,8 @@
     "templates/lib/**/*.ts",
     "templates/scripts/**/*.ts",
     "templates/collections/**/*.ts",
-    "templates/api/**/*.ts"
+    "templates/api/**/*.ts",
+    "templates/site/**/*.tsx"
   ],
   "files": [
     "templates/_typecheck/db/generated/collections.ts",
