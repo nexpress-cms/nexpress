@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { verifyTokenFull, type NxCollectionConfig } from "@nexpress/core";
+import { can, verifyTokenFull, type NxCollectionConfig } from "@nexpress/core";
 import { AdminShell } from "@nexpress/admin/client";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
@@ -27,9 +27,18 @@ export default async function AdminLayout({
   if (!user) redirect("/admin/login");
 
   const collections = getCollectionConfigs();
+  // Server-side capability resolution — keeps `@nexpress/core`
+  // (which pulls `pg`/`sharp`/`argon2`) out of the admin client
+  // bundle. The shell mirrors the same gates client-side via the
+  // `caps` prop. (#343)
+  const caps = {
+    canManageAdmin: can(user, "admin.manage"),
+    canPublish: can(user, "content.publish"),
+    canModerate: can(user, "community.moderate"),
+  };
 
   return (
-    <AdminShell user={user} collections={collections}>
+    <AdminShell user={user} collections={collections} caps={caps}>
       {children}
     </AdminShell>
   );

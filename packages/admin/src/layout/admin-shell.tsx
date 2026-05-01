@@ -20,11 +20,6 @@ import {
 } from "lucide-react";
 import type { NxAuthUser, NxCollectionConfig } from "@nexpress/core";
 
-// Inlined to keep `@nexpress/core` (server-only) out of the client bundle.
-// Mirrors `isStaffMod` / `can(user, "content.publish")` from core/config/types.ts.
-const STAFF_MOD_ROLES = new Set(["admin", "editor", "moderator"]);
-const EDITOR_OR_ABOVE = new Set(["admin", "editor"]);
-
 import { AdminTopbar } from "./admin-topbar.js";
 import { Button } from "../ui/button.js";
 import { ScrollArea } from "../ui/scroll-area.js";
@@ -32,9 +27,27 @@ import { Separator } from "../ui/separator.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
 import { cn } from "../ui/utils.js";
 
+/**
+ * Capability flags resolved on the server (where `can(user, ...)`
+ * lives) and passed down so this client component never duplicates
+ * the role-set logic (#343). The flags name the *behavior*, not
+ * the role hierarchy, mirroring the `can()` capability vocabulary.
+ *
+ *   - `canManageAdmin`   — admin-only surfaces (Sites, Jobs).
+ *   - `canPublish`       — editor-or-admin (Members directory).
+ *   - `canModerate`      — community-mod (Pending review, Reports,
+ *                          Audit log, Community settings).
+ */
+export interface AdminShellCapabilities {
+  canManageAdmin: boolean;
+  canPublish: boolean;
+  canModerate: boolean;
+}
+
 export interface AdminShellProps {
   user: NxAuthUser;
   collections: NxCollectionConfig[];
+  caps: AdminShellCapabilities;
   children: React.ReactNode;
 }
 
@@ -91,7 +104,7 @@ function NavLink({
   );
 }
 
-function AdminShell({ user, collections, children }: AdminShellProps) {
+function AdminShell({ user, collections, caps, children }: AdminShellProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
 
@@ -109,7 +122,7 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
   const systemItems: NavItem[] = [
     { href: "/admin/media", label: "Media", icon: Image },
     { href: "/admin/plugins", label: "Plugins", icon: Puzzle },
-    ...(user.role === "admin"
+    ...(caps.canManageAdmin
       ? [
           { href: "/admin/jobs", label: "Jobs", icon: Timer },
           { href: "/admin/sites", label: "Sites", icon: Globe2 },
@@ -120,17 +133,17 @@ function AdminShell({ user, collections, children }: AdminShellProps) {
 
   const communityItems = React.useMemo<NavItem[]>(() => {
     const items: NavItem[] = [];
-    if (EDITOR_OR_ABOVE.has(user.role)) {
+    if (caps.canPublish) {
       items.push({ href: "/admin/members", label: "Members", icon: Users });
     }
-    if (STAFF_MOD_ROLES.has(user.role)) {
+    if (caps.canModerate) {
       items.push({ href: "/admin/community/pending", label: "Pending review", icon: Inbox });
       items.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
       items.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
       items.push({ href: "/admin/community/settings", label: "Community settings", icon: Settings });
     }
     return items;
-  }, [user.role]);
+  }, [caps.canPublish, caps.canModerate]);
 
   return (
     <TooltipProvider delayDuration={120}>
