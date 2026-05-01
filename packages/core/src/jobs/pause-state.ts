@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { nxSettings } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
+import { reportError } from "../observability/error-reporter.js";
 import { type NxJobQueue } from "./queue.js";
 
 /**
@@ -92,6 +93,15 @@ export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<
 
 export const PAUSE_SYNC_INTERVAL_MS = 30_000;
 
+/**
+ * Number of consecutive failures before the loop escalates from a
+ * `warn` log to the error reporter. Three ticks at 30s = ~90s of
+ * sync drift before an operator gets a tracked alert; tunable here
+ * if real-world fault profiles call for tighter or looser
+ * thresholds.
+ */
+export const PAUSE_SYNC_ESCALATE_AFTER = 3;
+
 export interface PauseSyncLoopHandle {
   stop(): void;
 }
@@ -105,13 +115,20 @@ export interface PauseSyncLoopHandle {
  *
  * Returns a handle whose `stop()` clears the interval. Read
  * errors are logged at warn — we don't want a transient DB
- * blip to wedge the worker.
+ * blip to wedge the worker. After
+ * `PAUSE_SYNC_ESCALATE_AFTER` consecutive failures (#312),
+ * the next failure is also reported via `reportError` so an
+ * operator monitoring Sentry / their tracker sees the pod has
+ * been silently out of sync. The counter resets on the next
+ * successful tick.
  */
 export function startPauseSyncLoop(
   queue: NxJobQueue,
   intervalMs: number = PAUSE_SYNC_INTERVAL_MS,
 ): PauseSyncLoopHandle {
   const log = getLogger();
+  let consecutiveFailures = 0;
+  let escalated = false;
 
   const tick = async (): Promise<void> => {
     try {
@@ -130,10 +147,37 @@ export function startPauseSyncLoop(
           changedAt: persisted.changedAt,
         });
       }
+
+      // Successful tick — clear the run of failures so a single
+      // recovery resets the escalation gate.
+      if (consecutiveFailures > 0) {
+        log.info("Pause sync: recovered after consecutive failures", {
+          previousFailures: consecutiveFailures,
+        });
+        consecutiveFailures = 0;
+        escalated = false;
+      }
     } catch (err) {
+      consecutiveFailures += 1;
+      const errorMessage = err instanceof Error ? err.message : String(err);
       log.warn("Pause sync tick failed", {
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMessage,
+        consecutiveFailures,
       });
+
+      // After `PAUSE_SYNC_ESCALATE_AFTER` consecutive failures,
+      // surface the error to the configured reporter so silent
+      // out-of-sync state is visible to operators. Escalate
+      // exactly once per failure run; the success branch above
+      // resets `escalated` so a subsequent run can re-alert.
+      if (consecutiveFailures >= PAUSE_SYNC_ESCALATE_AFTER && !escalated) {
+        escalated = true;
+        const reportable = err instanceof Error ? err : new Error(errorMessage);
+        await reportError(reportable, {
+          tags: { source: "worker", subsystem: "pause-sync" },
+          extra: { consecutiveFailures },
+        });
+      }
     }
   };
 
