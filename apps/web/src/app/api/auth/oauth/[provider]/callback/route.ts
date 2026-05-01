@@ -8,7 +8,7 @@ import {
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Step 2: validate the state cookie, ask the provider to exchange the
@@ -53,7 +53,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ provider: string }> },
 ) {
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { provider: providerId } = await params;
   const provider = getOAuthProvider(providerId);
   if (!provider) return failResponse(request, "unknown_provider");

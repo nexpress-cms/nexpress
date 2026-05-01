@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 function parsePositiveInt(
   value: string | null,
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media", "list");
     }
-    ensureCoreServices();
+    await ensureFor("read");
 
     const params = request.nextUrl.searchParams;
     const page = parsePositiveInt(params.get("page"), "page", 1);

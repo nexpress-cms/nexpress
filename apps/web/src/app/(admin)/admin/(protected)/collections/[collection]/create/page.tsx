@@ -2,7 +2,7 @@ import { getCollectionConfig } from "@nexpress/core";
 import { CollectionEditView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { notFound } from "next/navigation";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default async function CreatePage({ params }: Props) {
-  ensureCoreServices();
+  await ensureFor("read");
 
   const { collection } = await params;
   const config = getCollectionConfig(collection);

@@ -21,8 +21,8 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

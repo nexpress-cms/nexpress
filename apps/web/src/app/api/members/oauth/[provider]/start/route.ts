@@ -2,7 +2,7 @@ import { getOAuthProvider, issueOAuthState } from "@nexpress/core";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getMemberAuthRuntimeConfig } from "@/lib/member-auth-helpers";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Member-side OAuth start. Mirrors the staff start route
@@ -26,7 +26,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ provider: string }> },
 ) {
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { provider: providerId } = await params;
   const provider = getOAuthProvider(providerId);
   if (!provider) {

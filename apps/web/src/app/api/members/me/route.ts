@@ -13,13 +13,13 @@ import { NextResponse } from "next/server";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { clearMemberAuthCookies, requireMember } from "@/lib/member-auth-helpers";
-import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export async function GET(request: NextRequest) {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
     const member = await requireMember(request);
 
     const db = getDb();
@@ -100,7 +100,7 @@ function validatePatch(raw: unknown): PatchBody {
 
 export async function PATCH(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const patch = validatePatch(await readJsonBody(request));
     const db = getDb();
@@ -161,7 +161,7 @@ export async function PATCH(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const db = getDb();
 

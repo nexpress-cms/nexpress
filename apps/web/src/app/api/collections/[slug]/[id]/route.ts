@@ -18,7 +18,7 @@ import {
   parseBodyRecord,
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
-import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { optionalMember } from "@/lib/member-auth-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
 
@@ -39,7 +39,7 @@ export async function GET(
     // that opt into draft workflows (#56). 404 on draft / scheduled /
     // archived to keep enumeration consistent with the listing route.
     if (!user) {
-      ensureCoreServices();
+      await ensureFor("read");
       const config = getCollectionConfig(slug);
       if (config.versions?.drafts && document.status !== "published") {
         throw new NxNotFoundError(slug, id);
@@ -85,13 +85,13 @@ export async function PATCH(
     const member = await optionalMember(request);
     if (!member) throw new NxAuthError();
 
-    ensureCoreServices();
+    await ensureFor("read");
     const config = getCollectionConfig(slug);
     if (!config.community?.memberWrite?.update) {
       throw new NxForbiddenError(slug, "update");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);
     const previous = await getCollectionDocument(slug, id, null);
@@ -125,13 +125,13 @@ export async function DELETE(
     const member = await optionalMember(request);
     if (!member) throw new NxAuthError();
 
-    ensureCoreServices();
+    await ensureFor("read");
     const config = getCollectionConfig(slug);
     if (!config.community?.memberWrite?.delete) {
       throw new NxForbiddenError(slug, "delete");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
     const previous = await getCollectionDocument(slug, id, null);
     await deleteMemberDocument(slug, id, member.id);
     revalidateCollection(slug, previous);

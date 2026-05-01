@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Admin-only dispatcher for plugin-registered actions. Admin UI widgets /
@@ -30,7 +30,7 @@ export async function POST(
       throw new NxForbiddenError("plugin action", "dispatch");
     }
 
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
 
     const { pluginId, actionId } = await params;
 

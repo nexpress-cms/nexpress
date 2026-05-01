@@ -12,7 +12,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 15.6 — set the admin site-picker cookie.
@@ -35,7 +35,7 @@ import { ensureWriteReady } from "@/lib/init-core";
  */
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
 
     const body = (await readJsonBody(request)) as { id?: unknown };
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     await requireAuth(request);
 
     const response = nxSuccessResponse({ ok: true });

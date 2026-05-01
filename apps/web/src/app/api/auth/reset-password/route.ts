@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 function validateBody(body: unknown): { token: string; password: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -32,7 +32,7 @@ function validateBody(body: unknown): { token: string; password: string } {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const { token, password } = validateBody(await readJsonBody(request));
 
     const result = await consumePasswordResetToken(getDb(), {

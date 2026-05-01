@@ -1,12 +1,12 @@
 import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { collectionToManifest } from "@/lib/manifest";
 import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
 
-export function GET() {
+export async function GET() {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
 
     const items = getAllCollectionSlugs()
       .map((slug) => collectionToManifest(getCollectionConfig(slug)))

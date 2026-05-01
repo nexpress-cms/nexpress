@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
+import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { resetTtlMs } from "@/lib/token-ttl";
 
 function validateBody(body: unknown): { email: string } {
@@ -34,7 +34,7 @@ function buildResetUrl(request: NextRequest, token: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const { email } = validateBody(await readJsonBody(request));
 
     const result = await requestPasswordReset(getDb(), email, resetTtlMs);

@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export async function GET(
   request: NextRequest,
@@ -26,7 +26,7 @@ export async function GET(
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("media", "read");
     }
-    ensureCoreServices();
+    await ensureFor("read");
 
     const media = await getMediaById(id);
 
@@ -52,7 +52,7 @@ export async function DELETE(
       throw new NxForbiddenError("media", "delete");
     }
 
-    ensureCoreServices();
+    await ensureFor("read");
 
     const result = await deleteMedia(id);
 

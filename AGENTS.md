@@ -72,7 +72,7 @@ The reference app wires these up in `apps/web/src/lib/init-core.ts`. New code sh
   - `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
   - `await ensureFor("write")` — plugins + email + pg-boss producer (any mutating API route / server action / import).
 
-The legacy `ensureCoreServices()` / `ensurePluginsLoaded()` / `ensureJobProducer()` / `ensureWriteReady()` functions still exist for backwards compatibility (#266); existing routes will be migrated to `ensureFor` in a follow-up. Either way, any route/server-component touching collections, media, or plugins MUST initialize before reading the singletons or they will be null. Don't create parallel DB connections from elsewhere.
+All routes use `ensureFor` directly — the legacy four functions (`ensureCoreServices` / `ensurePluginsLoaded` / `ensureJobProducer` / `ensureWriteReady`) were retired in #266. Any route or server component touching collections, media, or plugins MUST initialize before reading the singletons; otherwise they're null. Don't create parallel DB connections from elsewhere.
 
 ### Collections = codegen, not runtime
 
@@ -162,7 +162,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 - **Never import `next/cache` directly** — use `revalidateCollection()` from `@nexpress/next`.
 - **Never edit generated files by hand** — `apps/web/src/db/generated/collections.ts` and `apps/web/next-env.d.ts` are generated. Edit source definitions and re-run generators.
 - **Never suppress type errors** — no `as any`, `@ts-ignore`, `@ts-expect-error`. A few `as never` casts exist in admin field editors and plugin host — minimize, don't add more.
-- **Never create parallel DB connections** — use `ensureCoreServices()` to get the singleton. One pool per process.
+- **Never create parallel DB connections** — call `ensureFor(...)` (or rely on the routes that do) and read from the `getDb()` singleton. One pool per process.
 - **Never run `pnpm db:generate` without reviewing output** — destructive schema changes are not auto-applied.
 
 ## NOTES

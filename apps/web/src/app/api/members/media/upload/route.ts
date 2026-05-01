@@ -11,7 +11,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
 /**
@@ -103,7 +103,7 @@ function sniffImageMime(buffer: Buffer): AllowedMimeType | null {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
 
     // Banned members can't upload, even if their session is still

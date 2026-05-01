@@ -17,7 +17,7 @@ import { NextResponse } from "next/server";
 import { nxErrorResponse } from "@/lib/api-response";
 import { setMemberAuthCookies, getMemberAuthRuntimeConfig } from "@/lib/member-auth-helpers";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 interface LoginBody {
   email: string;
@@ -43,7 +43,7 @@ function validate(raw: unknown): LoginBody {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const { email, password } = validate(await readJsonBody(request));
     const db = getDb();
 

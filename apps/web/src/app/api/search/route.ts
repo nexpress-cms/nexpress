@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -23,7 +23,7 @@ function parsePositiveInt(value: string | null, fallback: number, max: number): 
 
 export async function GET(request: NextRequest) {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
 
     const params = request.nextUrl.searchParams;
     const q = params.get("q")?.trim() ?? "";

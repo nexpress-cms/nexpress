@@ -17,7 +17,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         ? folderIdRaw.trim()
         : undefined;
 
-    await ensureWriteReady();
+    await ensureFor("write");
     const db = getDb();
 
     if (folderId) {

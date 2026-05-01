@@ -23,10 +23,10 @@
  */
 import { beforeEach } from "vitest";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { NX_DEFAULT_SITE_ID, setCurrentSiteResolver } from "@nexpress/core";
 
-await ensureCoreServices();
+await ensureFor("read");
 setCurrentSiteResolver(() => NX_DEFAULT_SITE_ID);
 
 beforeEach(() => {

@@ -7,7 +7,7 @@ import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 10.4 — Atom feed. Default collection is `posts`; sites
@@ -46,7 +46,7 @@ async function renderAtomFeedDirect(
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
-  ensureCoreServices();
+  await ensureFor("read");
   const collection = request.nextUrl.searchParams.get("collection") ?? undefined;
   const localeParam = request.nextUrl.searchParams.get("locale")?.trim();
   const locale =

@@ -14,7 +14,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { getMemberAuthRuntimeConfig, setMemberAuthCookies } from "@/lib/member-auth-helpers";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Member-side OAuth callback. Mirrors the staff callback at
@@ -68,7 +68,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ provider: string }> },
 ) {
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { provider: providerId } = await params;
   const provider = getOAuthProvider(providerId);
   if (!provider) return failResponse(request, "unknown_provider");

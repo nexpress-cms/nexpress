@@ -9,7 +9,7 @@ import {
 } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 10.1 — sitemap.xml. The core helper walks every
@@ -145,7 +145,7 @@ function buildSitemapIndexDirect(
  * theme/nav pattern.
  */
 export async function GET(req: Request): Promise<Response> {
-  ensureCoreServices();
+  await ensureFor("read");
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const origin = await resolveSiteOrigin(siteId);
   const i18n = getI18nConfig();

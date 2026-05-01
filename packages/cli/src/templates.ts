@@ -177,22 +177,33 @@ function bootstrapLibTemplate(): string {
 import nexpressConfig from "@/nexpress.config";
 import * as generatedSchema from "@/db/generated/collections";
 
-export const { getDb, ensureCoreServices, ensurePluginsLoaded, ensureJobProducer } =
-  createBootstrap({
-    config: nexpressConfig,
-    generatedSchema: generatedSchema as unknown as Record<string, unknown>,
-  });
+const bootstrap = createBootstrap({
+  config: nexpressConfig,
+  generatedSchema: generatedSchema as unknown as Record<string, unknown>,
+});
+
+export const { getDb } = bootstrap;
 
 /**
- * One-call setup for any write entrypoint (API route, server action, import).
- * Wires core services, loads plugins so hooks fire, and starts the pg-boss
- * producer so \`enqueueJob\` actually sends work to the worker when
- * \`NX_ENABLE_JOBS=1\`.
+ * Single typed entry point for bootstrap initialization.
+ *
+ *   - \`"read"\`    — DB + storage + collections registered. Use for
+ *                   read-only RSC pages and GET API routes.
+ *   - \`"plugins"\` — read + plugin loading. Use when render or
+ *                   response generation needs \`runHook\` to fire.
+ *   - \`"write"\`   — plugins + pg-boss producer. Use for any
+ *                   mutating API route, server action, or import.
  */
-export async function ensureWriteReady(): Promise<void> {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
-  await ensureJobProducer();
+export type NxBootstrapIntent = "read" | "plugins" | "write";
+
+export async function ensureFor(intent: NxBootstrapIntent): Promise<void> {
+  bootstrap.await ensureFor("read");
+  if (intent === "read") return;
+
+  await bootstrap.ensurePluginsLoaded();
+  if (intent === "plugins") return;
+
+  await bootstrap.ensureJobProducer();
 }
 
 export type { NxDb } from "@nexpress/next";
@@ -226,7 +237,7 @@ function apiResponseLibTemplate(): string {
 function collectionHelpersLibTemplate(): string {
   return `import { createCollectionHelpers } from "@nexpress/next";
 
-import { ensureWriteReady } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 export const {
   parseFindOptions,
@@ -235,7 +246,7 @@ export const {
   saveCollectionDocument,
   deleteCollectionDocument,
 } = createCollectionHelpers({
-  ensureReady: ensureWriteReady,
+  ensureReady: () => ensureFor("write"),
 });
 `;
 }
@@ -408,7 +419,7 @@ import {
   startWorker,
 } from "@nexpress/core";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/bootstrap";
+import { ensureFor } from "../src/lib/bootstrap";
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
@@ -423,8 +434,8 @@ async function main() {
     process.exit(1);
   }
 
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("read");
+  await ensureFor("plugins");
 
   configureBuiltinJobContext({
     async resolveContentAfterSaveContext({ collection, documentId, userId }) {
@@ -691,12 +702,12 @@ function siteLayoutTemplate(config: TemplateConfig): string {
 import { NxThemeStyle } from "@nexpress/theme";
 import { getTheme } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
 export default async function SiteLayout({ children }: { children: ReactNode }) {
-  ensureCoreServices();
+  await ensureFor("read");
   const theme = await getTheme();
 
   return (
@@ -715,7 +726,7 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
 function homePageTemplate(config: TemplateConfig): string {
   return `import { getAllCollectionSlugs, getAllPluginIds, getPluginRegistration } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 /**
  * Default landing page for ${config.projectName}. Confirms the install is
@@ -725,7 +736,7 @@ import { ensureCoreServices } from "@/lib/bootstrap";
  * \`[...slug]\` catch-all render it) once you have real content.
  */
 export default async function HomePage() {
-  ensureCoreServices();
+  await ensureFor("read");
 
   const collections = getAllCollectionSlugs().sort();
   const plugins = getAllPluginIds()
@@ -841,14 +852,14 @@ function slugPageTemplate(_config: TemplateConfig): string {
   return `import { getPageBySlug } from "@nexpress/core";
 import { notFound } from "next/navigation";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 interface SitePageProps {
   params: Promise<{ slug?: string[] }>;
 }
 
 export default async function SitePage({ params }: SitePageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { slug } = await params;
   const path = slug?.join("/") || "/";
   const page = await getPageBySlug(path);
@@ -993,10 +1004,10 @@ function adminDashboardPageTemplate(): string {
 
 import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 export default function AdminDashboard() {
-  ensureCoreServices();
+  await ensureFor("read");
   const collections = getAllCollectionSlugs().map((slug) => getCollectionConfig(slug));
 
   return (
@@ -1025,7 +1036,7 @@ function adminCollectionListPageTemplate(): string {
 import { CollectionListView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 interface Props {
   params: Promise<{ collection: string }>;
@@ -1033,7 +1044,7 @@ interface Props {
 }
 
 export default async function AdminCollectionList({ params, searchParams }: Props) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { collection } = await params;
   const { page } = await searchParams;
   const currentPage = Math.max(1, Number(page ?? 1) || 1);
@@ -1063,14 +1074,14 @@ function adminCollectionCreatePageTemplate(): string {
 import { CollectionEditView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 interface Props {
   params: Promise<{ collection: string }>;
 }
 
 export default async function AdminCollectionCreate({ params }: Props) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { collection } = await params;
   const config = getCollectionConfig(collection);
 
@@ -1089,14 +1100,14 @@ function adminCollectionEditPageTemplate(): string {
 import { CollectionEditView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 interface Props {
   params: Promise<{ collection: string; id: string }>;
 }
 
 export default async function AdminEditDocument({ params }: Props) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { collection, id } = await params;
   const config = getCollectionConfig(collection);
   const doc = await getDocumentById(collection, id);
@@ -1391,13 +1402,13 @@ export async function DELETE(
 function metaCollectionsRouteTemplate(): string {
   return `import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 import { collectionToManifest } from "@/lib/manifest";
 import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
 
 export function GET() {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
     const items = getAllCollectionSlugs()
       .map((slug) => collectionToManifest(getCollectionConfig(slug)))
       .sort((a, b) => a.slug.localeCompare(b.slug));
@@ -1431,13 +1442,13 @@ export function GET() {
 function metaPluginsRouteTemplate(): string {
   return `import { getAllPluginIds, getPluginRegistration } from "@nexpress/core";
 
-import { ensurePluginsLoaded } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
 import type { NxPluginManifest } from "@/lib/manifest";
 
 export async function GET() {
   try {
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     const items: NxPluginManifest[] = [];
     for (const id of getAllPluginIds()) {
       const reg = getPluginRegistration(id);
@@ -1465,7 +1476,7 @@ function openapiRouteTemplate(): string {
   return `import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
-import { ensureCoreServices } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 import { collectionToManifest, type NxFieldManifest } from "@/lib/manifest";
 
 type OpenApiSchema = Record<string, unknown>;
@@ -1519,7 +1530,7 @@ function collectionSchema(manifest: ReturnType<typeof collectionToManifest>): Op
 }
 
 export function GET() {
-  ensureCoreServices();
+  await ensureFor("read");
   const slugs = getAllCollectionSlugs();
   const schemas: Record<string, OpenApiSchema> = {};
   const paths: Record<string, OpenApiSchema> = {
@@ -1629,7 +1640,7 @@ function pluginsRouteTemplate(): string {
 import type { NextRequest } from "next/server";
 import { getPluginRoutes } from "@nexpress/core";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
@@ -1637,8 +1648,8 @@ async function handle(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string; path: string[] }> },
 ) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("read");
+  await ensureFor("plugins");
   const { pluginId, path } = await params;
   const routePath = \`/\${path.join("/")}\`;
   const method = request.method;

@@ -14,7 +14,7 @@ import { notFound } from "next/navigation";
 import { Comments } from "@/components/comments";
 import { DiscussionAuthorActions } from "@/components/discussion-author-actions";
 import { JsonLd } from "@/components/json-ld";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 import { getSiteMember } from "@/lib/site-member";
 import type { NxRichTextContent } from "@nexpress/editor";
@@ -26,7 +26,7 @@ interface DiscussionDetailPageProps {
 export async function generateMetadata({
   params,
 }: DiscussionDetailPageProps): Promise<Metadata> {
-  ensureCoreServices();
+  await ensureFor("read");
   const { slug } = await params;
   const result = await findDocuments("discussions", {
     where: { slug, status: "published" },
@@ -61,8 +61,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function DiscussionDetailPage({ params }: DiscussionDetailPageProps) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { slug } = await params;
   const member = await getSiteMember();
 

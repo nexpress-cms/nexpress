@@ -16,7 +16,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 15.3 — per-site admin endpoints.
@@ -58,7 +58,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     const { id } = await context.params;
     if (!(await canManageSite(user, id))) {
@@ -83,7 +83,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     const { id } = await context.params;
     if (!(await canManageSite(user, id))) {
@@ -116,7 +116,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     // Issue #216 — site deletion is a registry-level operation.
     // Even a per-site admin shouldn't be able to remove the

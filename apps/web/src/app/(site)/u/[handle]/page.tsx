@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 
 import { FollowButton } from "@/components/follow-button";
 import { JsonLd } from "@/components/json-ld";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ interface ProfilePageProps {
 }
 
 async function loadActiveMember(handle: string) {
-  ensureCoreServices();
+  await ensureFor("read");
   const [row] = await getDb()
     .select({
       id: nxMembers.id,

@@ -2,7 +2,7 @@ import { NxThemeStyle } from "@nexpress/theme";
 import { getCachedTheme } from "@nexpress/next";
 
 import { getCachedActiveTheme } from "@/lib/cached-theme";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,7 @@ export default async function SiteLayout({
 }: {
   children: React.ReactNode;
 }) {
-  ensureCoreServices();
+  await ensureFor("read");
   const tokens = await getCachedTheme();
   const active = await getCachedActiveTheme();
 

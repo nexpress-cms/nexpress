@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Lists OAuth identity links for a member. Editor-and-up — members'
@@ -19,7 +19,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("member.identities", "list");

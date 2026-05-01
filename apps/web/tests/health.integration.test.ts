@@ -26,8 +26,8 @@ describe.skipIf(skipIfNoTestDb())("GET /api/health/ready (readiness)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   afterAll(async () => {
     await closeTestDb();

@@ -2,7 +2,7 @@ import { getOAuthProvider, issueOAuthState } from "@nexpress/core";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Step 1 of the OAuth dance: mint a signed state token, set it as a
@@ -27,7 +27,7 @@ export async function GET(
 ) {
   // Plugins register providers in their `setup()` callback; if the host
   // hasn't loaded plugins yet (cold start), do that first.
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
   const { provider: providerId } = await params;
   const provider = getOAuthProvider(providerId);
   if (!provider) {

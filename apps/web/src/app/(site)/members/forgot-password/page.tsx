@@ -1,10 +1,10 @@
 import Link from "next/link";
 
 import { ForgotPasswordForm } from "@/components/member-forgot-password-form";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
-export default function MemberForgotPasswordPage() {
-  ensureCoreServices();
+export default async function MemberForgotPasswordPage() {
+  await ensureFor("read");
   // We deliberately don't redirect when a member is already signed
   // in — they may want to reset a password they're now signed in
   // with via a different mechanism (OAuth, etc.). The reset email

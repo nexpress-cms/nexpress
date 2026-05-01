@@ -4,11 +4,11 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const body = (await readJsonBody(request)) as { token?: unknown } | null;
     const token = typeof body?.token === "string" ? body.token : "";
     const result = await consumeMemberEmailVerifyToken(getDb(), token);

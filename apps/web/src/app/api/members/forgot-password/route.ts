@@ -8,7 +8,7 @@ import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
+import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { resetTtlMs } from "@/lib/token-ttl";
 
 function buildResetUrl(request: NextRequest, token: string): string {
@@ -20,7 +20,7 @@ function buildResetUrl(request: NextRequest, token: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const body = (await readJsonBody(request)) as { email?: unknown } | null;
     const email = typeof body?.email === "string" ? body.email : "";
     if (!email.includes("@")) {

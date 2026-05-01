@@ -15,7 +15,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 function toDetail(state: {
   id: string;
@@ -57,7 +57,7 @@ export async function GET(
       throw new NxForbiddenError("plugins", "read");
     }
 
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     const { pluginId } = await params;
     const state = await getPluginState(getDb(), pluginId);
     if (!state) {
@@ -109,7 +109,7 @@ export async function PATCH(
       ]);
     }
 
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     const updated = await updatePluginState(getDb(), pluginId, patch);
     if (!updated) {
       throw new NxNotFoundError("plugin", pluginId);

@@ -3,7 +3,7 @@ import { CollectionListView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/db";
 
@@ -18,7 +18,7 @@ export default async function CollectionListPage({
   params,
   searchParams,
 }: Props) {
-  ensureCoreServices();
+  await ensureFor("read");
 
   const { collection } = await params;
   const config = getCollectionConfig(collection);

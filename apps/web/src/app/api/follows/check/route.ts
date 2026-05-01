@@ -2,7 +2,7 @@ import { NxValidationError, isFollowing } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
 const SUPPORTED = ["member", "thread", "tag"] as const;
@@ -16,7 +16,7 @@ type FollowTarget = (typeof SUPPORTED)[number];
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const url = request.nextUrl;
     const targetType = url.searchParams.get("targetType") ?? "";

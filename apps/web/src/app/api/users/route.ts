@@ -14,7 +14,7 @@ import { readJsonBody } from "@nexpress/next";
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 const VALID_ROLES: readonly NxUserRole[] = [
   "admin",
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (created) {
-      await ensurePluginsLoaded();
+      await ensureFor("plugins");
       await runHook("auth:afterRegister", {
         user: {
           id: created.id,

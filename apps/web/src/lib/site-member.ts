@@ -5,7 +5,7 @@ import {
 } from "@nexpress/core";
 import { cookies } from "next/headers";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 
 /**
@@ -24,7 +24,7 @@ import { getDb } from "@/lib/db";
  * member identity for site interaction.
  */
 export async function getSiteMember(): Promise<NxMemberAuthRow | null> {
-  ensureCoreServices();
+  await ensureFor("read");
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-mb-session")?.value;
   if (!token) return null;

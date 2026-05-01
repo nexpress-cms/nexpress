@@ -44,8 +44,8 @@ describe.skipIf(skipIfNoTestDb())("site SEO metadata + settings (Phase 10.3)", (
     // via `seedUser` → `ensureCoreServices`; tests below that
     // don't seed a user (the empty-defaults / canonical /
     // article cases) need an explicit kick.
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();
