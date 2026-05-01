@@ -16,7 +16,7 @@ import {
 } from "@nexpress/core";
 import type { NxAuthUser, NxNavItem } from "@nexpress/core";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
+import { ensureFor } from "../src/lib/init-core";
 
 /**
  * `pnpm seed:content` — populate a fresh install with a small
@@ -341,8 +341,8 @@ async function main(): Promise<void> {
   // Re-use the apps/web bootstrap so collection registrations,
   // plugins, hooks all match what runtime sees. saveDocument
   // depends on the registry being loaded.
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("read");
+  await ensureFor("plugins");
 
   // Phase 15.8 — `--site=<id>` flag scopes the seeded
   // content to a non-default tenant. Without the flag,

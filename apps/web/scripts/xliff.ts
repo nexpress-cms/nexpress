@@ -2,7 +2,7 @@ import { type NxAuthUser } from "@nexpress/core";
 import { runCli } from "@nexpress/xliff";
 
 import "./_load-env";
-import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
+import { ensureFor } from "../src/lib/init-core";
 
 /**
  * Phase 12.12 — `pnpm xliff` shim. Boots core services + plugins
@@ -18,8 +18,8 @@ import { ensureCoreServices, ensurePluginsLoaded } from "../src/lib/init-core";
  * an interactive admin edit.
  */
 async function main(): Promise<void> {
-  await ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("read");
+  await ensureFor("plugins");
 
   const importerUser: NxAuthUser = {
     id: "00000000-0000-0000-0000-000000000000",
