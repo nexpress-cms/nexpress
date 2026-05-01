@@ -100,9 +100,17 @@ function actorUserId(actor: SaveActor): string | null {
  * authors can switch on `kind` without importing a separate type.
  */
 function actorPrincipal(actor: SaveActor): NxHookPrincipal {
-  return actor.kind === "staff"
-    ? { kind: "staff", user: actor.user }
-    : { kind: "member", memberId: actor.memberId };
+  switch (actor.kind) {
+    case "staff":
+      return { kind: "staff", user: actor.user };
+    case "member":
+      return { kind: "member", memberId: actor.memberId };
+    default: {
+      const _exhaustive: never = actor;
+      void _exhaustive;
+      throw new Error("actorPrincipal: unhandled SaveActor kind");
+    }
+  }
 }
 
 /**

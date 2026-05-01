@@ -30,19 +30,23 @@ export async function principalCan(
   // a row they don't own; that branch is for owner-self editing.
   // Mod-style "edit somebody else's content" goes through
   // `edit-any-comment` etc., which staff bypasses below.
-  if (action === "edit-own" || action === "delete-own") {
-    if (principal.kind === "staff") {
-      // Staff don't own member-authored content; this branch is only
-      // reachable when a member uses an owner-shortcut action they
-      // shouldn't have access to. Deny.
+  const ownerOnly = action === "edit-own" || action === "delete-own";
+
+  switch (principal.kind) {
+    case "staff":
+      // Staff don't own member-authored content. Owner-only
+      // shortcuts are denied to staff outright; non-owner-only
+      // actions short-circuit on community.moderate.
+      if (ownerOnly) return false;
+      return can(principal.user, "community.moderate");
+    case "member":
+      return memberCan(principal.memberId, action, target);
+    default: {
+      // Exhaustiveness check — adding a new Principal kind
+      // without handling it here is a compile error.
+      const _exhaustive: never = principal;
+      void _exhaustive;
       return false;
     }
-    return memberCan(principal.memberId, action, target);
   }
-
-  if (principal.kind === "staff") {
-    return can(principal.user, "community.moderate");
-  }
-
-  return memberCan(principal.memberId, action, target);
 }
