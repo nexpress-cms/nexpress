@@ -24,6 +24,8 @@
     "@nexpress/next": "workspace:*",
     "@types/prompts": "^2.4.9",
     "@types/node": "^22.0.0",
+    "dotenv": "^17.2.4",
+    "drizzle-orm": "^0.45.2",
     "next": "^16.2.4",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
