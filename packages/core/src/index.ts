@@ -26,6 +26,7 @@ export type {
   NxFieldConfig,
   NxCollectionHook,
   NxHookPrincipal,
+  NxPrincipal,
   NxUploadConfig,
   NxImageSize,
   NxCollectionConfig,

@@ -197,9 +197,12 @@ export type NxFieldConfig =
  * actors) so existing hooks that destructure `{ user }` keep
  * compiling — they just need to handle the null case now.
  */
-export type NxHookPrincipal =
-  | { kind: "staff"; user: NxAuthUser }
-  | { kind: "member"; memberId: string };
+// `NxHookPrincipal` is the historical name plugin authors see in
+// hook payloads. It's the same union as `NxPrincipal`; kept as an
+// alias so existing plugin code keeps compiling (#319).
+import type { NxPrincipal } from "../auth/principal.js";
+export type { NxPrincipal, NxPrincipal as NxHookPrincipal };
+type NxHookPrincipal = NxPrincipal;
 
 export type NxCollectionHook = (args: {
   data: Record<string, unknown>;
