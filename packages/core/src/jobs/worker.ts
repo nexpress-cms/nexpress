@@ -76,50 +76,90 @@ export async function startWorker(
 
   setJobQueue(workerAdapter);
 
-  await workerAdapter.start();
-  await workerAdapter.scheduleRecurring();
-
-  // Phase 20.2 — if the operator paused processing while the
-  // worker was offline, honor it on boot. The flag is global
-  // (in `nx_settings` siteId="_system") so it survives worker
-  // restarts. We swallow read errors because a pre-migrate DB
-  // would otherwise stop the worker from starting at all —
-  // safer to default to "running" than to refuse to boot.
+  // #318 — wrap the post-init steps so a throw partway through
+  // doesn't strand a half-set-up worker (signal handlers armed
+  // on null state, dangling heartbeat row, etc). The catch
+  // unwinds whatever did succeed before re-throwing, so the
+  // orchestrator sees the original error and a subsequent
+  // `startWorker()` retry starts from a clean slate.
   try {
-    const pauseState = await getJobsPauseState();
-    if (pauseState.paused) {
-      await workerAdapter.pauseProcessing();
-      getLogger().info("Worker booted in paused state", {
-        changedAt: pauseState.changedAt,
-        reason: pauseState.reason,
+    await workerAdapter.start();
+    await workerAdapter.scheduleRecurring();
+
+    // Phase 20.2 — if the operator paused processing while the
+    // worker was offline, honor it on boot. The flag is global
+    // (in `nx_settings` siteId="_system") so it survives worker
+    // restarts. We swallow read errors because a pre-migrate DB
+    // would otherwise stop the worker from starting at all —
+    // safer to default to "running" than to refuse to boot.
+    try {
+      const pauseState = await getJobsPauseState();
+      if (pauseState.paused) {
+        await workerAdapter.pauseProcessing();
+        getLogger().info("Worker booted in paused state", {
+          changedAt: pauseState.changedAt,
+          reason: pauseState.reason,
+        });
+      }
+    } catch (err) {
+      getLogger().warn("Could not read jobs pause state on worker boot", {
+        error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    // Phase 19 — start the heartbeat loop AFTER pg-boss is up so
+    // a misconfigured DB surfaces as a `boss.start()` throw
+    // rather than a heartbeat row that lies about a worker that
+    // never really booted. Tests can pass `heartbeat: false` to
+    // skip the recurring interval.
+    const heartbeatOpt = options?.heartbeat ?? true;
+    if (heartbeatOpt !== false) {
+      const meta = typeof heartbeatOpt === "object" ? (heartbeatOpt.meta ?? {}) : {};
+      heartbeatHandle = startHeartbeatLoop(meta);
+      // Phase 20.2 — multi-pod pause sync. Each tick reads the
+      // persisted flag and applies any divergence to the local
+      // adapter, so an operator pause on one pod propagates to
+      // the rest within ~30 s. Same gate as the heartbeat — if
+      // the operator opted out of background loops (tests), we
+      // skip this too.
+      pauseSyncHandle = startPauseSyncLoop(workerAdapter);
+    }
+
+    // Install signal handlers LAST — if any earlier step threw,
+    // the catch below has already unwound; we don't want to arm
+    // shutdown handlers that would then fire against null state.
+    if (options?.installSignalHandlers !== false) {
+      installShutdownSignalHandlers();
+    }
   } catch (err) {
-    getLogger().warn("Could not read jobs pause state on worker boot", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // Phase 19 — start the heartbeat loop AFTER pg-boss is up so
-  // a misconfigured DB surfaces as a `boss.start()` throw
-  // rather than a heartbeat row that lies about a worker that
-  // never really booted. Tests can pass `heartbeat: false` to
-  // skip the recurring interval.
-  const heartbeatOpt = options?.heartbeat ?? true;
-  if (heartbeatOpt !== false) {
-    const meta = typeof heartbeatOpt === "object" ? (heartbeatOpt.meta ?? {}) : {};
-    heartbeatHandle = startHeartbeatLoop(meta);
-    // Phase 20.2 — multi-pod pause sync. Each tick reads the
-    // persisted flag and applies any divergence to the local
-    // adapter, so an operator pause on one pod propagates to
-    // the rest within ~30 s. Same gate as the heartbeat — if
-    // the operator opted out of background loops (tests), we
-    // skip this too.
-    pauseSyncHandle = startPauseSyncLoop(workerAdapter);
-  }
-
-  if (options?.installSignalHandlers !== false) {
-    installShutdownSignalHandlers();
+    // Best-effort cleanup of whatever did succeed. Each step is
+    // its own try so one failure here doesn't mask the original.
+    if (heartbeatHandle) {
+      try {
+        await heartbeatHandle.stop();
+      } catch {
+        /* swallow — original error matters more */
+      }
+      heartbeatHandle = null;
+    }
+    if (pauseSyncHandle) {
+      try {
+        pauseSyncHandle.stop();
+      } catch {
+        /* swallow */
+      }
+      pauseSyncHandle = null;
+    }
+    if (workerAdapter) {
+      try {
+        await workerAdapter.stop();
+      } catch {
+        /* swallow */
+      }
+      workerAdapter = null;
+    }
+    removeShutdownSignalHandlers();
+    throw err;
   }
 }
 
