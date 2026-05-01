@@ -277,21 +277,9 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     expect(create.status).toBe(401);
   });
 
-  it("member without CSRF header rejected (401 NxAuthError)", async () => {
-    const member = await seedActiveMember("nocsrf");
-    // Cookies present, x-csrf-token header absent.
-    const req = jsonRequest("/api/collections/discussions", {
-      method: "POST",
-      cookies: [`nx-mb-session=${member.sessionCookie}`, `nx-mb-csrf=${member.csrfCookie}`],
-      body: JSON.stringify({
-        title: "No CSRF",
-        slug: "no-csrf",
-        body: { root: { type: "root", children: [] } },
-      }),
-    });
-    const res = await collectionPOST(req, { params: Promise.resolve({ slug: "discussions" }) });
-    expect(res.status).toBe(401);
-  });
+  // CSRF enforcement moved to apps/web/src/proxy.ts (#281); the
+  // handler unit test no longer covers the missing-header case
+  // because invoking the handler directly bypasses the proxy.
 
   // Regression: a member can't sneak `_status: "draft"` or
   // `"archived"` into the body to bypass public-list filtering.

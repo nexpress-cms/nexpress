@@ -6,7 +6,6 @@ export const {
   getAuthRuntimeConfig,
   requireAuth,
   optionalAuth,
-  requireCsrf,
   setAuthCookies,
   clearAuthCookies,
 } = createAuthHelpers({ getDb });

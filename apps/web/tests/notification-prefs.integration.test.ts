@@ -225,18 +225,9 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     expect(res.status).toBe(400);
   });
 
-  it("PUT requires CSRF (member session)", async () => {
-    const m = await seedActiveMember("prefsnocsrf");
-    const res = await prefsPUT(
-      jsonRequest("/api/members/me/notification-prefs", {
-        method: "PUT",
-        // session cookie present but CSRF cookie + header missing
-        cookies: [`nx-mb-session=${m.sessionCookie}`],
-        body: JSON.stringify({ disabled: [] }),
-      }),
-    );
-    expect(res.status).toBe(401);
-  });
+  // CSRF enforcement moved to apps/web/src/proxy.ts (#281); the
+  // handler-level unit test no longer covers the missing-CSRF
+  // case since direct handler invocation bypasses the proxy.
 
   it("PUT preserves unrelated keys in notification_prefs JSONB (forward compat for digest in 16.4)", async () => {
     const m = await seedActiveMember("prefsmerge");

@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureWriteReady } from "@/lib/init-core";
-import { optionalMember, requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { optionalMember, requireMember } from "@/lib/member-auth-helpers";
 
 /**
  * Comment list + create for documents in any collection. The list
@@ -65,7 +65,6 @@ export async function POST(
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
 
     const { slug, id } = await params;
     const body = (await readJsonBody(request)) as { bodyMd?: unknown; parentId?: unknown } | null;

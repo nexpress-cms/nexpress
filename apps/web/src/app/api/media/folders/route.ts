@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-    requireCsrf(request);
 
     if (!hasRole(user, "editor")) {
       throw new NxForbiddenError("media-folders", "create");

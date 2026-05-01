@@ -7,7 +7,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { optionalAuth, requireCsrf } from "@/lib/auth-helpers";
+import { optionalAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import {
   extractSaveOptions,
@@ -17,7 +17,7 @@ import {
   saveCollectionDocument,
 } from "@/lib/collection-helpers";
 import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
-import { optionalMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { optionalMember } from "@/lib/member-auth-helpers";
 import { revalidateCollection } from "@/lib/revalidate";
 
 export async function GET(
@@ -70,7 +70,6 @@ export async function POST(
     // signed in as a member should still be able to act as staff).
     const staffUser = await optionalAuth(request);
     if (staffUser) {
-      requireCsrf(request);
       const data = parseBodyRecord(await readJsonBody(request));
       const saveOptions = extractSaveOptions(data);
       const result = await saveCollectionDocument(slug, null, data, staffUser, saveOptions);
@@ -89,7 +88,6 @@ export async function POST(
       throw new NxForbiddenError(slug, "create");
     }
 
-    requireMemberCsrf(request);
     await ensureWriteReady();
     const data = parseBodyRecord(await readJsonBody(request));
     const saveOptions = extractSaveOptions(data);

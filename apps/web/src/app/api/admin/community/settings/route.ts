@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -42,7 +42,6 @@ export async function PUT(request: NextRequest) {
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("community.settings", "update");
     }
-    requireCsrf(request);
     const body = await readJsonBody(request);
     const updated = await updateCommunitySettings(body, user.id);
     return nxSuccessResponse(updated);

@@ -6,7 +6,7 @@ import {
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -31,7 +31,6 @@ export async function POST(
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("member.content", "purge");
     }
-    requireCsrf(request);
     const { id } = await context.params;
     const result = await purgeMemberContent(id, user);
     return nxSuccessResponse(result);

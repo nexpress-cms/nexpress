@@ -2,7 +2,7 @@ import { NxForbiddenError, getOptionalJobQueue, hasRole, setJobsPauseState } fro
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 /**
@@ -16,7 +16,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    requireCsrf(request);
     if (!hasRole(user, "admin")) {
       throw new NxForbiddenError("jobs", "resume");
     }

@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 const VALID_SCOPES = ["site", "category", "collection"] as const;
@@ -50,7 +50,6 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    requireCsrf(request);
     if (!isStaffMod(user)) {
       throw new NxForbiddenError("bans", "create");
     }

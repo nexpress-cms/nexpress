@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { ensureCoreServices, ensureWriteReady } from "@/lib/init-core";
-import { requireMember, requireMemberCsrf } from "@/lib/member-auth-helpers";
+import { requireMember } from "@/lib/member-auth-helpers";
 
 /**
  * Phase 16.3 — per-member notification toggles.
@@ -37,7 +37,6 @@ export async function PUT(request: NextRequest) {
   try {
     await ensureWriteReady();
     const member = await requireMember(request);
-    requireMemberCsrf(request);
     const body = (await readJsonBody(request)) as Record<string, unknown> | null;
     const disabledRaw = body?.disabled;
     const digestRaw = body?.digest;

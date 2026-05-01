@@ -3,7 +3,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { requireAuth, requireCsrf } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { ensureWriteReady } from "@/lib/init-core";
 
 export async function POST(
@@ -13,7 +13,6 @@ export async function POST(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    requireCsrf(request);
     if (!isStaffMod(user)) {
       throw new NxForbiddenError("comments", "hide");
     }
