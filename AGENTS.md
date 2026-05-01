@@ -2,7 +2,7 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-04-29 (Phase 19 worker heartbeat + plugin cron)
+**Last refreshed:** 2026-04-30 (Phase 20 jobs admin + Phase 21 WP import + audit cycle)
 
 ## Commands
 
@@ -37,7 +37,7 @@ Monorepo: `packages/*` (library code) + `apps/web` (Next.js 15 reference app). W
 ### Dependency graph
 
 ```
-core  ←  editor, theme, plugin-sdk, next
+core  ←  editor, theme, plugin-sdk, next, wp-import
 core, editor  ←  blocks
 core, editor, blocks  ←  admin
 all of the above  ←  apps/web
@@ -89,7 +89,7 @@ The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access c
 
 For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04-17 snapshot — high-level decisions still apply, code samples may have drifted). v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, and scheduled tasks at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
 
-Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports.
+Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
 
 ### Next.js app structure (`apps/web/src/app`)
 
@@ -101,9 +101,13 @@ Route groups:
 
 Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` that can be bumped to invalidate. CSRF is enforced on state-changing endpoints via `verifyCsrf`.
 
-For role checks new code should prefer `can(user, capability)` from `@nexpress/core/auth/capabilities.js` over the legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy helpers remain in place; existing call sites will be migrated in a follow-up.
+For role checks new code should prefer `can(user, capability)` from `@nexpress/core/auth/capabilities.js` over the legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy helpers remain in place; existing call sites will be migrated in a follow-up. Client UI components (e.g. `AdminShell`) MUST receive resolved capability flags as props from a server parent — calling `can()` from a client component drags `@nexpress/core` into the browser bundle (#343).
+
+The "actor on an operation" is modeled as a single union `NxPrincipal = { kind: "staff"; user } | { kind: "member"; memberId }` (#319). The pipeline, plugin hooks (`NxHookPrincipal` is the same shape under a historical name), and `principalCan()` all consume this union. Adding a new variant requires updating every `switch (principal.kind)` site — exhaustive switches with `_exhaustive: never` (#313) deliberately fail to compile when the union grows.
 
 Member-side write services (comments, reactions, reports, follows) MUST go through `withMemberWrite(memberId, scopes, async () => { ... })` from `@nexpress/core/community` (#311). The wrapper enforces the ban-check gate by structure — adding a new write path without `withMemberWrite` is impossible to do silently. Pre-validation that doesn't write (input shape, target lookup) can run before the call; the wrapper guards the moment between "we know enough to attempt the write" and the first DB mutation.
+
+CSRF on state-changing API routes is applied automatically by `apps/web/src/proxy.ts` (#281); per-handler `requireCsrf()` calls are no longer needed and have been removed. The proxy lists CSRF-exempt path patterns (login, webhook receivers) explicitly — if you add a new public-form endpoint, add it to the exempt list there rather than skipping the proxy.
 
 ### Frontend package split — client/server boundary
 
@@ -127,6 +131,14 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 `pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn)`; built-in handlers (media cleanup, etc.) register via `registerBuiltinHandlers()`. The worker is started by the app (not by core) via `startWorker()`.
 
+`startWorker()` owns the full shutdown lifecycle (#318): it installs SIGINT/SIGTERM handlers, drains in-flight jobs, and tears down the pg-boss instance when the process exits. If any setup step throws partway through, it cleans up the partial state (already-armed signal handlers, half-connected pool) so the next call boots cleanly. App code should not install competing SIGINT/SIGTERM handlers that race with the worker's drain.
+
+Phase 20 added an admin Jobs surface (`/admin/jobs`): manual enqueue, pause/resume per queue, archived-job tab, and a worker-health widget driven by the heartbeat record from Phase 19. The admin endpoints are gated by the `admin.manage` capability and live under `apps/web/src/app/api/admin/jobs/`.
+
+### WordPress import (`@nexpress/wp-import`)
+
+A separate package (not part of `@nexpress/core`) that ingests a WXR export end-to-end (Phase 21.1–21.17): WXR XML parsing, HTML → Lexical conversion (including a Gutenberg fence parser), media download + dedup, taxonomy/term mapping, comment threading, custom post types, an audit log, a resume marker for crash recovery, and per-document visibility flags. Drives a long-running pg-boss job; surface state through the standard jobs admin. CLI entry at `packages/wp-import/src/cli/`. Documented in `docs/wordpress-import-guide.md`.
+
 ## WHERE TO LOOK
 
 | Task                                             | Location                                                | Notes                                                                                                                                                                           |
@@ -143,7 +155,10 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 | Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                 | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                         |
 | Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory                                                                                                                                     |
 | Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | nxUsers, nxMedia, nxRevisions, nxSettings                                                                                                                                       |
-| Scaffold templates (create-nexpress)             | `packages/cli/src/templates.ts`                         | 1664 lines of string templates                                                                                                                                                  |
+| Scaffold templates (create-nexpress)             | `packages/cli/templates/` (real .ts files) + `packages/cli/src/templates.ts` (loader) | 7-PR split (#268) moved templates to on-disk files with their own `tsconfig.templates.json`; loader is the 384-line orchestrator. Edit the file, not a string literal           |
+| Modify worker shutdown / signal handling         | `packages/core/src/jobs/worker.ts`                      | Owns SIGINT/SIGTERM, drains in-flight jobs, cleans up partial state on setup failure (#318)                                                                                     |
+| Run a WordPress import                           | `packages/wp-import/src/`                               | `parse/`, `convert/`, `media/`, `apply/`, `cli/`. Long-running pg-boss job; surfaces in `/admin/jobs`                                                                          |
+| Admin jobs UI (enqueue / pause / archive)        | `apps/web/src/app/(admin)/admin/(protected)/jobs/`      | Phase 20.1–20.4. Capability `admin.manage` required                                                                                                                              |
 | Theme token → CSS mapping                        | `packages/theme/src/generate-css.ts`                    | Custom properties under `:root`                                                                                                                                                 |
 | Docker / deployment                              | `docker/Dockerfile`                                     | Multi-stage, uses Next standalone output                                                                                                                                        |
 
