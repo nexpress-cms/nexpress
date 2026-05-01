@@ -508,93 +508,164 @@ async function runMemberDocModeration(
   return { flaggedBy, profanityVerdict, spamVerdict };
 }
 
-async function saveDocumentImpl(
+/**
+ * Threaded state for `saveDocumentImpl`'s four concerns (#314).
+ * Helpers add to this object as the request progresses through the
+ * pipeline; the final concern (`firePostCommitHooks`) consumes the
+ * accumulated context. The split makes it visible at review time
+ * which step gates what.
+ *
+ * Some fields (`prepared`, `searchVector`, `publishTransition`) are
+ * undefined until `prepareDocumentForWrite` runs; downstream helpers
+ * can assume the prepare step has completed because the chain is
+ * fixed in `saveDocumentImpl`.
+ */
+interface SaveContext {
+  // === Setup, present from initSaveContext onward. ===
+  collection: string;
+  docId: string | null;
+  validatedData: Record<string, unknown>;
+  actor: SaveActor;
+  options: NxSaveOptions | undefined;
+  config: ReturnType<typeof getCollectionConfig>;
+  registration: ReturnType<typeof getCollectionRegistration>;
+  table: PgTable;
+  db: DrizzleDatabaseLike;
+  operation: "create" | "update";
+  originalDoc: Record<string, unknown> | null;
+  userForHooks: NxAuthUser | null;
+  principal: NxHookPrincipal;
+  // === Populated by prepareDocumentForWrite. ===
+  hookData: Record<string, unknown>;
+  prepared: PreparedDocumentData;
+  searchVector: ReturnType<typeof buildWeightedSearchVectorSql>;
+  publishTransition: boolean;
+  unpublishTransition: boolean;
+  now: Date;
+}
+
+async function initSaveContext(
   collection: string,
   docId: string | null,
   data: Record<string, unknown>,
   actor: SaveActor,
-  options?: NxSaveOptions,
-): Promise<NxSaveResult> {
+  options: NxSaveOptions | undefined,
+): Promise<Omit<SaveContext, "hookData" | "prepared" | "searchVector" | "publishTransition" | "unpublishTransition" | "now">> {
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const validatedData = toRecord(getCollectionZodSchema(config).parse(data));
-  const operation = docId ? "update" : "create";
+  const operation: "create" | "update" = docId ? "update" : "create";
   const originalDoc = docId ? await getDocumentByIdInternal(db, table, collection, docId) : null;
+  return {
+    collection,
+    docId,
+    validatedData,
+    actor,
+    options,
+    config,
+    registration,
+    table,
+    db,
+    operation,
+    originalDoc,
+    userForHooks: actorUserOrNull(actor),
+    principal: actorPrincipal(actor),
+  };
+}
 
-  if (actor.kind === "staff") {
-    await assertWriteAccess(config, collection, operation, actor.user, validatedData, originalDoc);
-  } else {
-    // Member actor. Phase 9.7a opened create; 9.7b opens update with
-    // an owner-only check. Each transition has a separate opt-in
-    // flag so a site can allow self-authoring without enabling
-    // self-edit.
-    // Defer-load to avoid the `community` ↔ `collections` import cycle.
-    const { assertNotBanned } = await import("../community/can.js");
-    if (operation === "create") {
-      if (!config.community?.memberWrite?.create) {
-        throw new NxForbiddenError(collection, "create");
-      }
-      await assertNotBanned(actor.memberId);
-    } else {
-      // update — the doc must exist and must be authored by THIS
-      // member (`member_author_id` matches). 404 / 403 disambiguate:
-      // 404 when there's no row at all, 403 when the row belongs to
-      // someone else (or to staff with `member_author_id = null`).
-      if (!originalDoc) {
-        throw new NxNotFoundError(collection, docId ?? "unknown");
-      }
-      if (!config.community?.memberWrite?.update) {
-        throw new NxForbiddenError(collection, "update");
-      }
-      const authorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
-      if (authorId !== actor.memberId) {
-        throw new NxForbiddenError(collection, "update");
-      }
-      await assertNotBanned(actor.memberId);
-    }
+/**
+ * Concern 1 — access checks. Staff writes go through the configured
+ * `access.create` / `access.update` tree; member writes hit the
+ * per-collection `community.memberWrite.create / update` opt-in
+ * plus a ban check, plus an ownership check on update.
+ *
+ * Throws `NxForbiddenError` / `NxNotFoundError` on rejection.
+ */
+async function validateActorAccess(ctx: SaveContext): Promise<void> {
+  if (ctx.actor.kind === "staff") {
+    await assertWriteAccess(
+      ctx.config,
+      ctx.collection,
+      ctx.operation,
+      ctx.actor.user,
+      ctx.validatedData,
+      ctx.originalDoc,
+    );
+    return;
   }
+  // Member actor. Phase 9.7a opened create; 9.7b opens update with
+  // an owner-only check. Each transition has a separate opt-in
+  // flag so a site can allow self-authoring without enabling
+  // self-edit. Defer-load to avoid the community ↔ collections
+  // import cycle.
+  const { assertNotBanned } = await import("../community/can.js");
+  if (ctx.operation === "create") {
+    if (!ctx.config.community?.memberWrite?.create) {
+      throw new NxForbiddenError(ctx.collection, "create");
+    }
+    await assertNotBanned(ctx.actor.memberId);
+    return;
+  }
+  // update — the doc must exist and must be authored by THIS
+  // member (`member_author_id` matches). 404 / 403 disambiguate:
+  // 404 when there's no row at all, 403 when the row belongs to
+  // someone else (or to staff with `member_author_id = null`).
+  if (!ctx.originalDoc) {
+    throw new NxNotFoundError(ctx.collection, ctx.docId ?? "unknown");
+  }
+  if (!ctx.config.community?.memberWrite?.update) {
+    throw new NxForbiddenError(ctx.collection, "update");
+  }
+  const authorId = (ctx.originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
+  if (authorId !== ctx.actor.memberId) {
+    throw new NxForbiddenError(ctx.collection, "update");
+  }
+  await assertNotBanned(ctx.actor.memberId);
+}
 
-  const userForHooks = actorUserOrNull(actor);
-  const principal = actorPrincipal(actor);
-  // Collection-defined hooks (config.hooks.beforeCreate etc.) fire
-  // for BOTH staff and member writes since 9.7o. Hook authors that
-  // only care about staff identity can switch on
-  // `principal.kind === "staff"` and read `principal.user`; the
-  // `user` field is the resolved staff session for staff writes,
-  // `null` for member writes.
-  const hookData = await runHooks(
-    operation === "create" ? config.hooks?.beforeCreate : config.hooks?.beforeUpdate,
+/**
+ * Concern 2 — prepare the document for write. Runs the
+ * collection's `beforeCreate` / `beforeUpdate` hooks, applies
+ * slug generation, resolves i18n locale + translation group,
+ * runs `prepareDocumentData`, stamps multi-site / member-author
+ * columns, demotes future-dated `published` to `scheduled`,
+ * builds the search-vector SQL fragment, and computes the
+ * publish/unpublish transition.
+ *
+ * Mutates `ctx` to install the prepared fields.
+ */
+async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
+  c.hookData = await runHooks(
+    c.operation === "create" ? c.config.hooks?.beforeCreate : c.config.hooks?.beforeUpdate,
     {
-      data: validatedData,
-      user: userForHooks,
-      principal,
-      collection,
-      originalDoc,
+      data: c.validatedData,
+      user: c.userForHooks,
+      principal: c.principal,
+      collection: c.collection,
+      originalDoc: c.originalDoc,
     },
   );
 
-  applySlugField(config, hookData, originalDoc);
+  applySlugField(c.config, c.hookData, c.originalDoc);
 
   // Phase 12.1 — i18n collections need locale + translation
-  // group resolved before the row is written. Reads
-  // `getI18nConfig()` once; throws NxValidationError if the
-  // caller picked a locale that's not configured. On creates
-  // the locale defaults to `defaultLocale`, the
-  // translationGroupId defaults to a new UUID. On updates
-  // those columns are sticky — pulled from `originalDoc` so a
-  // body field can't reassign them.
+  // group resolved before the row is written. On creates the
+  // locale defaults to `defaultLocale`, the translationGroupId
+  // defaults to a new UUID. On updates those columns are
+  // sticky — pulled from `originalDoc` so a body field can't
+  // reassign them.
   let i18nResolved: { locale: string; translationGroupId: string } | null = null;
-  if (config.i18n) {
+  if (c.config.i18n) {
     const i18n = getI18nConfig();
     if (!i18n) {
       throw new Error(
-        `Collection "${collection}" is i18n-enabled but the framework has no i18n config (setI18nConfig was never called).`,
+        `Collection "${c.collection}" is i18n-enabled but the framework has no i18n config (setI18nConfig was never called).`,
       );
     }
-    if (operation === "create") {
-      const requestedLocale = (hookData as { locale?: unknown }).locale;
+    if (c.operation === "create") {
+      const requestedLocale = (c.hookData as { locale?: unknown }).locale;
       const locale =
         typeof requestedLocale === "string" && requestedLocale.length > 0
           ? requestedLocale
@@ -607,17 +678,17 @@ async function saveDocumentImpl(
           },
         ]);
       }
-      const requestedGroup = (hookData as { translationGroupId?: unknown }).translationGroupId;
+      const requestedGroup = (c.hookData as { translationGroupId?: unknown }).translationGroupId;
       const translationGroupId =
         typeof requestedGroup === "string" && requestedGroup.length > 0
           ? requestedGroup
           : randomUUID();
       i18nResolved = { locale, translationGroupId };
     } else {
-      const original = originalDoc as { locale?: string; translationGroupId?: string } | null;
+      const original = c.originalDoc as { locale?: string; translationGroupId?: string } | null;
       if (!original?.locale || !original.translationGroupId) {
         throw new Error(
-          `i18n collection "${collection}" doc ${docId} is missing locale/translationGroupId. The row predates i18n opt-in; backfill required.`,
+          `i18n collection "${c.collection}" doc ${c.docId} is missing locale/translationGroupId. The row predates i18n opt-in; backfill required.`,
         );
       }
       i18nResolved = {
@@ -627,160 +698,152 @@ async function saveDocumentImpl(
     }
   }
 
-  const prepared = prepareDocumentData(config.fields, hookData);
-  if (options?.status) {
-    prepared.mainData.status = options.status;
+  c.prepared = prepareDocumentData(c.config.fields, c.hookData);
+  if (c.options?.status) {
+    c.prepared.mainData.status = c.options.status;
   }
   if (i18nResolved) {
-    prepared.mainData.locale = i18nResolved.locale;
-    prepared.mainData.translationGroupId = i18nResolved.translationGroupId;
+    c.prepared.mainData.locale = i18nResolved.locale;
+    c.prepared.mainData.translationGroupId = i18nResolved.translationGroupId;
   }
 
   // Phase 15.2 — multi-site scoping. Stamp every write with
   // the resolved site id. Creates pull from the request
   // context (or fall back to the default site for scripts /
   // workers / tests with no resolver). Updates inherit the
-  // original row's site id — body fields can't reassign a
-  // doc to a different site. The column is NOT NULL with a
-  // 'default' default at the schema level, so even older
-  // call sites missing this stamping logic write a sensible
-  // value.
-  if (operation === "create") {
+  // original row's site id — body fields can't reassign a doc.
+  if (c.operation === "create") {
     const resolved = await getCurrentSiteId();
-    prepared.mainData.siteId = resolved ?? NX_DEFAULT_SITE_ID;
+    c.prepared.mainData.siteId = resolved ?? NX_DEFAULT_SITE_ID;
   } else {
-    const original = originalDoc as { siteId?: string } | null;
-    if (original?.siteId) {
-      prepared.mainData.siteId = original.siteId;
+    const original = c.originalDoc as { siteId?: string } | null;
+    c.prepared.mainData.siteId = original?.siteId ?? NX_DEFAULT_SITE_ID;
+  }
+  // Stamp / strip member_author_id. The column is generated only
+  // when `community.memberWrite.create` is on; staff-authored docs
+  // leave it null. Defense-in-depth on update: even though zod
+  // strips unknown keys, we explicitly delete the field on member
+  // updates so a body-injected value can't reassign authorship.
+  if (c.actor.kind === "member") {
+    if (c.operation === "create") {
+      c.prepared.mainData.memberAuthorId = c.actor.memberId;
     } else {
-      // Pre-15.2 row with no siteId column populated yet —
-      // shouldn't happen post-migration but defensive code
-      // keeps the write from blowing up on legacy data.
-      prepared.mainData.siteId = NX_DEFAULT_SITE_ID;
+      delete c.prepared.mainData.memberAuthorId;
     }
   }
-  // Stamp the author column on member-authored creates. The column
-  // is generated by the codegen when `community.memberWrite.create`
-  // is true; for staff-authored docs it stays null. We never let a
-  // member edit it.
-  //
-  // Defense in depth on the update path: even though zod strips
-  // unknown keys by default and `prepareDocumentData` only emits
-  // configured fields, an unexpected pass-through could otherwise
-  // let a body-injected `memberAuthorId` reassign authorship. We
-  // explicitly delete it from `mainData` on member updates.
-  if (actor.kind === "member") {
-    if (operation === "create") {
-      prepared.mainData.memberAuthorId = actor.memberId;
-    } else {
-      delete prepared.mainData.memberAuthorId;
-    }
-  }
-  const now = new Date();
+  c.now = new Date();
 
-  // Scheduled publishing: if the caller wants status=published but publishedAt
-  // is in the future, demote to "scheduled" so the public site doesn't render
-  // it until the scheduler flips it back. Works on any collection whose
-  // generated table has a publishedAt column (opt-in by field presence).
-  const desiredStatus = prepared.mainData.status as string | undefined;
-  const publishedAtValue = prepared.mainData.publishedAt;
-  if (desiredStatus === "published" && publishedAtValue instanceof Date && publishedAtValue > now) {
-    prepared.mainData.status = "scheduled";
+  // Scheduled publishing: if the caller wants status=published but
+  // publishedAt is in the future, demote to "scheduled" so the
+  // public site doesn't render it until the scheduler flips it back.
+  const desiredStatus = c.prepared.mainData.status as string | undefined;
+  const publishedAtValue = c.prepared.mainData.publishedAt;
+  if (desiredStatus === "published" && publishedAtValue instanceof Date && publishedAtValue > c.now) {
+    c.prepared.mainData.status = "scheduled";
   }
 
-  // Phase 10.7 — write the weighted tsvector so titles
-  // outrank body matches at query time. The plain-text
-  // version stays around for moderation paths (spam /
-  // profanity adapters need the full text without weights).
-  const searchVector = buildWeightedSearchVectorSql(config, hookData);
+  // Phase 10.7 — weighted tsvector so titles outrank body
+  // matches at query time.
+  c.searchVector = buildWeightedSearchVectorSql(c.config, c.hookData);
 
-  // Compute publish-transition so we can fire before/afterPublish + beforeUnpublish
-  // around the write. Status precedence: explicit mainData.status > original doc
-  // (on update) > "published" default (on create).
+  // Publish-transition tracking for content:beforePublish /
+  // afterPublish / beforeUnpublish hooks. Status precedence:
+  // explicit prepared status > original doc (on update) >
+  // "published" default (on create).
   const nextStatus =
-    (prepared.mainData.status as string | undefined) ??
-    (operation === "update"
-      ? ((originalDoc?.status as string | undefined) ?? "published")
+    (c.prepared.mainData.status as string | undefined) ??
+    (c.operation === "update"
+      ? ((c.originalDoc?.status as string | undefined) ?? "published")
       : "published");
-  const previousStatus = originalDoc?.status as string | undefined;
+  const previousStatus = c.originalDoc?.status as string | undefined;
   const wasPublished = previousStatus === "published";
   const willBePublished = nextStatus === "published";
-  const publishTransition = !wasPublished && willBePublished;
-  const unpublishTransition = wasPublished && !willBePublished;
+  c.publishTransition = !wasPublished && willBePublished;
+  c.unpublishTransition = wasPublished && !willBePublished;
+}
 
-  await runHook(operation === "create" ? "content:beforeCreate" : "content:beforeUpdate", {
-    collection,
-    data: hookData,
-    originalDoc,
-    user: userForHooks,
-    principal,
-    operation,
-  });
-  if (publishTransition) {
+/**
+ * Concern 3 — fire pre-write plugin hooks, then run the document
+ * persistence inside one transaction (main row + child + join +
+ * media-ref + revision). Returns the saved doc.
+ */
+async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unknown>> {
+  await runHook(
+    ctx.operation === "create" ? "content:beforeCreate" : "content:beforeUpdate",
+    {
+      collection: ctx.collection,
+      data: ctx.hookData,
+      originalDoc: ctx.originalDoc,
+      user: ctx.userForHooks,
+      principal: ctx.principal,
+      operation: ctx.operation,
+    },
+  );
+  if (ctx.publishTransition) {
     await runHook("content:beforePublish", {
-      collection,
-      data: hookData,
-      originalDoc,
-      user: userForHooks,
-      principal,
+      collection: ctx.collection,
+      data: ctx.hookData,
+      originalDoc: ctx.originalDoc,
+      user: ctx.userForHooks,
+      principal: ctx.principal,
     });
   }
-  if (unpublishTransition) {
+  if (ctx.unpublishTransition) {
     await runHook("content:beforeUnpublish", {
-      collection,
-      data: hookData,
-      originalDoc,
-      user: userForHooks,
-      principal,
+      collection: ctx.collection,
+      data: ctx.hookData,
+      originalDoc: ctx.originalDoc,
+      user: ctx.userForHooks,
+      principal: ctx.principal,
     });
   }
 
-  const savedDoc = await db.transaction(async (tx) => {
+  return ctx.db.transaction(async (tx) => {
     const persistedDoc: Record<string, unknown> =
-      operation === "update"
+      ctx.operation === "update"
         ? await updateMainDocument(
             tx,
-            table,
-            collection,
-            docId,
-            prepared.mainData,
-            searchVector,
-            config,
-            userForHooks,
-            now,
+            ctx.table,
+            ctx.collection,
+            ctx.docId,
+            ctx.prepared.mainData,
+            ctx.searchVector,
+            ctx.config,
+            ctx.userForHooks,
+            ctx.now,
           )
         : await createMainDocument(
             tx,
-            table,
-            prepared.mainData,
-            searchVector,
-            config,
-            userForHooks,
-            now,
+            ctx.table,
+            ctx.prepared.mainData,
+            ctx.searchVector,
+            ctx.config,
+            ctx.userForHooks,
+            ctx.now,
           );
     const persistedDocId = getRecordId(persistedDoc);
 
-    await syncChildTables(tx, registration.childTables, prepared.childRows, persistedDocId);
-    await syncJoinTables(tx, registration.joinTables, prepared.joinRows, persistedDocId);
-    await syncMediaRefsForDocument(tx, collection, persistedDocId, config.fields, hookData);
+    await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
+    await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
+    await syncMediaRefsForDocument(tx, ctx.collection, persistedDocId, ctx.config.fields, ctx.hookData);
 
-    if (config.versions) {
+    if (ctx.config.versions) {
       const docStatus = persistedDoc.status as string | undefined;
       // "scheduled" documents haven't actually gone live yet — treat their
       // revisions as drafts (they map to the pre-publish snapshot).
       const revisionStatus = docStatus === "published" ? "published" : "draft";
       const maxRevisions =
-        typeof config.versions === "object" && config.versions.max !== undefined
-          ? config.versions.max
+        typeof ctx.config.versions === "object" && ctx.config.versions.max !== undefined
+          ? ctx.config.versions.max
           : undefined;
       await insertRevision(
         tx,
-        collection,
+        ctx.collection,
         persistedDocId,
-        operation,
-        hookData,
-        originalDoc,
-        userForHooks,
+        ctx.operation,
+        ctx.hookData,
+        ctx.originalDoc,
+        ctx.userForHooks,
         revisionStatus,
         maxRevisions,
       );
@@ -788,44 +851,72 @@ async function saveDocumentImpl(
 
     return persistedDoc;
   });
+}
+
+/**
+ * Concern 4 — fire post-commit work: enqueue the
+ * `content:afterSave` job, then `content:afterCreate` /
+ * `content:afterUpdate` plugin hooks, plus `content:afterPublish`
+ * on a publish transition. Each is wrapped in `runPostCommit` so
+ * a hook error doesn't roll back the durable write.
+ */
+async function firePostCommitHooks(
+  ctx: SaveContext,
+  savedDoc: Record<string, unknown>,
+): Promise<void> {
   const savedDocId = getRecordId(savedDoc);
-  const postCommitCtx = { collection, documentId: savedDocId, operation };
+  const postCommitCtx = {
+    collection: ctx.collection,
+    documentId: savedDocId,
+    operation: ctx.operation,
+  };
 
   await runPostCommit("enqueue:content:afterSave", postCommitCtx, () =>
     enqueueJob("content:afterSave", {
-      collection,
+      collection: ctx.collection,
       documentId: savedDocId,
-      operation,
-      userId: actorUserId(actor),
+      operation: ctx.operation,
+      userId: actorUserId(ctx.actor),
     }),
   );
 
-  const pluginHookName = operation === "create" ? "content:afterCreate" : "content:afterUpdate";
+  const pluginHookName = ctx.operation === "create" ? "content:afterCreate" : "content:afterUpdate";
   await runPostCommit(`hook:${pluginHookName}`, postCommitCtx, () =>
     runHook(pluginHookName, {
-      collection,
+      collection: ctx.collection,
       doc: savedDoc,
-      operation,
-      user: userForHooks,
-      principal,
+      operation: ctx.operation,
+      user: ctx.userForHooks,
+      principal: ctx.principal,
     }),
   );
-  if (publishTransition) {
+  if (ctx.publishTransition) {
     await runPostCommit("hook:content:afterPublish", postCommitCtx, () =>
       runHook("content:afterPublish", {
-        collection,
+        collection: ctx.collection,
         doc: savedDoc,
-        operation,
-        user: userForHooks,
-        principal,
+        operation: ctx.operation,
+        user: ctx.userForHooks,
+        principal: ctx.principal,
       }),
     );
   }
+}
 
-  return {
-    doc: savedDoc,
-    operation,
-  };
+async function saveDocumentImpl(
+  collection: string,
+  docId: string | null,
+  data: Record<string, unknown>,
+  actor: SaveActor,
+  options?: NxSaveOptions,
+): Promise<NxSaveResult> {
+  const ctxBase = await initSaveContext(collection, docId, data, actor, options);
+  await validateActorAccess(ctxBase as SaveContext);
+  const ctx = ctxBase as SaveContext;
+  await prepareDocumentForWrite(ctx);
+  const savedDoc = await persistDocumentTx(ctx);
+  await firePostCommitHooks(ctx, savedDoc);
+  return { doc: savedDoc, operation: ctx.operation };
 }
 
 /**
