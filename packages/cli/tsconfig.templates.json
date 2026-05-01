@@ -24,7 +24,8 @@
   "include": [
     "templates/lib/**/*.ts",
     "templates/scripts/**/*.ts",
-    "templates/collections/**/*.ts"
+    "templates/collections/**/*.ts",
+    "templates/api/**/*.ts"
   ],
   "files": [
     "templates/_typecheck/db/generated/collections.ts",
