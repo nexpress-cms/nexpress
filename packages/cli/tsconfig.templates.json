@@ -27,7 +27,8 @@
     "templates/scripts/**/*.ts",
     "templates/collections/**/*.ts",
     "templates/api/**/*.ts",
-    "templates/site/**/*.tsx"
+    "templates/site/**/*.tsx",
+    "templates/admin/**/*.tsx"
   ],
   "files": [
     "templates/_typecheck/db/generated/collections.ts",

@@ -19,6 +19,7 @@
     "prompts": "^2.4.2"
   },
   "devDependencies": {
+    "@nexpress/admin": "workspace:*",
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/next": "workspace:*",
