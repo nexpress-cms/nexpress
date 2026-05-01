@@ -79,23 +79,37 @@ function probeStorage(): ProbeResult {
   }
 }
 
-function probeQueue(): ProbeResult & { enabled: boolean } {
+async function probeQueue(): Promise<ProbeResult & { enabled: boolean }> {
   const queue = getOptionalJobQueue();
   if (!queue) {
     // Queue is intentionally optional — many sites run
     // without pg-boss. Report it but don't fail readiness.
     return { ok: true, enabled: false, detail: "not configured" };
   }
+  // Phase 22.4 — when the adapter exposes `isHealthy`, do a real
+  // round-trip (pg-boss `isInstalled()` is a single SELECT against
+  // `pgboss.version`). Adapters that don't implement it are
+  // assumed healthy; the probe never fails on a missing answer.
+  if (typeof queue.isHealthy === "function") {
+    try {
+      const ok = await queue.isHealthy();
+      return ok
+        ? { ok: true, enabled: true }
+        : { ok: false, enabled: true, detail: "queue backend unhealthy" };
+    } catch (error) {
+      return {
+        ok: false,
+        enabled: true,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   return { ok: true, enabled: true };
 }
 
 export async function GET() {
   await ensureFor("read");
-  const [db, storage, queue] = await Promise.all([
-    probeDb(),
-    Promise.resolve(probeStorage()),
-    Promise.resolve(probeQueue()),
-  ]);
+  const [db, storage, queue] = await Promise.all([probeDb(), Promise.resolve(probeStorage()), probeQueue()]);
 
   const allOk = db.ok && storage.ok && queue.ok;
   const body: ReadinessResponse = {

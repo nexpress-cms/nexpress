@@ -196,6 +196,23 @@ export class PgBossAdapter implements NxJobQueue {
     return this.paused;
   }
 
+  /**
+   * Phase 22.4 — readiness probe round-trip. `boss.isInstalled()`
+   * issues a single SELECT against `pgboss.version`, so a true
+   * answer proves both that the DB connection is alive AND that
+   * pg-boss's schema migrations have applied. Any throw — pool
+   * dead, schema missing, permissions revoked — is caught and
+   * reported as `false`; the readiness probe never sees an
+   * exception bubble out of the queue check.
+   */
+  async isHealthy(): Promise<boolean> {
+    try {
+      return await this.boss.isInstalled();
+    } catch {
+      return false;
+    }
+  }
+
   async stop(): Promise<void> {
     await this.boss.stop({ graceful: true, timeout: 30000 });
   }
