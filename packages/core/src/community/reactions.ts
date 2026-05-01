@@ -8,6 +8,7 @@ import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { withMemberWrite } from "./can.js";
+import { type CommunityScope } from "./roles.js";
 import { createNotification } from "./notifications.js";
 import { applyReputation } from "./reputation.js";
 import { getCommunitySettings } from "./settings.js";
@@ -73,13 +74,32 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
     ]);
   }
 
-  // #311 — withMemberWrite enforces the ban gate by structure. Site-
-  // wide bans are the only scope that applies; collection-scoped
-  // bans on reactions need future plumbing to thread the collection
-  // slug into this call. (#53)
-  return withMemberWrite(input.memberId, [], async () => {
+  // #311 — withMemberWrite enforces the ban gate by structure.
+  // #340 — for comment targets we now derive the parent
+  // collection so collection-scoped bans block reactions
+  // consistently with comments. The lookup is a single PK
+  // select; doAddReaction re-reads the row downstream for
+  // siteId, but the redundancy is negligible vs. introducing
+  // a one-call helper. Other target types (profile, etc.)
+  // stay site-wide-only for now.
+  const scopes = await deriveScopesFor(input);
+  return withMemberWrite(input.memberId, scopes, async () => {
     return doAddReaction(input);
   });
+}
+
+async function deriveScopesFor(
+  input: NxReactToInput,
+): Promise<ReadonlyArray<{ type: CommunityScope; id: string }>> {
+  if (input.targetType !== "comment") return [];
+  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const [comment] = (await db
+    .select({ targetType: nxComments.targetType })
+    .from(nxComments)
+    .where(eq(nxComments.id, input.targetId))
+    .limit(1)) as Array<{ targetType: string }>;
+  if (!comment) return [];
+  return [{ type: "collection", id: comment.targetType }];
 }
 
 async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
