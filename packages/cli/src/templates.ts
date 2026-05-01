@@ -257,251 +257,27 @@ function healthRouteTemplate(): string {
 }
 
 function adminLoginPageTemplate(): string {
-  return `"use client";
-
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
-
-export default function AdminLoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(body?.error?.message ?? "Login failed");
-      }
-      router.push("/admin");
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6">
-      <h1 className="text-2xl font-semibold">Sign in</h1>
-      <form className="space-y-4" onSubmit={(event) => { void onSubmit(event); }}>
-        <label className="block space-y-1 text-sm">
-          <span>Email</span>
-          <input
-            className="block w-full rounded border px-3 py-2"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </label>
-        <label className="block space-y-1 text-sm">
-          <span>Password</span>
-          <input
-            className="block w-full rounded border px-3 py-2"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <button
-          type="submit"
-          className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-60"
-          disabled={loading}
-        >
-          {loading ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-    </div>
-  );
-}
-`;
+  return readTemplate("admin/login.tsx");
 }
 
 function adminProtectedLayoutTemplate(): string {
-  return `import type { ReactNode } from "react";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-
-import { verifyTokenFull } from "@nexpress/core";
-import { getDb } from "@/lib/bootstrap";
-
-export const dynamic = "force-dynamic";
-
-export default async function AdminProtectedLayout({ children }: { children: ReactNode }) {
-  const token = (await cookies()).get("nx-session")?.value;
-  if (!token) redirect("/admin/login");
-
-  const secret =
-    process.env.NX_SECRET ?? process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;
-  if (!secret) throw new Error("NX_SECRET must be set");
-
-  try {
-    await verifyTokenFull(token, secret, getDb() as never);
-  } catch {
-    redirect("/admin/login");
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b bg-white px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <a className="text-lg font-semibold" href="/admin">
-            NexPress Admin
-          </a>
-          <form action="/api/auth/logout" method="post">
-            <button type="submit" className="text-sm underline">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
-    </div>
-  );
-}
-`;
+  return readTemplate("admin/protected-layout.tsx");
 }
 
 function adminDashboardPageTemplate(): string {
-  return `import Link from "next/link";
-
-import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
-
-import { ensureFor } from "@/lib/bootstrap";
-
-export default function AdminDashboard() {
-  await ensureFor("read");
-  const collections = getAllCollectionSlugs().map((slug) => getCollectionConfig(slug));
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Collections</h1>
-      <ul className="grid gap-4 sm:grid-cols-2">
-        {collections.map((c) => (
-          <li key={c.slug} className="rounded border bg-white p-4">
-            <Link className="block space-y-1" href={\`/admin/collections/\${c.slug}\`}>
-              <h2 className="font-semibold">{c.labels.plural}</h2>
-              {c.admin?.description ? (
-                <p className="text-sm text-slate-600">{c.admin.description}</p>
-              ) : null}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-`;
+  return readTemplate("admin/dashboard.tsx");
 }
 
 function adminCollectionListPageTemplate(): string {
-  return `import { findDocuments, getCollectionConfig } from "@nexpress/core";
-import { CollectionListView } from "@nexpress/admin/client";
-import { toClientCollectionConfig } from "@nexpress/next";
-
-import { ensureFor } from "@/lib/bootstrap";
-
-interface Props {
-  params: Promise<{ collection: string }>;
-  searchParams: Promise<{ page?: string }>;
-}
-
-export default async function AdminCollectionList({ params, searchParams }: Props) {
-  await ensureFor("read");
-  const { collection } = await params;
-  const { page } = await searchParams;
-  const currentPage = Math.max(1, Number(page ?? 1) || 1);
-
-  const config = getCollectionConfig(collection);
-  const { docs, totalDocs, totalPages } = await findDocuments(collection, {
-    page: currentPage,
-    limit: 20,
-    sort: "-updatedAt",
-  });
-
-  return (
-    <CollectionListView
-      config={toClientCollectionConfig(config)}
-      docs={docs}
-      totalDocs={totalDocs}
-      totalPages={totalPages}
-      currentPage={currentPage}
-    />
-  );
-}
-`;
+  return readTemplate("admin/collection-list.tsx");
 }
 
 function adminCollectionCreatePageTemplate(): string {
-  return `import { getCollectionConfig } from "@nexpress/core";
-import { CollectionEditView } from "@nexpress/admin/client";
-import { toClientCollectionConfig } from "@nexpress/next";
-
-import { ensureFor } from "@/lib/bootstrap";
-
-interface Props {
-  params: Promise<{ collection: string }>;
-}
-
-export default async function AdminCollectionCreate({ params }: Props) {
-  await ensureFor("read");
-  const { collection } = await params;
-  const config = getCollectionConfig(collection);
-
-  return (
-    <CollectionEditView
-      config={toClientCollectionConfig(config)}
-      collectionSlug={collection}
-    />
-  );
-}
-`;
+  return readTemplate("admin/collection-create.tsx");
 }
 
 function adminCollectionEditPageTemplate(): string {
-  return `import { getCollectionConfig, getDocumentById } from "@nexpress/core";
-import { CollectionEditView } from "@nexpress/admin/client";
-import { toClientCollectionConfig } from "@nexpress/next";
-
-import { ensureFor } from "@/lib/bootstrap";
-
-interface Props {
-  params: Promise<{ collection: string; id: string }>;
-}
-
-export default async function AdminEditDocument({ params }: Props) {
-  await ensureFor("read");
-  const { collection, id } = await params;
-  const config = getCollectionConfig(collection);
-  const doc = await getDocumentById(collection, id);
-
-  if (!doc) {
-    return <p className="text-sm text-slate-600">Document not found.</p>;
-  }
-
-  return (
-    <CollectionEditView
-      config={toClientCollectionConfig(config)}
-      doc={doc}
-      collectionSlug={collection}
-    />
-  );
-}
-`;
+  return readTemplate("admin/collection-edit.tsx");
 }
 
 function authLoginRouteTemplate(): string {

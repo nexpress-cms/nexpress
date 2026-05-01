@@ -282,6 +282,9 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
     devDependencies:
+      '@nexpress/admin':
+        specifier: workspace:*
+        version: link:../admin
       '@nexpress/blocks':
         specifier: workspace:*
         version: link:../blocks
