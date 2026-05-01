@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The base config sets `declaration: true` for the regular
+    // package builds. Templates aren't published as a typed
+    // package — they're file-copied into scaffolded projects,
+    // which run their own `tsc` against their own deps. Turn
+    // declaration generation off here so tsc doesn't insist
+    // every inferred export be portably namable from this
+    // package's `node_modules` graph.
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": "templates",
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./templates/_typecheck/*", "./templates/*"]
+    }
+  },
+  "include": ["templates/lib/**/*.ts"],
+  "files": [
+    "templates/_typecheck/db/generated/collections.ts",
+    "templates/_typecheck/nexpress.config.ts"
+  ]
+}

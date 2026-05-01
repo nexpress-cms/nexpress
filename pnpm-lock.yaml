@@ -282,12 +282,24 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
     devDependencies:
+      '@nexpress/blocks':
+        specifier: workspace:*
+        version: link:../blocks
+      '@nexpress/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nexpress/next':
+        specifier: workspace:*
+        version: link:../next
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
+      next:
+        specifier: ^16.2.4
+        version: 16.2.4(@babel/core@7.29.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
