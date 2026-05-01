@@ -16,6 +16,7 @@ import {
   setStorageAdapter,
   startProducer,
   syncPluginRegistrations,
+  verifyStartupSafety,
   verifyTokenFull,
   NX_DEFAULT_SITE_ID,
   type NxAuthUser,
@@ -133,14 +134,22 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     if (servicesInitialized) return;
 
     setDb(instance);
-    setStorageAdapter(
-      createStorageAdapter(
-        config.storage ?? {
-          adapter: "local",
-          local: { directory: "./uploads", baseUrl: "/uploads" },
-        },
-      ),
-    );
+    const storageConfig = config.storage ?? {
+      adapter: "local" as const,
+      local: { directory: "./uploads", baseUrl: "/uploads" },
+    };
+    setStorageAdapter(createStorageAdapter(storageConfig));
+
+    // Phase 22.2 — surface known-unsafe configurations once per
+    // process (multi-node + LocalStorageAdapter, weak prod secret,
+    // etc.). Pure function of its inputs so the bootstrap layer
+    // stays the only place reading process.env for these flags.
+    verifyStartupSafety({
+      storageAdapter: storageConfig.adapter,
+      secret: config.auth?.secret ?? process.env.NX_SECRET ?? null,
+      nodeEnv: process.env.NODE_ENV,
+      multiNodeFlag: process.env.NX_MULTI_NODE,
+    });
 
     servicesInitialized = true;
   }
