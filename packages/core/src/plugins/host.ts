@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { NxFieldConfig, NxPluginConfig, NxPluginContext } from "../config/types.js";
 import { nxPlugins } from "../db/schema/system.js";
 import { getDb } from "../db/runtime.js";
+import { getLogger } from "../observability/logger.js";
 import { createPluginRuntimeContext } from "./context.js";
 
 export interface PluginHookHandler {
@@ -380,11 +381,41 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       return userHandler(req, ctx);
     };
 
+    const auth = route.auth === true;
+    const method = route.method.toUpperCase();
+
+    // #316 — public plugin routes carry the framework's least-
+    // protected default rate limit (proxy.ts caps the catch-all at
+    // 30 req/min/IP) and run *plugin-supplied* code without staff
+    // session checks. Mutating ones double the surface area: an
+    // attacker that finds the route can hit the handler at the IP
+    // ceiling. Plugins that legitimately need a public mutating
+    // endpoint (webhooks, callback URLs) own the auth themselves —
+    // log a warning at load time so this is at least visible in
+    // boot logs and a tracker can grep for it.
+    if (
+      !auth &&
+      method !== "GET" &&
+      method !== "HEAD" &&
+      method !== "OPTIONS"
+    ) {
+      getLogger().warn("Plugin registered a public mutating route", {
+        pluginId: manifest.id,
+        path: route.path,
+        method,
+        note:
+          "Plugins are responsible for their own auth on `auth: false` " +
+          "routes. The framework rate-limits the plugin catch-all to " +
+          "30 req/min/IP; verify the handler enforces signature / token " +
+          "checks before mutating state.",
+      });
+    }
+
     const entry: PluginRouteHandler = {
       pluginId: manifest.id,
       path: route.path,
-      method: route.method.toUpperCase(),
-      auth: route.auth === true,
+      method,
+      auth,
       handler: wrapped,
     };
     registration.routes.push(entry);
