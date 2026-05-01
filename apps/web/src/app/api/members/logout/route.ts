@@ -5,10 +5,10 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { clearMemberAuthCookies } from "@/lib/member-auth-helpers";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export async function POST(request: NextRequest) {
-  ensureCoreServices();
+  await ensureFor("read");
   const sessionToken = request.cookies.get("nx-mb-session")?.value;
   const refreshToken = request.cookies.get("nx-mb-refresh")?.value;
 

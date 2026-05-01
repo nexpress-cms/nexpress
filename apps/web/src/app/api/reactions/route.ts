@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import {
   optionalMember,
   requireMember,
@@ -67,7 +67,7 @@ function readTargetFromQuery(request: NextRequest): ReactionTarget {
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const target = readTargetFromQuery(request);
     const counts = await countReactions(target.targetType, target.targetId);
     const member = await optionalMember(request);
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const target = readTargetFromBody(await readJsonBody(request));
     await assertReactableExists(target.targetType, target.targetId);
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const target = readTargetFromQuery(request);
     await removeReaction({

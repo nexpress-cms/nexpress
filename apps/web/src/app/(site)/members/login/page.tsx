@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/member-login-form";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { nextQuery, safeNext } from "@/lib/safe-next";
 import { getSiteMember } from "@/lib/site-member";
 
@@ -11,7 +11,7 @@ interface LoginPageProps {
 }
 
 export default async function MemberLoginPage({ searchParams }: LoginPageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const { next, verified, reset } = await searchParams;
 
   // Already signed in? Skip the form and continue to wherever they

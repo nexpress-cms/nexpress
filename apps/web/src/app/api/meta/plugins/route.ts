@@ -1,12 +1,12 @@
 import { getAllPluginIds, getPluginRegistration } from "@nexpress/core";
 
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
 import type { NxPluginManifest } from "@/lib/manifest";
 
 export async function GET() {
   try {
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     const pluginItems: NxPluginManifest[] = getAllPluginIds()
       .flatMap((id) => {
         const reg = getPluginRegistration(id);

@@ -13,7 +13,7 @@ import { readJsonBody } from "@nexpress/next";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
+import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { verifyTtlMs } from "@/lib/token-ttl";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -82,7 +82,7 @@ function buildVerifyUrl(request: NextRequest, token: string): string {
  */
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
 
     // Registration gate. Sites that run invite-only flip
     // `community.registrationEnabled` to false in the admin

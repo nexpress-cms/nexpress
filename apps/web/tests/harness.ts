@@ -33,7 +33,7 @@ import {
 import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 const TEST_JWT_SECRET = process.env.NX_SECRET as string;
 
@@ -88,7 +88,7 @@ export async function seedUser(
     role: TestUserSession["role"];
   }> = {},
 ): Promise<TestUserSession> {
-  ensureCoreServices();
+  await ensureFor("read");
   const db = await getTestDb();
   const hash = overrides.password
     ? await hashPassword(overrides.password)
@@ -160,7 +160,7 @@ export async function seedActiveMember(
     displayName: string;
   }> = {},
 ): Promise<TestMemberSession> {
-  ensureCoreServices();
+  await ensureFor("read");
   const db = await getTestDb();
   const handle =
     overrides.handle ??

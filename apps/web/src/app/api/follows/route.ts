@@ -3,7 +3,7 @@ import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
 const SUPPORTED = ["member", "thread", "tag"] as const;
@@ -31,7 +31,7 @@ function readTarget(raw: unknown): { targetType: FollowTarget; targetId: string 
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const url = request.nextUrl;
     const targetType = url.searchParams.get("targetType");
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const { targetType, targetId } = readTarget(await readJsonBody(request));
     const row = await follow({ followerId: member.id, targetType, targetId });
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const member = await requireMember(request);
     const url = request.nextUrl;
     const targetType = url.searchParams.get("targetType");

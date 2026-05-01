@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Cross-collection moderation queue for member-authored docs that
@@ -26,7 +26,7 @@ function parsePositiveInt(value: string | null, fallback: number, max: number): 
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("collection.pending", "list");

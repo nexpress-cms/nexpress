@@ -20,8 +20,8 @@ describe.skipIf(skipIfNoTestDb())("plugin templates (Phase 14.5)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

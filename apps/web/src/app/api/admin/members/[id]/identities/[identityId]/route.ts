@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Revoke a single OAuth identity link from a member. Admin-only:
@@ -20,7 +20,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string; identityId: string }> },
 ) {
   try {
-    await ensureWriteReady();
+    await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("member.identities", "revoke");

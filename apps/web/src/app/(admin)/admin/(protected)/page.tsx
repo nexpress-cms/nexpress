@@ -1,14 +1,13 @@
 import { DashboardView } from "@nexpress/admin/client";
 import type { DashboardPluginWidget } from "@nexpress/admin";
 import { getDashboardWidgetsFromPlugins } from "@nexpress/core";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { loadDashboardStats } from "@/lib/dashboard-stats";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
 
   const stats = await loadDashboardStats();
   const pluginWidgets: DashboardPluginWidget[] = getDashboardWidgetsFromPlugins().map(

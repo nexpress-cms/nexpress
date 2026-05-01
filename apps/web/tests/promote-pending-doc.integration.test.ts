@@ -123,8 +123,8 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
     // registration to land. (`setup-env.ts` ensures both the
     // bootstrap pool and the test pool target `TEST_DATABASE_URL`,
     // so it doesn't matter which pool the API route writes through.)
-    const { ensureCoreServices } = await import("@/lib/bootstrap");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   beforeEach(async () => {
     await truncateAll();

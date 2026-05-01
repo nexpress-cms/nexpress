@@ -19,8 +19,8 @@ describe.skipIf(skipIfNoTestDb())("sites registry (Phase 15.1)", () => {
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
-    const { ensureCoreServices } = await import("@/lib/init-core");
-    ensureCoreServices();
+    const { ensureFor } = await import("@/lib/init-core");
+    await ensureFor("read");
   });
   afterAll(async () => {
     await closeTestDb();

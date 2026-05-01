@@ -16,7 +16,7 @@ import {
 } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 interface LoginUserRow extends Record<string, unknown> {
   id: string;
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       csrf: crypto.randomUUID(),
     });
 
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     await runHook("auth:afterLogin", {
       user: {
         id: user.id,

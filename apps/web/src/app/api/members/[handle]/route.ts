@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Public profile read. Returns the columns safe for unauthenticated
@@ -17,7 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ handle: string }> },
 ) {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
     const { handle } = await params;
     const db = getDb();
     const [member] = await db

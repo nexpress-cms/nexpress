@@ -21,7 +21,7 @@ const EXPORT_VERSION = "1" as const;
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Comma-separated list in `?collections=a,b` restricts the export to just
@@ -54,9 +54,7 @@ export async function GET(request: NextRequest) {
     if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("export", "read");
     }
-
-    ensureCoreServices();
-    await ensurePluginsLoaded();
+    await ensureFor("plugins");
     const db = getDb();
     const collectionsFilter = parseCollectionsFilter(request);
     const partial = collectionsFilter !== null;

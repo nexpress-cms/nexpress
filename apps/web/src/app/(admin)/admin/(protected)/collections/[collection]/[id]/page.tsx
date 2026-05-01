@@ -9,7 +9,7 @@ import type { CollectionTabDescriptor } from "@nexpress/admin";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/db";
 
@@ -20,8 +20,7 @@ interface Props {
 }
 
 export default async function EditPage({ params }: Props) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
 
   const { collection, id } = await params;
   const config = getCollectionConfig(collection);

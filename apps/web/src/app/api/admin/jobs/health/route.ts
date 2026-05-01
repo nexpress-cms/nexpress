@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 19 — worker liveness endpoint. Returns each registered
@@ -20,7 +20,7 @@ import { ensureCoreServices } from "@/lib/init-core";
  */
 export async function GET(request: NextRequest) {
   try {
-    ensureCoreServices();
+    await ensureFor("read");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
       throw new NxForbiddenError("workers", "read");

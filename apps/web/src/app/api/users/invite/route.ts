@@ -18,7 +18,7 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady, nexpressConfig } from "@/lib/init-core";
+import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { inviteTtlMs } from "@/lib/token-ttl";
 
 const VALID_ROLES: readonly NxUserRole[] = [
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       throw new NxForbiddenError("users", "create");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
     const body = parseBodyRecord(await readJsonBody(request));
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";

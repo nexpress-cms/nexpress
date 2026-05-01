@@ -1,7 +1,7 @@
 import { getAllCollectionSlugs, getCollectionConfig, getPluginRoutes } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { collectionToManifest, type NxFieldManifest } from "@/lib/manifest";
 
 type OpenApiSchema = Record<string, unknown>;
@@ -2040,8 +2040,7 @@ function buildSpec(): OpenApiSchema {
 }
 
 export async function GET() {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
 
   return NextResponse.json(buildSpec(), {
     headers: { "Cache-Control": "no-store" },

@@ -19,7 +19,7 @@ const SUPPORTED_EXPORT_VERSION = "1";
 import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
-import { ensureWriteReady } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
       throw new NxForbiddenError("import", "create");
     }
 
-    await ensureWriteReady();
+    await ensureFor("write");
 
     const payload = validatePayload(await readJsonBody(request));
     const db = getDb();

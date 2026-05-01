@@ -11,7 +11,7 @@ import { PluginAdminPage } from "@nexpress/admin/client";
 
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/db";
-import { ensureCoreServices, ensurePluginsLoaded } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,7 @@ interface PageProps {
 }
 
 export default async function PluginAdminRoute({ params }: PageProps) {
-  ensureCoreServices();
-  await ensurePluginsLoaded();
+  await ensureFor("plugins");
 
   const token = (await cookies()).get("nx-session")?.value;
   const { secret } = getAuthRuntimeConfig();

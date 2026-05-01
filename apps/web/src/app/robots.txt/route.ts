@@ -4,7 +4,7 @@ import {
   getSiteById,
 } from "@nexpress/core";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 
 /**
  * Phase 10.1 — robots.txt. Sane defaults: allow general crawl,
@@ -40,7 +40,7 @@ async function resolveSiteOrigin(): Promise<string> {
 }
 
 export async function GET(): Promise<Response> {
-  ensureCoreServices();
+  await ensureFor("read");
   const origin = await resolveSiteOrigin();
   const body = [
     "User-agent: *",

@@ -2,7 +2,7 @@ import { buildPageMetadata, findDocuments, nxMembers } from "@nexpress/core";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 import { getSiteMember } from "@/lib/site-member";
 import { inArray } from "drizzle-orm";
@@ -12,7 +12,7 @@ interface DiscussionsListPageProps {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  ensureCoreServices();
+  await ensureFor("read");
   return (await buildPageMetadata({
     title: "Discussions",
     description: "Member-authored discussion threads.",
@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function DiscussionsListPage({ searchParams }: DiscussionsListPageProps) {
-  ensureCoreServices();
+  await ensureFor("read");
   const params = await searchParams;
   const pageNum = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const limit = 20;

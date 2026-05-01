@@ -5,7 +5,7 @@ import {
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { ensureCoreServices } from "@/lib/init-core";
+import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 
 /**
@@ -90,7 +90,7 @@ function probeQueue(): ProbeResult & { enabled: boolean } {
 }
 
 export async function GET() {
-  ensureCoreServices();
+  await ensureFor("read");
   const [db, storage, queue] = await Promise.all([
     probeDb(),
     Promise.resolve(probeStorage()),
