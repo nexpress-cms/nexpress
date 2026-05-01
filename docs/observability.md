@@ -183,6 +183,14 @@ won't hold if `NX_JOB_LOG_RETENTION_DAYS` is still 14.
   is process-wide and survives restarts. Resume via the admin UI or
   `setJobsPauseState({ paused: false })`. See `docs/jobs.md` for the
   fuller pause / resume story.
+- **"One pod is processing while admin UI shows paused"** — the
+  pause-sync loop on that pod failed to read the persisted flag
+  (#312). The first failures are logged at `warn` with
+  `consecutiveFailures` in the context; after 3 in a row
+  (`PAUSE_SYNC_ESCALATE_AFTER`) the next failure is also reported
+  to `getErrorReporter()` with `tags.subsystem: "pause-sync"`, so
+  operators tracking Sentry / their tracker get one alert per
+  failure run. The counter resets on the first successful tick.
 
 ### Why three stores?
 
