@@ -1,4 +1,4 @@
-import { SmtpEmailAdapter, setEmailAdapter } from "@nexpress/core";
+import { SmtpEmailAdapter, getScopedLogger, setEmailAdapter } from "@nexpress/core";
 
 import {
   ensureCoreServices as bootstrapEnsureCoreServices,
@@ -23,8 +23,9 @@ function configureEmailAdapter(): void {
   const from = process.env.NX_SMTP_FROM;
 
   if (!host || !from) {
-    console.warn(
-      "[nexpress] NX_EMAIL_ADAPTER=smtp but NX_SMTP_HOST / NX_SMTP_FROM are unset — email adapter not installed.",
+    getScopedLogger({ subsystem: "boot" }).warn(
+      "NX_EMAIL_ADAPTER=smtp but NX_SMTP_HOST / NX_SMTP_FROM are unset — email adapter not installed.",
+      { check: "smtp_misconfigured", missing: { host: !host, from: !from } },
     );
     return;
   }
