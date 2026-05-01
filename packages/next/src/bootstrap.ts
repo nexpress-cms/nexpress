@@ -1,8 +1,8 @@
 import {
+  can,
   createDbConnection,
   createStorageAdapter,
   getDb,
-  hasRole,
   isSuperAdmin,
   listMembershipsForUser,
   listPluginStates,
@@ -81,7 +81,7 @@ export async function canActorUseSite(
   if (await isSuperAdmin(user)) return true;
   const memberships = await listMembershipsForUser(user.id);
   if (memberships.some((m) => m.siteId === siteId)) return true;
-  if (siteId === NX_DEFAULT_SITE_ID && hasRole(user, "admin")) return true;
+  if (siteId === NX_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
   return false;
 }
 

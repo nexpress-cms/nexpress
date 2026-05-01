@@ -1,4 +1,4 @@
-import { NxForbiddenError, isStaffMod, verifyTokenFull } from "@nexpress/core";
+import { can, NxForbiddenError, verifyTokenFull } from "@nexpress/core";
 import { PendingQueueView } from "@nexpress/admin/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -18,7 +18,7 @@ export default async function CommunityPendingPage() {
   const db = getDb();
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
-  if (!isStaffMod(user)) {
+  if (!can(user, "community.moderate")) {
     throw new NxForbiddenError("collection.pending", "list");
   }
   return <PendingQueueView />;

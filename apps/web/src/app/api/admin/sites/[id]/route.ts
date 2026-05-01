@@ -7,9 +7,9 @@ import {
   deleteSite,
   getMembership,
   getSiteById,
-  hasRole,
   isSuperAdmin,
   updateSite,
+  can,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -40,7 +40,7 @@ import { ensureWriteReady } from "@/lib/init-core";
  */
 async function canManageSite(user: NxAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
-  if (siteId === NX_DEFAULT_SITE_ID && hasRole(user, "admin")) return true;
+  if (siteId === NX_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
   // Issue #216 — `hasRoleOnSite` falls back to the user's
   // global role when no explicit membership exists on the
   // target site, which would let any global admin manage

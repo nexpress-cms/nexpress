@@ -1,7 +1,7 @@
 import {
   NxForbiddenError,
   dispatchPluginAction,
-  hasRole,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -26,7 +26,7 @@ export async function POST(
 ) {
   try {
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("plugin action", "dispatch");
     }
 

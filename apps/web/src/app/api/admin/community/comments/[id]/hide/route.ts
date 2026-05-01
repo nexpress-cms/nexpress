@@ -1,4 +1,4 @@
-import { NxForbiddenError, isStaffMod, staffHideComment } from "@nexpress/core";
+import { can, NxForbiddenError, staffHideComment } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
@@ -13,7 +13,7 @@ export async function POST(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("comments", "hide");
     }
 

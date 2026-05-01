@@ -1,7 +1,7 @@
 import {
   NxForbiddenError,
   getI18nConfig,
-  hasRole,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("i18n", "read");
     }
     const config = getI18nConfig();

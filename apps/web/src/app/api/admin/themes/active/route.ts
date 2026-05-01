@@ -5,8 +5,8 @@ import {
   getActiveThemeId,
   getCurrentSiteId,
   getThemeById,
-  hasRole,
   setActiveThemeId,
+  can,
 } from "@nexpress/core";
 import { readJsonBody, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("themes/active", "read");
     }
     const activeId = await getActiveThemeId();
@@ -49,7 +49,7 @@ export async function PUT(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("themes/active", "update");
     }
 

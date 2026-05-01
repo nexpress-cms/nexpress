@@ -1,11 +1,11 @@
 import {
   NxForbiddenError,
   NxValidationError,
-  hasRole,
   hashPassword,
   nxUsers,
   runHook,
   type NxUserRole,
+  can,
 } from "@nexpress/core";
 import { asc, count, ilike, or } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("users", "read");
     }
 
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("users", "create");
     }
 

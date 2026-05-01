@@ -1,13 +1,13 @@
 import {
   NxForbiddenError,
   NxValidationError,
-  hasRole,
   nxMedia,
   nxPlugins,
   nxSettings,
   nxNavigation,
   getAllCollectionSlugs,
   saveDocument,
+  can,
 } from "@nexpress/core";
 import type { NxNavItem } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("import", "create");
     }
 

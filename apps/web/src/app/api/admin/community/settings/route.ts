@@ -1,9 +1,8 @@
 import {
   NxForbiddenError,
   getCommunitySettings,
-  hasRole,
-  isStaffMod,
   updateCommunitySettings,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
@@ -22,10 +21,10 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    // `isStaffMod` (admin/editor/moderator) — `hasRole(user, "moderator")`
+    // `isStaffMod` (admin/editor/moderator) — `can(user, "content.author")`
     // would accept `author` too because moderator and author share rank
     // 1 in `ROLE_HIERARCHY`.
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("community.settings", "read");
     }
     const settings = await getCommunitySettings();
@@ -39,7 +38,7 @@ export async function PUT(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("community.settings", "update");
     }
     const body = await readJsonBody(request);

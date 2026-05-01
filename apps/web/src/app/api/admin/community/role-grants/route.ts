@@ -2,9 +2,8 @@ import {
   NxForbiddenError,
   NxValidationError,
   grantMemberRole,
-  hasRole,
-  isStaffMod,
   listMemberRoleGrants,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
@@ -37,8 +36,8 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
-      // `hasRole(user, "moderator")` is NOT the right gate here —
+    if (!can(user, "community.moderate")) {
+      // `can(user, "content.author")` is NOT the right gate here —
       // it accepts `author` thanks to parallel rank-1 in the
       // hierarchy (see 9.6h memory note). `isStaffMod` is the
       // staff-mod predicate that resolves admin / editor / moderator.
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!hasRole(user, "admin")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("memberRoleGrants", "create");
     }
 

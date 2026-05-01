@@ -1,7 +1,7 @@
 import {
   NxForbiddenError,
-  isStaffMod,
   promoteMemberDocument,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -25,7 +25,7 @@ export async function POST(
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("document", "promote");
     }
     const { slug, id } = await context.params;

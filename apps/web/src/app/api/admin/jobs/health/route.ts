@@ -1,4 +1,4 @@
-import { NxForbiddenError, getJobsPauseState, hasRole, listWorkerHealth } from "@nexpress/core";
+import { can, NxForbiddenError, getJobsPauseState, listWorkerHealth } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   try {
     ensureCoreServices();
     const user = await requireAuth(request);
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       throw new NxForbiddenError("workers", "read");
     }
     const [summary, pauseState] = await Promise.all([listWorkerHealth(), getJobsPauseState()]);

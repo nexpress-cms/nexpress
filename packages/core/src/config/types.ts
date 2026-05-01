@@ -617,34 +617,22 @@ export interface NxSaveResult {
 }
 
 /**
- * Linear content-editing hierarchy. `moderator` is intentionally absent
- * — a moderator handles community moderation (comments / reports /
- * bans) but does not have content-authoring powers. Community-mod
- * paths check the role explicitly via `principalCan()` instead of
- * sitting on this comparison.
+ * Numeric ranking of staff roles, retained for the few non-capability
+ * call sites that still need to compare role rank — chiefly
+ * `hasRoleOnSite()` in `sites/memberships.ts`, which evaluates a
+ * per-site membership row's role against the user's. `moderator`
+ * shares author-rank because the two are parallel tracks
+ * (community-mod vs. content-author authority); the rank is meaningful
+ * only on the content-authoring axis.
  *
- * For the `hasRole` callsites that need "moderator counts as elevated
- * staff," check `user.role === "moderator"` alongside `hasRole(user,
- * "editor")`.
+ * For staff-user authorization, use `can(user, capability)` from
+ * `auth/capabilities.ts` (#273) — this hierarchy is no longer the
+ * primary check.
  */
 export const ROLE_HIERARCHY: Record<NxUserRole, number> = {
   viewer: 0,
   author: 1,
-  moderator: 1, // parallel track — same elevation as author for non-mod paths
+  moderator: 1,
   editor: 2,
   admin: 3,
 };
-
-export function hasRole(user: NxAuthUser, minRole: NxUserRole): boolean {
-  return ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY[minRole];
-}
-
-/**
- * Returns true when the principal is a staff user with elevated
- * community-moderation authority: admin, editor, or moderator. Used
- * by every API route that gates moderation actions before falling
- * through to the member-side `memberCan()` resolver.
- */
-export function isStaffMod(user: NxAuthUser): boolean {
-  return user.role === "admin" || user.role === "editor" || user.role === "moderator";
-}

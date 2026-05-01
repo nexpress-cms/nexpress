@@ -1,4 +1,4 @@
-import { NxForbiddenError, hasRole, isStaffMod, verifyTokenFull } from "@nexpress/core";
+import { can, NxForbiddenError, verifyTokenFull } from "@nexpress/core";
 import { CommunitySettingsView } from "@nexpress/admin/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -18,8 +18,8 @@ export default async function CommunitySettingsPage() {
   const db = getDb();
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
-  if (!isStaffMod(user)) {
+  if (!can(user, "community.moderate")) {
     throw new NxForbiddenError("community.settings", "read");
   }
-  return <CommunitySettingsView canEdit={hasRole(user, "admin")} />;
+  return <CommunitySettingsView canEdit={can(user, "admin.manage")} />;
 }

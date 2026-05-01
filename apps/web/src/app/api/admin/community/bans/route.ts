@@ -1,9 +1,9 @@
 import {
   NxForbiddenError,
   NxValidationError,
-  isStaffMod,
   issueBan,
   listBansForMember,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("bans", "list");
     }
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("bans", "create");
     }
 

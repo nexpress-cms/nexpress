@@ -1552,7 +1552,7 @@ function settingsThemeRouteTemplate(): string {
   return `import {
   NxForbiddenError,
   NxValidationError,
-  hasRole,
+  can,
   nxSettings,
   DEFAULT_THEME,
 } from "@nexpress/core";
@@ -1592,7 +1592,7 @@ export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     requireCsrf(request);
-    if (!hasRole(user, "admin")) throw new NxForbiddenError("settings/theme", "update");
+    if (!can(user, "admin.manage")) throw new NxForbiddenError("settings/theme", "update");
 
     const theme = await request.json();
     if (!isValidTheme(theme)) {

@@ -1,10 +1,10 @@
 import {
   NX_DEFAULT_SITE_ID,
   getCurrentSiteId,
-  hasRole,
   isSuperAdmin,
   listMembershipsForUser,
   listSites,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (!superAdmin) {
       const memberships = await listMembershipsForUser(user.id);
       const allowedIds = new Set(memberships.map((m) => m.siteId));
-      if (hasRole(user, "admin") && allowedIds.size === 0) {
+      if (can(user, "admin.manage") && allowedIds.size === 0) {
         // No explicit memberships + global admin → see the
         // default site so existing single-tenant admins
         // aren't locked out of their own picker.

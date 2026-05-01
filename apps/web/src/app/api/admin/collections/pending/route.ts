@@ -1,7 +1,7 @@
 import {
   NxForbiddenError,
-  isStaffMod,
   listPendingMemberDocs,
+  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureWriteReady();
     const user = await requireAuth(request);
-    if (!isStaffMod(user)) {
+    if (!can(user, "community.moderate")) {
       throw new NxForbiddenError("collection.pending", "list");
     }
 

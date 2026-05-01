@@ -1,7 +1,7 @@
 import { draftMode } from "next/headers";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { hasRole, NxAuthError } from "@nexpress/core";
+import { can, NxAuthError } from "@nexpress/core";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureCoreServices } from "@/lib/init-core";
 
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     ensureCoreServices();
     const user = await requireAuth(request);
 
-    if (!hasRole(user, "editor")) {
+    if (!can(user, "content.publish")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
