@@ -166,6 +166,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 - **Never suppress type errors** — no `as any`, `@ts-ignore`, `@ts-expect-error`. A few `as never` casts exist in admin field editors and plugin host — minimize, don't add more.
 - **Never create parallel DB connections** — call `ensureFor(...)` (or rely on the routes that do) and read from the `getDb()` singleton. One pool per process.
 - **Never run `pnpm db:generate` without reviewing output** — destructive schema changes are not auto-applied.
+- **Never assume `withCurrentSite` covers fire-and-forget async work** (#320) — it restores the previous resolver as soon as the callback returns, so any pending `void someAsyncFn()` or already-enqueued pg-boss handler runs with the OUTER site context (typically `null` in a worker). Stamp `siteId` onto job payloads at enqueue time and have the handler wrap its own work in `withCurrentSite(payload.siteId, ...)`.
 
 ## NOTES
 
