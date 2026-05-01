@@ -133,6 +133,15 @@ export interface NxJobQueue {
   resumeProcessing?(): Promise<void>;
   /** Phase 20.2 — `true` when this adapter is currently paused. */
   isProcessingPaused?(): boolean;
+  /**
+   * Phase 22.4 — readiness probe. Issues a cheap round-trip against
+   * the queue backing store and returns `true` when the connection
+   * is alive AND the queue's schema is installed. Adapters that
+   * can't tell return `true` (a missing answer is not a failure
+   * signal). Errors are caught and reported as `false` — the probe
+   * caller never sees an exception.
+   */
+  isHealthy?(): Promise<boolean>;
 }
 
 let jobQueue: NxJobQueue | null = null;

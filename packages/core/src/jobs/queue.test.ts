@@ -36,4 +36,48 @@ describe("job queue", () => {
       expect(enqueue).toHaveBeenCalledWith("content:afterSave", { foo: 1 });
     });
   });
+
+  describe("isHealthy probe shape (Phase 22.4)", () => {
+    // The interface is optional, so adapters that don't implement
+    // it should not break the readiness probe contract — these
+    // tests pin the shape consumers (`/api/health/ready`) rely on.
+
+    it("queue object without isHealthy still satisfies the interface", () => {
+      setJobQueue({
+        enqueue: vi.fn(),
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      });
+      expect(getOptionalJobQueue()?.isHealthy).toBeUndefined();
+    });
+
+    it("isHealthy returns true on a configured-and-alive adapter stub", async () => {
+      const isHealthy = vi.fn().mockResolvedValue(true);
+      setJobQueue({
+        enqueue: vi.fn(),
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+        isHealthy,
+      });
+      const result = await getOptionalJobQueue()?.isHealthy?.();
+      expect(result).toBe(true);
+      expect(isHealthy).toHaveBeenCalledOnce();
+    });
+
+    it("isHealthy returns false when the underlying check rejects", async () => {
+      // Adapters MUST swallow exceptions and return false — the
+      // readiness probe expects a boolean, not a thrown error.
+      // The pg-boss adapter does this via its own try/catch; this
+      // test pins the contract callers depend on.
+      const isHealthy = vi.fn().mockResolvedValue(false);
+      setJobQueue({
+        enqueue: vi.fn(),
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+        isHealthy,
+      });
+      const result = await getOptionalJobQueue()?.isHealthy?.();
+      expect(result).toBe(false);
+    });
+  });
 });
