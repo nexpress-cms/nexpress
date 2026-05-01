@@ -29,7 +29,21 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
-const rateLimitStore = new Map<string, RateLimitEntry>();
+// The store + the cleanup interval BOTH live on `globalThis` so HMR
+// re-evaluations of this module reuse the same Map (and don't
+// orphan it from its janitor). #315: a previous fix only put the
+// "cleanup started" flag on `globalThis`, leaving the Map module-
+// scoped — the closure inside the interval kept a reference to the
+// first Map ever created, so subsequent module evaluations got new
+// Maps that nothing was pruning.
+declare global {
+  var __nx_rate_limit_store: Map<string, RateLimitEntry> | undefined;
+  var __nx_rate_limit_cleanup_started: boolean | undefined;
+}
+
+const rateLimitStore: Map<string, RateLimitEntry> =
+  globalThis.__nx_rate_limit_store ?? new Map<string, RateLimitEntry>();
+globalThis.__nx_rate_limit_store = rateLimitStore;
 
 const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -124,18 +138,20 @@ function checkRateLimit(ip: string, path: string): { limited: boolean; retryAfte
 // Guard against HMR re-evaluating this module: each reload would
 // otherwise spawn a fresh interval and leak the previous one. The
 // production runtime evaluates the module once, so the guard is
-// only load-bearing in dev.
-declare global {
-  var __nx_rate_limit_cleanup_started: boolean | undefined;
-}
-
+// only load-bearing in dev. The interval reads `globalThis.__nx_
+// rate_limit_store` on every tick (not the closure-captured Map)
+// so a subsequent module re-evaluation that swapped the Map would
+// still get pruned — though the `??` above ensures we keep the
+// same Map across evaluations anyway.
 if (!globalThis.__nx_rate_limit_cleanup_started) {
   globalThis.__nx_rate_limit_cleanup_started = true;
   setInterval(() => {
+    const store = globalThis.__nx_rate_limit_store;
+    if (!store) return;
     const now = Date.now();
-    for (const [key, entry] of rateLimitStore) {
+    for (const [key, entry] of store) {
       if (now > entry.resetAt) {
-        rateLimitStore.delete(key);
+        store.delete(key);
       }
     }
   }, 60_000);
