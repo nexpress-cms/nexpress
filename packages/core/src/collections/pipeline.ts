@@ -1222,12 +1222,18 @@ export async function promoteMemberDocument(
   // surface that as 400 — the row already moved on, no second
   // event-fire. Same pattern protects against an interleaved staff
   // PATCH that ran between our read and our write.
+  //
+  // Issue #367 — also pin `siteId` in the predicate. The read-side
+  // `getDocumentByIdInternal` already enforced the site match, but
+  // including siteId in the WHERE means even a stale resolver value
+  // between the load and the update can't promote the wrong row.
+  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const now = new Date();
   const updated = (await db
     .update(table)
     .set({ status: "published", updatedAt: now, updatedBy: staffUserId })
     .where(
-      sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")}`,
+      sql`${eq(getTableColumn(table, "id"), docId)} and ${eq(getTableColumn(table, "status"), "pending")} and ${eq(getTableColumn(table, "siteId"), requestSiteId)}`,
     )
     .returning()) as Array<Record<string, unknown>>;
   if (updated.length === 0) {
@@ -1513,6 +1519,21 @@ export async function getDocumentById(
 
   if (!doc) {
     return null;
+  }
+
+  // Issue #367 — even read-by-id has to honor the tenant boundary
+  // before access.read fires. A site A caller naming a site B doc
+  // must not get a site B read decision back. Throw `Forbidden
+  // cross-site` to match the existing pattern callers (e.g.
+  // createComment, the sister-PR community fixes #362–#364) already
+  // assert against.
+  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const docSiteId =
+    typeof doc.siteId === "string" && doc.siteId.length > 0
+      ? doc.siteId
+      : NX_DEFAULT_SITE_ID;
+  if (docSiteId !== requestSiteId) {
+    throw new NxForbiddenError(collection, "cross-site");
   }
 
   if (config.access?.read) {
@@ -1902,16 +1923,45 @@ function getSortOrderClause(
   return isDescending ? desc(column) : asc(column);
 }
 
+/**
+ * Issue #367 — by-id loader for write paths and admin reads.
+ *
+ * `findDocuments` (the list path) has been site-scoped since Phase
+ * 18, but every by-id load was id-only. A staff user with a foreign
+ * doc id could reach `getDocumentById`, `saveDocument`,
+ * `deleteDocument`, `promoteMemberDocument`, or
+ * `createTranslation` outside their tenant. By default this loader
+ * now compares the loaded row's `siteId` to the request's resolved
+ * site and throws `NxForbiddenError(collection, "cross-site")` on
+ * divergence.
+ *
+ * Cross-site is opt-in via `{ allowCrossSite: true }`. The legitimate
+ * users today are background jobs / scripts that run without a
+ * request site context (the wp-importer wraps its own
+ * `withCurrentSite`, so it stays on the default path).
+ */
 async function getDocumentByIdInternal(
   db: DrizzleDatabaseLike,
   table: PgTable,
   collection: string,
   id: string,
+  options?: { allowCrossSite?: boolean },
 ): Promise<Record<string, unknown>> {
   const doc = await getDocumentByIdOptional(db, table, id);
 
   if (!doc) {
     throw new NxNotFoundError(collection, id);
+  }
+
+  if (!options?.allowCrossSite) {
+    const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const docSiteId =
+      typeof doc.siteId === "string" && doc.siteId.length > 0
+        ? doc.siteId
+        : NX_DEFAULT_SITE_ID;
+    if (docSiteId !== requestSiteId) {
+      throw new NxForbiddenError(collection, "cross-site");
+    }
   }
 
   return doc;
