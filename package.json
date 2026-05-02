@@ -9,8 +9,8 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "build": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build",
-    "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=20",
+    "build": "NX_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build",
+    "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=30",
     "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint .",
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
     "typecheck": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run typecheck",

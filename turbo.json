@@ -29,7 +29,8 @@
     "NX_OAUTH_GITHUB_CLIENT_SECRET",
     "NX_OAUTH_GOOGLE_CLIENT_ID",
     "NX_OAUTH_GOOGLE_CLIENT_SECRET",
-    "TEST_DATABASE_URL"
+    "TEST_DATABASE_URL",
+    "NX_DEV_FAST"
   ],
   "tasks": {
     "build": {
