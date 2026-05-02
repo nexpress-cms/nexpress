@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "XLIFF translation export/import for NexPress i18n.",
   "license": "MIT",
-  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "author": "Nexpress",
   "homepage": "https://github.com/hahabsw/nexpress#readme",
   "repository": {
     "type": "git",

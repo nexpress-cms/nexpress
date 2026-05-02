@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Forum plugin for NexPress — threaded discussions on top of the community surface.",
   "license": "MIT",
-  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "author": "Nexpress",
   "homepage": "https://github.com/hahabsw/nexpress#readme",
   "repository": {
     "type": "git",
