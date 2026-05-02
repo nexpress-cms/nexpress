@@ -147,7 +147,66 @@ not.
 - Billing hooks (out of scope for the open-source core; document the
   extension point).
 
-### 8. Docs & marketing
+### 8. Plugin marketplace (deferred — 1.x)
+
+A first-party way to discover, vet, and install plugins. The v1 plugin
+model is npm-package + rebuild, so a marketplace today is a curated
+list, not an installer. Building this properly depends on category 3
+(Plugin v2) for the install-without-rebuild and trust pieces.
+
+- **Discovery** — a `plugins.nexpress.dev`-style index pulling from a
+  manifest registry (or scoped `@nexpress/*` npm scope), with categories,
+  search, and screenshots.
+- **Manifest schema** — extend `definePlugin()`'s manifest to carry the
+  marketplace metadata (icon, screenshots, pricing tier, supported
+  NexPress version range, capability requests).
+- **Trust model** — package signing + checksum, optional curator review
+  flag, capability disclosure shown at install time. Hard requirement
+  before any "one-click install" flow.
+- **Install UX** — `/admin/plugins` shows installed + available; install
+  flow updates `nexpress.config.ts` (or a runtime registry once Plugin v2
+  lands), runs migrations if any, surfaces errors.
+- **Monetization hooks** — license key validation, checkout handoff to
+  an external billing provider. Out of scope for the open-source core;
+  document the extension point.
+
+The MVP could ship on top of v1 as a *curated index page* that just deep-
+links to `npm install` instructions — that's a reasonable 1.0 step, with
+the install-flow work waiting for Plugin v2.
+
+### 9. First vertical: e-commerce / shop plugin (deferred — 1.x)
+
+A reference vertical plugin that proves the plugin model can carry a
+real product domain, not just blog/community. Ship as a plugin package
+(`@nexpress/plugin-shop`) so the core stays a CMS.
+
+- **Product catalog** — collections for products, variants, categories.
+  Built on top of the existing `defineCollection()` so admins get the
+  full editing surface for free.
+- **Cart & checkout** — member-scoped cart (reuses the member model),
+  pluggable payment adapter (Stripe / Toss / KG Inicis as reference
+  implementations).
+- **Order admin** — orders collection with status workflow, refunds,
+  fulfillment notes. Slots into the existing admin shell.
+- **Inventory** — stock tracking, low-stock alerts via the jobs queue.
+- **Public surfaces** — product detail, listing, cart, checkout pages
+  shipped as theme partials so any active theme can adopt them.
+- **Tax & shipping** — extension points; plugin ships sane defaults but
+  not a full ruleset (region-specific).
+
+Open questions before committing:
+- Does this stay a plugin, or does the product catalog *collection
+  pattern* prove general enough to belong in core (and the rest of
+  e-commerce stays a plugin)?
+- Payment adapter contract — single shared interface, or per-plugin
+  implementation? The latter is simpler; the former lets users swap
+  providers without changing other plugins.
+
+This is the strongest signal that the v1 plugin model "works for real
+verticals." If shop hits a wall the v1 plugin couldn't get over, that
+becomes a Plugin v2 design input.
+
+### 10. Docs & marketing
 
 What a non-developer evaluator sees before they install.
 
@@ -160,14 +219,16 @@ What a non-developer evaluator sees before they install.
 
 ## Recommended next phase
 
-Of the eight categories, **1 + 2 + 4** is the natural Phase 23 cluster:
+Of the ten categories, **1 + 2 + 4** is the natural Phase 23 cluster:
 
 1. Publish 0.1 and watch what breaks for real users.
 2. Fix the production-hardening items those users hit first.
 4. Tighten DX so a curious evaluator becomes a contributor.
 
-3, 6, 7 are 1.x candidates. 5 and 8 are continuous — they advance one
-issue at a time as 1, 2, 4 surface gaps.
+3, 6, 7, 8, 9 are 1.x candidates. 5 and 10 are continuous — they advance
+one issue at a time as 1, 2, 4 surface gaps. Category 8 (marketplace)
+has an MVP path that *can* land in 1.0 as a curated index; the install-
+flow piece waits on category 3.
 
 ## Open questions
 
@@ -183,6 +244,14 @@ formally opens, because they shape the work inside it.
   Phase 23 ignore plugin internals.
 - **Stability promotion** — pick *one* item from category 6 to land in
   Phase 23 so we keep momentum on the contract surface; defer the rest.
+- **Marketplace MVP timing** — does the curated-index version of
+  category 8 land in 1.0 (alongside 1, 2, 4), or stay parked until
+  Plugin v2? Trade-off: shipping a curated index early gives the
+  ecosystem a focal point; shipping after Plugin v2 means one
+  install-UX, not two.
+- **Shop plugin status** — confirm category 9 is a *plugin*, not a core
+  module. Locking that now keeps the e-commerce work from leaking
+  into core APIs.
 
 Once these are answered the corresponding category bullets become
 sub-phases (23.1, 23.2, …) in a fresh design doc under `docs/design/`.
