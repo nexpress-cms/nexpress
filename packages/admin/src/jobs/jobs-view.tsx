@@ -86,8 +86,6 @@ interface JobStateCounts {
 interface StuckJobsBlock {
   counts: JobStateCounts;
   thresholds: { failed: number; expired: number };
-  failedOverThreshold: boolean;
-  expiredOverThreshold: boolean;
 }
 
 interface WorkerHealthResponse {
@@ -488,8 +486,9 @@ function WorkerHealthCard() {
   const paused = data.pause?.paused === true;
 
   const stuck = data.stuck ?? null;
-  const showStuckWarning =
-    stuck !== null && (stuck.failedOverThreshold || stuck.expiredOverThreshold);
+  const failedOverThreshold = stuck !== null && stuck.counts.failed >= stuck.thresholds.failed;
+  const expiredOverThreshold = stuck !== null && stuck.counts.expired >= stuck.thresholds.expired;
+  const showStuckWarning = failedOverThreshold || expiredOverThreshold;
 
   return (
     <Card className="border-border/60 shadow-sm">
@@ -518,13 +517,13 @@ function WorkerHealthCard() {
               Queue paused
             </span>
           ) : null}
-          {showStuckWarning ? (
+          {showStuckWarning && stuck ? (
             <span
               className="inline-flex items-center gap-1 rounded-md border border-rose-300/60 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-900"
               title={stuckTooltip(stuck)}
             >
               <AlertTriangle className="h-3 w-3" aria-hidden />
-              {stuckLabel(stuck)}
+              {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
             </span>
           ) : null}
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={refreshing}>
@@ -540,10 +539,14 @@ function WorkerHealthCard() {
   );
 }
 
-function stuckLabel(stuck: StuckJobsBlock): string {
+function stuckLabel(
+  stuck: StuckJobsBlock,
+  failedOverThreshold: boolean,
+  expiredOverThreshold: boolean,
+): string {
   const parts: string[] = [];
-  if (stuck.failedOverThreshold) parts.push(`${stuck.counts.failed} failed`);
-  if (stuck.expiredOverThreshold) parts.push(`${stuck.counts.expired} expired`);
+  if (failedOverThreshold) parts.push(`${stuck.counts.failed} failed`);
+  if (expiredOverThreshold) parts.push(`${stuck.counts.expired} expired`);
   return parts.join(" · ");
 }
 

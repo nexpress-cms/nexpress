@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InMemoryRateLimiter, __resetInMemoryRateLimitStoreForTests } from "./in-memory.js";
+// __reset is intentionally only reachable from the file import here,
+// not the subpath barrel — keeping the test hatch out of the v0.1
+// public surface.
 import { getRateLimiter, setRateLimiter, getOptionalRateLimiter } from "./registry.js";
 
 describe("InMemoryRateLimiter", () => {

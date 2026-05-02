@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useReducer, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -386,10 +386,16 @@ const DragPreview = ({ block, definition }: DragPreviewProps) => {
 };
 
 export const BlockPageEditor = ({ blocks: initialBlocks, onChange, availableBlocks }: BlockPageEditorProps) => {
+  // Build the type→definition map once and feed it to both the
+  // reducer factory and the render path (the reducer otherwise
+  // builds an internal copy from the same array).
+  const definitions = useMemo(
+    () => new Map(availableBlocks.map((block) => [block.type, block])),
+    [availableBlocks],
+  );
   const reducer = useMemo(() => createEditorReducer(availableBlocks), [availableBlocks]);
   const [blocks, dispatch] = useReducer(reducer, initialBlocks);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const definitions = useMemo(() => new Map(availableBlocks.map((block) => [block.type, block])), [availableBlocks]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -398,20 +404,30 @@ export const BlockPageEditor = ({ blocks: initialBlocks, onChange, availableBloc
   // The parent re-creates `initialBlocks` on every render (the
   // admin field renderer maps the form value through
   // `toBlockInstances`, which always returns a fresh array).
-  // Comparing reference would re-fire the RESET effect endlessly,
-  // which combined with the onChange effect below produces an
-  // infinite update loop on a page with no blocks. Compare the
-  // serialized shape instead so the effect only runs when the
-  // *content* of `initialBlocks` actually changed.
+  // Reference comparison would re-fire RESET endlessly and, with
+  // the onChange effect below, deadlock into a "Maximum update
+  // depth" storm on a page with no blocks. Use a serialized key
+  // so RESET only runs when the *content* changes; pass the
+  // original array to the reducer to avoid a parse round-trip.
   const initialBlocksKey = useMemo(
     () => JSON.stringify(initialBlocks),
     [initialBlocks],
   );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- key is the change signal
   useEffect(() => {
-    dispatch({ type: "RESET", blocks: JSON.parse(initialBlocksKey) as NxBlockInstance[] });
+    dispatch({ type: "RESET", blocks: initialBlocks });
   }, [initialBlocksKey]);
 
+  // Skip the mount echo: useReducer's initial state already came
+  // from `initialBlocks`, so firing onChange on the first render
+  // just bounces that value back to the parent (which can re-
+  // render and reset us). Only notify on subsequent changes.
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     onChange(blocks);
   }, [blocks, onChange]);
 
