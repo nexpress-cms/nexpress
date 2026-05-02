@@ -68,6 +68,11 @@
       "import": "./dist/observability.js",
       "default": "./dist/observability.js"
     },
+    "./rate-limit": {
+      "types": "./dist/rate-limit.d.ts",
+      "import": "./dist/rate-limit.js",
+      "default": "./dist/rate-limit.js"
+    },
     "./seo": {
       "types": "./dist/seo.d.ts",
       "import": "./dist/seo.js",

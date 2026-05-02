@@ -1,7 +1,7 @@
 # Phase 23 plan — publish, harden, polish
 
 **Opened:** 2026-05-02
-**Status:** in progress (23.6 partial; 23.6.1 surfaced two bugs and stalled on sign-in form behavior; 23.6.2 next)
+**Status:** in progress (23.7 done — adapter contract + InMemory adapter + proxy migration; 23.7.1 next is the Redis adapter package; 23.6.2 still pending)
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
@@ -33,7 +33,8 @@ everything we've learned by then.
 | 23.6 | E2E coverage on golden paths          | 4 (DX)    | M      | partial  |
 | 23.6.1 | Bugs surfaced by E2E (blocks loop + seo strip + auth helper) | 4 (DX) | S | done |
 | 23.6.2 | E2E publish flow + theme switch (re-attempt)| 4 (DX) | S | pending |
-| 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | pending  |
+| 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | done     |
+| 23.7.1 | `@nexpress/rate-limiter-redis` reference adapter | 2 (ops) | M | pending |
 | 23.8 | First publish run (when CI unblocks)  | 1 (ship)  | S      | blocked  |
 
 Sizes are rough: XS ≈ 1h, S ≈ half day, M ≈ 1–2 days, L ≈ several days.
@@ -228,7 +229,7 @@ Open question: per-test fresh sign-in vs Playwright
 `storageState` shared session. Default to fresh until the suite
 is big enough to feel the cost.
 
-### 23.7 — Multi-node rate-limit adapter
+### 23.7 — Multi-node rate-limit adapter (done)
 
 Define `NxRateLimiterAdapter` interface in `@nexpress/core` with
 `InMemoryRateLimiter` (current behavior) as the default and
@@ -240,6 +241,33 @@ Open question to settle inside the PR: do we ship the Redis
 adapter from `@nexpress/core` or as a separate
 `@nexpress/rate-limiter-redis` package? Default to "separate
 package" — keeps `@nexpress/core` Redis-free.
+
+**Status update (2026-05-03):** the contract + the in-memory
+default + the proxy migration shipped (`@nexpress/core/rate-limit`
+subpath). The `proxy.ts` is no longer aware of the storage —
+`getRateLimiter().check(key, limit, windowMs)` is the only call.
+Behavior is identical on single-node deploys; multi-node deploys
+register a different adapter at boot. Open question settled:
+**separate package** so `@nexpress/core` stays Redis-free.
+
+### 23.7.1 — `@nexpress/rate-limiter-redis` reference adapter (deferred)
+
+The Redis-backed implementation that 23.7 documented but didn't
+ship. Approximate scope:
+
+- New package `packages/rate-limiter-redis/` with `RedisRateLimiter`
+  implementing `NxRateLimiterAdapter`. INCR + EXPIRE per bucket
+  (single round trip) is the simplest correct fixed-window
+  implementation; sliding window is a v2.
+- Tests against a live Redis (docker-compose service for the
+  integration job, similar to the Postgres pattern).
+- Docs page or section under `docs/deployment.md` walking through
+  install + boot wiring.
+- Optional: `shutdown()` calls `client.quit()` so the pool drains
+  on SIGTERM.
+
+This is a clean, scoped follow-up — none of the proxy / contract
+work depends on it.
 
 ### 23.8 — First publish run
 

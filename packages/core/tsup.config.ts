@@ -21,6 +21,7 @@ export default defineConfig({
     jobs: "src/jobs/index.ts",
     media: "src/media/index.ts",
     observability: "src/observability/index.ts",
+    "rate-limit": "src/rate-limit/index.ts",
     seo: "src/seo/index.ts",
   },
   format: ["esm"],
