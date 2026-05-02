@@ -1,12 +1,13 @@
 name: Release
 
-# Triggered by `pnpm version` followed by a push to `main` of the
-# resulting version-bump commit. The Changesets action picks up
-# pending changesets, opens a "Version Packages" PR if any are
-# queued, and publishes when the PR is merged.
+# Temporarily manual-only — GitHub Actions billing on this account
+# is locked. Push-triggered runs fail at 3s before any work starts.
+# Restore the `push: main` trigger below once billing is resolved.
 #
-# `workflow_dispatch` is also enabled so the maintainer can trigger
-# a release manually from the Actions tab when needed.
+# When active: triggered by `pnpm version` followed by a push to
+# `main` of the resulting version-bump commit. The Changesets action
+# picks up pending changesets, opens a "Version Packages" PR if any
+# are queued, and publishes when the PR is merged.
 #
 # Provenance: `npm publish --provenance` requires the workflow to
 # run in a public repo with `id-token: write`. NPM uses Sigstore /
@@ -14,8 +15,6 @@ name: Release
 # tarball was built from this exact commit. See
 # https://docs.npmjs.com/generating-provenance-statements.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
