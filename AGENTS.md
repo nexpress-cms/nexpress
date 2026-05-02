@@ -243,8 +243,8 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
 - **CI** — `.github/workflows/ci.yml` defines two jobs on Ubuntu (Node 22, pnpm 10.33):
   1. `checks` — install → build → typecheck → `pnpm test` (unit suite).
   2. `integration` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
-  Triggers: `push` to `main`, `pull_request` (any branch), and `workflow_dispatch`.
-- **Release** — `.github/workflows/release.yml` runs the changesets action on every `main` push: when there are queued changesets it opens a "Version Packages" PR; when that PR is merged it publishes to npm with `--provenance` attestation. Requires `NPM_TOKEN` repo secret. Manual `workflow_dispatch` is also wired for one-off releases.
+  Currently `workflow_dispatch` only — the account's GitHub Actions billing is locked, so push / pull_request runs fail at 3 s before any work starts. Restore the `push` + `pull_request` triggers once billing is resolved (one-line change in `ci.yml`).
+- **Release** — `.github/workflows/release.yml` is wired but currently `workflow_dispatch` only too (same billing block). When active it runs the changesets action on every `main` push: when there are queued changesets it opens a "Version Packages" PR; when that PR is merged it publishes to npm with `--provenance` attestation. Requires `NPM_TOKEN` repo secret.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.

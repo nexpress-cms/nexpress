@@ -172,6 +172,7 @@ excludes `src/integration/` so the cross-directory import doesn't trip
    and runs `pnpm test:integration` (#275). Covers the pipeline /
    write-path code that mock-based unit tests can't.
 
-Triggers: `push` to `main`, `pull_request` (any branch), and `workflow_dispatch`.
-After the integration job has been green for a few PR runs, mark it required
-for merges to `main`.
+Currently `workflow_dispatch` only while the repo's Actions billing is being
+resolved — push / pull_request triggers will be re-enabled without other
+changes once that's settled. After the integration job has been green for a
+few PR runs in normal mode, mark it required for merges to `main`.
