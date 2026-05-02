@@ -27,6 +27,7 @@ export interface NxReportRow {
   resolvedByUserId: string | null;
   resolvedByMemberId: string | null;
   resolution: string | null;
+  siteId: string;
   createdAt: Date;
 }
 
@@ -212,12 +213,24 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
   }
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  // Issue #363 — `listReports` was already site-scoped, but
+  // `resolveReport` fetched and updated by id only. A moderator who
+  // obtained a foreign report id (e.g. from logs of a tenant they
+  // also belong to, or by guessing) could mark it resolved and
+  // write the audit event in their own request context. Fix:
+  // require the request site, reject when the loaded row's siteId
+  // diverges, AND include `siteId` in the update predicate so the
+  // read-check and the write cannot drift.
+  const requestSiteId = await requireSiteId();
   const [existing] = (await db
     .select()
     .from(nxReports)
     .where(eq(nxReports.id, input.reportId))
     .limit(1)) as NxReportRow[];
   if (!existing) throw new NxNotFoundError("report", input.reportId);
+  if (existing.siteId !== requestSiteId) {
+    throw new NxForbiddenError("report", "cross-site");
+  }
   if (existing.resolvedAt) {
     throw new NxValidationError("Invalid state", [
       { field: "report", message: "Report already resolved" },
@@ -235,7 +248,7 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
       resolvedByMemberId,
       resolution,
     })
-    .where(eq(nxReports.id, input.reportId))
+    .where(and(eq(nxReports.id, input.reportId), eq(nxReports.siteId, requestSiteId)))
     .returning()) as NxReportRow[];
   if (!updated) throw new Error("Report update returned no row");
 
