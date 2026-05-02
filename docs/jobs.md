@@ -229,6 +229,30 @@ Top-right toggle switches the four state tabs between
 "All time" and "Last 24 h" (forwarded to the API as
 `?since=...`).
 
+A worker-health card sits above the tabs (Phase 20.4 / 23.5):
+
+- Worker liveness (alive count, last heartbeat age).
+- Pause pill when `getJobsPauseState().paused` is true.
+- **Stuck-job warning** — a red `AlertTriangle` pill appears when
+  the count of `failed` or `expired` jobs (UNION across
+  `pgboss.job` and `pgboss.archive`) crosses the configured
+  threshold. Defaults are `failed: 10` and `expired: 50`; override
+  from `nexpress.config.ts`:
+
+  ```ts
+  export default defineConfig({
+    // …
+    jobs: {
+      stuckThreshold: { failed: 25, expired: 200 },
+    },
+  });
+  ```
+
+  The widget reads from `/api/admin/jobs/health`, which calls
+  `NxJobQueue.countByState()` under the hood. Plugin authors
+  building their own monitoring can call `countByState({ since })`
+  on the queue directly — same shape, optionally time-bounded.
+
 ---
 
 ## 9. Manual Enqueue

@@ -74,6 +74,36 @@ export interface NxJobListResult {
 }
 
 /**
+ * Phase 23.5 — counts per terminal-and-transient state across the
+ * union of `pgboss.job` and `pgboss.archive`. Drives the stuck-job
+ * widget in `/admin/jobs` and is the building block plugin authors
+ * use to roll their own monitoring without taking a hard dep on
+ * pg-boss schema knowledge.
+ *
+ * Every state key is always present (defaulting to 0) so the
+ * caller can index without optional chaining and the UI can render
+ * a stable row order.
+ */
+export interface NxJobStateCounts {
+  created: number;
+  active: number;
+  completed: number;
+  failed: number;
+  retry: number;
+  cancelled: number;
+  expired: number;
+}
+
+export interface NxJobCountOptions {
+  /**
+   * Time-bounded query: include only jobs whose `created_on` is at
+   * or after this timestamp. Useful for "failures in the last 24
+   * hours" without paging through history.
+   */
+  since?: Date;
+}
+
+/**
  * Phase 13.2 — registered cron schedule (one row per
  * `boss.schedule()` call). Surfaces in the admin so
  * operators can confirm `system:revisionPrune` and friends
@@ -142,6 +172,13 @@ export interface NxJobQueue {
    * caller never sees an exception.
    */
   isHealthy?(): Promise<boolean>;
+  /**
+   * Phase 23.5 — return job counts grouped by state across both
+   * pg-boss tables. Optional on the interface so test stubs that
+   * don't model state need not implement it; the admin endpoint
+   * omits the stuck-job widget when missing.
+   */
+  countByState?(options?: NxJobCountOptions): Promise<NxJobStateCounts>;
 }
 
 let jobQueue: NxJobQueue | null = null;

@@ -301,6 +301,8 @@ export type {
   NxJobSummary,
   NxJobListOptions,
   NxJobListResult,
+  NxJobCountOptions,
+  NxJobStateCounts,
   NxScheduleSummary,
   NxWorkerHeartbeat,
   NxWorkerHealthSummary,

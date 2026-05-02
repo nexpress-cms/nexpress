@@ -1,7 +1,7 @@
 # Phase 23 plan — publish, harden, polish
 
 **Opened:** 2026-05-02
-**Status:** in progress (23.4 done; 23.5 next)
+**Status:** in progress (23.5 done; 23.6 next)
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
@@ -29,7 +29,7 @@ everything we've learned by then.
 | 23.2 | LocalStorage production boot warning  | 2 (ops)   | XS     | done     |
 | 23.3 | Plugin author quickstart              | 4 (DX)    | S      | done     |
 | 23.4 | Multi-instance token revocation verify| 2 (ops)   | S      | done     |
-| 23.5 | Stuck-job detector + admin surface    | 2 (ops)   | M      | pending  |
+| 23.5 | Stuck-job detector + admin surface    | 2 (ops)   | M      | done     |
 | 23.6 | E2E coverage on golden paths          | 4 (DX)    | M      | pending  |
 | 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | pending  |
 | 23.8 | First publish run (when CI unblocks)  | 1 (ship)  | S      | blocked  |
@@ -119,6 +119,14 @@ pg-boss has `expired` and `failed` states already. Add a
 threshold-based warning (configurable via `nexpress.config.ts`).
 Plus a job log query helper in `@nexpress/core/jobs` so plugin
 authors can build their own monitoring on top.
+
+**Status update (2026-05-03):** the count + threshold + widget
+piece shipped. The job-log query helper was deferred to a
+follow-up — `listJobLogs`/`countJobLogs` already exist on the
+`@nexpress/core/jobs` subpath (Phase 19), so the build-your-own-
+monitoring path is unblocked; what's still missing is a curated
+"recent failures" helper that joins counts with their last log
+entries. Tracked under category 5 (API completeness).
 
 ### 23.6 — E2E coverage on golden paths
 
