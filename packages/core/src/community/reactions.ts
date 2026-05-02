@@ -217,13 +217,26 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
   // reputation event has the right context. We only emit
   // `reaction.removed` when there was actually something to remove
   // (i.e. the row existed and the reactor isn't the recipient).
+  //
+  // Issue #362 — also pin the request's tenant against the target's
+  // and include `siteId` in the delete predicate. `addReaction`
+  // already rejects cross-site adds; without the same gate here, a
+  // member on site A could name a site B comment UUID and remove
+  // their site B reaction (and apply the reputation reversal in the
+  // wrong site context). The siteId in the predicate is
+  // defence-in-depth: even if the pre-check passes against a stale
+  // resolver value, the row only deletes when both ids agree.
+  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   let recipientId: string | null = null;
   if (input.targetType === "comment") {
     const [comment] = (await db
-      .select({ memberId: nxComments.memberId })
+      .select({ memberId: nxComments.memberId, siteId: nxComments.siteId })
       .from(nxComments)
       .where(eq(nxComments.id, input.targetId))
-      .limit(1)) as Array<{ memberId: string }>;
+      .limit(1)) as Array<{ memberId: string; siteId: string }>;
+    if (comment && comment.siteId !== requestSiteId) {
+      throw new NxForbiddenError("reaction", "cross-site");
+    }
     if (comment && comment.memberId !== input.memberId) {
       recipientId = comment.memberId;
     }
@@ -242,6 +255,7 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
         eq(nxReactions.targetId, input.targetId),
         eq(nxReactions.memberId, input.memberId),
         eq(nxReactions.kind, input.kind),
+        eq(nxReactions.siteId, requestSiteId),
       ),
     )
     .returning({ id: nxReactions.id })) as Array<{ id: string }>;
