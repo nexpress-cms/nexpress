@@ -126,4 +126,44 @@ describe("verifyStartupSafety", () => {
     });
     expect(emitted).toEqual(["multi_node_local_storage", "missing_prod_secret"]);
   });
+
+  it("warns about local storage when a managed-container env var is detected in production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      containerEnv: true,
+    });
+    expect(emitted).toContain("multi_node_local_storage");
+    const warning = warnings.find((w) => w.message.includes("multi-node safe"));
+    expect(warning?.context).toMatchObject({ reason: "container_hint" });
+  });
+
+  it("does not warn about container hints outside production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "development",
+      multiNodeFlag: undefined,
+      containerEnv: true,
+    });
+    expect(emitted).not.toContain("multi_node_local_storage");
+    expect(warnings).toEqual([]);
+  });
+
+  it("attributes the warning to the explicit flag when both signals are present", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "true",
+      containerEnv: true,
+    });
+    const warning = warnings.find((w) => w.message.includes("multi-node safe"));
+    expect(warning?.context).toMatchObject({ reason: "explicit_flag" });
+  });
 });

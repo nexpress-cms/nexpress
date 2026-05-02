@@ -212,7 +212,12 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   changing `nexpress.config.ts` plugin entries.
 - **`LocalStorageAdapter` is not multi-node safe.** Different nodes will
   see different `./uploads` directories. Use S3 (or any object store) in
-  HA topologies.
+  HA topologies. Boot emits a `multi_node_local_storage` warning when
+  either `NX_MULTI_NODE=true` is set or `NODE_ENV=production` *and* a
+  managed-container env var is detected (`KUBERNETES_SERVICE_HOST`,
+  `FLY_REGION`, `RENDER_INSTANCE_ID`). Set `NX_STORAGE_ADAPTER=s3` to
+  silence the warning, or `NX_MULTI_NODE=false` if you really are
+  running single-node on a managed platform.
 - **pg-boss leader election** — the worker uses Postgres advisory locks,
   so multiple nodes can run `NX_ENABLE_JOBS=1` simultaneously. Only one
   picks up each job.

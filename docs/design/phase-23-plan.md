@@ -1,7 +1,7 @@
 # Phase 23 plan — publish, harden, polish
 
 **Opened:** 2026-05-02
-**Status:** in progress (23.1 done; 23.2 next)
+**Status:** in progress (23.2 done; 23.3 next)
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
@@ -26,7 +26,7 @@ everything we've learned by then.
 | #    | Title                                 | Category  | Size   | Status   |
 | ---- | ------------------------------------- | --------- | ------ | -------- |
 | 23.1 | Backup & restore docs                 | 2 (ops)   | S      | done     |
-| 23.2 | LocalStorage production boot warning  | 2 (ops)   | XS     | pending  |
+| 23.2 | LocalStorage production boot warning  | 2 (ops)   | XS     | done     |
 | 23.3 | Plugin author quickstart              | 4 (DX)    | S      | pending  |
 | 23.4 | Multi-instance token revocation verify| 2 (ops)   | S      | pending  |
 | 23.5 | Stuck-job detector + admin surface    | 2 (ops)   | M      | pending  |

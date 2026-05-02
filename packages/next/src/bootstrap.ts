@@ -149,6 +149,17 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       secret: config.auth?.secret ?? process.env.NX_SECRET ?? null,
       nodeEnv: process.env.NODE_ENV,
       multiNodeFlag: process.env.NX_MULTI_NODE,
+      // Phase 23.2 — well-known env vars set by managed container
+      // platforms. If any is present in production we treat the
+      // deploy as "probably multi-replica" even when NX_MULTI_NODE
+      // wasn't set, and warn about LocalStorageAdapter. The list is
+      // additive — append new platform indicators here as they
+      // become common.
+      containerEnv: Boolean(
+        process.env.KUBERNETES_SERVICE_HOST ||
+          process.env.FLY_REGION ||
+          process.env.RENDER_INSTANCE_ID,
+      ),
     });
 
     servicesInitialized = true;
