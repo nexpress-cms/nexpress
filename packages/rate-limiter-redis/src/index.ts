@@ -40,9 +40,8 @@ return {count, ttl}
 `;
 
 export type RedisRateLimiterOptions =
-  | { url: string; client?: never; keyPrefix?: string }
-  | { url?: never; client: Redis; keyPrefix?: string }
-  | (RedisOptions & { url?: never; client?: never; keyPrefix?: string });
+  | { client: Redis; keyPrefix?: string }
+  | (RedisOptions & { url?: string; keyPrefix?: string });
 
 export class RedisRateLimiter implements NxRateLimiterAdapter {
   private readonly client: Redis;
@@ -52,23 +51,20 @@ export class RedisRateLimiter implements NxRateLimiterAdapter {
   constructor(options: RedisRateLimiterOptions = {}) {
     this.keyPrefix = options.keyPrefix ?? KEY_PREFIX;
     if ("client" in options && options.client) {
-      // Caller passed an existing client (sharing it with other
-      // Redis usage in the app). We don't disconnect it on
-      // shutdown — the caller owns its lifecycle.
+      // Caller passed an existing ioredis client (sharing it with
+      // other Redis usage in the app). `shutdown()` is a no-op in
+      // this mode so the caller keeps lifecycle ownership.
       this.client = options.client;
       this.ownsClient = false;
-    } else if ("url" in options && options.url) {
-      this.client = new Redis(options.url);
-      this.ownsClient = true;
-    } else {
-      // Treat the rest of the options as RedisOptions (host/port/etc.).
-      const { keyPrefix: _kp, ...redisOpts } = options as RedisOptions & {
-        keyPrefix?: string;
-      };
-      void _kp;
-      this.client = new Redis(redisOpts);
-      this.ownsClient = true;
+      return;
     }
+    const { keyPrefix: _kp, url, ...redisOpts } = options as RedisOptions & {
+      keyPrefix?: string;
+      url?: string;
+    };
+    void _kp;
+    this.client = url ? new Redis(url, redisOpts) : new Redis(redisOpts);
+    this.ownsClient = true;
   }
 
   async check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision> {

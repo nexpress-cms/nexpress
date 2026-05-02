@@ -55,19 +55,7 @@ export async function GET(request: NextRequest) {
       failed: configured?.failed ?? DEFAULT_FAILED_THRESHOLD,
       expired: configured?.expired ?? DEFAULT_EXPIRED_THRESHOLD,
     };
-    const stuck = counts
-      ? {
-          counts,
-          thresholds,
-          // Pre-computed booleans so the UI can pulse a warning
-          // without re-implementing the comparison. Both fields
-          // surface independently because failures and expirations
-          // signal different operational stories (handler bug vs
-          // worker not draining).
-          failedOverThreshold: counts.failed >= thresholds.failed,
-          expiredOverThreshold: counts.expired >= thresholds.expired,
-        }
-      : null;
+    const stuck = counts ? { counts, thresholds } : null;
 
     return nxSuccessResponse({
       ...summary,

@@ -1,20 +1,23 @@
 import type { NxRateLimitDecision, NxRateLimiterAdapter } from "./types.js";
 
 /**
- * Phase 23.7 — default adapter. Drop-in replacement for the
- * pre-extraction `Map<string, RateLimitEntry>` that lived inside
- * `apps/web/src/proxy.ts`. Keeps the same fixed-window behavior
- * (a request in the first millisecond and one in the last share
- * the bucket) so single-node deploys see no behavior change after
- * the swap.
+ * Default rate-limiter adapter. Same fixed-window behaviour the
+ * proxy already had before this lived behind an interface — a
+ * request in the first ms and one in the last ms of a window
+ * share the bucket. Single-node deploys keep this; multi-node
+ * deploys swap in `@nexpress/rate-limiter-redis` (or another
+ * adapter) at boot.
  *
- * The store + the cleanup timer both live on `globalThis` to
- * survive HMR re-evaluation in dev — same constraint as the
- * extracted code (#315). Two adapter instances created in the
- * same process therefore share state. That's intentional: if the
- * caller wires two parallel limiters they're almost certainly
- * doing it by accident, and silent drift between them would be
- * worse than visible coupling.
+ * Why store + janitor on `globalThis`: HMR re-evaluates this
+ * module on every save in dev, and a module-scoped Map would
+ * orphan the previous one from its cleanup interval (#315).
+ * Pinning both to `globalThis` keeps Map and janitor paired
+ * across reloads.
+ *
+ * Why the janitor arms lazily: importing this file alone
+ * shouldn't keep a Node process alive. CLI / one-shot scripts
+ * that pull in `@nexpress/core` for unrelated reasons shouldn't
+ * inherit a 60-second timer.
  */
 
 interface Bucket {
@@ -24,16 +27,21 @@ interface Bucket {
 
 declare global {
   var __nx_rate_limit_store: Map<string, Bucket> | undefined;
-  var __nx_rate_limit_cleanup_started: boolean | undefined;
+  var __nx_rate_limit_cleanup_handle: NodeJS.Timeout | undefined;
 }
 
-const store: Map<string, Bucket> =
-  globalThis.__nx_rate_limit_store ?? new Map<string, Bucket>();
-globalThis.__nx_rate_limit_store = store;
+function getStore(): Map<string, Bucket> {
+  let store = globalThis.__nx_rate_limit_store;
+  if (!store) {
+    store = new Map<string, Bucket>();
+    globalThis.__nx_rate_limit_store = store;
+  }
+  return store;
+}
 
-if (!globalThis.__nx_rate_limit_cleanup_started) {
-  globalThis.__nx_rate_limit_cleanup_started = true;
-  setInterval(() => {
+function ensureJanitor(): void {
+  if (globalThis.__nx_rate_limit_cleanup_handle) return;
+  const handle = setInterval(() => {
     const liveStore = globalThis.__nx_rate_limit_store;
     if (!liveStore) return;
     const now = Date.now();
@@ -41,14 +49,18 @@ if (!globalThis.__nx_rate_limit_cleanup_started) {
       if (now > bucket.resetAt) liveStore.delete(key);
     }
   }, 60_000);
+  // Don't keep a Node process alive just to prune empty buckets.
+  handle.unref?.();
+  globalThis.__nx_rate_limit_cleanup_handle = handle;
 }
 
 export class InMemoryRateLimiter implements NxRateLimiterAdapter {
-  // The body is synchronous — buckets live in the in-process Map.
-  // We return a resolved Promise rather than marking `async` so the
-  // adapter's signature still matches the contract without producing
-  // an empty `await` warning under typed lint.
+  constructor() {
+    ensureJanitor();
+  }
+
   check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision> {
+    const store = getStore();
     const now = Date.now();
     const bucket = store.get(key);
     if (!bucket || now > bucket.resetAt) {
@@ -68,11 +80,10 @@ export class InMemoryRateLimiter implements NxRateLimiterAdapter {
 }
 
 /**
- * Test-only: clear the in-memory store. Exposed because
- * unit tests want to assert against a fresh bucket without
- * waiting `windowMs` between cases. Callers in production
- * code SHOULD NOT use this.
+ * Test-only: clear the in-memory store. Not part of the public
+ * surface — tests inside `@nexpress/core` reach for it via the
+ * direct file import; downstream consumers shouldn't.
  */
 export function __resetInMemoryRateLimitStoreForTests(): void {
-  store.clear();
+  globalThis.__nx_rate_limit_store?.clear();
 }

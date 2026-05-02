@@ -37,9 +37,14 @@ export interface NxRateLimiterAdapter {
    * Increment the bucket identified by `key` and return whether
    * the resulting count exceeds `limit` within `windowMs`.
    *
-   * Implementations MUST atomically increment-and-test so two
-   * concurrent calls to the same key from different requests
-   * can't both observe `count <= limit`.
+   * Implementations should make the increment-and-test
+   * indivisible *within their concurrency model*:
+   *   - The default `InMemoryRateLimiter` relies on Node's
+   *     single-threaded event loop — concurrent `check`s on the
+   *     same Map key serialize naturally. Worker-thread or
+   *     multi-process consumers need a different adapter.
+   *   - `RedisRateLimiter` uses a Lua script so an `INCR` and
+   *     its TTL arm happen in a single Redis call.
    *
    * `key` is opaque to the adapter — the framework composes it
    * from (ip, route-pattern). Adapters should treat it as a

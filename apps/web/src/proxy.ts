@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getRateLimiter } from "@nexpress/core/rate-limit";
+import { getRateLimiter, type NxRateLimiterAdapter } from "@nexpress/core/rate-limit";
 
 import { i18nConfig, isLocale } from "@/i18n.config";
+
+// Resolved once at module load. The rate-limiter registry is a
+// process singleton — re-fetching per request adds an indirection
+// for nothing. A custom adapter registered later via
+// `setRateLimiter` won't be picked up by this binding, but the
+// proxy only swaps adapters at boot.
+let limiterRef: NxRateLimiterAdapter | null = null;
+function limiter(): NxRateLimiterAdapter {
+  if (!limiterRef) limiterRef = getRateLimiter();
+  return limiterRef;
+}
 
 function getSecurityHeaders(request: NextRequest): Record<string, string> {
   const isDev = process.env.NODE_ENV !== "production";
@@ -25,14 +36,6 @@ function getSecurityHeaders(request: NextRequest): Record<string, string> {
     ].join("; "),
   };
 }
-
-// Phase 23.7 — the in-process Map + cleanup interval used to live
-// here directly. They've moved to `@nexpress/core/rate-limit`'s
-// `InMemoryRateLimiter` (which keeps the same `globalThis`-pinned
-// store + janitor for HMR durability — #315) so multi-node deploys
-// can swap in a Redis adapter via `setRateLimiter` at boot without
-// touching this file. Single-node deploys still get the in-memory
-// adapter as the lazy default.
 
 const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -124,7 +127,7 @@ async function checkRateLimit(
   // decision — in-memory by default, swappable to Redis (or any
   // other implementation) via `setRateLimiter` at boot.
   const key = `${ip}:${rule.pattern.source}`;
-  const decision = await getRateLimiter().check(key, rule.limit, rule.windowMs);
+  const decision = await limiter().check(key, rule.limit, rule.windowMs);
   if (decision.limited) {
     return { limited: true, retryAfter: decision.retryAfterSeconds };
   }
