@@ -1,0 +1,81 @@
+name: Release
+
+# Triggered by `pnpm version` followed by a push to `main` of the
+# resulting version-bump commit. The Changesets action picks up
+# pending changesets, opens a "Version Packages" PR if any are
+# queued, and publishes when the PR is merged.
+#
+# `workflow_dispatch` is also enabled so the maintainer can trigger
+# a release manually from the Actions tab when needed.
+#
+# Provenance: `npm publish --provenance` requires the workflow to
+# run in a public repo with `id-token: write`. NPM uses Sigstore /
+# OIDC to sign the package metadata so installers can verify the
+# tarball was built from this exact commit. See
+# https://docs.npmjs.com/generating-provenance-statements.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write       # changesets bot pushes the "Version Packages" PR
+  pull-requests: write  # … and opens / updates it
+  id-token: write       # npm provenance attestation
+
+jobs:
+  release:
+    name: Version + publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # changesets/action diffs against the base branch.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          # Required for `npm publish --provenance` to authenticate.
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Sanity gate: refuse to publish a tarball that doesn't typecheck.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Create Release Pull Request or Publish
+        uses: changesets/action@v1
+        with:
+          # `pnpm version` consumes pending .changeset/ entries → bumps
+          # versions + writes CHANGELOG.md. The action opens / updates
+          # the "Version Packages" PR with this diff. When the PR is
+          # merged, the next run of this workflow takes the publish
+          # branch and runs `pnpm release`.
+          version: pnpm version
+          publish: pnpm release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # `npm publish --provenance` reads this; the changeset action
+          # runs `pnpm publish` per package which respects it.
+          NPM_CONFIG_PROVENANCE: "true"

@@ -104,6 +104,19 @@ When in doubt, add one.
 
 ## Release flow (maintainer)
 
+The default path is automated via `.github/workflows/release.yml`:
+
+1. PRs land on `main` carrying their own `.changeset/` entries.
+2. Each push to `main` triggers the release workflow. If any
+   changesets are queued, the changesets action opens (or updates)
+   a "Version Packages" PR with the version bumps + CHANGELOG diff.
+3. Reviewing and merging that PR triggers the workflow again. This
+   time it sees no pending changesets and runs `pnpm release`,
+   which `pnpm build`s and `changeset publish`es to npm with
+   `--provenance` attestation.
+
+The local equivalent (for emergency / one-off releases):
+
 ```bash
 pnpm version    # consume pending changesets → bump versions + write CHANGELOG.md
 pnpm release    # build + npm publish
