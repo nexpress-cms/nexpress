@@ -24,6 +24,7 @@ behavior they describe changes.
 | [observability.md](observability.md) | Logging, heartbeats, job logs |
 | [operations.md](operations.md) | Operations runbook — incident recipes, boot warnings, recovery |
 | [plugin-admin.md](plugin-admin.md) | Plugin admin UI surface |
+| [plugin-quickstart.md](plugin-quickstart.md) | Author your first plugin in ~30 minutes |
 | [plugin-render.md](plugin-render.md) | Plugin render hooks |
 | [scheduled-publishing.md](scheduled-publishing.md) | Scheduled publish flow |
 | [testing.md](testing.md) | Unit + integration test setup |
