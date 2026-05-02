@@ -122,24 +122,17 @@ on its own; nothing on the NexPress side needs to change.
 
 ## Backup and restore
 
-NexPress's source of truth is Postgres. The `./uploads` directory (or
-S3 bucket, with versioning) is the secondary store.
+NexPress's source of truth is Postgres; `./uploads` (or the configured
+S3 bucket) is the secondary store. They must be backed up together
+and restored in order, otherwise the system is left referencing data
+that isn't there. `nx_revisions` is edit history, not a backup — a
+row deleted by an admin is gone from the revisions table along with
+the document.
 
-1. **Postgres** — `pg_dump` is the supported backup format. Restore
-   with `pg_restore` against an empty database, then bring up
-   NexPress against the restored DB. Schema migrations are tracked in
-   `drizzle.__drizzle_migrations`; they restore with the dump.
-2. **Media (S3)** — enable bucket versioning. Restore a deleted file
-   by reverting the latest delete marker; restore a corrupted file by
-   selecting an earlier version.
-3. **Media (local)** — back up the `./uploads` directory along with
-   the DB, on the same cadence. Restoring half (DB but not files, or
-   vice versa) leaves the system in an inconsistent state where
-   media references point at missing keys.
-
-The data pipeline already tracks revisions in `nx_revisions` — that's
-edit history, not a backup. A row deleted by an admin is gone from
-the revisions table too.
+For the full procedure (cadence guidance, `pg_dump` flags, restore
+order, post-restore verification checklist, planned-maintenance
+pattern, DR drill, and automation snippets), see the live guide:
+**[`backup-restore.md`](backup-restore.md)**.
 
 ## Stuck in `(protected)` admin redirect loop
 

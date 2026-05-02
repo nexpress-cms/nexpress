@@ -13,6 +13,7 @@ behavior they describe changes.
 | --- | --- |
 | [agent-integration.md](agent-integration.md) | Agent / LLM integration surface |
 | [api-error-codes.md](api-error-codes.md) | Stable `code` strings on error responses |
+| [backup-restore.md](backup-restore.md) | Backup procedures, restore order, DR drill |
 | [caching.md](caching.md) | Cache strategy and invalidation |
 | [community.md](community.md) | Community / member features (live behavior) |
 | [deployment.md](deployment.md) | Production deployment notes |
