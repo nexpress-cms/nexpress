@@ -251,4 +251,4 @@ Bug reports and feature ideas welcome on the
 
 ## License
 
-MIT © 2026 Baesw
+MIT © 2026 Nexpress

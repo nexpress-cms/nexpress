@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Server-side core for NexPress — collections pipeline, auth, jobs, media, plugins, observability.",
   "license": "MIT",
-  "author": "Seungwon Bae <hahabsw@gmail.com>",
+  "author": "Nexpress",
   "homepage": "https://github.com/hahabsw/nexpress#readme",
   "repository": {
     "type": "git",
