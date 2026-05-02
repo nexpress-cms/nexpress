@@ -48,7 +48,7 @@ describe("job queue", () => {
         start: () => Promise.resolve(),
         stop: () => Promise.resolve(),
       });
-      expect(getOptionalJobQueue()?.isHealthy).toBeUndefined();
+      expect(typeof getOptionalJobQueue()?.isHealthy).toBe("undefined");
     });
 
     it("isHealthy returns true on a configured-and-alive adapter stub", async () => {
@@ -91,7 +91,7 @@ describe("job queue", () => {
         start: () => Promise.resolve(),
         stop: () => Promise.resolve(),
       });
-      expect(getOptionalJobQueue()?.countByState).toBeUndefined();
+      expect(typeof getOptionalJobQueue()?.countByState).toBe("undefined");
     });
 
     it("returns the fully-populated record consumers depend on", async () => {

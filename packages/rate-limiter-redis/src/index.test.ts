@@ -81,9 +81,16 @@ describe("RedisRateLimiter", () => {
 
   it("shutdown does not close a caller-supplied client", async () => {
     const evalStub = vi.fn().mockResolvedValue([1, 60_000]);
-    const client = fakeClient(evalStub);
+    const quitStub = vi.fn().mockResolvedValue("OK");
+    // Build the partial Redis manually so the spy is the same
+    // reference we assert on (avoiding `unbound-method` against
+    // the casted Redis type).
+    const client = {
+      eval: evalStub as unknown as Redis["eval"],
+      quit: quitStub as unknown as Redis["quit"],
+    } as Redis;
     const limiter = new RedisRateLimiter({ client });
     await limiter.shutdown();
-    expect(client.quit).not.toHaveBeenCalled();
+    expect(quitStub).not.toHaveBeenCalled();
   });
 });

@@ -166,4 +166,17 @@ describe("verifyStartupSafety", () => {
     const warning = warnings.find((w) => w.message.includes("multi-node safe"));
     expect(warning?.context).toMatchObject({ reason: "explicit_flag" });
   });
+
+  it("explicit NX_MULTI_NODE=false silences the container hint", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "false",
+      containerEnv: true,
+    });
+    expect(emitted).not.toContain("multi_node_local_storage");
+    expect(warnings).toEqual([]);
+  });
 });

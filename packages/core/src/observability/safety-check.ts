@@ -64,7 +64,14 @@ export function verifyStartupSafety(input: NxStartupSafetyInput): readonly strin
   const emitted: string[] = [];
 
   const multiNode = input.multiNodeFlag === "true" || input.multiNodeFlag === "1";
-  const containerInProd = input.nodeEnv === "production" && Boolean(input.containerEnv);
+  const explicitOptOut = input.multiNodeFlag === "false" || input.multiNodeFlag === "0";
+  // Explicit opt-out wins over the container heuristic: an
+  // operator who deliberately sets `NX_MULTI_NODE=false` on a
+  // managed-container deploy (single-replica on Kubernetes, etc.)
+  // should not see the hint, otherwise the warning the message
+  // tells them to silence isn't actually silenceable.
+  const containerInProd =
+    !explicitOptOut && input.nodeEnv === "production" && Boolean(input.containerEnv);
   const likelyMultiNode = multiNode || containerInProd;
 
   if (likelyMultiNode && input.storageAdapter === "local") {

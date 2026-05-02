@@ -23,9 +23,7 @@ interface Bucket {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __nx_rate_limit_store: Map<string, Bucket> | undefined;
-  // eslint-disable-next-line no-var
   var __nx_rate_limit_cleanup_started: boolean | undefined;
 }
 
@@ -46,19 +44,26 @@ if (!globalThis.__nx_rate_limit_cleanup_started) {
 }
 
 export class InMemoryRateLimiter implements NxRateLimiterAdapter {
-  async check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision> {
+  // The body is synchronous — buckets live in the in-process Map.
+  // We return a resolved Promise rather than marking `async` so the
+  // adapter's signature still matches the contract without producing
+  // an empty `await` warning under typed lint.
+  check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision> {
     const now = Date.now();
     const bucket = store.get(key);
     if (!bucket || now > bucket.resetAt) {
       store.set(key, { count: 1, resetAt: now + windowMs });
-      return { limited: false, retryAfterSeconds: Math.ceil(windowMs / 1000) };
+      return Promise.resolve({
+        limited: false,
+        retryAfterSeconds: Math.ceil(windowMs / 1000),
+      });
     }
     bucket.count += 1;
     const retryAfterSeconds = Math.ceil((bucket.resetAt - now) / 1000);
     if (bucket.count > limit) {
-      return { limited: true, retryAfterSeconds };
+      return Promise.resolve({ limited: true, retryAfterSeconds });
     }
-    return { limited: false, retryAfterSeconds };
+    return Promise.resolve({ limited: false, retryAfterSeconds });
   }
 }
 
