@@ -210,24 +210,29 @@ describe.skipIf(skipIfNoTestDb())(
       });
       const id = created.doc.id as string;
 
-      // Try updating from default-site context with a body
-      // field that tries to flip siteId — pipeline must
-      // ignore.
-      await saveDocument(
-        "posts",
-        id,
-        {
-          title: "Sticky updated",
-          excerpt: "x",
-          content: lexicalParagraph("body"),
-          publishedAt: new Date().toISOString(),
-          author: session.userId,
-          siteId: "default",
-        },
-        actor(),
-      );
+      // Issue #367 — a cross-site update with a `siteId` flip
+      // attempt now fails the by-id load with Forbidden, before
+      // the pipeline ever sees the bogus payload. The previous
+      // test asserted the stick was an in-pipeline ignore; the
+      // new behavior is stricter: refuse the write entirely.
+      await expect(
+        saveDocument(
+          "posts",
+          id,
+          {
+            title: "Sticky updated",
+            excerpt: "x",
+            content: lexicalParagraph("body"),
+            publishedAt: new Date().toISOString(),
+            author: session.userId,
+            siteId: "default",
+          },
+          actor(),
+        ),
+      ).rejects.toThrow(/Forbidden|cross-site/);
 
-      // Row should still belong to "stick".
+      // Row should still belong to "stick" — refused write means
+      // nothing changed.
       const stickView = await withCurrentSite("stick", async () =>
         findDocuments("posts", { limit: 10 }),
       );
