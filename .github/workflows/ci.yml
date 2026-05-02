@@ -1,9 +1,9 @@
 name: CI
 
-# Temporarily manual-only while the repo's Actions billing is unresolved.
-# Re-enable push/pull_request triggers once the account is restored — the
-# rest of the workflow (install → build → typecheck → test) stays unchanged.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
