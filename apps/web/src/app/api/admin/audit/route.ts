@@ -23,9 +23,6 @@ export async function GET(request: NextRequest) {
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
-    if (!can(user, "community.moderate")) {
-      throw new NxForbiddenError("audit", "read");
-    }
 
     const params = request.nextUrl.searchParams;
     const targetType = params.get("targetType")?.trim();
@@ -54,6 +51,13 @@ export async function GET(request: NextRequest) {
     // `siteId=<id>` other than the user's accessible set is
     // also rejected so a per-site admin can't probe foreign
     // tenants through this endpoint.
+    //
+    // Issue #365 — authorization runs AFTER site resolution so
+    // per-site moderators (whose membership exists on a tenant
+    // but who don't carry a global `community.moderate` role)
+    // aren't bounced by an early global precheck. Each branch
+    // below carries its own authorize call against the right
+    // site.
     const rawSiteFilter = params.get("siteId")?.trim();
     let siteIdFilter: string | null | undefined;
     if (rawSiteFilter) {
@@ -78,6 +82,14 @@ export async function GET(request: NextRequest) {
         siteIdFilter = rawSiteFilter;
       } else {
         throw new NxForbiddenError("audit", "cross-site");
+      }
+    } else {
+      // Implicit "current site" path. Authorize against the
+      // resolved request site, not via a global pre-check —
+      // a per-site moderator with no global role still needs
+      // to be able to read their own tenant's audit log.
+      if (!(await hasRoleOnSite(user, "moderator"))) {
+        throw new NxForbiddenError("audit", "read");
       }
     }
 
