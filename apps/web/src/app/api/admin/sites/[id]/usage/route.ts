@@ -3,13 +3,13 @@ import {
   NxValidationError,
   getSiteById,
   getSiteUsageSummary,
-  can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
+import { canManageSite } from "@/lib/site-authz";
 
 /**
  * Phase 15.9 — per-site usage summary. Surfaces in the
@@ -29,10 +29,14 @@ export async function GET(
   try {
     await ensureFor("write");
     const user = await requireAuth(request);
-    if (!can(user, "admin.manage")) {
+    const { id } = await context.params;
+    // Issue #366 — was gated only on global `admin.manage`, which
+    // let a non-super global admin query any tenant's row counts
+    // and learn private content shape. Use the same target-site
+    // ladder as the sister site detail/update/delete routes.
+    if (!(await canManageSite(user, id))) {
       throw new NxForbiddenError("sites/usage", "read");
     }
-    const { id } = await context.params;
     const site = await getSiteById(id);
     if (!site) {
       throw new NxValidationError("Invalid input", [

@@ -1,15 +1,10 @@
 import {
-  NX_DEFAULT_SITE_ID,
   NxForbiddenError,
   NxValidationError,
-  type NxAuthUser,
-  ROLE_HIERARCHY,
   deleteSite,
-  getMembership,
   getSiteById,
   isSuperAdmin,
   updateSite,
-  can,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
@@ -17,6 +12,7 @@ import type { NextRequest } from "next/server";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
+import { canManageSite } from "@/lib/site-authz";
 
 /**
  * Phase 15.3 — per-site admin endpoints.
@@ -26,8 +22,7 @@ import { ensureFor } from "@/lib/init-core";
  *   DELETE /api/admin/sites/{id}    delete (default site is refused by
  *                                   the registry layer)
  *
- * Issue #216 — gate per-site access by site membership rather
- * than the global admin role:
+ * Authorization ladder (`canManageSite` in `@/lib/site-authz`):
  *
  *   - Super-admin can read / update / delete any site.
  *   - A user with an explicit `nx_site_memberships` row (with
@@ -38,20 +33,6 @@ import { ensureFor } from "@/lib/init-core";
  *   - Delete stays super-admin only — removing a tenant is not
  *     a per-site operation; it strikes the row from the registry.
  */
-async function canManageSite(user: NxAuthUser, siteId: string): Promise<boolean> {
-  if (await isSuperAdmin(user)) return true;
-  if (siteId === NX_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
-  // Issue #216 — `hasRoleOnSite` falls back to the user's
-  // global role when no explicit membership exists on the
-  // target site, which would let any global admin manage
-  // every site (the bug this issue closes). Read membership
-  // directly so the gate only opens for users with an
-  // explicit `nx_site_memberships` row at admin rank or
-  // above on this specific site.
-  const membership = await getMembership(siteId, user.id);
-  if (!membership) return false;
-  return ROLE_HIERARCHY[membership.role] >= ROLE_HIERARCHY.admin;
-}
 
 export async function GET(
   request: NextRequest,
