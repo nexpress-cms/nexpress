@@ -8,6 +8,7 @@
 
 import { expect, test } from "@playwright/test";
 
+import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { E2E_ADMIN } from "./fixtures/seed.js";
 
 test.describe("admin sign-in / sign-out", () => {
@@ -18,24 +19,8 @@ test.describe("admin sign-in / sign-out", () => {
     // Bypass cached state from a previous run.
     await context.clearCookies();
 
-    await page.goto("/admin/login");
-    await expect(page.getByRole("heading", { name: "NexPress" })).toBeVisible();
-
-    await page.locator("#email").fill(E2E_ADMIN.email);
-    await page.locator("#password").fill(E2E_ADMIN.password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-
-    // Successful sign-in lands on /admin (the dashboard). The
-    // bootstrap layout reads `nx-session` so a missing cookie
-    // would 302 us back to /admin/login — asserting the URL is
-    // the simplest end-to-end check that auth wired through.
-    await page.waitForURL("**/admin", { timeout: 10_000 });
+    await signInAsE2EAdmin(page);
     await expect(page).toHaveURL(/\/admin$/);
-
-    // Topbar shows the admin user's name + role badge once logged in.
-    await expect(
-      page.getByRole("heading", { name: `Welcome back, ${E2E_ADMIN.name}` }),
-    ).toBeVisible();
 
     // Verify the logout entry is reachable from the topbar UI —
     // shadcn's DropdownMenu closes on select and consumes the

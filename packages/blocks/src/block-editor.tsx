@@ -395,9 +395,21 @@ export const BlockPageEditor = ({ blocks: initialBlocks, onChange, availableBloc
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // The parent re-creates `initialBlocks` on every render (the
+  // admin field renderer maps the form value through
+  // `toBlockInstances`, which always returns a fresh array).
+  // Comparing reference would re-fire the RESET effect endlessly,
+  // which combined with the onChange effect below produces an
+  // infinite update loop on a page with no blocks. Compare the
+  // serialized shape instead so the effect only runs when the
+  // *content* of `initialBlocks` actually changed.
+  const initialBlocksKey = useMemo(
+    () => JSON.stringify(initialBlocks),
+    [initialBlocks],
+  );
   useEffect(() => {
-    dispatch({ type: "RESET", blocks: initialBlocks });
-  }, [initialBlocks]);
+    dispatch({ type: "RESET", blocks: JSON.parse(initialBlocksKey) as NxBlockInstance[] });
+  }, [initialBlocksKey]);
 
   useEffect(() => {
     onChange(blocks);
