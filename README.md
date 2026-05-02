@@ -251,4 +251,4 @@ Bug reports and feature ideas welcome on the
 
 ## License
 
-MIT © 2026 Seungwon Bae
+MIT © 2026 Baesw
