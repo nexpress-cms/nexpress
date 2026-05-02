@@ -24,7 +24,14 @@ export default defineConfig({
   globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: false, // Tests share a single DB; serialize to keep state legible.
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  // 1 retry covers the dev-server cold-compile / hydration-race
+  // window: the first run on a fresh webServer can land a click
+  // before React's onSubmit handler attaches, which makes
+  // form-driven specs flake on the very first hit. The retry
+  // sees a warmed webServer and behaves deterministically. CI
+  // already had retry=1 for a similar reason; this just unifies
+  // local behavior.
+  retries: 1,
   workers: 1,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {

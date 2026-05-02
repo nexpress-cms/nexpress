@@ -8,7 +8,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+import { signInViaForm } from "./fixtures/auth-helpers.js";
 import { E2E_ADMIN } from "./fixtures/seed.js";
 
 test.describe("admin sign-in / sign-out", () => {
@@ -19,7 +19,7 @@ test.describe("admin sign-in / sign-out", () => {
     // Bypass cached state from a previous run.
     await context.clearCookies();
 
-    await signInAsE2EAdmin(page);
+    await signInViaForm(page);
     await expect(page).toHaveURL(/\/admin$/);
 
     // Verify the logout entry is reachable from the topbar UI —

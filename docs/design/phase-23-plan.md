@@ -1,7 +1,7 @@
 # Phase 23 plan — publish, harden, polish
 
 **Opened:** 2026-05-02
-**Status:** in progress (23.7.1 done — Redis reference adapter shipped; 23.6.2 still pending; 23.8 still blocked on CI billing)
+**Status:** in progress (23.6.2 done — publish + theme specs shipped; 23.8 still blocked on CI billing)
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
@@ -32,7 +32,7 @@ everything we've learned by then.
 | 23.5 | Stuck-job detector + admin surface    | 2 (ops)   | M      | done     |
 | 23.6 | E2E coverage on golden paths          | 4 (DX)    | M      | partial  |
 | 23.6.1 | Bugs surfaced by E2E (blocks loop + seo strip + auth helper) | 4 (DX) | S | done |
-| 23.6.2 | E2E publish flow + theme switch (re-attempt)| 4 (DX) | S | pending |
+| 23.6.2 | E2E publish flow + theme switch (re-attempt)| 4 (DX) | S | done |
 | 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | done     |
 | 23.7.1 | `@nexpress/rate-limiter-redis` reference adapter | 2 (ops) | M | done |
 | 23.8 | First publish run (when CI unblocks)  | 1 (ship)  | S      | blocked  |
@@ -196,38 +196,61 @@ the Playwright browser context. The two production bugs above
 are merged in isolation while the form-submission diagnosis
 moves to 23.6.2.
 
-### 23.6.2 — E2E publish flow + theme switch (re-attempt)
+### 23.6.2 — E2E publish flow + theme switch (done)
 
-Pick up where 23.6.1 stalled.
+**Diagnosis of 23.6.1's blocker:** the form button click was
+landing before React's `onSubmit` handler attached during the
+dev-server cold-compile / hydration window. The form has no
+`action` attribute, so the default browser submit fired (GET to
+the same URL), which produced no `/api/auth/login` POST and
+left the spec hanging on `waitForURL`. Two changes fix it:
 
-Pre-requisite: diagnose why `<button type="submit">` clicks in
-the admin login + create-page forms don't reach the server when
-driven by Playwright. Suspects:
-- React 19 form action / dev-mode boundary swallowing the submit.
-- Hydration race — the click lands before the form's
-  `onSubmit` handler is wired (the Playwright trace shows the
-  click "succeeded" but no fetch fires).
-- A reset-fixture timing issue — the e2e admin's `tokenVersion`
-  is bumped between `globalSetup` and the first request, so the
-  POSTed credentials sign a JWT that's already stale. (Less
-  likely; the auth.spec happy path passes consistently.)
+- `globalSetup` pre-warms `/admin/login`,
+  `/admin/collections/pages/create`, and `/admin/settings` so
+  the routes are compiled before the first spec runs.
+- Playwright config sets `retries: 1` so a still-cold first hit
+  doesn't bring the whole suite red — the retry sees a warm
+  webServer and behaves deterministically.
 
-Once that's understood, the specs are the same as the original
-23.6 plan:
+Most specs use the new **API sign-in helper** (`signInAsE2EAdmin`
+posts directly to `/api/auth/login`, immune to hydration races)
+because they're testing something *other* than auth. The auth
+spec keeps `signInViaForm` so we still catch login UX
+regressions on the form path.
 
-- `publish.spec.ts` — sign in, `/admin/collections/pages/create`,
-  fill title + seoDescription, Publish, assert public render at
-  `/<slug>`.
-- `theme.spec.ts` — sign in, `/admin/settings`, click an
-  inactive theme's Activate button, assert the card flips to
-  "In use" (admin round-trip). Public-site CSS verification
-  is a stretch.
-- `install-plugin.spec.ts` *(if cheap)* — read-only assertion
-  that the bundled plugin set surfaces in `/admin/plugins`.
+**Shipped specs:**
 
-Open question: per-test fresh sign-in vs Playwright
-`storageState` shared session. Default to fresh until the suite
-is big enough to feel the cost.
+- `publish.spec.ts` — API sign-in, `/admin/collections/pages/create`,
+  fill title + seoDescription, Publish, watch
+  `POST /api/collections/pages 201`, GET the public `/<slug>`
+  (200), confirm the doc shows up in the admin list view. Body-
+  text assertion on the public page is intentionally skipped:
+  `PageDefaultTemplate` falls back to nothing when `blocks` is
+  empty, and authoring blocks via Lexical in the spec is a
+  fragile rabbit hole for marginal coverage. The admin list
+  check is the more durable signal that publish wired through.
+- `theme.spec.ts` — API sign-in, `/admin/settings` → "Theme"
+  tab, click any "Activate" button (registry returns "In use"
+  for the active theme so any "Activate" is by definition
+  inactive), assert `PUT /api/admin/themes/active 200` plus the
+  card flips to "In use". Resets to `default` via direct API
+  call so the dev environment lands back where it started.
+
+**Not shipped (deliberately):**
+
+- `install-plugin.spec.ts` — the v1 admin's plugin index doesn't
+  expose a meaningful read-only contract beyond what the
+  collection routes already give us. Will revisit when the
+  marketplace MVP (roadmap category 8) starts taking shape.
+- Public-site theme verification — body-class / data-attribute
+  conventions vary across themes. The admin round-trip is the
+  regression-catching part; the rendered HTML is the theme's
+  responsibility, not the framework's.
+
+**Side improvement shipped here:** `signInAsE2EAdmin` and
+`signInViaForm` are now distinct helpers in `auth-helpers.ts`,
+documented to make the choice explicit ("am I testing auth, or
+do I just need to *be* authed").
 
 ### 23.7 — Multi-node rate-limit adapter (done)
 
