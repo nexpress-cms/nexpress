@@ -76,6 +76,53 @@ move existing files. The DB stores the storage key, not the URL —
 The boot warning `multi_node_local_storage` will silence itself once
 the adapter flips.
 
+## Forced sign-out for one user
+
+Use this when a single account is compromised — leaked password, lost
+device, departing employee with active sessions. It invalidates every
+JWT issued for that user across every instance, but leaves all other
+users untouched. Rotating `NX_SECRET` (below) is the wider hammer for
+suspected secret leakage.
+
+The mechanism is a `tokenVersion` column on `nx_users`. Every JWT
+encodes the version it was minted against; `verifyTokenFull` re-reads
+the row on each request and rejects tokens whose version no longer
+matches. Bumping the column forces re-authentication on the user's
+next request, on every instance.
+
+```bash
+# By user id (preferred — no email lookup race).
+psql "$DATABASE_URL" -c "
+  UPDATE nx_users
+  SET token_version = token_version + 1
+  WHERE id = 'a1b2c3d4-…';
+"
+
+# By email — convenient for ops but loses to a concurrent email change.
+psql "$DATABASE_URL" -c "
+  UPDATE nx_users
+  SET token_version = token_version + 1
+  WHERE email = 'compromised@example.com';
+"
+
+# Optional cleanup — drop persisted refresh sessions for the same user.
+# Not strictly required (the bump invalidates them too) but good hygiene.
+psql "$DATABASE_URL" -c "
+  DELETE FROM nx_sessions WHERE user_id = 'a1b2c3d4-…';
+"
+```
+
+Programmatic equivalent — call `invalidateAllSessions(userId, db)`
+from `@nexpress/core/auth`. It does both the bump and the session
+delete in a single transaction. The integration test in
+`apps/web/tests/token-revocation.integration.test.ts` confirms the
+multi-instance behaviour: a bump on instance A rejects the previously-
+issued JWT on instance B's next request.
+
+For members (separate `nx_members` table with its own `token_version`
+column), the same shape applies — update `nx_members.token_version`
+and clear the relevant `nx_member_sessions` rows.
+
 ## Rotating `NX_SECRET`
 
 Rotating the JWT signing secret invalidates every existing session.
