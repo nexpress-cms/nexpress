@@ -25,9 +25,12 @@ export interface NxBlockInstance {
   props: Record<string, unknown>;
 }
 
-export interface NxPageBlocks {
-  blocks: NxBlockInstance[];
-}
+// The `blocks` field on a document is stored and edited as a flat
+// array of block instances — the editor, the JSONB column, the
+// seed scripts, and every theme template all pass an array. The
+// historical `{ blocks: [...] }` wrapper was a typing-only mismatch
+// that crashed `renderBlocks` whenever a page actually had blocks.
+export type NxPageBlocks = NxBlockInstance[];
 
 export interface NxDataBinding {
   collection: string;

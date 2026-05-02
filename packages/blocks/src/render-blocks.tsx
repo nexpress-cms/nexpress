@@ -17,13 +17,13 @@ export const renderBlocks = (
   pageBlocks: NxPageBlocks,
   registry: NxBlockRegistry = defaultRegistry,
 ): React.ReactElement | null => {
-  if (pageBlocks.blocks.length === 0) {
+  if (pageBlocks.length === 0) {
     return null;
   }
 
   return (
     <div className="nx-blocks">
-      {pageBlocks.blocks.map((instance) => {
+      {pageBlocks.map((instance) => {
         const definition = registry.get(instance.type);
 
         if (!definition) {
