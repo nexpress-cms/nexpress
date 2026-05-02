@@ -161,9 +161,56 @@ excludes `src/integration/` so the cross-directory import doesn't trip
 - **pg-boss queue** — add a test that enqueues a job, waits for the
   worker to pick it up, and asserts the handler ran.
 
+## E2E tests (`pnpm --filter @nexpress/web test:e2e`)
+
+Playwright suite under `apps/web/tests/e2e/`. Drives a real browser
+against a running NexPress so we catch regressions that the
+integration suite can't see — middleware-shaped routing, hydration
+errors, cookie-driven flows that depend on the layered admin /
+public render.
+
+### One-time setup
+
+```bash
+pnpm install
+pnpm --filter @nexpress/web exec playwright install chromium
+```
+
+The browser binary lives in `~/.cache/ms-playwright/`; subsequent
+runs reuse it.
+
+### Running locally
+
+```bash
+pnpm --filter @nexpress/web test:e2e          # headless
+pnpm --filter @nexpress/web test:e2e:ui       # Playwright UI mode
+```
+
+The config (`apps/web/playwright.config.ts`) starts `next dev` on
+port 3001 (separate from a developer's 3000) so e2e doesn't collide
+with an active `pnpm dev`. `globalSetup` loads the repo `.env` and
+seeds an idempotent admin (`e2e-admin@example.com`) — the spec files
+sign in as that fixture user and never touch the operator's real
+admin row.
+
+CI sets `PLAYWRIGHT_USE_BUILD=1` so the run instead uses
+`next start` against a pre-built app — production-shaped output, no
+transpile cost. Browsers install via
+`playwright install --with-deps chromium` in the CI job.
+
+### Current coverage
+
+| Spec                               | Covers                                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| `auth.spec.ts`                     | Sign in via form, /admin lands, logout entry visible, POST /api/auth/logout clears session, `/admin` redirects to login. Plus a negative-path "wrong password stays on login" check. |
+
+Publish flow + theme switch + plugin enumeration are tracked under
+Phase 23.6.1; the infra is in place, only the spec files are
+pending.
+
 ## CI
 
-`.github/workflows/ci.yml` defines two jobs on Ubuntu (Node 22, pnpm
+`.github/workflows/ci.yml` defines three jobs on Ubuntu (Node 22, pnpm
 10.33):
 
 1. `checks` — install → build → typecheck → `pnpm test` (unit suite).
@@ -171,8 +218,14 @@ excludes `src/integration/` so the cross-directory import doesn't trip
    `TEST_DATABASE_URL=postgres://nexpress:nexpress@localhost:5432/nexpress_test`,
    and runs `pnpm test:integration` (#275). Covers the pipeline /
    write-path code that mock-based unit tests can't.
+3. `e2e` — separate Postgres service container (DB
+   `nexpress_e2e`), `playwright install --with-deps chromium`,
+   `pnpm build`, then `pnpm --filter @nexpress/web test:e2e` with
+   `PLAYWRIGHT_USE_BUILD=1`. Uploads the Playwright report as a
+   build artifact on failure.
 
 Currently `workflow_dispatch` only while the repo's Actions billing is being
 resolved — push / pull_request triggers will be re-enabled without other
-changes once that's settled. After the integration job has been green for a
-few PR runs in normal mode, mark it required for merges to `main`.
+changes once that's settled. After the integration + e2e jobs have been
+green for a few PR runs in normal mode, mark them required for merges to
+`main`.

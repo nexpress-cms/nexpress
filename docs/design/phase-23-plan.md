@@ -1,7 +1,7 @@
 # Phase 23 plan — publish, harden, polish
 
 **Opened:** 2026-05-02
-**Status:** in progress (23.5 done; 23.6 next)
+**Status:** in progress (23.6 partial — auth golden path + Playwright infra; 23.6.1 next)
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
@@ -30,7 +30,8 @@ everything we've learned by then.
 | 23.3 | Plugin author quickstart              | 4 (DX)    | S      | done     |
 | 23.4 | Multi-instance token revocation verify| 2 (ops)   | S      | done     |
 | 23.5 | Stuck-job detector + admin surface    | 2 (ops)   | M      | done     |
-| 23.6 | E2E coverage on golden paths          | 4 (DX)    | M      | pending  |
+| 23.6 | E2E coverage on golden paths          | 4 (DX)    | M      | partial  |
+| 23.6.1 | E2E publish flow + theme switch     | 4 (DX)    | S      | pending  |
 | 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | pending  |
 | 23.8 | First publish run (when CI unblocks)  | 1 (ship)  | S      | blocked  |
 
@@ -137,6 +138,49 @@ Postgres.
 
 Stretch: cover a pgsql-backed search query through the `/search`
 page to lock in the search UX behavior.
+
+**Status update (2026-05-03):** Playwright is wired
+(`apps/web/playwright.config.ts`, `tests/e2e/`, `pnpm test:e2e`),
+the global setup seeds an idempotent e2e admin
+(`E2E_ADMIN` fixture), the auth golden path is covered by
+`auth.spec.ts` (sign in via form, lands on `/admin`, dropdown
+exposes the logout entry, direct POST to `/api/auth/logout`
+clears the session, `/admin` then 302s back to login, plus a
+negative-path "wrong password stays on login" assertion), and
+the CI workflow has a dedicated `e2e` job using the Postgres
+service container with `PLAYWRIGHT_USE_BUILD=1` so Playwright
+runs against `next start` (production-shaped output). Browsers
+land via `playwright install --with-deps chromium`.
+
+The publish-a-post / theme-switch / install-plugin specs are
+deferred to **23.6.1** to keep the infra PR digestible. Same
+Playwright wiring; the open work is just the additional `.spec.ts`
+files and any selector resilience the publish/theme flows need.
+
+### 23.6.1 — E2E publish flow + theme switch (deferred from 23.6)
+
+Builds on the Playwright infra shipped in 23.6.
+
+- `publish.spec.ts` — sign in (re-using the helper from `auth.spec.ts`),
+  navigate to `/admin/collections/posts/new`, fill title + a single
+  text block (Lexical input is the load-bearing tricky part), publish,
+  then `page.goto("/blog/<slug>")` and assert the public view renders
+  the title and body.
+- `theme.spec.ts` — sign in, navigate to `/admin/settings/theme`,
+  switch from default → minimal, assert `/` renders with the new
+  theme's body class.
+- `install-plugin.spec.ts` *(if cheap)* — assert `/admin/plugins`
+  surfaces the bundled plugins (reading-time, seo-audit, forum,
+  oauth-github, oauth-google) and that one of them is enabled.
+  Pure read-only check; install-from-marketplace is a 1.x feature
+  so we don't simulate config edits here.
+- Stretch: `search.spec.ts` — type a query that matches a seeded
+  post, assert results render with a highlight.
+
+Open question: do we share a single signed-in browser context
+across the publish + theme specs (faster, less reliable on
+isolation) or sign in fresh per test (slower, deterministic). Keep
+fresh per-test until the suite is large enough to feel the cost.
 
 ### 23.7 — Multi-node rate-limit adapter
 

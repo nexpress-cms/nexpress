@@ -28,6 +28,9 @@ Thumbs.db
 
 # Test
 coverage/
+playwright-report/
+test-results/
+playwright/.cache/
 
 # Docker volumes
 pgdata/
