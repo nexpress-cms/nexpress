@@ -72,7 +72,24 @@ interface JobSummary {
   source?: "live" | "archive";
 }
 
-/** Phase 20.4 — `/api/admin/jobs/health` payload. */
+/** Phase 20.4 + 23.5 — `/api/admin/jobs/health` payload. */
+interface JobStateCounts {
+  created: number;
+  active: number;
+  completed: number;
+  failed: number;
+  retry: number;
+  cancelled: number;
+  expired: number;
+}
+
+interface StuckJobsBlock {
+  counts: JobStateCounts;
+  thresholds: { failed: number; expired: number };
+  failedOverThreshold: boolean;
+  expiredOverThreshold: boolean;
+}
+
 interface WorkerHealthResponse {
   workers?: Array<{
     id: string;
@@ -85,6 +102,7 @@ interface WorkerHealthResponse {
   totalCount?: number;
   newestHeartbeat?: string | null;
   pause?: { paused: boolean; pausedAt?: string | null };
+  stuck?: StuckJobsBlock | null;
 }
 
 interface JobListResponse {
@@ -469,6 +487,10 @@ function WorkerHealthCard() {
   const ageMs = newest ? renderedAt - newest.getTime() : null;
   const paused = data.pause?.paused === true;
 
+  const stuck = data.stuck ?? null;
+  const showStuckWarning =
+    stuck !== null && (stuck.failedOverThreshold || stuck.expiredOverThreshold);
+
   return (
     <Card className="border-border/60 shadow-sm">
       <CardContent className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
@@ -490,10 +512,19 @@ function WorkerHealthCard() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {paused ? (
             <span className="rounded-md border border-amber-300/60 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
               Queue paused
+            </span>
+          ) : null}
+          {showStuckWarning ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-rose-300/60 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-900"
+              title={stuckTooltip(stuck)}
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+              {stuckLabel(stuck)}
             </span>
           ) : null}
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={refreshing}>
@@ -506,6 +537,21 @@ function WorkerHealthCard() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function stuckLabel(stuck: StuckJobsBlock): string {
+  const parts: string[] = [];
+  if (stuck.failedOverThreshold) parts.push(`${stuck.counts.failed} failed`);
+  if (stuck.expiredOverThreshold) parts.push(`${stuck.counts.expired} expired`);
+  return parts.join(" · ");
+}
+
+function stuckTooltip(stuck: StuckJobsBlock): string {
+  return (
+    `Failed jobs: ${stuck.counts.failed} (threshold ${stuck.thresholds.failed}). ` +
+    `Expired jobs: ${stuck.counts.expired} (threshold ${stuck.thresholds.expired}). ` +
+    `Configure under \`jobs.stuckThreshold\` in nexpress.config.ts.`
   );
 }
 

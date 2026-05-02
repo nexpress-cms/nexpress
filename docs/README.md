@@ -13,6 +13,7 @@ behavior they describe changes.
 | --- | --- |
 | [agent-integration.md](agent-integration.md) | Agent / LLM integration surface |
 | [api-error-codes.md](api-error-codes.md) | Stable `code` strings on error responses |
+| [backup-restore.md](backup-restore.md) | Backup procedures, restore order, DR drill |
 | [caching.md](caching.md) | Cache strategy and invalidation |
 | [community.md](community.md) | Community / member features (live behavior) |
 | [deployment.md](deployment.md) | Production deployment notes |
@@ -23,6 +24,7 @@ behavior they describe changes.
 | [observability.md](observability.md) | Logging, heartbeats, job logs |
 | [operations.md](operations.md) | Operations runbook — incident recipes, boot warnings, recovery |
 | [plugin-admin.md](plugin-admin.md) | Plugin admin UI surface |
+| [plugin-quickstart.md](plugin-quickstart.md) | Author your first plugin in ~30 minutes |
 | [plugin-render.md](plugin-render.md) | Plugin render hooks |
 | [scheduled-publishing.md](scheduled-publishing.md) | Scheduled publish flow |
 | [testing.md](testing.md) | Unit + integration test setup |

@@ -5,10 +5,12 @@ import { reportError } from "../observability/error-reporter.js";
 import { getAllJobHandlers } from "./handlers.js";
 import { recordJobLog, runInJobContext } from "./job-log.js";
 import {
+  type NxJobCountOptions,
   type NxJobListOptions,
   type NxJobListResult,
   type NxJobQueue,
   type NxJobState,
+  type NxJobStateCounts,
   type NxJobSummary,
   type NxScheduleSummary,
 } from "./queue.js";
@@ -393,6 +395,63 @@ export class PgBossAdapter implements NxJobQueue {
         ORDER BY name ASC, key ASC`,
     );
     return (result.rows ?? []).map(scheduleRowToSummary);
+  }
+
+  /**
+   * Phase 23.5 — `GROUP BY state` across the union of pgboss.job
+   * (live) and pgboss.archive (rolled). Returns a fully-populated
+   * record so callers can index without optional chaining.
+   *
+   * Uses `created_on` for the optional `since` filter. Both tables
+   * carry the same column, so the union pre-filter is a single
+   * predicate.
+   */
+  async countByState(options?: NxJobCountOptions): Promise<NxJobStateCounts> {
+    const db = (
+      this.boss as unknown as {
+        db: {
+          executeSql: (
+            sql: string,
+            params?: unknown[],
+          ) => Promise<{ rows: Array<{ state: string; count: string | number }> }>;
+        };
+      }
+    ).db;
+    const params: unknown[] = [];
+    let whereSql = "";
+    if (options?.since) {
+      params.push(options.since.toISOString());
+      whereSql = `WHERE created_on >= $${params.length}`;
+    }
+    const result = await db.executeSql(
+      `SELECT state::text AS state, COUNT(*)::bigint AS count
+         FROM (
+           SELECT state, created_on FROM pgboss.job
+           UNION ALL
+           SELECT state, created_on FROM pgboss.archive
+         ) jobs
+         ${whereSql}
+        GROUP BY state`,
+      params,
+    );
+    const counts: NxJobStateCounts = {
+      created: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      retry: 0,
+      cancelled: 0,
+      expired: 0,
+    };
+    for (const row of result.rows ?? []) {
+      const key = row.state as keyof NxJobStateCounts;
+      if (key in counts) {
+        const value =
+          typeof row.count === "number" ? row.count : Number.parseInt(row.count, 10);
+        counts[key] = Number.isFinite(value) ? value : 0;
+      }
+    }
+    return counts;
   }
 
   async retryJob(id: string): Promise<string> {

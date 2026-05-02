@@ -76,6 +76,53 @@ move existing files. The DB stores the storage key, not the URL —
 The boot warning `multi_node_local_storage` will silence itself once
 the adapter flips.
 
+## Forced sign-out for one user
+
+Use this when a single account is compromised — leaked password, lost
+device, departing employee with active sessions. It invalidates every
+JWT issued for that user across every instance, but leaves all other
+users untouched. Rotating `NX_SECRET` (below) is the wider hammer for
+suspected secret leakage.
+
+The mechanism is a `tokenVersion` column on `nx_users`. Every JWT
+encodes the version it was minted against; `verifyTokenFull` re-reads
+the row on each request and rejects tokens whose version no longer
+matches. Bumping the column forces re-authentication on the user's
+next request, on every instance.
+
+```bash
+# By user id (preferred — no email lookup race).
+psql "$DATABASE_URL" -c "
+  UPDATE nx_users
+  SET token_version = token_version + 1
+  WHERE id = 'a1b2c3d4-…';
+"
+
+# By email — convenient for ops but loses to a concurrent email change.
+psql "$DATABASE_URL" -c "
+  UPDATE nx_users
+  SET token_version = token_version + 1
+  WHERE email = 'compromised@example.com';
+"
+
+# Optional cleanup — drop persisted refresh sessions for the same user.
+# Not strictly required (the bump invalidates them too) but good hygiene.
+psql "$DATABASE_URL" -c "
+  DELETE FROM nx_sessions WHERE user_id = 'a1b2c3d4-…';
+"
+```
+
+Programmatic equivalent — call `invalidateAllSessions(userId, db)`
+from `@nexpress/core/auth`. It does both the bump and the session
+delete in a single transaction. The integration test in
+`apps/web/tests/token-revocation.integration.test.ts` confirms the
+multi-instance behaviour: a bump on instance A rejects the previously-
+issued JWT on instance B's next request.
+
+For members (separate `nx_members` table with its own `token_version`
+column), the same shape applies — update `nx_members.token_version`
+and clear the relevant `nx_member_sessions` rows.
+
 ## Rotating `NX_SECRET`
 
 Rotating the JWT signing secret invalidates every existing session.
@@ -122,24 +169,17 @@ on its own; nothing on the NexPress side needs to change.
 
 ## Backup and restore
 
-NexPress's source of truth is Postgres. The `./uploads` directory (or
-S3 bucket, with versioning) is the secondary store.
+NexPress's source of truth is Postgres; `./uploads` (or the configured
+S3 bucket) is the secondary store. They must be backed up together
+and restored in order, otherwise the system is left referencing data
+that isn't there. `nx_revisions` is edit history, not a backup — a
+row deleted by an admin is gone from the revisions table along with
+the document.
 
-1. **Postgres** — `pg_dump` is the supported backup format. Restore
-   with `pg_restore` against an empty database, then bring up
-   NexPress against the restored DB. Schema migrations are tracked in
-   `drizzle.__drizzle_migrations`; they restore with the dump.
-2. **Media (S3)** — enable bucket versioning. Restore a deleted file
-   by reverting the latest delete marker; restore a corrupted file by
-   selecting an earlier version.
-3. **Media (local)** — back up the `./uploads` directory along with
-   the DB, on the same cadence. Restoring half (DB but not files, or
-   vice versa) leaves the system in an inconsistent state where
-   media references point at missing keys.
-
-The data pipeline already tracks revisions in `nx_revisions` — that's
-edit history, not a backup. A row deleted by an admin is gone from
-the revisions table too.
+For the full procedure (cadence guidance, `pg_dump` flags, restore
+order, post-restore verification checklist, planned-maintenance
+pattern, DR drill, and automation snippets), see the live guide:
+**[`backup-restore.md`](backup-restore.md)**.
 
 ## Stuck in `(protected)` admin redirect loop
 

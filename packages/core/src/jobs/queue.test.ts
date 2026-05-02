@@ -48,7 +48,7 @@ describe("job queue", () => {
         start: () => Promise.resolve(),
         stop: () => Promise.resolve(),
       });
-      expect(getOptionalJobQueue()?.isHealthy).toBeUndefined();
+      expect(typeof getOptionalJobQueue()?.isHealthy).toBe("undefined");
     });
 
     it("isHealthy returns true on a configured-and-alive adapter stub", async () => {
@@ -78,6 +78,75 @@ describe("job queue", () => {
       });
       const result = await getOptionalJobQueue()?.isHealthy?.();
       expect(result).toBe(false);
+    });
+  });
+
+  describe("countByState shape (Phase 23.5)", () => {
+    // Optional on the interface so non-pg-boss stubs don't have to
+    // implement it; the admin endpoint omits the stuck-job widget
+    // when missing rather than 500ing.
+    it("queue without countByState still satisfies the interface", () => {
+      setJobQueue({
+        enqueue: vi.fn(),
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+      });
+      expect(typeof getOptionalJobQueue()?.countByState).toBe("undefined");
+    });
+
+    it("returns the fully-populated record consumers depend on", async () => {
+      const countByState = vi.fn().mockResolvedValue({
+        created: 0,
+        active: 1,
+        completed: 12,
+        failed: 3,
+        retry: 0,
+        cancelled: 0,
+        expired: 7,
+      });
+      setJobQueue({
+        enqueue: vi.fn(),
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+        countByState,
+      });
+      const counts = await getOptionalJobQueue()?.countByState?.();
+      // Every key present so the admin can index without optional
+      // chaining.
+      expect(Object.keys(counts ?? {})).toEqual(
+        expect.arrayContaining([
+          "created",
+          "active",
+          "completed",
+          "failed",
+          "retry",
+          "cancelled",
+          "expired",
+        ]),
+      );
+      expect(counts?.failed).toBe(3);
+      expect(counts?.expired).toBe(7);
+    });
+
+    it("forwards the optional `since` filter", async () => {
+      const since = new Date("2026-05-01T00:00:00Z");
+      const countByState = vi.fn().mockResolvedValue({
+        created: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        retry: 0,
+        cancelled: 0,
+        expired: 0,
+      });
+      setJobQueue({
+        enqueue: vi.fn(),
+        start: () => Promise.resolve(),
+        stop: () => Promise.resolve(),
+        countByState,
+      });
+      await getOptionalJobQueue()?.countByState?.({ since });
+      expect(countByState).toHaveBeenCalledWith({ since });
     });
   });
 });

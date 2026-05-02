@@ -212,23 +212,66 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   changing `nexpress.config.ts` plugin entries.
 - **`LocalStorageAdapter` is not multi-node safe.** Different nodes will
   see different `./uploads` directories. Use S3 (or any object store) in
-  HA topologies.
+  HA topologies. Boot emits a `multi_node_local_storage` warning when
+  either `NX_MULTI_NODE=true` is set or `NODE_ENV=production` *and* a
+  managed-container env var is detected (`KUBERNETES_SERVICE_HOST`,
+  `FLY_REGION`, `RENDER_INSTANCE_ID`). Set `NX_STORAGE_ADAPTER=s3` to
+  silence the warning, or `NX_MULTI_NODE=false` if you really are
+  running single-node on a managed platform.
 - **pg-boss leader election** — the worker uses Postgres advisory locks,
   so multiple nodes can run `NX_ENABLE_JOBS=1` simultaneously. Only one
   picks up each job.
-- **Rate limiting is per-process.** `apps/web/src/proxy.ts` keeps its
-  IP/path bucket counters in an in-memory `Map`. With N instances behind
-  a load balancer the effective limit is `N × configured`, so a 10/min
-  cap on `/api/auth/login` lets through 40 requests on a 4-node cluster.
-  This is by design, not a bug — but you need to layer a real rate
-  limiter upstream:
-  - **Cloudflare / Vercel** — configure rate limit rules at the edge
-    (IP + path pattern). The in-process `Map` becomes a defence-in-depth
-    fallback.
-  - **NGINX** — `limit_req_zone $binary_remote_addr zone=api:10m rate=10r/m;`
-    plus `limit_req zone=api burst=20 nodelay;` on `location /api/auth`.
-  - **Caddy** — the [`rate_limit`](https://caddyserver.com/docs/modules/http.handlers.rate_limit)
-    handler, scoped per route.
-  - **Single-node deployments** — the in-process map is sufficient.
-  See issue #269 for the design discussion (Postgres-backed rate
-  limiting is intentionally not recommended).
+- **Rate limiting is pluggable.** As of Phase 23.7, `apps/web/src/proxy.ts`
+  reads its limiter from the `NxRateLimiterAdapter` registered via
+  `setRateLimiter` at boot. The default adapter is `InMemoryRateLimiter`
+  from `@nexpress/core/rate-limit` — same fixed-window behavior as
+  before, identical for single-node deploys. Multi-node deploys swap
+  the adapter at boot:
+
+  ```ts
+  // apps/web/src/lib/init-core.ts (or your app's bootstrap)
+  import { setRateLimiter } from "@nexpress/core/rate-limit";
+  import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
+
+  setRateLimiter(new RedisRateLimiter({ url: process.env.NX_REDIS_URL }));
+  ```
+
+  With the in-memory default and N instances behind a load balancer
+  the effective limit is `N × configured` — a 10/min cap on
+  `/api/auth/login` lets through 40 requests on a 4-node cluster.
+  Pick one of the multi-node options below before you scale past
+  one app process:
+
+  - **`@nexpress/rate-limiter-redis`** — first-party reference adapter.
+    A single Lua script issues `INCR` + `PTTL` + conditional
+    `PEXPIRE` in one round trip per request, so an unlucky crash
+    between the increment and the expiry can't strand a TTL-less
+    key. Install + wire:
+
+    ```bash
+    pnpm add @nexpress/rate-limiter-redis
+    ```
+
+    ```ts
+    // apps/web/src/lib/init-core.ts (or your bootstrap)
+    import { setRateLimiter } from "@nexpress/core/rate-limit";
+    import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
+
+    setRateLimiter(new RedisRateLimiter({ url: process.env.NX_REDIS_URL }));
+    ```
+
+    Recommended when you already have Redis for caching / sessions
+    (one client, one connection pool). See the package
+    [README](https://github.com/hahabsw/nexpress/tree/main/packages/rate-limiter-redis)
+    for cluster / sentinel / shared-client patterns.
+  - **CDN / edge rate limiter** — Cloudflare / Vercel rules at the
+    edge. The in-process default becomes defense-in-depth.
+  - **NGINX / Caddy** — `limit_req_zone` (NGINX) or the
+    [`rate_limit`](https://caddyserver.com/docs/modules/http.handlers.rate_limit)
+    handler (Caddy), scoped per route.
+  - **Single-node deployments** — keep the default; no setup
+    required.
+
+  Postgres-backed rate limiting is intentionally not provided as a
+  first-party adapter — see issue #269 for the design rationale
+  (one DB hop per request blows up p99 under burst).

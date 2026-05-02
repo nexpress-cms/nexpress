@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { getRateLimiter } from "@nexpress/core/rate-limit";
+
 import { i18nConfig, isLocale } from "@/i18n.config";
 
 function getSecurityHeaders(request: NextRequest): Record<string, string> {
@@ -24,26 +26,13 @@ function getSecurityHeaders(request: NextRequest): Record<string, string> {
   };
 }
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-// The store + the cleanup interval BOTH live on `globalThis` so HMR
-// re-evaluations of this module reuse the same Map (and don't
-// orphan it from its janitor). #315: a previous fix only put the
-// "cleanup started" flag on `globalThis`, leaving the Map module-
-// scoped — the closure inside the interval kept a reference to the
-// first Map ever created, so subsequent module evaluations got new
-// Maps that nothing was pruning.
-declare global {
-  var __nx_rate_limit_store: Map<string, RateLimitEntry> | undefined;
-  var __nx_rate_limit_cleanup_started: boolean | undefined;
-}
-
-const rateLimitStore: Map<string, RateLimitEntry> =
-  globalThis.__nx_rate_limit_store ?? new Map<string, RateLimitEntry>();
-globalThis.__nx_rate_limit_store = rateLimitStore;
+// Phase 23.7 — the in-process Map + cleanup interval used to live
+// here directly. They've moved to `@nexpress/core/rate-limit`'s
+// `InMemoryRateLimiter` (which keeps the same `globalThis`-pinned
+// store + janitor for HMR durability — #315) so multi-node deploys
+// can swap in a Redis adapter via `setRateLimiter` at boot without
+// touching this file. Single-node deploys still get the in-memory
+// adapter as the lazy default.
 
 const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -124,48 +113,22 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-function checkRateLimit(ip: string, path: string): { limited: boolean; retryAfter?: number } {
+async function checkRateLimit(
+  ip: string,
+  path: string,
+): Promise<{ limited: boolean; retryAfter?: number }> {
   const rule = RATE_LIMITS.find((r) => r.pattern.test(path));
   if (!rule) return { limited: false };
 
+  // The pluggable adapter handles both the increment and the
+  // decision — in-memory by default, swappable to Redis (or any
+  // other implementation) via `setRateLimiter` at boot.
   const key = `${ip}:${rule.pattern.source}`;
-  const now = Date.now();
-  const entry = rateLimitStore.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + rule.windowMs });
-    return { limited: false };
+  const decision = await getRateLimiter().check(key, rule.limit, rule.windowMs);
+  if (decision.limited) {
+    return { limited: true, retryAfter: decision.retryAfterSeconds };
   }
-
-  entry.count++;
-  if (entry.count > rule.limit) {
-    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    return { limited: true, retryAfter };
-  }
-
   return { limited: false };
-}
-
-// Guard against HMR re-evaluating this module: each reload would
-// otherwise spawn a fresh interval and leak the previous one. The
-// production runtime evaluates the module once, so the guard is
-// only load-bearing in dev. The interval reads `globalThis.__nx_
-// rate_limit_store` on every tick (not the closure-captured Map)
-// so a subsequent module re-evaluation that swapped the Map would
-// still get pruned — though the `??` above ensures we keep the
-// same Map across evaluations anyway.
-if (!globalThis.__nx_rate_limit_cleanup_started) {
-  globalThis.__nx_rate_limit_cleanup_started = true;
-  setInterval(() => {
-    const store = globalThis.__nx_rate_limit_store;
-    if (!store) return;
-    const now = Date.now();
-    for (const [key, entry] of store) {
-      if (now > entry.resetAt) {
-        store.delete(key);
-      }
-    }
-  }, 60_000);
 }
 
 /**
@@ -200,13 +163,13 @@ function resolveSiteLocale(pathname: string): {
   return { locale: i18nConfig.defaultLocale, rewrite: null };
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const securityHeaders = getSecurityHeaders(request);
 
   if (pathname.startsWith("/api/")) {
     const ip = getClientIp(request);
-    const { limited, retryAfter } = checkRateLimit(ip, pathname);
+    const { limited, retryAfter } = await checkRateLimit(ip, pathname);
 
     if (limited) {
       return NextResponse.json(

@@ -556,6 +556,25 @@ export interface NxConfig {
   typescript?: {
     outputFile?: string;
   };
+  /**
+   * Phase 23.5 — operational thresholds and policies for the job
+   * queue. Currently only carries the stuck-job thresholds the
+   * admin Jobs widget compares against; future entries land
+   * additively.
+   */
+  jobs?: {
+    /**
+     * Per-state count thresholds for the admin stuck-job widget.
+     * When the live + archive UNION count for a state exceeds the
+     * configured value the widget shows a warning indicator. Unset
+     * values fall back to sensible defaults applied by the widget
+     * itself (currently `failed: 10`, `expired: 50`).
+     */
+    stuckThreshold?: {
+      failed?: number;
+      expired?: number;
+    };
+  };
 }
 
 export type NxJobType =

@@ -47,6 +47,11 @@
       "@node-rs/argon2",
       "esbuild",
       "sharp"
-    ]
+    ],
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "@playwright/test"
+      ]
+    }
   }
 }

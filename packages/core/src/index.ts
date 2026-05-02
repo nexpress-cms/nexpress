@@ -301,6 +301,8 @@ export type {
   NxJobSummary,
   NxJobListOptions,
   NxJobListResult,
+  NxJobCountOptions,
+  NxJobStateCounts,
   NxScheduleSummary,
   NxWorkerHeartbeat,
   NxWorkerHealthSummary,
@@ -499,6 +501,21 @@ export type {
   NxErrorReportContext,
   NxStartupSafetyInput,
 } from "./observability/index.js";
+
+// Phase 23.7 — pluggable rate-limiter adapter. The full surface
+// lives at the `@nexpress/core/rate-limit` subpath; the root
+// keeps the registry helpers re-exported for back-compat with
+// callers that already pull through the catch-all.
+export {
+  InMemoryRateLimiter,
+  setRateLimiter,
+  getRateLimiter,
+  getOptionalRateLimiter,
+} from "./rate-limit/index.js";
+export type {
+  NxRateLimitDecision,
+  NxRateLimiterAdapter,
+} from "./rate-limit/index.js";
 
 export {
   getCommunityRole,
