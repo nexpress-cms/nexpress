@@ -4,7 +4,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../db/runtime.js";
 import { nxMemberRoles } from "../db/schema/community.js";
 import { NxConflictError, NxNotFoundError, NxValidationError } from "../errors.js";
-import { getCurrentSiteId } from "../sites/context.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
@@ -36,6 +36,8 @@ export interface NxMemberRoleGrantRow {
   grantedBy: string | null;
   grantedAt: Date;
   expiresAt: Date | null;
+  /** Tenant the grant belongs to. Phase 18 added the column; the type was incomplete until #364. */
+  siteId: string;
 }
 
 export interface GrantMemberRoleInput {
@@ -199,10 +201,17 @@ export interface RevokeMemberRoleInput {
  * it doesn't; soft-deleted rows would only confuse the resolver.
  */
 export async function revokeMemberRole(input: RevokeMemberRoleInput): Promise<void> {
+  // Issue #364 — delete was id-only. Now pin `siteId` in the
+  // delete predicate so a staff user with a foreign grant id can't
+  // revoke a grant in another tenant. NOT_FOUND on miss covers both
+  // "no such grant" and "grant exists but in another site" — the
+  // distinction is intentional: leaking which case applies would
+  // confirm the foreign grant's existence.
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const requestSiteId = await requireSiteId();
   const deleted = (await db
     .delete(nxMemberRoles)
-    .where(eq(nxMemberRoles.id, input.grantId))
+    .where(and(eq(nxMemberRoles.id, input.grantId), eq(nxMemberRoles.siteId, requestSiteId)))
     .returning()) as NxMemberRoleGrantRow[];
   if (deleted.length === 0) {
     // Use NOT_FOUND so the API maps to 404 — distinguishes "you
