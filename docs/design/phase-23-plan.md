@@ -1,7 +1,7 @@
 # Phase 23 plan — publish, harden, polish
 
 **Opened:** 2026-05-02
-**Status:** in progress (23.7 done — adapter contract + InMemory adapter + proxy migration; 23.7.1 next is the Redis adapter package; 23.6.2 still pending)
+**Status:** in progress (23.7.1 done — Redis reference adapter shipped; 23.6.2 still pending; 23.8 still blocked on CI billing)
 **Parent roadmap:** [`../roadmap.md`](../roadmap.md), categories 1 + 2 + 4
 
 This file is a planning snapshot. It freezes the sub-phase sequence and the
@@ -34,7 +34,7 @@ everything we've learned by then.
 | 23.6.1 | Bugs surfaced by E2E (blocks loop + seo strip + auth helper) | 4 (DX) | S | done |
 | 23.6.2 | E2E publish flow + theme switch (re-attempt)| 4 (DX) | S | pending |
 | 23.7 | Multi-node rate-limit adapter         | 2 (ops)   | L      | done     |
-| 23.7.1 | `@nexpress/rate-limiter-redis` reference adapter | 2 (ops) | M | pending |
+| 23.7.1 | `@nexpress/rate-limiter-redis` reference adapter | 2 (ops) | M | done |
 | 23.8 | First publish run (when CI unblocks)  | 1 (ship)  | S      | blocked  |
 
 Sizes are rough: XS ≈ 1h, S ≈ half day, M ≈ 1–2 days, L ≈ several days.
@@ -250,24 +250,36 @@ Behavior is identical on single-node deploys; multi-node deploys
 register a different adapter at boot. Open question settled:
 **separate package** so `@nexpress/core` stays Redis-free.
 
-### 23.7.1 — `@nexpress/rate-limiter-redis` reference adapter (deferred)
+### 23.7.1 — `@nexpress/rate-limiter-redis` reference adapter (done)
 
-The Redis-backed implementation that 23.7 documented but didn't
-ship. Approximate scope:
+**Shipped:**
 
-- New package `packages/rate-limiter-redis/` with `RedisRateLimiter`
-  implementing `NxRateLimiterAdapter`. INCR + EXPIRE per bucket
-  (single round trip) is the simplest correct fixed-window
-  implementation; sliding window is a v2.
-- Tests against a live Redis (docker-compose service for the
-  integration job, similar to the Postgres pattern).
-- Docs page or section under `docs/deployment.md` walking through
-  install + boot wiring.
-- Optional: `shutdown()` calls `client.quit()` so the pool drains
-  on SIGTERM.
+- New `packages/rate-limiter-redis/` workspace package
+  (`@nexpress/rate-limiter-redis`) with `RedisRateLimiter`
+  implementing `NxRateLimiterAdapter`.
+- A single Lua script per check — `INCR` + `PTTL` + conditional
+  `PEXPIRE` — for atomicity (no race between increment and TTL
+  arm) and one round trip per request.
+- Three constructor shapes: connection-string `url`, raw
+  `RedisOptions`, or a caller-supplied ioredis client (shared
+  ownership; `shutdown()` is a no-op in that mode).
+- Configurable `keyPrefix` (default `nx:rl:`) so two deploys can
+  share a Redis without colliding.
+- 7 unit tests (RESP shape parsing, key prefixing, TTL fallback,
+  shutdown semantics) running against a `vi.fn()`-stubbed
+  client; live-Redis integration test deferred — see follow-ups
+  below.
+- Package README + `docs/deployment.md` updated with the install +
+  wire snippet.
 
-This is a clean, scoped follow-up — none of the proxy / contract
-work depends on it.
+**Deferred for 23.7.2 if/when needed:**
+
+- Live-Redis integration test (docker-compose Redis service,
+  similar to the Postgres pattern). The unit suite covers the
+  adapter surface; live coverage is mainly to pin the Lua
+  semantics across Redis versions.
+- Sliding-window / token-bucket variants. v0.1's contract is
+  fixed-window, mirroring `InMemoryRateLimiter`.
 
 ### 23.8 — First publish run
 

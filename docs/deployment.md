@@ -243,8 +243,27 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   one app process:
 
   - **`@nexpress/rate-limiter-redis`** — first-party reference adapter.
-    INCR + EXPIRE per bucket; one Redis hop per request. Recommended
-    when you already have Redis for caching / sessions.
+    A single Lua script issues `INCR` + `PTTL` + conditional
+    `PEXPIRE` in one round trip per request, so an unlucky crash
+    between the increment and the expiry can't strand a TTL-less
+    key. Install + wire:
+
+    ```bash
+    pnpm add @nexpress/rate-limiter-redis
+    ```
+
+    ```ts
+    // apps/web/src/lib/init-core.ts (or your bootstrap)
+    import { setRateLimiter } from "@nexpress/core/rate-limit";
+    import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
+
+    setRateLimiter(new RedisRateLimiter({ url: process.env.NX_REDIS_URL }));
+    ```
+
+    Recommended when you already have Redis for caching / sessions
+    (one client, one connection pool). See the package
+    [README](https://github.com/hahabsw/nexpress/tree/main/packages/rate-limiter-redis)
+    for cluster / sentinel / shared-client patterns.
   - **CDN / edge rate limiter** — Cloudflare / Vercel rules at the
     edge. The in-process default becomes defense-in-depth.
   - **NGINX / Caddy** — `limit_req_zone` (NGINX) or the
