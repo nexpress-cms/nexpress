@@ -75,6 +75,8 @@ import { foo } from "./bar"; // breaks the build
 
 Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after fresh clone; `pnpm dev` keeps dists fresh with `tsup --watch`.
 
+Dev watch reads `NX_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's *signature* during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NX_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
+
 ### Core service singletons (critical)
 
 `@nexpress/core` exposes a module-scoped singleton pattern:

@@ -10,11 +10,13 @@ import { defineConfig } from "tsup";
  *     Turbopack from walking into core when a client
  *     component imports a constant.
  */
+const fast = process.env.NX_DEV_FAST === "1";
+
 export default defineConfig({
   entry: ["src/index.ts", "src/client.ts"],
   format: ["esm"],
-  dts: true,
+  dts: !fast,
   clean: true,
-  sourcemap: true,
+  sourcemap: !fast,
   external: ["react", "react-dom"],
 });

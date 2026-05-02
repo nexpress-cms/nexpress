@@ -1,14 +1,16 @@
 import { defineConfig } from "tsup";
 
+const fast = process.env.NX_DEV_FAST === "1";
+
 export default defineConfig([
   {
     entry: {
       index: "src/index.ts",
     },
     format: ["esm"],
-    dts: true,
+    dts: !fast,
     clean: true,
-    sourcemap: true,
+    sourcemap: !fast,
     external: [
       "react",
       "react-dom",
@@ -24,8 +26,8 @@ export default defineConfig([
       client: "src/client.ts",
     },
     format: ["esm"],
-    dts: true,
-    sourcemap: true,
+    dts: !fast,
+    sourcemap: !fast,
     external: [
       "react",
       "react-dom",

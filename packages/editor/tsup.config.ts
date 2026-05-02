@@ -1,5 +1,7 @@
 import { defineConfig } from "tsup";
 
+const fast = process.env.NX_DEV_FAST === "1";
+
 export default defineConfig([
   {
     entry: {
@@ -7,9 +9,9 @@ export default defineConfig([
       server: "src/server.ts",
     },
     format: ["esm"],
-    dts: true,
+    dts: !fast,
     clean: true,
-    sourcemap: true,
+    sourcemap: !fast,
     external: ["react", "react-dom", "lexical", /^@lexical\//],
   },
   {
@@ -17,8 +19,8 @@ export default defineConfig([
       client: "src/client.ts",
     },
     format: ["esm"],
-    dts: true,
-    sourcemap: true,
+    dts: !fast,
+    sourcemap: !fast,
     external: ["react", "react-dom", "lexical", /^@lexical\//],
     esbuildOptions(options) {
       options.banner = { js: '"use client";' };
