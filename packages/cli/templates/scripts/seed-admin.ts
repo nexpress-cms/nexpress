@@ -32,11 +32,18 @@ function isValidEmail(value: string): boolean {
 }
 
 async function main(): Promise<void> {
-  const existing = await db.select({ value: count() }).from(nxUsers);
-  const userCount = existing[0]?.value ?? 0;
+  // Only block when an admin already exists. Counting all users
+  // misfires when the DB has non-admin rows (test fixtures, OAuth
+  // stub identities, members) but no real admin — `seed:content`
+  // would then fail looking for an admin author.
+  const existing = await db
+    .select({ value: count() })
+    .from(nxUsers)
+    .where(eq(nxUsers.role, "admin"));
+  const adminCount = existing[0]?.value ?? 0;
 
-  if (userCount > 0) {
-    console.log(`DB already has ${userCount} user(s). Use the admin UI to add more.`);
+  if (adminCount > 0) {
+    console.log(`DB already has ${adminCount} admin user(s). Use the admin UI to add more.`);
     process.exit(0);
   }
 
