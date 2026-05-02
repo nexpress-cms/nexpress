@@ -33,6 +33,12 @@ The single live "architecture" entry point is [`AGENTS.md`](../AGENTS.md) at
 the repo root (symlinked as `CLAUDE.md`). It is the only file in the repo
 that should claim to be a current architectural overview.
 
+## Roadmap
+
+[`roadmap.md`](roadmap.md) — the working roadmap from 0.1 toward 1.0.
+Updated as work lands. The v0.1 stability *contract* is in `AGENTS.md`;
+the roadmap is what we plan to do *next*.
+
 ## Design snapshots — frozen
 
 Files under [`design/`](design/) are **planning-time snapshots**. They are
