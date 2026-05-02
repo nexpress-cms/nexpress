@@ -3,7 +3,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { nxBans } from "../db/schema/community.js";
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -36,6 +36,8 @@ export interface NxBanRow {
   reason: string | null;
   byUserId: string | null;
   byMemberId: string | null;
+  /** Tenant the ban belongs to. Phase 18 added the column; the type was incomplete until #364. */
+  siteId: string;
   createdAt: Date;
 }
 
@@ -150,15 +152,25 @@ export interface RevokeBanInput {
  * don't need a soft-delete column.
  */
 export async function revokeBan(input: RevokeBanInput): Promise<void> {
+  // Issue #364 — load + delete were id-only. Now require the
+  // request site, reject when the loaded row is in a different
+  // tenant, and pin `siteId` in the delete predicate so the
+  // read-check and the write cannot drift.
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const requestSiteId = await requireSiteId();
   const [existing] = (await db
     .select()
     .from(nxBans)
     .where(eq(nxBans.id, input.banId))
     .limit(1)) as NxBanRow[];
   if (!existing) throw new NxNotFoundError("ban", input.banId);
+  if (existing.siteId !== requestSiteId) {
+    throw new NxForbiddenError("ban", "cross-site");
+  }
 
-  await db.delete(nxBans).where(eq(nxBans.id, input.banId));
+  await db
+    .delete(nxBans)
+    .where(and(eq(nxBans.id, input.banId), eq(nxBans.siteId, requestSiteId)));
 
   await recordAuditEvent({
     actor:
