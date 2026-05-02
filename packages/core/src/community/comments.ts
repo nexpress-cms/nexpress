@@ -10,7 +10,7 @@ import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.
 import { getLogger } from "../observability/logger.js";
 
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
-import { getCurrentSiteId } from "../sites/context.js";
+import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { memberCan, withMemberWrite } from "./can.js";
@@ -47,6 +47,8 @@ export interface NxCommentRow {
   status: CommentStatus;
   hiddenReason: string | null;
   editedAt: Date | null;
+  /** Tenant the comment belongs to. Phase 18 added the column; the type was incomplete until #364. */
+  siteId: string;
   createdAt: Date;
   /**
    * Phase 21.11 — author's `nx_members.status` at read time.
@@ -790,7 +792,19 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
  * sufficient role (admin/editor/moderator). No `memberId` required;
  * the action is always allowed.
  */
-async function loadCommentForStaffOp(commentId: string): Promise<NxCommentRow> {
+/**
+ * Issue #364 — staff comment moderation was id-only. The list / read
+ * paths were already site-scoped, but a staff user with the global
+ * `community.moderate` capability and a foreign comment id could
+ * hide / restore / delete content in another tenant. The loader now
+ * pins the loaded row's `siteId` against the request site; callers
+ * include `siteId` in their update predicate so the read-check and
+ * the write cannot drift apart.
+ */
+async function loadCommentForStaffOp(commentId: string): Promise<{
+  row: NxCommentRow;
+  siteId: string;
+}> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
@@ -798,7 +812,11 @@ async function loadCommentForStaffOp(commentId: string): Promise<NxCommentRow> {
     .where(eq(nxComments.id, commentId))
     .limit(1)) as NxCommentRow[];
   if (!existing) throw new NxNotFoundError("comment", commentId);
-  return existing;
+  const requestSiteId = await requireSiteId();
+  if (existing.siteId !== requestSiteId) {
+    throw new NxForbiddenError("comment", "cross-site");
+  }
+  return { row: existing, siteId: requestSiteId };
 }
 
 export async function staffHideComment(
@@ -806,7 +824,7 @@ export async function staffHideComment(
   staffUserId: string,
   reason?: string | null,
 ): Promise<void> {
-  const existing = await loadCommentForStaffOp(commentId);
+  const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
@@ -816,7 +834,7 @@ export async function staffHideComment(
       hiddenByMemberId: null,
       hiddenReason: reason ?? null,
     })
-    .where(eq(nxComments.id, commentId));
+    .where(and(eq(nxComments.id, commentId), eq(nxComments.siteId, siteId)));
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.hide",
@@ -837,7 +855,7 @@ export async function staffHideComment(
 }
 
 export async function staffRestoreComment(commentId: string, staffUserId: string): Promise<void> {
-  const existing = await loadCommentForStaffOp(commentId);
+  const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
   // A "deleted" comment had its body wiped — flipping it back to visible
   // would surface a ghost row (author + timestamp intact, body empty).
   // Only `hidden` is reversible; member-side `restoreComment` enforces
@@ -859,7 +877,7 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
       hiddenByMemberId: null,
       hiddenReason: null,
     })
-    .where(eq(nxComments.id, commentId));
+    .where(and(eq(nxComments.id, commentId), eq(nxComments.siteId, siteId)));
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.restore",
@@ -870,12 +888,12 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
 }
 
 export async function staffDeleteComment(commentId: string, staffUserId: string): Promise<void> {
-  const existing = await loadCommentForStaffOp(commentId);
+  const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
     .update(nxComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "" })
-    .where(eq(nxComments.id, commentId));
+    .where(and(eq(nxComments.id, commentId), eq(nxComments.siteId, siteId)));
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.delete",
