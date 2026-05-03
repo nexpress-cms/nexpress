@@ -154,11 +154,16 @@ export async function importXliff(
     // Resolve the source sibling — needed both for the create
     // path (template for non-translatable fields) and as a
     // sanity check (no source means the file is stale or the
-    // doc was deleted).
+    // doc was deleted). The operator is threaded so private
+    // sibling rows still surface (#383) — without a user, the
+    // pipeline's anonymous-visibility guard restricts to public
+    // and a private translation target is invisible, which
+    // would either skip the row or trigger a duplicate-create.
     const sourceSibling = await findSibling(
       collection,
       groupId,
       file.sourceLocale,
+      options.user,
     );
     if (!sourceSibling) {
       skipped.push({
@@ -174,6 +179,7 @@ export async function importXliff(
       collection,
       groupId,
       file.targetLocale,
+      options.user,
     );
 
     // Build the field overrides from non-empty `<target>` units
@@ -317,6 +323,7 @@ async function findSibling(
   collection: string,
   groupId: string,
   locale: string,
+  user: NxAuthUser | undefined,
 ): Promise<Record<string, unknown> | null> {
   const result = await findDocuments(
     collection,
@@ -326,7 +333,7 @@ async function findSibling(
       where: { translationGroupId: groupId },
       locale,
     },
-    undefined,
+    user,
   );
   const row = result.docs[0];
   if (!row) return null;
@@ -335,7 +342,7 @@ async function findSibling(
   // create-path needs to clone (richText, blocks, etc.).
   const id = (row as { id?: string }).id;
   if (!id) return null;
-  const full = await getDocumentById(collection, id);
+  const full = await getDocumentById(collection, id, user);
   return (full as Record<string, unknown>) ?? null;
 }
 

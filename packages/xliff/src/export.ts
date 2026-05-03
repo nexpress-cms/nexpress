@@ -3,6 +3,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getI18nConfig,
+  type NxAuthUser,
 } from "@nexpress/core";
 
 import { renderXliff, type XliffFile, type XliffTransUnit } from "./format.js";
@@ -27,6 +28,15 @@ export interface XliffExportOptions {
    * configured locale except the source.
    */
   targetLocales?: string[];
+  /**
+   * Operator running the export. Threaded into `findDocuments` so
+   * private-visibility rows still surface to a translator's bundle
+   * (#383). Without it, the pipeline's anonymous-visibility guard
+   * silently filters every `visibility = "private"` document out
+   * of both the source scan and the existing-target scan, so
+   * private docs can't round-trip through XLIFF at all.
+   */
+  user?: NxAuthUser;
 }
 
 export interface XliffExportFile {
@@ -125,7 +135,9 @@ export async function exportXliff(
     if (translatableFields.length === 0) continue;
 
     // Source-locale rows. We scan published only — drafts are
-    // mid-edit and shouldn't ship to a translator.
+    // mid-edit and shouldn't ship to a translator. The actor is
+    // threaded so private-visibility rows still surface (#383)
+    // — without a user, the pipeline restricts to public.
     const sourceResult = await findDocuments(
       slug,
       {
@@ -134,7 +146,7 @@ export async function exportXliff(
         where: { status: "published" },
         locale: sourceLocale,
       },
-      undefined,
+      options.user,
     );
     const sourceDocs = sourceResult.docs;
     if (sourceDocs.length === 0) continue;
@@ -155,7 +167,7 @@ export async function exportXliff(
           page: 1,
           locale: targetLocale,
         },
-        undefined,
+        options.user,
       );
       const targetByGroupId = new Map<string, Record<string, unknown>>();
       for (const doc of targetResult.docs) {

@@ -317,6 +317,88 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     expect(result.skipped[0]!.reason).toMatch(/Unknown collection/);
   });
 
+  it("Issue #383 — private source rows still round-trip when the operator is threaded", async () => {
+    // Without `options.user`, the pipeline's anonymous-visibility
+    // guard (#262) restricts findDocuments to `visibility = "public"`
+    // and a private source row drops silently out of the bundle.
+    // The CLI shim now threads its synthetic admin user through
+    // both export and the import sibling lookup so private docs
+    // round-trip end-to-end.
+    const { saveDocument, findDocuments } = await import("@nexpress/core");
+    const { exportXliff, importXliff, parseXliff, renderXliff } = await import(
+      "@nexpress/xliff"
+    );
+
+    // 1. Author a PRIVATE source-locale row.
+    const en = await saveDocument(
+      "localized-pages",
+      null,
+      { title: "Secret", body: "Hidden body", locale: "en", visibility: "private" },
+      actor(),
+      { status: "published" },
+    );
+    const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
+    expect(groupId).toBeTruthy();
+
+    // 2a. Export WITHOUT the operator — the private row should be
+    //     omitted entirely (matches the pre-fix behavior; this is
+    //     the bug surface).
+    const anonBundle = await exportXliff();
+    expect(anonBundle.summary.docCount).toBe(0);
+    expect(anonBundle.files).toHaveLength(0);
+
+    // 2b. Export WITH the operator — the private row surfaces.
+    const bundle = await exportXliff({ user: actor() });
+    expect(bundle.summary.docCount).toBe(1);
+    const koFile = bundle.files.find(
+      (f) => f.collection === "localized-pages" && f.targetLocale === "ko",
+    );
+    expect(koFile).toBeDefined();
+
+    // 3. Translator fills in `<target>`; import lands a sibling.
+    const parsed = parseXliff(koFile!.xml);
+    parsed.files[0]!.units.find((u) => u.id === "title")!.target = "비밀";
+    parsed.files[0]!.units.find((u) => u.id === "body")!.target = "숨겨진 본문";
+    const result = await importXliff({
+      xml: renderXliff(parsed),
+      user: actor(),
+    });
+    expect(result.applied).toHaveLength(1);
+    expect(result.applied[0]!.operation).toBe("create");
+
+    // 4. Re-export now that a (draft / private-shape) ko sibling
+    //    exists, with the operator threaded so it's visible. The
+    //    target text we just imported should round-trip back.
+    const round2 = await exportXliff({ user: actor() });
+    const koFile2 = round2.files.find((f) => f.targetLocale === "ko");
+    const parsed2 = parseXliff(koFile2!.xml);
+    expect(parsed2.files[0]!.units.find((u) => u.id === "title")!.target).toBe(
+      "비밀",
+    );
+
+    // 5. Translator updates the title; import should UPDATE — not
+    //    create a duplicate sibling — because findSibling now sees
+    //    the private target row.
+    parsed2.files[0]!.units.find((u) => u.id === "title")!.target = "기밀";
+    const update = await importXliff({
+      xml: renderXliff(parsed2),
+      user: actor(),
+    });
+    expect(update.applied).toHaveLength(1);
+    expect(update.applied[0]!.operation).toBe("update");
+
+    const koResult = await findDocuments(
+      "localized-pages",
+      {
+        where: { translationGroupId: groupId, visibility: "*" },
+        locale: "ko",
+      },
+      actor(),
+    );
+    expect(koResult.docs).toHaveLength(1);
+    expect((koResult.docs[0] as { title: string }).title).toBe("기밀");
+  });
+
   it("export skips empty source fields (no <trans-unit> with empty <source>)", async () => {
     const { saveDocument } = await import("@nexpress/core");
     const { exportXliff, parseXliff } = await import("@nexpress/xliff");

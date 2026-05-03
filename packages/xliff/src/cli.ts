@@ -51,7 +51,7 @@ export async function runCli(
   }
 
   if (command === "export") {
-    return runExport(io, rest);
+    return runExport(io, rest, options.user);
   }
   if (command === "import") {
     return runImport(io, rest, options.user);
@@ -60,13 +60,19 @@ export async function runCli(
   return { exitCode: 2 };
 }
 
-async function runExport(io: CliIo, args: string[]): Promise<CliRunResult> {
+async function runExport(
+  io: CliIo,
+  args: string[],
+  user: NxAuthUser,
+): Promise<CliRunResult> {
   const outDir = args[0];
   if (!outDir) {
     io.err("xliff export: <out-dir> argument is required\n");
     return { exitCode: 2 };
   }
-  const bundle = await exportXliff();
+  // Thread the operator so the pipeline's anonymous-visibility
+  // guard doesn't drop private docs from the bundle (#383).
+  const bundle = await exportXliff({ user });
   if (bundle.files.length === 0) {
     io.out(
       "xliff export: no i18n collections with translatable content — nothing written.\n",
