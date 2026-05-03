@@ -355,8 +355,8 @@ export function JobsView() {
       </div>
 
       {!supported ? (
-        <Card className="border-amber-300/60 bg-amber-50">
-          <CardContent className="pt-6 text-sm text-amber-900">
+        <Card className="border-amber-500/30/60 bg-amber-500/10">
+          <CardContent className="pt-6 text-sm text-amber-900 dark:text-amber-100">
             <strong className="font-semibold">Background jobs disabled.</strong> This site is
             running without pg-boss. Set <code>NX_ENABLE_JOBS=1</code> and restart the worker to
             surface queued jobs here.
@@ -513,13 +513,13 @@ function WorkerHealthCard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {paused ? (
-            <span className="rounded-md border border-amber-300/60 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+            <span className="rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
               Queue paused
             </span>
           ) : null}
           {showStuckWarning && stuck ? (
             <span
-              className="inline-flex items-center gap-1 rounded-md border border-rose-300/60 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-900"
+              className="inline-flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
               title={stuckTooltip(stuck)}
             >
               <AlertTriangle className="h-3 w-3" aria-hidden />
@@ -831,7 +831,7 @@ function JobList({
                   <StateBadge state={job.state} />
                   <code className="font-mono text-xs">{job.name}</code>
                   {typeof job.retryCount === "number" && job.retryCount > 0 ? (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:text-amber-100">
                       {job.retryCount} retries
                     </span>
                   ) : null}
@@ -1031,7 +1031,7 @@ function LogLevelBadge({ level }: { level: JobLogEntry["level"] }) {
     level === "error"
       ? "bg-destructive/10 text-destructive"
       : level === "warn"
-        ? "bg-amber-100 text-amber-900"
+        ? "bg-amber-500/15 text-amber-900 dark:text-amber-100"
         : level === "debug"
           ? "bg-muted text-muted-foreground"
           : "bg-blue-50 text-blue-900";
@@ -1051,7 +1051,7 @@ function StateBadge({ state }: { state: JobSummary["state"] }) {
     },
     retry: {
       label: "Retrying",
-      cls: "bg-amber-100 text-amber-900",
+      cls: "bg-amber-500/15 text-amber-900 dark:text-amber-100",
       Icon: RefreshCw,
     },
     active: {
@@ -1061,7 +1061,7 @@ function StateBadge({ state }: { state: JobSummary["state"] }) {
     },
     completed: {
       label: "Done",
-      cls: "bg-emerald-100 text-emerald-900",
+      cls: "bg-emerald-500/15 text-emerald-900 dark:text-emerald-100",
       Icon: Check,
     },
     failed: {

@@ -270,8 +270,8 @@ export function CollectionListView({
             <div
               className={
                 bulkToast.type === "success"
-                  ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
-                  : "rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+                  ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200"
+                  : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200"
               }
             >
               {bulkToast.message}
@@ -316,7 +316,7 @@ export function CollectionListView({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="text-rose-600"
+                  className="text-rose-600 dark:text-rose-300"
                   onClick={() => setConfirmDelete(true)}
                   disabled={bulkBusy !== null}
                 >
@@ -419,9 +419,9 @@ export function CollectionListView({
                                   <span
                                     className={
                                       rawValue === "published"
-                                        ? "inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                                        ? "inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300"
                                         : rawValue === "draft"
-                                          ? "inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                                          ? "inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
                                           : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
                                     }
                                   >
@@ -506,7 +506,7 @@ export function CollectionListView({
             <Button
               type="button"
               variant="outline"
-              className="text-rose-600"
+              className="text-rose-600 dark:text-rose-300"
               onClick={() => void runBulk("delete")}
               disabled={bulkBusy !== null}
             >

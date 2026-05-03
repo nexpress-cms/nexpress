@@ -349,7 +349,7 @@ function DeleteSiteDialog({
         ) : usage ? (
           <div className="space-y-4">
             {hasData ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
                 <p className="flex items-start gap-2 font-medium">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   This site has {usage.total} attached row(s) across{" "}

@@ -261,7 +261,7 @@ function TranslationProgressCard({
                           {cell.count}
                         </span>
                         {cell.missing > 0 ? (
-                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                             -{cell.missing}
                           </span>
                         ) : null}

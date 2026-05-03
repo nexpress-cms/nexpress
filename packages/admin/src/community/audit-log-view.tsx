@@ -23,7 +23,7 @@ export interface AuditEventRow {
 
 const ACTOR_BADGE: Record<AuditEventRow["actorKind"], string> = {
   staff: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
-  member: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  member: "bg-emerald-500/15 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   system: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
 };
 

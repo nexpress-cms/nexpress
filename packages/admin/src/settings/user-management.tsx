@@ -170,11 +170,11 @@ export function UserManagement() {
       </CardHeader>
       <CardContent className="space-y-6">
         {emailInviteToast ? (
-          <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
             <span>{emailInviteToast}</span>
             <button
               type="button"
-              className="text-xs uppercase tracking-wide text-emerald-700 hover:text-emerald-900"
+              className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-200 hover:text-emerald-900 dark:text-emerald-100"
               onClick={() => setEmailInviteToast(null)}
             >
               dismiss

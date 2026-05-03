@@ -75,7 +75,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
           </DialogHeader>
 
           {isLoading ? <p className="text-sm text-muted-foreground">Loading media…</p> : null}
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
           <div className="grid max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
