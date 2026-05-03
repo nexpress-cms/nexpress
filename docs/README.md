@@ -26,6 +26,7 @@ behavior they describe changes.
 | [plugin-admin.md](plugin-admin.md) | Plugin admin UI surface |
 | [plugin-quickstart.md](plugin-quickstart.md) | Author your first plugin in ~30 minutes |
 | [plugin-render.md](plugin-render.md) | Plugin render hooks |
+| [releasing.md](releasing.md) | Changesets release and npm publish checklist |
 | [scheduled-publishing.md](scheduled-publishing.md) | Scheduled publish flow |
 | [testing.md](testing.md) | Unit + integration test setup |
 | [theme-authoring.md](theme-authoring.md) | Authoring a theme |
