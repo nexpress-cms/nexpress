@@ -280,21 +280,31 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
   });
   try {
     await client.connect();
-    // drizzle-kit applies migrations into a tracking schema/table; a
-    // simpler heuristic that doesn't depend on which schema name was
-    // configured is "does nx_users exist?" — that table is created by
-    // the very first migration shipped, so its absence is a clear signal.
-    const result = await client.query<{ exists: boolean }>(
-      "select exists (select from information_schema.tables where table_name = 'nx_users') as exists",
+    // drizzle-kit's migration-tracking schema is configurable, so we
+    // can't probe it directly. Instead, check for the four framework
+    // tables the very first migration ships. Mirrors
+    // apps/web/src/lib/system-health.ts so CLI doctor and
+    // /admin/health agree on what "migrations applied" means.
+    const result = await client.query<{ table_name: string }>(
+      `select table_name from information_schema.tables
+       where table_schema = 'public'
+         and table_name in ('nx_users', 'nx_settings', 'nx_navigation', 'nx_sites')`,
     );
     await client.end();
-    if (result.rows[0]?.exists) {
-      return { state: "ok", label: "Migrations applied", detail: "nx_users table found" };
+    const expected = ["nx_users", "nx_settings", "nx_navigation", "nx_sites"];
+    const present = new Set(result.rows.map((r) => r.table_name));
+    const missing = expected.filter((t) => !present.has(t));
+    if (missing.length === 0) {
+      return {
+        state: "ok",
+        label: "Migrations applied",
+        detail: `${expected.length.toString()} framework tables found`,
+      };
     }
     return {
       state: "warn",
       label: "Migrations applied",
-      detail: "nx_users table missing",
+      detail: `missing ${missing.join(", ")}`,
       hint: "Run `pnpm db:generate && pnpm db:migrate` (or finish `pnpm run setup` with the auto-migrate option).",
     };
   } catch {
