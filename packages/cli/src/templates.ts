@@ -35,6 +35,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/lib/manifest.ts": manifestLibTemplate(),
     "scripts/doctor.ts": doctorScriptTemplate(),
     "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
+    "scripts/postinstall-notice.ts": postinstallNoticeScriptTemplate(),
     "scripts/seed-admin.ts": seedAdminScriptTemplate(),
     "scripts/setup-server.ts": setupServerScriptTemplate(),
     "scripts/worker.ts": workerScriptTemplate(),
@@ -92,6 +93,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         build: "next build",
         start: "next start",
         doctor: "tsx scripts/doctor.ts",
+        postinstall: "tsx scripts/postinstall-notice.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
         setup: "tsx scripts/setup-server.ts",
@@ -208,6 +210,10 @@ function setupServerScriptTemplate(): string {
 
 function doctorScriptTemplate(): string {
   return readTemplate("scripts/doctor.ts");
+}
+
+function postinstallNoticeScriptTemplate(): string {
+  return readTemplate("scripts/postinstall-notice.ts");
 }
 
 function dockerComposeTemplate(): string {
