@@ -14,10 +14,13 @@ name: Release
 #
 # Current mode: version-PR only. See docs/releasing.md for the
 # checklist to enable npm publishing for the first public cut.
+# Pre-public-release cost saver: see ci.yml. Same dispatch-only mode
+# until the repo flips public. Restore the `push: main` trigger
+# alongside ci.yml's restoration.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+  # push:
+  #   branches: [main]
 
 concurrency:
   group: release

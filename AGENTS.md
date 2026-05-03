@@ -194,10 +194,11 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 
 ## PR cadence (for agents)
 
-- **Don't open a PR for every unit task.** Group related work into one branch / one PR. The reviewer's load grows with PR count, not with diff size; six 10-line PRs are noisier than one 60-line PR with the same scope.
-- A reasonable bundle is everything that lands together to ship a single user-visible outcome (one feature, one bug fix, one cluster of consistent refactors). The Phase 23 / onboarding-cluster precedent in git history is the rough size — a few hundred lines, several files, one PR.
+- **Don't open a PR for every unit task.** Group related work into one branch / one PR. Two reasons: reviewer load scales with PR count (six 10-line PRs are noisier than one 60-line PR), AND **GitHub Actions minutes are billed per run** — every PR triggers CI ×3 jobs on open + a re-run on merge, and every push to `main` additionally fires the Release workflow. A six-PR cluster pays for ~30 workflow runs to land work that one PR would have shipped in 5.
+- A reasonable bundle is everything that lands together to ship a single user-visible outcome (one feature, one bug fix, one cluster of consistent refactors). The Phase 23 / onboarding cluster (#397–#418) is the cautionary precedent — most of those should have been one or two PRs, not twenty-two.
 - Split when (and only when) one of these is true: the changes are independently revertable and one might need to be backed out without the other; the work touches a sensitive surface (security gate, auth flow, billing) that benefits from a focused review; or the bundle has grown past ~800 lines and is genuinely two stories.
 - Don't mistake "I finished a sub-step" for "ready to PR." Keep working on the branch until the user-visible outcome is whole, then open one PR. Mid-work check-ins go in the conversation, not GitHub.
+- **One-line / docs-only changes**: prefer pushing directly to `main` (no PR). Branch protection isn't enforced on this repo, and a PR for a 7-line README edit costs five workflow runs to deliver three lines of value.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
@@ -249,11 +250,13 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
 
 ## NOTES
 
-- **CI** — `.github/workflows/ci.yml` defines three jobs on Ubuntu (Node 22, pnpm 10.33), triggered on `push: main`, every `pull_request`, and manual `workflow_dispatch`:
+- **CI** — `.github/workflows/ci.yml` defines three jobs on Ubuntu (Node 22, pnpm 10.33). When active they run on `push: main`, every `pull_request`, and manual `workflow_dispatch`:
   1. `checks` — install → build → typecheck → `pnpm test` (unit suites only — `apps/web`'s `test` script is a no-op because that package's vitest config holds only integration specs).
   2. `integration` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
   3. `e2e` — Postgres 16 + Playwright + `next start` against the built bundle. Golden-path coverage that matches production output rather than dev transpile.
-- **Release** — `.github/workflows/release.yml` runs the changesets action on every `main` push (and via `workflow_dispatch` as an escape hatch): when there are queued changesets it opens a "Version Packages" PR; when that PR is merged it publishes to npm with `--provenance` attestation. Requires `NPM_TOKEN` repo secret.
+
+  **Currently `workflow_dispatch`-only.** This private repo bills Actions minutes per run, and the `push` + `pull_request` triggers were generating ~5 workflow runs per PR. They're commented out in `ci.yml` until the repo is open-sourced; restore both lines when flipping public.
+- **Release** — `.github/workflows/release.yml` runs the changesets action: opens a "Version Packages" PR when there are queued changesets and (once `publish: pnpm release` is wired and `NPM_TOKEN` is provisioned) publishes to npm with `--provenance` attestation. **Currently `workflow_dispatch`-only** for the same cost-savings reason as CI; restore the `push: main` trigger alongside `ci.yml`'s restoration when the repo flips public.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
