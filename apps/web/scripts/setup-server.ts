@@ -46,6 +46,20 @@ interface SetupBody {
   s3Region?: string;
   s3Endpoint?: string;
   runMigrate: boolean;
+  /**
+   * Optional first-admin seed. When email + password are provided,
+   * the wizard spawns `pnpm run seed:admin` after migrations succeed.
+   * Skip the whole step if email is blank — the in-app wizard at
+   * `/admin/setup` will collect the admin on first dev run instead.
+   */
+  adminEmail?: string;
+  adminPassword?: string;
+  adminName?: string;
+  /**
+   * When true, runs `pnpm run seed:content` after the admin lands.
+   * No-op if no admin exists yet (the seed script needs an author).
+   */
+  sampleContent: boolean;
 }
 
 const server = createServer((req, res) => {
@@ -105,14 +119,30 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     await saveEnv(validated.body);
     let migrate: { ok: boolean; output: string } | null = null;
+    let adminSeed: { ok: boolean; output: string } | null = null;
+    let contentSeed: { ok: boolean; output: string } | null = null;
     if (validated.body.runMigrate) {
       migrate = await runMigrations(validated.body);
     }
-    sendJson(res, 200, { ok: true, migrate });
-    // Quit only on full success — if migrations failed, keep the
-    // server running so the operator can fix .env and re-submit
-    // the form (instead of having to restart `pnpm run setup`).
-    if (!migrate || migrate.ok) {
+    // Admin / content seed only run when migrations succeeded (or
+    // were skipped on a pre-migrated DB). They share the same env
+    // builder so DATABASE_URL etc. flow into the spawned scripts.
+    const dbReady = !migrate || migrate.ok;
+    if (dbReady && validated.body.adminEmail && validated.body.adminPassword) {
+      adminSeed = await runSeedAdmin(validated.body);
+    }
+    if (dbReady && (adminSeed?.ok ?? !validated.body.adminEmail) && validated.body.sampleContent) {
+      contentSeed = await runSeedContent(validated.body);
+    }
+    sendJson(res, 200, { ok: true, migrate, adminSeed, contentSeed });
+    // Quit only on full success — if any step failed, keep the
+    // server alive so the operator can fix the form and re-submit
+    // (instead of having to restart `pnpm run setup`).
+    const allOk =
+      (!migrate || migrate.ok) &&
+      (!adminSeed || adminSeed.ok) &&
+      (!contentSeed || contentSeed.ok);
+    if (allOk) {
       setTimeout(() => {
         console.log("");
         console.log("✓ Setup complete. Run `pnpm dev` to start NexPress.");
@@ -146,6 +176,22 @@ function validateBody(
     if (!raw.s3Bucket?.trim()) return { error: "S3 bucket is required" };
     if (!raw.s3Region?.trim()) return { error: "S3 region is required" };
   }
+  // Admin seed is opt-in: leaving email blank tells the wizard to
+  // skip the seed:admin step and let the in-app /admin/setup wizard
+  // collect the admin on first dev run instead. If the operator
+  // *did* type an email, the password must clear the same 12-char
+  // floor we enforce in the in-app wizard.
+  const adminEmail = (raw.adminEmail ?? "").trim();
+  const adminPassword = raw.adminPassword ?? "";
+  const adminName = (raw.adminName ?? "").trim();
+  if (adminEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+      return { error: "Admin email is not valid" };
+    }
+    if (adminPassword.length < 12) {
+      return { error: "Admin password must be at least 12 characters" };
+    }
+  }
   return {
     body: {
       databaseUrl,
@@ -157,6 +203,10 @@ function validateBody(
       s3Region: raw.s3Region?.trim() || undefined,
       s3Endpoint: raw.s3Endpoint?.trim() || undefined,
       runMigrate: raw.runMigrate !== false,
+      adminEmail: adminEmail || undefined,
+      adminPassword: adminEmail ? adminPassword : undefined,
+      adminName: adminEmail ? adminName || "Admin" : undefined,
+      sampleContent: raw.sampleContent === true,
     },
   };
 }
@@ -275,6 +325,38 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
   }
   console.log("[setup] migrations applied");
   return { ok: true, output: gen.output + mig.output };
+}
+
+async function runSeedAdmin(body: SetupBody): Promise<{ ok: boolean; output: string }> {
+  // seed-admin.ts is idempotent (skips when an admin row already
+  // exists) and reads NX_ADMIN_EMAIL / NX_ADMIN_PASSWORD / NX_ADMIN_NAME
+  // from env as a fallback for the argv path. We use the env path
+  // here on purpose: `pnpm run seed:admin -- a b c` forwards `--`
+  // itself as the first argv to the script, which seed-admin then
+  // mistakes for the email and rejects ("\"--\" is not a valid email
+  // address"). Env-only avoids that pnpm-args quirk entirely.
+  if (!body.adminEmail || !body.adminPassword) {
+    return { ok: true, output: "(admin seed skipped — no email)" };
+  }
+  console.log("[setup] running pnpm seed:admin …");
+  const env = {
+    ...process.env,
+    ...envForChild(body),
+    NX_ADMIN_EMAIL: body.adminEmail,
+    NX_ADMIN_PASSWORD: body.adminPassword,
+    NX_ADMIN_NAME: body.adminName ?? "Admin",
+  };
+  const result = await runChild(["pnpm", "run", "seed:admin"], env);
+  console.log(result.ok ? "[setup] admin seeded" : "[setup] seed:admin FAILED");
+  return result;
+}
+
+async function runSeedContent(body: SetupBody): Promise<{ ok: boolean; output: string }> {
+  console.log("[setup] running pnpm seed:content …");
+  const env = { ...process.env, ...envForChild(body) };
+  const result = await runChild(["pnpm", "run", "seed:content"], env);
+  console.log(result.ok ? "[setup] sample content seeded" : "[setup] seed:content FAILED");
+  return result;
 }
 
 function runChild(
@@ -473,12 +555,41 @@ function renderHtml(): string {
   </fieldset>
 
   <fieldset>
+    <legend>First admin <em>(optional)</em></legend>
+    <p class="hint" style="margin-top: 0;">
+      Leave email blank to skip — the in-app wizard at <code>/admin/setup</code> will collect the
+      admin on your first <code>pnpm dev</code>. Filling it in seeds an admin right after migrations
+      so you can sign in immediately.
+    </p>
+    <label>
+      <span>Email</span>
+      <input id="adminEmail" name="adminEmail" type="email" autocomplete="email" placeholder="admin@example.com" />
+    </label>
+    <label>
+      <span>Password <em>(min 12 chars)</em></span>
+      <input id="adminPassword" name="adminPassword" type="password" autocomplete="new-password" />
+    </label>
+    <label>
+      <span>Name <em>(optional)</em></span>
+      <input id="adminName" name="adminName" type="text" placeholder="Site Admin" />
+    </label>
+  </fieldset>
+
+  <fieldset>
     <legend>After save</legend>
     <label style="display: flex; gap: 0.5rem; align-items: flex-start;">
       <input id="runMigrate" type="checkbox" checked style="margin-top: 0.3rem;" />
       <span>
         <span>Run <code>pnpm db:generate</code> + <code>pnpm db:migrate</code> automatically</span>
         <span class="hint">Skip if you'd rather run them yourself afterward.</span>
+      </span>
+    </label>
+    <label style="display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.6rem;">
+      <input id="sampleContent" type="checkbox" style="margin-top: 0.3rem;" />
+      <span>
+        <span>Seed sample content (<code>pnpm seed:content</code>)</span>
+        <span class="hint">Three pages, three posts, and a starter nav menu so the public site
+        renders something. Needs an admin (above) to author the rows.</span>
       </span>
     </label>
   </fieldset>
@@ -488,7 +599,8 @@ function renderHtml(): string {
     <button type="submit" class="primary" id="saveBtn">Save and finish</button>
   </div>
   <p class="hint" style="margin-top: 0.4rem;">
-    "Save and finish" writes <code>.env</code>, runs migrations if checked above, then exits.
+    "Save and finish" writes <code>.env</code> and runs the steps you checked above
+    (migrations / admin seed / sample content), then exits.
   </p>
 </form>
 
@@ -537,6 +649,7 @@ function renderHtml(): string {
     $("saveBtn").disabled = true;
     setStatus("Saving .env…", "info");
     const storage = document.querySelector("input[name=storage]:checked").value;
+    const adminEmail = $("adminEmail").value.trim();
     const payload = {
       databaseUrl: $("databaseUrl").value.trim(),
       testDatabaseUrl: $("testDatabaseUrl").value.trim(),
@@ -547,6 +660,10 @@ function renderHtml(): string {
       s3Region: storage === "s3" ? $("s3Region").value.trim() : undefined,
       s3Endpoint: storage === "s3" ? $("s3Endpoint").value.trim() : undefined,
       runMigrate: $("runMigrate").checked,
+      adminEmail: adminEmail || undefined,
+      adminPassword: adminEmail ? $("adminPassword").value : undefined,
+      adminName: adminEmail ? $("adminName").value.trim() : undefined,
+      sampleContent: $("sampleContent").checked,
     };
     try {
       const res = await fetch("/save?token=" + TOKEN, {
@@ -560,10 +677,14 @@ function renderHtml(): string {
         $("saveBtn").disabled = false;
         return;
       }
-      if (body.migrate && !body.migrate.ok) {
-        const out = (body.migrate.output || "(no output captured)").trim();
+      const failed =
+        (body.migrate && !body.migrate.ok && { label: "migrations", output: body.migrate.output }) ||
+        (body.adminSeed && !body.adminSeed.ok && { label: "admin seed", output: body.adminSeed.output }) ||
+        (body.contentSeed && !body.contentSeed.ok && { label: "sample content seed", output: body.contentSeed.output });
+      if (failed) {
+        const out = (failed.output || "(no output captured)").trim();
         status.innerHTML =
-          ".env written, but <strong>migrations FAILED</strong>. Full output is also in the terminal where \`pnpm run setup\` is running. " +
+          ".env written, but <strong>" + failed.label + " FAILED</strong>. Full output is also in the terminal where \\\`pnpm run setup\\\` is running. " +
           "<details style=\\"margin-top:.5rem;\\"><summary style=\\"cursor:pointer;\\">Show output</summary>" +
           "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;max-height:280px;overflow:auto;\\">" +
           out.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
@@ -572,8 +693,12 @@ function renderHtml(): string {
         $("saveBtn").disabled = false;
         return;
       }
-      const tail = body.migrate ? " Database migrated." : "";
-      setStatus(".env written." + tail + " You can close this tab and run \\\`pnpm dev\\\`.", "ok");
+      const parts = [".env written."];
+      if (body.migrate) parts.push("Migrations applied.");
+      if (body.adminSeed) parts.push("Admin seeded.");
+      if (body.contentSeed) parts.push("Sample content seeded.");
+      parts.push("You can close this tab and run \\\`pnpm dev\\\`.");
+      setStatus(parts.join(" "), "ok");
     } catch (err) {
       setStatus(String(err), "err");
       $("saveBtn").disabled = false;
