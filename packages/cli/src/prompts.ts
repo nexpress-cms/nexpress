@@ -2,13 +2,8 @@ import prompts from "prompts";
 
 import { formatProjectName } from "./utils.js";
 
-export type DatabaseMode = "local-docker" | "remote-url";
-export type StorageMode = "local" | "s3";
-
 export interface ProjectConfig {
   projectName: string;
-  databaseMode: DatabaseMode;
-  storageMode: StorageMode;
   includeExampleContent: boolean;
   dockerSetup: boolean;
   localMode?: boolean;
@@ -17,6 +12,12 @@ export interface ProjectConfig {
 export async function promptForProjectConfig(
   initialProjectName?: string,
 ): Promise<ProjectConfig> {
+  // Database / storage choices used to live here, but `pnpm setup`
+  // (the post-scaffold env wizard) owns those now and writes `.env`
+  // directly. Leaving the prompts here forced the operator to make
+  // the same decision twice. The scaffolded `nexpress.config.ts`
+  // reads `NX_STORAGE_ADAPTER` at runtime, so picking storage at
+  // setup time is enough.
   const response = await prompts(
     [
       {
@@ -29,41 +30,8 @@ export async function promptForProjectConfig(
           if (formatProjectName(value).length === 0) {
             return "Project name is required";
           }
-
           return true;
         },
-      },
-      {
-        type: "select",
-        name: "databaseMode",
-        message: "Database",
-        choices: [
-          {
-            title: "Local Docker (recommended)",
-            value: "local-docker",
-          },
-          {
-            title: "Remote PostgreSQL URL",
-            value: "remote-url",
-          },
-        ],
-        initial: 0,
-      },
-      {
-        type: "select",
-        name: "storageMode",
-        message: "Storage",
-        choices: [
-          {
-            title: "Local filesystem (recommended)",
-            value: "local",
-          },
-          {
-            title: "S3/MinIO",
-            value: "s3",
-          },
-        ],
-        initial: 0,
       },
       {
         type: "confirm",
@@ -87,8 +55,6 @@ export async function promptForProjectConfig(
 
   return {
     projectName: formatProjectName(response.projectName),
-    databaseMode: response.databaseMode,
-    storageMode: response.storageMode,
     includeExampleContent: response.includeExampleContent,
     dockerSetup: response.dockerSetup,
   } satisfies ProjectConfig;

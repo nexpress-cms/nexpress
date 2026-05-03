@@ -125,7 +125,13 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     const connectionString =
       options.connectionString || config.db.connectionString || process.env.DATABASE_URL;
     if (!connectionString) {
-      throw new Error("DATABASE_URL is not set");
+      // First-boot friendly: most operators trip here on a fresh
+      // clone with no `.env`. Point them at the setup wizard
+      // rather than the literal env var name. The legacy phrase
+      // is preserved so existing logs / monitors still match.
+      throw new Error(
+        "DATABASE_URL is not set — run `pnpm setup` (browser env wizard) or copy `.env.example` to `.env` and fill in your Postgres connection string.",
+      );
     }
     return connectionString;
   }

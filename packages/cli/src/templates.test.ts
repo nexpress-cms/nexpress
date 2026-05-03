@@ -4,8 +4,6 @@ import { getProjectFiles } from "./templates.js";
 
 const baseConfig = {
   projectName: "test-site",
-  databaseMode: "local-docker" as const,
-  storageMode: "local" as const,
   includeExampleContent: true,
   dockerSetup: true,
   localMode: true,
