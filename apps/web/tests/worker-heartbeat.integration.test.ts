@@ -93,13 +93,13 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
     expect(summary.workers[0]?.id).toBe("worker-fresh");
   });
 
-  it("admin /api/admin/jobs/health surfaces the summary (editor-and-above only)", async () => {
+  it("admin /api/admin/jobs/health surfaces the summary (admin only)", async () => {
     const { recordHeartbeat } = await import("@nexpress/core");
     await recordHeartbeat("worker-api");
 
     const { GET: healthGET } = await import("@/app/api/admin/jobs/health/route");
     const { seedUser } = await import("./harness.js");
-    const session = await seedUser({ role: "editor" });
+    const session = await seedUser({ role: "admin" });
     const { NextRequest } = await import("next/server");
     const headers = new Headers({
       cookie: `nx-session=${session.accessToken}; nx-csrf=${session.csrfToken}`,
@@ -120,10 +120,10 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
     expect(body.workers[0]?.id).toBe("worker-api");
   });
 
-  it("admin /api/admin/jobs/health rejects mods (403)", async () => {
+  it("admin /api/admin/jobs/health rejects editors (403)", async () => {
     const { GET: healthGET } = await import("@/app/api/admin/jobs/health/route");
     const { seedUser } = await import("./harness.js");
-    const session = await seedUser({ role: "moderator" });
+    const session = await seedUser({ role: "editor" });
     const { NextRequest } = await import("next/server");
     const headers = new Headers({
       cookie: `nx-session=${session.accessToken}; nx-csrf=${session.csrfToken}`,

@@ -18,15 +18,17 @@ import { ensureFor } from "@/lib/init-core";
  * entries inline. Optional `?limit=` / `?offset=` for pagination,
  * defaulting to the helper's 200 cap (max 1000).
  *
- * Gated to `editor` and above — the same level that sees the
- * jobs admin's other read endpoints. No CSRF gate because GET
+ * Gated to `admin.manage` — same level as the rest of the
+ * jobs admin surface. Job logs can include payload snippets,
+ * member/user ids, import metadata, and failure messages, so
+ * they shouldn't leak to editors. No CSRF gate because GET
  * is read-only.
  */
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
-    if (!can(user, "content.publish")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("job-logs", "read");
     }
     const { id } = await context.params;
