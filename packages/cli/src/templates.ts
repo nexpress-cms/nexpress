@@ -43,6 +43,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/app/(site)/page.tsx": homePageTemplate(config),
     "src/app/(site)/[...slug]/page.tsx": slugPageTemplate(config),
     "src/app/(admin)/admin/login/page.tsx": adminLoginPageTemplate(),
+    "src/app/(admin)/admin/login/login-client.tsx": adminLoginClientTemplate(),
+    "src/app/(admin)/admin/setup/page.tsx": adminSetupPageTemplate(),
+    "src/app/(admin)/admin/setup/setup-client.tsx": adminSetupClientTemplate(),
+    "src/app/api/admin/setup/route.ts": adminSetupRouteTemplate(),
     "src/app/(admin)/admin/(protected)/layout.tsx": adminProtectedLayoutTemplate(),
     "src/app/(admin)/admin/(protected)/page.tsx": adminDashboardPageTemplate(),
     "src/app/(admin)/admin/(protected)/collections/[collection]/page.tsx":
@@ -285,6 +289,22 @@ function healthRouteTemplate(): string {
 
 function adminLoginPageTemplate(): string {
   return readTemplate("admin/login.tsx");
+}
+
+function adminLoginClientTemplate(): string {
+  return readTemplate("admin/login-client.tsx");
+}
+
+function adminSetupPageTemplate(): string {
+  return readTemplate("admin/setup-page.tsx");
+}
+
+function adminSetupClientTemplate(): string {
+  return readTemplate("admin/setup-client.tsx");
+}
+
+function adminSetupRouteTemplate(): string {
+  return readTemplate("api/admin/setup/route.ts");
 }
 
 function adminProtectedLayoutTemplate(): string {
