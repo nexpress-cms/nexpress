@@ -1,10 +1,9 @@
 name: CI
 
-# Temporarily manual-only — the GitHub Actions billing on this account
-# is locked, so push / pull_request runs fail at 3s before any work
-# starts ("account is locked due to a billing issue"). Restore those
-# triggers once billing is resolved; the rest of the workflow is fine.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
