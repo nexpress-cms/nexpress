@@ -4,6 +4,14 @@
 @source "../../../../packages/blocks/src/**/*.{ts,tsx}";
 @source "../../../../packages/editor/src/**/*.{ts,tsx}";
 
+/* Pin Tailwind's `dark:` variant to the .dark class (or any
+ * descendant of it). The admin's ThemeToggle is the only writer —
+ * it sets / removes .dark on <html>. The class also folds in the
+ * OS preference at hydration time (see ThemeInit), so an operator
+ * who hasn't picked a theme still sees the right surface on first
+ * paint. */
+@variant dark (&:where(.dark, .dark *));
+
 @layer nx-base, nx-blocks, nx-theme, nx-overrides;
 
 @layer nx-base {

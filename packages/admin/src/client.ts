@@ -1,5 +1,6 @@
 export { AdminShell } from "./layout/admin-shell.js";
 export { AdminTopbar } from "./layout/admin-topbar.js";
+export { ThemeToggle, ThemeInit } from "./layout/theme-toggle.js";
 
 export { CollectionListView } from "./collections/collection-list-view.js";
 export { CollectionEditView } from "./collections/collection-edit-view.js";
