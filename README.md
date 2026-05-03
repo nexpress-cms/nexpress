@@ -75,14 +75,17 @@ npx create-nexpress my-site
 cd my-site
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db
-cp .env.example .env
-pnpm build
+pnpm setup        # browser env wizard — DB connection, NX_SECRET, storage
 pnpm dev
 ```
 
 The site runs at `localhost:3000` and the admin panel is at
-`localhost:3000/admin`. Seed the first admin with `pnpm seed:admin`
-(set `NX_ADMIN_EMAIL`, `NX_ADMIN_NAME`, `NX_ADMIN_PASSWORD` first).
+`localhost:3000/admin`. The first time you visit `/admin` on an empty
+DB, a 2-step wizard collects your admin account, site name, and
+optional sample content — no `pnpm seed:admin` env vars needed.
+
+> Prefer to do it by hand? `cp .env.example .env`, edit it yourself,
+> then `pnpm db:generate && pnpm db:migrate && pnpm dev`.
 
 ## Architecture
 

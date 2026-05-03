@@ -20,6 +20,7 @@
     "format:check": "prettier --check .",
     "db:generate": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run db:generate",
     "db:migrate": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run db:migrate",
+    "setup": "pnpm --filter @nexpress/web setup",
     "seed:admin": "pnpm --filter @nexpress/web seed:admin",
     "seed:content": "pnpm --filter @nexpress/web seed:content",
     "clean": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run clean && rm -rf node_modules",
