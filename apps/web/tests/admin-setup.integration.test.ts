@@ -26,11 +26,11 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
 
   it("GET /api/admin/setup reports available=true on a fresh DB", async () => {
     const { GET } = await import("@/app/api/admin/setup/route");
-    const { status, body } = await readJson<{ data: { available: boolean } }>(
+    const { status, body } = await readJson<{ available: boolean }>(
       await GET(),
     );
     expect(status).toBe(200);
-    expect(body.data.available).toBe(true);
+    expect(body.available).toBe(true);
   });
 
   it("POST /api/admin/setup creates the first admin and issues a session", async () => {
