@@ -19,14 +19,27 @@ interface SiteState {
 
 const PASSWORD_MIN = 12;
 
-export function SetupWizard() {
+export interface SetupWizardProps {
+  /**
+   * Server-side env (`NX_ADMIN_EMAIL`, `NX_ADMIN_NAME`) read by the
+   * page component and forwarded so an automated boot doesn't make
+   * the operator retype values they've already configured. Password
+   * is intentionally absent — it never reaches the browser.
+   */
+  prefill?: {
+    email?: string;
+    name?: string;
+  };
+}
+
+export function SetupWizard({ prefill }: SetupWizardProps = {}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [account, setAccount] = useState<AccountState>({
-    email: "",
+    email: prefill?.email ?? "",
     password: "",
     passwordConfirm: "",
-    name: "",
+    name: prefill?.name ?? "",
   });
   const [site, setSite] = useState<SiteState>({
     siteName: "My Site",
