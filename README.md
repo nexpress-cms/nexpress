@@ -79,10 +79,9 @@ pnpm run setup    # browser env wizard — DB connection, NX_SECRET, storage
 pnpm dev
 ```
 
-> `pnpm run setup`, not `pnpm setup` — `pnpm setup` is pnpm's
-> built-in command for installing pnpm itself, and it shadows
-> our package script. Same caveat below if you ever see `pnpm
-> init` (`init` is a pnpm built-in too).
+> `pnpm run setup`, not `pnpm setup` — `pnpm setup`, `pnpm doctor`,
+> and `pnpm init` are all pnpm built-ins that shadow our package
+> scripts of the same name. Always invoke ours with `pnpm run <name>`.
 
 The site runs at `localhost:3000` and the admin panel is at
 `localhost:3000/admin`. The first time you visit `/admin` on an empty
@@ -91,6 +90,18 @@ optional sample content — no `pnpm seed:admin` env vars needed.
 
 > Prefer to do it by hand? `cp .env.example .env`, edit it yourself,
 > then `pnpm db:generate && pnpm db:migrate && pnpm dev`.
+
+### Stuck? Run the doctor.
+
+```bash
+pnpm run doctor
+```
+
+A read-only diagnosis: Node / pnpm versions, `.env` presence, the
+required env vars (with shape checks), Postgres reachability,
+whether migrations are applied, and the local-storage directory.
+Prints a green `✓` per check, a yellow `⚠` for soft issues, a red
+`✗` per blocker plus a one-line hint for each.
 
 ## Architecture
 

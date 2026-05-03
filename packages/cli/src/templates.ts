@@ -33,6 +33,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/lib/collection-helpers.ts": collectionHelpersLibTemplate(),
     "src/lib/revalidate.ts": revalidateLibTemplate(),
     "src/lib/manifest.ts": manifestLibTemplate(),
+    "scripts/doctor.ts": doctorScriptTemplate(),
     "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
     "scripts/seed-admin.ts": seedAdminScriptTemplate(),
     "scripts/setup-server.ts": setupServerScriptTemplate(),
@@ -90,6 +91,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         dev: "next dev",
         build: "next build",
         start: "next start",
+        doctor: "tsx scripts/doctor.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
         setup: "tsx scripts/setup-server.ts",
@@ -202,6 +204,10 @@ function seedAdminScriptTemplate(): string {
 
 function setupServerScriptTemplate(): string {
   return readTemplate("scripts/setup-server.ts");
+}
+
+function doctorScriptTemplate(): string {
+  return readTemplate("scripts/doctor.ts");
 }
 
 function dockerComposeTemplate(): string {
@@ -397,9 +403,20 @@ pnpm run setup          # browser env wizard (DB / NX_SECRET / storage / migrati
 pnpm dev
 \`\`\`
 
-> \`pnpm run setup\`, not \`pnpm setup\` — \`pnpm setup\` is pnpm's built-in
-> command for installing pnpm itself, so we explicitly invoke our
-> package script with \`run\`.
+> \`pnpm run setup\`, not \`pnpm setup\` — \`pnpm setup\`, \`pnpm doctor\`,
+> and \`pnpm init\` are all pnpm built-ins that shadow our package
+> scripts of the same name. Invoke ours with \`pnpm run <name>\`.
+
+### Stuck? Run the doctor.
+
+\`\`\`bash
+pnpm run doctor
+\`\`\`
+
+A read-only diagnosis of the runtime: Node / pnpm versions, \`.env\`
+presence, required env vars, Postgres reachability, whether
+migrations are applied. Green \`✓\` / yellow \`⚠\` / red \`✗\` with a
+one-line hint for each non-OK line.
 
 The first time you visit \`http://localhost:3000/admin\` on an empty
 DB, a 2-step wizard collects your admin account, site name, and
