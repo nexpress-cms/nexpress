@@ -1,0 +1,34 @@
+import { renderBlocks } from "@nexpress/blocks";
+import type { NxPageBlocks } from "@nexpress/blocks";
+
+import type { NxTemplateRenderProps } from "@nexpress/theme";
+
+/**
+ * Landing-page template — full-bleed hero from the doc's first
+ * block, then the rest of the blocks render edge-to-edge so each
+ * one (Hero / FeatureGrid / CTA / Pricing) can use the full
+ * viewport width. The page's `title` and `seoDescription` form a
+ * fallback hero when the doc has no blocks yet.
+ *
+ * For pages where the operator wants a single max-width column
+ * and a sticky table of contents, pick the "default" template
+ * instead.
+ */
+export function PageLandingTemplate({ doc }: NxTemplateRenderProps) {
+  const blocks = (doc as { blocks?: NxPageBlocks }).blocks;
+  const title = (doc as { title?: string }).title ?? "Untitled";
+  const intro = (doc as { seoDescription?: string }).seoDescription;
+
+  return (
+    <div className="nx-page nx-page-landing">
+      {blocks && blocks.length > 0 ? (
+        <div className="nx-page-landing-blocks">{renderBlocks(blocks)}</div>
+      ) : (
+        <section className="nx-page-landing-hero">
+          <h1>{title}</h1>
+          {intro ? <p className="nx-page-landing-intro">{intro}</p> : null}
+        </section>
+      )}
+    </div>
+  );
+}

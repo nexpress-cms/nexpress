@@ -7,26 +7,20 @@ import { magazineCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageCoverTemplate } from "./templates/page-cover.js";
 import { PostFeatureTemplate } from "./templates/post-feature.js";
+import { PostListTemplate } from "./templates/post-list.js";
 
 /**
- * `@nexpress/theme-magazine` — bold serif magazine layout.
+ * `@nexpress/theme-magazine` — production-grade editorial layout.
  *
- * Demonstrates a richer theme than `theme-minimal` without
- * borrowing the entire shell from `theme-default`. Distinguishing
- * features:
- *
- *   - Caps masthead with thick rule and tagline
- *   - Multi-column page-cover template (full-bleed image + caption)
- *   - Posts get a feature-article template (large title, dropcap,
- *     pulled byline)
- *   - Theme-owned CSS keeps everything inside `.nx-magazine-*`
- *     selectors so swapping back to default doesn't leave
- *     residual rules.
- *
- * No client components — every slot is a server component. If
- * a magazine site wants an interactive nav drawer, that goes
- * in a separate "use client" file with the same two-entry
- * tsup pattern theme-default uses.
+ * Distinguishing features:
+ *   - Display-serif masthead with dateline and rule, mobile drawer.
+ *   - Three-column footer (Subscribe / Sections / Colophon) with a
+ *     newsletter form and section nav, collapses to a single column.
+ *   - Page templates: default centered column, full-bleed cover.
+ *   - Post templates: feature article (drop cap, byline rule), index
+ *     list with lead piece + 2-up secondary row + archive grid.
+ *   - All CSS scoped under `.nx-magazine-*` so theme swaps never
+ *     leave residue.
  */
 export const magazineTheme = defineTheme({
   manifest: {
@@ -34,7 +28,7 @@ export const magazineTheme = defineTheme({
     name: "Magazine",
     version: "0.1.0",
     description:
-      "Editorial magazine layout — caps masthead, full-bleed cover template, feature article posts. Demonstrates per-collection templates and a custom CSS palette.",
+      "Editorial magazine layout. Display-serif masthead with mobile drawer, three-column footer with newsletter, feature-article post template with drop cap, magazine-style index with lead piece + archive grid.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
   },
@@ -80,6 +74,12 @@ export const magazineTheme = defineTheme({
             "Large headline, byline rule, dropcap on the first paragraph. Best for long-form posts.",
           component: PostFeatureTemplate,
         },
+        list: {
+          label: "Index",
+          description:
+            "Magazine-style index — lead piece on top, two-up secondary row, archive grid below.",
+          component: PostListTemplate,
+        },
       },
     },
   },
@@ -87,3 +87,11 @@ export const magazineTheme = defineTheme({
 
 export { MagazineHeader, MagazineFooter, MagazineShell };
 export { magazineCss };
+export { MagazineMobileNav } from "./components/mobile-nav.js";
+export { MagazineNewsletterForm } from "./components/newsletter-form.js";
+export {
+  MagazinePostCard,
+  type MagazinePostCardDoc,
+  type MagazinePostCardProps,
+} from "./components/post-card.js";
+export { PostListTemplate as MagazinePostListTemplate } from "./templates/post-list.js";

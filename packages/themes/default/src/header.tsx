@@ -6,28 +6,29 @@ import { headers } from "next/headers";
 import { DarkModeToggle } from "./components/dark-mode-toggle.js";
 import { LanguagePicker } from "./components/language-picker.js";
 import { MemberStatusWidget } from "./components/member-status-widget.js";
+import { MobileNav } from "./components/mobile-nav.js";
 
 /**
  * Default theme header — server component. Reads the
- * `header` navigation menu and renders logo / nav items /
- * search form / member status widget. Themes that want a
- * different shape (centered logo, mega-menu, etc.) override
- * `slots.header` in their own `defineTheme()` call —
- * `@nexpress/theme-minimal` is the canonical sparse example.
+ * `header` navigation menu and renders the desktop / mobile
+ * surfaces in one go:
  *
- * Previously hardcoded in `apps/web/src/app/(site)/layout.tsx`;
- * 11.2 moved it here so a theme swap actually changes the
- * rendered header (not just the styles around an unchanged DOM).
+ *   - Desktop (≥768px): inline link list, search bar, lang
+ *     picker, dark toggle, member widget.
+ *   - Mobile (<768px): the inline list collapses (CSS-only) and
+ *     a hamburger button opens a slide-in drawer (`<MobileNav />`,
+ *     a small client component that owns its own open/closed
+ *     state). The same nav items feed both surfaces — markup is
+ *     server-rendered once and reused.
+ *
+ * The header is `position: sticky` (see styles.ts) so the search
+ * + member widget stay reachable as the page scrolls.
  */
 export async function DefaultHeader() {
   const headerNav = await getCachedNavigation("header");
   const i18n = getI18nConfig();
   const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
-  // Sprint S — read the request path the proxy stamped onto
-  // `x-nx-pathname` so we can resolve which locales actually
-  // publish a translation of this page. Falls back to `null`
-  // (every locale enabled) when the header isn't set, e.g.
-  // during static prerender / unit tests.
+
   let availableLocales: string[] | null = null;
   if (showLanguagePicker) {
     const headerList = await headers();
@@ -43,36 +44,49 @@ export async function DefaultHeader() {
 
   return (
     <header className="nx-site-header">
-      <nav>
+      <div className="nx-site-header-inner">
         <a href="/" className="nx-site-logo">
           NexPress
         </a>
-        <ul className="nx-site-nav">
-          {headerNav.map((item: NxNavItem) => (
-            <li key={item.label}>
-              <a href={item.url}>{item.label}</a>
-            </li>
-          ))}
-        </ul>
-        <form action="/search" method="GET" role="search" className="nx-site-search">
-          <label className="sr-only" htmlFor="nx-site-search-input">
-            Search
-          </label>
-          <input
-            id="nx-site-search-input"
-            type="search"
-            name="q"
-            placeholder="Search…"
-            autoComplete="off"
-            className="nx-site-search-input"
-          />
-        </form>
-        {showLanguagePicker && i18n ? (
-          <LanguagePicker locales={i18n.locales} availableLocales={availableLocales ?? undefined} />
-        ) : null}
-        <DarkModeToggle />
-        <MemberStatusWidget />
-      </nav>
+        <nav className="nx-site-nav-desktop" aria-label="Primary">
+          <ul className="nx-site-nav">
+            {headerNav.map((item: NxNavItem, index: number) => (
+              <li key={`nav-${index.toString()}`}>
+                <a href={item.url}>{item.label}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="nx-site-header-tools">
+          <form
+            action="/search"
+            method="GET"
+            role="search"
+            className="nx-site-search"
+          >
+            <label className="sr-only" htmlFor="nx-site-search-input">
+              Search
+            </label>
+            <input
+              id="nx-site-search-input"
+              type="search"
+              name="q"
+              placeholder="Search…"
+              autoComplete="off"
+              className="nx-site-search-input"
+            />
+          </form>
+          {showLanguagePicker && i18n ? (
+            <LanguagePicker
+              locales={i18n.locales}
+              availableLocales={availableLocales ?? undefined}
+            />
+          ) : null}
+          <DarkModeToggle />
+          <MemberStatusWidget />
+          <MobileNav items={headerNav} />
+        </div>
+      </div>
     </header>
   );
 }

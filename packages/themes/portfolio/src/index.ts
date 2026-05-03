@@ -1,26 +1,33 @@
 import { defineTheme } from "@nexpress/theme";
 
+import { PortfolioMobileNav } from "./components/mobile-nav.js";
+import {
+  PortfolioProjectCard,
+  type PortfolioProjectDoc,
+} from "./components/project-card.js";
 import { PortfolioFooter } from "./footer.js";
 import { PortfolioHeader } from "./header.js";
 import { PortfolioShell } from "./shell.js";
 import { portfolioCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageGalleryTemplate } from "./templates/page-gallery.js";
+import { ProjectDetailTemplate } from "./templates/project-detail.js";
+import { ProjectIndexTemplate } from "./templates/project-index.js";
 
 /**
  * `@nexpress/theme-portfolio` — image-led dark theme.
  *
- * Designed for designers / photographers / studios. The default
- * page template is centered like the magazine but with tighter
- * line-height and sans-serif type. The `gallery` template
- * arranges block content in a grid so an image-heavy page
- * (think project case study) stays visually dense.
+ * Designed for designers / photographers / studios. Pages get a
+ * centered text column or a gallery grid; "posts" are treated as
+ * project case studies with a hero image, role / year / client
+ * meta strip, and the standard block body underneath. The index
+ * template renders the project archive as a 2- / 3-column grid
+ * of square cards with hover-fade captions.
  *
- * Demonstrates a theme that flips the surface palette: dark
- * `--nx-color-background` driven entirely from the theme's CSS
- * (no admin token override needed). Sites that want a light
- * variant of this theme would either fork or override tokens
- * via the admin.
+ * Flips the surface palette: dark `--nx-color-background` is
+ * driven entirely from the theme's CSS (no admin override
+ * required). Sites that want a light variant fork or override
+ * tokens via the admin.
  */
 export const portfolioTheme = defineTheme({
   manifest: {
@@ -28,7 +35,7 @@ export const portfolioTheme = defineTheme({
     name: "Portfolio",
     version: "0.1.0",
     description:
-      "Image-led dark theme. Compact top bar, sans-serif type, gallery template that arranges blocks in a grid.",
+      "Image-led dark theme for studios and designers. Hero-led project detail template, archive grid, gallery and centered page templates.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
   },
@@ -53,9 +60,30 @@ export const portfolioTheme = defineTheme({
           component: PageGalleryTemplate,
         },
       },
+      posts: {
+        detail: {
+          label: "Project detail",
+          description:
+            "Hero image, centered title and excerpt, role / year / client meta strip, then the body blocks.",
+          component: ProjectDetailTemplate,
+        },
+        index: {
+          label: "Project index",
+          description:
+            "Archive grid of square project cards with hover-fade captions.",
+          component: ProjectIndexTemplate,
+        },
+      },
     },
   },
 });
 
-export { PortfolioHeader, PortfolioFooter, PortfolioShell };
+export {
+  PortfolioHeader,
+  PortfolioFooter,
+  PortfolioShell,
+  PortfolioProjectCard,
+  PortfolioMobileNav,
+};
 export { portfolioCss };
+export type { PortfolioProjectDoc };

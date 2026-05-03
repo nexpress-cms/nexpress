@@ -5,30 +5,27 @@ import { DefaultHeader } from "./header.js";
 import { DefaultShell } from "./shell.js";
 import { defaultThemeCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
+import { PageLandingTemplate } from "./templates/page-landing.js";
+import { PageSidebarTemplate } from "./templates/page-sidebar.js";
 import { PageWideTemplate } from "./templates/page-wide.js";
+import { PostDefaultTemplate } from "./templates/post-default.js";
+import { PostListTemplate } from "./templates/post-list.js";
 
 /**
  * `@nexpress/theme-default` — the built-in baseline theme.
  *
- * Phase 11.1 stubbed the manifest; 11.2 backfilled the real
- * shell, header, footer, and CSS so swapping themes is a
- * genuine UX change rather than a registry lookup that
- * points at empty components.
+ * Production-grade defaults: sticky header with a mobile drawer,
+ * a four-column footer (brand / sitemap / resources / newsletter)
+ * with optional social icons, post list / detail templates that
+ * surface excerpt / cover / tags / reading time, and three page
+ * templates (default centered column, edge-to-edge wide, marketing
+ * landing, doc-style sidebar). All CSS is theme-owned so the
+ * framework drops it as a single `<style data-nx-theme="default">`
+ * tag at SSR time — no extra round-trip.
  *
- * The header is a server component that loads the `header`
- * navigation menu and renders logo / nav / search / member
- * status widget. The footer reads the `footer` menu. CSS for
- * the layout-level classes (`.nx-site-header`, `.nx-site-footer`,
- * `.nx-site-search`, etc.) ships with the package — the
- * framework injects it as `<style data-nx-theme="default">` in
- * the layout head when this theme is active.
- *
- * Sites that want a different layout author a competing theme
- * package (see `@nexpress/theme-minimal` for the canonical
- * sparse alternative) and register both in
- * `nexpress.config.ts`'s `themes` array. Admins switch via the
- * Theme settings tab without redeploying — that's the UX 11.4
- * lands.
+ * Sites brand by overriding the design tokens (`--nx-color-*` etc).
+ * Ship a competing theme package (see theme-magazine / theme-portfolio)
+ * to change layout structure rather than colors.
  */
 export const defaultTheme = defineTheme({
   manifest: {
@@ -36,7 +33,7 @@ export const defaultTheme = defineTheme({
     name: "NexPress Default",
     version: "0.1.0",
     description:
-      "Built-in baseline theme. Provides the standard NexPress shell, header, footer, and search bar styled with the design tokens. Sites brand by overriding tokens; ship a custom theme to change the structure.",
+      "Production-grade baseline theme. Sticky header with mobile drawer, four-column footer, blog list / detail templates, landing + sidebar page variants, dark-mode parity, social + newsletter slots in the footer.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
   },
@@ -47,10 +44,6 @@ export const defaultTheme = defineTheme({
       footer: DefaultFooter,
     },
     css: defaultThemeCss,
-    // 11.3 — page templates. Each `pages` document picks one
-    // via the `template` field in the admin UI. `default` is
-    // the centered max-width container; `wide` drops the
-    // constraint for landing pages / hero-led marketing.
     templates: {
       pages: {
         default: {
@@ -61,8 +54,34 @@ export const defaultTheme = defineTheme({
         wide: {
           label: "Wide",
           description:
-            "Edge-to-edge layout with no max-width. Best for landing pages and full-bleed media.",
+            "Edge-to-edge layout with no max-width. Best for galleries and immersive media.",
           component: PageWideTemplate,
+        },
+        landing: {
+          label: "Landing",
+          description:
+            "Marketing-style template — full-bleed hero from the first block, then sections render edge-to-edge so Hero / FeatureGrid / CTA blocks span the viewport.",
+          component: PageLandingTemplate,
+        },
+        sidebar: {
+          label: "Sidebar",
+          description:
+            "Two-column layout with a sticky right sidebar. Suited to docs / knowledge bases. Sites can populate the aside with a `sidebar` field on their pages collection.",
+          component: PageSidebarTemplate,
+        },
+      },
+      posts: {
+        default: {
+          label: "Article",
+          description:
+            "Centered article column with cover image, tags, byline, reading time, and Lexical body.",
+          component: PostDefaultTemplate,
+        },
+        list: {
+          label: "List view",
+          description:
+            "Blog-index template: one feature card on top, then a 3-column grid (collapses on phones). Suitable for any collection that ships PostCard-shaped docs.",
+          component: PostListTemplate,
         },
       },
     },
@@ -73,4 +92,13 @@ export { DefaultShell } from "./shell.js";
 export { DefaultHeader } from "./header.js";
 export { DefaultFooter } from "./footer.js";
 export { MemberStatusWidget } from "./components/member-status-widget.js";
+export { MobileNav } from "./components/mobile-nav.js";
+export { SocialLinks } from "./components/social-links.js";
+export { NewsletterForm } from "./components/newsletter-form.js";
+export { PostCard, type PostCardDoc, type PostCardProps } from "./components/post-card.js";
+export { Pagination, type PaginationProps } from "./components/pagination.js";
+export { PageLandingTemplate } from "./templates/page-landing.js";
+export { PageSidebarTemplate } from "./templates/page-sidebar.js";
+export { PostDefaultTemplate } from "./templates/post-default.js";
+export { PostListTemplate } from "./templates/post-list.js";
 export { defaultThemeCss } from "./styles.js";

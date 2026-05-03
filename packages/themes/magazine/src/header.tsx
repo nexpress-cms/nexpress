@@ -3,17 +3,18 @@ import type { NxNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 import { headers } from "next/headers";
 
+import { MagazineMobileNav } from "./components/mobile-nav.js";
+
 /**
- * Caps masthead. Reads the `header` navigation menu (same
- * source as theme-default) but renders it differently — items
- * are bottom-aligned beneath a thick rule with letter-spaced
- * caps. The site name is rendered in display-serif and pulls
- * from the framework's logical site name slot.
+ * Editorial masthead. Display-serif logo over a thick rule with a
+ * dateline above and tagline below; small-caps section nav sits
+ * beneath the masthead. The inline section nav stays on desktop;
+ * below ~768px it hides via CSS and the `<MagazineMobileNav />`
+ * "Menu" button takes over.
  *
  * Phase 12.5 — the masthead tagline is keyed in the theme's
- * i18n bundle (`magazine.tagline`) and rendered via `t()`.
- * The locale comes from the middleware-set `x-nx-locale`
- * request header.
+ * i18n bundle (`magazine.tagline`) and rendered via `t()`. The
+ * locale comes from the middleware-set `x-nx-locale` header.
  */
 export async function MagazineHeader() {
   const items = await getCachedNavigation("header");
@@ -22,32 +23,38 @@ export async function MagazineHeader() {
     const headerList = await headers();
     locale = headerList.get("x-nx-locale") ?? undefined;
   } catch {
-    // headers() throws outside a request scope; fall through
-    // to the default-locale fallback in t().
+    // Outside a request scope; t()'s default-locale fallback handles it.
   }
-
-  // Phase D — t() is async (consults admin override layer).
-  // Resolve before rendering since JSX can't await inline.
   const tagline = await t("magazine.tagline", locale);
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   return (
     <header className="nx-site-header nx-magazine-header">
       <div className="nx-magazine-masthead">
+        <p className="nx-magazine-dateline">{today}</p>
         <a href="/" className="nx-site-logo nx-magazine-logo">
           NexPress
         </a>
         <p className="nx-magazine-tagline">{tagline}</p>
       </div>
       {items.length > 0 ? (
-        <nav aria-label="Sections" className="nx-magazine-sections">
-          <ul>
-            {items.map((item: NxNavItem, index: number) => (
-              <li key={`magazine-nav-${index}`}>
-                <a href={item.url}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <>
+          <nav aria-label="Sections" className="nx-magazine-sections">
+            <ul>
+              {items.map((item: NxNavItem, index: number) => (
+                <li key={`magazine-nav-${index.toString()}`}>
+                  <a href={item.url}>{item.label}</a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <MagazineMobileNav items={items} />
+        </>
       ) : null}
     </header>
   );
