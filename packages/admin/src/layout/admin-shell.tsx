@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -126,6 +127,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       ? [
           { href: "/admin/jobs", label: "Jobs", icon: Timer },
           { href: "/admin/sites", label: "Sites", icon: Globe2 },
+          { href: "/admin/health", label: "Health", icon: Activity },
         ]
       : []),
     { href: "/admin/settings", label: "Settings", icon: Settings },
