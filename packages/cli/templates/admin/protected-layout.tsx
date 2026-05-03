@@ -1,15 +1,26 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { count, eq } from "drizzle-orm";
 
-import { verifyTokenFull } from "@nexpress/core";
+import { nxUsers, verifyTokenFull } from "@nexpress/core";
 import { getDb } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminProtectedLayout({ children }: { children: ReactNode }) {
   const token = (await cookies()).get("nx-session")?.value;
-  if (!token) redirect("/admin/login");
+  if (!token) {
+    // No session AND no admin in the DB → first-boot wizard;
+    // otherwise the regular login form.
+    const db = getDb();
+    const rows = await db
+      .select({ value: count() })
+      .from(nxUsers)
+      .where(eq(nxUsers.role, "admin"));
+    if ((rows[0]?.value ?? 0) === 0) redirect("/admin/setup");
+    redirect("/admin/login");
+  }
 
   const secret =
     process.env.NX_SECRET ?? process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;

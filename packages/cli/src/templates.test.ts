@@ -44,14 +44,29 @@ describe("getProjectFiles", () => {
     expect(declIdx).toBeGreaterThan(mainIdx);
   });
 
-  it("admin login template wraps async onSubmit so ESLint doesn't fail next build", () => {
+  it("admin login client wraps async onSubmit so ESLint doesn't fail next build", () => {
     const files = getProjectFiles(baseConfig);
-    const login = files["src/app/(admin)/admin/login/page.tsx"];
-    expect(login).toBeDefined();
-    // Direct `onSubmit={onSubmit}` (an async function reference) trips
-    // @typescript-eslint/no-misused-promises during `next build`.
-    expect(login).not.toMatch(/onSubmit=\{onSubmit\}/);
-    expect(login).toMatch(/onSubmit=\{\(.+?\)\s*=>/);
+    // Login is now a server wrapper that redirects to /admin/setup
+    // when no admin exists. The actual form lives in login-client.tsx;
+    // assert the void-handler pattern there instead.
+    const loginClient = files["src/app/(admin)/admin/login/login-client.tsx"];
+    expect(loginClient).toBeDefined();
+    expect(loginClient).not.toMatch(/onSubmit=\{onSubmit\}/);
+    expect(loginClient).toMatch(/onSubmit=\{\(.+?\)\s*=>/);
+  });
+
+  it("login server wrapper redirects to /admin/setup when no admin exists", () => {
+    const files = getProjectFiles(baseConfig);
+    const loginPage = files["src/app/(admin)/admin/login/page.tsx"];
+    expect(loginPage).toBeDefined();
+    expect(loginPage).toMatch(/redirect\("\/admin\/setup"\)/);
+  });
+
+  it("includes the first-boot setup wizard files", () => {
+    const files = getProjectFiles(baseConfig);
+    expect(files["src/app/(admin)/admin/setup/page.tsx"]).toBeDefined();
+    expect(files["src/app/(admin)/admin/setup/setup-client.tsx"]).toBeDefined();
+    expect(files["src/app/api/admin/setup/route.ts"]).toBeDefined();
   });
 
   it("includes essential top-level files", () => {
