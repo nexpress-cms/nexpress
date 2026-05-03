@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build",
+    "predev": "tsx scripts/dev-notice.ts",
     "dev": "concurrently -n next,schema -c blue,magenta -k \"next dev\" \"NX_SCHEMA_WATCH=1 tsx watch --watch-path=src/collections --watch-path=src/nexpress.config.ts scripts/generate-schema.ts\"",
     "start": "next start",
     "typecheck": "tsc --noEmit",
