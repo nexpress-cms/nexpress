@@ -25,8 +25,8 @@ describe.skipIf(skipIfNoTestDb())("GET /api/admin/jobs/[id]/logs (Phase 20.3b)",
     await closeTestDb();
   });
 
-  it("returns the captured log entries for the job to an editor", async () => {
-    const session = await seedUser({ email: "logs-editor@example.com", role: "editor" });
+  it("returns the captured log entries for the job to an admin", async () => {
+    const session = await seedUser({ email: "logs-admin@example.com", role: "admin" });
 
     await runInJobContext("api-test-job-1", async () => {
       await recordJobLog("info", "first");
@@ -48,8 +48,8 @@ describe.skipIf(skipIfNoTestDb())("GET /api/admin/jobs/[id]/logs (Phase 20.3b)",
     expect(body.entries[1]?.context).toEqual({ extra: 1 });
   });
 
-  it("rejects callers below editor with 403", async () => {
-    const session = await seedUser({ email: "logs-viewer@example.com", role: "viewer" });
+  it("rejects callers below admin with 403", async () => {
+    const session = await seedUser({ email: "logs-editor@example.com", role: "editor" });
     const request = buildRequest("/api/admin/jobs/anything/logs", { session });
 
     const { status } = await readJson<unknown>(
@@ -59,7 +59,7 @@ describe.skipIf(skipIfNoTestDb())("GET /api/admin/jobs/[id]/logs (Phase 20.3b)",
   });
 
   it("returns an empty entries array for a job with no captured logs", async () => {
-    const session = await seedUser({ email: "logs-empty@example.com", role: "editor" });
+    const session = await seedUser({ email: "logs-empty@example.com", role: "admin" });
     const request = buildRequest("/api/admin/jobs/no-such-job/logs", { session });
 
     const { status, body } = await readJson<{ total: number; entries: unknown[] }>(

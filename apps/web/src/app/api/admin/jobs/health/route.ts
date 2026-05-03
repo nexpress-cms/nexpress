@@ -28,8 +28,9 @@ import { ensureFor, nexpressConfig } from "@/lib/init-core";
  * pgboss.archive); thresholds default when the config doesn't
  * override them.
  *
- * Gated to `editor` and above (the same level that sees the
- * jobs admin) — mods don't need this view.
+ * Gated to `admin.manage` — same level as the jobs list itself.
+ * Worker health, pause state, and stuck-job counts are operational
+ * details that should not leak to editors.
  */
 
 const DEFAULT_FAILED_THRESHOLD = 10;
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
   try {
     await ensureFor("read");
     const user = await requireAuth(request);
-    if (!can(user, "content.publish")) {
+    if (!can(user, "admin.manage")) {
       throw new NxForbiddenError("workers", "read");
     }
 
