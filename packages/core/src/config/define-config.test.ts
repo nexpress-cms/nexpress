@@ -22,7 +22,7 @@ describe("defineConfig — friendly error messages (#A)", () => {
         ...validBase,
         auth: { secret: "" },
       }),
-    ).toThrow(/auth\.secret.*pnpm setup/i);
+    ).toThrow(/auth\.secret.*pnpm run setup/i);
   });
 
   it("translates a malformed site.url into a setup-wizard hint", () => {
@@ -31,7 +31,7 @@ describe("defineConfig — friendly error messages (#A)", () => {
         ...validBase,
         site: { name: "Test", url: "" },
       }),
-    ).toThrow(/site\.url.*pnpm setup/i);
+    ).toThrow(/site\.url.*pnpm run setup/i);
   });
 
   it("preserves the original cross-field i18n message (not Zod-formatted)", () => {
