@@ -242,11 +242,11 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
 
 ## NOTES
 
-- **CI** — `.github/workflows/ci.yml` defines two jobs on Ubuntu (Node 22, pnpm 10.33):
-  1. `checks` — install → build → typecheck → `pnpm test` (unit suite).
+- **CI** — `.github/workflows/ci.yml` defines three jobs on Ubuntu (Node 22, pnpm 10.33), triggered on `push: main`, every `pull_request`, and manual `workflow_dispatch`:
+  1. `checks` — install → build → typecheck → `pnpm test` (unit suites only — `apps/web`'s `test` script is a no-op because that package's vitest config holds only integration specs).
   2. `integration` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
-  Currently `workflow_dispatch` only — the account's GitHub Actions billing is locked, so push / pull_request runs fail at 3 s before any work starts. Restore the `push` + `pull_request` triggers once billing is resolved (one-line change in `ci.yml`).
-- **Release** — `.github/workflows/release.yml` is wired but currently `workflow_dispatch` only too (same billing block). When active it runs the changesets action on every `main` push: when there are queued changesets it opens a "Version Packages" PR; when that PR is merged it publishes to npm with `--provenance` attestation. Requires `NPM_TOKEN` repo secret.
+  3. `e2e` — Postgres 16 + Playwright + `next start` against the built bundle. Golden-path coverage that matches production output rather than dev transpile.
+- **Release** — `.github/workflows/release.yml` runs the changesets action on every `main` push (and via `workflow_dispatch` as an escape hatch): when there are queued changesets it opens a "Version Packages" PR; when that PR is merged it publishes to npm with `--provenance` attestation. Requires `NPM_TOKEN` repo secret.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
