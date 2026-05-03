@@ -1,6 +1,12 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { can, verifyTokenFull, type NxCollectionConfig } from "@nexpress/core";
+import { count, eq } from "drizzle-orm";
+import {
+  can,
+  nxUsers,
+  verifyTokenFull,
+  type NxCollectionConfig,
+} from "@nexpress/core";
 import { AdminShell } from "@nexpress/admin/client";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
@@ -19,7 +25,17 @@ export default async function AdminLayout({
 
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-session")?.value;
-  if (!token) redirect("/admin/login");
+  if (!token) {
+    // No session AND no admin in the DB → first-boot wizard;
+    // otherwise the regular login form.
+    const db = getDb();
+    const rows = await db
+      .select({ value: count() })
+      .from(nxUsers)
+      .where(eq(nxUsers.role, "admin"));
+    if ((rows[0]?.value ?? 0) === 0) redirect("/admin/setup");
+    redirect("/admin/login");
+  }
 
   const { secret } = getAuthRuntimeConfig();
   const db = getDb();
