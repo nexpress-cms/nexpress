@@ -104,17 +104,21 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return;
     }
     await saveEnv(validated.body);
+    let migrate: { ok: boolean; output: string } | null = null;
     if (validated.body.runMigrate) {
-      const migrate = await runMigrations();
-      sendJson(res, 200, { ok: true, migrate });
-    } else {
-      sendJson(res, 200, { ok: true });
+      migrate = await runMigrations(validated.body);
     }
-    // Give the response time to flush, then quit.
-    setTimeout(() => {
-      console.log("✓ Setup complete. Run `pnpm dev` to start NexPress.");
-      process.exit(0);
-    }, 750);
+    sendJson(res, 200, { ok: true, migrate });
+    // Quit only on full success — if migrations failed, keep the
+    // server running so the operator can fix .env and re-submit
+    // the form (instead of having to restart `pnpm run setup`).
+    if (!migrate || migrate.ok) {
+      setTimeout(() => {
+        console.log("");
+        console.log("✓ Setup complete. Run `pnpm dev` to start NexPress.");
+        process.exit(0);
+      }, 750);
+    }
     return;
   }
 
@@ -251,58 +255,79 @@ async function testDbConnection(
   }
 }
 
-async function runMigrations(): Promise<{ ok: boolean; output: string }> {
+async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: string }> {
+  // `pnpm` resolves through PATH; the script is meant to run inside
+  // `apps/web` where the package's own `db:generate` / `db:migrate`
+  // scripts already wire drizzle-kit.
+  const env = { ...process.env, ...envForChild(body) };
+  console.log("");
+  console.log("[setup] running pnpm db:generate …");
+  const gen = await runChild(["pnpm", "run", "db:generate"], env);
+  if (!gen.ok) {
+    console.log("[setup] db:generate FAILED");
+    return gen;
+  }
+  console.log("[setup] running pnpm db:migrate …");
+  const mig = await runChild(["pnpm", "run", "db:migrate"], env);
+  if (!mig.ok) {
+    console.log("[setup] db:migrate FAILED");
+    return { ok: false, output: gen.output + mig.output };
+  }
+  console.log("[setup] migrations applied");
+  return { ok: true, output: gen.output + mig.output };
+}
+
+function runChild(
+  argv: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolvePromise) => {
-    // `pnpm` resolves through PATH; the script is meant to run
-    // inside `apps/web` where the package's own `db:generate` /
-    // `db:migrate` scripts already wire drizzle-kit.
-    const child = spawn("pnpm", ["run", "db:generate"], {
+    const [cmd, ...args] = argv;
+    const child = spawn(cmd!, args, {
       cwd: PROJECT_DIR,
-      env: { ...process.env, ...envForChild() },
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let buf = "";
-    child.stdout?.on("data", (chunk: Buffer) => {
-      buf += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      buf += chunk.toString();
-    });
+    const tee = (label: "stdout" | "stderr") => (chunk: Buffer) => {
+      const text = chunk.toString();
+      buf += text;
+      // Mirror to the terminal that started `pnpm run setup` so
+      // operators can actually read the failure when something
+      // goes wrong (used to be silent — output only made it to
+      // the JSON response).
+      const stream = label === "stdout" ? process.stdout : process.stderr;
+      stream.write(text);
+    };
+    child.stdout?.on("data", tee("stdout"));
+    child.stderr?.on("data", tee("stderr"));
     child.on("error", (err) => {
       resolvePromise({ ok: false, output: `${buf}\n${err.message}` });
     });
-    child.on("close", (genCode) => {
-      if (genCode !== 0) {
-        resolvePromise({ ok: false, output: buf });
-        return;
-      }
-      const migrate = spawn("pnpm", ["run", "db:migrate"], {
-        cwd: PROJECT_DIR,
-        env: { ...process.env, ...envForChild() },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      migrate.stdout?.on("data", (chunk: Buffer) => {
-        buf += chunk.toString();
-      });
-      migrate.stderr?.on("data", (chunk: Buffer) => {
-        buf += chunk.toString();
-      });
-      migrate.on("error", (err) => {
-        resolvePromise({ ok: false, output: `${buf}\n${err.message}` });
-      });
-      migrate.on("close", (code) => {
-        resolvePromise({ ok: code === 0, output: buf });
-      });
+    child.on("close", (code) => {
+      resolvePromise({ ok: code === 0, output: buf });
     });
   });
 }
 
-function envForChild(): Record<string, string> {
-  // Hand the freshly-saved env to the migrate child process so
-  // drizzle-kit picks up DATABASE_URL without depending on
-  // `dotenv`'s load order. We keep this minimal to avoid leaking
-  // unrelated parent-process env into the child.
-  return {};
+function envForChild(body: SetupBody): Record<string, string> {
+  // Hand the freshly-saved env to the migrate child process. `pnpm
+  // run setup` itself doesn't load .env, so without this drizzle-kit
+  // sees no DATABASE_URL and fails before the wizard even reaches
+  // the operator's terminal.
+  const env: Record<string, string> = {
+    DATABASE_URL: body.databaseUrl,
+    NX_SECRET: body.nxSecret,
+    SITE_URL: body.siteUrl,
+  };
+  if (body.testDatabaseUrl) env.TEST_DATABASE_URL = body.testDatabaseUrl;
+  if (body.storage === "s3") {
+    env.NX_STORAGE_ADAPTER = "s3";
+    if (body.s3Bucket) env.NX_S3_BUCKET = body.s3Bucket;
+    if (body.s3Region) env.NX_S3_REGION = body.s3Region;
+    if (body.s3Endpoint) env.NX_S3_ENDPOINT = body.s3Endpoint;
+  }
+  return env;
 }
 
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
@@ -460,8 +485,11 @@ function renderHtml(): string {
 
   <div id="status"></div>
   <div class="actions">
-    <button type="submit" class="primary" id="saveBtn">Save .env and exit</button>
+    <button type="submit" class="primary" id="saveBtn">Save and finish</button>
   </div>
+  <p class="hint" style="margin-top: 0.4rem;">
+    "Save and finish" writes <code>.env</code>, runs migrations if checked above, then exits.
+  </p>
 </form>
 
 <script>
@@ -532,11 +560,19 @@ function renderHtml(): string {
         $("saveBtn").disabled = false;
         return;
       }
-      const tail = body.migrate
-        ? body.migrate.ok
-          ? " Database migrated."
-          : " Migrations FAILED — see terminal output."
-        : "";
+      if (body.migrate && !body.migrate.ok) {
+        const out = (body.migrate.output || "(no output captured)").trim();
+        status.innerHTML =
+          ".env written, but <strong>migrations FAILED</strong>. Full output is also in the terminal where \`pnpm run setup\` is running. " +
+          "<details style=\\"margin-top:.5rem;\\"><summary style=\\"cursor:pointer;\\">Show output</summary>" +
+          "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;max-height:280px;overflow:auto;\\">" +
+          out.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+          "</pre></details>";
+        status.className = "err";
+        $("saveBtn").disabled = false;
+        return;
+      }
+      const tail = body.migrate ? " Database migrated." : "";
       setStatus(".env written." + tail + " You can close this tab and run \\\`pnpm dev\\\`.", "ok");
     } catch (err) {
       setStatus(String(err), "err");
