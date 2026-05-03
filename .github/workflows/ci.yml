@@ -17,6 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # `next build` runs page-data collection at the end of the build, which
+    # imports `nexpress.config.ts` and trips the Zod schema for auth.secret.
+    # Provide ci-only dummy values so the build completes; nothing here
+    # touches a real secret.
+    env:
+      NX_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      SITE_URL: http://localhost:3000
+
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +79,9 @@ jobs:
 
     env:
       TEST_DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_test
+      # Same `next build` page-data collection issue as the checks job.
+      NX_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      SITE_URL: http://localhost:3000
 
     steps:
       - uses: actions/checkout@v4
