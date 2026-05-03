@@ -146,6 +146,7 @@ with the code:
 | Background jobs | [docs/jobs.md](./docs/jobs.md) |
 | Caching strategy | [docs/caching.md](./docs/caching.md) |
 | Observability | [docs/observability.md](./docs/observability.md) |
+| Releasing | [docs/releasing.md](./docs/releasing.md) |
 | Multi-site | [docs/multi-site.md](./docs/multi-site.md) |
 | i18n | [docs/i18n.md](./docs/i18n.md) |
 | Email | [docs/email.md](./docs/email.md) |
@@ -158,6 +159,9 @@ with the code:
 | API error codes | [docs/api-error-codes.md](./docs/api-error-codes.md) |
 | Agent / LLM integration | [docs/agent-integration.md](./docs/agent-integration.md) |
 | Testing setup | [docs/testing.md](./docs/testing.md) |
+
+Security issues should be reported privately; see
+[SECURITY.md](./SECURITY.md).
 
 ## Tech Stack
 

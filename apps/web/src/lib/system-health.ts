@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join } from "node:path";
 
 import {
   getAllPluginIds,
@@ -126,7 +126,15 @@ async function checkStorage(): Promise<Check> {
     const kind = (process.env.NX_STORAGE_ADAPTER ?? "local").toLowerCase();
     if (kind === "local") {
       const dir = process.env.NX_STORAGE_DIR ?? "./public/media";
-      const path = resolve(process.cwd(), dir);
+      if (dir !== "./public/media" && dir !== "public/media") {
+        return {
+          id: "storage",
+          label: "Storage adapter",
+          state: "ok",
+          detail: `local · ${dir} (custom path)`,
+        };
+      }
+      const path = join(process.cwd(), "public", "media");
       try {
         const s = await stat(path);
         if (!s.isDirectory()) {

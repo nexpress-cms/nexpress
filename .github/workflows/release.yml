@@ -11,6 +11,9 @@ name: Release
 # OIDC to sign the package metadata so installers can verify the
 # tarball was built from this exact commit. See
 # https://docs.npmjs.com/generating-provenance-statements.
+#
+# Current mode: version-PR only. See docs/releasing.md for the
+# checklist to enable npm publishing for the first public cut.
 on:
   push:
     branches: [main]
