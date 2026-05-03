@@ -68,21 +68,22 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Create Release Pull Request or Publish
+      - name: Create Release Pull Request
         uses: changesets/action@v1
         with:
           # `pnpm version` consumes pending .changeset/ entries → bumps
           # versions + writes CHANGELOG.md. The action opens / updates
-          # the "Version Packages" PR with this diff. When the PR is
-          # merged, the next run of this workflow takes the publish
-          # branch and runs `pnpm release`.
+          # the "Version Packages" PR with this diff.
+          #
+          # `publish` is intentionally NOT wired yet. The 0.1.0 cut is
+          # gated behind an explicit decision (npm scope ownership +
+          # NPM_TOKEN provisioning); until then changesets/action would
+          # see every package as "unpublished" and try to publish on
+          # every push to main, failing because no token is configured.
+          # Re-add `publish: pnpm release` plus the npm secrets when
+          # 0.1.0 ships.
           version: pnpm version
-          publish: pnpm release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # `npm publish --provenance` reads this; the changeset action
-          # runs `pnpm publish` per package which respects it.
-          NPM_CONFIG_PROVENANCE: "true"
