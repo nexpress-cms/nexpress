@@ -33,6 +33,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/lib/collection-helpers.ts": collectionHelpersLibTemplate(),
     "src/lib/revalidate.ts": revalidateLibTemplate(),
     "src/lib/manifest.ts": manifestLibTemplate(),
+    "scripts/dev-notice.ts": devNoticeScriptTemplate(),
     "scripts/doctor.ts": doctorScriptTemplate(),
     "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
     "scripts/postinstall-notice.ts": postinstallNoticeScriptTemplate(),
@@ -89,6 +90,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       private: true,
       type: "module",
       scripts: {
+        predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
         build: "next build",
         start: "next start",
@@ -210,6 +212,10 @@ function setupServerScriptTemplate(): string {
 
 function doctorScriptTemplate(): string {
   return readTemplate("scripts/doctor.ts");
+}
+
+function devNoticeScriptTemplate(): string {
+  return readTemplate("scripts/dev-notice.ts");
 }
 
 function postinstallNoticeScriptTemplate(): string {
