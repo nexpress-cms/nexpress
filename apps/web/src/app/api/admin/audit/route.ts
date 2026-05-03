@@ -1,7 +1,7 @@
 import {
   NX_DEFAULT_SITE_ID,
   NxForbiddenError,
-  hasRoleOnSite,
+  getCurrentSiteId,
   isSuperAdmin,
   listAuditEvents,
   can,
@@ -11,6 +11,7 @@ import type { NextRequest } from "next/server";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
+import { canModerateSite } from "@/lib/site-authz";
 
 function parsePositiveInt(value: string | null, fallback: number, max: number): number {
   if (!value) return fallback;
@@ -58,6 +59,15 @@ export async function GET(request: NextRequest) {
     // aren't bounced by an early global precheck. Each branch
     // below carries its own authorize call against the right
     // site.
+    //
+    // Issue #379 — explicit `siteId=<id>` requests use
+    // `canModerateSite` (explicit membership lookup), not
+    // `hasRoleOnSite` whose `resolveUserRoleOnSite` falls back to
+    // the user's global role when no membership exists on the
+    // target site. The fallback let a global moderator/editor/admin
+    // enumerate any tenant's audit log via the siteId filter. The
+    // default-site path keeps the global-admin convenience for
+    // single-tenant installs.
     const rawSiteFilter = params.get("siteId")?.trim();
     let siteIdFilter: string | null | undefined;
     if (rawSiteFilter) {
@@ -77,8 +87,9 @@ export async function GET(request: NextRequest) {
         // any explicit memberships keeps audit access on the
         // default site.
         siteIdFilter = rawSiteFilter;
-      } else if (await hasRoleOnSite(user, "moderator", rawSiteFilter)) {
-        // Per-site mod-or-above can read their own site's audit.
+      } else if (await canModerateSite(user, rawSiteFilter)) {
+        // Per-site mod-or-above (by explicit membership) can read
+        // their own site's audit.
         siteIdFilter = rawSiteFilter;
       } else {
         throw new NxForbiddenError("audit", "cross-site");
@@ -88,7 +99,12 @@ export async function GET(request: NextRequest) {
       // resolved request site, not via a global pre-check —
       // a per-site moderator with no global role still needs
       // to be able to read their own tenant's audit log.
-      if (!(await hasRoleOnSite(user, "moderator"))) {
+      // Issue #379 — `canModerateSite` requires explicit
+      // membership for non-default sites, so a global moderator
+      // without a tenant membership can't read another tenant's
+      // audit log when the proxy resolves a non-default site.
+      const currentSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+      if (!(await canModerateSite(user, currentSiteId))) {
         throw new NxForbiddenError("audit", "read");
       }
     }

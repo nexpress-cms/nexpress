@@ -145,4 +145,40 @@ describe.skipIf(skipIfNoTestDb())("audit list filters", () => {
     expect(status).toBe(200);
     expect(body.totalDocs).toBe(2);
   });
+
+  it("Issue #379 — siteId=<foreign> rejects a global admin without explicit membership", async () => {
+    // Plain global admin (no super-admin flag, no membership on
+    // `foreign-audit`). Before #379 this passed via
+    // hasRoleOnSite's global-role fallback; now it must 403.
+    const admin = await seedUser({ role: "admin" });
+    const { createSite } = await import("@nexpress/core");
+    await createSite({ id: "foreign-audit", name: "Foreign Audit" });
+
+    const { GET } = await import("@/app/api/admin/audit/route");
+    const req = buildRequest("/api/admin/audit", {
+      session: admin,
+      query: { siteId: "foreign-audit" },
+    });
+    const res = await GET(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(403);
+  });
+
+  it("Issue #379 — siteId=<owned> allows a per-site moderator via explicit membership", async () => {
+    // No global moderation role, but explicit moderator
+    // membership on the target site — must pass.
+    const user = await seedUser({ role: "viewer" });
+    const { createSite, grantSiteMembership } = await import("@nexpress/core");
+    await createSite({ id: "owned-audit", name: "Owned Audit" });
+    await grantSiteMembership("owned-audit", user.userId, "moderator");
+
+    const { GET } = await import("@/app/api/admin/audit/route");
+    const req = buildRequest("/api/admin/audit", {
+      session: user,
+      query: { siteId: "owned-audit" },
+    });
+    const res = await GET(req);
+    const { status } = await readJson(res);
+    expect(status).toBe(200);
+  });
 });

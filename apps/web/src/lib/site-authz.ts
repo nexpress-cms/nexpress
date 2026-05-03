@@ -35,3 +35,22 @@ export async function canManageSite(user: NxAuthUser, siteId: string): Promise<b
   if (!membership) return false;
   return ROLE_HIERARCHY[membership.role] >= ROLE_HIERARCHY.admin;
 }
+
+/**
+ * Moderator-rank counterpart to `canManageSite`. Same ladder, but
+ * the membership rank check is `moderator` rather than `admin`,
+ * and the default-site fallback uses `community.moderate`.
+ *
+ * Issue #379 — `hasRoleOnSite` falls through to the user's global
+ * role when no explicit membership exists on the target site, so
+ * a global moderator/editor/admin without site membership could
+ * read a foreign tenant's audit log via `?siteId=<foreign>`. Use
+ * this helper for any cross-tenant moderator-rank gate.
+ */
+export async function canModerateSite(user: NxAuthUser, siteId: string): Promise<boolean> {
+  if (await isSuperAdmin(user)) return true;
+  if (siteId === NX_DEFAULT_SITE_ID && can(user, "community.moderate")) return true;
+  const membership = await getMembership(siteId, user.id);
+  if (!membership) return false;
+  return ROLE_HIERARCHY[membership.role] >= ROLE_HIERARCHY.moderator;
+}
