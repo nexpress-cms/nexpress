@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { promises as dnsPromises } from "node:dns";
+import { Agent } from "undici";
 
 /**
  * Phase 21.5 — fetch a media file from a WP source URL.
@@ -20,7 +21,7 @@ import { promises as dnsPromises } from "node:dns";
  *   - One retry on network/timeout failure. 4xx is terminal
  *     (matches the design doc §6 — 404 is treated as a hard skip).
  *
- * SSRF guard (#270):
+ * SSRF guard (#270, #382):
  *
  *   - Scheme is restricted to http(s).
  *   - The hostname is resolved via DNS and every returned address
@@ -31,10 +32,19 @@ import { promises as dnsPromises } from "node:dns";
  *     the fetch (TOCTOU). For the importer's purposes, hosting
  *     media on a hostname that *also* has a private A record is
  *     vanishingly rare; rejecting it is the safer default.
+ *   - The vetted address is then *pinned* on an undici `Agent` so
+ *     `fetch` connects to that exact IP instead of re-resolving
+ *     the hostname (#382). Without pinning, the preflight DNS
+ *     check and the connect-time DNS resolution are independent,
+ *     leaving a DNS-rebinding window where a public answer passes
+ *     the check and a private answer is what gets connected. SNI /
+ *     Host headers stay set to the original hostname so HTTPS cert
+ *     validation still works.
  *   - Redirects are followed manually (`redirect: "manual"`),
  *     capped at 3 hops, and each hop re-runs the DNS / private-IP
- *     check. The platform `fetch` would otherwise silently follow
- *     a public-IP 302 to `169.254.169.254`.
+ *     check AND re-pins the connect address. The platform `fetch`
+ *     would otherwise silently follow a public-IP 302 to
+ *     `169.254.169.254`.
  *   - `Content-Length` is checked against `maxBytes` *before* the
  *     body is read so a slow-read attacker can't tie the worker up
  *     past the timeout window.
@@ -166,13 +176,25 @@ async function fetchWithRedirects(
 ): Promise<DownloadResult> {
   let currentUrl = originalUrl;
   for (let hop = 0; hop <= opts.maxRedirects; hop++) {
+    let pinned: PinnedAddress | null = null;
     if (!opts.allowPrivateHosts) {
-      await assertHostAllowed(currentUrl, opts.dnsLookupImpl);
+      pinned = await assertHostAllowed(currentUrl, opts.dnsLookupImpl);
     }
-    const res = await opts.fetchImpl(currentUrl, {
+    // Pin the connect-time address to the vetted IP so the host's
+    // DNS can't rebind between the check above and the network
+    // call below (#382). When `allowPrivateHosts` is set we skip
+    // the agent entirely — the preflight check itself is bypassed,
+    // so pinning would have nothing to enforce.
+    const dispatcher = pinned ? createPinnedAgent(pinned) : undefined;
+    // Node's bundled fetch is undici under the hood and accepts
+    // `dispatcher`; the lib.dom RequestInit type doesn't carry it,
+    // so build the init separately and widen the call.
+    const init: RequestInit & { dispatcher?: Agent } = {
       signal: opts.signal,
       redirect: "manual",
-    });
+    };
+    if (dispatcher) init.dispatcher = dispatcher;
+    const res = await opts.fetchImpl(currentUrl, init as RequestInit);
     if (isRedirectStatus(res.status)) {
       const next = res.headers.get("location");
       if (!next) {
@@ -239,10 +261,15 @@ function assertHttpScheme(url: string): void {
   }
 }
 
+interface PinnedAddress {
+  address: string;
+  family: 4 | 6;
+}
+
 async function assertHostAllowed(
   url: string,
   dnsLookupImpl?: DownloadOptions["dnsLookupImpl"],
-): Promise<void> {
+): Promise<PinnedAddress> {
   const parsed = new URL(url);
   // WHATWG URL keeps the brackets on `.hostname` for IPv6 literals
   // (`http://[::1]/` → `[::1]`). Strip them before any classification
@@ -265,7 +292,9 @@ async function assertHostAllowed(
     throw new WpMediaSsrfError(url, `hostname "${hostname}" resolves to a private address`);
   }
   if (literal === "public") {
-    return; // already a routable public IP, no DNS needed
+    // Already a routable public IP — pin it so the connect step
+    // can't dodge the check via a different resolution path.
+    return { address: hostname, family: hostname.includes(":") ? 6 : 4 };
   }
 
   // Hostname → DNS lookup.
@@ -280,6 +309,7 @@ async function assertHostAllowed(
   if (addrs.length === 0) {
     throw new WpMediaSsrfError(url, `DNS returned no addresses for "${hostname}"`);
   }
+  let pinned: PinnedAddress | null = null;
   for (const { address, family } of addrs) {
     const cls = classifyIpAddress(address, family);
     if (cls === "private") {
@@ -288,7 +318,37 @@ async function assertHostAllowed(
         `hostname "${hostname}" resolves to private address ${address}`,
       );
     }
+    // First public address wins as the pinned target. Any later
+    // private result still rejects the whole URL — we're not
+    // willing to talk to a hostname that fans out to internal IPs.
+    if (!pinned && (family === 4 || family === 6)) {
+      pinned = { address, family };
+    }
   }
+  if (!pinned) {
+    throw new WpMediaSsrfError(url, `DNS returned no usable addresses for "${hostname}"`);
+  }
+  return pinned;
+}
+
+/**
+ * Build an undici Agent whose connect-time hostname lookup always
+ * returns the already-vetted address. The Host header / SNI stay
+ * set to the original hostname (undici uses `req.host` for those,
+ * not the connect target) so HTTPS cert validation works.
+ */
+function createPinnedAgent(pinned: PinnedAddress): Agent {
+  return new Agent({
+    connect: {
+      lookup: (
+        _hostname: string,
+        _options: unknown,
+        callback: (err: Error | null, address: string, family: number) => void,
+      ) => {
+        callback(null, pinned.address, pinned.family);
+      },
+    },
+  });
 }
 
 async function defaultDnsLookup(
