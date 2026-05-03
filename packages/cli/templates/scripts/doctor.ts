@@ -290,15 +290,48 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
        where table_schema = 'public'
          and table_name in ('nx_users', 'nx_settings', 'nx_navigation', 'nx_sites')`,
     );
-    await client.end();
     const expected = ["nx_users", "nx_settings", "nx_navigation", "nx_sites"];
     const present = new Set(result.rows.map((r) => r.table_name));
     const missing = expected.filter((t) => !present.has(t));
     if (missing.length === 0) {
+      await client.end();
       return {
         state: "ok",
         label: "Migrations applied",
         detail: `${expected.length.toString()} framework tables found`,
+      };
+    }
+    // Stale-tracking footgun (the case that bit us live): a partial
+    // \`DROP TABLE\` / \`DROP SCHEMA public\` clears the framework
+    // tables but leaves \`drizzle.__drizzle_migrations\` rows behind,
+    // so the next \`pnpm db:migrate\` thinks nothing's pending and
+    // exits "successfully" without actually creating anything. Probe
+    // for that specific shape so we can hand back an actionable hint
+    // instead of the generic "Run db:migrate".
+    const trackingTable = await client.query<{ exists: boolean }>(
+      `select exists(
+         select 1 from information_schema.tables
+         where table_schema = 'drizzle' and table_name = '__drizzle_migrations'
+       ) as exists`,
+    );
+    let trackedCount = 0;
+    if (trackingTable.rows[0]?.exists) {
+      const tracked = await client.query<{ count: string }>(
+        "select count(*)::text as count from drizzle.__drizzle_migrations",
+      );
+      trackedCount = Number.parseInt(tracked.rows[0]?.count ?? "0", 10) || 0;
+    }
+    await client.end();
+    if (trackedCount > 0) {
+      return {
+        state: "error",
+        label: "Migrations applied",
+        detail: `drizzle tracks ${trackedCount.toString()} applied, but framework tables are missing`,
+        hint:
+          "Stale tracking from a partial drop. Reset both schemas, then re-migrate:\n" +
+          "      docker compose exec db psql -U nexpress -d nexpress -c \\\n" +
+          '        "DROP SCHEMA IF EXISTS drizzle CASCADE; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"\n' +
+          "      pnpm db:migrate",
       };
     }
     return {

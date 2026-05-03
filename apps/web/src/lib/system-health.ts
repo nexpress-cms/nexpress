@@ -91,6 +91,36 @@ async function checkMigrations(): Promise<Check> {
         detail: `${FRAMEWORK_TABLES.length} framework tables present`,
       };
     }
+    // Stale-tracking footgun: a partial \`DROP TABLE\` / \`DROP SCHEMA
+    // public\` clears framework tables but leaves
+    // \`drizzle.__drizzle_migrations\` behind, so subsequent
+    // \`pnpm db:migrate\` thinks everything is applied and silently
+    // no-ops. Detect that case so we can hand back the specific
+    // recovery (drop both schemas, re-migrate).
+    const trackingTable = (await db.$client.query<{ exists: boolean }>(
+      `select exists(
+         select 1 from information_schema.tables
+         where table_schema = 'drizzle' and table_name = '__drizzle_migrations'
+       ) as exists`,
+    )) as { rows: Array<{ exists: boolean }> };
+    let trackedCount = 0;
+    if (trackingTable.rows[0]?.exists) {
+      const tracked = (await db.$client.query<{ count: string }>(
+        "select count(*)::text as count from drizzle.__drizzle_migrations",
+      )) as { rows: Array<{ count: string }> };
+      trackedCount = Number.parseInt(tracked.rows[0]?.count ?? "0", 10) || 0;
+    }
+    if (trackedCount > 0) {
+      return {
+        id: "migrations",
+        label: "Migrations applied",
+        state: "error",
+        detail: `drizzle tracks ${trackedCount.toString()} applied, but framework tables are missing`,
+        hint:
+          "Stale tracking from a partial drop. Reset both schemas, then re-migrate:\n" +
+          'docker compose exec db psql -U nexpress -d nexpress -c "DROP SCHEMA IF EXISTS drizzle CASCADE; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;" && pnpm db:migrate',
+      };
+    }
     return {
       id: "migrations",
       label: "Migrations applied",
