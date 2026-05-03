@@ -180,8 +180,8 @@ export function PluginsManager() {
         <div
           className={
             toast.type === "success"
-              ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700"
-              : "rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700"
+              ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+              : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
           }
         >
           {toast.message}
@@ -196,7 +196,7 @@ export function PluginsManager() {
       ) : null}
 
       {state.kind === "error" ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
           {state.message}
         </div>
       ) : null}
@@ -225,7 +225,7 @@ export function PluginsManager() {
                     {plugin.enabled && !plugin.loaded ? (
                       <Badge
                         variant="secondary"
-                        className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                        className="bg-amber-500/15 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
                       >
                         pending restart
                       </Badge>
@@ -342,7 +342,7 @@ export function PluginsManager() {
             spellCheck={false}
           />
           {configError ? (
-            <p className="text-sm text-rose-600">{configError}</p>
+            <p className="text-sm text-rose-600 dark:text-rose-300">{configError}</p>
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setConfigPlugin(null)}>

@@ -113,16 +113,16 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
         ) : state.kind === "status" ? (
           <div className="flex items-center gap-2">
             {state.level === "ok" ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
             ) : state.level === "warn" ? (
-              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-300" />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-rose-600" />
+              <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-300" />
             )}
             <span className="text-sm">{state.message}</span>
           </div>
         ) : (
-          <div className="text-xs text-rose-600">{state.message}</div>
+          <div className="text-xs text-rose-600 dark:text-rose-300">{state.message}</div>
         )}
         {widget.description ? (
           <p className="mt-2 text-xs text-muted-foreground">{widget.description}</p>

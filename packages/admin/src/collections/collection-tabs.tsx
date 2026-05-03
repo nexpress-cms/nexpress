@@ -176,16 +176,16 @@ function TabWidget({
         ) : state.kind === "status" ? (
           <div className="flex items-center gap-2">
             {state.level === "ok" ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
             ) : state.level === "warn" ? (
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
             ) : (
-              <AlertTriangle className="h-4 w-4 text-rose-600" />
+              <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-300" />
             )}
             <span className="text-sm">{state.message}</span>
           </div>
         ) : (
-          <div className="text-xs text-rose-600">{state.message}</div>
+          <div className="text-xs text-rose-600 dark:text-rose-300">{state.message}</div>
         )}
       </div>
       {widget.description ? (
@@ -251,8 +251,8 @@ function TabAction({
         <div
           className={
             toast.type === "success"
-              ? "text-xs text-emerald-700"
-              : "text-xs text-rose-700"
+              ? "text-xs text-emerald-700 dark:text-emerald-200"
+              : "text-xs text-rose-700 dark:text-rose-200"
           }
         >
           {toast.message}

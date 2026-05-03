@@ -112,7 +112,7 @@ export function ScheduleDialog({
             onChange={(event) => setLocalValue(event.target.value)}
             min={nowPlusHourLocal().slice(0, 16)}
           />
-          {error ? <p className="text-xs text-rose-600">{error}</p> : null}
+          {error ? <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
@@ -120,7 +120,7 @@ export function ScheduleDialog({
             <Button
               type="button"
               variant="ghost"
-              className="text-rose-600"
+              className="text-rose-600 dark:text-rose-300"
               onClick={onCancelSchedule}
               disabled={busy}
             >

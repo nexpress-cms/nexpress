@@ -45,8 +45,8 @@ type PanelState =
 type ToastState = { type: "success" | "error"; message: string } | null;
 
 const statusBadgeClass: Record<RevisionSummary["status"], string> = {
-  published: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  draft: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  published: "bg-emerald-500/15 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  draft: "bg-amber-500/15 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   autosave: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
 };
 
@@ -168,8 +168,8 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
           <div
             className={
               toast.type === "success"
-                ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700"
-                : "rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700"
+                ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
             }
           >
             {toast.message}
@@ -184,7 +184,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
         ) : null}
 
         {state.kind === "error" ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
             {state.message}
           </div>
         ) : null}

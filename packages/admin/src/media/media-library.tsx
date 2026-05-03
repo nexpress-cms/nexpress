@@ -476,7 +476,7 @@ function UploaderBadge({ uploader }: { uploader: MediaUploader }) {
   if (uploader.kind === "member") {
     return (
       <p className="text-xs text-muted-foreground">
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
           @{uploader.handle}
         </span>
       </p>

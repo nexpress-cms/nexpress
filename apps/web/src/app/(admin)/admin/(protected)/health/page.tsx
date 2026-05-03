@@ -55,7 +55,7 @@ export default async function AdminHealthPage() {
           summary.errorCount > 0
             ? "border-destructive/50 bg-destructive/10 text-destructive"
             : summary.warnCount > 0
-              ? "border-yellow-500/50 bg-yellow-500/10"
+              ? "border-yellow-500/50 bg-yellow-500/10 text-yellow-900 dark:text-yellow-100"
               : "border-emerald-500/50 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
         }`}
       >

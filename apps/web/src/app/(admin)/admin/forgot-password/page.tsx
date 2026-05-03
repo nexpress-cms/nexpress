@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
 
         {status === "sent" ? (
           <div className="space-y-4">
-            <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
+            <div className="rounded-md bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
               If an account exists for <strong>{email}</strong>, a reset link has been sent.
               Check your email.
             </div>

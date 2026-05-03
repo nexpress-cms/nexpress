@@ -166,7 +166,7 @@ export function NavigationEditor() {
         ) : null}
 
         {message ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600">
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
             {message}
           </div>
         ) : null}
