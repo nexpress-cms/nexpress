@@ -48,6 +48,11 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  *     yet, so a same-site CSRF check is meaningless. These
  *     routes have their own anti-replay (per-IP rate limit on
  *     /api/auth/*, single-use email tokens for reset / verify).
+ *   - `/api/admin/setup`: first-boot wizard. The visitor doesn't
+ *     have a session yet — that's literally what the route is for —
+ *     so they can't have an nx-csrf cookie either. The handler
+ *     guards with the "no admin yet" precondition (409 once one
+ *     exists) which is a strictly stronger gate than CSRF.
  *   - `/api/internal/*`: bearer-token auth via NX_SCHEDULER_TOKEN.
  *     No browser session involved.
  *   - `/api/plugins/<id>/<...>` for `<...>` other than the
@@ -61,6 +66,7 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/auth\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
   /^\/api\/members\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
+  /^\/api\/admin\/setup$/,
   /^\/api\/internal\//,
   // plugins/<id>/<segment>/... where <segment> != "actions" — the
   // catch-all proxy. plugins/<id> (CRUD) and plugins/<id>/actions/<id>
