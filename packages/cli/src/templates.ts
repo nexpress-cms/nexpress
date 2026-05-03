@@ -35,6 +35,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/lib/manifest.ts": manifestLibTemplate(),
     "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
     "scripts/seed-admin.ts": seedAdminScriptTemplate(),
+    "scripts/setup-server.ts": setupServerScriptTemplate(),
     "scripts/worker.ts": workerScriptTemplate(),
     "src/app/layout.tsx": rootLayoutTemplate(config),
     "src/app/globals.css": globalsCssTemplate(),
@@ -87,6 +88,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         start: "next start",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
+        setup: "tsx scripts/setup-server.ts",
         worker: "tsx scripts/worker.ts",
         "db:generate": "pnpm schema:gen && drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
@@ -179,6 +181,10 @@ function workerScriptTemplate(): string {
 
 function seedAdminScriptTemplate(): string {
   return readTemplate("scripts/seed-admin.ts");
+}
+
+function setupServerScriptTemplate(): string {
+  return readTemplate("scripts/setup-server.ts");
 }
 
 function dockerComposeTemplate(): string {

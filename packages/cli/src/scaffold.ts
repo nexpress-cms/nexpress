@@ -50,11 +50,15 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
   const installStep = localMode
     ? "  pnpm install         (run from the monorepo root — uses workspace:* links)"
     : "  pnpm install        (or npm install)";
+  const setupStep = localMode
+    ? `  pnpm --filter ${projectName} setup`
+    : "  pnpm setup          (browser env wizard — DB / secret / storage)";
   const devStep = localMode ? `  pnpm --filter ${projectName} dev` : "  pnpm dev";
   const nextSteps = [
     `  cd ${projectName}`,
     installStep,
     ...(dockerSetup ? ["  docker compose -f docker/docker-compose.yml up -d db"] : []),
+    setupStep,
     devStep,
   ];
 
@@ -74,5 +78,7 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
     console.log(step);
   }
 
-  console.log("\nAdmin: http://localhost:3000/admin");
+  console.log(
+    "\nAdmin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
+  );
 }
