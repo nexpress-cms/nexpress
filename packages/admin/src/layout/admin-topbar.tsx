@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu.js";
+import { ThemeToggle } from "./theme-toggle.js";
 
 export interface AdminTopbarProps {
   user: NxAuthUser;
@@ -28,6 +29,7 @@ function AdminTopbar({ user }: AdminTopbarProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <ThemeToggle />
         <SitePicker />
 
       <DropdownMenu>

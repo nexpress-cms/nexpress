@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Pin Tailwind's `dark:` variant to the .dark class. The admin's
+ * ThemeToggle (in @nexpress/admin) writes that class to <html>;
+ * <ThemeInit /> seeds it on first paint based on the operator's
+ * stored preference / OS setting. */
+@variant dark (&:where(.dark, .dark *));
+
 @layer nx-base, nx-blocks, nx-theme, nx-overrides;
 
 @layer nx-base {
