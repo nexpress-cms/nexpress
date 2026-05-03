@@ -223,11 +223,23 @@ export async function truncateAll(): Promise<void> {
     "nx_member_identities",
     "nx_member_sessions",
     "nx_members",
+    // Phase 15.5+ — multi-site residue. Without this, multi-site tests
+    // (e.g. `multi-site-*`, the #218 per-site digest case) leave extra
+    // rows in `nx_sites` between tests in the same worker; subsequent
+    // suites that depend on a clean single-tenant world (digest sweep,
+    // anything iterating sites) then see ghost tenants and mis-count.
+    // `nx_sites` itself is handled below so the default row survives.
+    "nx_site_memberships",
   ];
   const list = tables.map((t) => `"${t}"`).join(", ");
   // CASCADE handles any FK holdouts. RESTART IDENTITY resets any sequences
   // (unused by the schema today but future-proof).
   await pool.query(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+  // Wipe non-default sites in place. We can't TRUNCATE nx_sites because
+  // the default row is created exactly once by `ensureDefaultSite()` at
+  // bootstrap (idempotent flag) — re-creating it after every truncate
+  // would mean every test file pays a write per case.
+  await pool.query(`DELETE FROM "nx_sites" WHERE id <> 'default'`);
 }
 
 /**
