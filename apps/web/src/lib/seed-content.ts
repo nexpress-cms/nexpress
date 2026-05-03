@@ -64,7 +64,7 @@ const PAGE_SAMPLES: PageSample[] = [
     blocks: [
       {
         id: "home-hero",
-        type: "richText",
+        type: "rich-text",
         props: {
           content: lexicalParagraph(
             "Welcome to NexPress — your site is up and running. Replace this page in the admin to take over the home URL.",
@@ -73,7 +73,7 @@ const PAGE_SAMPLES: PageSample[] = [
       },
       {
         id: "home-cta",
-        type: "richText",
+        type: "rich-text",
         props: {
           content: lexicalParagraph(
             "Visit /blog to see the sample posts, or /admin to start publishing your own.",
@@ -88,7 +88,7 @@ const PAGE_SAMPLES: PageSample[] = [
     blocks: [
       {
         id: "about-intro",
-        type: "richText",
+        type: "rich-text",
         props: {
           content: lexicalParagraph(
             "This is the About page that ships with the seed content. Edit it in /admin/collections/pages — your changes replace this draft on the next request.",
@@ -103,7 +103,7 @@ const PAGE_SAMPLES: PageSample[] = [
     blocks: [
       {
         id: "contact-intro",
-        type: "richText",
+        type: "rich-text",
         props: {
           content: lexicalParagraph(
             "Drop us a line: hello@example.com. (This is seed content — replace it with your real contact info in the admin.)",
