@@ -104,3 +104,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     },
   });
 }
+
+// Per-tenant DB-backed feed; build-time prerender is impossible
+// (no DB at build) and pointless (data changes after deploy).
+// `unstable_cache` already pins the hot path at request time.
+export const dynamic = "force-dynamic";

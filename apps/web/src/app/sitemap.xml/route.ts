@@ -227,3 +227,10 @@ export async function GET(req: Request): Promise<Response> {
     },
   });
 }
+
+// Sitemap entries come from a per-tenant DB walk (with site
+// resolution + collection iteration), so build-time prerender
+// is both impossible (no DB at build) and pointless (the data
+// changes after deploy). `unstable_cache` already covers the
+// hot path at request time.
+export const dynamic = "force-dynamic";
