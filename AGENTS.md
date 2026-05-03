@@ -192,6 +192,13 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 - **tsup builds**: all packages use `format: ["esm"]`, `dts: true` (except CLI). Multi-entry packages (editor, blocks, admin) produce separate client bundles with `"use client"` banner.
 - `NEXPRESS_DB_PORT` in `.env` must match the port Postgres is bound to in `docker-compose.yml` (default 5433, not 5432).
 
+## PR cadence (for agents)
+
+- **Don't open a PR for every unit task.** Group related work into one branch / one PR. The reviewer's load grows with PR count, not with diff size; six 10-line PRs are noisier than one 60-line PR with the same scope.
+- A reasonable bundle is everything that lands together to ship a single user-visible outcome (one feature, one bug fix, one cluster of consistent refactors). The Phase 23 / onboarding-cluster precedent in git history is the rough size — a few hundred lines, several files, one PR.
+- Split when (and only when) one of these is true: the changes are independently revertable and one might need to be backed out without the other; the work touches a sensitive surface (security gate, auth flow, billing) that benefits from a focused review; or the bundle has grown past ~800 lines and is genuinely two stories.
+- Don't mistake "I finished a sub-step" for "ready to PR." Keep working on the branch until the user-visible outcome is whole, then open one PR. Mid-work check-ins go in the conversation, not GitHub.
+
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - **Never import `@nexpress/core` from client components** — it pulls in `pg`, `sharp`, `argon2` and breaks the build. In UI packages, use `import type` only.
