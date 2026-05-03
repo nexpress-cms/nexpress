@@ -12,7 +12,7 @@ export interface ProjectConfig {
 export async function promptForProjectConfig(
   initialProjectName?: string,
 ): Promise<ProjectConfig> {
-  // Database / storage choices used to live here, but `pnpm setup`
+  // Database / storage choices used to live here, but `pnpm run setup`
   // (the post-scaffold env wizard) owns those now and writes `.env`
   // directly. Leaving the prompts here forced the operator to make
   // the same decision twice. The scaffolded `nexpress.config.ts`

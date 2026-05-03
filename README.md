@@ -75,9 +75,14 @@ npx create-nexpress my-site
 cd my-site
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db
-pnpm setup        # browser env wizard — DB connection, NX_SECRET, storage
+pnpm run setup    # browser env wizard — DB connection, NX_SECRET, storage
 pnpm dev
 ```
+
+> `pnpm run setup`, not `pnpm setup` — `pnpm setup` is pnpm's
+> built-in command for installing pnpm itself, and it shadows
+> our package script. Same caveat below if you ever see `pnpm
+> init` (`init` is a pnpm built-in too).
 
 The site runs at `localhost:3000` and the admin panel is at
 `localhost:3000/admin`. The first time you visit `/admin` on an empty

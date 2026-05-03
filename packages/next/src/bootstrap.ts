@@ -130,7 +130,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // rather than the literal env var name. The legacy phrase
       // is preserved so existing logs / monitors still match.
       throw new Error(
-        "DATABASE_URL is not set — run `pnpm setup` (browser env wizard) or copy `.env.example` to `.env` and fill in your Postgres connection string.",
+        "DATABASE_URL is not set — run `pnpm run setup` (browser env wizard) or copy `.env.example` to `.env` and fill in your Postgres connection string.",
       );
     }
     return connectionString;

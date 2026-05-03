@@ -50,9 +50,11 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
   const installStep = localMode
     ? "  pnpm install         (run from the monorepo root — uses workspace:* links)"
     : "  pnpm install        (or npm install)";
+  // `pnpm run setup`, not `pnpm setup` — `pnpm setup` is a pnpm
+  // built-in (installs pnpm itself) and shadows our package script.
   const setupStep = localMode
-    ? `  pnpm --filter ${projectName} setup`
-    : "  pnpm setup          (browser env wizard — DB / secret / storage)";
+    ? `  pnpm --filter ${projectName} run setup`
+    : "  pnpm run setup      (browser env wizard — DB / secret / storage)";
   const devStep = localMode ? `  pnpm --filter ${projectName} dev` : "  pnpm dev";
   const nextSteps = [
     `  cd ${projectName}`,
