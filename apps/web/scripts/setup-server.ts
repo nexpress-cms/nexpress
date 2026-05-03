@@ -25,6 +25,7 @@ import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { access, copyFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -211,13 +212,16 @@ async function testDbConnection(
   // to avoid loading it on every setup invocation, and structurally
   // type the surface we touch so this file doesn't depend on
   // `@types/pg` being declared at the apps/web layer.
+  // `pg` ships transitively via `@nexpress/core`. tsx's dynamic
+  // import doesn't resolve transitives at the apps/web layer, so
+  // we widen the search via createRequire (which honors Node's
+  // full module resolution including pnpm's hoisted store) and
+  // hand the resolved path back to the dynamic import.
   let pg: PgModuleLike;
   try {
-    // Indirect specifier so `tsc --noEmit` doesn't try to resolve
-    // `pg` types at the apps/web layer (it ships transitively via
-    // @nexpress/core; types live there).
-    const specifier = "pg";
-    pg = (await import(specifier)) as unknown as PgModuleLike;
+    const require = createRequire(import.meta.url);
+    const resolved = require.resolve("pg");
+    pg = (await import(resolved)) as unknown as PgModuleLike;
   } catch {
     return {
       ok: false,
