@@ -407,6 +407,69 @@ describe("resolveEnvDownloadOptions (#270)", () => {
   });
 });
 
+describe("downloadMedia — DNS pinning (#382)", () => {
+  it("attaches an undici Agent dispatcher when the preflight DNS check passes", async () => {
+    // Whatever init.dispatcher fetch receives must be a non-null
+    // undici Agent — that is the connect-time pin that closes the
+    // rebinding window between assertHostAllowed and fetch.
+    let capturedDispatcher: unknown = null;
+    const fetchImpl = vi.fn((_url: string, init?: unknown) => {
+      capturedDispatcher = (init as { dispatcher?: unknown })?.dispatcher ?? null;
+      return Promise.resolve(
+        new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    const dnsLookupImpl = vi.fn(async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]);
+    await downloadMedia("https://example.com/x.jpg", {
+      fetchImpl,
+      retries: 0,
+      dnsLookupImpl,
+    });
+
+    expect(capturedDispatcher).not.toBeNull();
+    expect(capturedDispatcher).toHaveProperty("dispatch");
+  });
+
+  it("rejects a hostname that resolves to no usable address", async () => {
+    const fetchImpl = vi.fn();
+    const emptyDns = vi.fn(async () => []);
+    await expect(
+      downloadMedia("https://example.com/x.jpg", {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        retries: 0,
+        dnsLookupImpl: emptyDns,
+      }),
+    ).rejects.toThrow(WpMediaSsrfError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("skips the dispatcher when allowPrivateHosts is set", async () => {
+    let capturedDispatcher: unknown = "unset";
+    const fetchImpl = vi.fn((_url: string, init?: unknown) => {
+      capturedDispatcher = (init as { dispatcher?: unknown })?.dispatcher ?? null;
+      return Promise.resolve(
+        new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    await downloadMedia("http://10.0.0.1/x.jpg", {
+      fetchImpl,
+      retries: 0,
+      allowPrivateHosts: true,
+    });
+    expect(capturedDispatcher).toBeNull();
+  });
+});
+
 describe("isAllowedMimeType", () => {
   it("allows image/*, video/*, and application/pdf", () => {
     expect(isAllowedMimeType("image/jpeg")).toBe(true);
