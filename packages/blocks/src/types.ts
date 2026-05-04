@@ -1,6 +1,15 @@
 import type { ReactElement, ReactNode } from "react";
 
-export interface NxBlockDefinition {
+/**
+ * Serializable metadata about a block — everything `NxBlockDefinition`
+ * carries *except* the `render` function. The page-builder admin
+ * receives this shape (functions can't cross the server → client
+ * boundary in Next.js) and uses it for the picker, the props form,
+ * and ADD-action defaults. Renders only happen server-side via
+ * `renderBlocks`, which reads the full definition from the shared
+ * registry directly.
+ */
+export interface NxBlockMetadata {
   type: string;
   label: string;
   description?: string;
@@ -16,6 +25,9 @@ export interface NxBlockDefinition {
    * ignored at render time.
    */
   acceptsChildren?: boolean;
+}
+
+export interface NxBlockDefinition extends NxBlockMetadata {
   /**
    * Block renderer. Container blocks (`acceptsChildren: true`) get
    * the rendered child tree as a React node — they decide where to

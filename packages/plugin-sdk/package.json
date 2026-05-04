@@ -34,6 +34,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "zod": "^4.3.6"
   },

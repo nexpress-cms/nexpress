@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
 import { can, nxUsers, verifyTokenFull } from "@nexpress/core";
-import { AdminShell } from "@nexpress/admin/client";
+import { AdminShell, BlocksRegistryProvider } from "@nexpress/admin/client";
+import { getRegisteredBlockMetadata } from "@nexpress/blocks";
 import nexpressConfig from "@/nexpress.config";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
@@ -13,7 +14,11 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await ensureFor("read");
+  // `"plugins"` instead of `"read"` so plugin blocks land in the
+  // shared registry before we snapshot it via
+  // `getRegisteredBlockMetadata()` below — otherwise the admin's
+  // Add-block popover would silently miss every plugin contribution.
+  await ensureFor("plugins");
 
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-session")?.value;
@@ -53,9 +58,14 @@ export default async function AdminLayout({
     canModerate: can(user, "community.moderate"),
   };
 
+  // Block metadata snapshot — server-side, so plugin-registered
+  // blocks (which only land in the SERVER module-instance during
+  // bootstrap) reach the browser editor through React props.
+  const blocksMetadata = getRegisteredBlockMetadata();
+
   return (
     <AdminShell user={user} collections={collections} caps={caps}>
-      {children}
+      <BlocksRegistryProvider metadata={blocksMetadata}>{children}</BlocksRegistryProvider>
     </AdminShell>
   );
 }

@@ -1,7 +1,13 @@
 import type { ZodType } from "zod";
+import type { NxBlockDefinition } from "@nexpress/blocks";
 import type { NxFieldConfig } from "@nexpress/core";
 
 import type { NxPluginManifest } from "./manifest.js";
+
+// Re-export NxBlockDefinition so plugin authors get a single
+// import: definePlugin({ blocks: [...] }) typed via the same
+// package they reach for everything else.
+export type { NxBlockDefinition } from "@nexpress/blocks";
 
 export const nxPluginCapabilities = [
   "content:read",
@@ -80,6 +86,15 @@ export interface NxPluginUser {
   role: string;
 }
 
+/**
+ * Legacy plugin-block declaration shape from a never-implemented
+ * design (component-string indirection). Kept around as a type
+ * export only — `NxPluginDefinition.blocks` now expects real
+ * `NxBlockDefinition[]` from `@nexpress/blocks` so plugins can
+ * pass actual render functions.
+ *
+ * @deprecated Will be removed before 1.0. Use `NxBlockDefinition`.
+ */
 export interface NxBlockRegistration {
   type: string;
   label: string;
@@ -516,7 +531,14 @@ export interface NxScheduledTask<TConfig = Record<string, unknown>> {
 
 export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
   manifest: NxPluginManifest;
-  blocks?: NxBlockRegistration[];
+  /**
+   * Block definitions the plugin contributes. Registered into the
+   * shared block registry by the bootstrap so they appear in the
+   * admin's Add-block popover and resolve correctly during the
+   * server render. Each block ships its real `render` function
+   * (no string indirection). See `@nexpress/blocks` for the shape.
+   */
+  blocks?: NxBlockDefinition[];
   fields?: NxFieldRegistration[];
   admin?: NxAdminExtension;
   hooks?: NxHookRegistration<TConfig>;

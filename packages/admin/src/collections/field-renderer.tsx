@@ -2,7 +2,9 @@
 
 import { lazy, Suspense, type ComponentType } from "react";
 import type { NxFieldConfig } from "@nexpress/core";
-import { getDefaultBlocks, type NxBlockDefinition, type NxBlockInstance } from "@nexpress/blocks";
+import type { NxBlockInstance, NxBlockMetadata } from "@nexpress/blocks";
+
+import { useBlocksRegistry } from "../blocks/registry-context.js";
 import type { NxEditorConfig, NxRichTextContent } from "@nexpress/editor";
 import { ChevronDown } from "lucide-react";
 import type { Control } from "react-hook-form";
@@ -85,7 +87,7 @@ const LazyBlockPageEditor = lazy(async () => {
     default: module.BlockPageEditor as ComponentType<{
       blocks: NxBlockInstance[];
       onChange: (blocks: NxBlockInstance[]) => void;
-      availableBlocks: NxBlockDefinition[];
+      availableBlocks: NxBlockMetadata[];
     }>,
   };
 });
@@ -144,6 +146,62 @@ const formatDateValue = (value: unknown, includeTime: boolean): string => {
 
 const renderDescription = (description?: string) =>
   description ? <FormDescription>{description}</FormDescription> : null;
+
+interface BlocksFieldRenderProps {
+  control: Control<Record<string, unknown>>;
+  name: string;
+  label: string;
+  allowedTypes: string[] | undefined;
+}
+
+function BlocksFieldRender({ control, name, label, allowedTypes }: BlocksFieldRenderProps) {
+  // Read from the BlocksRegistryProvider context. The admin
+  // protected layout populates that with the SERVER-resolved
+  // registry (defaults + plugin contributions). Direct calls to
+  // `getRegisteredBlocks()` would only see the browser module-
+  // instance — defaults only, never the plugin blocks registered
+  // during the Node-side bootstrap.
+  const allDefinitions = useBlocksRegistry();
+  const availableBlocks: NxBlockMetadata[] =
+    allowedTypes && allowedTypes.length > 0
+      ? allDefinitions.filter((definition) => allowedTypes.includes(definition.type))
+      : allDefinitions;
+  const blockLabels = availableBlocks
+    .map((definition) => definition.label ?? definition.type)
+    .join(", ");
+  return (
+    <FormField
+      control={control}
+      name={name as never}
+      render={({ field: formField }) => (
+        <FormItem>
+          <FormLabel>{label}</FormLabel>
+          <FormControl>
+            <Suspense
+              fallback={
+                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                  Loading blocks editor…
+                </div>
+              }
+            >
+              <LazyBlockPageEditor
+                blocks={toBlockInstances(formField.value)}
+                onChange={formField.onChange}
+                availableBlocks={availableBlocks}
+              />
+            </Suspense>
+          </FormControl>
+          <FormDescription>
+            {availableBlocks.length === 0
+              ? "No block definitions available."
+              : `Available blocks: ${blockLabels}`}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
 
 const renderNamedField = (
   field: Extract<NxFieldConfig, { name: string }>,
@@ -271,41 +329,18 @@ const renderNamedField = (
           )}
         />
       );
-    case "blocks": {
-      const allDefinitions = getDefaultBlocks();
-      const allowedTypes = field.allowedBlocks;
-      const availableBlocks: NxBlockDefinition[] =
-        allowedTypes && allowedTypes.length > 0
-          ? allDefinitions.filter((definition) => allowedTypes.includes(definition.type))
-          : allDefinitions;
-      const blockLabels = availableBlocks.map((definition) => definition.label ?? definition.type).join(", ");
+    case "blocks":
+      // Subcomponent so the registry hook is called from a real
+      // component (renderNamedField is a plain helper — calling a
+      // hook from it would violate rules-of-hooks).
       return (
-        <FormField
+        <BlocksFieldRender
           control={control}
-          name={name as never}
-          render={({ field: formField }) => (
-            <FormItem>
-              <FormLabel>{label}</FormLabel>
-              <FormControl>
-                <Suspense fallback={<div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">Loading blocks editor…</div>}>
-                  <LazyBlockPageEditor
-                    blocks={toBlockInstances(formField.value)}
-                    onChange={formField.onChange}
-                    availableBlocks={availableBlocks}
-                  />
-                </Suspense>
-              </FormControl>
-              <FormDescription>
-                {availableBlocks.length === 0
-                  ? "No block definitions available."
-                  : `Available blocks: ${blockLabels}`}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
+          name={name}
+          label={label}
+          allowedTypes={field.allowedBlocks}
         />
       );
-    }
     case "checkbox":
       return (
         <FormField

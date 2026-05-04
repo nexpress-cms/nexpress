@@ -1,18 +1,8 @@
 import * as React from "react";
 
 import { readGridChildLayout } from "./blocks/grid.js";
-import { getDefaultBlocks, createBlockRegistry } from "./registry.js";
+import { getSharedRegistry } from "./registry.js";
 import type { NxBlockInstance, NxBlockRegistry, NxPageBlocks } from "./types.js";
-
-const defaultRegistry = (() => {
-  const registry = createBlockRegistry();
-
-  for (const block of getDefaultBlocks()) {
-    registry.register(block);
-  }
-
-  return registry;
-})();
 
 /**
  * Walk a tree of block instances and render the React tree.
@@ -21,10 +11,15 @@ const defaultRegistry = (() => {
  * the renderer itself handles the recursion + the grid-child
  * `_layout.colSpan` wrapping so individual block renders stay
  * unaware of where they're placed.
+ *
+ * The default registry is the shared module-scoped one — plugins
+ * register into it at boot time so their blocks resolve here
+ * automatically. Pass a custom registry only when you want to
+ * scope renders to a strict subset (tests, sandboxed previews).
  */
 export const renderBlocks = (
   pageBlocks: NxPageBlocks,
-  registry: NxBlockRegistry = defaultRegistry,
+  registry: NxBlockRegistry = getSharedRegistry(),
 ): React.ReactElement | null => {
   if (pageBlocks.length === 0) {
     return null;

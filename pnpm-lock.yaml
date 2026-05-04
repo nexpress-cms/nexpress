@@ -437,6 +437,9 @@ importers:
 
   packages/next:
     dependencies:
+      '@nexpress/blocks':
+        specifier: workspace:*
+        version: link:../blocks
       '@nexpress/core':
         specifier: workspace:*
         version: link:../core
@@ -456,6 +459,9 @@ importers:
 
   packages/plugin-sdk:
     dependencies:
+      '@nexpress/blocks':
+        specifier: workspace:*
+        version: link:../blocks
       '@nexpress/core':
         specifier: workspace:*
         version: link:../core

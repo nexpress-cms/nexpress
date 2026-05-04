@@ -49,3 +49,58 @@ export const createBlockRegistry = (): NxBlockRegistry => {
 };
 
 export const getDefaultBlocks = (): NxBlockDefinition[] => [...defaultBlocks];
+
+// Module-scoped singleton registry shared by `renderBlocks` (server)
+// and the admin's block picker (client). Seeded with the built-in
+// defaults; plugins push more via `registerBlock` at boot time
+// (see bootstrap.ts in @nexpress/next). The shared registry's
+// `register` overwrites on duplicate `type` instead of throwing —
+// loadPlugins runs on every cold boot and HMR refresh, so a strict
+// "already registered" error would make the dev loop unusable.
+const sharedDefinitions = new Map<string, NxBlockDefinition>();
+for (const block of defaultBlocks) sharedDefinitions.set(block.type, block);
+
+const sharedRegistry: NxBlockRegistry = {
+  register(definition) {
+    sharedDefinitions.set(definition.type, definition);
+  },
+  get(type) {
+    return sharedDefinitions.get(type);
+  },
+  getAll() {
+    return Array.from(sharedDefinitions.values());
+  },
+  has(type) {
+    return sharedDefinitions.has(type);
+  },
+};
+
+/**
+ * Adds a block to the shared registry. Plugins call this (via the
+ * bootstrap, not directly) so their blocks appear in the admin
+ * Add-block popover and resolve correctly during server render.
+ * Overwrites on duplicate `type` — see comment on sharedDefinitions.
+ */
+export const registerBlock = (definition: NxBlockDefinition): void => {
+  sharedRegistry.register(definition);
+};
+
+/** Returns every block in the shared registry — defaults + plugin contributions. */
+export const getRegisteredBlocks = (): NxBlockDefinition[] => sharedRegistry.getAll();
+
+/**
+ * Serializable metadata for every block in the shared registry —
+ * `NxBlockDefinition` minus the `render` function. The admin
+ * fetches this server-side and threads it through to the (client-
+ * side) page-builder editor; functions can't cross the boundary,
+ * and the editor never invokes `render` anyway.
+ */
+export const getRegisteredBlockMetadata = (): import("./types.js").NxBlockMetadata[] =>
+  sharedRegistry.getAll().map((definition) => {
+    const { render: _render, ...metadata } = definition;
+    void _render;
+    return metadata;
+  });
+
+/** Internal: returns the shared registry. Used by `renderBlocks`. */
+export const getSharedRegistry = (): NxBlockRegistry => sharedRegistry;

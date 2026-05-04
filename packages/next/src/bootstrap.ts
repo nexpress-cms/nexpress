@@ -24,7 +24,24 @@ import {
   type NxPluginConfig,
   type NxResolvedPluginLike,
 } from "@nexpress/core";
+import { registerBlock, type NxBlockDefinition } from "@nexpress/blocks";
 import { cookies, headers } from "next/headers";
+
+// Plugin definitions can ship a `blocks` array (see plugin-sdk's
+// NxPluginDefinition). Core's `loadPlugins` keeps the shape loose
+// to avoid a cycle, so we narrow it here when we know we're in
+// the bootstrap path that owns this wiring.
+function pluginBlocks(plugin: NxPluginConfig | NxResolvedPluginLike): NxBlockDefinition[] {
+  const blocks = (plugin as { blocks?: unknown }).blocks;
+  if (!Array.isArray(blocks)) return [];
+  return blocks.filter(
+    (b): b is NxBlockDefinition =>
+      b !== null &&
+      typeof b === "object" &&
+      typeof (b as { type?: unknown }).type === "string" &&
+      typeof (b as { render?: unknown }).render === "function",
+  );
+}
 
 function resolvePluginId(plugin: NxPluginConfig | NxResolvedPluginLike): string {
   return "manifest" in plugin ? plugin.manifest.id : plugin.id;
@@ -310,6 +327,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
 
       const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
       await loadPlugins(enabled);
+      // Push each enabled plugin's blocks into the shared block
+      // registry so they appear in the admin's Add-block popover
+      // and resolve correctly during server render.
+      // `registerBlock` overwrites on duplicate type, so HMR /
+      // re-bootstrap on the same process don't blow up.
+      for (const plugin of enabled) {
+        for (const block of pluginBlocks(plugin)) {
+          registerBlock(block);
+        }
+      }
       pluginsLoaded = true;
     })();
 
