@@ -1,5 +1,6 @@
 export type {
   NxBlockDefinition,
+  NxBlockMetadata,
   NxBlockPropField,
   NxBlockInstance,
   NxBlockRegistration,
@@ -7,5 +8,12 @@ export type {
   NxPageBlocks,
   NxDataBinding,
 } from "./types.js";
-export { createBlockRegistry, getDefaultBlocks } from "./registry.js";
+export {
+  createBlockRegistry,
+  getDefaultBlocks,
+  getRegisteredBlockMetadata,
+  getRegisteredBlocks,
+  getSharedRegistry,
+  registerBlock,
+} from "./registry.js";
 export { renderBlocks } from "./render-blocks.js";

@@ -38,6 +38,7 @@
     "next": ">=15"
   },
   "dependencies": {
+    "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*"
   },
   "devDependencies": {

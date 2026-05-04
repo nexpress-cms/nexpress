@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Search } from "lucide-react";
-import type { NxBlockDefinition } from "@nexpress/blocks";
+import type { NxBlockMetadata } from "@nexpress/blocks";
 
 import { Input } from "../ui/input.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";
 import { cn } from "../ui/utils.js";
 
 interface BlockPaletteProps {
-  availableBlocks: NxBlockDefinition[];
+  availableBlocks: NxBlockMetadata[];
   onAdd: (type: string) => void;
   trigger: ReactElement;
 }

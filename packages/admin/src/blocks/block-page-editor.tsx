@@ -36,8 +36,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type {
-  NxBlockDefinition,
   NxBlockInstance,
+  NxBlockMetadata,
   NxBlockPropField,
 } from "@nexpress/blocks";
 
@@ -68,7 +68,7 @@ declare const crypto: { randomUUID(): string };
 interface BlockPageEditorProps {
   blocks: NxBlockInstance[];
   onChange: (blocks: NxBlockInstance[]) => void;
-  availableBlocks: NxBlockDefinition[];
+  availableBlocks: NxBlockMetadata[];
 }
 
 type EditorAction =
@@ -94,7 +94,7 @@ const getFieldValue = (field: NxBlockPropField, value: unknown): unknown => {
   return "";
 };
 
-const createBlockInstance = (definition: NxBlockDefinition): NxBlockInstance => ({
+const createBlockInstance = (definition: NxBlockMetadata): NxBlockInstance => ({
   id: createBlockId(),
   type: definition.type,
   props: { ...definition.defaultProps },
@@ -178,7 +178,7 @@ const cloneBlockDeep = (block: NxBlockInstance): NxBlockInstance => ({
   ...(block.children ? { children: block.children.map(cloneBlockDeep) } : {}),
 });
 
-const createEditorReducer = (availableBlocks: NxBlockDefinition[]) => {
+const createEditorReducer = (availableBlocks: NxBlockMetadata[]) => {
   const definitions = new Map(availableBlocks.map((block) => [block.type, block]));
 
   return (state: NxBlockInstance[], action: EditorAction): NxBlockInstance[] => {
@@ -345,11 +345,11 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
 
 interface SortableBlockItemProps {
   block: NxBlockInstance;
-  definition?: NxBlockDefinition;
+  definition?: NxBlockMetadata;
   parentBlock?: NxBlockInstance;
-  parentDefinition?: NxBlockDefinition;
-  availableBlocks: NxBlockDefinition[];
-  definitions: Map<string, NxBlockDefinition>;
+  parentDefinition?: NxBlockMetadata;
+  availableBlocks: NxBlockMetadata[];
+  definitions: Map<string, NxBlockMetadata>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -591,8 +591,8 @@ function GridChildLayoutControl({
 
 interface ChildrenAreaProps {
   container: NxBlockInstance;
-  availableBlocks: NxBlockDefinition[];
-  definitions: Map<string, NxBlockDefinition>;
+  availableBlocks: NxBlockMetadata[];
+  definitions: Map<string, NxBlockMetadata>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -667,7 +667,7 @@ function ChildrenArea({
 
 interface DragPreviewProps {
   block?: NxBlockInstance;
-  definition?: NxBlockDefinition;
+  definition?: NxBlockMetadata;
 }
 
 function DragPreview({ block, definition }: DragPreviewProps): ReactNode {
