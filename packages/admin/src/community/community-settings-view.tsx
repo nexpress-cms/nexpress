@@ -147,7 +147,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Member registration</CardTitle>
+          <CardTitle>Member registration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -174,7 +174,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Reaction kinds</CardTitle>
+          <CardTitle>Reaction kinds</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -230,7 +230,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Member upload quota</CardTitle>
+          <CardTitle>Member upload quota</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">

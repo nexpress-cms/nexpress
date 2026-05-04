@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "../ui/badge.js";
+import { StatusBadge } from "../ui/status-badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
@@ -265,7 +266,7 @@ export function CollectionListView({
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle className="text-lg">All entries</CardTitle>
+          <CardTitle>All entries</CardTitle>
           <div className="relative w-full md:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -427,17 +428,7 @@ export function CollectionListView({
                                     {formatCellValue(rawValue)}
                                   </Link>
                                 ) : isStatus ? (
-                                  <span
-                                    className={
-                                      rawValue === "published"
-                                        ? "inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300"
-                                        : rawValue === "draft"
-                                          ? "inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
-                                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                    }
-                                  >
-                                    {rawValue}
-                                  </span>
+                                  <StatusBadge status={rawValue} />
                                 ) : (
                                   <span className="text-muted-foreground">{formatCellValue(rawValue)}</span>
                                 )}

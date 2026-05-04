@@ -7,6 +7,7 @@ import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { PageHeader } from "../layout/page-header.js";
+import { StatusBadge } from "../ui/status-badge.js";
 
 export interface MemberListRow {
   id: string;
@@ -25,13 +26,6 @@ interface MembersListViewProps {
   filterQuery?: string;
   filterStatus?: string;
 }
-
-const STATUS_COLOR: Record<MemberListRow["status"], string> = {
-  active: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
-  pending: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
-  suspended: "bg-rose-500/15 text-rose-800 dark:text-rose-300",
-  deleted: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
-};
 
 export function MembersListView({
   members,
@@ -116,7 +110,7 @@ export function MembersListView({
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">
+          <CardTitle>
             {isFiltered ? "Filtered members" : "All members"}
           </CardTitle>
         </CardHeader>
@@ -157,11 +151,7 @@ export function MembersListView({
                         {member.email}
                       </td>
                       <td className="px-4 py-3 align-middle">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[member.status]}`}
-                        >
-                          {member.status}
-                        </span>
+                        <StatusBadge status={member.status} />
                       </td>
                       <td className="px-4 py-3 align-middle text-muted-foreground">
                         {new Date(member.createdAt).toLocaleDateString()}

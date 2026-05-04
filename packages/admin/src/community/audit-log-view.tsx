@@ -114,7 +114,7 @@ export function AuditLogView() {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Filters</CardTitle>
+          <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
           <form
@@ -231,7 +231,7 @@ export function AuditLogView() {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg">Events</CardTitle>
+          <CardTitle>Events</CardTitle>
           {totalPages > 1 ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Button

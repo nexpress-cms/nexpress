@@ -73,6 +73,8 @@ export { Textarea } from "./ui/textarea.js";
 export { Label } from "./ui/label.js";
 export { Switch } from "./ui/switch.js";
 export { Badge } from "./ui/badge.js";
+export { StatusBadge, StatusDot } from "./ui/status-badge.js";
+export type { StatusTone } from "./ui/status-badge.js";
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card.js";
 export { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog.js";
 export { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu.js";

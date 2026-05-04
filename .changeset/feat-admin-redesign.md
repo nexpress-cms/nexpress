@@ -79,6 +79,21 @@ the same names; the brand tokens are additive and don't conflict.
 - **Body** picks up `font-feature-settings: "ss01", "cv11", "cv02"`
   for the geometric numerals/glyphs the design system commits to.
 
+- **`StatusBadge` + `StatusDot`.** New shared exports — the canonical
+  pill+dot pattern from the design (`Published`/`Draft`/`Scheduled`/
+  `In review`/`Pending`/`Open`/`Resolved`/`Banned`/`Active`/etc.).
+  `collection-list-view`, `collection-edit-view`, `members-list-view`,
+  and `reports-queue-view` swap their hand-rolled status pills for it,
+  collapsing four nearly-identical color-mapping tables to one source
+  of truth.
+- **Browser favicon.** New `apps/web/src/app/icon.svg` — Next.js
+  picks it up automatically and serves the geometric-N mark as the
+  tab icon (matches the sidebar `NxMark`).
+- **CardTitle defaults.** `text-lg` overrides removed across every
+  admin view that used them; the new `CardTitle` default
+  (`text-[13px] font-semibold`) reads correctly without override.
+
 New public exports on `@nexpress/admin/client`:
 `NxMark`, `PageHeader`, `AuthLayout`, `AuthCard`,
-`AuthCardDefaultFooter`, `AuthDivider`.
+`AuthCardDefaultFooter`, `AuthDivider`,
+`StatusBadge`, `StatusDot`, `StatusTone`.

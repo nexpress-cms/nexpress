@@ -240,7 +240,7 @@ export function PendingQueueView() {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Queue</CardTitle>
+          <CardTitle>Queue</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-hidden rounded-xl border border-border/60">

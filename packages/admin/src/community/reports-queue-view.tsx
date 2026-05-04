@@ -7,6 +7,7 @@ import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { PageHeader } from "../layout/page-header.js";
+import { StatusBadge } from "../ui/status-badge.js";
 import {
   Dialog,
   DialogContent,
@@ -99,7 +100,7 @@ export function ReportsQueueView() {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg">Queue</CardTitle>
+          <CardTitle>Queue</CardTitle>
           <div className="flex items-center gap-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
               Status
@@ -167,9 +168,9 @@ export function ReportsQueueView() {
                       </td>
                       <td className="px-4 py-3">
                         {report.resolvedAt ? (
-                          <Badge variant="secondary">{report.resolution ?? "resolved"}</Badge>
+                          <StatusBadge status={report.resolution ?? "resolved"} />
                         ) : (
-                          <Badge variant="destructive">open</Badge>
+                          <StatusBadge status="open" />
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">

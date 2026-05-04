@@ -71,7 +71,7 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
   return (
     <Card className="border-destructive/40 shadow-sm">
       <CardHeader>
-        <CardTitle className="text-lg text-destructive">Danger zone</CardTitle>
+        <CardTitle className="text-destructive">Danger zone</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">

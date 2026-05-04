@@ -124,7 +124,7 @@ export function LinkedIdentitiesPanel({
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader>
-        <CardTitle className="text-lg">Linked OAuth identities</CardTitle>
+        <CardTitle>Linked OAuth identities</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
