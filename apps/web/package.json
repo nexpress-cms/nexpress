@@ -9,6 +9,7 @@
     "dev": "concurrently -n next,schema -c blue,magenta -k \"next dev\" \"NX_SCHEMA_WATCH=1 tsx watch --watch-path=src/collections --watch-path=src/nexpress.config.ts scripts/generate-schema.ts\"",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "lint": "NODE_OPTIONS='--max-old-space-size=6144' eslint . --cache --cache-location node_modules/.cache/eslint",
     "clean": "rm -rf .next",
     "test": "echo 'apps/web has no unit tests — see test:integration' && exit 0",
     "test:integration": "vitest run",

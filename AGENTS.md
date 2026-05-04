@@ -17,7 +17,7 @@ pnpm dev                                                # turbo watch: tsup --wa
 ```
 
 - `pnpm build` / `pnpm dev` / `pnpm test` — turbo fan-out over all workspaces
-- `pnpm lint` — ESLint at the repo root (type-checked rules via `projectService`)
+- `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Each package runs `eslint . --cache --cache-location node_modules/.cache/eslint`, so the heavy `recommendedTypeChecked` rule set's TS programs stay bounded per process and incremental runs hit cache. The previous root `eslint .` over 1000+ files OOMed at an 8 GB heap; the per-package fan-out caps peak RSS at ~1.2 GB. Use `pnpm --filter <pkg> lint` to target one package, or `turbo run lint --filter=<pkg>...` for a dependency-aware subset.
 - `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
 - `pnpm format` / `pnpm format:check` — Prettier

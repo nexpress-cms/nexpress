@@ -11,8 +11,8 @@
   "scripts": {
     "build": "NX_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build",
     "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=30",
-    "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint .",
-    "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint . --fix",
+    "lint": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint --concurrency=2",
+    "lint:fix": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint --concurrency=2 -- --fix",
     "typecheck": "NX_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run typecheck",
     "test": "NX_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test",
     "test:integration": "NX_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test:integration --concurrency=1",
