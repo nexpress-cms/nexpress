@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { nxSettings } from "../db/schema/system.js";
 import { nxNavigation, nxSlugHistory } from "../db/schema/system.js";
@@ -253,7 +253,7 @@ export async function findSlugRedirect(
     // oldSlug)` triple — a slug can be reused over time (a doc renamed
     // away from "X" later, another doc renamed *to* "X", then "X" gets
     // renamed again). The newest record is the operator's intent.
-    const rows = await db
+    const [latest] = await db
       .select()
       .from(nxSlugHistory)
       .where(
@@ -263,9 +263,8 @@ export async function findSlugRedirect(
           eq(nxSlugHistory.oldSlug, currentOld),
         ),
       )
-      .orderBy(nxSlugHistory.createdAt)
-      .limit(50);
-    const latest = rows[rows.length - 1];
+      .orderBy(desc(nxSlugHistory.createdAt))
+      .limit(1);
     if (!latest) break;
     const next = latest.newSlug;
     if (next === oldSlug || seen.has(next)) {

@@ -3,11 +3,14 @@
 "@nexpress/web": minor
 ---
 
-Slug renames now 301-redirect instead of 404. When an operator
-renames a page (e.g. `/old-page` → `/new-page`), search-engine
-indices, external links, and bookmarks for the old URL stay
-working — the public-site catch-all looks up the rename history
-and issues a permanent redirect to the current path.
+Slug renames now permanently redirect (HTTP 308) instead of
+404. When an operator renames a page (e.g. `/old-page` →
+`/new-page`), search-engine indices, external links, and
+bookmarks for the old URL stay working — the public-site
+catch-all looks up the rename history and issues a permanent
+redirect to the current path. (Next's `permanentRedirect` emits
+308; semantically equivalent to the classic 301 for SEO and
+preserves the request method.)
 
 Implementation:
 

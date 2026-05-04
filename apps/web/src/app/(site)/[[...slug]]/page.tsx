@@ -12,7 +12,7 @@ import { renderBlocks } from "@nexpress/blocks";
 import type { ComponentType } from "react";
 import type { Metadata } from "next";
 import { draftMode } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { NxPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
@@ -169,7 +169,12 @@ export default async function CatchAllPage({ params }: PageProps) {
           ? `/${requestedLocale}`
           : "";
       const targetPath = target === "/" ? "/" : `/${target.replace(/^\/+/, "")}`;
-      redirect(`${localePrefix}${targetPath}`);
+      // `permanentRedirect` issues a 308 (the modern 301), telling
+      // search engines and clients that the move is permanent so
+      // they update their indices. Plain `redirect` would default
+      // to 307 — fine for app routing but wrong for slug renames
+      // search-engine-wise.
+      permanentRedirect(`${localePrefix}${targetPath}`);
     }
 
     notFound();
