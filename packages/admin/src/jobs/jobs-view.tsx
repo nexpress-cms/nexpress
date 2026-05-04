@@ -486,7 +486,7 @@ function WorkerHealthCard() {
   const showStuckWarning = failedOverThreshold || expiredOverThreshold;
 
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardContent className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <span
@@ -577,7 +577,7 @@ function SchedulesPanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-border/60 shadow-sm">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <CalendarClock className="h-4 w-4" /> Cron schedules
@@ -632,7 +632,7 @@ function SchedulesPanel({
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 shadow-sm">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Code className="h-4 w-4" /> Registered handlers
@@ -708,7 +708,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
   }
 
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Play className="h-4 w-4" /> Run a handler
@@ -811,7 +811,7 @@ function JobList({
     );
   }
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {jobs.length} job{jobs.length === 1 ? "" : "s"}

@@ -620,7 +620,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           </div>
 
           <div className="space-y-6 xl:col-span-4">
-            <Card className="sticky top-6 border-border/60 shadow-sm">
+            <Card className="sticky top-6">
               <CardHeader>
                 <CardTitle>Publishing</CardTitle>
               </CardHeader>

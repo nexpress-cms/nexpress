@@ -154,7 +154,7 @@ export function UserManagement() {
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>User management</CardTitle>
         <div className="flex flex-wrap gap-2">

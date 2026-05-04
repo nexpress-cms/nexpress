@@ -225,7 +225,7 @@ export function MemberRolesPanel({
   }
 
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle>Community roles</CardTitle>
         {canModify ? (

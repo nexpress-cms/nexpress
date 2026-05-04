@@ -211,7 +211,7 @@ export function SitesView() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {sites.map((site) => (
-            <Card key={site.id} className="border-border/70 shadow-sm">
+            <Card key={site.id}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="flex items-center gap-2 text-base">

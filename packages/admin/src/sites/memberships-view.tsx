@@ -171,7 +171,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-border/70 shadow-sm">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               {memberships.length} membership

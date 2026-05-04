@@ -112,7 +112,7 @@ export function AuditLogView() {
         description="Append-only record of every moderation action — comment hide / restore / delete, member ban / unban, report file / resolve. Filter by target or actor when investigating an incident."
       />
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
@@ -229,7 +229,7 @@ export function AuditLogView() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Events</CardTitle>
           {totalPages > 1 ? (

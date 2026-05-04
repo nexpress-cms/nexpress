@@ -239,7 +239,7 @@ export function ThemeEditor() {
           </div>
         ) : null}
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
@@ -278,7 +278,7 @@ export function ThemeEditor() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Type className="h-4 w-4" />
@@ -307,7 +307,7 @@ export function ThemeEditor() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Square className="h-4 w-4" />
@@ -373,7 +373,7 @@ export function ThemeEditor() {
         </Card>
       </div>
 
-      <Card className="sticky top-6 h-fit border-border/70 bg-card/80 shadow-sm">
+      <Card className="sticky top-6 h-fit">
         <CardHeader>
           <CardTitle>Live preview</CardTitle>
         </CardHeader>

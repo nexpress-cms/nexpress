@@ -115,7 +115,7 @@ export function ThemeSwitcher({
 
   if (themes === null && !error) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
@@ -137,7 +137,7 @@ export function ThemeSwitcher({
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Sparkles className="h-4 w-4" />

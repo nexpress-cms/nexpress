@@ -108,7 +108,7 @@ export function MembersListView({
         ) : null}
       </form>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>
             {isFiltered ? "Filtered members" : "All members"}

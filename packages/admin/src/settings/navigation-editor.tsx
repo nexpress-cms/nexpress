@@ -715,7 +715,7 @@ export function NavigationEditor() {
 
   return (
     <>
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle>Navigation structure</CardTitle>

@@ -93,7 +93,7 @@ export function LocalesTab() {
 
   if (!config) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardContent className="pt-6">
           <div className="h-6 w-32 animate-pulse rounded bg-muted" />
           <div className="mt-3 h-16 w-full animate-pulse rounded bg-muted/50" />
@@ -104,7 +104,7 @@ export function LocalesTab() {
 
   if (!config.enabled) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
@@ -132,7 +132,7 @@ export function LocalesTab() {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
@@ -186,7 +186,7 @@ function TranslationProgressCard({
 }) {
   if (progress.collections.length === 0) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
@@ -203,7 +203,7 @@ function TranslationProgressCard({
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4" />

@@ -207,7 +207,7 @@ export function MemberBansPanel({
   }
 
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <CardTitle>Bans</CardTitle>
         {canModify ? (

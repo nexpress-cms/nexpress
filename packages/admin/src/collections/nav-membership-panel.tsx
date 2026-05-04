@@ -233,7 +233,7 @@ export function NavMembershipPanel({
     : addableLocations[0]?.value ?? "";
 
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle className="text-sm font-medium">In navigation</CardTitle>
       </CardHeader>

@@ -145,7 +145,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </div>
       ) : null}
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>Member registration</CardTitle>
         </CardHeader>
@@ -172,7 +172,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>Reaction kinds</CardTitle>
         </CardHeader>
@@ -228,7 +228,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>Member upload quota</CardTitle>
         </CardHeader>

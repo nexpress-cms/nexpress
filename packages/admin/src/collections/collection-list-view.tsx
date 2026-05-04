@@ -264,7 +264,7 @@ export function CollectionListView({
         }
       />
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle>All entries</CardTitle>
           <div className="relative w-full md:max-w-sm">

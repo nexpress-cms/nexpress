@@ -128,7 +128,7 @@ export function StringsTab() {
   }, [data, filter]);
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle>UI Strings</CardTitle>
         <p className="text-sm text-muted-foreground">

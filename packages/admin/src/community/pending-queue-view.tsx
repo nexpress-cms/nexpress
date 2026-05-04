@@ -238,7 +238,7 @@ export function PendingQueueView() {
         </div>
       ) : null}
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle>Queue</CardTitle>
         </CardHeader>

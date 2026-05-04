@@ -98,7 +98,7 @@ export function ReportsQueueView() {
         description="Member-filed reports against comments, members, and other community content. Resolving a report flips its row and writes an audit entry — take any follow-up action (hide / ban) separately."
       />
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Queue</CardTitle>
           <div className="flex items-center gap-2">

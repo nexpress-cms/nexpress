@@ -193,7 +193,7 @@ export function MediaLibrary() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <Card className="h-fit border-border/70 bg-card/80 shadow-sm">
+      <Card className="h-fit">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderOpen className="h-4 w-4" />
@@ -232,7 +232,7 @@ export function MediaLibrary() {
       </Card>
 
       <div className="space-y-6">
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardContent className="flex flex-col gap-4 p-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="space-y-2">

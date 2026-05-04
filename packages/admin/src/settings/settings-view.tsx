@@ -125,7 +125,7 @@ export function SettingsView() {
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
-          <Card className="border-border/70 bg-card/80 shadow-sm">
+          <Card>
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <CardTitle>General settings</CardTitle>
@@ -149,7 +149,7 @@ export function SettingsView() {
                   {Array.from({ length: 3 }).map((_, index) => (
                     <div key={`settings-skeleton-${index}`} className="space-y-2">
                       <div className="h-4 w-24 animate-pulse rounded bg-muted" />
-                      <div className="h-11 animate-pulse rounded-xl bg-muted" />
+                      <div className="h-8 animate-pulse rounded-lg bg-muted" />
                     </div>
                   ))}
                 </div>
