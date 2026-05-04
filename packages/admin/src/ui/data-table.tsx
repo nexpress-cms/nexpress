@@ -193,11 +193,11 @@ function DataTable<TData extends Record<string, unknown>>({
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Showing {paginatedData.length === 0 ? 0 : currentPage * pageSize + 1}-
+        <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
+          Showing {paginatedData.length === 0 ? 0 : currentPage * pageSize + 1}–
           {Math.min((currentPage + 1) * pageSize, sortedData.length)} of {sortedData.length}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <Button
             type="button"
             variant="outline"
@@ -205,10 +205,10 @@ function DataTable<TData extends Record<string, unknown>>({
             onClick={() => setPage((value) => Math.max(0, value - 1))}
             disabled={currentPage === 0}
           >
-            <ChevronLeft className="size-4" />
+            <ChevronLeft className="size-3.5" />
             Previous
           </Button>
-          <div className="min-w-20 text-center text-sm text-neutral-600 dark:text-neutral-400">
+          <div className="min-w-16 text-center text-[12px] tabular-nums text-neutral-500 dark:text-neutral-400">
             Page {currentPage + 1} / {pageCount}
           </div>
           <Button
@@ -219,7 +219,7 @@ function DataTable<TData extends Record<string, unknown>>({
             disabled={currentPage >= pageCount - 1}
           >
             Next
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-3.5" />
           </Button>
         </div>
       </div>

@@ -233,7 +233,7 @@ export function AuditLogView() {
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Events</CardTitle>
           {totalPages > 1 ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
@@ -242,7 +242,7 @@ export function AuditLogView() {
               >
                 Prev
               </Button>
-              <span>
+              <span className="min-w-16 text-center text-[12px] tabular-nums text-neutral-500 dark:text-neutral-400">
                 Page {page} of {totalPages}
               </span>
               <Button

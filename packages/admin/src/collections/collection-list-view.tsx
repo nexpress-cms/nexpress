@@ -268,12 +268,12 @@ export function CollectionListView({
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle>All entries</CardTitle>
           <div className="relative w-full md:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
             <Input
               value={searchValue}
               onChange={(event: { target: { value: string } }) => setSearchValue(event.target.value)}
               placeholder={`Search ${config.labels.plural.toLowerCase()}...`}
-              className="pl-9"
+              className="pl-8"
             />
           </div>
         </CardHeader>
@@ -444,12 +444,12 @@ export function CollectionListView({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
               Page {currentPage} of {Math.max(totalPages, 1)}
             </p>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 type="button"
                 variant="outline"
@@ -463,7 +463,7 @@ export function CollectionListView({
                   router.push(query ? `${pathname}?${query}` : pathname);
                 }}
               >
-                <ChevronLeft className="mr-2 h-4 w-4" />
+                <ChevronLeft className="size-3.5" />
                 Previous
               </Button>
               <Button
@@ -480,7 +480,7 @@ export function CollectionListView({
                 }}
               >
                 Next
-                <ChevronRight className="ml-2 h-4 w-4" />
+                <ChevronRight className="size-3.5" />
               </Button>
             </div>
           </div>
