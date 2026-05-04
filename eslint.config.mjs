@@ -12,6 +12,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/.next/**",
       "**/.turbo/**",
+      "**/.tsup/**",
       "**/coverage/**",
       "**/tsup.config.ts",
       "**/vitest.config.ts",
@@ -22,6 +23,15 @@ export default tseslint.config(
       "**/postcss.config.mjs",
       "**/src/db/generated/**",
       "**/scripts/**",
+      // create-nexpress's templates/ live under a separate
+      // tsconfig.templates.json (typechecked by `tsc -p
+      // tsconfig.templates.json`). ESLint's projectService picks the
+      // package's main tsconfig.json, which doesn't cover this tree —
+      // so every template file would surface as a "not found by the
+      // project service" parse error. Lint is redundant here anyway:
+      // when a user scaffolds, the templates land in their project
+      // and get linted by their own toolchain.
+      "packages/cli/templates/**",
       "eslint.config.mjs",
       "docker/**",
       ".claude/**",

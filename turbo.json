@@ -44,6 +44,16 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "lint": {
+      "outputs": [],
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+        "tsconfig*.json",
+        "package.json",
+        "$TURBO_ROOT$/eslint.config.mjs",
+        "$TURBO_ROOT$/tsconfig.base.json"
+      ]
+    },
     "test": {
       "dependsOn": ["^build"],
       "outputs": []
