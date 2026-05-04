@@ -11,6 +11,7 @@ import {
 import {
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Copy,
   GripVertical,
   Plus,
@@ -72,10 +73,10 @@ interface BlockPageEditorProps {
 
 type EditorAction =
   | { type: "RESET"; blocks: NxBlockInstance[] }
-  | { type: "ADD"; blockType: string; afterId?: string }
+  | { type: "ADD"; blockType: string; parentId?: string }
   | { type: "DELETE"; id: string }
   | { type: "DUPLICATE"; id: string }
-  | { type: "MOVE"; fromId: string; toId: string }
+  | { type: "MOVE_WITHIN_PARENT"; parentId: string | null; fromId: string; toId: string }
   | { type: "MOVE_UP"; id: string }
   | { type: "MOVE_DOWN"; id: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> };
@@ -97,6 +98,84 @@ const createBlockInstance = (definition: NxBlockDefinition): NxBlockInstance => 
   id: createBlockId(),
   type: definition.type,
   props: { ...definition.defaultProps },
+  // Eagerly seed an empty children array on containers so the
+  // editor's add-child UI has something to push into without a
+  // null-check round-trip.
+  ...(definition.acceptsChildren ? { children: [] } : {}),
+});
+
+// Recursive tree helpers. The blocks tree is small (handfuls of
+// blocks per page) so straightforward DFS beats threading a path
+// through every action.
+
+function mapTree(
+  blocks: NxBlockInstance[],
+  fn: (block: NxBlockInstance) => NxBlockInstance,
+): NxBlockInstance[] {
+  return blocks.map((block) => {
+    const next = fn(block);
+    if (next.children) {
+      const nextChildren = mapTree(next.children, fn);
+      return nextChildren === next.children ? next : { ...next, children: nextChildren };
+    }
+    return next;
+  });
+}
+
+function filterTree(
+  blocks: NxBlockInstance[],
+  predicate: (block: NxBlockInstance) => boolean,
+): NxBlockInstance[] {
+  return blocks
+    .filter(predicate)
+    .map((block) =>
+      block.children
+        ? { ...block, children: filterTree(block.children, predicate) }
+        : block,
+    );
+}
+
+// Find the parent id (or null for top-level) and index of a target.
+function locateBlock(
+  blocks: NxBlockInstance[],
+  id: string,
+  parentId: string | null = null,
+): { parentId: string | null; index: number } | null {
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].id === id) return { parentId, index: i };
+    const childMatch = blocks[i].children
+      ? locateBlock(blocks[i].children!, id, blocks[i].id)
+      : null;
+    if (childMatch) return childMatch;
+  }
+  return null;
+}
+
+// Update the children of a target container (or top-level when
+// parentId is null) with `mutate`. Returns the new tree.
+function updateContainerChildren(
+  blocks: NxBlockInstance[],
+  parentId: string | null,
+  mutate: (children: NxBlockInstance[]) => NxBlockInstance[],
+): NxBlockInstance[] {
+  if (parentId === null) return mutate(blocks);
+  return blocks.map((block) => {
+    if (block.id === parentId) {
+      return { ...block, children: mutate(block.children ?? []) };
+    }
+    if (block.children) {
+      const nextChildren = updateContainerChildren(block.children, parentId, mutate);
+      return nextChildren === block.children ? block : { ...block, children: nextChildren };
+    }
+    return block;
+  });
+}
+
+const cloneBlockDeep = (block: NxBlockInstance): NxBlockInstance => ({
+  id: createBlockId(),
+  type: block.type,
+  props: { ...block.props },
+  ...(block.children ? { children: block.children.map(cloneBlockDeep) } : {}),
 });
 
 const createEditorReducer = (availableBlocks: NxBlockDefinition[]) => {
@@ -109,43 +188,53 @@ const createEditorReducer = (availableBlocks: NxBlockDefinition[]) => {
       case "ADD": {
         const definition = definitions.get(action.blockType);
         if (!definition) return state;
-        const nextBlock = createBlockInstance(definition);
-        if (!action.afterId) return [...state, nextBlock];
-        const index = state.findIndex((block) => block.id === action.afterId);
-        if (index === -1) return [...state, nextBlock];
-        return [...state.slice(0, index + 1), nextBlock, ...state.slice(index + 1)];
+        const next = createBlockInstance(definition);
+        const parentId = action.parentId ?? null;
+        return updateContainerChildren(state, parentId, (siblings) => [...siblings, next]);
       }
       case "DELETE":
-        return state.filter((block) => block.id !== action.id);
+        return filterTree(state, (block) => block.id !== action.id);
       case "DUPLICATE": {
-        const index = state.findIndex((block) => block.id === action.id);
-        if (index === -1) return state;
-        const source = state[index];
-        const duplicate: NxBlockInstance = {
-          id: createBlockId(),
-          type: source.type,
-          props: { ...source.props },
-        };
-        return [...state.slice(0, index + 1), duplicate, ...state.slice(index + 1)];
+        const loc = locateBlock(state, action.id);
+        if (!loc) return state;
+        return updateContainerChildren(state, loc.parentId, (siblings) => {
+          const source = siblings[loc.index];
+          if (!source) return siblings;
+          const clone = cloneBlockDeep(source);
+          return [
+            ...siblings.slice(0, loc.index + 1),
+            clone,
+            ...siblings.slice(loc.index + 1),
+          ];
+        });
       }
-      case "MOVE": {
-        const fromIndex = state.findIndex((block) => block.id === action.fromId);
-        const toIndex = state.findIndex((block) => block.id === action.toId);
-        if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return state;
-        return arrayMove(state, fromIndex, toIndex);
+      case "MOVE_WITHIN_PARENT": {
+        return updateContainerChildren(state, action.parentId, (siblings) => {
+          const fromIndex = siblings.findIndex((b) => b.id === action.fromId);
+          const toIndex = siblings.findIndex((b) => b.id === action.toId);
+          if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+            return siblings;
+          }
+          return arrayMove(siblings, fromIndex, toIndex);
+        });
       }
       case "MOVE_UP": {
-        const index = state.findIndex((block) => block.id === action.id);
-        if (index <= 0) return state;
-        return arrayMove(state, index, index - 1);
+        const loc = locateBlock(state, action.id);
+        if (!loc || loc.index === 0) return state;
+        return updateContainerChildren(state, loc.parentId, (siblings) =>
+          arrayMove(siblings, loc.index, loc.index - 1),
+        );
       }
       case "MOVE_DOWN": {
-        const index = state.findIndex((block) => block.id === action.id);
-        if (index === -1 || index >= state.length - 1) return state;
-        return arrayMove(state, index, index + 1);
+        const loc = locateBlock(state, action.id);
+        if (!loc) return state;
+        return updateContainerChildren(state, loc.parentId, (siblings) => {
+          if (loc.index >= siblings.length - 1) return siblings;
+          return arrayMove(siblings, loc.index, loc.index + 1);
+        });
       }
       case "UPDATE_PROPS":
-        return state.map((block) =>
+        return mapTree(state, (block) =>
           block.id === action.id
             ? { ...block, props: { ...block.props, ...action.props } }
             : block,
@@ -195,8 +284,6 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
         rows={field.type === "richtext" ? 8 : 4}
         value={typeof value === "string" ? value : JSON.stringify(value, null, 2)}
         onChange={(event) => onChange(parseFieldInput(field, event.currentTarget.value))}
-        // richtext is a JSON blob — monospace makes the structure
-        // legible. textarea is freeform, normal font.
         className={field.type === "richtext" ? "font-mono text-xs" : ""}
       />
     );
@@ -259,21 +346,31 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
 interface SortableBlockItemProps {
   block: NxBlockInstance;
   definition?: NxBlockDefinition;
+  parentBlock?: NxBlockInstance;
+  parentDefinition?: NxBlockDefinition;
+  availableBlocks: NxBlockDefinition[];
+  definitions: Map<string, NxBlockDefinition>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onAddChild: (parentId: string, blockType: string) => void;
 }
 
 function SortableBlockItem({
   block,
   definition,
+  parentBlock,
+  parentDefinition,
+  availableBlocks,
+  definitions,
   onMoveUp,
   onMoveDown,
   onDuplicate,
   onDelete,
   onUpdateProps,
+  onAddChild,
 }: SortableBlockItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id });
@@ -286,6 +383,8 @@ function SortableBlockItem({
   };
 
   const fieldIdPrefix = `nx-block-${block.id}`;
+  const isContainer = Boolean(definition?.acceptsChildren);
+  const isChildOfGrid = parentBlock?.type === "grid";
 
   return (
     <Card ref={setNodeRef} style={style} className="overflow-hidden border-border/60">
@@ -296,7 +395,7 @@ function SortableBlockItem({
             aria-label={`Drag ${definition?.label ?? block.type}`}
             {...attributes}
             {...listeners}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground cursor-grab active:cursor-grabbing"
+            className="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing"
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -316,6 +415,11 @@ function SortableBlockItem({
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">
               {definition?.label ?? block.type}
+              {isContainer ? (
+                <span className="ml-2 inline-flex items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+                  container
+                </span>
+              ) : null}
             </div>
             <div className="truncate font-mono text-xs text-muted-foreground">
               {block.type}
@@ -329,7 +433,7 @@ function SortableBlockItem({
               aria-label="Move up"
               onClick={() => onMoveUp(block.id)}
             >
-              <ChevronDown className="h-4 w-4 rotate-180" />
+              <ChevronUp className="h-4 w-4" />
             </Button>
             <Button
               type="button"
@@ -363,8 +467,23 @@ function SortableBlockItem({
         </header>
         <CollapsibleContent>
           <div className="grid gap-4 p-4">
+            {/* Grid-child layout control. Only shown when this
+                block sits directly inside a `grid` container — the
+                meta lives on the child's props as `_layout: { colSpan }`. */}
+            {isChildOfGrid && parentDefinition ? (
+              <GridChildLayoutControl
+                block={block}
+                inputId={`${fieldIdPrefix}-_layout-colSpan`}
+                onChange={(colSpan) =>
+                  onUpdateProps(block.id, {
+                    _layout: { ...(getLayout(block.props) ?? {}), colSpan },
+                  })
+                }
+              />
+            ) : null}
+
             {definition ? (
-              definition.propsSchema.length === 0 ? (
+              definition.propsSchema.length === 0 && !isContainer ? (
                 <p className="text-xs text-muted-foreground">
                   This block has no editable props.
                 </p>
@@ -394,10 +513,155 @@ function SortableBlockItem({
                 Unknown block type: <span className="font-mono">{block.type}</span>
               </div>
             )}
+
+            {/* Children area for container blocks. Each container
+                hosts its own SortableContext so children can be
+                reordered within the container; cross-container
+                drag is intentionally not supported in v1. */}
+            {isContainer ? (
+              <ChildrenArea
+                container={block}
+                availableBlocks={availableBlocks}
+                definitions={definitions}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                onDuplicate={onDuplicate}
+                onDelete={onDelete}
+                onUpdateProps={onUpdateProps}
+                onAddChild={onAddChild}
+              />
+            ) : null}
           </div>
         </CollapsibleContent>
       </Collapsible>
     </Card>
+  );
+}
+
+function getLayout(props: Record<string, unknown>): Record<string, unknown> | null {
+  const layout = props._layout;
+  if (typeof layout === "object" && layout !== null && !Array.isArray(layout)) {
+    return layout as Record<string, unknown>;
+  }
+  return null;
+}
+
+interface GridChildLayoutControlProps {
+  block: NxBlockInstance;
+  inputId: string;
+  onChange: (colSpan: number) => void;
+}
+
+function GridChildLayoutControl({
+  block,
+  inputId,
+  onChange,
+}: GridChildLayoutControlProps) {
+  const layout = getLayout(block.props);
+  const current =
+    typeof layout?.colSpan === "number" && layout.colSpan >= 1 && layout.colSpan <= 12
+      ? layout.colSpan
+      : 12;
+  return (
+    <div className="grid gap-1.5 rounded-md border border-primary/20 bg-primary/5 p-3">
+      <Label htmlFor={inputId} className="text-xs uppercase tracking-[0.18em] text-primary">
+        Grid column span
+      </Label>
+      <div className="flex items-center gap-3">
+        <Select
+          value={String(current)}
+          onValueChange={(v) => onChange(Number(v))}
+        >
+          <SelectTrigger id={inputId} className="h-9 w-20">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+              <SelectItem key={n} value={String(n)}>
+                {n}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">of 12 columns</span>
+      </div>
+    </div>
+  );
+}
+
+interface ChildrenAreaProps {
+  container: NxBlockInstance;
+  availableBlocks: NxBlockDefinition[];
+  definitions: Map<string, NxBlockDefinition>;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string) => void;
+  onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onAddChild: (parentId: string, blockType: string) => void;
+}
+
+function ChildrenArea({
+  container,
+  availableBlocks,
+  definitions,
+  onMoveUp,
+  onMoveDown,
+  onDuplicate,
+  onDelete,
+  onUpdateProps,
+  onAddChild,
+}: ChildrenAreaProps) {
+  const children = container.children ?? [];
+  const containerDefinition = definitions.get(container.type);
+  return (
+    <div className="grid gap-2 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          Children ({children.length})
+        </p>
+        <BlockPalette
+          availableBlocks={availableBlocks}
+          onAdd={(type) => onAddChild(container.id, type)}
+          trigger={
+            <Button type="button" variant="outline" size="sm">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add child
+            </Button>
+          }
+        />
+      </div>
+      <SortableContext
+        items={children.map((c) => c.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="grid gap-2">
+          {children.length === 0 ? (
+            <p className="rounded-md bg-background/50 px-3 py-4 text-center text-xs text-muted-foreground">
+              No children yet. Add one to start.
+            </p>
+          ) : (
+            children.map((child) => (
+              <SortableBlockItem
+                key={child.id}
+                block={child}
+                definition={definitions.get(child.type)}
+                parentBlock={container}
+                parentDefinition={containerDefinition}
+                availableBlocks={availableBlocks}
+                definitions={definitions}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                onDuplicate={onDuplicate}
+                onDelete={onDelete}
+                onUpdateProps={onUpdateProps}
+                onAddChild={onAddChild}
+              />
+            ))
+          )}
+        </div>
+      </SortableContext>
+    </div>
   );
 }
 
@@ -436,13 +700,6 @@ export function BlockPageEditor({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // The parent re-creates `initialBlocks` on every render (the
-  // admin field renderer maps the form value through
-  // `toBlockInstances`, which always returns a fresh array).
-  // Reference comparison would re-fire RESET endlessly and
-  // deadlock into a "Maximum update depth" storm. Use a serialized
-  // key so RESET only runs when the *content* changes; pass the
-  // original array to the reducer to skip a parse round-trip.
   const initialBlocksKey = useMemo(
     () => JSON.stringify(initialBlocks),
     [initialBlocks],
@@ -453,8 +710,6 @@ export function BlockPageEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBlocksKey]);
 
-  // Skip the mount echo so we don't bounce the value back to the
-  // parent on first render and trigger a reset loop.
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -464,12 +719,40 @@ export function BlockPageEditor({
     onChange(blocks);
   }, [blocks, onChange]);
 
-  const activeBlock = activeId ? blocks.find((block) => block.id === activeId) : undefined;
+  // Locate the active block anywhere in the tree (it may be a
+  // top-level block or nested inside a container). The drag
+  // overlay just needs the label, so a flat search is enough.
+  const findInTree = (arr: NxBlockInstance[], id: string): NxBlockInstance | undefined => {
+    for (const b of arr) {
+      if (b.id === id) return b;
+      const inChild = b.children ? findInTree(b.children, id) : undefined;
+      if (inChild) return inChild;
+    }
+    return undefined;
+  };
+  const activeBlock = activeId ? findInTree(blocks, activeId) : undefined;
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     if (!event.over) return;
-    dispatch({ type: "MOVE", fromId: String(event.active.id), toId: String(event.over.id) });
+    const activeIdStr = String(event.active.id);
+    const overIdStr = String(event.over.id);
+    if (activeIdStr === overIdStr) return;
+    // dnd-kit fires onDragEnd once for the whole context. Resolve
+    // both ids to their containers — only reorder when both share
+    // the same parent (cross-container drag is intentionally not
+    // supported in v1; promote / demote via duplicate-and-delete
+    // for now).
+    const activeLoc = locateBlock(blocks, activeIdStr);
+    const overLoc = locateBlock(blocks, overIdStr);
+    if (!activeLoc || !overLoc) return;
+    if (activeLoc.parentId !== overLoc.parentId) return;
+    dispatch({
+      type: "MOVE_WITHIN_PARENT",
+      parentId: activeLoc.parentId,
+      fromId: activeIdStr,
+      toId: overIdStr,
+    });
   }
 
   return (
@@ -491,12 +774,17 @@ export function BlockPageEditor({
                 key={block.id}
                 block={block}
                 definition={definitions.get(block.type)}
+                availableBlocks={availableBlocks}
+                definitions={definitions}
                 onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
                 onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
                 onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
                 onDelete={(id) => dispatch({ type: "DELETE", id })}
                 onUpdateProps={(id, props) =>
                   dispatch({ type: "UPDATE_PROPS", id, props })
+                }
+                onAddChild={(parentId, blockType) =>
+                  dispatch({ type: "ADD", blockType, parentId })
                 }
               />
             ))}

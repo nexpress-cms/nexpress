@@ -3,6 +3,7 @@ import {
   ctaBlock,
   faqBlock,
   featureGridBlock,
+  gridBlock,
   heroBlock,
   imageGalleryBlock,
   pricingBlock,
@@ -11,6 +12,9 @@ import {
 import type { NxBlockDefinition, NxBlockRegistry } from "./types.js";
 
 const defaultBlocks = [
+  // Layout containers first — operators looking to compose a page
+  // typically reach for these before any leaf block.
+  gridBlock,
   heroBlock,
   featureGridBlock,
   faqBlock,
