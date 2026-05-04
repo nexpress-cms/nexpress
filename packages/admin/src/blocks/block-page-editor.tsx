@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Braces,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -48,6 +49,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import {
@@ -79,7 +88,8 @@ type EditorAction =
   | { type: "MOVE_WITHIN_PARENT"; parentId: string | null; fromId: string; toId: string }
   | { type: "MOVE_UP"; id: string }
   | { type: "MOVE_DOWN"; id: string }
-  | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> };
+  | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
+  | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> };
 
 const createBlockId = (): string => crypto.randomUUID();
 
@@ -239,6 +249,12 @@ const createEditorReducer = (availableBlocks: NxBlockMetadata[]) => {
             ? { ...block, props: { ...block.props, ...action.props } }
             : block,
         );
+      case "REPLACE_PROPS":
+        // JSON-edit dialog wants the operator to drop keys by
+        // omitting them, so we replace rather than merge here.
+        return mapTree(state, (block) =>
+          block.id === action.id ? { ...block, props: action.props } : block,
+        );
       default:
         return state;
     }
@@ -355,6 +371,7 @@ interface SortableBlockItemProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
 }
 
@@ -370,11 +387,13 @@ function SortableBlockItem({
   onDuplicate,
   onDelete,
   onUpdateProps,
+  onReplaceProps,
   onAddChild,
 }: SortableBlockItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id });
   const [open, setOpen] = useState(true);
+  const [jsonOpen, setJsonOpen] = useState(false);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -457,6 +476,15 @@ function SortableBlockItem({
               type="button"
               variant="ghost"
               size="icon"
+              aria-label="Edit as JSON"
+              onClick={() => setJsonOpen(true)}
+            >
+              <Braces className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               aria-label="Delete"
               onClick={() => onDelete(block.id)}
               className="text-destructive hover:text-destructive"
@@ -465,6 +493,13 @@ function SortableBlockItem({
             </Button>
           </div>
         </header>
+        <BlockJsonDialog
+          open={jsonOpen}
+          onOpenChange={setJsonOpen}
+          blockType={block.type}
+          props={block.props}
+          onApply={(nextProps) => onReplaceProps(block.id, nextProps)}
+        />
         <CollapsibleContent>
           <div className="grid gap-4 p-4">
             {/* Grid-child layout control. Only shown when this
@@ -528,6 +563,7 @@ function SortableBlockItem({
                 onDuplicate={onDuplicate}
                 onDelete={onDelete}
                 onUpdateProps={onUpdateProps}
+                onReplaceProps={onReplaceProps}
                 onAddChild={onAddChild}
               />
             ) : null}
@@ -598,6 +634,7 @@ interface ChildrenAreaProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
 }
 
@@ -610,6 +647,7 @@ function ChildrenArea({
   onDuplicate,
   onDelete,
   onUpdateProps,
+  onReplaceProps,
   onAddChild,
 }: ChildrenAreaProps) {
   const children = container.children ?? [];
@@ -655,6 +693,7 @@ function ChildrenArea({
                 onDuplicate={onDuplicate}
                 onDelete={onDelete}
                 onUpdateProps={onUpdateProps}
+                onReplaceProps={onReplaceProps}
                 onAddChild={onAddChild}
               />
             ))
@@ -668,6 +707,267 @@ function ChildrenArea({
 interface DragPreviewProps {
   block?: NxBlockInstance;
   definition?: NxBlockMetadata;
+}
+
+interface BlockJsonDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  blockType: string;
+  props: Record<string, unknown>;
+  onApply: (nextProps: Record<string, unknown>) => void;
+}
+
+// Per-block JSON editor. Shows the block's `props` as pretty-
+// printed JSON, lets the operator hand-edit, and dispatches
+// REPLACE_PROPS on Apply (replace, not merge — operators expect
+// "remove key in JSON" to actually remove). Validates JSON.parse
+// + non-array object shape; richer schema validation is out of
+// scope for v1 (server-side validation will catch the rest).
+function BlockJsonDialog({
+  open,
+  onOpenChange,
+  blockType,
+  props,
+  onApply,
+}: BlockJsonDialogProps) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // Reseed the textarea every time the dialog opens, so closing
+  // and reopening reflects the latest committed state — operators
+  // who tweak via the field form between JSON edits expect the
+  // dialog to catch up.
+  useEffect(() => {
+    if (open) {
+      setText(JSON.stringify(props, null, 2));
+      setError(null);
+    }
+  }, [open, props]);
+
+  function handleApply() {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid JSON");
+      return;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setError("Block props must be a JSON object.");
+      return;
+    }
+    onApply(parsed as Record<string, unknown>);
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit block props as JSON</DialogTitle>
+          <DialogDescription>
+            <span className="font-mono">{blockType}</span> — Apply replaces
+            the entire <code>props</code> object. Keys you remove here will
+            be dropped on save.
+          </DialogDescription>
+        </DialogHeader>
+        <Textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.currentTarget.value);
+            setError(null);
+          }}
+          rows={16}
+          className="font-mono text-xs"
+          spellCheck={false}
+        />
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleApply}>
+            Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface PageJsonDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  blocks: NxBlockInstance[];
+  knownTypes: string[];
+  onApply: (nextBlocks: NxBlockInstance[]) => void;
+}
+
+// Page-level JSON editor. Shows the entire blocks tree, lets the
+// operator hand-edit, and dispatches RESET on Apply. Validates:
+//   1. valid JSON
+//   2. top level is an array
+//   3. each block has string `id` + string `type`
+//   4. (warning, not blocking) every `type` is registered
+//
+// Unknown types are allowed but get an inline warning so operators
+// can paste in JSON for plugin blocks that aren't loaded yet (the
+// type might come back later) without being locked out.
+function PageJsonDialog({
+  open,
+  onOpenChange,
+  blocks,
+  knownTypes,
+  onApply,
+}: PageJsonDialogProps) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setText(JSON.stringify(blocks, null, 2));
+      setError(null);
+      setWarning(null);
+    }
+  }, [open, blocks]);
+
+  function validateBlock(value: unknown, path: string): NxBlockInstance | string {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return `${path}: expected a JSON object`;
+    }
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.id !== "string") return `${path}: missing string \`id\``;
+    if (typeof obj.type !== "string") return `${path}: missing string \`type\``;
+    const props =
+      obj.props !== undefined && typeof obj.props === "object" && obj.props !== null
+        ? (obj.props as Record<string, unknown>)
+        : {};
+    let children: NxBlockInstance[] | undefined;
+    if (Array.isArray(obj.children)) {
+      const validated: NxBlockInstance[] = [];
+      for (let i = 0; i < obj.children.length; i++) {
+        const childResult = validateBlock(obj.children[i], `${path}.children[${i}]`);
+        if (typeof childResult === "string") return childResult;
+        validated.push(childResult);
+      }
+      children = validated;
+    }
+    return {
+      id: obj.id,
+      type: obj.type,
+      props,
+      ...(children ? { children } : {}),
+    };
+  }
+
+  function handleApply() {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid JSON");
+      return;
+    }
+    if (!Array.isArray(parsed)) {
+      setError("Expected a top-level array of block instances.");
+      return;
+    }
+    const validated: NxBlockInstance[] = [];
+    for (let i = 0; i < parsed.length; i++) {
+      const result = validateBlock(parsed[i], `[${i}]`);
+      if (typeof result === "string") {
+        setError(result);
+        return;
+      }
+      validated.push(result);
+    }
+
+    // Soft-warn on unknown types — block authors might paste in
+    // plugin-block JSON before the plugin is enabled. The save
+    // path doesn't strip these; the editor just shows "Unknown
+    // block type" in the row UI until the type is registered.
+    const unknown = collectUnknownTypes(validated, new Set(knownTypes));
+    if (unknown.length > 0) {
+      setWarning(
+        `Unknown block type${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. The blocks will save but won't render until those types are registered.`,
+      );
+    }
+
+    onApply(validated);
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Edit page blocks as JSON</DialogTitle>
+          <DialogDescription>
+            Apply replaces the entire block tree. Use this for bulk edits,
+            paste-from-another-page, or recovering from a corrupted state.
+          </DialogDescription>
+        </DialogHeader>
+        <Textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.currentTarget.value);
+            setError(null);
+            setWarning(null);
+          }}
+          rows={20}
+          className="font-mono text-xs"
+          spellCheck={false}
+        />
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
+        {warning ? (
+          <div
+            role="status"
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+          >
+            {warning}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleApply}>
+            Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function collectUnknownTypes(
+  blocks: NxBlockInstance[],
+  known: Set<string>,
+): string[] {
+  const seen = new Set<string>();
+  const walk = (arr: NxBlockInstance[]): void => {
+    for (const b of arr) {
+      if (!known.has(b.type)) seen.add(b.type);
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  return [...seen].sort();
 }
 
 function DragPreview({ block, definition }: DragPreviewProps): ReactNode {
@@ -695,6 +995,7 @@ export function BlockPageEditor({
   );
   const [blocks, dispatch] = useReducer(reducer, initialBlocks);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -783,6 +1084,9 @@ export function BlockPageEditor({
                 onUpdateProps={(id, props) =>
                   dispatch({ type: "UPDATE_PROPS", id, props })
                 }
+                onReplaceProps={(id, props) =>
+                  dispatch({ type: "REPLACE_PROPS", id, props })
+                }
                 onAddChild={(parentId, blockType) =>
                   dispatch({ type: "ADD", blockType, parentId })
                 }
@@ -805,7 +1109,7 @@ export function BlockPageEditor({
         </DragOverlay>
       </DndContext>
 
-      <div className="flex justify-center">
+      <div className="flex items-center justify-center gap-2">
         <BlockPalette
           availableBlocks={availableBlocks}
           onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
@@ -816,7 +1120,24 @@ export function BlockPageEditor({
             </Button>
           }
         />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setPageJsonOpen(true)}
+        >
+          <Braces className="mr-1.5 h-4 w-4" />
+          Edit JSON
+        </Button>
       </div>
+
+      <PageJsonDialog
+        open={pageJsonOpen}
+        onOpenChange={setPageJsonOpen}
+        blocks={blocks}
+        knownTypes={availableBlocks.map((b) => b.type)}
+        onApply={(nextBlocks) => dispatch({ type: "RESET", blocks: nextBlocks })}
+      />
     </section>
   );
 }
