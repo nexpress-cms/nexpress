@@ -17,6 +17,8 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -119,6 +121,16 @@ export function NavigationEditor() {
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
   const [pendingLocation, setPendingLocation] = useState<NavLocation | null>(null);
+  // Live drag-over state — populated by handleDragOver, cleared on
+  // drag end / cancel. The visible affordance (highlighted target,
+  // "nest" badge) reads from this; handleDragEnd's logic still
+  // computes its own intent from event.delta so the preview and
+  // the apply path can never disagree.
+  const [dragOverInfo, setDragOverInfo] = useState<{
+    activeId: string;
+    overId: string;
+    willNest: boolean;
+  } | null>(null);
 
   const dirty = useMemo(() => JSON.stringify(items) !== savedSnapshot, [items, savedSnapshot]);
 
@@ -417,6 +429,47 @@ export function NavigationEditor() {
   // resulting depth.
   const NEST_THRESHOLD_X = 24;
 
+  function handleDragStart(_event: DragStartEvent) {
+    setDragOverInfo(null);
+  }
+
+  function handleDragCancel() {
+    setDragOverInfo(null);
+  }
+
+  // Mirror handleDragEnd's intent calculation so the preview matches
+  // exactly what would happen if the operator released right now.
+  // Same `wantsNest` rule, same 1-level guards. Update the state
+  // only when something changed to avoid re-renders on every
+  // pointer move.
+  function handleDragOver(event: DragOverEvent) {
+    const { active, over, delta } = event;
+    if (!over) {
+      if (dragOverInfo !== null) setDragOverInfo(null);
+      return;
+    }
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) {
+      if (dragOverInfo !== null) setDragOverInfo(null);
+      return;
+    }
+    const activeItem = items.find((it) => it.id === activeId);
+    const overItem = items.find((it) => it.id === overId);
+    if (!activeItem || !overItem) return;
+    const activeHasChildren = items.some((c) => c.parentId === activeId);
+    const willNest =
+      delta.x > NEST_THRESHOLD_X && !overItem.parentId && !activeHasChildren;
+    if (
+      dragOverInfo?.activeId === activeId &&
+      dragOverInfo.overId === overId &&
+      dragOverInfo.willNest === willNest
+    ) {
+      return;
+    }
+    setDragOverInfo({ activeId, overId, willNest });
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over, delta } = event;
     if (!over || active.id === over.id) return;
@@ -498,6 +551,7 @@ export function NavigationEditor() {
       // sortable behavior the operator expects.
       return arrayMove(updated, oldIndex, targetIndex);
     });
+    setDragOverInfo(null);
   }
 
   return (
@@ -587,7 +641,10 @@ export function NavigationEditor() {
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
             >
               <SortableContext
                 items={renderOrder.map((entry) => entry.id)}
@@ -597,6 +654,8 @@ export function NavigationEditor() {
                   {renderOrder.map(({ id, isChild }) => {
                     const item = items.find((i) => i.id === id);
                     if (!item) return null;
+                    const isOver = dragOverInfo?.overId === item.id;
+                    const isActive = dragOverInfo?.activeId === item.id;
                     return (
                       <SortableRow
                         key={item.id}
@@ -608,6 +667,20 @@ export function NavigationEditor() {
                         pagesLoading={pagesLoading}
                         collections={collections}
                         collectionsLoading={collectionsLoading}
+                        // Visual cue for the live drag preview. The
+                        // over row gets a primary-tinted ring; if
+                        // releasing now would nest, the ring slides
+                        // into a "you're nesting" tone — see
+                        // SortableRow's classes.
+                        previewIntent={
+                          isActive
+                            ? "active"
+                            : isOver
+                              ? dragOverInfo?.willNest
+                                ? "will-nest"
+                                : "will-reorder"
+                              : "idle"
+                        }
                         onUpdate={updateItem}
                         onChangeType={changeType}
                         onChangeParent={changeParent}
@@ -704,6 +777,8 @@ export function NavigationEditor() {
   );
 }
 
+type RowPreviewIntent = "idle" | "active" | "will-reorder" | "will-nest";
+
 interface SortableRowProps {
   item: EditableNavItem;
   isChild: boolean;
@@ -713,6 +788,7 @@ interface SortableRowProps {
   pagesLoading: boolean;
   collections: CollectionOption[];
   collectionsLoading: boolean;
+  previewIntent: RowPreviewIntent;
   onUpdate: (id: string, patch: Partial<EditableNavItem>) => void;
   onChangeType: (id: string, nextType: EditableNavItem["type"]) => void;
   onChangeParent: (id: string, value: string) => void;
@@ -728,6 +804,7 @@ function SortableRow({
   pagesLoading,
   collections,
   collectionsLoading,
+  previewIntent,
   onUpdate,
   onChangeType,
   onChangeParent,
@@ -748,13 +825,31 @@ function SortableRow({
   const hasChildren = items.some((c) => c.parentId === item.id);
   const parentChoices = topLevelOptions.filter((opt) => opt.id !== item.id);
 
+  // Live drag preview classes:
+  //  - `will-nest` adds a primary-tinted left border + ring so the
+  //    operator sees that releasing here would make this row a
+  //    parent. The 4px left bar matches the ml-8 indent the new
+  //    child would take, so the cue is visually anchored to where
+  //    the change will land.
+  //  - `will-reorder` adds a subtle ring on the over row only,
+  //    confirming "drop here" without implying nesting.
+  //  - `active` mutes the dragged item while it's in flight.
+  const previewClass =
+    previewIntent === "will-nest"
+      ? "ring-2 ring-primary/60 border-l-4 border-l-primary"
+      : previewIntent === "will-reorder"
+        ? "ring-2 ring-primary/30"
+        : previewIntent === "active"
+          ? ""
+          : "";
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`grid gap-4 rounded-2xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_180px_auto] lg:items-end ${
         isChild ? "ml-8 border-l-4 border-l-primary/40" : ""
-      } ${isDragging ? "shadow-lg" : ""}`}
+      } ${isDragging ? "shadow-lg" : ""} ${previewClass} transition-shadow`}
     >
       <button
         type="button"
