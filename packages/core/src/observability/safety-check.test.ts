@@ -167,6 +167,31 @@ describe("verifyStartupSafety", () => {
     expect(warning?.context).toMatchObject({ reason: "explicit_flag" });
   });
 
+  it("container-hint warning message lists every recognized platform env var", () => {
+    // Regression guard: bootstrap.ts and the warning message in
+    // safety-check.ts list the same env vars in two separate places.
+    // If someone adds RAILWAY_ENVIRONMENT_NAME (or the next platform)
+    // to bootstrap.ts but forgets the message string here, operators
+    // see a warning that doesn't tell them which env triggered it.
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "local",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      containerEnv: true,
+    });
+    const message = warnings.find((w) => w.message.includes("multi-node safe"))?.message ?? "";
+    for (const envVar of [
+      "KUBERNETES_SERVICE_HOST",
+      "FLY_REGION",
+      "RENDER_INSTANCE_ID",
+      "RAILWAY_ENVIRONMENT_NAME",
+    ]) {
+      expect(message, `warning should mention ${envVar}`).toContain(envVar);
+    }
+  });
+
   it("explicit NX_MULTI_NODE=false silences the container hint", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({

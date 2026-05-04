@@ -164,7 +164,8 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       containerEnv: Boolean(
         process.env.KUBERNETES_SERVICE_HOST ||
           process.env.FLY_REGION ||
-          process.env.RENDER_INSTANCE_ID,
+          process.env.RENDER_INSTANCE_ID ||
+          process.env.RAILWAY_ENVIRONMENT_NAME,
       ),
     });
 

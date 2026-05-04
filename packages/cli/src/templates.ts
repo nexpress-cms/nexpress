@@ -17,6 +17,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "postcss.config.mjs": postcssConfigTemplate(),
     "tsconfig.json": tsconfigTemplate(),
     "next-env.d.ts": nextEnvTemplate(),
+    // Always emitted: harmless on non-Vercel hosts, and the
+    // /api/internal/publish-scheduled cron is needed by anyone using
+    // the scheduled-publish flow on Vercel. README explains setup.
+    "vercel.json": vercelJsonTemplate(),
     "public/media/.gitkeep": "",
     "src/db/generated/.gitkeep": "",
     // Empty re-export so `import * as generatedSchema` in bootstrap typechecks
@@ -33,6 +37,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
     "src/lib/collection-helpers.ts": collectionHelpersLibTemplate(),
     "src/lib/revalidate.ts": revalidateLibTemplate(),
     "src/lib/manifest.ts": manifestLibTemplate(),
+    "scripts/_load-env.ts": loadEnvScriptTemplate(),
     "scripts/dev-notice.ts": devNoticeScriptTemplate(),
     "scripts/doctor.ts": doctorScriptTemplate(),
     "scripts/generate-schema.ts": generateSchemaScriptTemplate(),
@@ -75,6 +80,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
   if (config.dockerSetup) {
     files["docker/Dockerfile"] = dockerfileTemplate();
     files["docker/docker-compose.yml"] = dockerComposeTemplate();
+    // .dockerignore must live at the build context root (project
+    // root), not under docker/. Source file is colocated with the
+    // other docker assets but emitted to the root.
+    files[".dockerignore"] = dockerignoreTemplate();
   }
 
   return files;
@@ -95,6 +104,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         build: "next build",
         start: "next start",
         doctor: "tsx scripts/doctor.ts",
+        "doctor:prod": "tsx scripts/doctor.ts --prod",
         postinstall: "tsx scripts/postinstall-notice.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
@@ -218,6 +228,10 @@ function devNoticeScriptTemplate(): string {
   return readTemplate("scripts/dev-notice.ts");
 }
 
+function loadEnvScriptTemplate(): string {
+  return readTemplate("scripts/_load-env.ts");
+}
+
 function postinstallNoticeScriptTemplate(): string {
   return readTemplate("scripts/postinstall-notice.ts");
 }
@@ -231,6 +245,10 @@ function dockerComposeTemplate(): string {
 
 function dockerfileTemplate(): string {
   return readTemplate("docker/Dockerfile");
+}
+
+function dockerignoreTemplate(): string {
+  return readTemplate("docker/.dockerignore");
 }
 
 function envExampleTemplate(_config: TemplateConfig): string {
@@ -263,6 +281,10 @@ function envTemplate(config: TemplateConfig): string {
 
 function nextConfigTemplate(): string {
   return readTemplate("config/next.config.ts");
+}
+
+function vercelJsonTemplate(): string {
+  return readTemplate("config/vercel.json");
 }
 
 function tsconfigTemplate(): string {
@@ -430,6 +452,17 @@ presence, required env vars, Postgres reachability, whether
 migrations are applied. Green \`✓\` / yellow \`⚠\` / red \`✗\` with a
 one-line hint for each non-OK line.
 
+Before deploying, run the production-readiness pass:
+
+\`\`\`bash
+pnpm run doctor:prod
+\`\`\`
+
+Tightens the dev defaults: \`NX_SECRET\` < 32 chars becomes an error,
+\`http://\` SITE_URL warns, missing \`NX_ENABLE_JOBS\` warns,
+\`local\` storage on a multi-node platform errors. Wire this into
+your release pipeline so a bad config fails CI before it ships.
+
 The first time you visit \`http://localhost:3000/admin\` on an empty
 DB, a 2-step wizard collects your admin account, site name, and
 optional sample content — no manual \`pnpm seed:admin\` needed.
@@ -467,5 +500,28 @@ pnpm worker
 \`\`\`
 
 With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
+
+## Deploy
+
+See [docs/deployment.md](https://github.com/hahabsw/nexpress/blob/main/docs/deployment.md)
+for full Docker / Vercel / Fly.io recipes plus multi-node notes.
+
+### Vercel
+
+\`vercel.json\` is included with a cron entry for \`/api/internal/publish-scheduled\`
+(scheduled publishing). On Vercel:
+
+1. Push the repo and import it in the Vercel dashboard.
+2. Set env vars: \`DATABASE_URL\`, \`NX_SECRET\`, \`SITE_URL\`,
+   \`NX_ENABLE_JOBS=1\`.
+3. Add \`CRON_SECRET\` in the Vercel env, then set
+   \`NX_SCHEDULER_TOKEN\` to the same value — Vercel signs cron requests
+   with \`Authorization: Bearer $CRON_SECRET\`, and the scheduler route
+   verifies against \`NX_SCHEDULER_TOKEN\`.
+4. Storage: Vercel filesystem is ephemeral — set
+   \`NX_STORAGE_ADAPTER=s3\` plus \`NX_S3_*\`.
+
+If you don't use scheduled publishing, the cron entry is a no-op (the
+endpoint short-circuits when \`NX_SCHEDULER_TOKEN\` is unset).
 `;
 }
