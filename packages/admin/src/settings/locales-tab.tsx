@@ -86,7 +86,7 @@ export function LocalesTab() {
   if (error) {
     return (
       <Card className="border-destructive/30 bg-destructive/5">
-        <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+        <CardContent className="text-[13px] text-destructive">{error}</CardContent>
       </Card>
     );
   }
@@ -94,7 +94,7 @@ export function LocalesTab() {
   if (!config) {
     return (
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="h-6 w-32 animate-pulse rounded bg-muted" />
           <div className="mt-3 h-16 w-full animate-pulse rounded bg-muted/50" />
         </CardContent>

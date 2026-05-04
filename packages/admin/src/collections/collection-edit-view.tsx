@@ -612,7 +612,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             ) : null}
             {mainFields.map((field, index) => (
               <Card key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}>
-                <CardContent className="pt-6">
+                <CardContent>
                   <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
                 </CardContent>
               </Card>

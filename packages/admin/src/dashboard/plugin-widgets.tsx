@@ -95,37 +95,37 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
   return (
     <Card>
       <CardHeader className="border-b-0 pb-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
           {widget.label}
         </CardTitle>
-        <p className="text-xs text-muted-foreground/80">{widget.pluginName}</p>
+        <p className="font-mono text-[11px] text-neutral-400">{widget.pluginName}</p>
       </CardHeader>
       <CardContent>
         {state.kind === "loading" ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Loader2 className="size-4 animate-spin text-neutral-400" />
         ) : state.kind === "metric" ? (
           <div>
             <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">{state.value}</div>
             {state.delta ? (
-              <div className="text-xs text-muted-foreground">{state.delta}</div>
+              <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400">{state.delta}</div>
             ) : null}
           </div>
         ) : state.kind === "status" ? (
           <div className="flex items-center gap-2">
             {state.level === "ok" ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
+              <CheckCircle2 className="size-4 text-emerald-500" />
             ) : state.level === "warn" ? (
-              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-300" />
+              <AlertTriangle className="size-4 text-amber-500" />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-300" />
+              <AlertTriangle className="size-4 text-red-600" />
             )}
-            <span className="text-sm">{state.message}</span>
+            <span className="text-[13px]">{state.message}</span>
           </div>
         ) : (
-          <div className="text-xs text-rose-600 dark:text-rose-300">{state.message}</div>
+          <div className="text-[12px] text-red-600 dark:text-red-300">{state.message}</div>
         )}
         {widget.description ? (
-          <p className="mt-2 text-xs text-muted-foreground">{widget.description}</p>
+          <p className="mt-2 text-[11.5px] text-neutral-500 dark:text-neutral-400">{widget.description}</p>
         ) : null}
       </CardContent>
     </Card>

@@ -351,7 +351,7 @@ export function JobsView() {
 
       {!supported ? (
         <Card className="border-amber-500/30/60 bg-amber-500/10">
-          <CardContent className="pt-6 text-sm text-amber-900 dark:text-amber-100">
+          <CardContent className="text-[13px] text-amber-900 dark:text-amber-100">
             <strong className="font-semibold">Background jobs disabled.</strong> This site is
             running without pg-boss. Set <code>NX_ENABLE_JOBS=1</code> and restart the worker to
             surface queued jobs here.
@@ -794,7 +794,7 @@ function JobList({
   if (jobs === null) {
     return (
       <Card className="border-border/60 bg-card/60">
-        <CardContent className="pt-6 text-sm text-muted-foreground">
+        <CardContent className="text-[13px] text-muted-foreground">
           <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
           Loading jobs…
         </CardContent>
@@ -804,7 +804,7 @@ function JobList({
   if (jobs.length === 0) {
     return (
       <Card className="border-dashed border-border/60 bg-muted/20">
-        <CardContent className="pt-6 text-center text-sm text-muted-foreground">
+        <CardContent className="text-center text-[13px] text-muted-foreground">
           No jobs in this bucket.
         </CardContent>
       </Card>

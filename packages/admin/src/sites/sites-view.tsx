@@ -196,14 +196,14 @@ export function SitesView() {
 
       {!sites ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+          <CardContent className="text-[13px] text-muted-foreground">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Loading sites…
           </CardContent>
         </Card>
       ) : sites.length === 0 ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+          <CardContent className="text-[13px] text-muted-foreground">
             No sites configured. (This shouldn&apos;t be possible — the framework
             seeds a default site at install time.)
           </CardContent>

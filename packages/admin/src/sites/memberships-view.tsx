@@ -158,14 +158,14 @@ export function MembershipsView({ siteId }: { siteId: string }) {
 
       {!memberships ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+          <CardContent className="text-[13px] text-muted-foreground">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Loading memberships…
           </CardContent>
         </Card>
       ) : memberships.length === 0 ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+          <CardContent className="text-[13px] text-muted-foreground">
             No explicit memberships on this site. Grant one to start scoping
             roles per tenant.
           </CardContent>
