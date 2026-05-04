@@ -43,44 +43,43 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
   const [pendingKind, setPendingKind] = useState("");
 
   useEffect(() => {
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await nxFetch("/api/admin/community/settings");
+        const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (!res.ok || !raw) {
+          setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
+          return;
+        }
+        const data = (raw.data ?? raw) as Partial<CommunitySettings>;
+        const quotaRaw = (data.memberUploadQuota ?? {}) as Partial<
+          CommunitySettings["memberUploadQuota"]
+        >;
+        setSettings({
+          reactionKinds: Array.isArray(data.reactionKinds)
+            ? data.reactionKinds.filter((k): k is string => typeof k === "string")
+            : DEFAULT_SETTINGS.reactionKinds,
+          registrationEnabled:
+            typeof data.registrationEnabled === "boolean"
+              ? data.registrationEnabled
+              : DEFAULT_SETTINGS.registrationEnabled,
+          memberUploadQuota: {
+            perDay:
+              typeof quotaRaw.perDay === "number" ? quotaRaw.perDay : null,
+            total:
+              typeof quotaRaw.total === "number" ? quotaRaw.total : null,
+          },
+        });
+      } catch {
+        setError("Unable to load community settings.");
+      } finally {
+        setLoading(false);
+      }
+    }
     void load();
   }, []);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await nxFetch("/api/admin/community/settings");
-      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-      if (!res.ok || !raw) {
-        setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
-        return;
-      }
-      const data = (raw.data ?? raw) as Partial<CommunitySettings>;
-      const quotaRaw = (data.memberUploadQuota ?? {}) as Partial<
-        CommunitySettings["memberUploadQuota"]
-      >;
-      setSettings({
-        reactionKinds: Array.isArray(data.reactionKinds)
-          ? data.reactionKinds.filter((k): k is string => typeof k === "string")
-          : DEFAULT_SETTINGS.reactionKinds,
-        registrationEnabled:
-          typeof data.registrationEnabled === "boolean"
-            ? data.registrationEnabled
-            : DEFAULT_SETTINGS.registrationEnabled,
-        memberUploadQuota: {
-          perDay:
-            typeof quotaRaw.perDay === "number" ? quotaRaw.perDay : null,
-          total:
-            typeof quotaRaw.total === "number" ? quotaRaw.total : null,
-        },
-      });
-    } catch {
-      setError("Unable to load community settings.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function save() {
     setSaving(true);

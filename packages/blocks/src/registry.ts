@@ -27,7 +27,7 @@ export const createBlockRegistry = (): NxBlockRegistry => {
   return {
     register(definition) {
       if (definitions.has(definition.type)) {
-        throw new Error(`Block type \"${definition.type}\" is already registered.`);
+        throw new Error(`Block type "${definition.type}" is already registered.`);
       }
 
       definitions.set(definition.type, definition);

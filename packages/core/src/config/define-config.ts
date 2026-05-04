@@ -24,7 +24,7 @@ export function defineConfig(config: NxConfig): NxConfig {
     nxConfigSchema.parse(config);
   } catch (err) {
     if (err instanceof ZodError) {
-      throw new Error(formatConfigError(err));
+      throw new Error(formatConfigError(err), { cause: err });
     }
     throw err;
   }
