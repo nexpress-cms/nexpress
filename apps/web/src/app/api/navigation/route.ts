@@ -1,6 +1,8 @@
 import {
   NX_DEFAULT_SITE_ID,
+  NxConflictError,
   NxForbiddenError,
+  NxNotFoundError,
   NxValidationError,
   getCurrentSiteId,
   nxNavigation,
@@ -15,8 +17,26 @@ import { optionalAuth, requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
+// Theme-baked default locations. Operators can edit their items
+// but not rename or delete the slot itself — themes look these up
+// by name and would silently render nothing if the slug moved.
+const PROTECTED_LOCATIONS = new Set(["header", "footer", "main"]);
+
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+async function bustNavCache(siteId: string, location: string) {
+  // Wrapped because revalidateTag throws outside Next's request
+  // context (test harness, scripts).
+  try {
+    const { revalidateTag } = await import("next/cache");
+    revalidateTag(navCacheTag(siteId, location), "default");
+  } catch {
+    // ignore
+  }
 }
 
 function isNavItem(value: unknown): value is NxNavItem {
@@ -90,17 +110,121 @@ export async function PUT(request: NextRequest) {
 
     // Phase 14.3 — bust the per-(site, location) cache key set
     // up by `getCachedNavigation` so theme headers/footers
-    // pick up the edit on the next render. Wrapped in try/catch
-    // because `revalidateTag` throws outside Next's request
-    // context (test harness, scripts).
-    try {
-      const { revalidateTag } = await import("next/cache");
-      revalidateTag(navCacheTag(siteId, location), "default");
-    } catch {
-      // ignore
-    }
+    // pick up the edit on the next render.
+    await bustNavCache(siteId, location);
 
     return nxSuccessResponse(result);
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await requireAuth(request);
+
+    if (!can(user, "admin.manage")) {
+      throw new NxForbiddenError("navigation", "delete");
+    }
+
+    const location = request.nextUrl.searchParams.get("location")?.trim();
+    if (!location) {
+      throw new NxValidationError("Invalid input", [
+        { field: "location", message: "location query param is required" },
+      ]);
+    }
+    if (PROTECTED_LOCATIONS.has(location)) {
+      throw new NxForbiddenError("navigation", "delete-default-location");
+    }
+
+    const db = getDb();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+
+    const deleted = await db
+      .delete(nxNavigation)
+      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)))
+      .returning({ location: nxNavigation.location });
+
+    if (deleted.length === 0) {
+      throw new NxNotFoundError("navigation", location);
+    }
+
+    await bustNavCache(siteId, location);
+
+    return nxSuccessResponse({ location });
+  } catch (error) {
+    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const user = await requireAuth(request);
+
+    if (!can(user, "admin.manage")) {
+      throw new NxForbiddenError("navigation", "rename");
+    }
+
+    const oldLocation = request.nextUrl.searchParams.get("location")?.trim();
+    if (!oldLocation) {
+      throw new NxValidationError("Invalid input", [
+        { field: "location", message: "location query param is required" },
+      ]);
+    }
+    if (PROTECTED_LOCATIONS.has(oldLocation)) {
+      throw new NxForbiddenError("navigation", "rename-default-location");
+    }
+
+    const body = (await readJsonBody(request)) as Record<string, unknown>;
+    const newLocation =
+      typeof body.newLocation === "string" ? body.newLocation.trim().toLowerCase() : "";
+
+    if (!newLocation || !SLUG_RE.test(newLocation)) {
+      throw new NxValidationError("Invalid input", [
+        {
+          field: "newLocation",
+          message: "newLocation must be lowercase letters, numbers, or hyphens",
+        },
+      ]);
+    }
+    if (newLocation === oldLocation) {
+      throw new NxValidationError("Invalid input", [
+        { field: "newLocation", message: "newLocation must differ from current" },
+      ]);
+    }
+    if (PROTECTED_LOCATIONS.has(newLocation)) {
+      throw new NxForbiddenError("navigation", "rename-into-default-location");
+    }
+
+    const db = getDb();
+    const now = new Date();
+    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+
+    // Conflict check before update so we get a 409 instead of a
+    // bare unique-constraint violation surfacing as a 500.
+    const [conflict] = await db
+      .select({ id: nxNavigation.id })
+      .from(nxNavigation)
+      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, newLocation)))
+      .limit(1);
+    if (conflict) {
+      throw new NxConflictError(`Location "${newLocation}" already exists.`);
+    }
+
+    const [renamed] = await db
+      .update(nxNavigation)
+      .set({ location: newLocation, updatedAt: now, updatedBy: user.id })
+      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, oldLocation)))
+      .returning();
+
+    if (!renamed) {
+      throw new NxNotFoundError("navigation", oldLocation);
+    }
+
+    await bustNavCache(siteId, oldLocation);
+    await bustNavCache(siteId, newLocation);
+
+    return nxSuccessResponse(renamed);
   } catch (error) {
     return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
