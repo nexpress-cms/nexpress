@@ -34,6 +34,22 @@ describe("slugify", () => {
     const long = "a".repeat(200);
     expect(slugify(long).length).toBe(96);
   });
+
+  it("keeps Korean characters intact (no jamo decomposition)", () => {
+    expect(slugify("안녕 하세요")).toBe("안녕-하세요");
+  });
+
+  it("keeps Japanese kana / kanji", () => {
+    expect(slugify("こんにちは 世界")).toBe("こんにちは-世界");
+  });
+
+  it("keeps Cyrillic and other scripts as letters", () => {
+    expect(slugify("Привет мир")).toBe("привет-мир");
+  });
+
+  it("mixes Latin and Korean cleanly", () => {
+    expect(slugify("Hello 안녕!")).toBe("hello-안녕");
+  });
 });
 
 describe("applySlugField", () => {

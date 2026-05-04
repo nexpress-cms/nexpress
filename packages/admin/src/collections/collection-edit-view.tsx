@@ -170,6 +170,38 @@ const buildSchemaShape = (fields: NxFieldConfig[]): Record<string, z.ZodType<unk
 
 const generateZodSchema = (fields: NxFieldConfig[]) => z.object(buildSchemaShape(fields));
 
+/**
+ * Adds an implicit `slug` text input to the form when the
+ * collection declares `slugField` but doesn't list `slug` in its
+ * `fields`. The pages collection (and most page-shaped configs)
+ * leans on the auto-derive behavior — slug is computed from the
+ * title at save time — but operators with non-Latin titles need a
+ * way to override the slug at create time. `namedSidebarFields`
+ * already routes `slug` into the sidebar, so the synthetic field
+ * lands there without further wiring.
+ *
+ * Skipped when the collection author already declared a slug
+ * field explicitly — they get whatever shape they want.
+ */
+function withImplicitSlugField(
+  fields: NxFieldConfig[],
+  slugField: NxCollectionConfig["slugField"],
+): NxFieldConfig[] {
+  if (!slugField) return fields;
+  if (fields.some((f) => f.type !== "row" && f.type !== "collapsible" && f.name === "slug")) {
+    return fields;
+  }
+  const synthetic: NxFieldConfig = {
+    type: "text",
+    name: "slug",
+    admin: {
+      description:
+        "URL slug. Leave blank to auto-derive from the title; override here for a custom path.",
+    },
+  };
+  return [...fields, synthetic];
+}
+
 const isSidebarField = (field: NxFieldConfig): boolean => {
   if (field.type === "row" || field.type === "collapsible") {
     return false;
@@ -205,8 +237,21 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
   const [isDeleting, setIsDeleting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
-  const schema = useMemo(() => generateZodSchema(config.fields), [config.fields]);
-  const defaultValues = useMemo(() => buildDefaultValues(config.fields, doc ?? {}), [config.fields, doc]);
+  // Inject an implicit `slug` field when the collection declares
+  // `slugField` but doesn't list `slug` in `fields` (the
+  // common case — pages, posts, etc. lean on the auto-derive
+  // behavior). Without this the operator can't override the slug
+  // at create time, which breaks for non-Latin titles.
+  const effectiveFields = useMemo(
+    () => withImplicitSlugField(config.fields, config.slugField),
+    [config.fields, config.slugField],
+  );
+
+  const schema = useMemo(() => generateZodSchema(effectiveFields), [effectiveFields]);
+  const defaultValues = useMemo(
+    () => buildDefaultValues(effectiveFields, doc ?? {}),
+    [effectiveFields, doc],
+  );
 
   const form = useForm<Record<string, unknown>>({
     resolver: zodResolver(schema),
@@ -318,7 +363,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
     return () => window.clearInterval(handle);
   }, [autosaveStatus.kind]);
 
-  const visibleFields = config.fields.filter(isVisibleField);
+  const visibleFields = effectiveFields.filter(isVisibleField);
   const sidebarFields = visibleFields.filter(isSidebarField);
   const mainFields = visibleFields.filter((field) => !isSidebarField(field));
 
