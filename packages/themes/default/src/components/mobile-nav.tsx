@@ -83,6 +83,17 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
               <a href={item.url} onClick={() => setOpen(false)}>
                 {item.label}
               </a>
+              {item.children && item.children.length > 0 ? (
+                <ul className="nx-mobile-subnav">
+                  {item.children.map((child, childIndex) => (
+                    <li key={`mobile-nav-${index.toString()}-${childIndex.toString()}`}>
+                      <a href={child.url} onClick={() => setOpen(false)}>
+                        {child.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           ))}
         </ul>

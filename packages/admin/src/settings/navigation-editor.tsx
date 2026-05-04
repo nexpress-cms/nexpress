@@ -5,6 +5,7 @@ import type { NxNavItem } from "@nexpress/core";
 import {
   ArrowDown,
   ArrowUp,
+  CornerDownRight,
   GripVertical,
   Plus,
   Save,
@@ -37,8 +38,15 @@ import {
   SelectValue,
 } from "../ui/select.js";
 
+const NO_PARENT = "__top__";
+
 type EditableNavItem = Pick<NxNavItem, "id" | "label" | "url" | "pageId" | "collection"> & {
   type: Extract<NxNavItem["type"], "link" | "page" | "collection">;
+  // Optional `id` of another (top-level) item this one is nested
+  // under. Editor enforces a single level of nesting — children
+  // can't themselves be parents — so the saved tree never grows
+  // deeper than `children: NxNavItem[]` of length N.
+  parentId?: string;
 };
 
 interface PageOption {
@@ -90,6 +98,17 @@ export function NavigationEditor() {
   const [pendingLocation, setPendingLocation] = useState<NavLocation | null>(null);
 
   const dirty = useMemo(() => JSON.stringify(items) !== savedSnapshot, [items, savedSnapshot]);
+
+  // Top-level item ids (parentId is null/undefined). Available as
+  // parent options for any other item — but with `id !== self`
+  // applied per-row so an item can't parent itself.
+  const topLevelOptions = useMemo(
+    () =>
+      items
+        .filter((item) => !item.parentId)
+        .map((item) => ({ id: item.id, label: item.label || "(untitled)" })),
+    [items],
+  );
 
   // Re-fetch nav whenever the operator switches location. Each
   // location is its own (siteId, location) row in nx_navigation.
@@ -191,7 +210,7 @@ export function NavigationEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           location,
-          items: items.map(toNavItem),
+          items: buildNavTree(items),
         }),
       });
 
@@ -231,6 +250,19 @@ export function NavigationEditor() {
     );
   }
 
+  function changeParent(id: string, parentSelectValue: string) {
+    const nextParent = parentSelectValue === NO_PARENT ? undefined : parentSelectValue;
+    setItems((current) => {
+      // Promoting an item that currently has children would create
+      // grandchildren on save — clamp by promoting those children
+      // back to top-level when we demote their parent.
+      const orphaned = nextParent
+        ? current.map((c) => (c.parentId === id ? { ...c, parentId: undefined } : c))
+        : current;
+      return orphaned.map((c) => (c.id === id ? { ...c, parentId: nextParent } : c));
+    });
+  }
+
   function moveItem(index: number, direction: -1 | 1) {
     setItems((current) => {
       const nextIndex = index + direction;
@@ -259,7 +291,10 @@ export function NavigationEditor() {
   }
 
   function removeItem(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
+    // Removing a parent also removes its children — render order
+    // groups them under the parent, so dropping orphans up to
+    // top-level instead would be confusing.
+    setItems((current) => current.filter((item) => item.id !== id && item.parentId !== id));
   }
 
   function changeType(id: string, nextType: EditableNavItem["type"]) {
@@ -269,8 +304,8 @@ export function NavigationEditor() {
       current.map((item) => {
         if (item.id !== id) return item;
         // Drop the fields that don't apply to the new type so the
-        // saved payload stays consistent. Keep label intact.
-        const base = { id: item.id, label: item.label };
+        // saved payload stays consistent. Keep label + parentId intact.
+        const base = { id: item.id, label: item.label, parentId: item.parentId };
         if (nextType === "page") {
           return { ...base, type: nextType, pageId: item.pageId };
         }
@@ -282,6 +317,30 @@ export function NavigationEditor() {
     );
   }
 
+  // Render order groups children under their parent. Top-level items
+  // appear in `items` array order; children appear immediately after
+  // their parent (in their own array order).
+  const renderOrder = useMemo(() => {
+    const result: Array<{ item: EditableNavItem; absoluteIndex: number; isChild: boolean }> = [];
+    items.forEach((item, idx) => {
+      if (item.parentId) return;
+      result.push({ item, absoluteIndex: idx, isChild: false });
+      items.forEach((child, childIdx) => {
+        if (child.parentId === item.id) {
+          result.push({ item: child, absoluteIndex: childIdx, isChild: true });
+        }
+      });
+    });
+    // Orphans (parentId points to a deleted item) — render at the end
+    // as top-level so they're not lost.
+    items.forEach((item, idx) => {
+      if (!item.parentId) return;
+      const parentExists = items.some((p) => p.id === item.parentId);
+      if (!parentExists) result.push({ item, absoluteIndex: idx, isChild: false });
+    });
+    return result;
+  }, [items]);
+
   return (
     <>
       <Card className="border-border/70 bg-card/80 shadow-sm">
@@ -289,7 +348,8 @@ export function NavigationEditor() {
           <div className="space-y-1">
             <CardTitle>Navigation structure</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Fine-tune labels, destinations, and sequence per location.
+              Fine-tune labels, destinations, and sequence per location. Set a parent to nest an
+              item as a sub-menu (one level deep).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -363,139 +423,178 @@ export function NavigationEditor() {
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map((item, index) => (
-                <div
-                  key={item.id}
-                  className="grid gap-4 rounded-2xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_auto] lg:items-end"
-                >
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <GripVertical className="h-4 w-4" />
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => moveItem(index, -1)}
-                        disabled={index === 0}
+              {renderOrder.map(({ item, absoluteIndex, isChild }) => {
+                // Parent options exclude self (can't parent yourself)
+                // and items that already have children (1-level limit).
+                const hasChildren = items.some((c) => c.parentId === item.id);
+                const parentChoices = topLevelOptions.filter((opt) => opt.id !== item.id);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`grid gap-4 rounded-2xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_180px_auto] lg:items-end ${
+                      isChild ? "ml-8 border-l-4 border-l-primary/40" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      {isChild ? (
+                        <CornerDownRight className="h-4 w-4" />
+                      ) : (
+                        <GripVertical className="h-4 w-4" />
+                      )}
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => moveItem(absoluteIndex, -1)}
+                          disabled={absoluteIndex === 0}
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => moveItem(absoluteIndex, 1)}
+                          disabled={absoluteIndex === items.length - 1}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor={`nav-label-${item.id}`}>Label</Label>
+                      <Input
+                        id={`nav-label-${item.id}`}
+                        value={item.label}
+                        onChange={(event) => updateItem(item.id, { label: event.target.value })}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      {item.type === "page" ? (
+                        <>
+                          <Label htmlFor={`nav-page-${item.id}`}>Page</Label>
+                          <Select
+                            value={item.pageId ?? ""}
+                            onValueChange={(value) => updateItem(item.id, { pageId: value })}
+                          >
+                            <SelectTrigger id={`nav-page-${item.id}`}>
+                              <SelectValue
+                                placeholder={pagesLoading ? "Loading…" : "Select a page"}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {pages.length === 0 && !pagesLoading ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">
+                                  No pages yet.
+                                </div>
+                              ) : (
+                                pages.map((page) => (
+                                  <SelectItem key={page.id} value={page.id}>
+                                    {page.title || page.slug || page.id}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      ) : item.type === "collection" ? (
+                        <>
+                          <Label htmlFor={`nav-collection-${item.id}`}>Collection</Label>
+                          <Select
+                            value={item.collection ?? ""}
+                            onValueChange={(value) => updateItem(item.id, { collection: value })}
+                          >
+                            <SelectTrigger id={`nav-collection-${item.id}`}>
+                              <SelectValue
+                                placeholder={collectionsLoading ? "Loading…" : "Select a collection"}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {collections.length === 0 && !collectionsLoading ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">
+                                  No collections registered.
+                                </div>
+                              ) : (
+                                collections.map((collection) => (
+                                  <SelectItem key={collection.slug} value={collection.slug}>
+                                    {collection.label || collection.slug}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      ) : (
+                        <>
+                          <Label htmlFor={`nav-url-${item.id}`}>URL</Label>
+                          <Input
+                            id={`nav-url-${item.id}`}
+                            value={item.url ?? ""}
+                            onChange={(event) => updateItem(item.id, { url: event.target.value })}
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Type</Label>
+                      <Select
+                        value={item.type}
+                        onValueChange={(value) =>
+                          changeType(item.id, value as EditableNavItem["type"])
+                        }
                       >
-                        <ArrowUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => moveItem(index, 1)}
-                        disabled={index === items.length - 1}
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="link">Link</SelectItem>
+                          <SelectItem value="page">Page</SelectItem>
+                          <SelectItem value="collection">Collection</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Parent</Label>
+                      <Select
+                        value={item.parentId ?? NO_PARENT}
+                        onValueChange={(value) => changeParent(item.id, value)}
+                        disabled={hasChildren}
                       >
-                        <ArrowDown className="h-4 w-4" />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Top level" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_PARENT}>Top level</SelectItem>
+                          {parentChoices.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button variant="outline" size="icon" onClick={() => removeItem(item.id)}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor={`nav-label-${item.id}`}>Label</Label>
-                    <Input
-                      id={`nav-label-${item.id}`}
-                      value={item.label}
-                      onChange={(event) => updateItem(item.id, { label: event.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    {item.type === "page" ? (
-                      <>
-                        <Label htmlFor={`nav-page-${item.id}`}>Page</Label>
-                        <Select
-                          value={item.pageId ?? ""}
-                          onValueChange={(value) => updateItem(item.id, { pageId: value })}
-                        >
-                          <SelectTrigger id={`nav-page-${item.id}`}>
-                            <SelectValue placeholder={pagesLoading ? "Loading…" : "Select a page"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {pages.length === 0 && !pagesLoading ? (
-                              <div className="px-3 py-2 text-xs text-muted-foreground">
-                                No pages yet.
-                              </div>
-                            ) : (
-                              pages.map((page) => (
-                                <SelectItem key={page.id} value={page.id}>
-                                  {page.title || page.slug || page.id}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </>
-                    ) : item.type === "collection" ? (
-                      <>
-                        <Label htmlFor={`nav-collection-${item.id}`}>Collection</Label>
-                        <Select
-                          value={item.collection ?? ""}
-                          onValueChange={(value) => updateItem(item.id, { collection: value })}
-                        >
-                          <SelectTrigger id={`nav-collection-${item.id}`}>
-                            <SelectValue
-                              placeholder={collectionsLoading ? "Loading…" : "Select a collection"}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {collections.length === 0 && !collectionsLoading ? (
-                              <div className="px-3 py-2 text-xs text-muted-foreground">
-                                No collections registered.
-                              </div>
-                            ) : (
-                              collections.map((collection) => (
-                                <SelectItem key={collection.slug} value={collection.slug}>
-                                  {collection.label || collection.slug}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </>
-                    ) : (
-                      <>
-                        <Label htmlFor={`nav-url-${item.id}`}>URL</Label>
-                        <Input
-                          id={`nav-url-${item.id}`}
-                          value={item.url ?? ""}
-                          onChange={(event) => updateItem(item.id, { url: event.target.value })}
-                        />
-                      </>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select
-                      value={item.type}
-                      onValueChange={(value) =>
-                        changeType(item.id, value as EditableNavItem["type"])
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="link">Link</SelectItem>
-                        <SelectItem value="page">Page</SelectItem>
-                        <SelectItem value="collection">Collection</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <Button variant="outline" size="icon" onClick={() => removeItem(item.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Dialog open={pendingLocation !== null} onOpenChange={(open) => !open && setPendingLocation(null)}>
+      <Dialog
+        open={pendingLocation !== null}
+        onOpenChange={(open) => !open && setPendingLocation(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
@@ -516,6 +615,37 @@ export function NavigationEditor() {
       </Dialog>
     </>
   );
+}
+
+/**
+ * Builds the saved tree from the editor's flat list. Top-level items
+ * (no parentId) become array entries; items with a known parentId
+ * are nested as `children`. Orphans (parentId points at a deleted
+ * item) are promoted back to top-level so they aren't dropped.
+ */
+function buildNavTree(items: EditableNavItem[]): NxNavItem[] {
+  const idSet = new Set(items.map((item) => item.id));
+  const top: NxNavItem[] = [];
+  const childrenByParent = new Map<string, NxNavItem[]>();
+
+  for (const item of items) {
+    const node = toNavItem(item);
+    const parentId = item.parentId && idSet.has(item.parentId) ? item.parentId : undefined;
+    if (!parentId) {
+      top.push(node);
+    } else {
+      const list = childrenByParent.get(parentId) ?? [];
+      list.push(node);
+      childrenByParent.set(parentId, list);
+    }
+  }
+
+  for (const node of top) {
+    const kids = childrenByParent.get(node.id);
+    if (kids && kids.length > 0) node.children = kids;
+  }
+
+  return top;
 }
 
 function toNavItem(item: EditableNavItem): NxNavItem {
@@ -543,6 +673,12 @@ function toNavItem(item: EditableNavItem): NxNavItem {
   };
 }
 
+/**
+ * Flattens the saved tree into the editor's flat list with parentId.
+ * The reverse of `buildNavTree`. Stops at one level deep — deeper
+ * descendants get promoted to immediate children of their nearest
+ * top-level ancestor (the editor's UI doesn't handle deeper nesting).
+ */
 function normalizeNavItems(payload: unknown): EditableNavItem[] {
   const source = Array.isArray(payload)
     ? payload
@@ -552,32 +688,51 @@ function normalizeNavItems(payload: unknown): EditableNavItem[] {
         ? payload.navigation
         : [];
 
-  return source.filter(isRecord).map((item, index) => {
-    const id = typeof item.id === "string" ? item.id : `nav-${index}`;
-    const label = typeof item.label === "string" ? item.label : "";
-    if (item.type === "page") {
-      return {
-        id,
-        label,
-        type: "page" as const,
-        pageId: typeof item.pageId === "string" ? item.pageId : undefined,
-      };
+  const result: EditableNavItem[] = [];
+  source.filter(isRecord).forEach((item, index) => {
+    const top = toEditableNavItem(item, index, undefined);
+    result.push(top);
+    if (Array.isArray(item.children)) {
+      item.children.filter(isRecord).forEach((child, childIndex) => {
+        result.push(toEditableNavItem(child, index * 1000 + childIndex, top.id));
+      });
     }
-    if (item.type === "collection") {
-      return {
-        id,
-        label,
-        type: "collection" as const,
-        collection: typeof item.collection === "string" ? item.collection : undefined,
-      };
-    }
+  });
+  return result;
+}
+
+function toEditableNavItem(
+  item: Record<string, unknown>,
+  index: number,
+  parentId: string | undefined,
+): EditableNavItem {
+  const id = typeof item.id === "string" ? item.id : `nav-${index}`;
+  const label = typeof item.label === "string" ? item.label : "";
+  if (item.type === "page") {
     return {
       id,
       label,
-      type: "link" as const,
-      url: typeof item.url === "string" ? item.url : "/",
+      type: "page" as const,
+      pageId: typeof item.pageId === "string" ? item.pageId : undefined,
+      parentId,
     };
-  });
+  }
+  if (item.type === "collection") {
+    return {
+      id,
+      label,
+      type: "collection" as const,
+      collection: typeof item.collection === "string" ? item.collection : undefined,
+      parentId,
+    };
+  }
+  return {
+    id,
+    label,
+    type: "link" as const,
+    url: typeof item.url === "string" ? item.url : "/",
+    parentId,
+  };
 }
 
 function extractPages(payload: unknown): PageOption[] {

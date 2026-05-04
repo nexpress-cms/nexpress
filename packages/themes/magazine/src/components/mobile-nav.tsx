@@ -63,6 +63,17 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
               <a href={item.url} onClick={() => setOpen(false)}>
                 {item.label}
               </a>
+              {item.children && item.children.length > 0 ? (
+                <ul className="nx-magazine-mobile-subnav">
+                  {item.children.map((child, childIndex) => (
+                    <li key={`magazine-mobile-${index.toString()}-${childIndex.toString()}`}>
+                      <a href={child.url} onClick={() => setOpen(false)}>
+                        {child.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           ))}
         </ul>

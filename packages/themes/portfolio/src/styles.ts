@@ -54,6 +54,38 @@ export const portfolioCss = `
   transition: opacity 0.15s ease;
 }
 .nx-portfolio-nav a:hover { opacity: 1; }
+.nx-portfolio-nav-item {
+  position: relative;
+}
+.nx-portfolio-subnav {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: none;
+  min-width: 11rem;
+  padding: 0.5rem 0;
+  margin: 0;
+  list-style: none;
+  background: var(--nx-color-card, #fff);
+  border: 1px solid var(--nx-color-border, #e5e7eb);
+  border-radius: var(--nx-radius-md, 0.5rem);
+  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+}
+.nx-portfolio-nav-item:hover > .nx-portfolio-subnav,
+.nx-portfolio-nav-item:focus-within > .nx-portfolio-subnav {
+  display: block;
+}
+.nx-portfolio-subnav a {
+  display: block;
+  padding: 0.4rem 1rem;
+  font-size: 0.875rem;
+}
+.nx-portfolio-mobile-subnav {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.25rem;
+}
 
 /* Mobile drawer */
 .nx-portfolio-nav-toggle {
