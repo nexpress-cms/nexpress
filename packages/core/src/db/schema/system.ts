@@ -197,6 +197,39 @@ export const nxSettings = pgTable(
 );
 
 /**
+ * Slug history for collections that declare `slugField`. Every
+ * slug change writes a row mapping the previous slug to the
+ * current one; the public-site catch-all reads it on 404 and
+ * 301-redirects so old URLs (search-engine indices, external
+ * links, bookmarks) keep working after a rename.
+ *
+ * Indexed by `(site_id, collection, old_slug)` because the read
+ * path is "I just got a 404 for this slug, where did it go?" —
+ * point lookups on that triple. Multiple rows can share the same
+ * `(site_id, collection, document_id)` over time as a doc gets
+ * renamed repeatedly; the catch-all walks the chain `oldSlug →
+ * newSlug` to resolve to the current target.
+ */
+export const nxSlugHistory = pgTable(
+  "nx_slug_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").default("default").notNull(),
+    collection: text("collection").notNull(),
+    documentId: text("document_id").notNull(),
+    oldSlug: text("old_slug").notNull(),
+    newSlug: text("new_slug").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("nx_slug_history_lookup_idx").on(table.siteId, table.collection, table.oldSlug),
+    index("nx_slug_history_doc_idx").on(table.siteId, table.collection, table.documentId),
+  ],
+);
+
+/**
  * Phase 15.4 — navigation is scoped per site too. Same model
  * as settings: composite uniqueness on (site_id, location)
  * lets each tenant own its own header / footer menus.

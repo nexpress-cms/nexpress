@@ -4,6 +4,7 @@ export {
   getPageBySlug,
   getPostBySlug,
   findPosts,
+  findSlugRedirect,
   getAllPageSlugs,
   getSetting,
 } from "./helpers.js";
