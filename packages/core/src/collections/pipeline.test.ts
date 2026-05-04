@@ -85,6 +85,7 @@ describe("runPostCommit (#277)", () => {
       { collection: "posts", documentId: "doc-2" },
       // Reject with a string (not an Error) — the test asserts that
       // runPostCommit handles non-Error throw values without crashing.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
       () => Promise.reject("plugin returned undefined"),
     );
     expect(captured).toHaveLength(1);

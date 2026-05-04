@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import {

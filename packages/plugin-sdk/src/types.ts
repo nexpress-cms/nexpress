@@ -487,7 +487,7 @@ export interface NxHookContext<TConfig = Record<string, unknown>> {
 }
 
 export type NxHookHandler<TConfig = Record<string, unknown>> =
-  | ((ctx: NxHookContext<TConfig>) => unknown | Promise<unknown>)
+  | ((ctx: NxHookContext<TConfig>) => unknown)
   | string;
 
 export type NxHookRegistration<TConfig = Record<string, unknown>> = Partial<

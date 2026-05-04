@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NxValidationError } from "@nexpress/core";
+import type * as CoreModule from "@nexpress/core";
 
 // Mock core's pipeline entry points so we can verify the helpers forward args
 // correctly without needing a live DB.
 vi.mock("@nexpress/core", async () => {
-  const actual = await vi.importActual<typeof import("@nexpress/core")>("@nexpress/core");
+  const actual = await vi.importActual<typeof CoreModule>("@nexpress/core");
   return {
     ...actual,
     findDocuments: vi.fn(),

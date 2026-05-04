@@ -238,7 +238,7 @@ describe("downloadMedia — SSRF guard (#270)", () => {
 describe("downloadMedia — manual redirect handling (#270)", () => {
   it("follows a 302 redirect to a public host", async () => {
     let calls = 0;
-    const fetchImpl = vi.fn((url: string) => {
+    const fetchImpl = vi.fn((_url: string) => {
       calls++;
       if (calls === 1) {
         return Promise.resolve(

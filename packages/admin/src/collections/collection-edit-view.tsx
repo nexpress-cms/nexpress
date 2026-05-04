@@ -266,7 +266,8 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
       if (autosaveTimer.current !== null) {
         window.clearTimeout(autosaveTimer.current);
       }
-      autosaveTimer.current = window.setTimeout(async () => {
+      autosaveTimer.current = window.setTimeout(() => {
+        void (async () => {
         autosaveTimer.current = null;
         // Skip when a manual Draft/Publish/Schedule save is in flight —
         // they'll write a real revision themselves.
@@ -294,6 +295,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             message: error instanceof Error ? error.message : "Autosave failed",
           });
         }
+        })();
       }, autosaveInterval);
     });
 
@@ -436,7 +438,12 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
 
   return (
     <Form {...form}>
-      <form onSubmit={handlePublish} className="space-y-6">
+      <form
+        onSubmit={(e) => {
+          void handlePublish(e);
+        }}
+        className="space-y-6"
+      >
         {toast ? (
           <div
             className={
@@ -498,13 +505,28 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             ) : null}
 
             {doc?.id ? (
-              <Button type="button" variant="outline" className="text-rose-600 dark:text-rose-300" onClick={handleDelete} disabled={isDeleting}>
+              <Button
+                type="button"
+                variant="outline"
+                className="text-rose-600 dark:text-rose-300"
+                onClick={() => {
+                  void handleDelete();
+                }}
+                disabled={isDeleting}
+              >
                 {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Delete
               </Button>
             ) : null}
 
-            <Button type="button" variant="outline" onClick={handleSaveDraft} disabled={isSaving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void handleSaveDraft();
+              }}
+              disabled={isSaving}
+            >
               {savingAs === "draft" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
               Save as Draft
             </Button>

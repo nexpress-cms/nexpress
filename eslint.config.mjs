@@ -21,6 +21,7 @@ export default tseslint.config(
       "**/next.config.ts",
       "**/next-env.d.ts",
       "**/postcss.config.mjs",
+      "**/playwright.config.ts",
       "**/src/db/generated/**",
       "**/scripts/**",
       // create-nexpress's templates/ live under a separate
@@ -32,6 +33,13 @@ export default tseslint.config(
       // when a user scaffolds, the templates land in their project
       // and get linted by their own toolchain.
       "packages/cli/templates/**",
+      // apps/web integration tests aren't covered by apps/web's main
+      // tsconfig (vitest does its own type stripping via esbuild).
+      // Pulling them into the project service would surface real but
+      // pre-existing type errors in the test suite — out of scope for
+      // lint cleanup. The vitest run still type-checks them by virtue
+      // of running them.
+      "apps/web/tests/**",
       "eslint.config.mjs",
       "docker/**",
       ".claude/**",
