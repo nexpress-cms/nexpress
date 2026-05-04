@@ -1,11 +1,14 @@
 "use client";
 
 import {
+  Suspense,
+  lazy,
   useEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import {
@@ -73,6 +76,27 @@ import { cn } from "../ui/utils.js";
 import { BlockPalette } from "./block-palette.js";
 
 declare const crypto: { randomUUID(): string };
+
+// Lexical editor — same lazy pattern the collection field-renderer
+// uses (#XXX). Loads only when an `image` / `richtext` block prop
+// actually mounts so pages without rich-text blocks don't pay for
+// Lexical's bundle.
+const LazyRichTextEditor = lazy(async () => {
+  const module = await import("@nexpress/editor/client");
+  return {
+    default: module.NxRichTextEditor as ComponentType<{
+      value: unknown;
+      onChange: (value: unknown) => void;
+      config?: unknown;
+    }>,
+  };
+});
+
+const isRichTextContent = (value: unknown): boolean => {
+  if (typeof value !== "object" || value === null) return false;
+  const root = (value as { root?: unknown }).root;
+  return typeof root === "object" && root !== null;
+};
 
 interface BlockPageEditorProps {
   blocks: NxBlockInstance[];
@@ -293,14 +317,46 @@ interface FieldControlProps {
 }
 
 function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
-  if (field.type === "textarea" || field.type === "richtext") {
+  if (field.type === "textarea") {
     return (
       <Textarea
         id={inputId}
-        rows={field.type === "richtext" ? 8 : 4}
-        value={typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-        onChange={(event) => onChange(parseFieldInput(field, event.currentTarget.value))}
-        className={field.type === "richtext" ? "font-mono text-xs" : ""}
+        rows={4}
+        value={typeof value === "string" ? value : ""}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+    );
+  }
+
+  if (field.type === "richtext") {
+    // Real Lexical editor instead of the legacy JSON-in-textarea
+    // fallback. The block prop stores the parsed Lexical content
+    // object; the editor pushes updates back via onChange. Lazy-
+    // loaded for the same reason the collection field-renderer
+    // does — avoids dragging Lexical into the bundle for pages
+    // that don't have rich-text fields.
+    return (
+      <Suspense
+        fallback={
+          <div className="rounded-md border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
+            Loading editor…
+          </div>
+        }
+      >
+        <LazyRichTextEditor
+          value={isRichTextContent(value) ? value : null}
+          onChange={(next) => onChange(next)}
+        />
+      </Suspense>
+    );
+  }
+
+  if (field.type === "image") {
+    return (
+      <BlockImagePicker
+        inputId={inputId}
+        value={typeof value === "string" ? value : ""}
+        onChange={(next) => onChange(next)}
       />
     );
   }
@@ -346,13 +402,7 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
   return (
     <Input
       id={inputId}
-      type={
-        field.type === "number"
-          ? "number"
-          : field.type === "url" || field.type === "image"
-            ? "url"
-            : "text"
-      }
+      type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
       value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
       onChange={(event) => onChange(parseFieldInput(field, event.currentTarget.value))}
     />
@@ -968,6 +1018,137 @@ function collectUnknownTypes(
   };
   walk(blocks);
   return [...seen].sort();
+}
+
+interface BlockImagePickerProps {
+  inputId: string;
+  value: string;
+  onChange: (next: string) => void;
+}
+
+interface MediaDoc {
+  id: string;
+  url?: string;
+  filename?: string;
+  alt?: string;
+}
+
+// Two-mode image input: paste a URL directly (escape hatch for
+// external CDNs and remote assets) OR pick from the media library.
+// Stores a URL string — block renders use the URL directly in
+// `<img src=...>` / `background-image: url(...)`. The library
+// picker translates the selected media doc's `url` into the value
+// so the wire format stays simple (no relationship resolution
+// at render time).
+function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<MediaDoc[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch("/api/media?limit=24")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to load media.");
+        const payload = (await res.json()) as { docs?: MediaDoc[] };
+        if (cancelled) return;
+        setItems(Array.isArray(payload.docs) ? payload.docs : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load media.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <Input
+          id={inputId}
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.currentTarget.value)}
+          placeholder="https://… or pick from library"
+          className="flex-1"
+        />
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+          Library
+        </Button>
+      </div>
+      {value ? (
+        // Lightweight preview — confirms the URL resolves before
+        // the operator hits Save. Gracefully empty when load fails.
+        <div className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
+          <img
+            src={value}
+            alt=""
+            className="block max-h-32 w-full object-cover"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        </div>
+      ) : null}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Select an image</DialogTitle>
+            <DialogDescription>
+              Pick from the media library or paste a URL above.
+            </DialogDescription>
+          </DialogHeader>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading media…</p>
+          ) : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <div className="grid max-h-[28rem] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  if (item.url) onChange(item.url);
+                  setOpen(false);
+                }}
+                className="flex flex-col gap-1 overflow-hidden rounded-md border border-border/60 text-left hover:bg-accent"
+              >
+                {item.url ? (
+                  <img
+                    src={item.url}
+                    alt={item.alt ?? item.filename ?? ""}
+                    className="block aspect-video w-full bg-muted object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-video w-full items-center justify-center bg-muted text-xs text-muted-foreground">
+                    no preview
+                  </div>
+                )}
+                <p className="truncate px-2 pb-2 text-xs">
+                  {item.filename ?? item.id}
+                </p>
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
 
 function DragPreview({ block, definition }: DragPreviewProps): ReactNode {
