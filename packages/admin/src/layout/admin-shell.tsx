@@ -19,7 +19,7 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-import type { NxAuthUser, NxCollectionConfig } from "@nexpress/core";
+import type { NxAuthUser } from "@nexpress/core";
 
 import { AdminTopbar } from "./admin-topbar.js";
 import { Button } from "../ui/button.js";
@@ -45,9 +45,23 @@ export interface AdminShellCapabilities {
   canModerate: boolean;
 }
 
+/**
+ * Serializable collection metadata for the sidebar only. Do not pass
+ * full `NxCollectionConfig` from a Server Component — configs include
+ * `access`/`hooks`/callbacks that cannot cross the RSC → client boundary.
+ */
+export interface AdminShellCollection {
+  slug: string;
+  labels: { plural: string };
+  admin?: {
+    group?: string;
+    hidden?: boolean;
+  };
+}
+
 export interface AdminShellProps {
   user: NxAuthUser;
-  collections: NxCollectionConfig[];
+  collections: AdminShellCollection[];
   caps: AdminShellCapabilities;
   children: React.ReactNode;
 }
@@ -112,7 +126,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
   const collectionGroups = React.useMemo(() => {
     return collections
       .filter((collection) => !collection.admin?.hidden)
-      .reduce<Record<string, NxCollectionConfig[]>>((groups, collection) => {
+      .reduce<Record<string, AdminShellCollection[]>>((groups, collection) => {
         const group = collection.admin?.group ?? "Content";
         groups[group] ??= [];
         groups[group].push(collection);
