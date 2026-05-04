@@ -139,6 +139,91 @@ separate machine with `supercronic`, or use Fly's [scheduled machines](https://f
 
 ---
 
+## Path 4: Render
+
+Render builds the included Dockerfile and runs it. Two services:
+
+1. **Web service** — type "Web Service", "Existing Dockerfile",
+   pointed at `docker/Dockerfile`. Set the env vars from "Required
+   environment" above plus `NX_ENABLE_JOBS=1` (the worker shares the
+   same process by default; if you split it, see "Background worker"
+   below). Health check path: `/api/health/ready`. Render restarts
+   instances that return non-200, which catches a DB outage at boot.
+2. **Postgres** — Render Postgres, Standard plan or above for
+   production. Copy the **Internal Database URL** into `DATABASE_URL`
+   on the web service so traffic stays on Render's private network.
+   The external URL works too but pays egress.
+
+```bash
+# Run migrations once, before the first deploy completes:
+render shell --service nexpress-web -- pnpm --filter @nexpress/web db:migrate
+# Or: set the build command to `pnpm db:migrate && pnpm build` so
+# every deploy migrates idempotently.
+```
+
+Scheduled publishing — Render has [Cron Jobs](https://docs.render.com/cronjobs)
+as a separate service type. Add one calling
+`curl -fsS -H "Authorization: Bearer $NX_SCHEDULER_TOKEN" https://your-app.onrender.com/api/internal/publish-scheduled`
+on a `*/2 * * * *` schedule. Set the same `NX_SCHEDULER_TOKEN` value
+on the web service.
+
+> **Storage:** Render disks are per-instance and not shared across
+> replicas. For >1 instance set `NX_STORAGE_ADAPTER=s3` (Render emits
+> `RENDER_INSTANCE_ID` so the boot-time `multi_node_local_storage`
+> warning fires automatically; see [operations.md](./operations.md#boot-warnings)).
+
+### Background worker (optional)
+
+Heavy job throughput justifies a dedicated **Background Worker** service
+on Render — same image, command override `node apps/web/server.js`
+swapped for the worker entry, `NX_ENABLE_JOBS=1` only on this service
+(unset on the web service so two processes don't both poll). pg-boss
+uses Postgres advisory locks for leader election, so even with
+`NX_ENABLE_JOBS=1` everywhere, only one instance picks up each job.
+
+---
+
+## Path 5: Railway
+
+Railway also builds the included Dockerfile. The shape mirrors Render:
+
+1. **New Project → Deploy from GitHub repo**, select the NexPress repo.
+   Railway autodetects `docker/Dockerfile` (or set `Dockerfile Path`
+   in Settings → Build).
+2. **Add Postgres**: New → Database → PostgreSQL. Railway exposes
+   `DATABASE_URL` automatically as a [reference variable](https://docs.railway.com/guides/variables#reference-variables) —
+   set `DATABASE_URL=${{Postgres.DATABASE_URL}}` on the web service so
+   it picks up the credentials without copy-paste.
+3. **Env vars** on the web service: `NX_SECRET`, `SITE_URL` (use the
+   railway.app domain or your custom one), `NX_ENABLE_JOBS=1`,
+   `NX_SCHEDULER_TOKEN`. Generate the secrets with
+   `openssl rand -base64 48` / `openssl rand -hex 32`.
+4. **Health check**: Settings → Networking → Healthcheck Path
+   `/api/health/ready`, timeout 10s.
+
+Migrations: Railway has no first-class one-shot job runner. Two
+options:
+
+- **Build-time** — set the Build Command to
+  `pnpm install && pnpm --filter @nexpress/web db:migrate && pnpm build`.
+  Migrations run on every deploy; idempotent.
+- **One-off** — `railway run --service web pnpm --filter @nexpress/web db:migrate`
+  from a local checkout pointed at the Railway env.
+
+Scheduled publishing — Railway's [Cron Jobs](https://docs.railway.com/reference/cron-jobs)
+let a service run on a cron schedule. Add a separate service that just
+runs `curl -fsS -H "Authorization: Bearer $NX_SCHEDULER_TOKEN" $SITE_URL/api/internal/publish-scheduled`,
+schedule `*/2 * * * *`, share `NX_SCHEDULER_TOKEN` and `SITE_URL` via
+[shared variables](https://docs.railway.com/guides/variables#shared-variables).
+
+> **Storage:** Railway's filesystem is ephemeral across deploys.
+> `NX_STORAGE_ADAPTER=s3` is required for any media uploads to survive
+> a redeploy. Railway emits `RAILWAY_ENVIRONMENT_NAME` so the boot-time
+> `multi_node_local_storage` warning fires automatically when
+> `NX_STORAGE_ADAPTER=local` is left in production.
+
+---
+
 ## First-deploy checklist
 
 1. Run drizzle migrations: `pnpm --filter @nexpress/web db:migrate`.
@@ -215,7 +300,8 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   HA topologies. Boot emits a `multi_node_local_storage` warning when
   either `NX_MULTI_NODE=true` is set or `NODE_ENV=production` *and* a
   managed-container env var is detected (`KUBERNETES_SERVICE_HOST`,
-  `FLY_REGION`, `RENDER_INSTANCE_ID`). Set `NX_STORAGE_ADAPTER=s3` to
+  `FLY_REGION`, `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`).
+  Set `NX_STORAGE_ADAPTER=s3` to
   silence the warning, or `NX_MULTI_NODE=false` if you really are
   running single-node on a managed platform.
 - **pg-boss leader election** — the worker uses Postgres advisory locks,

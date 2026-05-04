@@ -97,5 +97,77 @@ describe("getProjectFiles", () => {
     const without = getProjectFiles({ ...baseConfig, dockerSetup: false });
     expect(without["docker/Dockerfile"]).toBeUndefined();
     expect(without["docker/docker-compose.yml"]).toBeUndefined();
+    expect(without[".dockerignore"]).toBeUndefined();
+  });
+
+  it("emits .dockerignore at project root (build context root) when dockerSetup is true", () => {
+    const files = getProjectFiles(baseConfig);
+    const ignore = files[".dockerignore"];
+    expect(ignore).toBeDefined();
+    // Without these the build context balloons; the previous template
+    // had no .dockerignore and pulled in node_modules + .git + .next.
+    expect(ignore).toMatch(/node_modules/);
+    expect(ignore).toMatch(/\.next/);
+    expect(ignore).toMatch(/\.git\b/);
+  });
+
+  it("Dockerfile runs as a non-root user with a healthcheck (production-grade scaffold)", () => {
+    const files = getProjectFiles(baseConfig);
+    const dockerfile = files["docker/Dockerfile"];
+    expect(dockerfile).toBeDefined();
+    expect(dockerfile).toMatch(/USER nexpress/);
+    expect(dockerfile).toMatch(/HEALTHCHECK/);
+    // sharp needs libvips at runtime; missing it surfaces as a cryptic
+    // error on first image-upload, not at build time.
+    expect(dockerfile).toMatch(/vips/);
+    // Build-time placeholder for nexpress.config.ts's zod validation.
+    expect(dockerfile).toMatch(/NX_SECRET=placeholder/);
+  });
+
+  it("emits vercel.json with the scheduled-publish cron entry", () => {
+    const files = getProjectFiles(baseConfig);
+    const vercel = files["vercel.json"];
+    expect(vercel).toBeDefined();
+    const parsed = JSON.parse(vercel) as { crons: Array<{ path: string; schedule: string }> };
+    expect(parsed.crons).toHaveLength(1);
+    expect(parsed.crons[0]?.path).toBe("/api/internal/publish-scheduled");
+  });
+
+  it("ships scripts/_load-env.ts so doctor.ts's first import resolves", () => {
+    // doctor.ts (and any future script that touches nexpress.config.ts)
+    // does `import "./_load-env.js"` as its very first line. Without
+    // the template file, `pnpm doctor` crashes at module load with
+    // ERR_MODULE_NOT_FOUND. This test exists so the template ships
+    // alongside doctor.ts forever, not as a follow-up commit.
+    const files = getProjectFiles(baseConfig);
+    expect(files["scripts/_load-env.ts"]).toBeDefined();
+    expect(files["scripts/_load-env.ts"]).toMatch(/loadEnv/);
+  });
+
+  it("doctor.ts has --prod mode that tightens secret-length to error", () => {
+    const files = getProjectFiles(baseConfig);
+    const doctor = files["scripts/doctor.ts"];
+    expect(doctor).toBeDefined();
+    expect(doctor).toMatch(/PROD_MODE/);
+    expect(doctor).toMatch(/--prod/);
+    // Sub-floor secret must escalate to error in prod, not warn.
+    expect(doctor).toMatch(/PROD_MODE \? "error" : "warn"/);
+  });
+
+  it("doctor.ts adds the four prod-only checks (jobs / storage / SITE_URL https / scheduler token)", () => {
+    const files = getProjectFiles(baseConfig);
+    const doctor = files["scripts/doctor.ts"];
+    expect(doctor).toMatch(/checkJobsEnabledProd/);
+    expect(doctor).toMatch(/checkStorageProd/);
+    expect(doctor).toMatch(/checkSiteUrlProd/);
+    expect(doctor).toMatch(/checkSchedulerTokenProd/);
+  });
+
+  it("package.json exposes a doctor:prod script", () => {
+    const files = getProjectFiles(baseConfig);
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
   });
 });

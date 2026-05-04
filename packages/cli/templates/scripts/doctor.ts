@@ -15,6 +15,16 @@ import { resolve } from "node:path";
  * single command to answer "why doesn't `pnpm dev` work?" without
  * grepping through stack traces.
  *
+ * Two modes:
+ *   - default      dev-environment readiness; warns on production-y
+ *                  misconfigurations because they don't block dev.
+ *   - --prod       deploy-readiness dry-run. Promotes the warnings
+ *                  that `verifyStartupSafety` would emit at boot to
+ *                  errors so a CI gate fails before the bad config
+ *                  ships. Add the flag to your release pipeline:
+ *                  `pnpm run doctor --prod` exits non-zero on any
+ *                  unsafe-for-production setting.
+ *
  * Each check returns one of three states:
  *   - ok       a green ✓ line; nothing for the operator to do
  *   - warn     a yellow ⚠ line; the install will probably work but
@@ -27,6 +37,8 @@ import { resolve } from "node:path";
  * Warnings don't fail the run — operators who know what they're
  * doing shouldn't have to silence them in CI.
  */
+
+const PROD_MODE = process.argv.includes("--prod");
 
 interface CheckResult {
   state: "ok" | "warn" | "error";
@@ -145,14 +157,111 @@ function checkRequiredVar(spec: RequiredVarSpec): CheckResult {
     };
   }
   if (spec.minLength && value.length < spec.minLength) {
+    // In --prod mode a sub-floor secret is forgeable; surface as
+    // error so a release gate can catch it. In dev mode it's a hint.
     return {
-      state: "warn",
+      state: PROD_MODE ? "error" : "warn",
       label: spec.name,
       detail: `set but only ${value.length.toString()} chars (recommend ≥${spec.minLength.toString()})`,
       hint: spec.hint,
     };
   }
   return { state: "ok", label: spec.name };
+}
+
+/**
+ * Production-only readiness checks. Mirror what
+ * `verifyStartupSafety()` in @nexpress/core checks at boot, plus
+ * a few things only the operator can answer pre-deploy (jobs
+ * worker, scheduler token, https origin).
+ */
+function checkSecretLengthProd(): CheckResult | null {
+  if (!PROD_MODE) return null;
+  const value = process.env.NX_SECRET ?? "";
+  if (value.length >= 32) return null;
+  return {
+    state: "error",
+    label: "NX_SECRET ≥ 32 chars (production)",
+    detail: value ? `only ${value.length.toString()} chars` : "not set",
+    hint: "Generate a strong secret: `openssl rand -base64 48`. Existing sessions will be invalidated.",
+  };
+}
+
+function checkJobsEnabledProd(): CheckResult | null {
+  if (!PROD_MODE) return null;
+  if (process.env.NX_ENABLE_JOBS === "1" || process.env.NX_ENABLE_JOBS === "true") {
+    return { state: "ok", label: "Jobs worker enabled (NX_ENABLE_JOBS)" };
+  }
+  return {
+    state: "warn",
+    label: "Jobs worker enabled (NX_ENABLE_JOBS)",
+    detail: "not set",
+    hint: "Without NX_ENABLE_JOBS=1, scheduled-publish / email / revalidation jobs are silently dropped. Set it on the runtime that owns the worker.",
+  };
+}
+
+function checkStorageProd(): CheckResult | null {
+  if (!PROD_MODE) return null;
+  const adapter = (process.env.NX_STORAGE_ADAPTER ?? "local").toLowerCase();
+  const multiNode = process.env.NX_MULTI_NODE === "true" || process.env.NX_MULTI_NODE === "1";
+  // Same heuristic verifyStartupSafety() uses — explicit opt-out wins.
+  const explicitSingle =
+    process.env.NX_MULTI_NODE === "false" || process.env.NX_MULTI_NODE === "0";
+  const containerHint =
+    !explicitSingle &&
+    Boolean(
+      process.env.KUBERNETES_SERVICE_HOST ||
+        process.env.FLY_REGION ||
+        process.env.RENDER_INSTANCE_ID ||
+        process.env.RAILWAY_ENVIRONMENT_NAME,
+    );
+  if (adapter === "local" && (multiNode || containerHint)) {
+    return {
+      state: "error",
+      label: "Storage adapter (production)",
+      detail: `local + ${multiNode ? "NX_MULTI_NODE=true" : "managed-container env detected"}`,
+      hint: "LocalStorageAdapter is per-process. Set NX_STORAGE_ADAPTER=s3 + NX_S3_BUCKET / NX_S3_REGION, or NX_MULTI_NODE=false on a single-node deploy.",
+    };
+  }
+  return { state: "ok", label: `Storage adapter (production): ${adapter}` };
+}
+
+function checkSiteUrlProd(): CheckResult | null {
+  if (!PROD_MODE) return null;
+  const url = process.env.SITE_URL ?? "";
+  if (url.startsWith("https://")) return { state: "ok", label: "SITE_URL is https" };
+  if (url.startsWith("http://")) {
+    return {
+      state: "warn",
+      label: "SITE_URL is https",
+      detail: "set to http://",
+      hint: "Production cookies are Secure-flagged when SITE_URL is https://. Switch once your deploy has TLS.",
+    };
+  }
+  // Already covered by checkRequiredVar; don't double-error.
+  return { state: "ok", label: "SITE_URL is https", detail: "skipped (unset)" };
+}
+
+function checkSchedulerTokenProd(): CheckResult | null {
+  if (!PROD_MODE) return null;
+  const token = process.env.NX_SCHEDULER_TOKEN ?? "";
+  if (!token) {
+    return {
+      state: "warn",
+      label: "NX_SCHEDULER_TOKEN",
+      detail: "not set",
+      hint: "If you use _status: 'scheduled' anywhere, set NX_SCHEDULER_TOKEN and have your cron driver send `Authorization: Bearer <token>`. Otherwise ignore this warning.",
+    };
+  }
+  if (token.length < 16) {
+    return {
+      state: "warn",
+      label: "NX_SCHEDULER_TOKEN",
+      detail: `only ${token.length.toString()} chars`,
+      hint: "Use a 32+ char random token: `openssl rand -hex 32`.",
+    };
+  }
+  return { state: "ok", label: "NX_SCHEDULER_TOKEN" };
 }
 
 async function loadPg(): Promise<unknown> {
@@ -386,6 +495,9 @@ function render(result: CheckResult): string {
 }
 
 async function main(): Promise<void> {
+  if (PROD_MODE) {
+    console.log(`${COLOR.dim}Running in --prod mode: deploy-readiness checks.${COLOR.reset}\n`);
+  }
   const checks: Array<CheckResult> = [];
   checks.push(await checkNodeVersion());
   checks.push(await checkPnpmVersion());
@@ -397,6 +509,17 @@ async function main(): Promise<void> {
   checks.push(await checkLocalStorage());
   checks.push(await checkDatabase());
   checks.push(await checkMigrationsApplied());
+  // Production-only checks. Each returns null in dev mode so the
+  // dev-default doctor output is unchanged.
+  for (const result of [
+    checkSecretLengthProd(),
+    checkJobsEnabledProd(),
+    checkStorageProd(),
+    checkSiteUrlProd(),
+    checkSchedulerTokenProd(),
+  ]) {
+    if (result) checks.push(result);
+  }
 
   for (const r of checks) console.log(render(r));
 

@@ -45,7 +45,8 @@ const MIN_PROD_SECRET_LENGTH = 32;
  *     between requests. (`docs/deployment.md` — Multi-node notes.)
  *   - `LocalStorageAdapter` + `NODE_ENV=production` + a managed-
  *     container env var (`KUBERNETES_SERVICE_HOST`, `FLY_REGION`,
- *     `RENDER_INSTANCE_ID`, …). Same failure mode as above; this
+ *     `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`, …). Same
+ *     failure mode as above; this
  *     branch catches the operator who forgot to set
  *     `NX_MULTI_NODE` but is clearly running on a multi-replica
  *     platform.
@@ -78,7 +79,7 @@ export function verifyStartupSafety(input: NxStartupSafetyInput): readonly strin
     const reason = multiNode ? "explicit_flag" : "container_hint";
     const trigger = multiNode
       ? "NX_MULTI_NODE is set"
-      : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID)";
+      : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID / RAILWAY_ENVIRONMENT_NAME)";
     log.warn(
       `LocalStorageAdapter is not multi-node safe — ${trigger} but ./uploads is per-process. ` +
         "Set NX_STORAGE_ADAPTER=s3 (or NX_MULTI_NODE=false to silence the hint on a single-node deploy).",
