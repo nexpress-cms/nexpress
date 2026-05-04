@@ -38,7 +38,11 @@ export default async function AdminLayout({
   // sidebar lists every collection the app declares (Posts, Pages,
   // localized variants, taxonomies, discussions, etc.). Was a `[]`
   // stub before — sidebar rendered no collection nav.
-  const collections = nexpressConfig.collections;
+  const collections = nexpressConfig.collections.map((c) => ({
+    slug: c.slug,
+    labels: { plural: c.labels.plural },
+    admin: c.admin ? { group: c.admin.group, hidden: c.admin.hidden } : undefined,
+  }));
   // Server-side capability resolution — keeps `@nexpress/core`
   // (which pulls `pg`/`sharp`/`argon2`) out of the admin client
   // bundle. The shell mirrors the same gates client-side via the
