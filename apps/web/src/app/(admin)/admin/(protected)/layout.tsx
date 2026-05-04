@@ -1,20 +1,12 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
-import {
-  can,
-  nxUsers,
-  verifyTokenFull,
-  type NxCollectionConfig,
-} from "@nexpress/core";
+import { can, nxUsers, verifyTokenFull } from "@nexpress/core";
 import { AdminShell } from "@nexpress/admin/client";
+import nexpressConfig from "@/nexpress.config";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/db";
-
-function getCollectionConfigs(): NxCollectionConfig[] {
-  return [];
-}
 
 export default async function AdminLayout({
   children,
@@ -42,7 +34,11 @@ export default async function AdminLayout({
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
 
-  const collections = getCollectionConfigs();
+  // Pulls the list straight from `nexpress.config.ts` so the admin
+  // sidebar lists every collection the app declares (Posts, Pages,
+  // localized variants, taxonomies, discussions, etc.). Was a `[]`
+  // stub before — sidebar rendered no collection nav.
+  const collections = nexpressConfig.collections;
   // Server-side capability resolution — keeps `@nexpress/core`
   // (which pulls `pg`/`sharp`/`argon2`) out of the admin client
   // bundle. The shell mirrors the same gates client-side via the
