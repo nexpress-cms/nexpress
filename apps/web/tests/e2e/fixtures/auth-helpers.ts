@@ -36,9 +36,7 @@ export async function signInViaForm(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await page.waitForURL("**/admin", { timeout: 15_000 });
-  await expect(
-    page.getByRole("heading", { name: `Welcome back, ${E2E_ADMIN.name}` }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "NexPress" })).toBeVisible();
 }
 
 export async function signInAsE2EAdmin(page: Page): Promise<void> {

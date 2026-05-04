@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { PageHeader } from "../layout/page-header.js";
 
 export interface MemberListRow {
   id: string;
@@ -40,16 +41,16 @@ export function MembersListView({
 }: MembersListViewProps) {
   const isFiltered = filterQuery.length > 0 || filterStatus.length > 0;
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">Members</h1>
-          <Badge variant="secondary">{totalDocs}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Public site members. Open a row for ban / purge / identity actions.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            Members
+            <Badge variant="secondary">{totalDocs}</Badge>
+          </span>
+        }
+        description="Public site members. Open a row for ban / purge / identity actions."
+      />
 
       {/*
         Phase 9.10 — filter form. Plain GET so the URL carries

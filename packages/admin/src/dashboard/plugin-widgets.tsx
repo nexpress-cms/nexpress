@@ -38,7 +38,7 @@ export function DashboardPluginWidgets({ widgets }: DashboardPluginWidgetsProps)
 
   return (
     <div>
-      <h2 className="mb-3 text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
+      <h2 className="mb-3 text-[13px] font-semibold tracking-[-0.005em] text-neutral-950 dark:text-neutral-50">
         Plugin widgets
       </h2>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -105,7 +105,7 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "metric" ? (
           <div>
-            <div className="text-2xl font-semibold">{state.value}</div>
+            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">{state.value}</div>
             {state.delta ? (
               <div className="text-xs text-muted-foreground">{state.delta}</div>
             ) : null}

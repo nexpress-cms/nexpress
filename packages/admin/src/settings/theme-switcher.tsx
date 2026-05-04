@@ -127,7 +127,7 @@ export function ThemeSwitcher({
             {Array.from({ length: 2 }).map((_, i) => (
               <div
                 key={`theme-card-skeleton-${i}`}
-                className="h-32 animate-pulse rounded-2xl border border-border/70 bg-muted/40"
+                className="h-32 animate-pulse rounded-xl border border-border/70 bg-muted/40"
               />
             ))}
           </div>
@@ -172,7 +172,7 @@ export function ThemeSwitcher({
             <article
               key={theme.id}
               data-active={theme.isActive ? "true" : undefined}
-              className={`flex flex-col justify-between gap-4 rounded-2xl border bg-background/60 p-4 shadow-sm transition ${
+              className={`flex flex-col justify-between gap-4 rounded-xl border bg-background/60 p-4 shadow-sm transition ${
                 theme.isActive
                   ? "border-primary/60 ring-2 ring-primary/30"
                   : "border-border/70 hover:border-border"

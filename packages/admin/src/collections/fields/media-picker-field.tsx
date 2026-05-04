@@ -56,7 +56,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
   const selectedItem = useMemo(() => items.find((item) => item.id === value), [items, value]);
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/60 p-4">
+    <div className="space-y-3 rounded-xl border border-border/60 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-foreground">{selectedItem ? getMediaLabel(selectedItem) : "No media selected"}</p>
@@ -82,7 +82,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
               <button
                 key={item.id}
                 type="button"
-                className="rounded-2xl border border-border/60 p-4 text-left transition-colors hover:bg-muted/40"
+                className="rounded-xl border border-border/60 p-4 text-left transition-colors hover:bg-muted/40"
                 onClick={() => {
                   onChange(item.id);
                   setOpen(false);

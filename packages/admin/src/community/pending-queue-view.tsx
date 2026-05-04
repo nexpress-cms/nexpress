@@ -7,6 +7,7 @@ import { nxFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { PageHeader } from "../layout/page-header.js";
 import {
   Dialog,
   DialogContent,
@@ -169,22 +170,24 @@ export function PendingQueueView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-          Community
-        </p>
-        <div className="mt-2 flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">Pending review</h1>
-          <Badge variant="secondary">{totalDocs}</Badge>
-        </div>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Member-authored documents that landed in the moderation queue —
-          either because the collection sets{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">defaultStatus: &quot;pending&quot;</code>
-          {" "}or because the spam adapter flagged them. Approve to publish; reject to delete.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            Pending review
+            <Badge variant="secondary">{totalDocs}</Badge>
+          </span>
+        }
+        description={
+          <>
+            Member-authored documents that landed in the moderation queue — either because the collection sets{" "}
+            <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+              defaultStatus: &quot;pending&quot;
+            </code>{" "}
+            or because the spam adapter flagged them. Approve to publish; reject to delete.
+          </>
+        }
+      />
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">

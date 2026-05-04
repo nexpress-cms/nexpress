@@ -215,11 +215,11 @@ export function ThemeEditor() {
           {Array.from({ length: 3 }).map((_, index) => (
             <div
               key={`theme-skeleton-${index}`}
-              className="h-48 animate-pulse rounded-2xl border border-border/70 bg-muted/40"
+              className="h-48 animate-pulse rounded-xl border border-border/70 bg-muted/40"
             />
           ))}
         </div>
-        <div className="h-[420px] animate-pulse rounded-2xl border border-border/70 bg-muted/40" />
+        <div className="h-[420px] animate-pulse rounded-xl border border-border/70 bg-muted/40" />
       </div>
     );
   }
@@ -423,7 +423,7 @@ export function ThemeEditor() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div
-                className="rounded-2xl border p-4"
+                className="rounded-xl border p-4"
                 style={{
                   backgroundColor: theme.colors.card,
                   color: theme.colors.cardForeground,
@@ -436,7 +436,7 @@ export function ThemeEditor() {
                 <p className="mt-1 text-sm opacity-80">Quiet surfaces with strong hierarchy.</p>
               </div>
               <div
-                className="rounded-2xl p-4"
+                className="rounded-xl p-4"
                 style={{
                   backgroundColor: theme.colors.primary,
                   color: theme.colors.primaryForeground,

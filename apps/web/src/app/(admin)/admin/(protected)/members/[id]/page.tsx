@@ -64,19 +64,23 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   if (!row) throw new NxNotFoundError("member", id);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <Link
           href="/admin/members"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+          className="text-[12.5px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400"
         >
           ← Members
         </Link>
-        <div className="mt-2 flex items-baseline gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">{row.displayName}</h1>
-          <span className="text-muted-foreground">@{row.handle}</span>
+        <div className="mt-1.5 flex items-baseline gap-2.5">
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+            {row.displayName}
+          </h1>
+          <span className="font-mono text-[12px] text-neutral-500 dark:text-neutral-400">
+            @{row.handle}
+          </span>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-[13px] text-neutral-500 dark:text-neutral-400">
           {row.email} · status: {row.status} · reputation: {row.reputation}
         </p>
       </div>

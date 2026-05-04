@@ -258,10 +258,10 @@ export function MediaLibrary() {
                   ))}
                 </div>
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                    Media Library
+                  <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+                    Media
                   </h1>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="mt-1 text-[13.5px] text-neutral-500 dark:text-neutral-400">
                     Browse assets, search across files, and manage folders without leaving the admin.
                   </p>
                 </div>
@@ -416,7 +416,7 @@ function GridView({
         {Array.from({ length: 8 }).map((_, index) => (
           <div
             key={`media-grid-skeleton-${index}`}
-            className="overflow-hidden rounded-2xl border border-border/70"
+            className="overflow-hidden rounded-xl border border-border/70"
           >
             <div className="aspect-square animate-pulse bg-muted" />
             <div className="space-y-2 p-4">
@@ -442,7 +442,7 @@ function GridView({
           <label
             key={item.id}
             className={cn(
-              "group block cursor-pointer overflow-hidden rounded-2xl border bg-background/80 transition-all",
+              "group block cursor-pointer overflow-hidden rounded-xl border bg-background/80 transition-all",
               checked
                 ? "border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.04)]"
                 : "border-border/70 hover:border-border",
@@ -504,7 +504,7 @@ function ListView({
 }) {
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-2xl border border-border/70">
+      <div className="overflow-hidden rounded-xl border border-border/70">
         {Array.from({ length: 6 }).map((_, index) => (
           <div
             key={`media-list-skeleton-${index}`}
@@ -527,7 +527,7 @@ function ListView({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/70">
+    <div className="overflow-hidden rounded-xl border border-border/70">
       <div className="grid grid-cols-[36px_72px_1.3fr_0.8fr_0.8fr_1fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         <span />
         <span>Thumbnail</span>
@@ -604,7 +604,7 @@ function MediaThumb({ item, compact = false }: { item: MediaItem; compact?: bool
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
+    <div className="rounded-xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
       {message}
     </div>
   );

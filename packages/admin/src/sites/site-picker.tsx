@@ -107,14 +107,14 @@ export function SitePicker() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-2xl border border-neutral-200/80 bg-white/90 px-3 py-2 text-sm shadow-sm transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950/10 dark:border-neutral-800/80 dark:bg-neutral-950/90 dark:hover:bg-neutral-900"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200/80 bg-white px-2.5 text-[12.5px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900"
           title="Switch site"
         >
-          <Globe2 className="size-4 text-neutral-500" />
-          <span className="font-medium text-neutral-950 dark:text-neutral-50">
+          <Globe2 className="size-3.5 text-neutral-400" />
+          <span className="text-neutral-950 dark:text-neutral-50">
             {current?.name ?? "Site"}
           </span>
-          <ChevronsUpDown className="size-3.5 text-neutral-400" />
+          <ChevronsUpDown className="size-3 text-neutral-400" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">

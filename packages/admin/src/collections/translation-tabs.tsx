@@ -123,7 +123,7 @@ export function TranslationTabs({
 
   if (!translations) {
     return (
-      <div className="rounded-2xl border border-border/70 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-border/70 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
         Loading translations…
       </div>

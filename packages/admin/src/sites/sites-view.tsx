@@ -31,6 +31,7 @@ import {
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Textarea } from "../ui/textarea.js";
+import { PageHeader } from "../layout/page-header.js";
 
 interface SiteUsage {
   collections: Record<string, number>;
@@ -175,26 +176,17 @@ export function SitesView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Multi-tenancy
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Sites
-          </h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Each site is an independent tenant — its own content, navigation,
-            settings. Requests are routed by hostname; unmatched hosts fall
-            through to the default site.
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add site
-        </Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Sites"
+        description="Each site is an independent tenant — its own content, navigation, settings. Requests are routed by hostname; unmatched hosts fall through to the default site."
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus />
+            Add site
+          </Button>
+        }
+      />
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">

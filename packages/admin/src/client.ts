@@ -1,6 +1,14 @@
 export { AdminShell } from "./layout/admin-shell.js";
 export { AdminTopbar } from "./layout/admin-topbar.js";
 export { ThemeToggle, ThemeInit } from "./layout/theme-toggle.js";
+export { NxMark } from "./layout/nx-mark.js";
+export { PageHeader } from "./layout/page-header.js";
+export {
+  AuthLayout,
+  AuthCard,
+  AuthCardDefaultFooter,
+  AuthDivider,
+} from "./auth/auth-card.js";
 
 export { CollectionListView } from "./collections/collection-list-view.js";
 export { CollectionEditView } from "./collections/collection-edit-view.js";

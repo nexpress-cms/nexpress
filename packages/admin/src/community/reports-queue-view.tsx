@@ -6,6 +6,7 @@ import { nxFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { PageHeader } from "../layout/page-header.js";
 import {
   Dialog,
   DialogContent,
@@ -85,18 +86,16 @@ export function ReportsQueueView() {
   }, [refresh]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">Reports</h1>
-          <Badge variant="secondary">{totalDocs}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Member-filed reports against comments, members, and other community
-          content. Resolving a report flips its row and writes an audit entry —
-          take any follow-up action (hide / ban) separately.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            Reports
+            <Badge variant="secondary">{totalDocs}</Badge>
+          </span>
+        }
+        description="Member-filed reports against comments, members, and other community content. Resolving a report flips its row and writes an audit entry — take any follow-up action (hide / ban) separately."
+      />
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -78,12 +78,12 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }): Rea
     <Button
       type="button"
       variant="ghost"
-      size="icon"
+      size="icon-sm"
       onClick={cycle}
       aria-label={label}
-      className={cn("rounded-2xl", collapsed && "size-9")}
+      className={cn("rounded-full", collapsed && "size-8")}
     >
-      <Icon className="size-4" />
+      <Icon className="size-3.5" />
     </Button>
   );
 

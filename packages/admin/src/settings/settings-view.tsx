@@ -14,6 +14,7 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { Textarea } from "../ui/textarea.js";
+import { PageHeader } from "../layout/page-header.js";
 import { LocalesTab } from "./locales-tab.js";
 import { NavigationEditor } from "./navigation-editor.js";
 import { SeoSettingsTab } from "./seo-settings-tab.js";
@@ -100,18 +101,11 @@ export function SettingsView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-          Site control
-        </p>
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Settings</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Tune brand language, navigation structure, and admin-facing defaults from one place.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Settings"
+        description="Tune brand language, navigation structure, and admin-facing defaults from one place."
+      />
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">

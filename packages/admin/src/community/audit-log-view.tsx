@@ -8,6 +8,7 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
+import { PageHeader } from "../layout/page-header.js";
 
 export interface AuditEventRow {
   id: string;
@@ -100,18 +101,16 @@ export function AuditLogView() {
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">Audit log</h1>
-          <Badge variant="secondary">{totalDocs}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Append-only record of every moderation action — comment hide /
-          restore / delete, member ban / unban, report file / resolve. Filter
-          by target or actor when investigating an incident.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            Audit log
+            <Badge variant="secondary">{totalDocs}</Badge>
+          </span>
+        }
+        description="Append-only record of every moderation action — comment hide / restore / delete, member ban / unban, report file / resolve. Filter by target or actor when investigating an incident."
+      />
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>

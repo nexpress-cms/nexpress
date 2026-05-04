@@ -29,6 +29,7 @@ import {
 import { Input } from "../ui/input.js";
 import { nxFetch } from "../lib/api-client.js";
 import { cn } from "../ui/utils.js";
+import { PageHeader } from "../layout/page-header.js";
 
 interface CollectionListViewProps {
   config: NxCollectionConfig;
@@ -243,23 +244,24 @@ export function CollectionListView({
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight">{config.labels.plural}</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            {config.labels.plural}
             <Badge variant="secondary">{totalDocs}</Badge>
-          </div>
-          {config.admin?.description ? <p className="text-sm text-muted-foreground">{config.admin.description}</p> : null}
-        </div>
-
-        <Button asChild>
-          <Link href={`/admin/collections/${config.slug}/create`}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create
-          </Link>
-        </Button>
-      </div>
+          </span>
+        }
+        description={config.admin?.description}
+        actions={
+          <Button asChild>
+            <Link href={`/admin/collections/${config.slug}/create`}>
+              <Plus />
+              Create
+            </Link>
+          </Button>
+        }
+      />
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

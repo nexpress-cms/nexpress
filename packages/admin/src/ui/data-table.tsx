@@ -114,10 +114,10 @@ function DataTable<TData extends Record<string, unknown>>({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-3xl border border-neutral-200/80 bg-white/95 shadow-sm dark:border-neutral-800/80 dark:bg-neutral-950/95">
+      <div className="overflow-hidden rounded-xl border border-neutral-200/80 bg-white dark:border-neutral-800/80 dark:bg-neutral-950">
         <div className="overflow-x-auto">
-          <table className="w-full caption-bottom text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50/80 dark:border-neutral-800 dark:bg-neutral-900/50">
+          <table className="w-full caption-bottom text-[13px]">
+            <thead className="border-b border-neutral-200/70 bg-neutral-50/60 dark:border-neutral-800/70 dark:bg-neutral-900/40">
               <tr>
                 {columns.map((column) => {
                   const isSorted = sortState?.column === column.key;
@@ -126,7 +126,7 @@ function DataTable<TData extends Record<string, unknown>>({
                     <th
                       key={String(column.key)}
                       className={cn(
-                        "h-12 px-4 text-left align-middle font-medium text-neutral-600 dark:text-neutral-300",
+                        "h-9 px-3.5 text-left align-middle text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400",
                         column.headerClassName,
                       )}
                     >
@@ -168,12 +168,12 @@ function DataTable<TData extends Record<string, unknown>>({
                 paginatedData.map((row, rowIndex) => (
                   <tr
                     key={rowIndex}
-                    className="border-b border-neutral-200/70 transition-colors hover:bg-neutral-50/80 dark:border-neutral-800/70 dark:hover:bg-neutral-900/40"
+                    className="border-b border-neutral-100 transition-colors last:border-b-0 hover:bg-neutral-50/70 dark:border-neutral-900 dark:hover:bg-neutral-900/40"
                   >
                     {columns.map((column) => (
                       <td
                         key={String(column.key)}
-                        className={cn("p-4 align-middle text-neutral-700 dark:text-neutral-200", column.cellClassName)}
+                        className={cn("px-3.5 py-2.5 align-middle text-neutral-700 dark:text-neutral-200", column.cellClassName)}
                       >
                         {column.cell ? column.cell(row) : String(resolveCellValue(row, column.key) ?? "")}
                       </td>

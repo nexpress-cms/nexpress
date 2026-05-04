@@ -2,6 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AuthCard,
+  AuthLayout,
+  Button,
+  Input,
+  Label,
+  Switch,
+} from "@nexpress/admin/client";
 
 type Step = 1 | 2;
 
@@ -105,65 +113,74 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted px-4 py-12">
-      <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-md">
-        <header className="mb-6 text-center">
-          <h1 className="text-2xl font-bold">Welcome to NexPress</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Step {step} of 2 — {step === 1 ? "create your admin" : "site basics"}
-          </p>
-        </header>
-
-        {error && (
-          <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+    <AuthLayout>
+      <AuthCard
+        title="Welcome to NexPress"
+        description={
+          <span>
+            Step <strong className="font-semibold text-neutral-700 dark:text-neutral-200">{step}</strong>{" "}
+            of 2 — {step === 1 ? "create your admin" : "site basics"}
+          </span>
+        }
+        className="max-w-[420px]"
+      >
+        {error ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </div>
-        )}
+        ) : null}
 
         {step === 1 && (
-          <form onSubmit={handleNext} className="space-y-4">
-            <Field
-              id="email"
-              label="Email"
-              type="email"
-              value={account.email}
-              onChange={(v) => setAccount({ ...account, email: v })}
-              autoComplete="email"
-              required
-              placeholder="admin@example.com"
-            />
-            <Field
-              id="name"
-              label="Name (optional)"
-              value={account.name}
-              onChange={(v) => setAccount({ ...account, name: v })}
-              autoComplete="name"
-              placeholder="Site Admin"
-            />
-            <Field
+          <form onSubmit={handleNext} className="flex flex-col gap-3">
+            <FieldRow id="email" label="Email" required>
+              <Input
+                id="email"
+                type="email"
+                value={account.email}
+                onChange={(e) => setAccount({ ...account, email: e.target.value })}
+                autoComplete="email"
+                required
+                placeholder="admin@example.com"
+              />
+            </FieldRow>
+            <FieldRow id="name" label="Name (optional)">
+              <Input
+                id="name"
+                value={account.name}
+                onChange={(e) => setAccount({ ...account, name: e.target.value })}
+                autoComplete="name"
+                placeholder="Site Admin"
+              />
+            </FieldRow>
+            <FieldRow
               id="password"
               label={`Password (min ${PASSWORD_MIN} characters)`}
-              type="password"
-              value={account.password}
-              onChange={(v) => setAccount({ ...account, password: v })}
-              autoComplete="new-password"
               required
-            />
-            <Field
-              id="password-confirm"
-              label="Confirm password"
-              type="password"
-              value={account.passwordConfirm}
-              onChange={(v) => setAccount({ ...account, passwordConfirm: v })}
-              autoComplete="new-password"
-              required
-            />
-            <button
-              type="submit"
-              className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
+              <Input
+                id="password"
+                type="password"
+                value={account.password}
+                onChange={(e) => setAccount({ ...account, password: e.target.value })}
+                autoComplete="new-password"
+                required
+              />
+            </FieldRow>
+            <FieldRow id="password-confirm" label="Confirm password" required>
+              <Input
+                id="password-confirm"
+                type="password"
+                value={account.passwordConfirm}
+                onChange={(e) =>
+                  setAccount({ ...account, passwordConfirm: e.target.value })
+                }
+                autoComplete="new-password"
+                required
+              />
+            </FieldRow>
+            <Button type="submit" className="mt-1 h-9 w-full justify-center">
               Continue
-            </button>
+            </Button>
           </form>
         )}
 
@@ -172,92 +189,73 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
             onSubmit={(e) => {
               void handleSubmit(e);
             }}
-            className="space-y-4"
+            className="flex flex-col gap-3"
           >
-            <Field
-              id="site-name"
-              label="Site name"
-              value={site.siteName}
-              onChange={(v) => setSite({ ...site, siteName: v })}
-              placeholder="My Site"
-            />
-            <label className="flex items-start gap-3 rounded-md border border-input bg-background p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={site.sampleContent}
-                onChange={(e) =>
-                  setSite({ ...site, sampleContent: e.target.checked })
-                }
+            <FieldRow id="site-name" label="Site name">
+              <Input
+                id="site-name"
+                value={site.siteName}
+                onChange={(e) => setSite({ ...site, siteName: e.target.value })}
+                placeholder="My Site"
               />
-              <span>
-                <span className="block font-medium">Add sample content</span>
-                <span className="block text-muted-foreground">
-                  Three pages, three posts, and a starter navigation menu so
-                  the public site renders something out of the box. You can
-                  delete or edit them later.
-                </span>
-              </span>
-            </label>
+            </FieldRow>
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200/80 bg-neutral-50/60 px-3 py-2.5 dark:border-neutral-800/80 dark:bg-neutral-900/40">
+              <div className="flex-1">
+                <div className="text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">
+                  Add sample content
+                </div>
+                <p className="mt-0.5 text-[11.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
+                  Three pages, three posts, and a starter navigation menu so the public
+                  site renders something out of the box. You can delete or edit them later.
+                </p>
+              </div>
+              <Switch
+                checked={site.sampleContent}
+                onCheckedChange={(checked) =>
+                  setSite({ ...site, sampleContent: checked })
+                }
+                aria-label="Add sample content"
+              />
+            </div>
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setStep(1)}
-                className="flex-1 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+                className="flex-1 justify-center"
               >
                 Back
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={submitting}
-                className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="flex-1 justify-center"
               >
                 {submitting ? "Setting up…" : "Finish"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   );
 }
 
-interface FieldProps {
+interface FieldRowProps {
   id: string;
   label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
   required?: boolean;
-  placeholder?: string;
-  autoComplete?: string;
+  children: React.ReactNode;
 }
 
-function Field({
-  id,
-  label,
-  value,
-  onChange,
-  type = "text",
-  required,
-  placeholder,
-  autoComplete,
-}: FieldProps) {
+function FieldRow({ id, label, required, children }: FieldRowProps) {
   return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium">
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id} className="text-[12.5px]">
         {label}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={required}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-      />
+        {required ? <span aria-hidden className="ml-0.5 text-red-500">*</span> : null}
+      </Label>
+      {children}
     </div>
   );
 }

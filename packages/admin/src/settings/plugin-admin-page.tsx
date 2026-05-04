@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
+import { PageHeader } from "../layout/page-header.js";
 import { useForm } from "react-hook-form";
 
 interface ColumnDef {
@@ -87,14 +88,11 @@ export function PluginAdminPage({
   if (admin.tables?.length) sections.push("tables");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{pluginName}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Plugin admin surface. Settings save to the plugin&rsquo;s DB config;
-          widgets and actions dispatch the plugin&rsquo;s registered handlers.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={pluginName}
+        description="Plugin admin surface. Settings save to the plugin's DB config; widgets and actions dispatch the plugin's registered handlers."
+      />
 
       {admin.widgets && admin.widgets.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -285,7 +283,7 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "metric" ? (
           <div>
-            <div className="text-2xl font-semibold">{state.value}</div>
+            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">{state.value}</div>
             {state.delta ? <div className="text-xs text-muted-foreground">{state.delta}</div> : null}
           </div>
         ) : state.kind === "status" ? (

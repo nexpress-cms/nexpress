@@ -201,7 +201,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
               {state.revisions.map((revision) => (
                 <li
                   key={revision.id}
-                  className="flex flex-col gap-2 rounded-2xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <button
                     type="button"

@@ -188,7 +188,7 @@ export function UserManagement() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-2xl border border-border/70">
+        <div className="overflow-hidden rounded-xl border border-border/70">
           <div className="grid grid-cols-[1fr_1.2fr_140px_120px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             <span>Name</span>
             <span>Email</span>

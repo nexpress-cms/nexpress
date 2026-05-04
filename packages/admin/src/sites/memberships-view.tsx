@@ -22,6 +22,7 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
+import { PageHeader } from "../layout/page-header.js";
 import {
   Select,
   SelectContent,
@@ -120,34 +121,34 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Multi-tenancy
-          </p>
-          <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
-            <Users className="h-7 w-7 text-muted-foreground" />
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Users className="size-5 text-neutral-500" />
             Site members
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Members of <code>{siteId}</code> with explicit roles. Users not
-            listed here fall back to their global default role.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/admin/sites">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              All sites
+          </span>
+        }
+        description={
+          <>
+            Members of <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{siteId}</code> with explicit roles. Users not listed here fall back to their global default role.
+          </>
+        }
+        actions={
+          <>
+            <Link href="/admin/sites">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft />
+                All sites
+              </Button>
+            </Link>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus />
+              Grant membership
             </Button>
-          </Link>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Grant membership
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">

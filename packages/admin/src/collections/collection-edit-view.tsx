@@ -506,7 +506,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">
+              <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
                 {doc?.id ? `Edit ${config.labels.singular}` : `Create ${config.labels.singular}`}
               </h1>
               {currentStatus ? (

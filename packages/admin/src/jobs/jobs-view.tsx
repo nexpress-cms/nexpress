@@ -18,6 +18,7 @@ import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
+import { PageHeader } from "../layout/page-header.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -293,19 +294,12 @@ export function JobsView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Operations
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Background jobs</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so
-            you can patch the upstream issue and re-run.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Background jobs"
+        description="Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so you can patch the upstream issue and re-run."
+        actions={
+          <div className="flex items-center gap-2">
           {isStateTab(tab) ? (
             <div className="inline-flex rounded-md border border-border/70 bg-background p-0.5 text-xs">
               <button
@@ -352,7 +346,8 @@ export function JobsView() {
             Refresh
           </Button>
         </div>
-      </div>
+        }
+      />
 
       {!supported ? (
         <Card className="border-amber-500/30/60 bg-amber-500/10">

@@ -4,15 +4,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./utils.js";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-950/10 focus:ring-offset-2 dark:focus:ring-white/10",
+  "inline-flex items-center gap-1.5 rounded-full border border-transparent px-2 py-0.5 text-[11.5px] font-medium transition-colors focus:outline-none focus:ring-[3px] focus:ring-[var(--nx-color-brand-ring)]",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-neutral-950 text-white dark:bg-white dark:text-neutral-950",
+        default: "bg-neutral-950/[0.045] text-neutral-800 dark:bg-white/[0.06] dark:text-neutral-200",
         secondary:
-          "border-transparent bg-neutral-100 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100",
-        destructive: "border-transparent bg-red-600 text-white dark:bg-red-500",
-        outline: "border-neutral-200 text-neutral-700 dark:border-neutral-800 dark:text-neutral-300",
+          "bg-neutral-950/[0.035] text-neutral-700 dark:bg-white/[0.04] dark:text-neutral-300",
+        destructive: "bg-red-100/60 text-red-700 dark:bg-red-500/15 dark:text-red-300",
+        outline: "border-neutral-200/80 bg-white text-neutral-700 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-300",
+        brand: "bg-[color:var(--nx-color-brand-soft)] text-[var(--nx-color-brand)]",
       },
     },
     defaultVariants: {

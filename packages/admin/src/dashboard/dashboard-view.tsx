@@ -19,7 +19,6 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card.js";
-import { cn } from "../ui/utils.js";
 import {
   DashboardPluginWidgets,
   type DashboardPluginWidget,
@@ -46,6 +45,12 @@ interface DashboardViewProps {
 const formatter = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
   timeStyle: "short",
+});
+
+const todayFormatter = new Intl.DateTimeFormat("en", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
 });
 
 export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
@@ -84,57 +89,50 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Admin overview
+        <div className="space-y-1.5">
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+            {todayFormatter.format(new Date())}
+          </h1>
+          <p className="max-w-[64ch] text-[13.5px] text-neutral-500 dark:text-neutral-400">
+            Keep an eye on publishing flow, recent edits, and the most-used shortcuts.
           </p>
-          <div className="space-y-1">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-              Dashboard
-            </h1>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              Keep an eye on publishing flow, recent edits, and the most-used shortcuts.
-            </p>
-          </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button onClick={() => router.push("/admin/collections/posts/create") }>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Post
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <a href="/" target="_blank" rel="noreferrer">
+              <ExternalLink />
+              View site
+            </a>
           </Button>
           <Button variant="outline" onClick={() => router.push("/admin/media") }>
-            <Upload className="mr-2 h-4 w-4" />
+            <Upload />
             Upload Media
           </Button>
-          <Button variant="ghost" asChild>
-            <a href="/" target="_blank" rel="noreferrer">
-              View Site
-              <ExternalLink className="ml-2 h-4 w-4" />
-            </a>
+          <Button onClick={() => router.push("/admin/collections/posts/create") }>
+            <Plus />
+            New entry
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map(({ label, value, helper, icon: Icon }) => (
-          <Card key={label} className="border-border/70 bg-card/80 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+          <Card key={label}>
+            <div className="flex items-center justify-between p-4 pb-0">
+              <span className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
                 {label}
-              </CardTitle>
-              <div className="rounded-full border border-border/70 bg-background/80 p-2 text-muted-foreground">
-                <Icon className="h-4 w-4" />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <div className="text-3xl font-semibold tracking-tight text-foreground">
+              </span>
+              <Icon className="size-3.5 text-neutral-400" />
+            </div>
+            <div className="px-4 pb-4 pt-3.5">
+              <div className="text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] tabular-nums text-neutral-950 dark:text-neutral-50">
                 {value.toLocaleString()}
               </div>
-              <p className="text-sm text-muted-foreground">{helper}</p>
-            </CardContent>
+              <p className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">{helper}</p>
+            </div>
           </Card>
         ))}
       </div>
@@ -143,91 +141,87 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
         <DashboardPluginWidgets widgets={pluginWidgets} />
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
-        <Card className="border-border/70 bg-card/80 shadow-sm">
-          <CardHeader>
+      <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Recent activity</CardTitle>
           </CardHeader>
-          <CardContent>
-            {stats.recentActivity.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/70 px-6 py-10 text-center text-sm text-muted-foreground">
+          {stats.recentActivity.length === 0 ? (
+            <CardContent>
+              <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-6 py-10 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
                 No recent activity yet.
               </div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-border/70">
-                <div className="grid grid-cols-[1.2fr_1fr_0.9fr] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  <span>Entry</span>
-                  <span>Collection</span>
-                  <span>Updated</span>
-                </div>
-                <div className="divide-y divide-border/70">
-                  {stats.recentActivity.map((item) => (
-                    <div
-                      key={item.id}
-                      className="grid grid-cols-[1.2fr_1fr_0.9fr] gap-4 px-4 py-4 text-sm"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate font-medium text-foreground">{item.title}</p>
-                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                          {item.action}
-                        </p>
-                      </div>
-                      <div className="flex items-center text-muted-foreground">
-                        {item.collection}
-                      </div>
-                      <div className="flex items-center text-muted-foreground">
-                        {formatTimestamp(item.timestamp)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            </CardContent>
+          ) : (
+            <>
+              <div className="grid grid-cols-[1.4fr_1fr_0.7fr] gap-4 border-b border-neutral-200/70 bg-neutral-50/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
+                <span>Entry</span>
+                <span>Where</span>
+                <span className="text-right">When</span>
               </div>
-            )}
-          </CardContent>
+              <div className="divide-y divide-neutral-100 dark:divide-neutral-900">
+                {stats.recentActivity.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid grid-cols-[1.4fr_1fr_0.7fr] items-center gap-4 px-4 py-3 text-[13px]"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-neutral-950 dark:text-neutral-50">
+                        {item.title}
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                        {item.action}
+                      </p>
+                    </div>
+                    <div className="font-mono text-[11.5px] text-neutral-700 dark:text-neutral-300">
+                      {item.collection}
+                    </div>
+                    <div className="text-right tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {formatTimestamp(item.timestamp)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle>Collection pulse</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {stats.collections.map((collection, index) => (
-              <div key={collection.slug} className="space-y-2">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-foreground">
-                      {collection.label}
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      {collection.slug}
-                    </p>
+          <CardContent className="space-y-3.5">
+            {stats.collections.map((collection) => {
+              const fill = Math.max(
+                4,
+                totalContent > 0 ? (collection.count / totalContent) * 100 : 18,
+              );
+              return (
+                <div key={collection.slug} className="space-y-1.5">
+                  <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
+                    <div className="min-w-0">
+                      <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                        {collection.label}
+                      </span>
+                      <span className="ml-1.5 font-mono text-[11px] text-neutral-400">
+                        /{collection.slug}
+                      </span>
+                    </div>
+                    <span className="font-mono text-[11.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {collection.count.toLocaleString()}
+                    </span>
                   </div>
-                  <span className="font-semibold text-foreground">
-                    {collection.count.toLocaleString()}
-                  </span>
+                  <div className="h-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-900">
+                    <div
+                      className="h-full rounded-full bg-[var(--nx-color-brand)] transition-[width] duration-300"
+                      style={{ width: `${fill}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full bg-foreground/80 transition-all",
-                      index % 2 === 0 && "bg-primary",
-                    )}
-                    style={{
-                      width: `${Math.max(
-                        10,
-                        totalContent > 0
-                          ? (collection.count / totalContent) * 100
-                          : 18,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
-          <CardFooter className="text-sm text-muted-foreground">
-            Use these counts to spot where editors are spending time.
-          </CardFooter>
+          <CardFooter>nx pulse --range=7d</CardFooter>
         </Card>
       </div>
     </div>

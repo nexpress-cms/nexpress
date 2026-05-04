@@ -19,6 +19,7 @@ import {
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
+import { PageHeader } from "../layout/page-header.js";
 
 interface PluginItem {
   id: string;
@@ -168,13 +169,11 @@ export function PluginsManager() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Plugins</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Toggle and configure installed plugins. Changes take effect on the next server restart.
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Plugins"
+        description="Toggle and configure installed plugins. Changes take effect on the next server restart."
+      />
 
       {toast ? (
         <div
