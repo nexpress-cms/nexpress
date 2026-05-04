@@ -75,13 +75,17 @@ const LazyRichTextEditor = lazy(async () => {
   };
 });
 
+// The block page editor lives in `@nexpress/admin` itself (see
+// ../blocks/) so it can use admin's Radix/Tailwind primitives
+// directly. Lazy-loaded for the same reason richText is — page
+// edit views rarely need both, and the editor pulls dnd-kit.
 const LazyBlockPageEditor = lazy(async () => {
-  const module = await import("@nexpress/blocks/client");
+  const module = await import("../blocks/block-page-editor.js");
   return {
     default: module.BlockPageEditor as ComponentType<{
       blocks: NxBlockInstance[];
       onChange: (blocks: NxBlockInstance[]) => void;
-      availableBlocks: unknown[];
+      availableBlocks: NxBlockDefinition[];
     }>,
   };
 });
