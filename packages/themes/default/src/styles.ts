@@ -132,6 +132,39 @@ export const defaultThemeCss = `
 .nx-site-nav a:hover {
   color: var(--nx-color-foreground, #0f172a);
 }
+/* Sub-menu — desktop hover dropdown. Hidden until parent <li> is
+ * hovered or focus enters the subtree. Shallow drop, neutral
+ * surface so it inherits theme tokens automatically. */
+.nx-site-nav-item {
+  position: relative;
+}
+.nx-site-subnav {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: none;
+  min-width: 11rem;
+  padding: 0.5rem 0;
+  margin: 0;
+  list-style: none;
+  background: var(--nx-color-card, #fff);
+  border: 1px solid var(--nx-color-border, #e5e7eb);
+  border-radius: var(--nx-radius-md, 0.5rem);
+  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+}
+.nx-site-nav-item:hover > .nx-site-subnav,
+.nx-site-nav-item:focus-within > .nx-site-subnav {
+  display: block;
+}
+.nx-site-subnav li {
+  padding: 0;
+}
+.nx-site-subnav a {
+  display: block;
+  padding: 0.4rem 1rem;
+  font-size: 0.875rem;
+}
 .nx-site-header-tools {
   display: flex;
   align-items: center;
@@ -230,6 +263,19 @@ export const defaultThemeCss = `
   padding: 0.75rem 0;
   overflow-y: auto;
   flex: 1;
+}
+.nx-mobile-subnav,
+.nx-site-footer-subnav {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.nx-mobile-subnav a {
+  font-size: 0.9375rem;
+}
+.nx-site-footer-subnav a {
+  font-size: 0.85rem;
+  opacity: 0.85;
 }
 .nx-mobile-nav-list a {
   display: block;

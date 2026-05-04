@@ -35,6 +35,15 @@ export async function MagazineFooter() {
               {items.map((item: NxNavItem, index: number) => (
                 <li key={`magazine-footer-${index.toString()}`}>
                   <a href={item.url}>{item.label}</a>
+                  {item.children && item.children.length > 0 ? (
+                    <ul className="nx-magazine-footer-subnav">
+                      {item.children.map((child: NxNavItem, childIndex: number) => (
+                        <li key={`magazine-footer-${index.toString()}-${childIndex.toString()}`}>
+                          <a href={child.url}>{child.label}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>

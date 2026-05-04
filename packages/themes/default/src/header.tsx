@@ -51,8 +51,17 @@ export async function DefaultHeader() {
         <nav className="nx-site-nav-desktop" aria-label="Primary">
           <ul className="nx-site-nav">
             {headerNav.map((item: NxNavItem, index: number) => (
-              <li key={`nav-${index.toString()}`}>
+              <li key={`nav-${index.toString()}`} className="nx-site-nav-item">
                 <a href={item.url}>{item.label}</a>
+                {item.children && item.children.length > 0 ? (
+                  <ul className="nx-site-subnav">
+                    {item.children.map((child: NxNavItem, childIndex: number) => (
+                      <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
+                        <a href={child.url}>{child.label}</a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ul>

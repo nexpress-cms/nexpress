@@ -41,6 +41,17 @@ export async function DefaultFooter() {
                 footerNav.map((item: NxNavItem, index: number) => (
                   <li key={`footer-sitemap-${index.toString()}`}>
                     <a href={item.url}>{item.label}</a>
+                    {item.children && item.children.length > 0 ? (
+                      <ul className="nx-site-footer-subnav">
+                        {item.children.map((child: NxNavItem, childIndex: number) => (
+                          <li
+                            key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}
+                          >
+                            <a href={child.url}>{child.label}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
                 ))
               ) : (

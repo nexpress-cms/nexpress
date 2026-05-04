@@ -68,6 +68,44 @@ export const magazineCss = `
 .nx-magazine-sections a:hover {
   border-bottom-color: currentColor;
 }
+.nx-magazine-nav-item {
+  position: relative;
+}
+.nx-magazine-subnav {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: none;
+  min-width: 11rem;
+  padding: 0.5rem 0;
+  margin: 0;
+  list-style: none;
+  background: var(--nx-color-card, #fff);
+  border: 1px solid var(--nx-color-border, #e5e7eb);
+  border-radius: var(--nx-radius-md, 0.5rem);
+  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+}
+.nx-magazine-nav-item:hover > .nx-magazine-subnav,
+.nx-magazine-nav-item:focus-within > .nx-magazine-subnav {
+  display: block;
+}
+.nx-magazine-subnav a {
+  display: block;
+  padding: 0.4rem 1rem;
+  font-size: 0.875rem;
+  border-bottom: 0;
+}
+.nx-magazine-mobile-subnav,
+.nx-magazine-footer-subnav {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.nx-magazine-footer-subnav a {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
 
 /* Mobile drawer */
 .nx-magazine-nav-toggle {

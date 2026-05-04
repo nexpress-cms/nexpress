@@ -47,8 +47,17 @@ export async function MagazineHeader() {
           <nav aria-label="Sections" className="nx-magazine-sections">
             <ul>
               {items.map((item: NxNavItem, index: number) => (
-                <li key={`magazine-nav-${index.toString()}`}>
+                <li key={`magazine-nav-${index.toString()}`} className="nx-magazine-nav-item">
                   <a href={item.url}>{item.label}</a>
+                  {item.children && item.children.length > 0 ? (
+                    <ul className="nx-magazine-subnav">
+                      {item.children.map((child: NxNavItem, childIndex: number) => (
+                        <li key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}>
+                          <a href={child.url}>{child.label}</a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>
