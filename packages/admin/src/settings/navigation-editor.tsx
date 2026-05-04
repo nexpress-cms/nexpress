@@ -5,6 +5,8 @@ import type { NxNavItem } from "@nexpress/core";
 import {
   CornerDownRight,
   GripVertical,
+  Loader2,
+  Pencil,
   Plus,
   Save,
   Trash2,
@@ -91,9 +93,15 @@ const FALLBACK_LOCATIONS: LocationOption[] = [
   { value: "main", label: "Main" },
 ];
 
-// Magic value the location select uses to open the create-new
-// dialog. Picked to be unlikely to collide with a real slug.
+// Themes look these slugs up by name; the API rejects renames /
+// deletes against them. Mirrored client-side so the dialog can hide
+// the action buttons before the round-trip.
+const PROTECTED_LOCATIONS = new Set(["header", "footer", "main"]);
+
+// Magic values the location select uses to open dialogs. Picked to
+// be unlikely to collide with real slugs.
 const NEW_LOCATION_SENTINEL = "__nx_new_location__";
+const MANAGE_LOCATIONS_SENTINEL = "__nx_manage_locations__";
 
 type NavLocation = string;
 
@@ -103,6 +111,11 @@ export function NavigationEditor() {
   const [newLocationInput, setNewLocationInput] = useState("");
   const [newLocationDialogOpen, setNewLocationDialogOpen] = useState(false);
   const [creatingLocation, setCreatingLocation] = useState(false);
+  const [manageLocationsOpen, setManageLocationsOpen] = useState(false);
+  // Per-row rename input draft, keyed by current slug. Populated
+  // lazily as the operator clicks Edit; cleared when the dialog closes.
+  const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
+  const [busyLocation, setBusyLocation] = useState<string | null>(null);
   const [items, setItems] = useState<EditableNavItem[]>([]);
   // Snapshot of items as they were at last load/save. Used to compute
   // `dirty` so the location switcher can prompt before discarding
@@ -332,12 +345,98 @@ export function NavigationEditor() {
       setNewLocationDialogOpen(true);
       return;
     }
+    if (next === MANAGE_LOCATIONS_SENTINEL) {
+      setRenameDrafts({});
+      setManageLocationsOpen(true);
+      return;
+    }
     if (next === location) return;
     if (dirty) {
       setPendingLocation(next);
       return;
     }
     setLocation(next);
+  }
+
+  async function renameLocation(oldSlug: string, rawNew: string) {
+    const newSlug = rawNew.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    if (!newSlug) {
+      setError("Location name must be lowercase letters, numbers, or hyphens.");
+      return;
+    }
+    if (newSlug === oldSlug) {
+      // Treat the no-op rename as a "close edit" rather than an error
+      // — operator tapped Save without changing anything.
+      setRenameDrafts((d) => {
+        const copy = { ...d };
+        delete copy[oldSlug];
+        return copy;
+      });
+      return;
+    }
+    if (locations.some((l) => l.value === newSlug)) {
+      setError(`Location "${newSlug}" already exists.`);
+      return;
+    }
+    setBusyLocation(oldSlug);
+    setError(null);
+    try {
+      const response = await nxFetch(
+        `/api/navigation?location=${encodeURIComponent(oldSlug)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newLocation: newSlug }),
+        },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as unknown;
+        setError(getErrorMessage(payload, "Unable to rename location."));
+        return;
+      }
+      await loadLocations();
+      setRenameDrafts((d) => {
+        const copy = { ...d };
+        delete copy[oldSlug];
+        return copy;
+      });
+      // If the operator just renamed the slug they're currently
+      // editing, follow the rename so the editor stays on the same
+      // (now relabeled) row.
+      if (location === oldSlug) setLocation(newSlug);
+    } catch {
+      setError("Unable to rename location.");
+    } finally {
+      setBusyLocation(null);
+    }
+  }
+
+  async function deleteLocation(slug: string) {
+    setBusyLocation(slug);
+    setError(null);
+    try {
+      const response = await nxFetch(
+        `/api/navigation?location=${encodeURIComponent(slug)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as unknown;
+        setError(getErrorMessage(payload, "Unable to delete location."));
+        return;
+      }
+      await loadLocations();
+      // If the operator deleted the location they're currently on,
+      // bounce them back to the first remaining option (always at
+      // least the three defaults).
+      if (location === slug) {
+        const fallback = locations.find((l) => l.value !== slug)?.value ?? "header";
+        setLocation(fallback);
+      }
+    } catch {
+      setError("Unable to delete location.");
+    } finally {
+      setBusyLocation(null);
+    }
   }
 
   function confirmDiscard() {
@@ -586,6 +685,11 @@ export function NavigationEditor() {
                   <SelectItem value={NEW_LOCATION_SENTINEL} className="text-primary">
                     + New location…
                   </SelectItem>
+                  {locations.some((l) => !PROTECTED_LOCATIONS.has(l.value)) ? (
+                    <SelectItem value={MANAGE_LOCATIONS_SENTINEL}>
+                      Manage locations…
+                    </SelectItem>
+                  ) : null}
                 </SelectContent>
               </Select>
             </div>
@@ -769,6 +873,141 @@ export function NavigationEditor() {
               disabled={creatingLocation || !newLocationInput.trim()}
             >
               {creatingLocation ? "Creating…" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={manageLocationsOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManageLocationsOpen(false);
+            setRenameDrafts({});
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage navigation locations</DialogTitle>
+            <DialogDescription>
+              Rename or delete custom slots. The built-in <code>header</code>,{" "}
+              <code>footer</code>, and <code>main</code> are theme-baked and not editable here.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-2">
+            {locations
+              .filter((loc) => !PROTECTED_LOCATIONS.has(loc.value))
+              .map((loc) => {
+                const draft = renameDrafts[loc.value];
+                const editing = draft !== undefined;
+                const busy = busyLocation === loc.value;
+                return (
+                  <li
+                    key={loc.value}
+                    className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2"
+                  >
+                    {editing ? (
+                      <Input
+                        value={draft}
+                        onChange={(e) =>
+                          setRenameDrafts((d) => ({ ...d, [loc.value]: e.target.value }))
+                        }
+                        placeholder={loc.value}
+                        autoFocus
+                        className="h-8"
+                      />
+                    ) : (
+                      <span className="flex-1 truncate font-mono text-sm">{loc.value}</span>
+                    )}
+                    {editing ? (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => void renameLocation(loc.value, draft)}
+                          disabled={busy || !draft.trim()}
+                        >
+                          {busy ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            "Save"
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setRenameDrafts((d) => {
+                              const copy = { ...d };
+                              delete copy[loc.value];
+                              return copy;
+                            })
+                          }
+                          disabled={busy}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Rename ${loc.value}`}
+                          disabled={busy}
+                          onClick={() =>
+                            setRenameDrafts((d) => ({ ...d, [loc.value]: loc.value }))
+                          }
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete ${loc.value}`}
+                          disabled={busy}
+                          onClick={() => {
+                            // Window.confirm is enough — the editor's
+                            // unsaved-edits guard already protects the
+                            // current location's items. Deleting any
+                            // other location is a single round-trip
+                            // with no possible silent data loss in
+                            // the active form.
+                            if (
+                              typeof window !== "undefined" &&
+                              !window.confirm(
+                                `Delete location "${loc.value}"? Theme code referencing it will render an empty menu.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            void deleteLocation(loc.value);
+                          }}
+                        >
+                          {busy ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            {locations.filter((loc) => !PROTECTED_LOCATIONS.has(loc.value)).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No custom locations yet.</p>
+            ) : null}
+          </ul>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setManageLocationsOpen(false);
+                setRenameDrafts({});
+              }}
+            >
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>
