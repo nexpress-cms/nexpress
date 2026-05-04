@@ -170,6 +170,7 @@ export {
   getPageBySlug,
   getPostBySlug,
   findPosts,
+  findSlugRedirect,
   getAllPageSlugs,
   getSetting,
 } from "./content/index.js";

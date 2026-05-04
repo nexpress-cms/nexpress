@@ -1,7 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { nxSettings } from "../db/schema/system.js";
-import { nxNavigation } from "../db/schema/system.js";
+import { nxNavigation, nxSlugHistory } from "../db/schema/system.js";
 import type { NxThemeTokens } from "../theme/types.js";
 import type { NxNavItem, NxFindOptions, NxFindResult, NxAuthUser } from "../config/types.js";
 import { DEFAULT_THEME } from "../theme/defaults.js";
@@ -220,6 +220,64 @@ export async function getAllPageSlugs(): Promise<string[]> {
   return result.docs
     .map((doc) => doc.slug as string)
     .filter(Boolean);
+}
+
+/**
+ * When a slug-having collection's row gets renamed (`/old-page` →
+ * `/new-page`), the public-site catch-all should 301 the old URL
+ * to the new one instead of returning 404. This helper walks the
+ * `nx_slug_history` chain for the given collection + slug and
+ * returns the most recent target.
+ *
+ * Chain example: A → B → C (renamed twice). Looking up A walks
+ * `A → B → C` and returns C. Capped at 5 hops to bound work and
+ * defend against pathological cycles (shouldn't happen but cheap
+ * to enforce). Returns null when no redirect target exists or
+ * the chain ends in the input slug itself.
+ */
+const SLUG_REDIRECT_MAX_HOPS = 5;
+
+export async function findSlugRedirect(
+  collection: string,
+  oldSlug: string,
+): Promise<string | null> {
+  if (!oldSlug || oldSlug.length === 0) return null;
+  const db = getDb();
+  const siteId = await resolveSiteId();
+
+  const seen = new Set<string>([oldSlug]);
+  let currentOld = oldSlug;
+  let resolved: string | null = null;
+  for (let hop = 0; hop < SLUG_REDIRECT_MAX_HOPS; hop++) {
+    // Take the most recently written row for this `(site, collection,
+    // oldSlug)` triple — a slug can be reused over time (a doc renamed
+    // away from "X" later, another doc renamed *to* "X", then "X" gets
+    // renamed again). The newest record is the operator's intent.
+    const [latest] = await db
+      .select()
+      .from(nxSlugHistory)
+      .where(
+        and(
+          eq(nxSlugHistory.siteId, siteId),
+          eq(nxSlugHistory.collection, collection),
+          eq(nxSlugHistory.oldSlug, currentOld),
+        ),
+      )
+      .orderBy(desc(nxSlugHistory.createdAt))
+      .limit(1);
+    if (!latest) break;
+    const next = latest.newSlug;
+    if (next === oldSlug || seen.has(next)) {
+      // Cycle (A→B→A) — surface as "no redirect". Defensive; the
+      // pipeline only writes new history rows on actual changes,
+      // so this is unreachable in normal operation.
+      break;
+    }
+    resolved = next;
+    seen.add(next);
+    currentOld = next;
+  }
+  return resolved;
 }
 
 export async function getSetting<T = unknown>(key: string): Promise<T | null> {

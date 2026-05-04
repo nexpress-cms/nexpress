@@ -2,6 +2,7 @@ import {
   buildPageMetadata,
   buildWebSiteJsonLd,
   findDocuments,
+  findSlugRedirect,
   getPageBySlug,
   getPluginTemplatesForCollection,
   resolveTemplateComponent,
@@ -11,7 +12,7 @@ import { renderBlocks } from "@nexpress/blocks";
 import type { ComponentType } from "react";
 import type { Metadata } from "next";
 import { draftMode } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { NxPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
@@ -150,6 +151,32 @@ export default async function CatchAllPage({ params }: PageProps) {
         </>
       );
     }
+
+    // Slug rename history — when a page used to live at this path
+    // but got renamed, walk `nx_slug_history` to the current
+    // target and 301. Search-engine indices, external links, and
+    // bookmarks survive the rename. Only the `pages` collection is
+    // checked here; the localized-pages branch above handles its
+    // own slugs separately and isn't currently in the history
+    // table (single-locale pages cover the common case).
+    const slugWithoutLeadingSlash = path.replace(/^\/+/, "");
+    const target = await findSlugRedirect("pages", slugWithoutLeadingSlash);
+    if (target) {
+      // Preserve the operator-visible locale prefix when
+      // redirecting; only the slug segment changes.
+      const localePrefix =
+        rawPath.startsWith(`${requestedLocale}/`) || rawPath === requestedLocale
+          ? `/${requestedLocale}`
+          : "";
+      const targetPath = target === "/" ? "/" : `/${target.replace(/^\/+/, "")}`;
+      // `permanentRedirect` issues a 308 (the modern 301), telling
+      // search engines and clients that the move is permanent so
+      // they update their indices. Plain `redirect` would default
+      // to 307 — fine for app routing but wrong for slug renames
+      // search-engine-wise.
+      permanentRedirect(`${localePrefix}${targetPath}`);
+    }
+
     notFound();
   }
 

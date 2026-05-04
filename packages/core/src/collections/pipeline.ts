@@ -25,7 +25,7 @@ import { getCollectionConfig, getCollectionTable, getCollectionRegistration } fr
 import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
-import { nxRevisions } from "../db/schema/system.js";
+import { nxRevisions, nxSlugHistory } from "../db/schema/system.js";
 import { nxComments, nxReactions, nxReports } from "../db/schema/community.js";
 import { nxMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
@@ -825,6 +825,32 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
     await syncChildTables(tx, ctx.registration.childTables, ctx.prepared.childRows, persistedDocId);
     await syncJoinTables(tx, ctx.registration.joinTables, ctx.prepared.joinRows, persistedDocId);
     await syncMediaRefsForDocument(tx, ctx.collection, persistedDocId, ctx.config.fields, ctx.hookData);
+
+    // Slug-rename history. When a slug-having collection's row
+    // changes its slug, write an `oldSlug → newSlug` record so
+    // the public-site catch-all can 301 old URLs (search-engine
+    // indices, external links, bookmarks) to the new path. Doing
+    // this inside the same tx keeps the redirect map consistent
+    // with the actual doc — half-applied state isn't possible.
+    // Skipped on creates and on updates that don't change slug.
+    if (
+      ctx.operation === "update" &&
+      ctx.config.slugField &&
+      ctx.originalDoc &&
+      typeof ctx.originalDoc.slug === "string" &&
+      typeof persistedDoc.slug === "string" &&
+      ctx.originalDoc.slug.length > 0 &&
+      ctx.originalDoc.slug !== persistedDoc.slug
+    ) {
+      const siteId = (persistedDoc.siteId as string | undefined) ?? NX_DEFAULT_SITE_ID;
+      await tx.insert(nxSlugHistory).values({
+        siteId,
+        collection: ctx.collection,
+        documentId: String(persistedDocId),
+        oldSlug: ctx.originalDoc.slug,
+        newSlug: persistedDoc.slug,
+      });
+    }
 
     if (ctx.config.versions) {
       const docStatus = persistedDoc.status as string | undefined;
