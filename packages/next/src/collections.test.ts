@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NxValidationError } from "@nexpress/core";
+import type * as CoreModule from "@nexpress/core";
 
 // Mock core's pipeline entry points so we can verify the helpers forward args
 // correctly without needing a live DB.
 vi.mock("@nexpress/core", async () => {
-  const actual = await vi.importActual<typeof import("@nexpress/core")>("@nexpress/core");
+  const actual = await vi.importActual<typeof CoreModule>("@nexpress/core");
   return {
     ...actual,
     findDocuments: vi.fn(),
@@ -95,12 +96,13 @@ describe("collection operations", () => {
 
   it("awaits ensureReady before delegating to findDocuments", async () => {
     const calls: string[] = [];
-    const ensureReady = vi.fn().mockImplementation(async () => {
+    const ensureReady = vi.fn().mockImplementation(() => {
       calls.push("ready");
+      return Promise.resolve();
     });
-    vi.mocked(core.findDocuments).mockImplementation(async () => {
+    vi.mocked(core.findDocuments).mockImplementation(() => {
       calls.push("find");
-      return {
+      return Promise.resolve({
         docs: [],
         totalDocs: 0,
         totalPages: 0,
@@ -108,7 +110,7 @@ describe("collection operations", () => {
         limit: 10,
         hasNextPage: false,
         hasPrevPage: false,
-      };
+      });
     });
 
     const { helpers } = buildHelpers(ensureReady);

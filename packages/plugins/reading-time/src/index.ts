@@ -70,13 +70,13 @@ export const readingTimePlugin = definePlugin({
   },
   hooks: {
     "content:afterCreate": ({ data }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown>;
+      const doc = (data.doc ?? data) as Record<string, unknown> & { id?: string };
       const collection = typeof data.collection === "string" ? data.collection : "unknown";
       const minutes = estimateMinutes(extractDocText(doc));
       console.log(`[reading-time] ${collection}/${doc.id ?? "?"} — ${minutes} min read`);
     },
     "content:afterUpdate": ({ data }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown>;
+      const doc = (data.doc ?? data) as Record<string, unknown> & { id?: string };
       const collection = typeof data.collection === "string" ? data.collection : "unknown";
       const minutes = estimateMinutes(extractDocText(doc));
       console.log(`[reading-time] (updated) ${collection}/${doc.id ?? "?"} — ${minutes} min read`);
@@ -87,17 +87,17 @@ export const readingTimePlugin = definePlugin({
       method: "GET",
       path: "/estimate",
       description: "Estimate reading time for a `?text=` query string (or a POST body).",
-      handler: async (req) => {
+      handler: (req) => {
         const text = typeof req.query.text === "string" ? req.query.text : "";
         const minutes = estimateMinutes(text);
-        return {
+        return Promise.resolve({
           status: 200,
           body: {
             minutes,
             wordsPerMinute: WORDS_PER_MINUTE,
             wordCount: text.trim().split(/\s+/).filter(Boolean).length,
           },
-        };
+        });
       },
     },
   ],

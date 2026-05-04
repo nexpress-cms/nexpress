@@ -20,7 +20,7 @@ describe("requireSiteId (#272 / #290)", () => {
   });
 
   it("supports an async resolver", async () => {
-    setCurrentSiteResolver(async () => "tenant-b");
+    setCurrentSiteResolver(() => Promise.resolve("tenant-b"));
     expect(await requireSiteId()).toBe("tenant-b");
   });
 

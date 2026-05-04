@@ -21,7 +21,12 @@ import { nxFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
   config: NxCollectionConfig;
-  doc?: Record<string, unknown>;
+  // Narrow the well-known fields that the view stringifies into URLs
+  // and log lines. The pipeline always emits `id` and `publishedAt` as
+  // strings (UUIDs / ISO timestamps); typing them here avoids a chain
+  // of `String(...)` casts and the matching no-base-to-string lint
+  // errors on `${doc.id}` interpolations.
+  doc?: Record<string, unknown> & { id?: string; publishedAt?: string };
   collectionSlug: string;
   collectionTabs?: CollectionTabDescriptor[];
 }
@@ -261,7 +266,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
       if (autosaveTimer.current !== null) {
         window.clearTimeout(autosaveTimer.current);
       }
-      autosaveTimer.current = window.setTimeout(async () => {
+      const runAutosave = async () => {
         autosaveTimer.current = null;
         // Skip when a manual Draft/Publish/Schedule save is in flight —
         // they'll write a real revision themselves.
@@ -289,6 +294,9 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             message: error instanceof Error ? error.message : "Autosave failed",
           });
         }
+      };
+      autosaveTimer.current = window.setTimeout(() => {
+        void runAutosave();
       }, autosaveInterval);
     });
 
@@ -360,7 +368,9 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           throw new Error(`Failed to ${doc?.id ? "update" : "create"} document.`);
         }
 
-        const payload = (await response.json()) as { doc?: Record<string, unknown> };
+        const payload = (await response.json()) as {
+          doc?: Record<string, unknown> & { id?: string };
+        };
         const nextId = payload.doc?.id ?? doc?.id;
 
         setToast({
@@ -429,7 +439,12 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
 
   return (
     <Form {...form}>
-      <form onSubmit={handlePublish} className="space-y-6">
+      <form
+        onSubmit={(e) => {
+          void handlePublish(e);
+        }}
+        className="space-y-6"
+      >
         {toast ? (
           <div
             className={
@@ -491,13 +506,28 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             ) : null}
 
             {doc?.id ? (
-              <Button type="button" variant="outline" className="text-rose-600 dark:text-rose-300" onClick={handleDelete} disabled={isDeleting}>
+              <Button
+                type="button"
+                variant="outline"
+                className="text-rose-600 dark:text-rose-300"
+                onClick={() => {
+                  void handleDelete();
+                }}
+                disabled={isDeleting}
+              >
                 {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Delete
               </Button>
             ) : null}
 
-            <Button type="button" variant="outline" onClick={handleSaveDraft} disabled={isSaving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void handleSaveDraft();
+              }}
+              disabled={isSaving}
+            >
               {savingAs === "draft" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
               Save as Draft
             </Button>

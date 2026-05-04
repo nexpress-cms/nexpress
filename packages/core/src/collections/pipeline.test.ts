@@ -33,7 +33,7 @@ describe("runPostCommit (#277)", () => {
   });
 
   it("calls the side-effect fn and resolves on success", async () => {
-    const fn = vi.fn(async () => "ok");
+    const fn = vi.fn(() => Promise.resolve("ok"));
     await runPostCommit(
       "enqueue:content:afterSave",
       { collection: "posts", documentId: "doc-1", operation: "create" },
@@ -45,9 +45,7 @@ describe("runPostCommit (#277)", () => {
 
   it("swallows errors thrown from the side-effect fn", async () => {
     const boom = new Error("pg-boss connection refused");
-    const fn = vi.fn(async () => {
-      throw boom;
-    });
+    const fn = vi.fn(() => Promise.reject(boom));
     // Must NOT throw — the document is already durable; the caller
     // would otherwise see a successful save reported as a failure.
     await expect(
@@ -64,9 +62,7 @@ describe("runPostCommit (#277)", () => {
     await runPostCommit(
       "enqueue:content:afterSave",
       { collection: "posts", documentId: "doc-1", operation: "create" },
-      async () => {
-        throw boom;
-      },
+      () => Promise.reject(boom),
     );
     expect(captured).toHaveLength(1);
     const entry = captured[0];
@@ -87,9 +83,10 @@ describe("runPostCommit (#277)", () => {
     await runPostCommit(
       "hook:content:afterCreate",
       { collection: "posts", documentId: "doc-2" },
-      async () => {
-        throw "plugin returned undefined";
-      },
+      // Reject with a string (not an Error) — the test asserts that
+      // runPostCommit handles non-Error throw values without crashing.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      () => Promise.reject("plugin returned undefined"),
     );
     expect(captured).toHaveLength(1);
     expect(captured[0].data).toMatchObject({
@@ -102,7 +99,7 @@ describe("runPostCommit (#277)", () => {
     await runPostCommit(
       "hook:content:afterPublish",
       { collection: "posts", documentId: "doc-3", operation: "update" },
-      async () => undefined,
+      () => Promise.resolve(undefined),
     );
     expect(captured).toHaveLength(0);
   });

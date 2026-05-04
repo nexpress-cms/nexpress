@@ -5,7 +5,7 @@ import type { NxFieldConfig } from "@nexpress/core";
 import { getDefaultBlocks, type NxBlockDefinition, type NxBlockInstance } from "@nexpress/blocks";
 import type { NxEditorConfig, NxRichTextContent } from "@nexpress/editor";
 import { ChevronDown } from "lucide-react";
-import type { Control, FieldPath } from "react-hook-form";
+import type { Control } from "react-hook-form";
 
 import { ArrayFieldEditor } from "./fields/array-field-editor.js";
 import { MediaPickerField } from "./fields/media-picker-field.js";

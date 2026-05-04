@@ -14,9 +14,9 @@ interface MediaPickerFieldProps {
   relationTo: string;
 }
 
-const getMediaLabel = (doc: Record<string, unknown>): string => {
+const getMediaLabel = (doc: Record<string, unknown> & { id?: string }): string => {
   const label = doc.filename ?? doc.alt ?? doc.title ?? doc.id;
-  return typeof label === "string" ? label : String(doc.id ?? "Untitled media");
+  return typeof label === "string" ? label : (doc.id ?? "Untitled media");
 };
 
 export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFieldProps) {

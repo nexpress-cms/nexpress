@@ -360,7 +360,11 @@ function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }
 function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
   const [state, setState] = useState<
     | { kind: "loading" }
-    | { kind: "ready"; rows: Array<Record<string, unknown>>; total: number }
+    | {
+        kind: "ready";
+        rows: Array<Record<string, unknown> & { id?: string }>;
+        total: number;
+      }
     | { kind: "error"; message: string }
   >({ kind: "loading" });
 
@@ -431,12 +435,15 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
 
 function renderCell(value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return value.toString();
   }
   try {
     return JSON.stringify(value);
   } catch {
-    return String(value);
+    // Cyclic refs / non-serializable values fall through to a placeholder
+    // rather than `String(symbol)` which would throw.
+    return "[unserializable]";
   }
 }

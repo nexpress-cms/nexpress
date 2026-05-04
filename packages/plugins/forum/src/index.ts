@@ -199,7 +199,7 @@ export const forumPlugin = definePlugin({
       },
     ],
   },
-  setup: async (ctx) => {
+  setup: (ctx) => {
     // The widget action enumerates collections opted into comments and
     // sums their doc counts. Today the user typically has one
     // discussion collection (slug "discussions"); the plugin doesn't

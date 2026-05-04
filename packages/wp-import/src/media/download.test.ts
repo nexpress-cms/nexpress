@@ -18,7 +18,7 @@ function makeFetchOnce(
 // All non-SSRF tests pretend the source host resolves to a public
 // IP. The `dnsLookupImpl` injection is the cheapest way to keep
 // the test suite hermetic without touching real DNS.
-const publicDns = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
+const publicDns = vi.fn(() => Promise.resolve([{ address: "93.184.216.34", family: 4 }]));
 
 describe("downloadMedia", () => {
   it("returns the body, mime, and inferred filename for a 200 response", async () => {
@@ -179,7 +179,7 @@ describe("downloadMedia — SSRF guard (#270)", () => {
 
   it("rejects when DNS resolves to a private IP", async () => {
     const fetchImpl = vi.fn();
-    const privateDns = vi.fn(async () => [{ address: "10.0.0.5", family: 4 }]);
+    const privateDns = vi.fn(() => Promise.resolve([{ address: "10.0.0.5", family: 4 }]));
     await expect(
       downloadMedia("https://internal.example.com/x.jpg", {
         fetchImpl,
@@ -192,10 +192,12 @@ describe("downloadMedia — SSRF guard (#270)", () => {
 
   it("rejects when ANY of multiple resolved addresses is private", async () => {
     const fetchImpl = vi.fn();
-    const mixedDns = vi.fn(async () => [
-      { address: "93.184.216.34", family: 4 }, // public
-      { address: "10.0.0.5", family: 4 }, // private — should still reject
-    ]);
+    const mixedDns = vi.fn(() =>
+      Promise.resolve([
+        { address: "93.184.216.34", family: 4 }, // public
+        { address: "10.0.0.5", family: 4 }, // private — should still reject
+      ]),
+    );
     await expect(
       downloadMedia("https://multihomed.example.com/x.jpg", {
         fetchImpl,
@@ -208,7 +210,7 @@ describe("downloadMedia — SSRF guard (#270)", () => {
 
   it("does NOT retry SSRF rejections — deterministic", async () => {
     const fetchImpl = vi.fn();
-    const privateDns = vi.fn(async () => [{ address: "127.0.0.1", family: 4 }]);
+    const privateDns = vi.fn(() => Promise.resolve([{ address: "127.0.0.1", family: 4 }]));
     await expect(
       downloadMedia("https://loop.example.com/x.jpg", {
         fetchImpl,
@@ -236,7 +238,7 @@ describe("downloadMedia — SSRF guard (#270)", () => {
 describe("downloadMedia — manual redirect handling (#270)", () => {
   it("follows a 302 redirect to a public host", async () => {
     let calls = 0;
-    const fetchImpl = vi.fn((url: string) => {
+    const fetchImpl = vi.fn((_url: string) => {
       calls++;
       if (calls === 1) {
         return Promise.resolve(
@@ -423,9 +425,9 @@ describe("downloadMedia — DNS pinning (#382)", () => {
       );
     }) as unknown as typeof fetch;
 
-    const dnsLookupImpl = vi.fn(async () => [
-      { address: "93.184.216.34", family: 4 },
-    ]);
+    const dnsLookupImpl = vi.fn(() =>
+      Promise.resolve([{ address: "93.184.216.34", family: 4 }]),
+    );
     await downloadMedia("https://example.com/x.jpg", {
       fetchImpl,
       retries: 0,
@@ -438,7 +440,7 @@ describe("downloadMedia — DNS pinning (#382)", () => {
 
   it("rejects a hostname that resolves to no usable address", async () => {
     const fetchImpl = vi.fn();
-    const emptyDns = vi.fn(async () => []);
+    const emptyDns = vi.fn(() => Promise.resolve([]));
     await expect(
       downloadMedia("https://example.com/x.jpg", {
         fetchImpl: fetchImpl as unknown as typeof fetch,

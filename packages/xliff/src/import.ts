@@ -7,7 +7,7 @@ import {
   type NxAuthUser,
 } from "@nexpress/core";
 
-import { parseXliff, type XliffFile } from "./format.js";
+import { parseXliff } from "./format.js";
 
 /**
  * Field types whose values round-trip through XLIFF — kept in

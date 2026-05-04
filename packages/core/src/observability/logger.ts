@@ -8,6 +8,8 @@
  * via `ctx.log` which forwards here under the hood with the plugin's
  * id bound as context.
  */
+import type * as JobLogModule from "../jobs/job-log.js";
+
 export type NxLogLevel = "debug" | "info" | "warn" | "error";
 
 export interface NxLogger {
@@ -47,7 +49,7 @@ function emitConsole(level: NxLogLevel, message: string, context?: Record<string
   void teeToJobLog(level, message, context);
 }
 
-let teeImportPromise: Promise<typeof import("../jobs/job-log.js")> | null = null;
+let teeImportPromise: Promise<typeof JobLogModule> | null = null;
 async function teeToJobLog(
   level: NxLogLevel,
   message: string,

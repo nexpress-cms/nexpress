@@ -32,7 +32,10 @@ import { cn } from "../ui/utils.js";
 
 interface CollectionListViewProps {
   config: NxCollectionConfig;
-  docs: Record<string, unknown>[];
+  // Same id-narrowing rationale as collection-edit-view: pipeline emits
+  // string ids; typing it here lets the row keys / link hrefs interpolate
+  // without no-base-to-string lint errors.
+  docs: (Record<string, unknown> & { id?: string })[];
   totalDocs: number;
   totalPages: number;
   currentPage: number;
@@ -58,8 +61,12 @@ const formatCellValue = (value: unknown): string => {
     return "—";
   }
 
-  if (typeof value === "string" || typeof value === "number") {
-    return String(value);
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return value.toString();
   }
 
   if (typeof value === "boolean") {
@@ -72,7 +79,7 @@ const formatCellValue = (value: unknown): string => {
 
   if (Array.isArray(value)) {
     const preview = value
-      .map((item) => (typeof item === "object" && item !== null ? formatCellValue(item) : String(item)))
+      .map((item) => formatCellValue(item))
       .filter(Boolean)
       .slice(0, 3)
       .join(", ");
@@ -84,10 +91,12 @@ const formatCellValue = (value: unknown): string => {
     const record = value as Record<string, unknown>;
     const preferred = record.title ?? record.name ?? record.label ?? record.filename ?? record.id;
 
-    return preferred ? formatCellValue(preferred) : "Object";
+    return preferred !== undefined && preferred !== null ? formatCellValue(preferred) : "Object";
   }
 
-  return String(value);
+  // symbol, function, or any other oddity — render a placeholder rather
+  // than risk `String(symbol)` throwing.
+  return "—";
 };
 
 const createQueryString = (

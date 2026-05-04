@@ -14,7 +14,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 function makeFetch(responses: Map<string, Response | (() => Response)>) {
   const calls: FetchCall[] = [];
   const fn: typeof fetch = (input, init) => {
-    const url = typeof input === "string" ? input : input.toString();
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     calls.push({ url, init: init ?? undefined });
     const matcher = [...responses.entries()].find(([prefix]) => url.startsWith(prefix));
     if (!matcher) throw new Error(`unexpected fetch ${url}`);
