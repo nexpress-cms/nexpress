@@ -361,6 +361,19 @@ export interface NxCollectionConfig {
       editView?: string;
       createView?: string;
     };
+    /**
+     * Opts the collection's edit view into the "In navigation"
+     * side panel. Documents in this collection are addressable
+     * from the nav editor's `type: "page"` picker via the
+     * membership endpoint, so the operator can add/remove the
+     * doc from any nav location without leaving the page.
+     *
+     * Defaults to `false`. The reference `pages` collection in
+     * `apps/web` flips it on; sites with a `static-pages` or
+     * `landing-pages` collection that should also surface in nav
+     * can opt in here too.
+     */
+    navMembership?: boolean;
   };
   upload?: NxUploadConfig;
 }

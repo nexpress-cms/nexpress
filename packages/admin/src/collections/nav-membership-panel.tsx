@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check, ExternalLink, Loader2, Plus, X } from "lucide-react";
 
 import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -56,15 +56,10 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
   const [loading, setLoading] = useState(true);
   const [busyLocation, setBusyLocation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [addLocation, setAddLocation] = useState<string>(FALLBACK_LOCATIONS[0].value);
 
-  useEffect(() => {
-    void loadMemberships();
-    void loadLocations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageId]);
-
-  async function loadLocations() {
+  const loadLocations = useCallback(async () => {
     try {
       const response = await fetch("/api/navigation/locations");
       const payload = (await response.json().catch(() => null)) as unknown;
@@ -76,9 +71,9 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
     } catch {
       // ignore — fallback list keeps the panel functional
     }
-  }
+  }, []);
 
-  async function loadMemberships() {
+  const loadMemberships = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -98,7 +93,20 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
     } finally {
       setLoading(false);
     }
-  }
+  }, [pageId]);
+
+  useEffect(() => {
+    void loadMemberships();
+    void loadLocations();
+  }, [loadMemberships, loadLocations]);
+
+  // Auto-dismiss the success flash after a beat so it doesn't
+  // linger across subsequent edits.
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => setSuccess(null), 2500);
+    return () => clearTimeout(t);
+  }, [success]);
 
   // Read-modify-write the target location's nav row. The editor's
   // existing PUT /api/navigation accepts a full items array; we
@@ -108,6 +116,7 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
   async function addToLocation(location: string) {
     setBusyLocation(location);
     setError(null);
+    setSuccess(null);
     try {
       const fetchResponse = await fetch(
         `/api/navigation?location=${encodeURIComponent(location)}`,
@@ -118,6 +127,8 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
         return;
       }
       const existingItems = extractItems(payload);
+      const locationLabel =
+        locations.find((l) => l.value === location)?.label ?? location;
       const nextItems: NavItem[] = [
         ...existingItems,
         {
@@ -129,6 +140,7 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
       ];
       await saveLocation(location, nextItems);
       await loadMemberships();
+      setSuccess(`Added to ${locationLabel}.`);
     } catch {
       setError("Unable to add to navigation.");
     } finally {
@@ -139,6 +151,7 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
   async function removeFromLocation(location: string, itemId: string) {
     setBusyLocation(location);
     setError(null);
+    setSuccess(null);
     try {
       const fetchResponse = await fetch(
         `/api/navigation?location=${encodeURIComponent(location)}`,
@@ -150,8 +163,11 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
       }
       const existingItems = extractItems(payload);
       const nextItems = removeItemById(existingItems, itemId);
+      const locationLabel =
+        locations.find((l) => l.value === location)?.label ?? location;
       await saveLocation(location, nextItems);
       await loadMemberships();
+      setSuccess(`Removed from ${locationLabel}.`);
     } catch {
       setError("Unable to remove from navigation.");
     } finally {
@@ -188,6 +204,17 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
         {error ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
             {error}
+          </div>
+        ) : null}
+
+        {success ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300"
+          >
+            <Check className="h-3.5 w-3.5" />
+            {success}
           </div>
         ) : null}
 
@@ -286,11 +313,6 @@ function removeItemById(items: NavItem[], itemId: string): NavItem[] {
 function extractItems(payload: unknown): NavItem[] {
   if (!isRecord(payload)) return [];
   if (Array.isArray(payload.items)) return payload.items.filter(isNavItem);
-  // The success-wrapped GET response shape is { data: { items, ... } }
-  // depending on the helper. Walk one level down if needed.
-  if (isRecord(payload.data) && Array.isArray(payload.data.items)) {
-    return payload.data.items.filter(isNavItem);
-  }
   return [];
 }
 

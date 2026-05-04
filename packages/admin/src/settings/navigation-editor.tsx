@@ -572,7 +572,7 @@ export function NavigationEditor() {
               </Label>
               <Select
                 value={location}
-                onValueChange={(value) => requestLocationChange(value as NavLocation)}
+                onValueChange={(value) => requestLocationChange(value)}
               >
                 <SelectTrigger className="w-40">
                   <SelectValue />
@@ -1036,9 +1036,7 @@ function normalizeNavItems(payload: unknown): EditableNavItem[] {
     ? payload
     : isRecord(payload) && Array.isArray(payload.items)
       ? payload.items
-      : isRecord(payload) && Array.isArray(payload.navigation)
-        ? payload.navigation
-        : [];
+      : [];
 
   const result: EditableNavItem[] = [];
   source.filter(isRecord).forEach((item, index) => {

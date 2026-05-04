@@ -25,6 +25,7 @@ export const pagesCollection = defineCollection({
     listColumns: ["title", "slug", "status", "updatedAt"],
     defaultSort: "title",
     description: "Static pages — composed from blocks.",
+    navMembership: true,
   },
   versions: { drafts: true, max: 20 },
   hooks: {

@@ -601,7 +601,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               </CardContent>
             </Card>
 
-            {doc?.id && collectionSlug === "pages" ? (
+            {doc?.id && config.admin?.navMembership ? (
               <NavMembershipPanel
                 pageId={String(doc.id)}
                 pageTitle={typeof doc.title === "string" ? doc.title : undefined}
