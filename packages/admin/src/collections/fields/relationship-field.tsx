@@ -28,9 +28,9 @@ const getRelationEndpoint = (slug: string, limit: number): string => {
   return `${base}?limit=${limit}`;
 };
 
-const getDocumentLabel = (doc: Record<string, unknown>): string => {
+const getDocumentLabel = (doc: Record<string, unknown> & { id?: string }): string => {
   const label = doc.title ?? doc.name ?? doc.label ?? doc.slug ?? doc.email ?? doc.filename ?? doc.id;
-  return typeof label === "string" ? label : String(doc.id ?? "Untitled item");
+  return typeof label === "string" ? label : (doc.id ?? "Untitled item");
 };
 
 export function RelationshipField({ relationTo, hasMany, value, onChange }: RelationshipFieldProps) {

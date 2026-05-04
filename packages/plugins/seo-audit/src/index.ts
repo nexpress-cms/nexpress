@@ -7,7 +7,7 @@ const DESCRIPTION_MIN = 70;
 const DESCRIPTION_MAX = 160;
 const MIN_BODY_WORDS = 250;
 
-type JsonRecord = Record<string, unknown>;
+type JsonRecord = Record<string, unknown> & { id?: string; slug?: string };
 
 interface SeoAuditInput {
   title: string;
@@ -264,7 +264,7 @@ export const seoAuditPlugin = definePlugin({
       const result = auditSeo(extractInputFromDocument(doc));
 
       console.log(
-        `[seo-audit] ${collection}/${String(doc.id ?? "?")} ` +
+        `[seo-audit] ${collection}/${doc.id ?? "?"} ` +
           `score=${result.score} words=${result.wordCount} issues=${result.issues.length}`,
       );
     },
@@ -274,7 +274,7 @@ export const seoAuditPlugin = definePlugin({
       const result = auditSeo(extractInputFromDocument(doc));
 
       console.log(
-        `[seo-audit] (updated) ${collection}/${String(doc.id ?? "?")} ` +
+        `[seo-audit] (updated) ${collection}/${doc.id ?? "?"} ` +
           `score=${result.score} words=${result.wordCount} issues=${result.issues.length}`,
       );
     },
@@ -310,7 +310,8 @@ export const seoAuditPlugin = definePlugin({
         },
       });
 
-      const canonicalSlug = typeof doc.slug === "string" ? doc.slug : String(data.slug ?? "");
+      const dataSlug = typeof data.slug === "string" ? data.slug : "";
+      const canonicalSlug = typeof doc.slug === "string" ? doc.slug : dataSlug;
       if (canonicalSlug) {
         const path =
           data.collection === "posts" ? `/blog/${canonicalSlug}` : `/${canonicalSlug}`;

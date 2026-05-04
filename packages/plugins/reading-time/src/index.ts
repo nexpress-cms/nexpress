@@ -70,13 +70,13 @@ export const readingTimePlugin = definePlugin({
   },
   hooks: {
     "content:afterCreate": ({ data }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown>;
+      const doc = (data.doc ?? data) as Record<string, unknown> & { id?: string };
       const collection = typeof data.collection === "string" ? data.collection : "unknown";
       const minutes = estimateMinutes(extractDocText(doc));
       console.log(`[reading-time] ${collection}/${doc.id ?? "?"} — ${minutes} min read`);
     },
     "content:afterUpdate": ({ data }) => {
-      const doc = (data.doc ?? data) as Record<string, unknown>;
+      const doc = (data.doc ?? data) as Record<string, unknown> & { id?: string };
       const collection = typeof data.collection === "string" ? data.collection : "unknown";
       const minutes = estimateMinutes(extractDocText(doc));
       console.log(`[reading-time] (updated) ${collection}/${doc.id ?? "?"} — ${minutes} min read`);

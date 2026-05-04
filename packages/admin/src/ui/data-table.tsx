@@ -26,6 +26,14 @@ export interface DataTableProps<TData extends Record<string, unknown>> {
   };
 }
 
+function safeStringify(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  // Arbitrary objects don't sort meaningfully; push them to the end via "".
+  return "";
+}
+
 function compareValues(left: unknown, right: unknown) {
   if (typeof left === "number" && typeof right === "number") {
     return left - right;
@@ -35,7 +43,7 @@ function compareValues(left: unknown, right: unknown) {
     return left.getTime() - right.getTime();
   }
 
-  return String(left ?? "").localeCompare(String(right ?? ""), undefined, {
+  return safeStringify(left).localeCompare(safeStringify(right), undefined, {
     numeric: true,
     sensitivity: "base",
   });

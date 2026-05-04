@@ -21,7 +21,12 @@ import { nxFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
   config: NxCollectionConfig;
-  doc?: Record<string, unknown>;
+  // Narrow the well-known fields that the view stringifies into URLs
+  // and log lines. The pipeline always emits `id` and `publishedAt` as
+  // strings (UUIDs / ISO timestamps); typing them here avoids a chain
+  // of `String(...)` casts and the matching no-base-to-string lint
+  // errors on `${doc.id}` interpolations.
+  doc?: Record<string, unknown> & { id?: string; publishedAt?: string };
   collectionSlug: string;
   collectionTabs?: CollectionTabDescriptor[];
 }
@@ -360,7 +365,9 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           throw new Error(`Failed to ${doc?.id ? "update" : "create"} document.`);
         }
 
-        const payload = (await response.json()) as { doc?: Record<string, unknown> };
+        const payload = (await response.json()) as {
+          doc?: Record<string, unknown> & { id?: string };
+        };
         const nextId = payload.doc?.id ?? doc?.id;
 
         setToast({
