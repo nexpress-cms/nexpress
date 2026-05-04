@@ -421,6 +421,9 @@ importers:
       lexical:
         specifier: ^0.43.0
         version: 0.43.0
+      lucide-react:
+        specifier: ^1.8.0
+        version: 1.8.0(react@19.2.5)
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
