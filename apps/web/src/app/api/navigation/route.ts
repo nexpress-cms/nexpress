@@ -46,6 +46,9 @@ function isNavItem(value: unknown): value is NxNavItem {
     typeof value.id === "string" &&
     typeof value.label === "string" &&
     (value.type === "link" || value.type === "collection" || value.type === "page") &&
+    // collectionSlug is optional; when present, it scopes a `page`-
+    // typed item to a non-`pages` collection.
+    (value.collectionSlug === undefined || typeof value.collectionSlug === "string") &&
     (value.children === undefined ||
       (Array.isArray(value.children) && value.children.every(isNavItem)))
   );

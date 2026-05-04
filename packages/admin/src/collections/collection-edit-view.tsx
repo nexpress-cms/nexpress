@@ -605,6 +605,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               <NavMembershipPanel
                 pageId={String(doc.id)}
                 pageTitle={typeof doc.title === "string" ? doc.title : undefined}
+                collectionSlug={collectionSlug}
               />
             ) : null}
 

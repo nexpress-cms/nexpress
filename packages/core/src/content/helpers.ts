@@ -5,7 +5,7 @@ import { nxNavigation } from "../db/schema/system.js";
 import type { NxThemeTokens } from "../theme/types.js";
 import type { NxNavItem, NxFindOptions, NxFindResult, NxAuthUser } from "../config/types.js";
 import { DEFAULT_THEME } from "../theme/defaults.js";
-import { findDocuments, getDb } from "../collections/index.js";
+import { findDocuments, getCollectionConfig, getDb } from "../collections/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -62,8 +62,11 @@ export async function getNavigation(
  * Replaces `url` on dynamic nav items with values derived from
  * the underlying record:
  *
- *   - `type: "page"` + `pageId` → the linked page's current slug,
- *     so renaming the slug doesn't break the menu.
+ *   - `type: "page"` + `pageId` (+ optional `collectionSlug`,
+ *     defaults to `"pages"`) → the URL the source collection's
+ *     `seo.urlPath` produces from the linked doc. Lets the page-
+ *     edit "In navigation" panel (#436) work for any page-shaped
+ *     collection, not just `pages`.
  *   - `type: "collection"` + `collection` → the conventional
  *     collection-list URL (`/{collection-slug}`). The convention
  *     is editor-side only; themes that route a collection
@@ -73,61 +76,87 @@ export async function getNavigation(
  *
  * Themes still render `<a href={item.url}>` and need the resolved
  * URL handed to them. Items whose underlying record disappeared
- * (page unpublished, collection unregistered) fall through to `#`
- * so the rendered output stays stable across status flips —
- * dropping the item would invalidate the cache shape every time.
+ * (doc unpublished, collection unregistered, no `seo.urlPath` on
+ * the collection) fall through to `#` so the rendered output stays
+ * stable across status flips — dropping the item would invalidate
+ * the cache shape every time.
  */
 async function resolveNavItemUrls(items: NxNavItem[]): Promise<NxNavItem[]> {
-  const pageIds = collectPageIds(items);
-  const pageById = new Map<string, Record<string, unknown>>();
-  if (pageIds.length > 0) {
-    // One DB hit per linked page. The pipeline's `where` only
-    // supports equality, so we can't `in: [...]` in a single round
-    // trip. Acceptable because nav menus are bounded by the
-    // editor's UI (typically <10 page links) and the result is
-    // cached by `getCachedNavigation` — this loop only runs on
-    // cache miss.
-    await Promise.all(
-      pageIds.map(async (id) => {
-        const result = await findDocuments("pages", {
-          where: { id, status: "published" },
-          limit: 1,
-        });
-        const page = result.docs[0];
-        if (page) pageById.set(id, page);
-      }),
-    );
-  }
+  // Group page-typed refs by source collection so we issue one
+  // batch of lookups per collection. Items missing `collectionSlug`
+  // default to `"pages"` so existing nav rows keep resolving
+  // unchanged — that's the v1 wire format.
+  const refsByCollection = collectPageRefs(items);
 
-  return items.map((item) => mapNavItem(item, pageById));
+  // Map keyed by `${collection}\0${docId}` so doc ids don't collide
+  // across collections (different collections can technically share
+  // the same uuid namespace).
+  const docByKey = new Map<string, Record<string, unknown>>();
+
+  await Promise.all(
+    [...refsByCollection.entries()].map(async ([collection, ids]) => {
+      try {
+        await Promise.all(
+          ids.map(async (id) => {
+            const result = await findDocuments(collection, {
+              where: { id, status: "published" },
+              limit: 1,
+            });
+            const doc = result.docs[0];
+            if (doc) docByKey.set(`${collection}\0${id}`, doc);
+          }),
+        );
+      } catch {
+        // Collection isn't registered (was renamed, removed, or
+        // never existed). Items pointing at it just fall through
+        // to "#" — same fate as items pointing at unpublished docs.
+      }
+    }),
+  );
+
+  return items.map((item) => mapNavItem(item, docByKey));
 }
 
-function collectPageIds(items: NxNavItem[]): string[] {
-  const ids: string[] = [];
-  for (const item of items) {
-    if (item.type === "page" && item.pageId) ids.push(item.pageId);
-    if (item.children) ids.push(...collectPageIds(item.children));
-  }
-  return ids;
+function collectPageRefs(items: NxNavItem[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const walk = (arr: NxNavItem[]): void => {
+    for (const item of arr) {
+      if (item.type === "page" && item.pageId) {
+        const slug = item.collectionSlug ?? "pages";
+        const ids = out.get(slug) ?? [];
+        ids.push(item.pageId);
+        out.set(slug, ids);
+      }
+      if (item.children) walk(item.children);
+    }
+  };
+  walk(items);
+  return out;
 }
 
 function mapNavItem(
   item: NxNavItem,
-  pageById: Map<string, Record<string, unknown>>,
+  docByKey: Map<string, Record<string, unknown>>,
 ): NxNavItem {
   const children = item.children
-    ? item.children.map((child) => mapNavItem(child, pageById))
+    ? item.children.map((child) => mapNavItem(child, docByKey))
     : undefined;
   const withChildren = children ? { ...item, children } : item;
 
   if (item.type === "page" && item.pageId) {
-    const page = pageById.get(item.pageId);
-    const slug = page && typeof page.slug === "string" ? page.slug : null;
-    // The reference pages collection treats slug "/" as the home
-    // page; everything else maps to "/{slug}". Mirror the
-    // `seo.urlPath` rule on the collection so themes don't end up
-    // with a `//` or empty href.
-    const url = slug === "/" ? "/" : slug ? `/${slug.replace(/^\/+/, "")}` : "#";
+    const collection = item.collectionSlug ?? "pages";
+    const doc = docByKey.get(`${collection}\0${item.pageId}`);
+    let url = "#";
+    if (doc) {
+      try {
+        const config = getCollectionConfig(collection);
+        const path = config.seo?.urlPath?.(doc);
+        if (path) url = path;
+      } catch {
+        // Collection un-registered between fetch and lookup — keep
+        // the "#" fallback so rendering doesn't blow up.
+      }
+    }
     return { ...withChildren, url };
   }
 

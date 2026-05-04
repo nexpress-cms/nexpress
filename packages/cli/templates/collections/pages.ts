@@ -19,6 +19,22 @@ export const pagesCollection = defineCollection({
   access: {
     read: () => true,
   },
+  // Tells the framework what public URL each page is served at.
+  // The catch-all `(site)/[[...slug]]` route handles slugs; the
+  // home page slug is "/" and maps to "/", every other slug
+  // maps to "/{slug}". This contract is read by the sitemap, the
+  // RSS feed builder, and the navigation resolver — without it,
+  // nav items pointing at this collection render as `#`.
+  seo: {
+    urlPath: (doc) => {
+      const slug = typeof doc.slug === "string" ? doc.slug : null;
+      if (!slug) return null;
+      if (slug === "/") return "/";
+      return `/${slug.replace(/^\/+/, "")}`;
+    },
+    changefreq: "weekly",
+    priority: 0.8,
+  },
   fields: [
     { name: "title", type: "text", required: true },
     { name: "summary", type: "textarea" },

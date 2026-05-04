@@ -61,7 +61,10 @@ import {
 
 const NO_PARENT = "__top__";
 
-type EditableNavItem = Pick<NxNavItem, "id" | "label" | "url" | "pageId" | "collection"> & {
+type EditableNavItem = Pick<
+  NxNavItem,
+  "id" | "label" | "url" | "pageId" | "collection" | "collectionSlug"
+> & {
   type: Extract<NxNavItem["type"], "link" | "page" | "collection">;
   // Optional `id` of another (top-level) item this one is nested
   // under. Editor enforces a single level of nesting — children
@@ -1283,6 +1286,12 @@ function toNavItem(item: EditableNavItem): NxNavItem {
       label: item.label,
       type: "page",
       pageId: item.pageId ?? "",
+      // Round-trip the source-collection stamp set by the
+      // membership panel for non-pages collections. Items added
+      // directly in the editor never carry one (the picker only
+      // surfaces pages), so omitting the field here for those is
+      // intentional — keeps the wire payload minimal.
+      ...(item.collectionSlug ? { collectionSlug: item.collectionSlug } : {}),
     };
   }
   if (item.type === "collection") {
@@ -1334,6 +1343,8 @@ function toEditableNavItem(
       label,
       type: "page" as const,
       pageId: typeof item.pageId === "string" ? item.pageId : undefined,
+      collectionSlug:
+        typeof item.collectionSlug === "string" ? item.collectionSlug : undefined,
       parentId,
     };
   }
