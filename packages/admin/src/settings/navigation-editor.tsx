@@ -20,6 +20,7 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -447,22 +448,55 @@ export function NavigationEditor() {
       nextParentId = overItem.parentId;
     }
 
+    // Self-loop guard: when active is dragged onto one of its own
+    // children, `overItem.parentId === activeId`. Without this fix
+    // the next-parent path would set active.parentId to itself and
+    // `buildNavTree` would silently drop active from the saved
+    // shape (it lives only in `childrenByParent[active]`, which is
+    // never read for top-level emission). Promote active back to
+    // top-level so the structure stays valid; the drag still
+    // visibly reorders.
+    if (nextParentId === activeId) {
+      nextParentId = undefined;
+    }
+
+    const isNestDrop = wantsNest && nextParentId === overId;
+
     setItems((current) => {
-      // 1) Promote active's children to top-level if active itself
-      //    is being demoted to a child.
-      const promoted = nextParentId
-        ? current.map((c) => (c.parentId === activeId ? { ...c, parentId: undefined } : c))
-        : current;
-      // 2) Pull active out, set its new parentId, splice it in
-      //    immediately after the target. Inserting AFTER the
-      //    target gives reorder + nest the same anchor: the target
-      //    is the visual neighbor in both cases.
-      const without = promoted.filter((it) => it.id !== activeId);
-      const nextActive = { ...activeItem, parentId: nextParentId };
-      const overIndex = without.findIndex((it) => it.id === overId);
-      if (overIndex < 0) return current;
-      const insertAt = overIndex + 1;
-      return [...without.slice(0, insertAt), nextActive, ...without.slice(insertAt)];
+      // 1) Patch active's parentId; orphan its existing children up
+      //    to top-level if active itself is being demoted (matches
+      //    the `changeParent` rule — the saved tree never grows
+      //    deeper than one level).
+      const updated = current.map((c) => {
+        if (c.id === activeId) return { ...c, parentId: nextParentId };
+        if (nextParentId && c.parentId === activeId) return { ...c, parentId: undefined };
+        return c;
+      });
+
+      const oldIndex = updated.findIndex((it) => it.id === activeId);
+      const targetIndex = updated.findIndex((it) => it.id === overId);
+      if (oldIndex < 0 || targetIndex < 0) return current;
+
+      if (isNestDrop) {
+        // Nest: active becomes target's first child — visually the
+        // row immediately after target. Splice rather than
+        // arrayMove so the position is independent of drag
+        // direction (active should always land *after* its new
+        // parent, even when dragged upward).
+        const without = updated.filter((it) => it.id !== activeId);
+        const overInWithout = without.findIndex((it) => it.id === overId);
+        const nextActive = updated[oldIndex];
+        return [
+          ...without.slice(0, overInWithout + 1),
+          nextActive,
+          ...without.slice(overInWithout + 1),
+        ];
+      }
+
+      // Reorder: arrayMove preserves direction (active lands after
+      // target on drag-down, before on drag-up) — the standard
+      // sortable behavior the operator expects.
+      return arrayMove(updated, oldIndex, targetIndex);
     });
   }
 
