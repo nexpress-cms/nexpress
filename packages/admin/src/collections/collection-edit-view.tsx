@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { CollectionTabs, type CollectionTabDescriptor } from "./collection-tabs.js";
 import { FieldRenderer } from "./field-renderer.js";
+import { NavMembershipPanel } from "./nav-membership-panel.js";
 import { RevisionsPanel } from "./revisions-panel.js";
 import { ScheduleDialog } from "./schedule-dialog.js";
 import { TranslationTabs } from "./translation-tabs.js";
@@ -599,6 +600,13 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
                 )}
               </CardContent>
             </Card>
+
+            {doc?.id && collectionSlug === "pages" ? (
+              <NavMembershipPanel
+                pageId={String(doc.id)}
+                pageTitle={typeof doc.title === "string" ? doc.title : undefined}
+              />
+            ) : null}
 
             {doc?.id && config.versions ? (
               <RevisionsPanel
