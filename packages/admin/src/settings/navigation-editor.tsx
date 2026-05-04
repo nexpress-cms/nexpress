@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type { NxNavItem } from "@nexpress/core";
 import {
   CornerDownRight,
@@ -1397,6 +1405,17 @@ function PagePicker({
   // whenever the result list changes shape so the user lands on a
   // sensible row after each search.
   const [activeIndex, setActiveIndex] = useState(0);
+  // Stable ids for the WAI-ARIA combobox pattern. The Input
+  // (combobox role) declares `aria-controls={listboxId}` and
+  // `aria-activedescendant={optionId(activeIndex)}` so screen
+  // readers announce "1 of N" + the focused option's text on
+  // arrow-key navigation, even though DOM focus stays on the
+  // input the entire time.
+  const listboxId = useId();
+  const optionId = (i: number) => `${listboxId}-opt-${i}`;
+  // Refs to each rendered option button for scrollIntoView on
+  // arrow-key navigation past the visible window.
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Debounce keystrokes — typing fast shouldn't fire one fetch
   // per character. 200ms is the same shape the editor uses
@@ -1419,6 +1438,15 @@ function PagePicker({
   useEffect(() => {
     setActiveIndex(0);
   }, [results]);
+
+  // Keep the highlighted row visible. `block: "nearest"` is the
+  // important detail — `start`/`center` would jolt the list every
+  // time, but `nearest` only scrolls when the active row is
+  // actually clipped, which matches what mouse users expect from
+  // a hover-style highlight.
+  useEffect(() => {
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
 
   useEffect(() => {
     if (!open) return;
@@ -1478,6 +1506,13 @@ function PagePicker({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listboxId}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              results.length > 0 ? optionId(activeIndex) : undefined
+            }
             // Arrow keys move the highlighted row, Enter commits.
             // Radix Popover already handles Esc → close because the
             // input is the focused descendant; we don't override it.
@@ -1503,7 +1538,12 @@ function PagePicker({
             className="h-8"
           />
         </div>
-        <div className="max-h-64 overflow-y-auto p-1">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-busy={loading || undefined}
+          className="max-h-64 overflow-y-auto p-1"
+        >
           {error ? (
             <div className="px-2 py-3 text-xs text-destructive">{error}</div>
           ) : loading && results.length === 0 ? (
@@ -1516,6 +1556,12 @@ function PagePicker({
             results.map((page, index) => (
               <button
                 key={page.id}
+                ref={(el) => {
+                  optionRefs.current[index] = el;
+                }}
+                id={optionId(index)}
+                role="option"
+                aria-selected={index === activeIndex}
                 type="button"
                 onClick={() => {
                   onChange(page.id);
