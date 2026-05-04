@@ -4,11 +4,20 @@ import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
 
 import { nxUsers, verifyTokenFull } from "@nexpress/core";
-import { getDb } from "@/lib/bootstrap";
+import { getRegisteredBlockMetadata } from "@nexpress/blocks";
+import { BlocksRegistryProvider } from "@nexpress/admin/client";
+import { ensureFor, getDb } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminProtectedLayout({ children }: { children: ReactNode }) {
+  // `"plugins"` instead of `"read"` so plugin blocks land in the
+  // shared registry before we snapshot it via
+  // `getRegisteredBlockMetadata()` below — otherwise the admin's
+  // Add-block popover (and any plugin-contributed block) would be
+  // silently absent from the editor.
+  await ensureFor("plugins");
+
   const token = (await cookies()).get("nx-session")?.value;
   if (!token) {
     // No session AND no admin in the DB → first-boot wizard;
@@ -32,6 +41,11 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
     redirect("/admin/login");
   }
 
+  // Block-metadata snapshot — server-side, so plugin-registered
+  // blocks (which only land in the SERVER module-instance during
+  // bootstrap) reach the browser editor through React props.
+  const blocksMetadata = getRegisteredBlockMetadata();
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b bg-white px-6 py-4">
@@ -46,7 +60,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
           </form>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        <BlocksRegistryProvider metadata={blocksMetadata}>{children}</BlocksRegistryProvider>
+      </main>
     </div>
   );
 }
