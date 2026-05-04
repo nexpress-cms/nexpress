@@ -17,6 +17,14 @@ import {
 interface NavMembershipPanelProps {
   pageId: string;
   pageTitle?: string;
+  /**
+   * Source collection of the doc — passed through to the
+   * membership endpoint and stamped onto new nav items as
+   * `collectionSlug` so the resolver knows which collection to
+   * walk through `seo.urlPath`. Defaults to `"pages"` for
+   * back-compat with callers that haven't been updated yet.
+   */
+  collectionSlug?: string;
 }
 
 interface Membership {
@@ -32,6 +40,7 @@ interface NavItem {
   url?: string;
   pageId?: string;
   collection?: string;
+  collectionSlug?: string;
   children?: NavItem[];
 }
 
@@ -50,7 +59,11 @@ const FALLBACK_LOCATIONS: LocationOption[] = [
   { value: "main", label: "Main" },
 ];
 
-export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProps) {
+export function NavMembershipPanel({
+  pageId,
+  pageTitle,
+  collectionSlug = "pages",
+}: NavMembershipPanelProps) {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>(FALLBACK_LOCATIONS);
   const [loading, setLoading] = useState(true);
@@ -77,8 +90,9 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
     setLoading(true);
     setError(null);
     try {
+      const params = new URLSearchParams({ pageId, collection: collectionSlug });
       const response = await fetch(
-        `/api/navigation/membership?pageId=${encodeURIComponent(pageId)}`,
+        `/api/navigation/membership?${params.toString()}`,
       );
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
@@ -93,7 +107,7 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
     } finally {
       setLoading(false);
     }
-  }, [pageId]);
+  }, [pageId, collectionSlug]);
 
   useEffect(() => {
     void loadMemberships();
@@ -137,6 +151,11 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
           label: pageTitle?.trim() || "Untitled page",
           type: "page",
           pageId,
+          // Only stamp the field when the source is a non-default
+          // collection — keeps the wire format minimal for the
+          // common `pages` case so existing rows don't grow a
+          // redundant `"collectionSlug": "pages"` on every save.
+          ...(collectionSlug !== "pages" ? { collectionSlug } : {}),
         },
       ];
       await saveLocation(location, nextItems, expectedUpdatedAt);

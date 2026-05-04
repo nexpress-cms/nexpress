@@ -458,6 +458,18 @@ export interface NxNavItem {
   type: "link" | "collection" | "page";
   url?: string;
   collection?: string;
+  /**
+   * Set when `type === "page"` to record which collection the
+   * referenced doc lives in. Defaults to `"pages"` when absent so
+   * existing nav rows keep resolving against the reference page
+   * collection unchanged. The URL resolver walks the doc through
+   * the collection's `seo.urlPath` to produce the public path.
+   *
+   * The editor doesn't expose this as an editable field — the
+   * panel that adds the item knows its source collection and
+   * stamps it at write time.
+   */
+  collectionSlug?: string;
   pageId?: string;
   children?: NxNavItem[];
 }

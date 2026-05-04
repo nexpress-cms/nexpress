@@ -43,6 +43,11 @@ export async function GET(request: NextRequest) {
         { field: "pageId", message: "pageId is required" },
       ]);
     }
+    // Source collection of the doc whose memberships we're listing.
+    // Defaults to `"pages"` so panel calls from the reference pages
+    // collection (and any pre-#440 client that doesn't send the
+    // param yet) keep their existing behavior.
+    const collection = request.nextUrl.searchParams.get("collection")?.trim() || "pages";
 
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
@@ -50,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     const memberships: MembershipRow[] = [];
     for (const row of rows) {
-      walk(row.items, row.location, pageId, memberships);
+      walk(row.items, row.location, pageId, collection, memberships);
     }
 
     return nxSuccessResponse({ memberships });
@@ -63,13 +68,18 @@ function walk(
   items: NxNavItem[] | null | undefined,
   location: string,
   pageId: string,
+  collection: string,
   out: MembershipRow[],
 ): void {
   if (!Array.isArray(items)) return;
   for (const item of items) {
-    if (item.type === "page" && item.pageId === pageId) {
+    // Default the per-item collection to "pages" — matches the
+    // resolver in @nexpress/core/content/helpers.ts and the wire
+    // format guarantee.
+    const itemCollection = item.collectionSlug ?? "pages";
+    if (item.type === "page" && item.pageId === pageId && itemCollection === collection) {
       out.push({ location, itemId: item.id, label: item.label });
     }
-    if (item.children) walk(item.children, location, pageId, out);
+    if (item.children) walk(item.children, location, pageId, collection, out);
   }
 }
