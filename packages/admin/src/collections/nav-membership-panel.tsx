@@ -35,27 +35,48 @@ interface NavItem {
   children?: NavItem[];
 }
 
-// Forward-compat note: when nav locations become user-defined (a
-// `Settings → Navigation locations` surface lands), replace this
-// const with a fetch to `/api/navigation/locations`. For now the
-// editor's `Settings → Navigation` switcher uses the same three.
-const DEFAULT_LOCATIONS = [
+interface LocationOption {
+  value: string;
+  label: string;
+}
+
+// Baked-in fallbacks shown until the locations endpoint responds,
+// so the panel renders something useful during the loading flicker.
+// The endpoint always returns these plus any custom locations the
+// operator has added.
+const FALLBACK_LOCATIONS: LocationOption[] = [
   { value: "header", label: "Header" },
   { value: "footer", label: "Footer" },
   { value: "main", label: "Main" },
-] as const;
+];
 
 export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProps) {
   const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>(FALLBACK_LOCATIONS);
   const [loading, setLoading] = useState(true);
   const [busyLocation, setBusyLocation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [addLocation, setAddLocation] = useState<string>(DEFAULT_LOCATIONS[0].value);
+  const [addLocation, setAddLocation] = useState<string>(FALLBACK_LOCATIONS[0].value);
 
   useEffect(() => {
     void loadMemberships();
+    void loadLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
+
+  async function loadLocations() {
+    try {
+      const response = await fetch("/api/navigation/locations");
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) return; // soft fail — fallback list still renders
+      if (isRecord(payload) && Array.isArray(payload.locations)) {
+        const next = payload.locations.filter(isLocationOption);
+        if (next.length > 0) setLocations(next);
+      }
+    } catch {
+      // ignore — fallback list keeps the panel functional
+    }
+  }
 
   async function loadMemberships() {
     setLoading(true);
@@ -151,7 +172,9 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
   }
 
   const presentLocations = new Set(memberships.map((m) => m.location));
-  const addableLocations = DEFAULT_LOCATIONS.filter((loc) => !presentLocations.has(loc.value));
+  const addableLocations = locations.filter((loc) => !presentLocations.has(loc.value));
+  const labelFor = (value: string) =>
+    locations.find((l) => l.value === value)?.label ?? value;
   const effectiveAddLocation = addableLocations.find((l) => l.value === addLocation)
     ? addLocation
     : addableLocations[0]?.value ?? "";
@@ -252,10 +275,6 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
   );
 }
 
-function labelFor(location: string): string {
-  return DEFAULT_LOCATIONS.find((l) => l.value === location)?.label ?? location;
-}
-
 function removeItemById(items: NavItem[], itemId: string): NavItem[] {
   return items
     .filter((item) => item.id !== itemId)
@@ -280,6 +299,14 @@ function isMembership(value: unknown): value is Membership {
     isRecord(value) &&
     typeof value.location === "string" &&
     typeof value.itemId === "string" &&
+    typeof value.label === "string"
+  );
+}
+
+function isLocationOption(value: unknown): value is LocationOption {
+  return (
+    isRecord(value) &&
+    typeof value.value === "string" &&
     typeof value.label === "string"
   );
 }

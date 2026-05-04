@@ -75,16 +75,32 @@ interface CollectionOption {
   label: string;
 }
 
-const NAV_LOCATIONS = [
+interface LocationOption {
+  value: string;
+  label: string;
+}
+
+// Baked-in fallbacks shown until the locations endpoint responds.
+// The endpoint always returns these plus any custom locations the
+// operator has added.
+const FALLBACK_LOCATIONS: LocationOption[] = [
   { value: "header", label: "Header" },
   { value: "footer", label: "Footer" },
   { value: "main", label: "Main" },
-] as const;
+];
 
-type NavLocation = (typeof NAV_LOCATIONS)[number]["value"];
+// Magic value the location select uses to open the create-new
+// dialog. Picked to be unlikely to collide with a real slug.
+const NEW_LOCATION_SENTINEL = "__nx_new_location__";
+
+type NavLocation = string;
 
 export function NavigationEditor() {
   const [location, setLocation] = useState<NavLocation>("header");
+  const [locations, setLocations] = useState<LocationOption[]>(FALLBACK_LOCATIONS);
+  const [newLocationInput, setNewLocationInput] = useState("");
+  const [newLocationDialogOpen, setNewLocationDialogOpen] = useState(false);
+  const [creatingLocation, setCreatingLocation] = useState(false);
   const [items, setItems] = useState<EditableNavItem[]>([]);
   // Snapshot of items as they were at last load/save. Used to compute
   // `dirty` so the location switcher can prompt before discarding
@@ -130,6 +146,28 @@ export function NavigationEditor() {
   useEffect(() => {
     void loadNavigation(location);
   }, [location]);
+
+  // Locations are fetched once on mount and refreshed whenever the
+  // operator creates a new one via the dialog. Soft-fails — the
+  // FALLBACK_LOCATIONS keep the editor functional even if the
+  // endpoint is unreachable.
+  useEffect(() => {
+    void loadLocations();
+  }, []);
+
+  async function loadLocations() {
+    try {
+      const response = await fetch("/api/navigation/locations");
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) return;
+      if (isRecord(payload) && Array.isArray(payload.locations)) {
+        const next = payload.locations.filter(isLocationOption);
+        if (next.length > 0) setLocations(next);
+      }
+    } catch {
+      // ignore — fallback list keeps the editor functional
+    }
+  }
 
   async function loadNavigation(loc: NavLocation) {
     setLoading(true);
@@ -236,7 +274,52 @@ export function NavigationEditor() {
     }
   }
 
+  async function createLocation(rawSlug: string) {
+    const slug = rawSlug.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    if (!slug) {
+      setError("Location name must be lowercase letters, numbers, or hyphens.");
+      return;
+    }
+    if (locations.some((l) => l.value === slug)) {
+      setError(`Location "${slug}" already exists.`);
+      return;
+    }
+    setCreatingLocation(true);
+    setError(null);
+    try {
+      // Save an empty nav at the new location — that's what
+      // creates the row in `nx_navigation`. The locations endpoint
+      // will return it on the next fetch.
+      const response = await nxFetch("/api/navigation", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location: slug, items: [] }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as unknown;
+        setError(getErrorMessage(payload, "Unable to create location."));
+        return;
+      }
+      await loadLocations();
+      setNewLocationInput("");
+      setNewLocationDialogOpen(false);
+      // Route through the same path the dropdown uses so unsaved
+      // edits in the current location surface the discard dialog
+      // instead of getting silently overwritten by the empty
+      // newly-created nav.
+      requestLocationChange(slug);
+    } catch {
+      setError("Unable to create location.");
+    } finally {
+      setCreatingLocation(false);
+    }
+  }
+
   function requestLocationChange(next: NavLocation) {
+    if (next === NEW_LOCATION_SENTINEL) {
+      setNewLocationDialogOpen(true);
+      return;
+    }
     if (next === location) return;
     if (dirty) {
       setPendingLocation(next);
@@ -380,15 +463,18 @@ export function NavigationEditor() {
                 value={location}
                 onValueChange={(value) => requestLocationChange(value as NavLocation)}
               >
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {NAV_LOCATIONS.map((loc) => (
+                  {locations.map((loc) => (
                     <SelectItem key={loc.value} value={loc.value}>
                       {loc.label}
                     </SelectItem>
                   ))}
+                  <SelectItem value={NEW_LOCATION_SENTINEL} className="text-primary">
+                    + New location…
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -513,8 +599,12 @@ export function NavigationEditor() {
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
             <DialogDescription>
-              You have unsaved edits in <strong>{labelFor(location)}</strong>. Switching to{" "}
-              <strong>{pendingLocation ? labelFor(pendingLocation) : ""}</strong> will discard them.
+              You have unsaved edits in <strong>{labelFor(location, locations)}</strong>.
+              Switching to{" "}
+              <strong>
+                {pendingLocation ? labelFor(pendingLocation, locations) : ""}
+              </strong>{" "}
+              will discard them.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -523,6 +613,58 @@ export function NavigationEditor() {
             </Button>
             <Button variant="destructive" onClick={confirmDiscard}>
               Discard and switch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={newLocationDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setNewLocationDialogOpen(false);
+            setNewLocationInput("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New navigation location</DialogTitle>
+            <DialogDescription>
+              Add a custom slot for theme code or templates to render
+              (e.g. <code>sidebar</code>, <code>announcement-bar</code>). Themes consume locations
+              by name via <code>getCachedNavigation(&quot;your-slug&quot;)</code>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="new-location-slug">Location slug</Label>
+            <Input
+              id="new-location-slug"
+              value={newLocationInput}
+              onChange={(event) => setNewLocationInput(event.target.value)}
+              placeholder="sidebar"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              Lowercase letters, numbers, and hyphens.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setNewLocationDialogOpen(false);
+                setNewLocationInput("");
+              }}
+              disabled={creatingLocation}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void createLocation(newLocationInput)}
+              disabled={creatingLocation || !newLocationInput.trim()}
+            >
+              {creatingLocation ? "Creating…" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -852,8 +994,14 @@ function extractCollections(payload: unknown): CollectionOption[] {
   });
 }
 
-function labelFor(location: NavLocation): string {
-  return NAV_LOCATIONS.find((loc) => loc.value === location)?.label ?? location;
+function labelFor(location: NavLocation, locations: LocationOption[]): string {
+  return locations.find((loc) => loc.value === location)?.label ?? location;
+}
+
+function isLocationOption(value: unknown): value is LocationOption {
+  return (
+    isRecord(value) && typeof value.value === "string" && typeof value.label === "string"
+  );
 }
 
 function createId() {
