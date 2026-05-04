@@ -6,3 +6,4 @@ export { ctaBlock } from "./cta.js";
 export { richTextBlock } from "./rich-text.js";
 export { contactFormBlock } from "./contact-form.js";
 export { imageGalleryBlock } from "./image-gallery.js";
+export { gridBlock, readGridChildLayout } from "./grid.js";

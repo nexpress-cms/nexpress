@@ -7,7 +7,22 @@ export interface NxBlockDefinition {
   icon?: string;
   defaultProps: Record<string, unknown>;
   propsSchema: NxBlockPropField[];
-  render: (props: Record<string, unknown>) => ReactElement;
+  /**
+   * When true, this block is a *container* — the editor offers an
+   * add-block UI inside it and the renderer walks the instance's
+   * `children` array, passing the rendered React node tree as the
+   * second argument to `render`. When false / omitted (the default),
+   * the block is a leaf and any `children` on the instance are
+   * ignored at render time.
+   */
+  acceptsChildren?: boolean;
+  /**
+   * Block renderer. Container blocks (`acceptsChildren: true`) get
+   * the rendered child tree as a React node — they decide where to
+   * place it in their JSX (e.g. inside the grid wrapper). Leaf
+   * blocks ignore the second argument.
+   */
+  render: (props: Record<string, unknown>, children?: ReactNode) => ReactElement;
 }
 
 export interface NxBlockPropField {
@@ -23,6 +38,18 @@ export interface NxBlockInstance {
   id: string;
   type: string;
   props: Record<string, unknown>;
+  /**
+   * Nested block instances. Set on container blocks (those whose
+   * definition has `acceptsChildren: true`). Empty / undefined on
+   * leaf blocks. The renderer walks the tree depth-first and feeds
+   * each level's rendered output to the parent's `render(_, children)`.
+   *
+   * Children may carry layout-meta props the parent reads (e.g. a
+   * grid's children read `_layout: { colSpan }`). The shape of
+   * that meta is the parent block's contract — not part of the
+   * core type.
+   */
+  children?: NxBlockInstance[];
 }
 
 // The `blocks` field on a document is stored and edited as a flat
