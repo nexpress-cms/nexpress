@@ -133,11 +133,13 @@ CSRF on state-changing API routes is applied automatically by `apps/web/src/prox
 
 Packages that contain React UI split exports to keep client-only code out of RSC bundles:
 
-| Package            | Root export (server-safe) | `./client` export               | `./server` export |
-| ------------------ | ------------------------- | ------------------------------- | ----------------- |
-| `@nexpress/editor` | types + renderRichText    | NxRichTextEditor, ToolbarPlugin | renderRichText    |
-| `@nexpress/blocks` | registry, renderBlocks    | BlockPageEditor, BlockPalette   | —                 |
-| `@nexpress/admin`  | types + views             | AdminShell, all client views    | —                 |
+| Package            | Root export (server-safe)               | `./client` export               | `./server` export |
+| ------------------ | --------------------------------------- | ------------------------------- | ----------------- |
+| `@nexpress/editor` | types + renderRichText                  | NxRichTextEditor, ToolbarPlugin | renderRichText    |
+| `@nexpress/blocks` | types, registry, renderBlocks, blocks/* | —                               | —                 |
+| `@nexpress/admin`  | types + views                           | AdminShell, all client views    | —                 |
+
+`@nexpress/blocks` is server-safe end-to-end now (registry, renderBlocks, block definitions). The page-builder UI itself lives in `@nexpress/admin/src/blocks/` so it can use admin's Radix/Tailwind primitives directly. The old `@nexpress/blocks/client` export was removed when the editor moved.
 
 Each `./client` bundle is built by tsup with `"use client"` banner injection. Consumers import `@nexpress/editor/client` for interactive components; server code imports the root or `./server`. Admin lazy-loads heavy editors via `React.lazy(() => import("@nexpress/editor/client"))`.
 
