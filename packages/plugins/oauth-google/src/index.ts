@@ -149,7 +149,7 @@ export const googleOAuthPlugin = definePlugin({
     usesTokens: [],
     styleSlots: {},
   },
-  setup: async (ctx) => {
+  setup: (ctx) => {
     const clientId = process.env.NX_OAUTH_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.NX_OAUTH_GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) {

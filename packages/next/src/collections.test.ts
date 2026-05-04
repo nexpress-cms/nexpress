@@ -95,12 +95,13 @@ describe("collection operations", () => {
 
   it("awaits ensureReady before delegating to findDocuments", async () => {
     const calls: string[] = [];
-    const ensureReady = vi.fn().mockImplementation(async () => {
+    const ensureReady = vi.fn().mockImplementation(() => {
       calls.push("ready");
+      return Promise.resolve();
     });
-    vi.mocked(core.findDocuments).mockImplementation(async () => {
+    vi.mocked(core.findDocuments).mockImplementation(() => {
       calls.push("find");
-      return {
+      return Promise.resolve({
         docs: [],
         totalDocs: 0,
         totalPages: 0,
@@ -108,7 +109,7 @@ describe("collection operations", () => {
         limit: 10,
         hasNextPage: false,
         hasPrevPage: false,
-      };
+      });
     });
 
     const { helpers } = buildHelpers(ensureReady);

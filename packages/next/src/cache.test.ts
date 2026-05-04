@@ -41,7 +41,7 @@ describe("cache tag helpers", () => {
 describe("getCachedTheme", () => {
   it("registers a per-site tag with unstable_cache", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("blog-jp");
-    const direct = vi.fn(async () => ({ tokens: "stub" }) as never);
+    const direct = vi.fn(() => Promise.resolve({ tokens: "stub" } as never));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
     await getCachedTheme();
@@ -55,7 +55,7 @@ describe("getCachedTheme", () => {
 
   it("falls back to the default site id when no resolver is set", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce(null);
-    const direct = vi.fn(async () => ({ tokens: "stub" }) as never);
+    const direct = vi.fn(() => Promise.resolve({ tokens: "stub" } as never));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
     await getCachedTheme();
@@ -71,9 +71,7 @@ describe("getCachedTheme", () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
     const cacheError = new Error("incrementalCache missing");
     vi.mocked(unstable_cache).mockReturnValueOnce(
-      (async () => {
-        throw cacheError;
-      }) as never,
+      (() => Promise.reject(cacheError)) as never,
     );
     const expected = { tokens: "fresh" };
     vi.mocked(core.getTheme).mockResolvedValueOnce(expected as never);
@@ -88,7 +86,7 @@ describe("getCachedTheme", () => {
 describe("getCachedActiveThemeId", () => {
   it("registers nx:theme:<siteId> tag (shares with theme tokens)", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
-    const direct = vi.fn(async () => "magazine");
+    const direct = vi.fn(() => Promise.resolve("magazine"));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
     await getCachedActiveThemeId();
@@ -104,7 +102,7 @@ describe("getCachedActiveThemeId", () => {
 describe("getCachedNavigation", () => {
   it("registers a (siteId, location) tag pair", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("blog-jp");
-    const direct = vi.fn(async () => []);
+    const direct = vi.fn(() => Promise.resolve([]));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
     await getCachedNavigation("footer");
@@ -118,7 +116,7 @@ describe("getCachedNavigation", () => {
 
   it("defaults the location to 'header' when omitted", async () => {
     vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
-    const direct = vi.fn(async () => []);
+    const direct = vi.fn(() => Promise.resolve([]));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
     await getCachedNavigation();

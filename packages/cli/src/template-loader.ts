@@ -61,7 +61,7 @@ export function readTemplate(
 
   return content.replace(/__NX_([A-Z0-9_]+)__/g, (match, key: string) => {
     if (Object.prototype.hasOwnProperty.call(vars, key)) {
-      return vars[key]!;
+      return vars[key];
     }
     return match;
   });

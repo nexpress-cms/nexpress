@@ -413,7 +413,7 @@ export const BlockPageEditor = ({ blocks: initialBlocks, onChange, availableBloc
     () => JSON.stringify(initialBlocks),
     [initialBlocks],
   );
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- key is the change signal
+   
   useEffect(() => {
     dispatch({ type: "RESET", blocks: initialBlocks });
   }, [initialBlocksKey]);

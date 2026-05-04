@@ -405,24 +405,26 @@ export const seoAuditPlugin = definePlugin({
       },
     ],
   },
-  setup: async (ctx) => {
+  setup: (ctx) => {
     // These demo handlers prove the declarative admin surface end-to-end.
     // Real implementations would use ctx.content.find() to iterate posts
     // and store results somewhere the widget can read.
-    ctx.actions.register("lastAuditScore", async () => ({
-      ok: true,
-      data: { value: 87, delta: "+3 vs last week" },
-    }));
-    ctx.actions.register("rescanLatest", async () => {
+    ctx.actions.register("lastAuditScore", () =>
+      Promise.resolve({
+        ok: true,
+        data: { value: 87, delta: "+3 vs last week" },
+      }),
+    );
+    ctx.actions.register("rescanLatest", () => {
       const sample = buildAuditResponse({
         title: "Example post title that is long enough",
         description: "A reasonable meta description that describes the content well.",
         content: "This is a demo. ".repeat(40),
       });
-      return {
+      return Promise.resolve({
         ok: true,
         data: `Score: ${sample.score}, issues: ${sample.issues.length}`,
-      };
+      });
     });
 
     // Powers the per-document collection tab: widget shows the score, action
@@ -454,7 +456,7 @@ export const seoAuditPlugin = definePlugin({
       method: "GET",
       path: "/analyze",
       description: "Audit title, description, and content provided by query string or JSON body.",
-      handler: async (req) => {
+      handler: (req) => {
         const input =
           Object.keys(req.query).length > 0
             ? {
@@ -464,20 +466,21 @@ export const seoAuditPlugin = definePlugin({
               }
             : req.body;
 
-        return {
+        return Promise.resolve({
           status: 200,
           body: buildAuditResponse(input),
-        };
+        });
       },
     },
     {
       method: "POST",
       path: "/analyze",
       description: "Audit title, description, and content provided as JSON.",
-      handler: async (req) => ({
-        status: 200,
-        body: buildAuditResponse(req.body),
-      }),
+      handler: (req) =>
+        Promise.resolve({
+          status: 200,
+          body: buildAuditResponse(req.body),
+        }),
     },
   ],
 });

@@ -177,7 +177,7 @@ export const githubOAuthPlugin = definePlugin({
     usesTokens: [],
     styleSlots: {},
   },
-  setup: async (ctx) => {
+  setup: (ctx) => {
     const clientId = process.env.NX_OAUTH_GITHUB_CLIENT_ID;
     const clientSecret = process.env.NX_OAUTH_GITHUB_CLIENT_SECRET;
     if (!clientId || !clientSecret) {

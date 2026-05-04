@@ -1,4 +1,4 @@
-import { and, eq, asc, sql } from "drizzle-orm";
+import { type and, eq, asc, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import {

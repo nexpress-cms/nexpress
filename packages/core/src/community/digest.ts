@@ -302,7 +302,7 @@ function lastDigestSinceFor(
   cadence: NxDigestCadence,
   now: Date,
 ): Date {
-  const prefs = (member.prefs ?? {}) as Record<string, unknown>;
+  const prefs = (member.prefs ?? {});
   const bySite = prefs.lastDigestAtBySite as
     | Record<string, Partial<Record<string, string>>>
     | undefined;

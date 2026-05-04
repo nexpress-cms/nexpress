@@ -94,7 +94,7 @@ describe("parseXliff", () => {
       ],
     });
     const parsed = parseXliff(xml);
-    expect(parsed.files[0]!.units[0]).toEqual({
+    expect(parsed.files[0].units[0]).toEqual({
       id: "html",
       source: "<p>hi</p>",
       target: "<p>salut</p>",
@@ -135,6 +135,6 @@ describe("parseXliff", () => {
   </file>
 </xliff>`;
     const parsed = parseXliff(xml);
-    expect(parsed.files[0]!.units[0]!.target).toBe("");
+    expect(parsed.files[0].units[0].target).toBe("");
   });
 });

@@ -12,7 +12,7 @@ describe("nxSuccessResponse", () => {
     await expect(res.json()).resolves.toEqual({ hello: "world" });
   });
 
-  it("honors an explicit status", async () => {
+  it("honors an explicit status", () => {
     const res = nxSuccessResponse({ ok: true }, { status: 201 });
     expect(res.status).toBe(201);
   });
