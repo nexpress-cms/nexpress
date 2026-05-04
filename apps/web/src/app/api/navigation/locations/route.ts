@@ -1,11 +1,13 @@
 import {
   NX_DEFAULT_SITE_ID,
+  NxForbiddenError,
+  can,
   getCurrentSiteId,
   nxNavigation,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 
-import { optionalAuth } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import type { NextRequest } from "next/server";
@@ -40,9 +42,16 @@ const DEFAULT_LOCATIONS: LocationOption[] = [
   { value: "main", label: "Main" },
 ];
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await optionalAuth(_request);
+    // Admin-only — this endpoint reveals every nav location slug,
+    // including custom ones the operator may not want crawled. The
+    // public site reads navs by slug name (which the theme already
+    // knows), so anonymous traffic has no reason to enumerate.
+    const user = await requireAuth(request);
+    if (!can(user, "admin.manage")) {
+      throw new NxForbiddenError("navigation", "list-locations");
+    }
 
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;

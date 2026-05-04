@@ -1364,6 +1364,10 @@ function PagePicker({
   const [results, setResults] = useState<PageOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Highlighted-row index for arrow-key navigation. Reset to 0
+  // whenever the result list changes shape so the user lands on a
+  // sensible row after each search.
+  const [activeIndex, setActiveIndex] = useState(0);
 
   // Debounce keystrokes — typing fast shouldn't fire one fetch
   // per character. 200ms is the same shape the editor uses
@@ -1379,8 +1383,13 @@ function PagePicker({
     if (!open) {
       setQuery("");
       setDebouncedQuery("");
+      setActiveIndex(0);
     }
   }, [open]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [results]);
 
   useEffect(() => {
     if (!open) return;
@@ -1440,6 +1449,26 @@ function PagePicker({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            // Arrow keys move the highlighted row, Enter commits.
+            // Radix Popover already handles Esc → close because the
+            // input is the focused descendant; we don't override it.
+            onKeyDown={(e) => {
+              if (results.length === 0) return;
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                const choice = results[activeIndex];
+                if (choice) {
+                  onChange(choice.id);
+                  setOpen(false);
+                }
+              }
+            }}
             placeholder="Search pages…"
             autoFocus
             className="h-8"
@@ -1455,7 +1484,7 @@ function PagePicker({
               {debouncedQuery.trim() ? "No matches." : "No pages yet."}
             </div>
           ) : (
-            results.map((page) => (
+            results.map((page, index) => (
               <button
                 key={page.id}
                 type="button"
@@ -1463,9 +1492,13 @@ function PagePicker({
                   onChange(page.id);
                   setOpen(false);
                 }}
+                onMouseEnter={() => setActiveIndex(index)}
                 className={cn(
                   "block w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
-                  page.id === value ? "bg-accent" : "",
+                  index === activeIndex ? "bg-accent" : "",
+                  page.id === value && index !== activeIndex
+                    ? "ring-1 ring-primary/30"
+                    : "",
                 )}
               >
                 <div className="truncate">{page.title || page.slug || page.id}</div>
