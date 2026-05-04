@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Input } from "../ui/input.js";
+import { Label } from "../ui/label.js";
 import { PageHeader } from "../layout/page-header.js";
 import { StatusBadge } from "../ui/status-badge.js";
 
@@ -54,39 +56,29 @@ export function MembersListView({
       */}
       <form
         method="GET"
-        className="flex flex-wrap items-end gap-3 rounded-xl border border-border/60 bg-muted/30 p-4"
+        className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-4 dark:border-neutral-800/80 dark:bg-neutral-900/40"
       >
-        <div className="flex-1 min-w-[200px] space-y-1">
-          <label
-            htmlFor="nx-members-q"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Search
-          </label>
+        <div className="flex-1 min-w-[200px] space-y-1.5">
+          <Label htmlFor="nx-members-q">Search</Label>
           <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <input
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+            <Input
               id="nx-members-q"
               type="search"
               name="q"
               defaultValue={filterQuery}
               placeholder="handle, email, or display name"
-              className="w-full rounded-md border border-border/70 bg-background py-2 pl-8 pr-3 text-sm"
+              className="pl-8"
             />
           </div>
         </div>
-        <div className="space-y-1">
-          <label
-            htmlFor="nx-members-status"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Status
-          </label>
+        <div className="space-y-1.5">
+          <Label htmlFor="nx-members-status">Status</Label>
           <select
             id="nx-members-status"
             name="status"
             defaultValue={filterStatus}
-            className="rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+            className="flex h-8 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
           >
             <option value="">All</option>
             <option value="active">Active</option>
@@ -101,7 +93,7 @@ export function MembersListView({
         {isFiltered ? (
           <a
             href="/admin/members"
-            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            className="text-[12px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400"
           >
             Clear
           </a>
@@ -117,14 +109,14 @@ export function MembersListView({
         <CardContent>
           <div className="overflow-hidden rounded-xl border border-border/60">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-muted-foreground">
+              <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Handle</th>
-                  <th className="px-4 py-3 font-medium">Display name</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Joined</th>
-                  <th className="px-4 py-3 font-medium" />
+                  <th className="h-9 px-3.5 font-medium">Handle</th>
+                  <th className="h-9 px-3.5 font-medium">Display name</th>
+                  <th className="h-9 px-3.5 font-medium">Email</th>
+                  <th className="h-9 px-3.5 font-medium">Status</th>
+                  <th className="h-9 px-3.5 font-medium">Joined</th>
+                  <th className="h-9 px-3.5 font-medium" />
                 </tr>
               </thead>
               <tbody>

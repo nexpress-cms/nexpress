@@ -245,7 +245,7 @@ export function PendingQueueView() {
         <CardContent>
           <div className="overflow-hidden rounded-xl border border-border/60">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-muted-foreground">
+              <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
                   <th className="w-10 px-4 py-3">
                     <input
@@ -258,11 +258,11 @@ export function PendingQueueView() {
                       disabled={loading || rows.length === 0}
                     />
                   </th>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Collection</th>
-                  <th className="px-4 py-3 font-medium">Author</th>
-                  <th className="px-4 py-3 font-medium">Submitted</th>
-                  <th className="px-4 py-3 font-medium" />
+                  <th className="h-9 px-3.5 font-medium">Title</th>
+                  <th className="h-9 px-3.5 font-medium">Collection</th>
+                  <th className="h-9 px-3.5 font-medium">Author</th>
+                  <th className="h-9 px-3.5 font-medium">Submitted</th>
+                  <th className="h-9 px-3.5 font-medium" />
                 </tr>
               </thead>
               <tbody>

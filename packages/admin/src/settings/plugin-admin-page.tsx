@@ -404,9 +404,9 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
                   {table.columns.map((col) => (
-                    <th key={col.name} className="py-2 pr-4 font-medium">
+                    <th key={col.name} className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                       {col.label}
                     </th>
                   ))}

@@ -220,11 +220,11 @@ function TranslationProgressCard({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border/60 text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Collection</th>
-                <th className="py-2 pr-4 font-medium">Groups</th>
+              <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
+                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Collection</th>
+                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Groups</th>
                 {progress.locales.map((locale) => (
-                  <th key={locale} className="py-2 pr-4 font-medium">
+                  <th key={locale} className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                     {locale.toUpperCase()}
                   </th>
                 ))}

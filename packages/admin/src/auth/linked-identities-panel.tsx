@@ -146,12 +146,12 @@ export function LinkedIdentitiesPanel({
 
         <div className="overflow-hidden rounded-xl border border-border/60">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-muted-foreground">
+            <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
               <tr>
-                <th className="px-4 py-3 font-medium">Provider</th>
-                <th className="px-4 py-3 font-medium">Subject</th>
-                <th className="px-4 py-3 font-medium">Linked</th>
-                <th className="px-4 py-3 font-medium" />
+                <th className="h-9 px-3.5 font-medium">Provider</th>
+                <th className="h-9 px-3.5 font-medium">Subject</th>
+                <th className="h-9 px-3.5 font-medium">Linked</th>
+                <th className="h-9 px-3.5 font-medium" />
               </tr>
             </thead>
             <tbody>

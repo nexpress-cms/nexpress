@@ -264,13 +264,13 @@ export function AuditLogView() {
           ) : null}
           <div className="overflow-hidden rounded-xl border border-border/60">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-muted-foreground">
+              <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">When</th>
-                  <th className="px-4 py-3 font-medium">Action</th>
-                  <th className="px-4 py-3 font-medium">Actor</th>
-                  <th className="px-4 py-3 font-medium">Target</th>
-                  <th className="px-4 py-3 font-medium">Payload</th>
+                  <th className="h-9 px-3.5 font-medium">When</th>
+                  <th className="h-9 px-3.5 font-medium">Action</th>
+                  <th className="h-9 px-3.5 font-medium">Actor</th>
+                  <th className="h-9 px-3.5 font-medium">Target</th>
+                  <th className="h-9 px-3.5 font-medium">Payload</th>
                 </tr>
               </thead>
               <tbody>

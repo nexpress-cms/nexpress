@@ -731,7 +731,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               id="nx-job-enqueue-type"
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="w-full rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm"
+              className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
             >
               <option value="">Select…</option>
               {handlers.map((name) => (
@@ -754,7 +754,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               onChange={(event) => setDataText(event.target.value)}
               rows={3}
               spellCheck={false}
-              className="w-full rounded-md border border-border/70 bg-background px-2 py-1.5 font-mono text-xs"
+              className="w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
               placeholder='{"docId": "..."}'
             />
           </div>
