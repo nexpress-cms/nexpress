@@ -8,6 +8,12 @@ export const pagesCollection = defineCollection({
     defaultSort: "title",
     listColumns: ["title", "updatedAt"],
     description: "Static pages.",
+    // Surfaces an "In navigation" panel on each page's edit view so
+    // operators can add/remove the page from any nav location
+    // (header / footer / custom slots) without leaving the form.
+    // Flip on for any page-shaped collection (`landing-pages`,
+    // `static-pages`, etc.) — back-compat: defaults to false.
+    navMembership: true,
   },
   versions: { drafts: true },
   access: {
