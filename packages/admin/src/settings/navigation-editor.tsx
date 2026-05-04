@@ -383,26 +383,42 @@ export function NavigationEditor() {
     );
   }
 
-  // Group ids by parent for the nested SortableContexts. Top-level
-  // ids appear in `items` array order; each parent's children appear
-  // in their array order.
-  const grouped = useMemo(() => {
-    const topIds: string[] = [];
-    const childIdsByParent = new Map<string, string[]>();
+  // Flat render order: top-level items in `items` array order, with
+  // each parent's children inlined immediately after their parent.
+  // Drives both the visible list and the SortableContext id array
+  // (so dnd-kit treats children + top-level as one flat sortable —
+  // required for cross-scope drags and the drag-to-nest pattern).
+  const renderOrder = useMemo(() => {
+    const result: { id: string; isChild: boolean }[] = [];
+    const seen = new Set<string>();
     for (const item of items) {
-      if (!item.parentId) {
-        topIds.push(item.id);
-      } else {
-        const list = childIdsByParent.get(item.parentId) ?? [];
-        list.push(item.id);
-        childIdsByParent.set(item.parentId, list);
+      if (item.parentId) continue;
+      result.push({ id: item.id, isChild: false });
+      seen.add(item.id);
+      for (const child of items) {
+        if (child.parentId === item.id) {
+          result.push({ id: child.id, isChild: true });
+          seen.add(child.id);
+        }
       }
     }
-    return { topIds, childIdsByParent };
+    // Orphans (parentId points at a deleted item) — render at the
+    // end as top-level so they're not lost.
+    for (const item of items) {
+      if (!seen.has(item.id)) result.push({ id: item.id, isChild: false });
+    }
+    return result;
   }, [items]);
 
+  // Indent threshold: dragging right by this many CSS px past the
+  // item's original X promotes "drop here" intent from "reorder
+  // alongside target" to "nest under target." Matches the visual
+  // child-indent (`ml-8` = 32px) so the gesture lines up with the
+  // resulting depth.
+  const NEST_THRESHOLD_X = 24;
+
   function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
+    const { active, over, delta } = event;
     if (!over || active.id === over.id) return;
     const activeId = String(active.id);
     const overId = String(over.id);
@@ -411,36 +427,77 @@ export function NavigationEditor() {
     const overItem = items.find((it) => it.id === overId);
     if (!activeItem || !overItem) return;
 
-    // Drag is scoped to siblings — both must be top-level OR both
-    // must share the same parent. Cross-scope drags are no-ops; the
-    // operator changes parent via the `Parent` select, not by drag.
-    if ((activeItem.parentId ?? null) !== (overItem.parentId ?? null)) {
-      return;
+    const activeHasChildren = items.some((c) => c.parentId === activeId);
+    const wantsNest = delta.x > NEST_THRESHOLD_X;
+
+    // Decide the active item's NEW parentId after the drop.
+    //
+    //   - drag-right onto an item → become that item's child, but
+    //     only if the target is top-level and the active item has
+    //     no children of its own (1-level depth limit). Failed
+    //     nest falls through to sibling reorder semantics.
+    //   - normal drop → match the target's parentId (sibling).
+    //
+    // The orphan-children-on-demote rule (matches changeParent's
+    // behavior) keeps the saved tree at most one level deep even
+    // when the operator demotes a parent that already has kids.
+    let nextParentId: string | undefined;
+    if (wantsNest && !overItem.parentId && !activeHasChildren) {
+      nextParentId = overId;
+    } else {
+      nextParentId = overItem.parentId;
     }
 
-    const siblingIds = activeItem.parentId
-      ? grouped.childIdsByParent.get(activeItem.parentId) ?? []
-      : grouped.topIds;
-    const oldIndex = siblingIds.indexOf(activeId);
-    const newIndex = siblingIds.indexOf(overId);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const reorderedIds = arrayMove(siblingIds, oldIndex, newIndex);
+    // Self-loop guard: when active is dragged onto one of its own
+    // children, `overItem.parentId === activeId`. Without this fix
+    // the next-parent path would set active.parentId to itself and
+    // `buildNavTree` would silently drop active from the saved
+    // shape (it lives only in `childrenByParent[active]`, which is
+    // never read for top-level emission). Promote active back to
+    // top-level so the structure stays valid; the drag still
+    // visibly reorders.
+    if (nextParentId === activeId) {
+      nextParentId = undefined;
+    }
 
-    // Rebuild the flat items array so sibling-group order matches
-    // the new sequence. Items that aren't part of this sibling
-    // group keep their relative position; we just splice the
-    // reordered subset back in their original positions.
-    const reorderedSet = new Set(reorderedIds);
-    let cursor = 0;
-    setItems((current) =>
-      current.map((item) => {
-        if (reorderedSet.has(item.id)) {
-          const nextId = reorderedIds[cursor++];
-          return current.find((c) => c.id === nextId) ?? item;
-        }
-        return item;
-      }),
-    );
+    const isNestDrop = wantsNest && nextParentId === overId;
+
+    setItems((current) => {
+      // 1) Patch active's parentId; orphan its existing children up
+      //    to top-level if active itself is being demoted (matches
+      //    the `changeParent` rule — the saved tree never grows
+      //    deeper than one level).
+      const updated = current.map((c) => {
+        if (c.id === activeId) return { ...c, parentId: nextParentId };
+        if (nextParentId && c.parentId === activeId) return { ...c, parentId: undefined };
+        return c;
+      });
+
+      const oldIndex = updated.findIndex((it) => it.id === activeId);
+      const targetIndex = updated.findIndex((it) => it.id === overId);
+      if (oldIndex < 0 || targetIndex < 0) return current;
+
+      if (isNestDrop) {
+        // Nest: active becomes target's first child — visually the
+        // row immediately after target. Splice rather than
+        // arrayMove so the position is independent of drag
+        // direction (active should always land *after* its new
+        // parent, even when dragged upward).
+        const without = updated.filter((it) => it.id !== activeId);
+        const overInWithout = without.findIndex((it) => it.id === overId);
+        const nextActive = updated[oldIndex];
+        return [
+          ...without.slice(0, overInWithout + 1),
+          nextActive,
+          ...without.slice(overInWithout + 1),
+        ];
+      }
+
+      // Reorder: arrayMove preserves direction (active lands after
+      // target on drag-down, before on drag-up) — the standard
+      // sortable behavior the operator expects.
+      return arrayMove(updated, oldIndex, targetIndex);
+    });
   }
 
   return (
@@ -450,8 +507,8 @@ export function NavigationEditor() {
           <div className="space-y-1">
             <CardTitle>Navigation structure</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Drag the grip handle to reorder within siblings. Set a parent to nest an item as a
-              sub-menu (one level deep).
+              Drag the grip handle to reorder, or drag right onto another item to nest as its
+              sub-menu (one level deep). The Parent select still works for keyboard-driven changes.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -532,17 +589,19 @@ export function NavigationEditor() {
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
-              <SortableContext items={grouped.topIds} strategy={verticalListSortingStrategy}>
+              <SortableContext
+                items={renderOrder.map((entry) => entry.id)}
+                strategy={verticalListSortingStrategy}
+              >
                 <div className="space-y-3">
-                  {grouped.topIds.map((id) => {
+                  {renderOrder.map(({ id, isChild }) => {
                     const item = items.find((i) => i.id === id);
                     if (!item) return null;
-                    const childIds = grouped.childIdsByParent.get(id) ?? [];
                     return (
                       <SortableRow
                         key={item.id}
                         item={item}
-                        isChild={false}
+                        isChild={isChild}
                         items={items}
                         topLevelOptions={topLevelOptions}
                         pages={pages}
@@ -553,35 +612,7 @@ export function NavigationEditor() {
                         onChangeType={changeType}
                         onChangeParent={changeParent}
                         onRemove={removeItem}
-                      >
-                        {childIds.length > 0 ? (
-                          <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
-                            <div className="mt-3 space-y-3">
-                              {childIds.map((childId) => {
-                                const child = items.find((i) => i.id === childId);
-                                if (!child) return null;
-                                return (
-                                  <SortableRow
-                                    key={child.id}
-                                    item={child}
-                                    isChild
-                                    items={items}
-                                    topLevelOptions={topLevelOptions}
-                                    pages={pages}
-                                    pagesLoading={pagesLoading}
-                                    collections={collections}
-                                    collectionsLoading={collectionsLoading}
-                                    onUpdate={updateItem}
-                                    onChangeType={changeType}
-                                    onChangeParent={changeParent}
-                                    onRemove={removeItem}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </SortableContext>
-                        ) : null}
-                      </SortableRow>
+                      />
                     );
                   })}
                 </div>
@@ -686,7 +717,6 @@ interface SortableRowProps {
   onChangeType: (id: string, nextType: EditableNavItem["type"]) => void;
   onChangeParent: (id: string, value: string) => void;
   onRemove: (id: string) => void;
-  children?: React.ReactNode;
 }
 
 function SortableRow({
@@ -702,7 +732,6 @@ function SortableRow({
   onChangeType,
   onChangeParent,
   onRemove,
-  children,
 }: SortableRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -853,7 +882,6 @@ function SortableRow({
         </Button>
       </div>
 
-      {children ? <div className="lg:col-span-6">{children}</div> : null}
     </div>
   );
 }
