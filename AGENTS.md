@@ -231,13 +231,17 @@ These are the public APIs we'll honor with semver and migration notes. Breaking 
 - **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/i18n`, `/jobs`, `/media`, `/observability`, `/seo`. Symbols inside each are stable per the rules above.
 - **Adapters** — `NxStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NxJobQueue` (with `PgBossAdapter`), `NxLogger` + `setLogger`, `NxErrorReporter` + `setErrorReporter`, `NxEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NxJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
 - **`NxPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
+- **Block authoring** — `NxBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NxBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NxBlockInstance[]`). Adding optional fields to either is non-breaking. `NxBlockMetadata` (= `NxBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable.
+- **Plugin block contribution** — `definePlugin({ blocks: NxBlockDefinition[] })`. The bootstrap (`@nexpress/next`) registers each plugin block into the shared registry at boot. Re-registration of the same `type` overwrites silently to keep HMR safe.
+- **Block server → client metadata bridge** — host apps wrap their admin children with `<BlocksRegistryProvider metadata={getRegisteredBlockMetadata()}>` (called server-side). The page builder reads it via the `useBlocksRegistry()` hook. Without the provider, plugin blocks render correctly on the public site but are absent from the admin's Add-block popover (the registry singleton is module-scoped and the browser instance only has the built-in defaults).
 
 ### Experimental — no stability promise
 
 These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
 
 - **Lexical content shape** — `NxRichTextContent` is whatever Lexical's serializer emits. We track Lexical upstream; their JSON shape is not part of NexPress's commitment.
-- **Block definition shape** — `NxBlockDefinition` is the v1 shape, but the field schema *inside* a block may grow new branches as we add block types.
+- **`_layout` meta convention on grid children** — children of a `gridBlock` carry `props._layout: { colSpan: 1–12 }`. Today only the built-in `gridBlock` reads it; if more container blocks land before 1.0 the convention may move to a top-level `NxBlockInstance.layout?` field instead of being nested inside `props`.
+- **Block prop field types** — the `propsSchema` field type set (`text` / `textarea` / `number` / `boolean` / `select` / `url` / `richtext` / `image`) is what the admin renders today. Adding new types is non-breaking; existing ones won't be renamed in 0.x but the *editor renderer* for a type may upgrade visually (e.g. phase 5 swapped the `richtext` JSON-textarea for a Lexical editor without changing the wire format).
 - **Theme token names** — `colors`, `fonts`, `radii`, etc. are stable as a *category*, but specific token keys may be renamed if a token system overhaul lands before 1.0.
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
 - **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
@@ -247,6 +251,8 @@ These exist on the published surface but are explicitly NOT covered by the rules
 ### Removed in 0.1
 
 - `hasRole(user, minRole)` / `isStaffMod(user)` — replaced by `can(user, capability)` (#273).
+- `@nexpress/blocks/client` subpath — the page-builder editor moved into `@nexpress/admin` (#444). `@nexpress/blocks` is server-safe end-to-end now (types, registry, renderBlocks, block definitions). Sites importing `BlockPageEditor` from the old subpath should switch to letting `field-renderer` handle blocks fields automatically.
+- `NxBlockRegistration` (the legacy `component: string` shape exported from `@nexpress/plugin-sdk`) — replaced by the real `NxBlockDefinition` from `@nexpress/blocks` on `NxPluginDefinition.blocks` (#446). The old type stays exported as `@deprecated` for type compatibility but was never wired and has no consumers.
 
 ### What this section is NOT
 
