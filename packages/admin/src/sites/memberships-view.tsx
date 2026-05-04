@@ -269,8 +269,7 @@ function GrantDialog({
       setResults([]);
       return;
     }
-    const handle = setTimeout(() => {
-      void (async () => {
+    const runSearch = async () => {
       setSearching(true);
       try {
         const res = await nxFetch(
@@ -287,7 +286,9 @@ function GrantDialog({
       } finally {
         setSearching(false);
       }
-      })();
+    };
+    const handle = setTimeout(() => {
+      void runSearch();
     }, 250);
     return () => clearTimeout(handle);
   }, [search, selected, open]);

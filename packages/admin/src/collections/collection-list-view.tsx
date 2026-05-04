@@ -79,9 +79,7 @@ const formatCellValue = (value: unknown): string => {
 
   if (Array.isArray(value)) {
     const preview = value
-      .map((item) =>
-        typeof item === "object" && item !== null ? formatCellValue(item) : formatCellValue(item),
-      )
+      .map((item) => formatCellValue(item))
       .filter(Boolean)
       .slice(0, 3)
       .join(", ");

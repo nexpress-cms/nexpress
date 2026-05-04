@@ -266,8 +266,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
       if (autosaveTimer.current !== null) {
         window.clearTimeout(autosaveTimer.current);
       }
-      autosaveTimer.current = window.setTimeout(() => {
-        void (async () => {
+      const runAutosave = async () => {
         autosaveTimer.current = null;
         // Skip when a manual Draft/Publish/Schedule save is in flight —
         // they'll write a real revision themselves.
@@ -295,7 +294,9 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             message: error instanceof Error ? error.message : "Autosave failed",
           });
         }
-        })();
+      };
+      autosaveTimer.current = window.setTimeout(() => {
+        void runAutosave();
       }, autosaveInterval);
     });
 
