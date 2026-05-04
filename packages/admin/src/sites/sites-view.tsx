@@ -250,7 +250,7 @@ export function SitesView() {
                 <div className="flex items-center justify-end gap-2">
                   <Link href={`/admin/sites/${encodeURIComponent(site.id)}/members`}>
                     <Button variant="outline" size="sm">
-                      <Users className="mr-1.5 h-3 w-3" />
+                      <Users className="size-3" />
                       Members
                     </Button>
                   </Link>
@@ -262,9 +262,9 @@ export function SitesView() {
                       onClick={() => void openDeleteDialog(site)}
                     >
                       {busyId === site.id ? (
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        <Loader2 className="size-3 animate-spin" />
                       ) : (
-                        <Trash2 className="mr-1.5 h-3 w-3" />
+                        <Trash2 className="size-3" />
                       )}
                       Delete
                     </Button>
@@ -335,7 +335,7 @@ function DeleteSiteDialog({
 
         {!state ? null : state.loading ? (
           <p className="text-sm text-muted-foreground">
-            <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+            <Loader2 className="size-3 animate-spin" />
             Loading usage…
           </p>
         ) : usage ? (
@@ -430,9 +430,9 @@ function DeleteSiteDialog({
             }
           >
             {state?.busy ? (
-              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              <Loader2 className="size-3 animate-spin" />
             ) : (
-              <Trash2 className="mr-1.5 h-3 w-3" />
+              <Trash2 className="size-3" />
             )}
             {cascadeRequired ? "Delete site + cascade" : "Delete site"}
           </Button>

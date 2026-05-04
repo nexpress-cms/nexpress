@@ -172,7 +172,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
         </Card>
       ) : (
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="border-b-0 pb-0">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               {memberships.length} membership
               {memberships.length === 1 ? "" : "s"}
@@ -201,9 +201,9 @@ export function MembershipsView({ siteId }: { siteId: string }) {
                     onClick={() => void handleRevoke(m.userId)}
                   >
                     {busyUserId === m.userId ? (
-                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-1.5 h-3 w-3" />
+                      <Trash2 className="size-3" />
                     )}
                     Revoke
                   </Button>
@@ -368,7 +368,7 @@ function GrantDialog({
                   <div className="rounded-xl border border-border/70 bg-background">
                     {searching ? (
                       <p className="px-3 py-2 text-xs text-muted-foreground">
-                        <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+                        <Loader2 className="size-3 animate-spin" />
                         Searching…
                       </p>
                     ) : results.length === 0 ? (

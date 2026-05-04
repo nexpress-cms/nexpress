@@ -235,7 +235,7 @@ export function NavMembershipPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-medium">In navigation</CardTitle>
+        <CardTitle>In navigation</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         {error ? (

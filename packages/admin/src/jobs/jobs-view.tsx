@@ -387,7 +387,7 @@ export function JobsView() {
                   disabled={refreshing}
                   onClick={() => void retryAllFailed()}
                 >
-                  <Play className="mr-1.5 h-3 w-3" />
+                  <Play className="size-3" />
                   Retry all failed
                 </Button>
               </div>
@@ -578,7 +578,7 @@ function SchedulesPanel({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="border-b-0 pb-0">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <CalendarClock className="h-4 w-4" /> Cron schedules
             </CardTitle>
@@ -594,7 +594,7 @@ function SchedulesPanel({
               </p>
             ) : schedules === null ? (
               <p className="px-5 pb-5 text-sm text-muted-foreground">
-                <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+                <Loader2 className="size-3 animate-spin" />
                 Loading…
               </p>
             ) : schedules.length === 0 ? (
@@ -633,7 +633,7 @@ function SchedulesPanel({
         </Card>
 
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="border-b-0 pb-0">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Code className="h-4 w-4" /> Registered handlers
             </CardTitle>
@@ -709,7 +709,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="border-b-0 pb-0">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Play className="h-4 w-4" /> Run a handler
         </CardTitle>
@@ -766,9 +766,9 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
         <div className="flex justify-end">
           <Button size="sm" disabled={busy || !type} onClick={() => void submit()}>
             {busy ? (
-              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              <Loader2 className="size-3 animate-spin" />
             ) : (
-              <Play className="mr-1.5 h-3 w-3" />
+              <Play className="size-3" />
             )}
             Enqueue
           </Button>
@@ -812,7 +812,7 @@ function JobList({
   }
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {jobs.length} job{jobs.length === 1 ? "" : "s"}
         </CardTitle>
@@ -848,9 +848,9 @@ function JobList({
                     onClick={() => onRetry(job.id)}
                   >
                     {busyJobId === job.id ? (
-                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3 animate-spin" />
                     ) : (
-                      <Play className="mr-1.5 h-3 w-3" />
+                      <Play className="size-3" />
                     )}
                     Retry
                   </Button>
@@ -863,9 +863,9 @@ function JobList({
                     onClick={() => onCancel(job.id)}
                   >
                     {busyJobId === job.id ? (
-                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3 animate-spin" />
                     ) : (
-                      <Ban className="mr-1.5 h-3 w-3" />
+                      <Ban className="size-3" />
                     )}
                     Cancel
                   </Button>

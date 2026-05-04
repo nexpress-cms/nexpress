@@ -94,7 +94,7 @@ function PluginWidgetCard({ widget }: { widget: DashboardPluginWidget }) {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {widget.label}
         </CardTitle>
