@@ -2,16 +2,26 @@ import { NxValidationError } from "../errors.js";
 import type { NxCollectionConfig } from "../config/types.js";
 
 /**
- * Stable URL-slug derivation. Lowercases, strips diacritics, replaces runs of
- * non-alphanumerics with a single hyphen, trims edge hyphens, and caps at 96
- * chars so it fits standard DB slug columns without needing a larger index.
+ * Stable URL-slug derivation. Lowercases, strips Latin diacritics
+ * (Cr\u00e8me \u2192 creme), keeps any Unicode letter or number including
+ * Korean/Japanese/Chinese/Cyrillic/Greek/etc., replaces runs of
+ * separators (anything that isn't a letter or number) with a
+ * single hyphen, trims edge hyphens, and caps at 96 chars so the
+ * result fits standard DB slug columns without needing a larger
+ * index.
+ *
+ * The two-step `NFKD \u2192 strip combining marks \u2192 NFC` dance does
+ * the diacritic strip without permanently decomposing scripts
+ * that NFKD breaks apart at the syllable level (most notably
+ * Hangul, which NFKD turns into jamo and NFC then reassembles).
  */
 export function slugify(value: string): string {
   return value
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 96);
 }
