@@ -2,8 +2,9 @@ import { defineConfig } from "tsup";
 
 /*
  * Two-entry build so client components (the member status
- * widget that uses `useRouter`/`useEffect`/`useState`, and
- * the dark-mode toggle) live in their own output file with a
+ * widget that uses `useRouter`/`useEffect`/`useState`,
+ * the dark-mode toggle, mobile nav, and newsletter form)
+ * live in their own output file with a
  * `"use client"` banner. Next.js recognizes the directive at
  * the package boundary and only loads them into the client
  * bundle. The server entry (`index.ts`, exporting the theme
@@ -29,6 +30,9 @@ export default defineConfig([
       "./components/member-status-widget.js",
       "./components/dark-mode-toggle.js",
       "./components/language-picker.js",
+      "./components/mobile-nav.js",
+      "./components/newsletter-form.js",
+      "./components/footer-columns.js",
     ],
   },
   {
@@ -39,6 +43,8 @@ export default defineConfig([
         "src/components/dark-mode-toggle.tsx",
       "components/language-picker":
         "src/components/language-picker.tsx",
+      "components/mobile-nav": "src/components/mobile-nav.tsx",
+      "components/newsletter-form": "src/components/newsletter-form.tsx",
     },
     format: ["esm"],
     dts: true,
@@ -54,5 +60,24 @@ export default defineConfig([
       "@nexpress/theme",
     ],
     banner: { js: '"use client";' },
+  },
+  {
+    entry: {
+      "components/footer-columns": "src/components/footer-columns.tsx",
+    },
+    format: ["esm"],
+    dts: true,
+    clean: false,
+    sourcemap: true,
+    external: [
+      "react",
+      "react-dom",
+      "next",
+      "next/link",
+      "next/navigation",
+      "@nexpress/blocks",
+      "@nexpress/theme",
+      "./newsletter-form.js",
+    ],
   },
 ]);
