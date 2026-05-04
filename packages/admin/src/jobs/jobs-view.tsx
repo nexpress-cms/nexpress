@@ -1034,7 +1034,7 @@ function LogLevelBadge({ level }: { level: JobLogEntry["level"] }) {
         ? "bg-amber-500/15 text-amber-900 dark:text-amber-100"
         : level === "debug"
           ? "bg-muted text-muted-foreground"
-          : "bg-blue-50 text-blue-900";
+          : "bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100";
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${tone}`}>
       {level}
@@ -1046,7 +1046,7 @@ function StateBadge({ state }: { state: JobSummary["state"] }) {
   const map: Record<JobSummary["state"], { label: string; cls: string; Icon: typeof Check }> = {
     created: {
       label: "Pending",
-      cls: "bg-blue-100 text-blue-900",
+      cls: "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100",
       Icon: Clock,
     },
     retry: {
@@ -1056,7 +1056,7 @@ function StateBadge({ state }: { state: JobSummary["state"] }) {
     },
     active: {
       label: "Running",
-      cls: "bg-indigo-100 text-indigo-900",
+      cls: "bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-100",
       Icon: Loader2,
     },
     completed: {

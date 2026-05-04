@@ -471,8 +471,8 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
                       : currentStatus === "draft"
                         ? "inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
                         : currentStatus === "scheduled"
-                          ? "inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800"
-                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                          ? "inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
+                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                   }
                 >
                   {currentStatus === "scheduled" && doc?.publishedAt

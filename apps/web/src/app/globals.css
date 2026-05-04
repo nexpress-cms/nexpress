@@ -617,6 +617,40 @@
   .nx-draft-banner {
     border-bottom: 1px solid #fcd34d;
   }
+
+  /* ------------------------------------------------------------------
+   * Dark-mode overrides for admin surfaces
+   *
+   * The site theme packages (`@nexpress/theme-default` etc.) flip their
+   * design tokens via `[data-theme="dark"]` because the site reads
+   * the `nx-color-scheme` cookie. The admin's ThemeToggle takes a
+   * different path: it adds a `.dark` class to <html> directly so
+   * Tailwind's `dark:` variant works inside the admin shell (see
+   * `@variant dark` at the top of this file).
+   *
+   * Without explicit `.dark` overrides for the `--nx-color-*` tokens,
+   * the `@theme` block below resolves card / muted / background to
+   * their LIGHT defaults even when the operator picks dark mode —
+   * Cards show with a near-white surface on a dark page. This block
+   * mirrors the OKLCH values the default theme uses for dark surfaces
+   * so the @theme re-mapping (--color-card -> var(--nx-color-card))
+   * cascades the right values into Tailwind utilities like `bg-card`.
+   *
+   * The selectors are scoped to `.dark` so the site's
+   * `[data-theme="dark"]` rules and this block never collide.
+   * --------------------------------------------------------------- */
+  .dark {
+    --nx-color-background: oklch(0.145 0.004 285.823);
+    --nx-color-foreground: oklch(0.985 0.001 106.423);
+    --nx-color-muted: oklch(0.215 0.006 286.033);
+    --nx-color-muted-foreground: oklch(0.711 0.008 285.879);
+    --nx-color-border: oklch(0.269 0.006 286.033);
+    --nx-color-input: oklch(0.269 0.006 286.033);
+    --nx-color-card: oklch(0.18 0.005 285.5);
+    --nx-color-card-foreground: oklch(0.985 0.001 106.423);
+    --nx-color-accent: oklch(0.269 0.006 286.033);
+    --nx-color-accent-foreground: oklch(0.985 0.001 106.423);
+  }
 }
 
 @theme {
