@@ -340,7 +340,12 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       pluginsLoaded = true;
     })();
 
-    return pluginsLoadingPromise;
+    try {
+      await pluginsLoadingPromise;
+    } catch (error) {
+      pluginsLoadingPromise = null;
+      throw error;
+    }
   }
 
   const ensureCoreServices = (): void => {
@@ -367,7 +372,12 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       producerStarted = true;
     })();
 
-    return producerStartingPromise;
+    try {
+      await producerStartingPromise;
+    } catch (error) {
+      producerStartingPromise = null;
+      throw error;
+    }
   }
 
   return {
