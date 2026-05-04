@@ -301,14 +301,14 @@ export function JobsView() {
         actions={
           <div className="flex items-center gap-2">
           {isStateTab(tab) ? (
-            <div className="inline-flex rounded-md border border-border/70 bg-background p-0.5 text-xs">
+            <div className="inline-flex h-8 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900">
               <button
                 type="button"
                 onClick={() => setWindowMode("all")}
-                className={`rounded px-2 py-1 transition ${
+                className={`rounded-md px-2.5 transition-colors ${
                   windowMode === "all"
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
+                    : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
                 }`}
               >
                 All time
@@ -316,10 +316,10 @@ export function JobsView() {
               <button
                 type="button"
                 onClick={() => setWindowMode("24h")}
-                className={`rounded px-2 py-1 transition ${
+                className={`rounded-md px-2.5 transition-colors ${
                   windowMode === "24h"
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
+                    : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
                 }`}
               >
                 Last 24 h
@@ -339,9 +339,9 @@ export function JobsView() {
             disabled={refreshing}
           >
             {refreshing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className="size-3.5" />
             )}
             Refresh
           </Button>

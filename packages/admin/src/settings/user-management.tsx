@@ -159,11 +159,11 @@ export function UserManagement() {
         <CardTitle>User management</CardTitle>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setEmailInviteOpen(true)}>
-            <MailPlus className="mr-2 h-4 w-4" />
+            <MailPlus className="size-3.5" />
             Invite user
           </Button>
           <Button variant="outline" onClick={() => setInviteOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="size-3.5" />
             Create with password
           </Button>
         </div>

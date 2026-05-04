@@ -227,7 +227,7 @@ function SettingsCard({
               />
             ))}
             <Button type="submit" disabled={saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
               Save settings
             </Button>
           </form>
@@ -348,7 +348,7 @@ function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }
         ) : null}
       </div>
       <Button type="button" variant="outline" onClick={() => void run()} disabled={running}>
-        {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+        {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
         Run
       </Button>
     </div>

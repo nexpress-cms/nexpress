@@ -441,7 +441,7 @@ function GrantDialog({
             disabled={submitting || !selected}
           >
             {submitting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : null}
             Grant
           </Button>

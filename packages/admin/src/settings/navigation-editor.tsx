@@ -754,11 +754,11 @@ export function NavigationEditor() {
               </Select>
             </div>
             <Button variant="outline" onClick={addItem}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="size-3.5" />
               Add item
             </Button>
             <Button onClick={() => void saveNavigation()} disabled={saving || loading}>
-              <Save className="mr-2 h-4 w-4" />
+              <Save className="size-3.5" />
               {saving ? "Saving..." : "Save"}
             </Button>
           </div>

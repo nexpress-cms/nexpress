@@ -353,19 +353,19 @@ export function ThemeEditor() {
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload className="mr-2 h-4 w-4" />
+                <Upload className="size-3.5" />
                 Import JSON
               </Button>
               <Button variant="outline" onClick={exportTheme}>
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="size-3.5" />
                 Export JSON
               </Button>
               <Button variant="outline" onClick={() => setTheme(defaultTheme)}>
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw className="size-3.5" />
                 Reset to Defaults
               </Button>
               <Button onClick={() => void saveTheme()} disabled={saving}>
-                <Save className="mr-2 h-4 w-4" />
+                <Save className="size-3.5" />
                 {saving ? "Saving..." : "Save Theme"}
               </Button>
             </div>

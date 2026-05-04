@@ -134,17 +134,17 @@ export function SitePicker() {
             >
               <div className="flex w-full items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-neutral-950 dark:text-neutral-50">
+                  <p className="truncate text-[13px] font-medium text-neutral-950 dark:text-neutral-50">
                     {site.name}
                   </p>
-                  <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="truncate font-mono text-[11.5px] text-neutral-500 dark:text-neutral-400">
                     {site.hostname ? site.hostname : "Default tenant"}
                   </p>
                 </div>
                 {active ? (
-                  <Check className="size-4 text-primary" />
+                  <Check className="size-3.5 text-[var(--nx-color-brand)]" />
                 ) : busyId === site.id ? (
-                  <Loader2 className="size-4 animate-spin text-neutral-400" />
+                  <Loader2 className="size-3.5 animate-spin text-neutral-400" />
                 ) : null}
               </div>
             </DropdownMenuItem>

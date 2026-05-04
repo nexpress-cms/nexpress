@@ -337,7 +337,7 @@ export function MediaLibrary() {
                 <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                   <DialogTrigger asChild>
                     <Button>
-                      <Upload className="mr-2 h-4 w-4" />
+                      <Upload className="size-3.5" />
                       Upload
                     </Button>
                   </DialogTrigger>
@@ -366,7 +366,7 @@ export function MediaLibrary() {
                 onClick={() => void handleBulkDelete()}
                 disabled={selectedItems.length === 0}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="size-3.5" />
                 Delete selected
               </Button>
             </div>

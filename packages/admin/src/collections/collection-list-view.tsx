@@ -304,9 +304,9 @@ export function CollectionListView({
                   disabled={bulkBusy !== null}
                 >
                   {bulkBusy === "publish" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    <CheckCircle2 className="size-3.5" />
                   )}
                   Publish
                 </Button>
@@ -318,9 +318,9 @@ export function CollectionListView({
                   disabled={bulkBusy !== null}
                 >
                   {bulkBusy === "unpublish" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    <CircleX className="mr-2 h-4 w-4" />
+                    <CircleX className="size-3.5" />
                   )}
                   Unpublish
                 </Button>
@@ -332,7 +332,7 @@ export function CollectionListView({
                   onClick={() => setConfirmDelete(true)}
                   disabled={bulkBusy !== null}
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="size-3.5" />
                   Delete
                 </Button>
                 <Button
@@ -513,9 +513,9 @@ export function CollectionListView({
               disabled={bulkBusy !== null}
             >
               {bulkBusy === "delete" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="size-3.5" />
               )}
               Delete {selectedIds.size}
             </Button>

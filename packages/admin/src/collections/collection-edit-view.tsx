@@ -539,7 +539,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             {previewSlug ? (
               <Button type="button" variant="outline" asChild>
                 <Link href={`/api/preview?path=/${collectionSlug}/${previewSlug}`} target="_blank">
-                  <Eye className="mr-2 h-4 w-4" />
+                  <Eye className="size-3.5" />
                   Preview
                 </Link>
               </Button>
@@ -555,7 +555,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
                 }}
                 disabled={isDeleting}
               >
-                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
                 Delete
               </Button>
             ) : null}
@@ -568,7 +568,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               }}
               disabled={isSaving}
             >
-              {savingAs === "draft" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+              {savingAs === "draft" ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />}
               Save as Draft
             </Button>
 
@@ -579,15 +579,15 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               disabled={isSaving}
             >
               {savingAs === "scheduled" || savingAs === "unschedule" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <CalendarClock className="mr-2 h-4 w-4" />
+                <CalendarClock className="size-3.5" />
               )}
               {isScheduled ? "Reschedule" : "Schedule"}
             </Button>
 
             <Button type="submit" disabled={isSaving}>
-              {savingAs === "published" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {savingAs === "published" ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
               {isScheduled ? "Publish now" : "Publish"}
             </Button>
           </div>

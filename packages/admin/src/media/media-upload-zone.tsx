@@ -131,7 +131,7 @@ export function MediaUploadZone({
             onChange={handleInputChange}
           />
           <Button onClick={() => inputRef.current?.click()}>
-            <Upload className="mr-2 h-4 w-4" />
+            <Upload className="size-3.5" />
             Choose files
           </Button>
         </div>

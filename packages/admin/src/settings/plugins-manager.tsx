@@ -244,7 +244,7 @@ export function PluginsManager() {
                   {plugin.hasAdmin ? (
                     <Button type="button" variant="outline" size="sm" asChild>
                       <Link href={`/admin/plugins/${plugin.id}`}>
-                        <ExternalLink className="mr-2 h-4 w-4" />
+                        <ExternalLink className="size-3.5" />
                         Open admin
                       </Link>
                     </Button>
@@ -255,7 +255,7 @@ export function PluginsManager() {
                     size="sm"
                     onClick={() => openConfigDialog(plugin)}
                   >
-                    <Settings2 className="mr-2 h-4 w-4" />
+                    <Settings2 className="size-3.5" />
                     Config
                   </Button>
                   <div className="flex items-center gap-2">
@@ -354,7 +354,7 @@ export function PluginsManager() {
               }}
               disabled={savingConfig}
             >
-              {savingConfig ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {savingConfig ? <Loader2 className="size-3.5 animate-spin" /> : null}
               Save config
             </Button>
           </DialogFooter>

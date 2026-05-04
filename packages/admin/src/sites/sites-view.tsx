@@ -574,7 +574,7 @@ function CreateSiteDialog({
             disabled={submitting || !id || !name}
           >
             {submitting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : null}
             Create site
           </Button>
