@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { NxNavItem } from "@nexpress/core";
 import {
   CornerDownRight,
@@ -49,6 +49,8 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";
+import { cn } from "../ui/utils.js";
 import {
   Select,
   SelectContent,
@@ -128,8 +130,6 @@ export function NavigationEditor() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pages, setPages] = useState<PageOption[]>([]);
-  const [pagesLoading, setPagesLoading] = useState(false);
-  const [pagesError, setPagesError] = useState<string | null>(null);
   const [collections, setCollections] = useState<CollectionOption[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
@@ -218,26 +218,58 @@ export function NavigationEditor() {
     }
   }
 
-  async function ensurePagesLoaded() {
-    if (pages.length > 0 || pagesLoading) return;
-    setPagesLoading(true);
-    setPagesError(null);
-    try {
-      // 100 is the API's hard cap on `limit` (`parsePositiveInt`
-      // throws Invalid query parameters above that).
-      const response = await fetch("/api/collections/pages?limit=100");
-      const payload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) {
-        setPagesError(getErrorMessage(payload, "Unable to load pages."));
-        return;
+  // Merge new page options into the title cache, deduped by id.
+  // The picker calls this with each search-result page, and
+  // resolveUnknownPageTitles calls it after backfilling pageIds
+  // referenced by existing nav items.
+  const addPagesToCache = useCallback((next: PageOption[]) => {
+    if (next.length === 0) return;
+    setPages((current) => {
+      const byId = new Map(current.map((p) => [p.id, p]));
+      for (const p of next) byId.set(p.id, p);
+      return [...byId.values()];
+    });
+  }, []);
+
+  // For any pageId referenced by a nav item but not yet in the
+  // cache (e.g. a page outside the picker's first search page on
+  // sites with >100 pages), fetch its title via the single-doc
+  // endpoint so the trigger label renders correctly. Soft-fail
+  // per id — a missing page just shows "(unknown page)".
+  const resolveUnknownPageTitles = useCallback(
+    async (navItems: EditableNavItem[]) => {
+      const referenced = new Set<string>();
+      for (const it of navItems) {
+        if (it.type === "page" && it.pageId) referenced.add(it.pageId);
       }
-      setPages(extractPages(payload));
-    } catch {
-      setPagesError("Unable to load pages.");
-    } finally {
-      setPagesLoading(false);
-    }
-  }
+      const unknown: string[] = [];
+      setPages((current) => {
+        const known = new Set(current.map((p) => p.id));
+        for (const id of referenced) if (!known.has(id)) unknown.push(id);
+        return current;
+      });
+      if (unknown.length === 0) return;
+      const resolved = await Promise.all(
+        unknown.map(async (id) => {
+          try {
+            const res = await fetch(
+              `/api/collections/pages/${encodeURIComponent(id)}`,
+            );
+            if (!res.ok) return null;
+            const payload = (await res.json().catch(() => null)) as unknown;
+            if (!isRecord(payload)) return null;
+            const title = typeof payload.title === "string" ? payload.title : "";
+            const slug = typeof payload.slug === "string" ? payload.slug : "";
+            return { id, title, slug } satisfies PageOption;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      addPagesToCache(resolved.filter((p): p is PageOption => p !== null));
+    },
+    [addPagesToCache],
+  );
 
   async function ensureCollectionsLoaded() {
     if (collections.length > 0 || collectionsLoading) return;
@@ -259,8 +291,8 @@ export function NavigationEditor() {
   }
 
   useEffect(() => {
-    if (items.some((item) => item.type === "page") && pages.length === 0) {
-      void ensurePagesLoaded();
+    if (items.some((item) => item.type === "page" && item.pageId)) {
+      void resolveUnknownPageTitles(items);
     }
     if (items.some((item) => item.type === "collection") && collections.length === 0) {
       void ensureCollectionsLoaded();
@@ -477,7 +509,6 @@ export function NavigationEditor() {
   }
 
   function changeType(id: string, nextType: EditableNavItem["type"]) {
-    if (nextType === "page") void ensurePagesLoaded();
     if (nextType === "collection") void ensureCollectionsLoaded();
     setItems((current) =>
       current.map((item) => {
@@ -710,12 +741,6 @@ export function NavigationEditor() {
             </div>
           ) : null}
 
-          {pagesError ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              {pagesError}
-            </div>
-          ) : null}
-
           {collectionsError ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {collectionsError}
@@ -768,7 +793,7 @@ export function NavigationEditor() {
                         items={items}
                         topLevelOptions={topLevelOptions}
                         pages={pages}
-                        pagesLoading={pagesLoading}
+                        onCachePages={addPagesToCache}
                         collections={collections}
                         collectionsLoading={collectionsLoading}
                         // Visual cue for the live drag preview. The
@@ -1024,7 +1049,7 @@ interface SortableRowProps {
   items: EditableNavItem[];
   topLevelOptions: { id: string; label: string }[];
   pages: PageOption[];
-  pagesLoading: boolean;
+  onCachePages: (next: PageOption[]) => void;
   collections: CollectionOption[];
   collectionsLoading: boolean;
   previewIntent: RowPreviewIntent;
@@ -1040,7 +1065,7 @@ function SortableRow({
   items,
   topLevelOptions,
   pages,
-  pagesLoading,
+  onCachePages,
   collections,
   collectionsLoading,
   previewIntent,
@@ -1113,25 +1138,13 @@ function SortableRow({
         {item.type === "page" ? (
           <>
             <Label htmlFor={`nav-page-${item.id}`}>Page</Label>
-            <Select
-              value={item.pageId ?? ""}
-              onValueChange={(value) => onUpdate(item.id, { pageId: value })}
-            >
-              <SelectTrigger id={`nav-page-${item.id}`}>
-                <SelectValue placeholder={pagesLoading ? "Loading…" : "Select a page"} />
-              </SelectTrigger>
-              <SelectContent>
-                {pages.length === 0 && !pagesLoading ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">No pages yet.</div>
-                ) : (
-                  pages.map((page) => (
-                    <SelectItem key={page.id} value={page.id}>
-                      {page.title || page.slug || page.id}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+            <PagePicker
+              triggerId={`nav-page-${item.id}`}
+              value={item.pageId}
+              cache={pages}
+              onChange={(id) => onUpdate(item.id, { pageId: id })}
+              onCachePages={onCachePages}
+            />
           </>
         ) : item.type === "collection" ? (
           <>
@@ -1322,6 +1335,150 @@ function toEditableNavItem(
     url: typeof item.url === "string" ? item.url : "/",
     parentId,
   };
+}
+
+interface PagePickerProps {
+  triggerId: string;
+  value: string | undefined;
+  cache: PageOption[];
+  onChange: (id: string) => void;
+  onCachePages: (next: PageOption[]) => void;
+}
+
+// Search-as-you-type combobox for nav-item page references.
+// Replaces the original full-list <Select> which silently dropped
+// pages past the API's 100-row cap. Fetches /api/collections/pages
+// with `?search=<term>&limit=20` on open and on debounced query
+// change. Selected pages get added to the parent's title cache so
+// subsequent renders of unrelated pickers can label them too.
+function PagePicker({
+  triggerId,
+  value,
+  cache,
+  onChange,
+  onCachePages,
+}: PagePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [results, setResults] = useState<PageOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Debounce keystrokes — typing fast shouldn't fire one fetch
+  // per character. 200ms is the same shape the editor uses
+  // elsewhere (see #429 page picker initial load).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 200);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Reset query when the popover closes so reopening shows the
+  // default (most-recent) results, not the last search state.
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setDebouncedQuery("");
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({ limit: "20", sort: "title" });
+    const trimmed = debouncedQuery.trim();
+    if (trimmed) params.set("search", trimmed);
+    fetch(`/api/collections/pages?${params.toString()}`)
+      .then(async (res) => {
+        const payload = (await res.json().catch(() => null)) as unknown;
+        if (cancelled) return;
+        if (!res.ok) {
+          setError(getErrorMessage(payload, "Unable to load pages."));
+          setResults([]);
+          return;
+        }
+        const next = extractPages(payload);
+        setResults(next);
+        onCachePages(next);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError("Unable to load pages.");
+        setResults([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, debouncedQuery, onCachePages]);
+
+  const selected = cache.find((p) => p.id === value);
+  const triggerLabel = selected
+    ? selected.title || selected.slug || selected.id
+    : value
+      ? "(unknown page)"
+      : "Select a page";
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={triggerId}
+          type="button"
+          variant="outline"
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">{triggerLabel}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-0" align="start">
+        <div className="border-b border-border/60 p-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search pages…"
+            autoFocus
+            className="h-8"
+          />
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {error ? (
+            <div className="px-2 py-3 text-xs text-destructive">{error}</div>
+          ) : loading && results.length === 0 ? (
+            <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>
+          ) : results.length === 0 ? (
+            <div className="px-2 py-3 text-xs text-muted-foreground">
+              {debouncedQuery.trim() ? "No matches." : "No pages yet."}
+            </div>
+          ) : (
+            results.map((page) => (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => {
+                  onChange(page.id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "block w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
+                  page.id === value ? "bg-accent" : "",
+                )}
+              >
+                <div className="truncate">{page.title || page.slug || page.id}</div>
+                {page.slug ? (
+                  <div className="truncate text-xs text-muted-foreground">/{page.slug}</div>
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function extractPages(payload: unknown): PageOption[] {
