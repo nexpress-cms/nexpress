@@ -129,7 +129,12 @@ export function NavigationEditor() {
     setPagesLoading(true);
     setPagesError(null);
     try {
-      const response = await fetch("/api/collections/pages?limit=200");
+      // 100 is the API's hard cap on `limit` (`parsePositiveInt`
+      // throws Invalid query parameters above that). Sites with
+      // more than 100 pages won't see them all in the picker —
+      // search-as-you-type is the proper fix and lives in the
+      // follow-up backlog.
+      const response = await fetch("/api/collections/pages?limit=100");
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
         setPagesError(getErrorMessage(payload, "Unable to load pages."));
