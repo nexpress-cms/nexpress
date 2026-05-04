@@ -303,7 +303,11 @@ export function NavigationEditor() {
       await loadLocations();
       setNewLocationInput("");
       setNewLocationDialogOpen(false);
-      setLocation(slug);
+      // Route through the same path the dropdown uses so unsaved
+      // edits in the current location surface the discard dialog
+      // instead of getting silently overwritten by the empty
+      // newly-created nav.
+      requestLocationChange(slug);
     } catch {
       setError("Unable to create location.");
     } finally {
