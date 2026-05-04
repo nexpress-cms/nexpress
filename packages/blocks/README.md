@@ -11,15 +11,21 @@ on the public site.
 pnpm add @nexpress/blocks
 ```
 
-## Client / server boundary
+## What's in this package
 
 ```ts
-// Server-safe — registry + renderer
-import { renderBlocks, getDefaultBlocks } from "@nexpress/blocks";
-
-// Client-only — drag-and-drop editor + palette
-import { BlockPageEditor, BlockPalette } from "@nexpress/blocks/client";
+// Server-safe — registry + renderer + types + block definitions
+import {
+  renderBlocks,
+  getDefaultBlocks,
+  createBlockRegistry,
+} from "@nexpress/blocks";
 ```
+
+The page-builder UI itself (drag-and-drop editor + palette) lives
+inside `@nexpress/admin` so it can use the admin's Radix + Tailwind
+primitives directly. There is no `@nexpress/blocks/client`
+sub-export.
 
 ## Render blocks server-side
 
@@ -43,19 +49,10 @@ grid, FAQ, pricing, CTA, rich text, contact form, image gallery.
 
 ## Edit in the admin
 
-`BlockPageEditor` is the drag-and-drop UI. Build a registry from the
-defaults plus any custom blocks and pass it in:
-
-```tsx
-"use client";
-import { BlockPageEditor } from "@nexpress/blocks/client";
-import { createBlockRegistry, getDefaultBlocks } from "@nexpress/blocks";
-
-const registry = createBlockRegistry();
-for (const block of getDefaultBlocks()) registry.register(block);
-
-<BlockPageEditor registry={registry} blocks={value} onChange={setValue} />
-```
+The drag-and-drop editor is part of `@nexpress/admin`. A `richText`
+or `blocks` field on a collection automatically renders it in the
+admin form for that collection — sites don't import the editor
+directly.
 
 ## Authoring a custom block
 

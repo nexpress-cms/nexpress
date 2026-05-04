@@ -42,7 +42,7 @@ src/
 - **Views** (collection-_, media-_, settings-_, dashboard-_, layout/\*) ARE marked `"use client"` — they use hooks, state, and browser APIs.
 - **Heavy editors** are lazy-loaded in `field-renderer.tsx`:
   - `React.lazy(() => import("@nexpress/editor/client"))` for rich-text
-  - `React.lazy(() => import("@nexpress/blocks/client"))` for block editor
+  - `React.lazy(() => import("../blocks/block-page-editor.js"))` for block editor (lives in this package; see `src/blocks/`)
   - This prevents bundling Lexical + dnd-kit unless the field type is actually used.
 - The `client.ts` entry is built by tsup with `"use client"` banner. Consumers import `@nexpress/admin/client`.
 
@@ -57,4 +57,4 @@ src/
 
 - **Never import runtime exports from `@nexpress/core`** — only type imports. This package runs in the browser.
 - **Never mark UI primitives with `"use client"`** — keep them boundary-neutral.
-- **Never import `@nexpress/editor/client` or `@nexpress/blocks/client` statically** — always use `React.lazy` dynamic imports to avoid client bundle bloat.
+- **Never import `@nexpress/editor/client` statically** — always use `React.lazy` dynamic imports to avoid client bundle bloat. The block page editor (`src/blocks/`) follows the same rule via `React.lazy(() => import("../blocks/block-page-editor.js"))` in field-renderer.
