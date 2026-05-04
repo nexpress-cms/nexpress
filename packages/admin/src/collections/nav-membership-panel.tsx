@@ -127,6 +127,7 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
         return;
       }
       const existingItems = extractItems(payload);
+      const expectedUpdatedAt = extractUpdatedAt(payload);
       const locationLabel =
         locations.find((l) => l.value === location)?.label ?? location;
       const nextItems: NavItem[] = [
@@ -138,11 +139,11 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
           pageId,
         },
       ];
-      await saveLocation(location, nextItems);
+      await saveLocation(location, nextItems, expectedUpdatedAt);
       await loadMemberships();
       setSuccess(`Added to ${locationLabel}.`);
-    } catch {
-      setError("Unable to add to navigation.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add to navigation.");
     } finally {
       setBusyLocation(null);
     }
@@ -162,26 +163,43 @@ export function NavMembershipPanel({ pageId, pageTitle }: NavMembershipPanelProp
         return;
       }
       const existingItems = extractItems(payload);
+      const expectedUpdatedAt = extractUpdatedAt(payload);
       const nextItems = removeItemById(existingItems, itemId);
       const locationLabel =
         locations.find((l) => l.value === location)?.label ?? location;
-      await saveLocation(location, nextItems);
+      await saveLocation(location, nextItems, expectedUpdatedAt);
       await loadMemberships();
       setSuccess(`Removed from ${locationLabel}.`);
-    } catch {
-      setError("Unable to remove from navigation.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove from navigation.");
     } finally {
       setBusyLocation(null);
     }
   }
 
-  async function saveLocation(location: string, items: NavItem[]) {
+  async function saveLocation(
+    location: string,
+    items: NavItem[],
+    expectedUpdatedAt: string | null,
+  ) {
     const response = await nxFetch("/api/navigation", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ location, items }),
+      body: JSON.stringify({
+        location,
+        items,
+        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+      }),
     });
     if (!response.ok) {
+      if (response.status === 409) {
+        // Surface the conflict explicitly so the operator knows to
+        // refresh and retry rather than seeing a generic
+        // "Unable to save" message.
+        throw new Error(
+          "Someone else changed this navigation while you were editing. Try again — the panel will fetch the latest version.",
+        );
+      }
       const payload = (await response.json().catch(() => null)) as unknown;
       throw new Error(extractErrorMessage(payload, "Unable to save navigation."));
     }
@@ -314,6 +332,18 @@ function extractItems(payload: unknown): NavItem[] {
   if (!isRecord(payload)) return [];
   if (Array.isArray(payload.items)) return payload.items.filter(isNavItem);
   return [];
+}
+
+// Pulls the row's `updatedAt` ISO string from a nav GET response.
+// Returns null when the row doesn't exist yet (the API answers
+// `{ location, items: [] }` with no `updatedAt`) — callers treat
+// null as "skip the optimistic-concurrency check on the next PUT".
+function extractUpdatedAt(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const v = payload.updatedAt;
+  if (typeof v === "string") return v;
+  if (v instanceof Date) return v.toISOString();
+  return null;
 }
 
 function isMembership(value: unknown): value is Membership {

@@ -125,6 +125,12 @@ export function NavigationEditor() {
   // EditableNavItem shape is small and flat, and the operator's edits
   // hit setItems with new object identities anyway.
   const [savedSnapshot, setSavedSnapshot] = useState<string>("[]");
+  // Optimistic-concurrency token. Captured from each GET (or save
+  // response) and echoed back on the next PUT so the server can
+  // 409 if another writer landed in between. `null` for fresh
+  // locations the operator just created (no row yet) — those skip
+  // the check on first save.
+  const [savedUpdatedAt, setSavedUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -211,6 +217,7 @@ export function NavigationEditor() {
       const next = normalizeNavItems(payload);
       setItems(next);
       setSavedSnapshot(JSON.stringify(next));
+      setSavedUpdatedAt(extractUpdatedAt(payload));
     } catch {
       setError("Unable to load navigation.");
     } finally {
@@ -312,17 +319,28 @@ export function NavigationEditor() {
         body: JSON.stringify({
           location,
           items: buildNavTree(items),
+          // Echo back the token from the last load (or the last
+          // successful save). `null` skips the check — happens on
+          // the very first save of a fresh location.
+          ...(savedUpdatedAt ? { expectedUpdatedAt: savedUpdatedAt } : {}),
         }),
       });
 
       const payload = (await response.json().catch(() => null)) as unknown;
 
       if (!response.ok) {
-        setError(getErrorMessage(payload, "Unable to save navigation."));
+        if (response.status === 409) {
+          setError(
+            "Someone else changed this navigation while you were editing. Reload to see the latest version, then re-apply your changes.",
+          );
+        } else {
+          setError(getErrorMessage(payload, "Unable to save navigation."));
+        }
         return;
       }
 
       setSavedSnapshot(JSON.stringify(items));
+      setSavedUpdatedAt(extractUpdatedAt(payload));
       setMessage("Navigation saved.");
     } catch {
       setError("Unable to save navigation.");
@@ -1512,6 +1530,19 @@ function PagePicker({
       </PopoverContent>
     </Popover>
   );
+}
+
+// Pull the row's `updatedAt` ISO string from a nav GET / PUT
+// response. Returns null for fresh-location responses (the API
+// returns `{ location, items: [] }` with no `updatedAt` when no
+// row exists yet), or when the field isn't a string. The save
+// path treats null as "skip the optimistic-concurrency check".
+function extractUpdatedAt(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const v = payload.updatedAt;
+  if (typeof v === "string") return v;
+  if (v instanceof Date) return v.toISOString();
+  return null;
 }
 
 function extractPages(payload: unknown): PageOption[] {

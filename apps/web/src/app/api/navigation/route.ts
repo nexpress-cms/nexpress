@@ -82,6 +82,15 @@ export async function PUT(request: NextRequest) {
     const items = body.items;
     const location =
       typeof body.location === "string" && body.location.trim() ? body.location.trim() : "main";
+    // Optimistic concurrency token. Clients that loaded the row
+    // pass back the `updatedAt` they got from GET; if it doesn't
+    // match what's currently in the DB, another writer has landed
+    // a save in between and we 409 instead of silently clobbering.
+    // Omitting the token preserves the legacy last-write-wins
+    // semantics for back-compat (server-side scripts, older
+    // admin builds).
+    const expectedUpdatedAt =
+      typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : null;
 
     if (!Array.isArray(items) || !items.every(isNavItem)) {
       throw new NxValidationError("Invalid input", [
@@ -92,6 +101,22 @@ export async function PUT(request: NextRequest) {
     const db = getDb();
     const now = new Date();
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+
+    if (expectedUpdatedAt !== null) {
+      const [existing] = await db
+        .select({ updatedAt: nxNavigation.updatedAt })
+        .from(nxNavigation)
+        .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)))
+        .limit(1);
+      // Row missing: legitimate first save — let the upsert below
+      // create it. Row present but stale token: another writer
+      // landed in between, surface the conflict.
+      if (existing && existing.updatedAt.toISOString() !== expectedUpdatedAt) {
+        throw new NxConflictError(
+          "Navigation was changed by another writer. Reload to see the latest version.",
+        );
+      }
+    }
 
     const [result] = await db
       .insert(nxNavigation)
