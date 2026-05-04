@@ -59,40 +59,47 @@ export async function getNavigation(
 }
 
 /**
- * Replaces `url` on `type: "page"` nav items with the URL derived
- * from the linked page's current slug. Editors store `pageId` so
- * the link survives a slug rename — themes still render
- * `<a href={item.url}>` and need the resolved URL handed to them.
+ * Replaces `url` on dynamic nav items with values derived from
+ * the underlying record:
  *
- * Pages whose slug or status disqualifies them (deleted, drafted,
- * trashed) drop their `url` to `#` so the renderer leaves the link
- * in the DOM but inert. Drop-instead-of-include would change the
- * cached output every time a page's status flipped, which is
- * cache-invalidation-unfriendly.
+ *   - `type: "page"` + `pageId` → the linked page's current slug,
+ *     so renaming the slug doesn't break the menu.
+ *   - `type: "collection"` + `collection` → the conventional
+ *     collection-list URL (`/{collection-slug}`). The convention
+ *     is editor-side only; themes that route a collection
+ *     elsewhere (e.g. /blog for posts) should keep using
+ *     `type: "link"` with an explicit URL until a per-collection
+ *     route helper lands.
+ *
+ * Themes still render `<a href={item.url}>` and need the resolved
+ * URL handed to them. Items whose underlying record disappeared
+ * (page unpublished, collection unregistered) fall through to `#`
+ * so the rendered output stays stable across status flips —
+ * dropping the item would invalidate the cache shape every time.
  */
 async function resolveNavItemUrls(items: NxNavItem[]): Promise<NxNavItem[]> {
   const pageIds = collectPageIds(items);
-  if (pageIds.length === 0) return items;
-
-  // One DB hit per linked page. The pipeline's `where` only
-  // supports equality, so we can't `in: [...]` in a single round
-  // trip. Acceptable because nav menus are bounded by the
-  // editor's UI (typically <10 page links) and the result is
-  // cached by `getCachedNavigation` — this loop only runs on
-  // cache miss.
   const pageById = new Map<string, Record<string, unknown>>();
-  await Promise.all(
-    pageIds.map(async (id) => {
-      const result = await findDocuments("pages", {
-        where: { id, status: "published" },
-        limit: 1,
-      });
-      const page = result.docs[0];
-      if (page) pageById.set(id, page);
-    }),
-  );
+  if (pageIds.length > 0) {
+    // One DB hit per linked page. The pipeline's `where` only
+    // supports equality, so we can't `in: [...]` in a single round
+    // trip. Acceptable because nav menus are bounded by the
+    // editor's UI (typically <10 page links) and the result is
+    // cached by `getCachedNavigation` — this loop only runs on
+    // cache miss.
+    await Promise.all(
+      pageIds.map(async (id) => {
+        const result = await findDocuments("pages", {
+          where: { id, status: "published" },
+          limit: 1,
+        });
+        const page = result.docs[0];
+        if (page) pageById.set(id, page);
+      }),
+    );
+  }
 
-  return items.map((item) => mapPageItem(item, pageById));
+  return items.map((item) => mapNavItem(item, pageById));
 }
 
 function collectPageIds(items: NxNavItem[]): string[] {
@@ -104,27 +111,33 @@ function collectPageIds(items: NxNavItem[]): string[] {
   return ids;
 }
 
-function mapPageItem(
+function mapNavItem(
   item: NxNavItem,
   pageById: Map<string, Record<string, unknown>>,
 ): NxNavItem {
   const children = item.children
-    ? item.children.map((child) => mapPageItem(child, pageById))
+    ? item.children.map((child) => mapNavItem(child, pageById))
     : undefined;
+  const withChildren = children ? { ...item, children } : item;
 
-  if (item.type !== "page" || !item.pageId) {
-    return children ? { ...item, children } : item;
+  if (item.type === "page" && item.pageId) {
+    const page = pageById.get(item.pageId);
+    const slug = page && typeof page.slug === "string" ? page.slug : null;
+    // The reference pages collection treats slug "/" as the home
+    // page; everything else maps to "/{slug}". Mirror the
+    // `seo.urlPath` rule on the collection so themes don't end up
+    // with a `//` or empty href.
+    const url = slug === "/" ? "/" : slug ? `/${slug.replace(/^\/+/, "")}` : "#";
+    return { ...withChildren, url };
   }
 
-  const page = pageById.get(item.pageId);
-  const slug = page && typeof page.slug === "string" ? page.slug : null;
-  // The reference pages collection treats slug "/" as the home
-  // page; everything else maps to "/{slug}". Mirror the
-  // `seo.urlPath` rule on the collection so themes don't end up
-  // with a `//` or empty href.
-  const url = slug === "/" ? "/" : slug ? `/${slug.replace(/^\/+/, "")}` : "#";
+  if (item.type === "collection" && item.collection) {
+    const slug = item.collection.replace(/^\/+/, "");
+    const url = slug ? `/${slug}` : "#";
+    return { ...withChildren, url };
+  }
 
-  return { ...item, url, children };
+  return withChildren;
 }
 
 export async function getPageBySlug(

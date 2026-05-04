@@ -1,4 +1,20 @@
-import { defineCollection, isEditorOrAbove, isOwnerOrAdmin } from "@nexpress/core";
+import {
+  defineCollection,
+  getCurrentSiteId,
+  isEditorOrAbove,
+  isOwnerOrAdmin,
+  NX_DEFAULT_SITE_ID,
+} from "@nexpress/core";
+import { navCacheTag } from "@nexpress/next";
+import { revalidateTag } from "next/cache";
+
+// Nav locations the editor exposes. Kept in sync with the `Settings →
+// Navigation` switcher in `packages/admin/src/settings/navigation-editor.tsx`.
+// When a page's slug changes, the nav cache for any of these locations
+// could now be pointing at the OLD URL — invalidate them all rather
+// than tracking which location actually references this page (the JSONB
+// scan would cost more than the cache rebuild).
+const NAV_LOCATIONS = ["header", "footer", "main"] as const;
 
 export const pagesCollection = defineCollection({
   slug: "pages",
@@ -11,6 +27,24 @@ export const pagesCollection = defineCollection({
     description: "Static pages — composed from blocks.",
   },
   versions: { drafts: true, max: 20 },
+  hooks: {
+    // When a page slug changes, the cached navigation menus may
+    // still hold the old `/{slug}` URL (resolved by `getNavigation`
+    // from `pageId`). Bust every nav location's cache for the
+    // current site so the next render picks up the new slug.
+    afterUpdate: [
+      async ({ data, originalDoc }) => {
+        const previousSlug = typeof originalDoc?.slug === "string" ? originalDoc.slug : null;
+        const nextSlug = typeof data.slug === "string" ? data.slug : null;
+        if (previousSlug === nextSlug) return data;
+        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        for (const location of NAV_LOCATIONS) {
+          revalidateTag(navCacheTag(siteId, location), "default");
+        }
+        return data;
+      },
+    ],
+  },
   access: {
     read: () => true,
     create: isEditorOrAbove,

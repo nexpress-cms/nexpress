@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { NxNavItem } from "@nexpress/core";
 import {
   ArrowDown,
@@ -19,6 +19,14 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import {
@@ -29,14 +37,19 @@ import {
   SelectValue,
 } from "../ui/select.js";
 
-type EditableNavItem = Pick<NxNavItem, "id" | "label" | "url" | "pageId"> & {
-  type: Extract<NxNavItem["type"], "link" | "page">;
+type EditableNavItem = Pick<NxNavItem, "id" | "label" | "url" | "pageId" | "collection"> & {
+  type: Extract<NxNavItem["type"], "link" | "page" | "collection">;
 };
 
 interface PageOption {
   id: string;
   title: string;
   slug: string;
+}
+
+interface CollectionOption {
+  slug: string;
+  label: string;
 }
 
 const NAV_LOCATIONS = [
@@ -50,6 +63,12 @@ type NavLocation = (typeof NAV_LOCATIONS)[number]["value"];
 export function NavigationEditor() {
   const [location, setLocation] = useState<NavLocation>("header");
   const [items, setItems] = useState<EditableNavItem[]>([]);
+  // Snapshot of items as they were at last load/save. Used to compute
+  // `dirty` so the location switcher can prompt before discarding
+  // unsaved edits. Comparing serialized JSON is good enough — the
+  // EditableNavItem shape is small and flat, and the operator's edits
+  // hit setItems with new object identities anyway.
+  const [savedSnapshot, setSavedSnapshot] = useState<string>("[]");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +79,17 @@ export function NavigationEditor() {
   const [pages, setPages] = useState<PageOption[]>([]);
   const [pagesLoading, setPagesLoading] = useState(false);
   const [pagesError, setPagesError] = useState<string | null>(null);
+  // Collection list — same lazy-load contract as pages, fetched
+  // when the operator first picks "collection" type or loads a
+  // nav with collection-typed items.
+  const [collections, setCollections] = useState<CollectionOption[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [collectionsError, setCollectionsError] = useState<string | null>(null);
+  // Pending location switch waiting for the unsaved-changes confirm.
+  // Null when the dialog is closed.
+  const [pendingLocation, setPendingLocation] = useState<NavLocation | null>(null);
+
+  const dirty = useMemo(() => JSON.stringify(items) !== savedSnapshot, [items, savedSnapshot]);
 
   // Re-fetch nav whenever the operator switches location. Each
   // location is its own (siteId, location) row in nx_navigation.
@@ -81,7 +111,9 @@ export function NavigationEditor() {
         return;
       }
 
-      setItems(normalizeNavItems(payload));
+      const next = normalizeNavItems(payload);
+      setItems(next);
+      setSavedSnapshot(JSON.stringify(next));
     } catch {
       setError("Unable to load navigation.");
     } finally {
@@ -111,11 +143,34 @@ export function NavigationEditor() {
     }
   }
 
-  // Hydrate pages list whenever a loaded nav contains a page item
-  // and we don't already have the list.
+  async function ensureCollectionsLoaded() {
+    if (collections.length > 0 || collectionsLoading) return;
+    setCollectionsLoading(true);
+    setCollectionsError(null);
+    try {
+      const response = await fetch("/api/meta/collections");
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) {
+        setCollectionsError(getErrorMessage(payload, "Unable to load collections."));
+        return;
+      }
+      setCollections(extractCollections(payload));
+    } catch {
+      setCollectionsError("Unable to load collections.");
+    } finally {
+      setCollectionsLoading(false);
+    }
+  }
+
+  // Hydrate page / collection lists when the loaded nav already
+  // contains items of that type — without this, the typed select
+  // shows a placeholder instead of the saved value's label.
   useEffect(() => {
     if (items.some((item) => item.type === "page") && pages.length === 0) {
       void ensurePagesLoaded();
+    }
+    if (items.some((item) => item.type === "collection") && collections.length === 0) {
+      void ensureCollectionsLoaded();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
@@ -142,6 +197,7 @@ export function NavigationEditor() {
         return;
       }
 
+      setSavedSnapshot(JSON.stringify(items));
       setMessage("Navigation saved.");
     } catch {
       setError("Unable to save navigation.");
@@ -150,10 +206,21 @@ export function NavigationEditor() {
     }
   }
 
-  function updateItem(
-    id: string,
-    patch: Partial<EditableNavItem>,
-  ) {
+  function requestLocationChange(next: NavLocation) {
+    if (next === location) return;
+    if (dirty) {
+      setPendingLocation(next);
+      return;
+    }
+    setLocation(next);
+  }
+
+  function confirmDiscard() {
+    if (pendingLocation) setLocation(pendingLocation);
+    setPendingLocation(null);
+  }
+
+  function updateItem(id: string, patch: Partial<EditableNavItem>) {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
@@ -192,194 +259,257 @@ export function NavigationEditor() {
 
   function changeType(id: string, nextType: EditableNavItem["type"]) {
     if (nextType === "page") void ensurePagesLoaded();
+    if (nextType === "collection") void ensureCollectionsLoaded();
     setItems((current) =>
       current.map((item) => {
         if (item.id !== id) return item;
-        // Drop the field that doesn't apply to the new type so the
+        // Drop the fields that don't apply to the new type so the
         // saved payload stays consistent. Keep label intact.
+        const base = { id: item.id, label: item.label };
         if (nextType === "page") {
-          return { ...item, type: nextType, url: undefined, pageId: item.pageId };
+          return { ...base, type: nextType, pageId: item.pageId };
         }
-        return { ...item, type: nextType, pageId: undefined, url: item.url ?? "/" };
+        if (nextType === "collection") {
+          return { ...base, type: nextType, collection: item.collection };
+        }
+        return { ...base, type: nextType, url: item.url ?? "/" };
       }),
     );
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
-      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <CardTitle>Navigation structure</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Fine-tune labels, destinations, and sequence per location.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Location
-            </Label>
-            <Select
-              value={location}
-              onValueChange={(value) => setLocation(value as NavLocation)}
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {NAV_LOCATIONS.map((loc) => (
-                  <SelectItem key={loc.value} value={loc.value}>
-                    {loc.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <>
+      <Card className="border-border/70 bg-card/80 shadow-sm">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>Navigation structure</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Fine-tune labels, destinations, and sequence per location.
+            </p>
           </div>
-          <Button variant="outline" onClick={addItem}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add item
-          </Button>
-          <Button onClick={() => void saveNavigation()} disabled={saving || loading}>
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? "Saving..." : "Save"}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        ) : null}
-
-        {pagesError ? (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {pagesError}
-          </div>
-        ) : null}
-
-        {message ? (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
-            {message}
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={`navigation-skeleton-${index}`}
-                className="h-28 animate-pulse rounded-2xl border border-border/70 bg-muted/40"
-              />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
-            No navigation items in this location yet. Add your first link to get started.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {items.map((item, index) => (
-              <div
-                key={item.id}
-                className="grid gap-4 rounded-2xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_auto] lg:items-end"
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Location
+              </Label>
+              <Select
+                value={location}
+                onValueChange={(value) => requestLocationChange(value as NavLocation)}
               >
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <GripVertical className="h-4 w-4" />
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => moveItem(index, -1)}
-                      disabled={index === 0}
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NAV_LOCATIONS.map((loc) => (
+                    <SelectItem key={loc.value} value={loc.value}>
+                      {loc.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="outline" onClick={addItem}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add item
+            </Button>
+            <Button onClick={() => void saveNavigation()} disabled={saving || loading}>
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error ? (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+
+          {pagesError ? (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {pagesError}
+            </div>
+          ) : null}
+
+          {collectionsError ? (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {collectionsError}
+            </div>
+          ) : null}
+
+          {message ? (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+              {message}
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={`navigation-skeleton-${index}`}
+                  className="h-28 animate-pulse rounded-2xl border border-border/70 bg-muted/40"
+                />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
+              No navigation items in this location yet. Add your first link to get started.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {items.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="grid gap-4 rounded-2xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_auto] lg:items-end"
+                >
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <GripVertical className="h-4 w-4" />
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => moveItem(index, -1)}
+                        disabled={index === 0}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => moveItem(index, 1)}
+                        disabled={index === items.length - 1}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`nav-label-${item.id}`}>Label</Label>
+                    <Input
+                      id={`nav-label-${item.id}`}
+                      value={item.label}
+                      onChange={(event) => updateItem(item.id, { label: event.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {item.type === "page" ? (
+                      <>
+                        <Label htmlFor={`nav-page-${item.id}`}>Page</Label>
+                        <Select
+                          value={item.pageId ?? ""}
+                          onValueChange={(value) => updateItem(item.id, { pageId: value })}
+                        >
+                          <SelectTrigger id={`nav-page-${item.id}`}>
+                            <SelectValue placeholder={pagesLoading ? "Loading…" : "Select a page"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pages.length === 0 && !pagesLoading ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                No pages yet.
+                              </div>
+                            ) : (
+                              pages.map((page) => (
+                                <SelectItem key={page.id} value={page.id}>
+                                  {page.title || page.slug || page.id}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    ) : item.type === "collection" ? (
+                      <>
+                        <Label htmlFor={`nav-collection-${item.id}`}>Collection</Label>
+                        <Select
+                          value={item.collection ?? ""}
+                          onValueChange={(value) => updateItem(item.id, { collection: value })}
+                        >
+                          <SelectTrigger id={`nav-collection-${item.id}`}>
+                            <SelectValue
+                              placeholder={collectionsLoading ? "Loading…" : "Select a collection"}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {collections.length === 0 && !collectionsLoading ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                No collections registered.
+                              </div>
+                            ) : (
+                              collections.map((collection) => (
+                                <SelectItem key={collection.slug} value={collection.slug}>
+                                  {collection.label || collection.slug}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    ) : (
+                      <>
+                        <Label htmlFor={`nav-url-${item.id}`}>URL</Label>
+                        <Input
+                          id={`nav-url-${item.id}`}
+                          value={item.url ?? ""}
+                          onChange={(event) => updateItem(item.id, { url: event.target.value })}
+                        />
+                      </>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Type</Label>
+                    <Select
+                      value={item.type}
+                      onValueChange={(value) =>
+                        changeType(item.id, value as EditableNavItem["type"])
+                      }
                     >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => moveItem(index, 1)}
-                      disabled={index === items.length - 1}
-                    >
-                      <ArrowDown className="h-4 w-4" />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="link">Link</SelectItem>
+                        <SelectItem value="page">Page</SelectItem>
+                        <SelectItem value="collection">Collection</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button variant="outline" size="icon" onClick={() => removeItem(item.id)}>
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-                <div className="space-y-2">
-                  <Label htmlFor={`nav-label-${item.id}`}>Label</Label>
-                  <Input
-                    id={`nav-label-${item.id}`}
-                    value={item.label}
-                    onChange={(event) => updateItem(item.id, { label: event.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  {item.type === "page" ? (
-                    <>
-                      <Label htmlFor={`nav-page-${item.id}`}>Page</Label>
-                      <Select
-                        value={item.pageId ?? ""}
-                        onValueChange={(value) => updateItem(item.id, { pageId: value })}
-                      >
-                        <SelectTrigger id={`nav-page-${item.id}`}>
-                          <SelectValue placeholder={pagesLoading ? "Loading…" : "Select a page"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {pages.length === 0 && !pagesLoading ? (
-                            <div className="px-3 py-2 text-xs text-muted-foreground">
-                              No pages yet.
-                            </div>
-                          ) : (
-                            pages.map((page) => (
-                              <SelectItem key={page.id} value={page.id}>
-                                {page.title || page.slug || page.id}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </>
-                  ) : (
-                    <>
-                      <Label htmlFor={`nav-url-${item.id}`}>URL</Label>
-                      <Input
-                        id={`nav-url-${item.id}`}
-                        value={item.url ?? ""}
-                        onChange={(event) => updateItem(item.id, { url: event.target.value })}
-                      />
-                    </>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select
-                    value={item.type}
-                    onValueChange={(value) => changeType(item.id, value as EditableNavItem["type"])}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="link">Link</SelectItem>
-                      <SelectItem value="page">Page</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex justify-end">
-                  <Button variant="outline" size="icon" onClick={() => removeItem(item.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      <Dialog open={pendingLocation !== null} onOpenChange={(open) => !open && setPendingLocation(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard unsaved changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved edits in <strong>{labelFor(location)}</strong>. Switching to{" "}
+              <strong>{pendingLocation ? labelFor(pendingLocation) : ""}</strong> will discard them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingLocation(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDiscard}>
+              Discard and switch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -390,6 +520,14 @@ function toNavItem(item: EditableNavItem): NxNavItem {
       label: item.label,
       type: "page",
       pageId: item.pageId ?? "",
+    };
+  }
+  if (item.type === "collection") {
+    return {
+      id: item.id,
+      label: item.label,
+      type: "collection",
+      collection: item.collection ?? "",
     };
   }
   return {
@@ -420,6 +558,14 @@ function normalizeNavItems(payload: unknown): EditableNavItem[] {
         pageId: typeof item.pageId === "string" ? item.pageId : undefined,
       };
     }
+    if (item.type === "collection") {
+      return {
+        id,
+        label,
+        type: "collection" as const,
+        collection: typeof item.collection === "string" ? item.collection : undefined,
+      };
+    }
     return {
       id,
       label,
@@ -442,6 +588,25 @@ function extractPages(payload: unknown): PageOption[] {
     const slug = typeof doc.slug === "string" ? doc.slug : "";
     return [{ id, title, slug }];
   });
+}
+
+function extractCollections(payload: unknown): CollectionOption[] {
+  const items = isRecord(payload) && Array.isArray(payload.items)
+    ? payload.items
+    : Array.isArray(payload)
+      ? payload
+      : [];
+  return items.filter(isRecord).flatMap((entry) => {
+    const slug = typeof entry.slug === "string" ? entry.slug : null;
+    if (!slug) return [];
+    const labels = isRecord(entry.labels) ? entry.labels : null;
+    const label = labels && typeof labels.plural === "string" ? labels.plural : slug;
+    return [{ slug, label }];
+  });
+}
+
+function labelFor(location: NavLocation): string {
+  return NAV_LOCATIONS.find((loc) => loc.value === location)?.label ?? location;
 }
 
 function createId() {
