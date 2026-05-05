@@ -1,35 +1,10 @@
 import {
   findDocuments,
   getDocumentById,
-  type NpAuthUser,
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
-
-/**
- * Synthetic principal used by the default block render ctx. Role is
- * deliberately the lowest in `ROLE_HIERARCHY` (`viewer`) so a misbehaving
- * block plugin can't escalate into draft / private rows that admin
- * principals would see. The earlier draft used `role: "admin"`, which
- * meant any data-bound block on a public page ran with full read
- * privilege — a plugin author who forgot a `where: { status: "published" }`
- * clause could leak unpublished content to anonymous viewers.
- *
- * Together with the published-only default filter applied below in
- * `applyPublishedDefault`, this gives the default ctx a "what an
- * unauthenticated visitor can see" permission profile without
- * requiring core auth-model changes. A future improvement: a
- * first-class `null`-principal path through `findDocuments` that
- * doesn't need a synthesised user at all.
- */
-const BLOCK_RENDER_PRINCIPAL: NpAuthUser = {
-  id: "block-render",
-  email: "block-render@nexpress.local",
-  name: "block-render",
-  role: "viewer",
-  tokenVersion: 0,
-};
 
 /**
  * Forces a `status = "published"` filter when the caller didn't already
@@ -64,6 +39,16 @@ function applyPublishedDefault(
  * would drag `pg` / `@node-rs/argon2` / `node:timers/promises` into
  * the client bundle graph and break the build.
  *
+ * Calls into `findDocuments` / `getDocumentById` with NO `user` argument:
+ * `@nexpress/core` already treats an absent / null principal as the
+ * "anonymous visitor" case — it dispatches to each collection's
+ * `access.read({ user: null })` and auto-applies `visibility = "public"`
+ * inside the pipeline. The earlier draft of this file synthesised a
+ * `viewer`-role principal as a workaround; that's now gone, so block
+ * plugins inherit whatever access the collection author defined for
+ * unauthenticated reads. Combined with `applyPublishedDefault()`, the
+ * surface is "what a logged-out visitor of the site itself can read."
+ *
  * Site / theme template authors call this once per page render and
  * pass the result into `renderBlocks(blocks, { ctx })`. Static-only
  * pages (no data-bound blocks) can omit the ctx — `renderBlocks`
@@ -73,26 +58,19 @@ export function createDefaultBlockRenderContext(): NpBlockRenderContext {
   return {
     content: {
       async find(collection: string, options?: Partial<NpFindOptions>): Promise<NpFindResult> {
-        return findDocuments(
-          collection,
-          applyPublishedDefault(options),
-          BLOCK_RENDER_PRINCIPAL,
-        );
+        return findDocuments(collection, applyPublishedDefault(options));
       },
       async findOne(collection: string, id: string): Promise<Record<string, unknown> | null> {
-        // `getDocumentById` doesn't take a `where`, so the published-only
-        // default doesn't apply here. The viewer-role principal is the
-        // only safety net — the access function on the collection is
-        // responsible for hiding draft rows from low-privilege actors.
-        const doc = await getDocumentById(collection, id, BLOCK_RENDER_PRINCIPAL);
+        // `getDocumentById` doesn't take a `where`, so the
+        // published-only default doesn't apply here. The collection's
+        // own access function is the safety net — anonymous callers
+        // hitting it should already be filtered to public-readable
+        // rows by the project's auth model.
+        const doc = await getDocumentById(collection, id);
         return doc ?? null;
       },
       async count(collection: string): Promise<number> {
-        const result = await findDocuments(
-          collection,
-          applyPublishedDefault({ limit: 1 }),
-          BLOCK_RENDER_PRINCIPAL,
-        );
+        const result = await findDocuments(collection, applyPublishedDefault({ limit: 1 }));
         return result.totalDocs;
       },
     },
