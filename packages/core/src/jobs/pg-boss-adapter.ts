@@ -13,6 +13,7 @@ import {
   type NpJobStateCounts,
   type NpJobSummary,
   type NpPluginScheduleStats,
+  type NpReconcileSchedulesResult,
   type NpScheduleSummary,
 } from "./queue.js";
 
@@ -41,6 +42,14 @@ export class PgBossAdapter implements NpJobQueue {
     register: () => Promise<void>;
   }> = [];
   private paused = false;
+  /**
+   * Flips `true` after `start()` runs (full worker mode). `startProducer()`
+   * doesn't set it. Used by `reconcilePluginSchedules()` to tell admins
+   * whether this process owns the `boss.work()` loops for plugin schedules
+   * — the same boss instance can act as producer-only in the web server
+   * and full worker in the worker process.
+   */
+  private workerStarted = false;
 
   constructor(connectionString: string, options?: ConstructorOptions) {
     this.boss = new PgBoss({ connectionString, ...options });
@@ -163,6 +172,7 @@ export class PgBossAdapter implements NpJobQueue {
       this.workRegistrations.push({ queueName, register });
       await register();
     }
+    this.workerStarted = true;
   }
 
   /**
@@ -482,6 +492,95 @@ export class PgBossAdapter implements NpJobQueue {
         failedCount: Number(row.failed_count) || 0,
         windowDays,
       }));
+  }
+
+  /**
+   * Issue #461 — diff the in-memory plugin schedule registry against the
+   * `pgboss.schedule` rows whose name starts with `plugin.scheduledTask.*`
+   * and bring pg-boss in line. Without this, `reloadPlugins()` only
+   * rebuilt the in-process registry and pg-boss kept firing the old set
+   * of crons until the worker process restarted — the admin "Reload all"
+   * toast was promising behavior the system didn't deliver.
+   *
+   * Worker `boss.work()` registrations stay untouched. In production the
+   * worker is a separate process with its own boss instance; the web
+   * process can't add or drop work loops there. We surface that via
+   * `workerOwnsRegistrations` so the admin UI can warn the operator.
+   */
+  async reconcilePluginSchedules(): Promise<NpReconcileSchedulesResult> {
+    // Pull the current registry inline — same dynamic-import pattern
+    // `start()` uses to dodge a core ↔ jobs cycle.
+    const { getRegisteredPluginSchedules } = await import("../plugins/host.js");
+    const wantedList = getRegisteredPluginSchedules();
+    const wantedByName = new Map<
+      string,
+      { pluginId: string; taskId: string; cron: string }
+    >();
+    for (const schedule of wantedList) {
+      const name = `${toQueueName("plugin:scheduledTask")}.${schedule.pluginId}.${schedule.taskId}`;
+      wantedByName.set(name, {
+        pluginId: schedule.pluginId,
+        taskId: schedule.taskId,
+        cron: schedule.cron,
+      });
+    }
+
+    // Existing schedule rows for the plugin namespace only — the framework
+    // owns its built-in schedules (`system.revisionPrune` etc.) elsewhere
+    // and we mustn't touch them here.
+    const existingAll = await this.listSchedules();
+    const existingByName = new Map<string, NpScheduleSummary>();
+    for (const entry of existingAll) {
+      if (entry.name.startsWith("plugin.scheduledTask.")) {
+        existingByName.set(entry.name, entry);
+      }
+    }
+
+    let added = 0;
+    let updated = 0;
+    let removed = 0;
+
+    // Add or update.
+    for (const [name, want] of wantedByName) {
+      const existing = existingByName.get(name);
+      if (!existing) {
+        await this.boss.schedule(name, want.cron, {
+          pluginId: want.pluginId,
+          taskId: want.taskId,
+        });
+        added++;
+        continue;
+      }
+      if (existing.cron !== want.cron) {
+        await this.boss.unschedule(name).catch(() => {
+          // Race: another reconcile call could have removed the row in
+          // parallel. Either way, the next `schedule()` below installs
+          // the new cron from a clean slate.
+        });
+        await this.boss.schedule(name, want.cron, {
+          pluginId: want.pluginId,
+          taskId: want.taskId,
+        });
+        updated++;
+      }
+    }
+
+    // Remove stale rows.
+    for (const [name] of existingByName) {
+      if (!wantedByName.has(name)) {
+        await this.boss.unschedule(name).catch(() => {
+          // Concurrent removal — fine; the row is gone either way.
+        });
+        removed++;
+      }
+    }
+
+    return {
+      added,
+      updated,
+      removed,
+      workerOwnsRegistrations: this.workerStarted,
+    };
   }
 
   /**

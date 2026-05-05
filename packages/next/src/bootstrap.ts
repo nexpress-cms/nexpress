@@ -3,6 +3,7 @@ import {
   createDbConnection,
   createStorageAdapter,
   getDb,
+  getOptionalJobQueue,
   isSuperAdmin,
   listMembershipsForUser,
   listPluginStates,
@@ -23,6 +24,7 @@ import {
   type NpAuthUser,
   type NpConfig,
   type NpPluginConfig,
+  type NpReconcileSchedulesResult,
   type NpResolvedPluginLike,
 } from "@nexpress/core";
 import { registerBlock, type NpBlockDefinition } from "@nexpress/blocks";
@@ -69,6 +71,25 @@ export interface BootstrapOptions {
   connectionString?: string;
 }
 
+/**
+ * Outcome of `reloadPlugins()`. Always carries the reload-was-clean flag,
+ * plus a `schedules` summary when the active queue can reconcile pg-boss
+ * cron rows. Routes / UIs use this to give the operator an accurate
+ * "what just happened" — the previous void-returning shape made it
+ * impossible to surface that schedule changes were (or weren't) applied.
+ */
+export interface NpReloadPluginsResult {
+  /** `true` once the in-memory plugin registry has been reset + reloaded. */
+  reloaded: true;
+  /**
+   * Schedule reconcile result, when the active job queue supports it.
+   * `null` when no queue is wired (pg-boss disabled, test runs) or the
+   * adapter doesn't implement `reconcilePluginSchedules`. The admin UI
+   * uses `null` to suppress the "schedules updated" line.
+   */
+  schedules: NpReconcileSchedulesResult | null;
+}
+
 export type Bootstrap = {
   readonly getDb: (this: void) => NpDb;
   readonly ensureCoreServices: (this: void) => void;
@@ -89,7 +110,7 @@ export type Bootstrap = {
    * Idempotent on success: a fresh `ensurePluginsLoaded()` call after
    * `reloadPlugins()` is a no-op until the next reload.
    */
-  readonly reloadPlugins: (this: void) => Promise<void>;
+  readonly reloadPlugins: (this: void) => Promise<NpReloadPluginsResult>;
 };
 
 function toCamelCase(slug: string): string {
@@ -365,7 +386,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     }
   }
 
-  async function reloadPlugins(): Promise<void> {
+  async function reloadPlugins(): Promise<NpReloadPluginsResult> {
     // Drain any in-flight load before resetting so we don't race a
     // concurrent boot path mid-stream.
     if (pluginsLoadingPromise) {
@@ -412,6 +433,25 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     } finally {
       pluginsLoadingPromise = null;
     }
+
+    // Issue #461 — bring pg-boss `pgboss.schedule` rows in sync with the
+    // freshly-rebuilt registry. Without this, the in-memory plugin set
+    // is up to date but pg-boss keeps firing the old cron set until a
+    // worker restart, which contradicts the admin "Reload all" toast.
+    // Reconcile is best-effort: a missing queue, a stub adapter, or a
+    // failed call all fall through to `null` so the reload itself
+    // doesn't fail just because the cron sync did.
+    let schedules: NpReconcileSchedulesResult | null = null;
+    const queue = getOptionalJobQueue();
+    if (queue && typeof queue.reconcilePluginSchedules === "function") {
+      try {
+        schedules = await queue.reconcilePluginSchedules();
+      } catch {
+        schedules = null;
+      }
+    }
+
+    return { reloaded: true, schedules };
   }
 
   const ensureCoreServices = (): void => {
