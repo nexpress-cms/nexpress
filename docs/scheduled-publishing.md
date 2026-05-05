@@ -34,7 +34,7 @@ provides. One endpoint, Bearer-token protected:
 
 ```
 POST /api/internal/publish-scheduled
-Authorization: Bearer <NX_SCHEDULER_TOKEN>
+Authorization: Bearer <NP_SCHEDULER_TOKEN>
 ```
 
 Response body:
@@ -54,7 +54,7 @@ Idempotent and cheap. Call it every minute or two from:
 - **Self-hosted**: `systemd` timer, Kubernetes `CronJob`, or plain
   `crontab` piping to `curl`.
 
-Set `NX_SCHEDULER_TOKEN` to a long random string in the environment
+Set `NP_SCHEDULER_TOKEN` to a long random string in the environment
 before enabling cron — when the env var is unset the endpoint refuses
 every request so production deploys can't accidentally leave it open.
 
@@ -126,7 +126,7 @@ When `versions.drafts.autosave === true`:
 - The admin edit view watches form changes via react-hook-form, debounces
   by `autosaveInterval` (default 5s), and POSTs the in-flight payload to
   `POST /api/collections/{slug}/{id}/autosave`.
-- The endpoint writes a row into `nx_revisions` with `status="autosave"`
+- The endpoint writes a row into `np_revisions` with `status="autosave"`
   **without** touching the main document table. The doc's `status` and
   `updatedAt` stay untouched, so plugins hooking on writes don't fire on
   every keystroke.

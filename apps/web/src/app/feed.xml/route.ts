@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   getCurrentSiteId,
   renderAtomFeed,
 } from "@nexpress/core";
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const localeParam = request.nextUrl.searchParams.get("locale")?.trim();
   const locale =
     localeParam && isLocale(localeParam) ? localeParam : undefined;
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   // Phase 14.8 — site-scoped tags so a multi-tenant deploy
   // doesn't bust feed caches across sites on every write. The
   // legacy `nx:feed` / `nx:feed:<collection>` tags are kept

@@ -2,7 +2,7 @@
  * Pluggable reputation-rules hook. Sites install an adapter via
  * `setReputationAdapter()` to compute reputation deltas in response
  * to community events; the framework then atomically applies the
- * delta to `nx_members.reputation`.
+ * delta to `np_members.reputation`.
  *
  * Default adapter is "no-op" (every event returns 0) — existing
  * sites' reputation values stay at zero until they opt in.

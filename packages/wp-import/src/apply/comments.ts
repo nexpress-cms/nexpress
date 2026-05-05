@@ -2,7 +2,7 @@ import type { WpComment, WpImportRecord } from "../parse/types.js";
 import type { ResumeDeps } from "./resume.js";
 
 /**
- * Phase 21.7 — wire WP comments into NexPress's `nx_comments` plus
+ * Phase 21.7 — wire WP comments into NexPress's `np_comments` plus
  * per-author imported members.
  *
  * The applier owns sequencing — it inserts each post first, then

@@ -15,7 +15,7 @@ import { npMembers } from "./community.js";
 import { npUsers } from "./system.js";
 import { type NpRichTextContent } from "../../config/types.js";
 
-export const npMediaStatusEnum = pgEnum("nx_media_status", [
+export const npMediaStatusEnum = pgEnum("np_media_status", [
   "processing",
   "ready",
   "error",
@@ -28,7 +28,7 @@ type NpMediaFocalPoint = {
 
 type NpMediaSizes = Record<string, Record<string, unknown>>;
 
-export const npMediaFolders = pgTable("nx_media_folders", {
+export const npMediaFolders = pgTable("np_media_folders", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   parentId: uuid("parent_id").references((): AnyPgColumn => npMediaFolders.id),
@@ -38,7 +38,7 @@ export const npMediaFolders = pgTable("nx_media_folders", {
 });
 
 export const npMedia = pgTable(
-  "nx_media",
+  "np_media",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     filename: text("filename").notNull(),
@@ -79,16 +79,16 @@ export const npMedia = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
   },
   (table) => ({
-    hashIdx: index("nx_media_hash_idx").on(table.hash),
-    statusIdx: index("nx_media_status_idx").on(table.status),
-    uploadedByMemberIdx: index("nx_media_uploaded_by_member_idx").on(
+    hashIdx: index("np_media_hash_idx").on(table.hash),
+    statusIdx: index("np_media_status_idx").on(table.status),
+    uploadedByMemberIdx: index("np_media_uploaded_by_member_idx").on(
       table.uploadedByMemberId,
     ),
   }),
 );
 
 export const npMediaRefs = pgTable(
-  "nx_media_refs",
+  "np_media_refs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     mediaId: uuid("media_id")
@@ -99,7 +99,7 @@ export const npMediaRefs = pgTable(
     field: text("field").notNull(),
   },
   (table) => ({
-    mediaIdIdx: index("nx_media_refs_media_id_idx").on(table.mediaId),
-    documentIdIdx: index("nx_media_refs_document_id_idx").on(table.documentId),
+    mediaIdIdx: index("np_media_refs_media_id_idx").on(table.mediaId),
+    documentIdIdx: index("np_media_refs_document_id_idx").on(table.documentId),
   }),
 );

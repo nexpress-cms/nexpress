@@ -19,7 +19,7 @@ import { ensureFor } from "@/lib/init-core";
 
 /**
  * Member refresh-token rotation. Validates the refresh JWT signature,
- * confirms a matching live session row exists in `nx_member_sessions`,
+ * confirms a matching live session row exists in `np_member_sessions`,
  * then rotates: deletes the consumed refresh row, mints a new access +
  * refresh pair, and persists both as new session rows.
  *

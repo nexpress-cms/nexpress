@@ -75,7 +75,7 @@ npx create-nexpress my-site
 cd my-site
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db
-pnpm run setup    # browser env wizard — DB connection, NX_SECRET, storage
+pnpm run setup    # browser env wizard — DB connection, NP_SECRET, storage
 pnpm dev
 ```
 

@@ -1,4 +1,4 @@
-// Must be the first import — populates process.env (NX_SECRET,
+// Must be the first import — populates process.env (NP_SECRET,
 // DATABASE_URL, …) before `nexpress.config.ts` evaluates and
 // validates them at module-load time.
 import "./_load-env.js";
@@ -29,7 +29,7 @@ import {
  * has rows. The intent is "make a fresh install look alive" —
  * once an editor publishes real content, this script is a no-op.
  *
- * Requires at least one user in `nx_users` (use `pnpm seed:admin`
+ * Requires at least one user in `np_users` (use `pnpm seed:admin`
  * to create one). The seeded content is authored by the first
  * admin so revision history and audit log have a sensible owner.
  *

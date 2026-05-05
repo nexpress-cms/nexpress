@@ -58,14 +58,14 @@ Non-goals (deferred):
 ### Schema
 
 ```
-nx_members
+np_members
   id              uuid pk
   handle          text unique not null         -- public, /u/{handle}
   email           text unique not null
   email_verified  bool default false
   password        text not null                -- argon2 (or null for SSO-only)
   display_name    text not null
-  avatar          uuid → nx_media (null)
+  avatar          uuid → np_media (null)
   bio             text (null)
   status          enum('active','pending','suspended','deleted')
   reputation      int default 0
@@ -78,11 +78,11 @@ nx_members
   created_at      timestamptz default now()
   updated_at      timestamptz default now()
 
-nx_member_sessions
-  id, member_id → nx_members, token_hash, user_agent, ip, expires_at, created_at
+np_member_sessions
+  id, member_id → np_members, token_hash, user_agent, ip, expires_at, created_at
 
-nx_member_identities                            -- SSO providers
-  id, member_id → nx_members
+np_member_identities                            -- SSO providers
+  id, member_id → np_members
   provider        text                          -- 'google' | 'github' | 'oauth:custom-id'
   subject         text                          -- provider's user id
   email           text
@@ -90,7 +90,7 @@ nx_member_identities                            -- SSO providers
   unique(provider, subject)
 ```
 
-Why a separate table from `nx_users`:
+Why a separate table from `np_users`:
 
 - Different access policies. Members never get `role: "admin"` by
   accident — there's no role column at all on the member table.
@@ -100,7 +100,7 @@ Why a separate table from `nx_users`:
   leak anything.
 - Different rate-limit buckets at the middleware level (registration
   abuse should not affect staff login).
-- Operationally cleaner: a `DELETE FROM nx_users` doesn't take down
+- Operationally cleaner: a `DELETE FROM np_users` doesn't take down
   the public site's comment authors.
 
 ### Auth flow
@@ -136,14 +136,14 @@ forces a one-role-per-member ceiling and makes scoping awkward later, so
 permissions live in a polymorphic grants table:
 
 ```
-nx_member_roles
+np_member_roles
   id           uuid pk
-  member_id    uuid → nx_members not null
+  member_id    uuid → np_members not null
   role         text not null              -- 'community-mod', 'category-mod',
                                           --  'collection-mod', 'thread-author', …
   scope_type   text not null              -- 'site' | 'category' | 'collection' | 'thread'
   scope_id     text                       -- null when scope_type='site'
-  granted_by   uuid → nx_users (null)     -- staff who promoted (null for system grants)
+  granted_by   uuid → np_users (null)     -- staff who promoted (null for system grants)
   granted_at   timestamptz default now()
   expires_at   timestamptz (null)         -- temporary mods, time-boxed promotions
   unique (member_id, role, scope_type, scope_id)
@@ -156,7 +156,7 @@ nx_member_roles
 | `role` | Typical scope | Capabilities |
 |---|---|---|
 | `community-mod` | `site` | Hide / restore any community content site-wide. Resolve any report. Ban members. Equivalent to a staff `moderator`, but earned/granted to a member without making them staff. |
-| `category-mod` | `category` | Same as `community-mod`, restricted to threads + replies inside one `nx_thread_categories.id`. |
+| `category-mod` | `category` | Same as `community-mod`, restricted to threads + replies inside one `np_thread_categories.id`. |
 | `collection-mod` | `collection` (slug) | Same, restricted to comments on documents in one collection (e.g. mod the comments under `posts/*` only). |
 | `thread-author` | `thread` | Edit thread title/body, lock/unlock the thread. Auto-granted on create, never manually. |
 
@@ -170,11 +170,11 @@ permission *check* is run by the host.
 
 - **By staff** — admin/editor/moderator opens a member's profile,
   picks a role + scope (with type-aware scope picker), commits. Audit
-  trail logs to `nx_audit` (covered in Phase 9.5).
-- **By the system** — `thread-author` auto-grants on `nx_threads`
+  trail logs to `np_audit` (covered in Phase 9.5).
+- **By the system** — `thread-author` auto-grants on `np_threads`
   insert; revokes on delete.
 - **By plugins** — a reputation plugin can auto-grant `community-mod`
-  when `nx_members.reputation` crosses a threshold. Requires the
+  when `np_members.reputation` crosses a threshold. Requires the
   plugin to declare a `members:write` capability.
 
 #### Permission check
@@ -182,7 +182,7 @@ permission *check* is run by the host.
 The single entry point is `memberCan(memberId, action, target)`. It
 walks the grant set in this order:
 
-1. Is the member banned from this scope? (see `nx_bans` below) → deny.
+1. Is the member banned from this scope? (see `np_bans` below) → deny.
 2. Is the member the owner of the target *and* is `action` an
    own-content action like `edit-own`? → allow.
 3. Walk grants matching `target`'s scope chain:
@@ -206,14 +206,14 @@ via `registerCommunityRole({ role, scopeType, capabilities, …})`.
 Updated ban schema (replaces the simple version in §2):
 
 ```
-nx_bans
-  id, member_id → nx_members
+np_bans
+  id, member_id → np_members
   scope_type    text not null    -- 'site' | 'category' | 'collection'
   scope_id      text             -- null for site-wide
   kind          enum('temporary','permanent')
   expires_at    timestamptz (null)
-  reason        text, by_user_id → nx_users (or null when by_member_id set)
-  by_member_id  uuid → nx_members (null)  -- when a category-mod issues the ban
+  reason        text, by_user_id → np_users (or null when by_member_id set)
+  by_member_id  uuid → np_members (null)  -- when a category-mod issues the ban
   created_at
   index (member_id, scope_type, scope_id)
 ```
@@ -224,9 +224,9 @@ check above gates which kinds of bans a given principal can issue.
 
 #### Staff-side stays simple
 
-Staff users (`nx_users`) keep their existing global roles
+Staff users (`np_users`) keep their existing global roles
 (`admin/editor/author/viewer`). We add `moderator` to the enum (already
-proposed). Staff users do **not** use `nx_member_roles` — staff is
+proposed). Staff users do **not** use `np_member_roles` — staff is
 always site-wide. The permission resolver checks the staff path first
 (if the request principal is a staff user) before falling back to
 member grants.
@@ -248,7 +248,7 @@ community: {
 }
 ```
 
-Stored under `nx_settings.key = "community"`, edited via a new
+Stored under `np_settings.key = "community"`, edited via a new
 **Community settings** page in the admin.
 
 ---
@@ -260,16 +260,16 @@ Stored under `nx_settings.key = "community"`, edited via a new
 #### Comments
 
 ```
-nx_comments
+np_comments
   id             uuid pk
   target_type    text not null            -- collection slug, e.g. "posts"
   target_id      uuid not null            -- doc id
-  parent_id      uuid → nx_comments (null) -- top-level when null
-  member_id      uuid → nx_members not null
+  parent_id      uuid → np_comments (null) -- top-level when null
+  member_id      uuid → np_members not null
   body_md        text not null            -- markdown source
   body_html      text not null            -- sanitised, server-rendered
   status         enum('visible','pending','hidden','deleted')
-  hidden_by      uuid → nx_users (null)   -- staff who hid it
+  hidden_by      uuid → np_users (null)   -- staff who hid it
   hidden_reason  text (null)
   edited_at      timestamptz (null)
   created_at     timestamptz default now()
@@ -279,11 +279,11 @@ nx_comments
 
 #### Forum / threads — **as a collection + plugin, not a dedicated subsystem**
 
-The original draft proposed `nx_threads` / `nx_thread_categories` /
-`nx_thread_replies` as separate tables. We dropped that — collections
+The original draft proposed `np_threads` / `np_thread_categories` /
+`np_thread_replies` as separate tables. We dropped that — collections
 already give us typed tables, drafts/publish, search, slugs, admin UI,
 and `community.comments=true` already provides `parent_id`-threaded
-replies via `nx_comments`. Re-implementing those as parallel tables
+replies via `np_comments`. Re-implementing those as parallel tables
 would have been duplication.
 
 The replacement is the built-in **`@nexpress/plugin-forum`** package:
@@ -305,7 +305,7 @@ export default defineConfig({
 });
 ```
 
-`pnpm db:generate && pnpm db:migrate` adds `nx_c_discussions`. Members
+`pnpm db:generate && pnpm db:migrate` adds `np_c_discussions`. Members
 comment under each discussion via the existing `/api/collections/
 discussions/{id}/comments` endpoint; reactions and follow-the-thread
 all come for free from 9.2 + 9.3.
@@ -318,17 +318,17 @@ lands, the plugin's collection definition flips `access.create` from
 `isEditorOrAbove` to "any active member" without a schema change.
 
 `thread-author` capability and the `thread` scope on
-`nx_member_roles` remain in the schema but go unused until member-
+`np_member_roles` remain in the schema but go unused until member-
 writable collections ship — the registry is forward-compatible.
 
 #### Reactions (polymorphic)
 
 ```
-nx_reactions
+np_reactions
   id           uuid pk
   target_type  text not null     -- 'comment' | 'thread' | 'reply'
   target_id    uuid not null
-  member_id    uuid → nx_members not null
+  member_id    uuid → np_members not null
   kind         text not null     -- 'like' | 'helpful' | 'celebrate' | …
   created_at   timestamptz default now()
   unique (target_type, target_id, member_id, kind)
@@ -343,12 +343,12 @@ freely.
 #### Follows + notifications
 
 ```
-nx_follows
-  id, follower_id → nx_members, target_type ('member' | 'thread' | 'tag'), target_id text
+np_follows
+  id, follower_id → np_members, target_type ('member' | 'thread' | 'tag'), target_id text
   unique (follower_id, target_type, target_id)
 
-nx_notifications
-  id, member_id → nx_members
+np_notifications
+  id, member_id → np_members
   kind          text             -- 'comment.reply' | 'reaction.received' | …
   payload       jsonb            -- target ids + summary fields
   read_at       timestamptz (null)
@@ -359,20 +359,20 @@ nx_notifications
 #### Reports + bans
 
 ```
-nx_reports
-  id, reporter_id → nx_members, target_type, target_id, reason text, body text
-  resolved_at    timestamptz (null), resolved_by → nx_users, resolution text
+np_reports
+  id, reporter_id → np_members, target_type, target_id, reason text, body text
+  resolved_at    timestamptz (null), resolved_by → np_users, resolution text
   created_at
   index (resolved_at, created_at)
 
-(see the scoped `nx_bans` schema in §1.4 — the simple version originally
+(see the scoped `np_bans` schema in §1.4 — the simple version originally
 sketched here is replaced.)
 ```
 
-A staff `moderator` role is added to `nx_user_role` enum (alongside
+A staff `moderator` role is added to `np_user_role` enum (alongside
 admin, editor, author, viewer) and gates the moderation UI without
 giving full admin powers. Members can also hold scoped moderation
-authority via `nx_member_roles` — see §1.4.
+authority via `np_member_roles` — see §1.4.
 
 ### API surface
 
@@ -400,14 +400,14 @@ per-IP middleware buckets.
 
 ### Notifications pipeline
 
-`content:afterCreate` on `nx_comments` (or directly inside the comment
+`content:afterCreate` on `np_comments` (or directly inside the comment
 service) enqueues:
 
 - For top-level comment on a doc → notify all members following that doc/tag.
 - For reply to comment → notify the parent comment's author.
 - For reaction → batch-notify the target's author (debounced by minute).
 
-Notifications write to `nx_notifications` synchronously and enqueue a
+Notifications write to `np_notifications` synchronously and enqueue a
 pg-boss `notification:email` job that the worker picks up and routes
 through the email adapter (respecting per-member email-frequency
 preferences in `meta`).
@@ -461,11 +461,11 @@ The whole thing is too big to ship in one PR. Suggested order:
 
 | Phase | Slice | Includes |
 |---|---|---|
-| **9.1** | Member identity | `nx_members`, `nx_member_sessions`, `nx_member_roles` (table + permission resolver), member auth helpers, registration + login + me + reset, public profile read, /u/{handle} route, admin Members list (no moderation actions yet — but `memberCan()` lands here so 9.2+ can call it from day one). |
-| **9.2** | Comments on existing collections | `nx_comments`, list/post/edit/delete API, render under each `(site)` post page, comments tab in admin edit view, basic hide action, `collection-mod` capability matrix wired (so a member promoted in 9.1 can hide comments on `posts` from day one). |
-| **9.3** | Reactions + follows + notifications | `nx_reactions`, `nx_follows`, `nx_notifications`, mark-read API, in-admin notification preview. |
+| **9.1** | Member identity | `np_members`, `np_member_sessions`, `np_member_roles` (table + permission resolver), member auth helpers, registration + login + me + reset, public profile read, /u/{handle} route, admin Members list (no moderation actions yet — but `memberCan()` lands here so 9.2+ can call it from day one). |
+| **9.2** | Comments on existing collections | `np_comments`, list/post/edit/delete API, render under each `(site)` post page, comments tab in admin edit view, basic hide action, `collection-mod` capability matrix wired (so a member promoted in 9.1 can hide comments on `posts` from day one). |
+| **9.3** | Reactions + follows + notifications | `np_reactions`, `np_follows`, `np_notifications`, mark-read API, in-admin notification preview. |
 | **9.4** | Forum (built-in plugin) | `@nexpress/plugin-forum` package: `defineDiscussionsCollection({ slug, categories })` returns a ready-to-spread collection config; `forumPlugin` exposes a discussions stats dashboard widget. apps/web demo registers a `discussions` collection. **No new community-only tables** — comments, reactions, follows all come from 9.2/9.3. Member-authored top-level threads (Reddit-style) await a separate "member-writable collections" feature. |
-| **9.5** | Moderation | `nx_reports`, `nx_bans` (scoped), staff `moderator` role, member role grant UI (promote member → category-mod, etc.), reports queue UI, ban flow, audit trail. |
+| **9.5** | Moderation | `np_reports`, `np_bans` (scoped), staff `moderator` role, member role grant UI (promote member → category-mod, etc.), reports queue UI, ban flow, audit trail. |
 | **9.6** | Pluggable bits | SSO adapter, anti-spam adapter, reputation rules, community settings page. |
 
 Each slice ships with integration tests and OpenAPI updates the same
@@ -481,12 +481,12 @@ that turn out wrong can still be reversed at the boundary of a phase
 each phase's PR description should re-raise any of these the
 implementation surfaces as questionable.
 
-1. **Separate `nx_members` table vs. extending `nx_users` with a
+1. **Separate `np_members` table vs. extending `np_users` with a
    `kind` column.** Draft picks separate. Argument for extending: one
    auth path, one session table, simpler. Argument for separate (this
    draft): cleaner role isolation, smaller blast radius on bugs,
    operationally cleaner backups/exports. Note: even with the separate
-   table, scoped moderator roles are addressed via `nx_member_roles`
+   table, scoped moderator roles are addressed via `np_member_roles`
    grants (§1.4) — promoting a member to a category mod doesn't
    require making them staff.
 
@@ -518,7 +518,7 @@ implementation surfaces as questionable.
    subsystem**, replaced by `@nexpress/plugin-forum` shipping a
    collection scaffold. Comments + replies + reactions + follows
    from 9.2/9.3 carry the threading + voting load — re-implementing
-   them as `nx_threads*` was duplication. Member-authored top-level
+   them as `np_threads*` was duplication. Member-authored top-level
    threads remain a separate framework feature (member-writable
    collections); the plugin's `access.create` flips when that lands.
 

@@ -13,7 +13,7 @@ const tsvector = customType<{ data: string }>({
 });
 
 export const postsTable = pgTable(
-  "nx_c_posts",
+  "np_c_posts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
@@ -34,7 +34,7 @@ export const postsTable = pgTable(
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_posts_status_idx").on(table.status), uniqueIndex("nx_c_posts_site_slug_idx").on(table.siteId, table.slug), index("nx_c_posts_site_idx").on(table.siteId)],
+  (table) => [index("np_c_posts_status_idx").on(table.status), uniqueIndex("np_c_posts_site_slug_idx").on(table.siteId, table.slug), index("np_c_posts_site_idx").on(table.siteId)],
 );
 
 export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
@@ -45,14 +45,14 @@ export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
 }));
 
 export const postsCategoriesTable = pgTable(
-  "nx_c_posts__categories",
+  "np_c_posts__categories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     postsId: uuid("posts_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
     targetId: uuid("target_id").notNull().references(() => taxonomiesTable.id, { onDelete: "cascade" }),
     order: integer("order").default(0).notNull(),
   },
-  (table) => [index("nx_c_posts__categories_posts_id_idx").on(table.postsId), uniqueIndex("nx_c_posts__categories_parent_target_uidx").on(table.postsId, table.targetId)],
+  (table) => [index("np_c_posts__categories_posts_id_idx").on(table.postsId), uniqueIndex("np_c_posts__categories_parent_target_uidx").on(table.postsId, table.targetId)],
 );
 
 export const postsCategoriesTableRelations = relations(postsCategoriesTable, ({ many, one }) => ({
@@ -61,14 +61,14 @@ export const postsCategoriesTableRelations = relations(postsCategoriesTable, ({ 
 }));
 
 export const postsTagsTable = pgTable(
-  "nx_c_posts__tags",
+  "np_c_posts__tags",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     postsId: uuid("posts_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
     targetId: uuid("target_id").notNull().references(() => taxonomiesTable.id, { onDelete: "cascade" }),
     order: integer("order").default(0).notNull(),
   },
-  (table) => [index("nx_c_posts__tags_posts_id_idx").on(table.postsId), uniqueIndex("nx_c_posts__tags_parent_target_uidx").on(table.postsId, table.targetId)],
+  (table) => [index("np_c_posts__tags_posts_id_idx").on(table.postsId), uniqueIndex("np_c_posts__tags_parent_target_uidx").on(table.postsId, table.targetId)],
 );
 
 export const postsTagsTableRelations = relations(postsTagsTable, ({ many, one }) => ({
@@ -77,7 +77,7 @@ export const postsTagsTableRelations = relations(postsTagsTable, ({ many, one })
 }));
 
 export const pagesTable = pgTable(
-  "nx_c_pages",
+  "np_c_pages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
@@ -95,7 +95,7 @@ export const pagesTable = pgTable(
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_pages_status_idx").on(table.status), uniqueIndex("nx_c_pages_site_slug_idx").on(table.siteId, table.slug), index("nx_c_pages_site_idx").on(table.siteId)],
+  (table) => [index("np_c_pages_status_idx").on(table.status), uniqueIndex("np_c_pages_site_slug_idx").on(table.siteId, table.slug), index("np_c_pages_site_idx").on(table.siteId)],
 );
 
 export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
@@ -104,7 +104,7 @@ export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
 }));
 
 export const localizedPagesTable = pgTable(
-  "nx_c_localized-pages",
+  "np_c_localized-pages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
@@ -122,7 +122,7 @@ export const localizedPagesTable = pgTable(
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_localized-pages_status_idx").on(table.status), uniqueIndex("nx_c_localized-pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug), index("nx_c_localized-pages_translation_group_idx").on(table.translationGroupId), index("nx_c_localized-pages_locale_idx").on(table.locale), index("nx_c_localized-pages_site_idx").on(table.siteId)],
+  (table) => [index("np_c_localized-pages_status_idx").on(table.status), uniqueIndex("np_c_localized-pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug), index("np_c_localized-pages_translation_group_idx").on(table.translationGroupId), index("np_c_localized-pages_locale_idx").on(table.locale), index("np_c_localized-pages_site_idx").on(table.siteId)],
 );
 
 export const localizedPagesTableRelations = relations(localizedPagesTable, ({ many, one }) => ({
@@ -131,7 +131,7 @@ export const localizedPagesTableRelations = relations(localizedPagesTable, ({ ma
 }));
 
 export const taxonomiesTable = pgTable(
-  "nx_c_taxonomies",
+  "np_c_taxonomies",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
@@ -147,7 +147,7 @@ export const taxonomiesTable = pgTable(
     siteId: text("site_id").default("default").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_taxonomies_status_idx").on(table.status), uniqueIndex("nx_c_taxonomies_site_slug_idx").on(table.siteId, table.slug), index("nx_c_taxonomies_site_idx").on(table.siteId)],
+  (table) => [index("np_c_taxonomies_status_idx").on(table.status), uniqueIndex("np_c_taxonomies_site_slug_idx").on(table.siteId, table.slug), index("np_c_taxonomies_site_idx").on(table.siteId)],
 );
 
 export const taxonomiesTableRelations = relations(taxonomiesTable, ({ many, one }) => ({
@@ -156,7 +156,7 @@ export const taxonomiesTableRelations = relations(taxonomiesTable, ({ many, one 
 }));
 
 export const discussionsTable = pgTable(
-  "nx_c_discussions",
+  "np_c_discussions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
@@ -176,7 +176,7 @@ export const discussionsTable = pgTable(
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("nx_c_discussions_status_idx").on(table.status), index("nx_c_discussions_member_author_idx").on(table.memberAuthorId), uniqueIndex("nx_c_discussions_site_slug_idx").on(table.siteId, table.slug), index("nx_c_discussions_site_idx").on(table.siteId)],
+  (table) => [index("np_c_discussions_status_idx").on(table.status), index("np_c_discussions_member_author_idx").on(table.memberAuthorId), uniqueIndex("np_c_discussions_site_slug_idx").on(table.siteId, table.slug), index("np_c_discussions_site_idx").on(table.siteId)],
 );
 
 export const discussionsTableRelations = relations(discussionsTable, ({ many, one }) => ({

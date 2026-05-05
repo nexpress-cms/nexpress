@@ -9,7 +9,7 @@ import { type NpJobQueue } from "./queue.js";
 /**
  * Phase 20.2 — global pause / resume for job processing.
  *
- * Stored in `nx_settings` under a deliberately reserved
+ * Stored in `np_settings` under a deliberately reserved
  * `siteId="_system"` key. The pause flag is process-wide
  * (a maintenance window pauses everything, not per-tenant)
  * so it sits outside the per-site settings space. Reads /

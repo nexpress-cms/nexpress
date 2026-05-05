@@ -40,7 +40,7 @@ function emitConsole(level: NpLogLevel, message: string, context?: Record<string
     fn(`[${level}] ${message}`);
   }
   // Phase 20.3 — when emitted from inside a job handler, also
-  // tee the line into `nx_job_logs`. Dynamic import is
+  // tee the line into `np_job_logs`. Dynamic import is
   // deliberate: the job-log module pulls in the schema (pg),
   // and the logger module is imported by code paths (CLI
   // scaffolds, pure-function tests) that don't have a DB. Lazy

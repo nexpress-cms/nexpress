@@ -18,40 +18,40 @@ import {
 } from "../media/service.js";
 import { getDb } from "../db/runtime.js";
 import {
-  NX_GLOBAL_PLUGIN_SITE_ID,
+  NP_GLOBAL_PLUGIN_SITE_ID,
   npPluginStorage,
   npPlugins,
   npSettings,
 } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Two distinct fallbacks live here, intentionally:
  *
  *   - `resolveStorageSiteId` returns the `_global_` sentinel when no
- *     site context is set. `nx_plugin_storage` is keyed by
+ *     site context is set. `np_plugin_storage` is keyed by
  *     `(plugin_id, site_id, key)` and the sentinel scopes data as
  *     "process-wide / cross-site shared." Background workers, CLI
  *     tasks, and migrations all run without a site resolver and
  *     should land in the global keyspace by default.
  *
  *   - `resolveSettingsSiteId` returns the actual default site id
- *     when no context is set. `nx_settings` rows ALWAYS belong to
+ *     when no context is set. `np_settings` rows ALWAYS belong to
  *     a real site, so falling through to a sentinel would orphan
- *     the row outside `nx_sites` and break joins.
+ *     the row outside `np_sites` and break joins.
  *
  * They look superficially the same — one helper per intent so the
  * next reader doesn't have to reverse-engineer which fallback is
  * which by reading both schema definitions.
  */
 async function resolveStorageSiteId(): Promise<string> {
-  return (await getCurrentSiteId()) ?? NX_GLOBAL_PLUGIN_SITE_ID;
+  return (await getCurrentSiteId()) ?? NP_GLOBAL_PLUGIN_SITE_ID;
 }
 
 async function resolveSettingsSiteId(): Promise<string> {
-  return (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
 /**
@@ -223,7 +223,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             originalFilename: metadata.filename,
             mimeType: metadata.mimeType,
           },
-          // `uploaded_by` is a nullable FK to `nx_users.id`. The
+          // `uploaded_by` is a nullable FK to `np_users.id`. The
           // previous `plugin:<id>` synthetic value violated the FK
           // and threw at insert time, leaving the storage object
           // orphaned. (#62) Plugin attribution lives in the audit

@@ -370,25 +370,25 @@ function DeleteSiteDialog({
                   ))}
                 {usage.settings > 0 ? (
                   <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">nx_settings</code>
+                    <code className="font-mono">np_settings</code>
                     <span className="tabular-nums">{usage.settings}</span>
                   </li>
                 ) : null}
                 {usage.navigation > 0 ? (
                   <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">nx_navigation</code>
+                    <code className="font-mono">np_navigation</code>
                     <span className="tabular-nums">{usage.navigation}</span>
                   </li>
                 ) : null}
                 {usage.memberships > 0 ? (
                   <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">nx_site_memberships</code>
+                    <code className="font-mono">np_site_memberships</code>
                     <span className="tabular-nums">{usage.memberships}</span>
                   </li>
                 ) : null}
                 {usage.stringOverrides > 0 ? (
                   <li className="flex items-center justify-between py-1">
-                    <code className="font-mono">nx_string_overrides</code>
+                    <code className="font-mono">np_string_overrides</code>
                     <span className="tabular-nums">
                       {usage.stringOverrides}
                     </span>

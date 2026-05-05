@@ -52,7 +52,7 @@ swap to a different broker only touches the adapter layer.
 Set the environment variable:
 
 ```bash
-NX_ENABLE_JOBS=1
+NP_ENABLE_JOBS=1
 ```
 
 Without this, the producer and worker are no-ops. `enqueueJob()`
@@ -117,7 +117,7 @@ The framework registers a handful of system handlers via
   retention policy (cron: `0 3 * * *`)
 - `system:sessionCleanup` — delete expired sessions
   (cron: `0 * * * *`)
-- `system:jobLogPrune` — sweep `nx_job_logs` rows older
+- `system:jobLogPrune` — sweep `np_job_logs` rows older
   than 14 days (cron: `30 3 * * *`, Phase 20.3a)
 - `notification:email` — send queued notification emails
 - `plugin:scheduledTask` — fan-out for plugin-registered
@@ -174,7 +174,7 @@ const id = await enqueueJob("media:processImage", {
 });
 ```
 
-- Without a queue wired (`NX_ENABLE_JOBS=0`), `enqueueJob`
+- Without a queue wired (`NP_ENABLE_JOBS=0`), `enqueueJob`
   returns an empty string and the call is a no-op. The web
   process won't crash — the work just doesn't happen.
 - Job names use `:` as a namespace separator
@@ -301,7 +301,7 @@ the endpoint directly if needed.
 **Worker silently stopped processing**
 
 - Check the worker process is alive (e.g. `docker ps`)
-- Confirm `NX_ENABLE_JOBS=1` is set in the worker env
+- Confirm `NP_ENABLE_JOBS=1` is set in the worker env
 - Watch the Pending tab — if jobs are stuck in `created`
   for a long time, the worker isn't draining
 - `GET /api/admin/jobs/health` (editor+) returns the live
@@ -314,7 +314,7 @@ the endpoint directly if needed.
 
 - `POST /api/admin/jobs/pause` (admin + CSRF). Optional
   `{ "reason": "DB migration #123" }` body for the audit
-  trail. The flag persists in `nx_settings` so a worker
+  trail. The flag persists in `np_settings` so a worker
   restart while paused stays paused.
 - In-flight jobs run to completion; producers keep
   enqueueing. The pg-boss queue accumulates pending jobs.
@@ -369,7 +369,7 @@ honest about what's missing rather than letting it drift.
   Entries render as `[time] [level] message` with
   per-entry collapsible context payloads. Empty state shows
   "No log entries for this job."
-- **Per-job log capture** — Phase 20.3a. `nx_job_logs` table
+- **Per-job log capture** — Phase 20.3a. `np_job_logs` table
   - `recordJobLog(level, message, context?)` helper. The
     pg-boss adapter wraps every handler invocation in an
     AsyncLocalStorage context so `getLogger()` calls inside
@@ -381,7 +381,7 @@ honest about what's missing rather than letting it drift.
 
 - **Pause / resume queue** — Phase 20.2. `POST /api/admin/jobs/pause`
   and `POST /api/admin/jobs/resume` (admin + CSRF) flip a
-  `nx_settings("_system", "jobs.paused")` flag and call
+  `np_settings("_system", "jobs.paused")` flag and call
   `boss.offWork()` / `boss.work()` on every registered
   queue. In-flight jobs run to completion; producers keep
   enqueueing while paused. The state is read on worker
@@ -397,7 +397,7 @@ honest about what's missing rather than letting it drift.
   rate limit is defense-in-depth against accidental loops
   and runaway scripts.
 - **Worker heartbeat / liveness** — Phase 19 (#212). The
-  worker upserts to `nx_worker_heartbeats` every 30s; alive
+  worker upserts to `np_worker_heartbeats` every 30s; alive
   = `running` AND last-seen within 90s. Surfaced via
   `GET /api/admin/jobs/health`. Operations playbook above
   should be updated when the admin UI exposes the health

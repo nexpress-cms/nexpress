@@ -19,12 +19,12 @@ context pulls in `node_modules`, `.next`, and `.git`.
 **`vercel.json`** — always emitted with a cron entry for
 `/api/internal/publish-scheduled` per `docs/deployment.md` Path 2.
 Harmless on non-Vercel hosts; the route short-circuits when
-`NX_SCHEDULER_TOKEN` is unset.
+`NP_SCHEDULER_TOKEN` is unset.
 
 **`pnpm doctor:prod`** — new `--prod` mode on the existing doctor
-script. Tightens the dev defaults: `NX_SECRET < 32 chars` becomes
-an error, missing `NX_ENABLE_JOBS` warns (jobs would silently
-drop), `NX_STORAGE_ADAPTER=local` on a multi-node platform
+script. Tightens the dev defaults: `NP_SECRET < 32 chars` becomes
+an error, missing `NP_ENABLE_JOBS` warns (jobs would silently
+drop), `NP_STORAGE_ADAPTER=local` on a multi-node platform
 errors (mirrors `verifyStartupSafety`'s heuristic), `http://`
 SITE_URL warns. Wire into release CI to fail before bad config
 ships.

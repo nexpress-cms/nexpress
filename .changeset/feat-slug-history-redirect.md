@@ -14,7 +14,7 @@ preserves the request method.)
 
 Implementation:
 
-- New table `nx_slug_history` records every slug change for
+- New table `np_slug_history` records every slug change for
   collections that declare `slugField`. Indexed on
   `(siteId, collection, oldSlug)` for the read path.
 - The content pipeline writes a history row inside the same

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   getCurrentSiteId,
   isSuperAdmin,
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       } else if (superAdmin) {
         siteIdFilter = rawSiteFilter;
       } else if (
-        rawSiteFilter === NX_DEFAULT_SITE_ID &&
+        rawSiteFilter === NP_DEFAULT_SITE_ID &&
         can(user, "admin.manage")
       ) {
         // Single-tenant compatibility: a global admin without
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       // membership for non-default sites, so a global moderator
       // without a tenant membership can't read another tenant's
       // audit log when the proxy resolves a non-default site.
-      const currentSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+      const currentSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
       if (!(await canModerateSite(user, currentSiteId))) {
         throw new NpForbiddenError("audit", "read");
       }

@@ -91,9 +91,9 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const argEmail = process.argv[2] ?? process.env.NX_ADMIN_EMAIL;
-  const argPassword = process.argv[3] ?? process.env.NX_ADMIN_PASSWORD;
-  const argName = process.argv[4] ?? process.env.NX_ADMIN_NAME ?? "Admin";
+  const argEmail = process.argv[2] ?? process.env.NP_ADMIN_EMAIL;
+  const argPassword = process.argv[3] ?? process.env.NP_ADMIN_PASSWORD;
+  const argName = process.argv[4] ?? process.env.NP_ADMIN_NAME ?? "Admin";
 
   const email = argEmail ?? (await promptLine("Admin email: ")).trim();
 

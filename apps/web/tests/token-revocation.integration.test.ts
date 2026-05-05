@@ -10,7 +10,7 @@
  *
  * "Multi-instance" is simulated by holding two independent
  * `NodePgDatabase` connections to the same Postgres database — the
- * source of truth for `tokenVersion` is the row in `nx_users`, so any
+ * source of truth for `tokenVersion` is the row in `np_users`, so any
  * instance reading the row after the bump sees the new value. Two
  * connections make the intent explicit; the assertion would still
  * hold with one connection because Postgres is what synchronizes the
@@ -48,7 +48,7 @@ describe.skipIf(skipIfNoTestDb())("token revocation across instances (integratio
   });
 
   it("rejects a stale JWT on instance B after instance A bumps tokenVersion", async () => {
-    const secret = process.env.NX_SECRET as string;
+    const secret = process.env.NP_SECRET as string;
     // Two independent pools simulate two app processes behind a load
     // balancer. Both point at the same Postgres.
     const instanceA = createDbConnection({ connectionString: getTestDatabaseUrl() });
@@ -73,7 +73,7 @@ describe.skipIf(skipIfNoTestDb())("token revocation across instances (integratio
   });
 
   it("accepts a freshly-signed JWT issued post-bump on instance B", async () => {
-    const secret = process.env.NX_SECRET as string;
+    const secret = process.env.NP_SECRET as string;
     const instanceA = createDbConnection({ connectionString: getTestDatabaseUrl() });
     const instanceB = createDbConnection({ connectionString: getTestDatabaseUrl() });
 
@@ -101,7 +101,7 @@ describe.skipIf(skipIfNoTestDb())("token revocation across instances (integratio
     // because the version matched at sign time. The verify path
     // re-reads the *current* tokenVersion at request time, so a
     // pre-bump observation can't be replayed after the bump lands.
-    const secret = process.env.NX_SECRET as string;
+    const secret = process.env.NP_SECRET as string;
     const db = await getTestDb();
 
     const session = await seedUser({ email: "revoke3@example.com", role: "admin" });

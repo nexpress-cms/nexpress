@@ -32,8 +32,8 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
   }
 
   const secret =
-    process.env.NX_SECRET ?? process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;
-  if (!secret) throw new Error("NX_SECRET must be set");
+    process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) throw new Error("NP_SECRET must be set");
 
   try {
     await verifyTokenFull(token, secret, getDb() as never);

@@ -61,7 +61,7 @@ export function generateDrizzleSchema(
 
   for (const collection of collections) {
     const tableIdentifier = getCollectionTableIdentifier(collection.slug);
-    const tableName = `nx_c_${collection.slug}`;
+    const tableName = `np_c_${collection.slug}`;
     const columns = getBaseColumns(collection);
     const indexes = [`index("${tableName}_status_idx").on(table.status)`];
     const relations: TableRelation[] = [
@@ -85,7 +85,7 @@ export function generateDrizzleSchema(
     // member-author on the row itself so update/delete can perform
     // the owner check without a separate audit-log lookup. Nullable
     // because staff-authored docs in the same table leave it null;
-    // the FK to nx_members keeps the column safe under member
+    // the FK to np_members keeps the column safe under member
     // deletes (cascade).
     const memberAuthored = Boolean(collection.community?.memberWrite?.create);
     if (memberAuthored) {
@@ -148,7 +148,7 @@ export function generateDrizzleSchema(
     // backfills existing rows. NOT NULL so writes always
     // commit a site id; pipeline reads `getCurrentSiteId()`
     // (or falls back to 'default') and stamps every row.
-    // FK to `nx_sites.id` is intentionally omitted from
+    // FK to `np_sites.id` is intentionally omitted from
     // codegen — adding it forces every test fixture to
     // create the default site row first; the framework
     // invariant (default site always exists post-migration)
@@ -245,7 +245,7 @@ function createArrayTable(
   collectionTables: Map<string, string>,
 ): GeneratedTable {
   const path = [...context.fieldPath, field.name];
-  const tableName = `nx_c_${context.collectionSlug}__${path.join("__")}`;
+  const tableName = `np_c_${context.collectionSlug}__${path.join("__")}`;
   const identifier = getNestedTableIdentifier(context.collectionSlug, path);
   const columns = [
     'id: uuid("id").defaultRandom().primaryKey()',
@@ -292,7 +292,7 @@ function createHasManyJoinTable(
   collectionTables: Map<string, string>,
 ): GeneratedTable {
   const path = [...context.fieldPath, field.name];
-  const tableName = `nx_c_${context.collectionSlug}__${path.join("__")}`;
+  const tableName = `np_c_${context.collectionSlug}__${path.join("__")}`;
   const identifier = getNestedTableIdentifier(context.collectionSlug, path);
   const targetIdentifier = resolveRelationTarget(field.relationTo, collectionTables);
   const parentReferenceName = context.fieldPath.length === 0 ? `${toCamelCase(context.collectionSlug)}Id` : "parentId";

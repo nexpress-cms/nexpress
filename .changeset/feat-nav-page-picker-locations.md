@@ -13,7 +13,7 @@ Navigation editor wires up two missing pieces:
    linked page was unpublished or deleted fall through to `#` rather
    than dropping out of the cached menu.
 2. **Location switcher** — the editor exposes a Header / Footer / Main
-   selector (the `nx_navigation` table has always keyed by location;
+   selector (the `np_navigation` table has always keyed by location;
    the UI was hardcoded to `"main"`). Each location's items load and
    save against its own `(siteId, location)` row.
 

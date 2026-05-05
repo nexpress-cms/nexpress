@@ -9,7 +9,7 @@ import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.
 
 import { getLogger } from "../observability/logger.js";
 
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 
 import { recordAuditEvent } from "./audit.js";
@@ -23,7 +23,7 @@ import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
 
 /**
- * Service layer for `nx_comments`. Routes call into here so the
+ * Service layer for `np_comments`. Routes call into here so the
  * permission gate (`memberCan`) and the markdown render are
  * consistent across HTTP, the admin UI, and any future plugin
  * surface.
@@ -51,8 +51,8 @@ export interface NpCommentRow {
   siteId: string;
   createdAt: Date;
   /**
-   * Phase 21.11 — author's `nx_members.status` at read time.
-   * `listComments` joins against `nx_members` so callers can render
+   * Phase 21.11 — author's `np_members.status` at read time.
+   * `listComments` joins against `np_members` so callers can render
    * a `(imported)` badge without a second round trip. Older callers
    * that don't read this field stay unaffected — the column is
    * nullable on the type because the underlying join is `LEFT JOIN`
@@ -278,7 +278,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   const targetSiteId =
     typeof targetDoc.siteId === "string" && targetDoc.siteId.length > 0
       ? targetDoc.siteId
-      : ((await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID);
+      : ((await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID);
   const [row] = (await db
     .insert(npComments)
     .values({
@@ -459,7 +459,7 @@ export async function listComments(
         ? asc(npComments.createdAt)
         : desc(npComments.createdAt);
 
-  // Phase 21.11 — LEFT JOIN against `nx_members` so the response
+  // Phase 21.11 — LEFT JOIN against `np_members` so the response
   // carries the author's status (most callers want to render an
   // `(imported)` chip without a second round trip). The join is
   // bounded by `limit` (≤200), so the cost is the page-size lookup

@@ -115,7 +115,7 @@ import { PageDefaultTemplate } from "./templates/page-default.js";
 
 export const mybrandTheme = defineTheme({
   manifest: {
-    id: "mybrand",                 // unique key used in nx_settings.activeTheme
+    id: "mybrand",                 // unique key used in np_settings.activeTheme
     name: "MyBrand",
     version: "0.1.0",
     description: "Editorial mybrand theme",
@@ -340,7 +340,7 @@ These are orthogonal axes:
 | Axis      | Lives in                                    | Who edits     | Persists across theme swap?       |
 | --------- | ------------------------------------------- | ------------- | --------------------------------- |
 | Theme     | npm package's `impl`                        | Developer     | (the package controls structure)  |
-| Tokens    | `nx_settings.theme` row                     | Admin         | Yes — colors stay across themes   |
+| Tokens    | `np_settings.theme` row                     | Admin         | Yes — colors stay across themes   |
 
 A theme can declare its own preferred token defaults via
 `impl.tokens`, but the saved admin tokens always win. This is
@@ -371,7 +371,7 @@ in the bundle.
 
 **Activate**: at runtime, an admin opens Settings → Theme and
 clicks "Activate" on the desired theme. That writes the id to
-`nx_settings.activeTheme` and busts the layout cache via
+`np_settings.activeTheme` and busts the layout cache via
 `revalidatePath("/", "layout")`. The next request renders the
 new shell + CSS.
 

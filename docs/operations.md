@@ -28,9 +28,9 @@ its log context so log search rules can target them.
 
 | `check` id                  | Meaning                                                                                  | Fix                                                                                                                                                                                  |
 | --------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `multi_node_local_storage`  | `NX_MULTI_NODE=true` (or `=1`) AND `NX_STORAGE_ADAPTER=local`. Each node has its own `./uploads` dir. | Switch to S3 (`NX_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below.                              |
-| `missing_prod_secret`       | `NODE_ENV=production` AND `NX_SECRET` unset. JWT sessions are forgeable.                  | Generate a secret (`openssl rand -base64 48`) and set `NX_SECRET`. Existing sessions will be invalidated; users re-login.                                                                |
-| `weak_prod_secret`          | `NX_SECRET` is shorter than 32 characters in production.                                  | Same fix as above.                                                                                                                                                                   |
+| `multi_node_local_storage`  | `NP_MULTI_NODE=true` (or `=1`) AND `NP_STORAGE_ADAPTER=local`. Each node has its own `./uploads` dir. | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below.                              |
+| `missing_prod_secret`       | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                  | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                |
+| `weak_prod_secret`          | `NP_SECRET` is shorter than 32 characters in production.                                  | Same fix as above.                                                                                                                                                                   |
 
 These are warnings, not crashes — the process boots. They show up in
 whatever logger has been installed via `setLogger()`; on a default
@@ -66,7 +66,7 @@ move existing files. The DB stores the storage key, not the URL —
 
 1. Sync the `./uploads` tree to the bucket (`aws s3 sync ./uploads
    s3://my-bucket/`).
-2. Set `NX_STORAGE_ADAPTER=s3` + `NX_S3_BUCKET` + `NX_S3_REGION` and
+2. Set `NP_STORAGE_ADAPTER=s3` + `NP_S3_BUCKET` + `NP_S3_REGION` and
    restart.
 3. Spot-check a handful of media items via the admin Media surface —
    the URLs should resolve through your CDN/bucket origin now.
@@ -81,10 +81,10 @@ the adapter flips.
 Use this when a single account is compromised — leaked password, lost
 device, departing employee with active sessions. It invalidates every
 JWT issued for that user across every instance, but leaves all other
-users untouched. Rotating `NX_SECRET` (below) is the wider hammer for
+users untouched. Rotating `NP_SECRET` (below) is the wider hammer for
 suspected secret leakage.
 
-The mechanism is a `tokenVersion` column on `nx_users`. Every JWT
+The mechanism is a `tokenVersion` column on `np_users`. Every JWT
 encodes the version it was minted against; `verifyTokenFull` re-reads
 the row on each request and rejects tokens whose version no longer
 matches. Bumping the column forces re-authentication on the user's
@@ -93,14 +93,14 @@ next request, on every instance.
 ```bash
 # By user id (preferred — no email lookup race).
 psql "$DATABASE_URL" -c "
-  UPDATE nx_users
+  UPDATE np_users
   SET token_version = token_version + 1
   WHERE id = 'a1b2c3d4-…';
 "
 
 # By email — convenient for ops but loses to a concurrent email change.
 psql "$DATABASE_URL" -c "
-  UPDATE nx_users
+  UPDATE np_users
   SET token_version = token_version + 1
   WHERE email = 'compromised@example.com';
 "
@@ -108,7 +108,7 @@ psql "$DATABASE_URL" -c "
 # Optional cleanup — drop persisted refresh sessions for the same user.
 # Not strictly required (the bump invalidates them too) but good hygiene.
 psql "$DATABASE_URL" -c "
-  DELETE FROM nx_sessions WHERE user_id = 'a1b2c3d4-…';
+  DELETE FROM np_sessions WHERE user_id = 'a1b2c3d4-…';
 "
 ```
 
@@ -119,11 +119,11 @@ delete in a single transaction. The integration test in
 multi-instance behaviour: a bump on instance A rejects the previously-
 issued JWT on instance B's next request.
 
-For members (separate `nx_members` table with its own `token_version`
-column), the same shape applies — update `nx_members.token_version`
-and clear the relevant `nx_member_sessions` rows.
+For members (separate `np_members` table with its own `token_version`
+column), the same shape applies — update `np_members.token_version`
+and clear the relevant `np_member_sessions` rows.
 
-## Rotating `NX_SECRET`
+## Rotating `NP_SECRET`
 
 Rotating the JWT signing secret invalidates every existing session.
 Plan for a forced re-login.
@@ -132,7 +132,7 @@ Plan for a forced re-login.
    deploy yet.
 2. Communicate the planned cutover window if your sessions are
    long-lived (default 30 days).
-3. Deploy with the new `NX_SECRET`. Every active user gets logged out
+3. Deploy with the new `NP_SECRET`. Every active user gets logged out
    on their next request.
 4. There's no overlap window in v1 — the singleton secret is the only
    key that signs and verifies. Multi-key rollover is a future
@@ -159,7 +159,7 @@ tails, pg `too many connections` in the server log.
 ## S3 credentials rotation
 
 Static credentials (access key + secret) — rotate via your IAM rotation
-workflow, then update the deployment env (`NX_S3_*`). The S3 adapter
+workflow, then update the deployment env (`NP_S3_*`). The S3 adapter
 re-reads its credentials on construction, which happens once per
 process — operators must restart all nodes after rotating. There's no
 hot-reload of S3 credentials in v1.
@@ -172,7 +172,7 @@ on its own; nothing on the NexPress side needs to change.
 NexPress's source of truth is Postgres; `./uploads` (or the configured
 S3 bucket) is the secondary store. They must be backed up together
 and restored in order, otherwise the system is left referencing data
-that isn't there. `nx_revisions` is edit history, not a backup — a
+that isn't there. `np_revisions` is edit history, not a backup — a
 row deleted by an admin is gone from the revisions table along with
 the document.
 
@@ -186,11 +186,11 @@ pattern, DR drill, and automation snippets), see the live guide:
 Symptom: `/admin` and `/admin/login` keep bouncing the user back and
 forth.
 
-- Confirm `NX_SECRET` is the same across all nodes. If a load
+- Confirm `NP_SECRET` is the same across all nodes. If a load
   balancer is fronting two nodes signed with different secrets,
   every other request will fail JWT verification.
 - Clear the `nx-session` cookie in the browser DevTools. A token
-  signed with the previous `NX_SECRET` won't verify, but Next won't
+  signed with the previous `NP_SECRET` won't verify, but Next won't
   always volunteer a 401 — sometimes the redirect path runs first.
 - Confirm `cookies()` resolves on the same domain as `SITE_URL`. A
   mismatched domain (e.g. `app.example.com` vs `example.com`)
@@ -202,14 +202,14 @@ There's no "promote" UI for the first admin (intentional — the seed
 script is the only way to create one). To promote an existing user:
 
 ```sql
-UPDATE nx_users SET role = 'admin' WHERE email = 'user@example.com';
+UPDATE np_users SET role = 'admin' WHERE email = 'user@example.com';
 ```
 
 Bumping `tokenVersion` at the same time forces a re-login with the
 new role:
 
 ```sql
-UPDATE nx_users
+UPDATE np_users
 SET role = 'admin', token_version = token_version + 1
 WHERE email = 'user@example.com';
 ```

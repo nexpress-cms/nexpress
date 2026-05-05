@@ -19,7 +19,7 @@
  * provider but `providerUserId` should not. If the provider doesn't
  * surface `email`, the framework falls back to creating a synthetic
  * placeholder (`<providerUserId>@<provider>.oauth.local`) so the
- * `nx_users.email NOT NULL UNIQUE` constraint is still satisfied.
+ * `np_users.email NOT NULL UNIQUE` constraint is still satisfied.
  */
 export interface OAuthProfile {
   /** Stable per-user id from the provider. Required. */
@@ -28,7 +28,7 @@ export interface OAuthProfile {
   email?: string | null;
   /** Optional — defaults to email local-part on user creation. */
   name?: string | null;
-  /** Optional — written into `nx_user_oauth_identities.metadata`. */
+  /** Optional — written into `np_user_oauth_identities.metadata`. */
   avatarUrl?: string | null;
   /** Optional — full payload the provider wants to remember (e.g. scopes). */
   metadata?: Record<string, unknown>;
@@ -61,7 +61,7 @@ export interface OAuthExchangeParams {
 }
 
 export interface OAuthProvider {
-  /** Stable id used in route paths and `nx_user_oauth_identities.provider`. */
+  /** Stable id used in route paths and `np_user_oauth_identities.provider`. */
   id: string;
   /** Human-readable label for admin UI / login buttons. */
   label?: string;

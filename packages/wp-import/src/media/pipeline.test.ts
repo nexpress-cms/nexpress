@@ -97,7 +97,7 @@ describe("runMediaPipeline", () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it("21.13 — reuses an existing nx_media row when findExistingByHash returns a hit", async () => {
+  it("21.13 — reuses an existing np_media row when findExistingByHash returns a hit", async () => {
     const { bundle, attachments } = loadBundle();
     const upload = vi.fn(() => Promise.resolve({ id: "fresh-id" }));
     const findExistingByHash = vi.fn(() => Promise.resolve({ id: "reused-id" }));

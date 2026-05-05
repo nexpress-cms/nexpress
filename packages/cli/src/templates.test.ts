@@ -121,7 +121,7 @@ describe("getProjectFiles", () => {
     // error on first image-upload, not at build time.
     expect(dockerfile).toMatch(/vips/);
     // Build-time placeholder for nexpress.config.ts's zod validation.
-    expect(dockerfile).toMatch(/NX_SECRET=placeholder/);
+    expect(dockerfile).toMatch(/NP_SECRET=placeholder/);
   });
 
   it("emits vercel.json with the scheduled-publish cron entry", () => {

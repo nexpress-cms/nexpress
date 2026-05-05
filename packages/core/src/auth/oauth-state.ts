@@ -21,10 +21,10 @@ import { readEnvPositiveInt } from "../config/env.js";
  * Default state TTL is 10 minutes — long enough for slow IdP redirects
  * (corporate SSO with MFA prompts), short enough that a stale state
  * cookie doesn't sit around forever. Override via
- * `NX_OAUTH_STATE_TTL_SECONDS`.
+ * `NP_OAUTH_STATE_TTL_SECONDS`.
  */
 
-const STATE_TTL_SECONDS = readEnvPositiveInt("NX_OAUTH_STATE_TTL_SECONDS", 600);
+const STATE_TTL_SECONDS = readEnvPositiveInt("NP_OAUTH_STATE_TTL_SECONDS", 600);
 const CODE_VERIFIER_BYTES = 32;
 
 export interface OAuthStatePayload {

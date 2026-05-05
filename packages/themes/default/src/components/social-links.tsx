@@ -1,15 +1,15 @@
 /**
- * Social-link strip read from `process.env.NX_SOCIAL_*` so
+ * Social-link strip read from `process.env.NP_SOCIAL_*` so
  * sites can light up the footer icons without forking the theme.
  * Empty when no env vars are set — the column collapses cleanly.
  *
  * Recognized env vars:
- *   NX_SOCIAL_GITHUB    → https://github.com/<handle>
- *   NX_SOCIAL_TWITTER   → https://twitter.com/<handle> or x.com URL
- *   NX_SOCIAL_LINKEDIN  → company / personal URL
- *   NX_SOCIAL_MASTODON  → https://mastodon.social/@<handle>
- *   NX_SOCIAL_RSS       → defaults to /feed.xml; set explicit URL to override
- *   NX_SOCIAL_EMAIL     → mailto: address
+ *   NP_SOCIAL_GITHUB    → https://github.com/<handle>
+ *   NP_SOCIAL_TWITTER   → https://twitter.com/<handle> or x.com URL
+ *   NP_SOCIAL_LINKEDIN  → company / personal URL
+ *   NP_SOCIAL_MASTODON  → https://mastodon.social/@<handle>
+ *   NP_SOCIAL_RSS       → defaults to /feed.xml; set explicit URL to override
+ *   NP_SOCIAL_EMAIL     → mailto: address
  */
 
 interface SocialLink {
@@ -21,29 +21,29 @@ interface SocialLink {
 function buildLinks(): SocialLink[] {
   const links: SocialLink[] = [];
   const env = process.env;
-  if (env.NX_SOCIAL_GITHUB) {
-    links.push({ href: env.NX_SOCIAL_GITHUB, label: "GitHub", Icon: GithubIcon });
+  if (env.NP_SOCIAL_GITHUB) {
+    links.push({ href: env.NP_SOCIAL_GITHUB, label: "GitHub", Icon: GithubIcon });
   }
-  if (env.NX_SOCIAL_TWITTER) {
-    links.push({ href: env.NX_SOCIAL_TWITTER, label: "Twitter / X", Icon: TwitterIcon });
+  if (env.NP_SOCIAL_TWITTER) {
+    links.push({ href: env.NP_SOCIAL_TWITTER, label: "Twitter / X", Icon: TwitterIcon });
   }
-  if (env.NX_SOCIAL_LINKEDIN) {
-    links.push({ href: env.NX_SOCIAL_LINKEDIN, label: "LinkedIn", Icon: LinkedInIcon });
+  if (env.NP_SOCIAL_LINKEDIN) {
+    links.push({ href: env.NP_SOCIAL_LINKEDIN, label: "LinkedIn", Icon: LinkedInIcon });
   }
-  if (env.NX_SOCIAL_MASTODON) {
+  if (env.NP_SOCIAL_MASTODON) {
     // Mastodon recommends rel="me" for verified profile links.
-    links.push({ href: env.NX_SOCIAL_MASTODON, label: "Mastodon", Icon: MastodonIcon });
+    links.push({ href: env.NP_SOCIAL_MASTODON, label: "Mastodon", Icon: MastodonIcon });
   }
-  if (env.NX_SOCIAL_EMAIL) {
-    const value = env.NX_SOCIAL_EMAIL.startsWith("mailto:")
-      ? env.NX_SOCIAL_EMAIL
-      : `mailto:${env.NX_SOCIAL_EMAIL}`;
+  if (env.NP_SOCIAL_EMAIL) {
+    const value = env.NP_SOCIAL_EMAIL.startsWith("mailto:")
+      ? env.NP_SOCIAL_EMAIL
+      : `mailto:${env.NP_SOCIAL_EMAIL}`;
     links.push({ href: value, label: "Email", Icon: EmailIcon });
   }
   // RSS is always useful — default to the framework's feed when
   // not overridden. The icon is the universal RSS mark.
   links.push({
-    href: env.NX_SOCIAL_RSS ?? "/feed.xml",
+    href: env.NP_SOCIAL_RSS ?? "/feed.xml",
     label: "RSS",
     Icon: RssIcon,
   });

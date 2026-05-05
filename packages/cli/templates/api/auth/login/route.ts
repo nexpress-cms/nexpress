@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const config = getAuthRuntimeConfig();
 
     const result = await db.$client.query<LoginUserRow>(
-      'select id, email, password, name, role, login_attempts as "loginAttempts", lock_until as "lockUntil", token_version as "tokenVersion" from nx_users where email = $1 limit 1',
+      'select id, email, password, name, role, login_attempts as "loginAttempts", lock_until as "lockUntil", token_version as "tokenVersion" from np_users where email = $1 limit 1',
       [email],
     );
     const user = result.rows[0];
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       const nextAttempts = user.loginAttempts + 1;
       const shouldLock = nextAttempts >= config.maxLoginAttempts;
       await db.$client.query(
-        "update nx_users set login_attempts = $1, lock_until = $2, updated_at = $3 where id = $4",
+        "update np_users set login_attempts = $1, lock_until = $2, updated_at = $3 where id = $4",
         [
           nextAttempts,
           shouldLock ? new Date(now.getTime() + config.lockoutDuration * 1000) : null,
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     await db.$client.query(
-      "update nx_users set login_attempts = 0, lock_until = null, updated_at = $1 where id = $2",
+      "update np_users set login_attempts = 0, lock_until = null, updated_at = $1 where id = $2",
       [now, user.id],
     );
 

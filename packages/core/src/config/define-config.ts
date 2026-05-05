@@ -13,7 +13,7 @@ import { npConfigSchema } from "./validation.js";
  * The most common boot trip-up by far is "auth.secret" / "site.url" /
  * "db.connectionString" missing on a fresh install. We translate Zod's raw
  * `String must contain at least 1 character` style messages into actionable
- * "set NX_SECRET in .env, or run `pnpm run setup`" hints so the new operator
+ * "set NP_SECRET in .env, or run `pnpm run setup`" hints so the new operator
  * isn't googling Zod path strings.
  *
  * Unknown plugin entries are accepted here — the plugin loader does the
@@ -47,13 +47,13 @@ export function defineConfig(config: NpConfig): NpConfig {
 
 const FRIENDLY_HINTS: Record<string, string> = {
   "auth.secret":
-    "Set `NX_SECRET` in `.env` (≥32 random chars) — `pnpm run setup` will generate one for you.",
+    "Set `NP_SECRET` in `.env` (≥32 random chars) — `pnpm run setup` will generate one for you.",
   "site.url":
     "Set `SITE_URL` in `.env` to your public origin — `pnpm run setup` collects it.",
   "db.connectionString":
     "Set `DATABASE_URL` in `.env` to your Postgres connection string — `pnpm run setup` will write it.",
-  "storage.s3.bucket": "Set `NX_S3_BUCKET` in `.env` (or switch storage to local).",
-  "storage.s3.region": "Set `NX_S3_REGION` in `.env`.",
+  "storage.s3.bucket": "Set `NP_S3_BUCKET` in `.env` (or switch storage to local).",
+  "storage.s3.region": "Set `NP_S3_REGION` in `.env`.",
 };
 
 function formatConfigError(err: ZodError): string {

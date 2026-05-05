@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest) {
     const { currentPassword, newPassword } = validateChangePasswordBody(await readJsonBody(request));
     const db = getDb();
     const result = await db.$client.query<PasswordRow>(
-      "select password from nx_users where id = $1 limit 1",
+      "select password from np_users where id = $1 limit 1",
       [user.id],
     );
     const storedUser = result.rows[0];
@@ -69,7 +69,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     await db.$client.query(
-      "update nx_users set password = $1, updated_at = $2 where id = $3",
+      "update np_users set password = $1, updated_at = $2 where id = $3",
       [await hashPassword(newPassword), new Date(), user.id],
     );
 

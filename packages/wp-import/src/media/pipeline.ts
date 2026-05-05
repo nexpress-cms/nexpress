@@ -35,7 +35,7 @@ import {
  *     `findExistingByHash`, the pipeline computes the SHA-256 of
  *     the downloaded bytes and looks the row up by hash before
  *     uploading. Re-running the importer against the same WXR
- *     therefore reuses existing `nx_media` rows instead of
+ *     therefore reuses existing `np_media` rows instead of
  *     producing byte-identical duplicates.
  */
 
@@ -55,7 +55,7 @@ export interface MediaPipelineDeps {
   upload: (input: MediaUploadInput) => Promise<{ id: string }>;
   /**
    * Phase 21.13 — when supplied, the pipeline asks the caller to
-   * look up an existing `nx_media` row by SHA-256 hash before
+   * look up an existing `np_media` row by SHA-256 hash before
    * uploading. Returning a row reuses it (cross-run idempotency);
    * returning null falls through to upload as normal.
    */
@@ -114,8 +114,8 @@ export async function runMediaPipeline(
 ): Promise<MediaPipelineReport> {
   const log = options.log ?? noop;
   const dryRun = options.dryRun ?? false;
-  // The default download honours NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS and
-  // NX_WP_IMPORT_MAX_BYTES so self-hosted operators can opt into
+  // The default download honours NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS and
+  // NP_WP_IMPORT_MAX_BYTES so self-hosted operators can opt into
   // private-network sources without having to inject `deps.download`.
   // Resolve once per pipeline run so a single env read covers every
   // target — re-reading per URL would only reward someone toggling env

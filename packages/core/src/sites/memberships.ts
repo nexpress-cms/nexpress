@@ -6,7 +6,7 @@ import { NpValidationError } from "../errors.js";
 import type { NpAuthUser, NpUserRole } from "../config/types.js";
 
 import { getCurrentSiteId } from "./context.js";
-import { NX_DEFAULT_SITE_ID } from "./registry.js";
+import { NP_DEFAULT_SITE_ID } from "./registry.js";
 
 /**
  * Phase 15.5 — per-site role memberships.
@@ -213,7 +213,7 @@ export async function hasRoleOnSite(
   siteId?: string,
 ): Promise<boolean> {
   const targetSite =
-    siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const role = await resolveUserRoleOnSite(user, targetSite);
   return ROLE_RANK[role] >= ROLE_RANK[minRole];
 }

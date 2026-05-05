@@ -85,7 +85,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     // the noop adapter in tests.
     const db = await getTestDb();
     const rows = await db.execute(
-      "select email_verify_token_hash from nx_members where email = 'alice@example.com'" as never,
+      "select email_verify_token_hash from np_members where email = 'alice@example.com'" as never,
     );
     expect((rows as unknown as { rows: Array<{ email_verify_token_hash: string | null }> }).rows[0]?.email_verify_token_hash).toBeTruthy();
 
@@ -348,7 +348,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
 
   // Regression for #91: a refresh JWT must not be usable as a session
   // cookie. Without the `use` claim check the refresh token's hash row
-  // in `nx_member_sessions` was indistinguishable from an access row
+  // in `np_member_sessions` was indistinguishable from an access row
   // and authenticated normal member endpoints.
   it("refresh JWT is rejected when presented as the session cookie (#91)", async () => {
     await registerAndVerify("usemix", "usemix@example.com", "password123");
@@ -371,7 +371,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(okMe.status).toBe(200);
 
     // Attack: smuggle the refresh JWT into the session cookie name.
-    // The refresh row is still in `nx_member_sessions`, so without
+    // The refresh row is still in `np_member_sessions`, so without
     // the `use` claim check this returned 200.
     const smuggle = await meGET(
       jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${refreshCookie}`] }),
@@ -404,7 +404,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     // should cause the rejection. Built with `node:crypto` so this
     // test doesn't pull in `jose` as an apps/web dep.
     const { createHmac } = await import("node:crypto");
-    const secret = process.env.NX_SECRET as string;
+    const secret = process.env.NP_SECRET as string;
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
       "base64url",

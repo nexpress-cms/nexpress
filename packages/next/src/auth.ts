@@ -30,15 +30,15 @@ export interface AuthRuntimeConfig {
 
 export interface CreateAuthHelpersOptions<DB> {
   getDb: () => DB;
-  /** Read the secret on demand so tests can swap it; falls back to NX_SECRET env. */
+  /** Read the secret on demand so tests can swap it; falls back to NP_SECRET env. */
   getSecret?: () => string;
 }
 
 function defaultGetSecret(): string {
   const secret =
-    process.env.NX_SECRET ?? process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;
+    process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
   if (!secret) {
-    throw new Error("NX_SECRET must be set (see .env.example)");
+    throw new Error("NP_SECRET must be set (see .env.example)");
   }
   return secret;
 }
@@ -52,17 +52,17 @@ function readNumber(value: string | undefined, fallback: number): number {
 function getRuntimeConfig(secret: string): AuthRuntimeConfig {
   return {
     secret,
-    tokenExpiration: readNumber(process.env.NX_TOKEN_EXPIRATION, DEFAULT_TOKEN_EXPIRATION),
+    tokenExpiration: readNumber(process.env.NP_TOKEN_EXPIRATION, DEFAULT_TOKEN_EXPIRATION),
     refreshTokenExpiration: readNumber(
-      process.env.NX_REFRESH_TOKEN_EXPIRATION,
+      process.env.NP_REFRESH_TOKEN_EXPIRATION,
       DEFAULT_REFRESH_TOKEN_EXPIRATION,
     ),
     maxLoginAttempts: readNumber(
-      process.env.NX_MAX_LOGIN_ATTEMPTS,
+      process.env.NP_MAX_LOGIN_ATTEMPTS,
       DEFAULT_MAX_LOGIN_ATTEMPTS,
     ),
     lockoutDuration: readNumber(
-      process.env.NX_LOCKOUT_DURATION,
+      process.env.NP_LOCKOUT_DURATION,
       DEFAULT_LOCKOUT_DURATION,
     ),
     secureCookies: process.env.NODE_ENV === "production",

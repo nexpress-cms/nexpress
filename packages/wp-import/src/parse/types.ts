@@ -25,7 +25,7 @@ export interface WpTerm {
 
 /**
  * A media reference parsed out of a post. Resolved later by the
- * media pipeline (Phase 21.5) into actual nx_media ids.
+ * media pipeline (Phase 21.5) into actual np_media ids.
  */
 export interface WpMediaRef {
   /** Source URL on the WP site (e.g. `https://site.com/wp-content/uploads/.../foo.jpg`). */

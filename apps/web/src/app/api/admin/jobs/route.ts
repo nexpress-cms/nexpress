@@ -32,7 +32,7 @@ const VALID_STATES: ReadonlyArray<NpJobState> = [
  *   ?limit=50&offset=100      → pagination
  *
  * Returns 501 when no queue is wired (sites running without
- * pg-boss; the framework supports this via NX_ENABLE_JOBS=0)
+ * pg-boss; the framework supports this via NP_ENABLE_JOBS=0)
  * or when the queue's adapter doesn't implement listJobs.
  */
 export async function GET(request: NextRequest) {

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpForbiddenError,
   NpNotFoundError,
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     const location = request.nextUrl.searchParams.get("location") ?? "main";
     const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const [row] = await db
       .select()
       .from(npNavigation)
@@ -103,7 +103,7 @@ export async function PUT(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     if (expectedUpdatedAt !== null) {
       const [existing] = await db
@@ -166,7 +166,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     const deleted = await db
       .delete(npNavigation)
@@ -226,7 +226,7 @@ export async function PATCH(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     // Conflict check before update so we get a 409 instead of a
     // bare unique-constraint violation surfacing as a 500.

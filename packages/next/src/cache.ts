@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   getActiveThemeId,
   getCurrentSiteId,
   getNavigation,
@@ -50,7 +50,7 @@ function isMissingIncrementalCache(error: unknown): boolean {
 }
 
 async function resolveSiteId(): Promise<string> {
-  return (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
 export function themeCacheTag(siteId: string): string {

@@ -18,7 +18,7 @@ import { Input } from "../ui/input.js";
  * strings. Lists every key registered by the merged
  * 12.5 bundle registry and lets admins layer per-site
  * overrides on top. The override value lives in
- * `nx_string_overrides`; the framework's `t()` consults it
+ * `np_string_overrides`; the framework's `t()` consults it
  * before falling through to the plugin/theme bundle.
  */
 

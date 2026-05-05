@@ -4,7 +4,7 @@ import {
   findDocuments,
   getCurrentSiteId,
   getDb,
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   npNavigation,
   saveDocument,
   type NpAuthUser,
@@ -131,7 +131,7 @@ export async function seedPages(actor: NpAuthUser): Promise<SeedPagesResult> {
       // The pipeline's slugField derives from title, so we override
       // the home page's slug with a direct DB write after save.
       await db.execute(
-        sql`update nx_c_pages set slug = ${forceSlug} where id = ${id}`,
+        sql`update np_c_pages set slug = ${forceSlug} where id = ${id}`,
       );
     }
   }
@@ -170,7 +170,7 @@ export async function seedPosts(actor: NpAuthUser): Promise<SeedPostsResult> {
       excerpt:
         "Phase 11 ships a multi-theme registry. Switch between installed themes from the admin without rebuilding.",
       content: lexicalParagraph(
-        "Themes live in npm packages and register via `nexpress.config.ts`. The active id is persisted in `nx_settings.activeTheme`, so admins flip between Default / Minimal / Magazine / Portfolio from Settings → Theme. Adding a new theme still requires editing the config, but switching between installed ones doesn't.",
+        "Themes live in npm packages and register via `nexpress.config.ts`. The active id is persisted in `np_settings.activeTheme`, so admins flip between Default / Minimal / Magazine / Portfolio from Settings → Theme. Adding a new theme still requires editing the config, but switching between installed ones doesn't.",
       ),
       publishedAt: now.toISOString(),
       author: actor.id,
@@ -186,7 +186,7 @@ export async function seedPosts(actor: NpAuthUser): Promise<SeedPostsResult> {
 export async function seedNavigation(
   actor: NpAuthUser,
 ): Promise<SeedNavigationResult> {
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const db = getDb();
 
   const headerExisting = await db

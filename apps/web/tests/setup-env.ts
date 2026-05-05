@@ -1,7 +1,7 @@
 /**
  * Runs before every test file's module resolution. Must set any env vars
  * that modules read at import time — `nexpress.config.ts` validates
- * `NX_SECRET` when evaluated, and the bootstrap helper reads
+ * `NP_SECRET` when evaluated, and the bootstrap helper reads
  * `DATABASE_URL` the first time a route handler hits the DB.
  *
  * Pointing `DATABASE_URL` at the per-worker test DB lets the app-side
@@ -13,8 +13,8 @@
  * dev DB. The `_wN` suffix mirrors getTestDatabaseUrl() in the core
  * integration setup so harness + bootstrap land on the same DB.
  */
-if (!process.env.NX_SECRET) {
-  process.env.NX_SECRET = "test-secret-for-integration-tests-only-32ch";
+if (!process.env.NP_SECRET) {
+  process.env.NP_SECRET = "test-secret-for-integration-tests-only-32ch";
 }
 if (process.env.TEST_DATABASE_URL) {
   const u = new URL(process.env.TEST_DATABASE_URL);
@@ -31,4 +31,4 @@ if (!process.env.NODE_ENV) {
 // Drops argon2 hashing from ~75ms to <1ms per call. seedUser fires this
 // 287×/run; the speed-up matters and the weakened params never leak out
 // of the test process.
-process.env.NX_TEST_FAST_HASH = "1";
+process.env.NP_TEST_FAST_HASH = "1";

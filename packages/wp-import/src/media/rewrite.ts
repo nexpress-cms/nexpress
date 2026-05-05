@@ -8,7 +8,7 @@ import type { MediaResolution } from "./pipeline.js";
  * We patch two things on each `image` node:
  *
  *   1. `mediaId` — what `extractMediaIds` in
- *      `packages/core/src/media/refs.ts` reads to wire `nx_media_refs`
+ *      `packages/core/src/media/refs.ts` reads to wire `np_media_refs`
  *      so the document gets blocked from referenced-media deletion.
  *   2. `src` — what the SSR renderer at
  *      `packages/editor/src/render-rich-text.tsx` looks at when

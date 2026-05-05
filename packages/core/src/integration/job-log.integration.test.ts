@@ -10,7 +10,7 @@ import {
 import { getLogger } from "../observability/logger.js";
 import { closeTestDb, ensureMigrated, skipIfNoTestDb, truncateAll } from "./setup.js";
 
-describe.skipIf(skipIfNoTestDb())("nx_job_logs (Phase 20.3a integration)", () => {
+describe.skipIf(skipIfNoTestDb())("np_job_logs (Phase 20.3a integration)", () => {
   beforeAll(async () => {
     await ensureMigrated();
   });
@@ -41,7 +41,7 @@ describe.skipIf(skipIfNoTestDb())("nx_job_logs (Phase 20.3a integration)", () =>
     expect(rows).toHaveLength(0);
   });
 
-  it("logger.info inside a job context tees into nx_job_logs via the lazy import", async () => {
+  it("logger.info inside a job context tees into np_job_logs via the lazy import", async () => {
     await runInJobContext("job-B", async () => {
       getLogger().info("via logger", { source: "test" });
       // Tee is fire-and-forget — let the microtask resolve.

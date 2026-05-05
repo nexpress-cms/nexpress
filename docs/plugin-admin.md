@@ -229,6 +229,6 @@ hatch is under consideration — open an issue if you hit the limit.
   not the user's page load.
 - Action dispatch requires `admin` role + CSRF token. Non-admin users
   can't trigger plugin actions even if they guess an actionId.
-- Settings values are persisted in `nx_plugins.config` via the existing
+- Settings values are persisted in `np_plugins.config` via the existing
   `PATCH /api/plugins/:id` path — same guardrails as the plugin
   config editor in `/admin/plugins`.

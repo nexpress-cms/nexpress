@@ -576,7 +576,7 @@ export const DEFAULT_IMAGE_SIZES: NpImageSize[] = [
 ```typescript
 // (Drizzle ORM)
 export const media = pgTable(
-  "nx_media",
+  "np_media",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     filename: text("filename").notNull(),
@@ -602,12 +602,12 @@ export const media = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }), // soft delete — hard-deleted by media:cleanup job after 30 days
   },
   (table) => ({
-    hashIdx: index("nx_media_hash").on(table.hash),
-    statusIdx: index("nx_media_status").on(table.status),
+    hashIdx: index("np_media_hash").on(table.hash),
+    statusIdx: index("np_media_status").on(table.status),
   }),
 );
 
-export const mediaFolders = pgTable("nx_media_folders", {
+export const mediaFolders = pgTable("np_media_folders", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   parentId: uuid("parent_id").references((): AnyPgColumn => mediaFolders.id),
@@ -1149,7 +1149,7 @@ export interface PluginManifestResponse {
 // Each media reference includes: { filename, hash, mimeType, altText }.
 //
 // Resolution strategy:
-// a. Match by sha256 hash in nx_media → reuse existing media
+// a. Match by sha256 hash in np_media → reuse existing media
 // b. If no match by hash, match by filename → reuse with WARNING
 // c. If no match at all → nullify the reference, add to response.warnings[]
 //
@@ -1162,11 +1162,11 @@ export interface PluginManifestResponse {
 // If any step fails, the ENTIRE import rolls back.
 //
 // Write order (inside transaction):
-// 1. Theme tokens → nx_settings
-// 2. Site settings → nx_settings
-// 3. Navigation items → nx_navigation (delete + insert)
-// 4. Plugin configs → nx_plugins (upsert by pluginId)
-// 5. Pages with blocks → nx_c_pages (upsert by slug)
+// 1. Theme tokens → np_settings
+// 2. Site settings → np_settings
+// 3. Navigation items → np_navigation (delete + insert)
+// 4. Plugin configs → np_plugins (upsert by pluginId)
+// 5. Pages with blocks → np_c_pages (upsert by slug)
 //    - For each page, update npMediaRefs tracking
 //
 // Returns: {
@@ -1266,7 +1266,7 @@ my-site/
 │   └── docker-compose.yml
 ├── drizzle/
 │   └── migrations/            # Auto-generated Drizzle migrations
-├── .env                       # DATABASE_URL, NX_SECRET, S3_*, etc.
+├── .env                       # DATABASE_URL, NP_SECRET, S3_*, etc.
 ├── .env.example
 ├── next.config.ts
 ├── tsconfig.json
@@ -1344,7 +1344,7 @@ export default defineConfig({
 
   /** Authentication */
   auth: {
-    secret: process.env.NX_SECRET!,
+    secret: process.env.NP_SECRET!,
     tokenExpiration: 7200, // 2 hours
     refreshTokenExpiration: 2592000, // 30 days
     maxLoginAttempts: 5,
@@ -1493,7 +1493,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://nexpress:nexpress@db:5432/nexpress
-      NX_SECRET: ${NX_SECRET:-change-me-in-production}
+      NP_SECRET: ${NP_SECRET:-change-me-in-production}
       SITE_URL: ${SITE_URL:-http://localhost:3000}
     depends_on:
       db:
@@ -1601,14 +1601,14 @@ nexpress.config.ts (collection config)
 ```typescript
 /**
  * All NexPress system tables use `nx_` prefix.
- * Generated collection tables use `nx_c_` prefix.
+ * Generated collection tables use `np_c_` prefix.
  * This avoids collisions with user's own tables.
  */
 
-// System tables:     nx_users, nx_sessions, nx_settings, nx_media, nx_media_folders,
-//                    nx_revisions, nx_navigation, nx_plugins
-// Collection tables: nx_c_posts, nx_c_pages, nx_c_categories, nx_c_{slug}
-// Join tables:       nx_c_{slug}__{field} (for array/repeatable fields)
+// System tables:     np_users, np_sessions, np_settings, np_media, np_media_folders,
+//                    np_revisions, np_navigation, np_plugins
+// Collection tables: np_c_posts, np_c_pages, np_c_categories, np_c_{slug}
+// Join tables:       np_c_{slug}__{field} (for array/repeatable fields)
 ```
 
 ### A.3 Common Column Pattern
@@ -1645,7 +1645,7 @@ function npBaseColumns() {
 
 ```typescript
 // ─── Users ───────────────────────────────────────────────────────
-export const npUsers = pgTable("nx_users", {
+export const npUsers = pgTable("np_users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(), // argon2 hash
@@ -1662,7 +1662,7 @@ export const npUsers = pgTable("nx_users", {
 });
 
 // ─── Sessions ────────────────────────────────────────────────────
-export const npSessions = pgTable("nx_sessions", {
+export const npSessions = pgTable("np_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
@@ -1676,7 +1676,7 @@ export const npSessions = pgTable("nx_sessions", {
 
 // ─── Revisions (single table, JSONB snapshots) ──────────────────
 export const npRevisions = pgTable(
-  "nx_revisions",
+  "np_revisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     collection: text("collection").notNull(), // e.g., "posts"
@@ -1689,14 +1689,14 @@ export const npRevisions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    docVersionIdx: uniqueIndex("nx_rev_doc_version").on(table.documentId, table.version),
-    collectionIdx: index("nx_rev_collection").on(table.collection),
-    docIdx: index("nx_rev_document").on(table.documentId),
+    docVersionIdx: uniqueIndex("np_rev_doc_version").on(table.documentId, table.version),
+    collectionIdx: index("np_rev_collection").on(table.collection),
+    docIdx: index("np_rev_document").on(table.documentId),
   }),
 );
 
 // ─── Settings (key-value JSON store) ─────────────────────────────
-export const npSettings = pgTable("nx_settings", {
+export const npSettings = pgTable("np_settings", {
   key: text("key").primaryKey(), // e.g., "theme", "navigation", "site"
   value: jsonb("value").notNull(), // JSON blob
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1704,7 +1704,7 @@ export const npSettings = pgTable("nx_settings", {
 });
 
 // ─── Navigation ──────────────────────────────────────────────────
-export const npNavigation = pgTable("nx_navigation", {
+export const npNavigation = pgTable("np_navigation", {
   id: uuid("id").primaryKey().defaultRandom(),
   location: text("location").notNull().unique(), // "header" | "footer" | custom
   items: jsonb("items").notNull().$type<NpNavItem[]>(),
@@ -1713,7 +1713,7 @@ export const npNavigation = pgTable("nx_navigation", {
 });
 
 // ─── Plugin State ────────────────────────────────────────────────
-export const npPlugins = pgTable("nx_plugins", {
+export const npPlugins = pgTable("np_plugins", {
   id: text("id").primaryKey(), // plugin manifest id
   enabled: boolean("enabled").notNull().default(true),
   config: jsonb("config").$type<Record<string, unknown>>(),
@@ -1721,7 +1721,7 @@ export const npPlugins = pgTable("nx_plugins", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Media tables: see Section G.5 (nx_media, nx_media_folders)
+// Media tables: see Section G.5 (np_media, np_media_folders)
 ```
 
 ### A.5 Generated Collection Table Example
@@ -1763,7 +1763,7 @@ The generator produces:
 // drizzle/schema.generated.ts (auto-generated — do not edit manually)
 
 export const npCPosts = pgTable(
-  "nx_c_posts",
+  "np_c_posts",
   {
     // ── Base columns ──
     id: uuid("id").primaryKey().defaultRandom(),
@@ -1794,16 +1794,16 @@ export const npCPosts = pgTable(
     seoOgImage: uuid("seo_og_image").references(() => npMedia.id),
   },
   (table) => ({
-    statusIdx: index("nx_c_posts_status").on(table.status),
-    slugIdx: index("nx_c_posts_slug").on(table.slug),
-    publishedAtIdx: index("nx_c_posts_published_at").on(table.publishedAt),
-    featuredIdx: index("nx_c_posts_featured").on(table.featured),
+    statusIdx: index("np_c_posts_status").on(table.status),
+    slugIdx: index("np_c_posts_slug").on(table.slug),
+    publishedAtIdx: index("np_c_posts_published_at").on(table.publishedAt),
+    featuredIdx: index("np_c_posts_featured").on(table.featured),
   }),
 );
 
 // ── Many-to-many: posts ↔ categories ──
 export const npCPostsCategories = pgTable(
-  "nx_c_posts__categories",
+  "np_c_posts__categories",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     postId: uuid("post_id")
@@ -1815,14 +1815,14 @@ export const npCPostsCategories = pgTable(
     order: integer("order").notNull().default(0),
   },
   (table) => ({
-    postIdx: index("nx_c_posts__categories_post").on(table.postId),
-    uniqueRel: uniqueIndex("nx_c_posts__categories_unique").on(table.postId, table.categoryId),
+    postIdx: index("np_c_posts__categories_post").on(table.postId),
+    uniqueRel: uniqueIndex("np_c_posts__categories_unique").on(table.postId, table.categoryId),
   }),
 );
 
 // ── Array field: posts.tags ──
 export const npCPostsTags = pgTable(
-  "nx_c_posts__tags",
+  "np_c_posts__tags",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     parentId: uuid("parent_id")
@@ -1832,7 +1832,7 @@ export const npCPostsTags = pgTable(
     tag: text("tag"),
   },
   (table) => ({
-    parentIdx: index("nx_c_posts__tags_parent").on(table.parentId),
+    parentIdx: index("np_c_posts__tags_parent").on(table.parentId),
   }),
 );
 
@@ -1892,7 +1892,7 @@ import { z } from "zod";
  * Everything else (DB, forms, API) is derived from this.
  */
 export interface NpCollectionConfig {
-  /** URL-safe identifier. Becomes table name: nx_c_{slug} */
+  /** URL-safe identifier. Becomes table name: np_c_{slug} */
   slug: string;
 
   /** Human-readable labels */
@@ -2406,7 +2406,7 @@ export async function POST(request: NextRequest) {
   });
 
   // 6. Sign JWT
-  const token = await signToken(user, process.env.NX_SECRET!);
+  const token = await signToken(user, process.env.NP_SECRET!);
 
   // 7. Set cookie and return
   const response = NextResponse.json({
@@ -2459,7 +2459,7 @@ export async function npAuthMiddleware(request: NextRequest): Promise<NextRespon
   if (!token) return redirectToLogin(request);
 
   try {
-    const payload = await verifyToken(token, process.env.NX_SECRET!);
+    const payload = await verifyToken(token, process.env.NP_SECRET!);
 
     // Inject user info into request headers for downstream handlers
     const headers = new Headers(request.headers);
@@ -2569,7 +2569,7 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
  */
 export async function verifyTokenFull(token: string): Promise<NpAuthUser | null> {
   try {
-    const payload = await verifyToken(token, process.env.NX_SECRET!);
+    const payload = await verifyToken(token, process.env.NP_SECRET!);
     const user = await db.query.npUsers.findFirst({
       where: eq(npUsers.id, payload.sub),
       columns: { id: true, email: true, name: true, role: true, tokenVersion: true },
@@ -2620,7 +2620,7 @@ export async function PATCH(request: NextRequest) {
     where: eq(npUsers.id, user.id),
     columns: { id: true, email: true, name: true, role: true, tokenVersion: true },
   });
-  const token = await signToken(updatedUser!, process.env.NX_SECRET!);
+  const token = await signToken(updatedUser!, process.env.NP_SECRET!);
   const refreshToken = crypto.randomUUID();
   await db.insert(npSessions).values({
     userId: user.id,
@@ -2705,7 +2705,7 @@ export async function POST(request: NextRequest) {
   });
 
   // 4. Issue new access token
-  const token = await signToken(user, process.env.NX_SECRET!);
+  const token = await signToken(user, process.env.NP_SECRET!);
 
   const response = NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
@@ -2821,7 +2821,7 @@ Auto-refresh flow (client-side):
     │                       │ check lockout      │
     │                       │ reset login_attempts│
     │                       │───────────────────▶│ UPDATE
-    │                       │ insert nx_sessions │
+    │                       │ insert np_sessions │
     │                       │───────────────────▶│ INSERT (tokenHash, expiresAt)
     │                       │ signToken(user)    │
     │  Set-Cookie:          │                    │
@@ -2873,7 +2873,7 @@ Auto-refresh flow (client-side):
     │ Cookie: nx-refresh     │                      │
     │───────────────────────▶│                      │
     │                        │ sha256(refreshToken) │
-    │                        │ find nx_sessions     │
+    │                        │ find np_sessions     │
     │                        │─────────────────────▶│ SELECT by tokenHash
     │                        │◀─────────────────────│ session row
     │                        │ check expiresAt      │
@@ -2918,11 +2918,11 @@ Auto-refresh flow (client-side):
     │                       │                    │
     │                       │ invalidateAllSessions(userId)
     │                       │───────────────────▶│ bump tokenVersion (+1)
-    │                       │                    │ DELETE all nx_sessions
+    │                       │                    │ DELETE all np_sessions
     │                       │                    │
     │                       │ create NEW session │
     │                       │   for current client│
-    │                       │───────────────────▶│ INSERT nx_sessions
+    │                       │───────────────────▶│ INSERT np_sessions
     │                       │ signToken(updated) │
     │  Set-Cookie:          │                    │
     │    nx-session=<newJWT>│                    │
@@ -2943,7 +2943,7 @@ Auto-refresh flow (client-side):
     │ Cookie: nx-refresh    │                    │
     │──────────────────────▶│                    │
     │                       │ sha256(refreshToken)│
-    │                       │ DELETE nx_sessions │
+    │                       │ DELETE np_sessions │
     │                       │───────────────────▶│ DELETE by tokenHash
     │  Clear-Cookie:        │                    │
     │    nx-session          │                    │
@@ -3006,8 +3006,8 @@ import { NpThemeStyle } from "@nexpress/theme";
 import { getTheme, getNavigation } from "@nexpress/core";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  const theme = await getTheme();        // reads from nx_settings
-  const nav = await getNavigation();     // reads from nx_navigation
+  const theme = await getTheme();        // reads from np_settings
+  const nav = await getNavigation();     // reads from np_navigation
 
   return (
     <>
@@ -3750,7 +3750,7 @@ module.exports = {
  * These paths are reserved by NexPress and cannot be used as page/collection slugs.
  * Enforced at build time by the config validator.
  */
-export const NX_RESERVED_PATHS = [
+export const NP_RESERVED_PATHS = [
   "admin", // Admin UI
   "api", // API routes
   "media", // Media serving (if local storage)
@@ -3762,7 +3762,7 @@ export const NX_RESERVED_PATHS = [
 ] as const;
 
 // Validated in collectionConfigSchema:
-// slug: z.string().refine(s => !NX_RESERVED_PATHS.includes(s), "Slug conflicts with reserved path")
+// slug: z.string().refine(s => !NP_RESERVED_PATHS.includes(s), "Slug conflicts with reserved path")
 ```
 
 ### K.2 Route Resolution Priority
@@ -4001,7 +4001,7 @@ Why pg-boss:
 - Aligns with "self-hosted, Docker, PostgreSQL" stack
 
 ┌─────────────┐     enqueue      ┌──────────────┐    pg LISTEN/    ┌─────────────┐
-│  API Route   │────────────────▶│  nx_jobs      │    NOTIFY        │   Worker     │
+│  API Route   │────────────────▶│  np_jobs      │    NOTIFY        │   Worker     │
 │  (save doc)  │                 │  (pg-boss     │───────────────▶ │  (same       │
 │              │                 │   tables)     │                  │   process    │
 └─────────────┘                 └──────────────┘                  │   or separate│
@@ -4076,13 +4076,13 @@ After:
 
 1. POST /api/media/upload
    → Save original file to storage
-   → Insert nx_media row with status: "processing"
+   → Insert np_media row with status: "processing"
    → Enqueue "media:processImage" job
    → Return 202 { id, status: "processing" }
 
 2. Worker picks up "media:processImage"
    → Run sharp pipeline (thumbnail, small, medium, large, og)
-   → Update nx_media row: status: "ready", sizes: {...}
+   → Update np_media row: status: "ready", sizes: {...}
 
 3. Client polls or receives SSE notification when ready
    (Or: Admin UI shows placeholder until processing completes)
@@ -4328,7 +4328,7 @@ export async function getContentBySlug(
  * This is enforced via a startup warning, not a hard block:
  */
 // On startup:
-// if (config.storage.adapter === "local" && process.env.NX_MULTI_NODE === "true") {
+// if (config.storage.adapter === "local" && process.env.NP_MULTI_NODE === "true") {
 //   console.warn("[NexPress] LocalStorageAdapter is not compatible with multi-node deployments. Use S3.");
 // }
 ```
@@ -4452,7 +4452,7 @@ For schema evolution, the following rules apply:
    - Developer must confirm with --force flag or manual migration edit.
 
 6. Plugin uninstall:
-   - Plugin collections are prefixed: nx_c_{pluginId}_{slug}
+   - Plugin collections are prefixed: np_c_{pluginId}_{slug}
    - Uninstall generates DROP TABLE for all plugin collections
    - CLI prints summary of tables to be dropped before applying.
 
@@ -4475,7 +4475,7 @@ All migrations are reviewable SQL files. Developer applies manually.
 // These are stored in a lightweight reference table:
 
 export const npMediaRefs = pgTable(
-  "nx_media_refs",
+  "np_media_refs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     mediaId: uuid("media_id")
@@ -4486,8 +4486,8 @@ export const npMediaRefs = pgTable(
     field: text("field").notNull(),
   },
   (table) => ({
-    mediaIdx: index("nx_media_refs_media").on(table.mediaId),
-    docIdx: index("nx_media_refs_doc").on(table.documentId),
+    mediaIdx: index("np_media_refs_media").on(table.mediaId),
+    docIdx: index("np_media_refs_doc").on(table.documentId),
   }),
 );
 
@@ -4577,9 +4577,9 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | #   | Tool                       | Scenario                                  | Steps                                                                         | Expected                                                                                                                        |
 | --- | -------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | A1  | `pnpm` CLI                 | Generate schema from config               | 1. Define 3 collections in `nexpress.config.ts` 2. Run `pnpm db:generate`     | `drizzle/schema.generated.ts` contains 3 primary tables + join/array tables. File is deterministic (same config → same output). |
-| A2  | `pnpm` CLI + `drizzle-kit` | Add field to existing collection          | 1. Add `subtitle: text` field to posts collection 2. Run `pnpm db:generate`   | New column in generated schema. `drizzle-kit generate` produces `ALTER TABLE nx_c_posts ADD COLUMN subtitle text` migration.    |
-| A3  | `pnpm` CLI                 | Array field generates child table         | 1. Define `tags: array` field in posts config 2. Run `pnpm db:generate`       | `nx_c_posts__tags` table in generated schema with `parent_id`, `order`, and `tag` columns.                                      |
-| A4  | `pnpm` CLI                 | hasMany relationship generates join table | 1. Define `categories: relationship, hasMany: true` 2. Run `pnpm db:generate` | `nx_c_posts__categories` join table with `post_id`, `category_id`, `order` columns and composite unique index.                  |
+| A2  | `pnpm` CLI + `drizzle-kit` | Add field to existing collection          | 1. Add `subtitle: text` field to posts collection 2. Run `pnpm db:generate`   | New column in generated schema. `drizzle-kit generate` produces `ALTER TABLE np_c_posts ADD COLUMN subtitle text` migration.    |
+| A3  | `pnpm` CLI                 | Array field generates child table         | 1. Define `tags: array` field in posts config 2. Run `pnpm db:generate`       | `np_c_posts__tags` table in generated schema with `parent_id`, `order`, and `tag` columns.                                      |
+| A4  | `pnpm` CLI                 | hasMany relationship generates join table | 1. Define `categories: relationship, hasMany: true` 2. Run `pnpm db:generate` | `np_c_posts__categories` join table with `post_id`, `category_id`, `order` columns and composite unique index.                  |
 | A5  | `pnpm` CLI                 | Invalid config fails validation           | 1. Set collection slug to `"123invalid"` 2. Run `pnpm db:generate`            | CLI exits with non-zero code and validation error: "Slug must be lowercase alphanumeric with hyphens". No schema file written.  |
 
 ### QA-B: Content Modeling
@@ -4596,8 +4596,8 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | #   | Tool            | Scenario                              | Steps                                                                                                                                            | Expected                                                                                                                                       |
 | --- | --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | C1  | `curl`          | Successful login                      | `curl -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@test.com","password":"password"}' -v` | 200 status. Response body contains `user` object. `Set-Cookie` headers include `nx-session` (httpOnly, Secure, SameSite=Lax) and `nx-refresh`. |
-| C2  | `curl`          | Failed login increments attempts      | 1. Send 3 POSTs to `/api/auth/login` with wrong password 2. Query `nx_users` table                                                               | Each returns 401. `login_attempts` column equals 3.                                                                                            |
-| C3  | `curl` + `psql` | Account lockout                       | 1. Set `maxLoginAttempts=3` in config 2. Send 3 wrong-password requests 3. Send correct password                                                 | First 3 return 401. 4th returns 429 with "Account locked". `psql: SELECT lock_until FROM nx_users` shows future timestamp.                     |
+| C2  | `curl`          | Failed login increments attempts      | 1. Send 3 POSTs to `/api/auth/login` with wrong password 2. Query `np_users` table                                                               | Each returns 401. `login_attempts` column equals 3.                                                                                            |
+| C3  | `curl` + `psql` | Account lockout                       | 1. Set `maxLoginAttempts=3` in config 2. Send 3 wrong-password requests 3. Send correct password                                                 | First 3 return 401. 4th returns 429 with "Account locked". `psql: SELECT lock_until FROM np_users` shows future timestamp.                     |
 | C4  | `curl`          | Token invalidation on password change | 1. Login (save cookie) 2. PATCH `/api/auth/change-password` 3. GET `/api/auth/me` with old cookie                                                | Step 3 returns 401 (tokenVersion mismatch after password change).                                                                              |
 | C5  | `curl`          | Expired token rejected                | 1. Login with `tokenExpiration: 1` (1 second) 2. Wait 2 seconds 3. GET `/api/auth/me`                                                            | 401 response. `nx-session` cookie is expired/invalid.                                                                                          |
 | C6  | `curl`          | Role-based access denied              | 1. Login as user with role "author" 2. `curl -X DELETE /api/collections/posts/{id}` with session cookie                                          | 403 response. Body: `{"error":"Forbidden"}`.                                                                                                   |
@@ -4618,8 +4618,8 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | --- | ------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | E1  | Playwright          | Unauthenticated access redirects | 1. `await page.goto('/admin')` (no login)                                                            | URL changes to `/admin/login?redirect=%2Fadmin`. Login form visible.                                                                                                 |
 | E2  | Playwright          | Collection list view             | 1. Login as admin 2. `await page.goto('/admin/collections/posts')`                                   | DataTable visible with columns matching `config.admin.listColumns`. Pagination controls present.                                                                     |
-| E3  | Playwright          | Create document                  | 1. Click "Create Post" 2. Fill title, excerpt 3. Click "Save"                                        | URL changes to `/admin/collections/posts/{new-id}`. Toast/flash confirms creation. `psql: SELECT * FROM nx_c_posts` shows new row.                                   |
-| E4  | Playwright + `psql` | Edit document with revision      | 1. Navigate to existing post edit view 2. Change title 3. Click "Save"                               | Title updated in DB. `psql: SELECT * FROM nx_revisions WHERE document_id='{id}'` shows new revision with `version` incremented.                                      |
+| E3  | Playwright          | Create document                  | 1. Click "Create Post" 2. Fill title, excerpt 3. Click "Save"                                        | URL changes to `/admin/collections/posts/{new-id}`. Toast/flash confirms creation. `psql: SELECT * FROM np_c_posts` shows new row.                                   |
+| E4  | Playwright + `psql` | Edit document with revision      | 1. Navigate to existing post edit view 2. Change title 3. Click "Save"                               | Title updated in DB. `psql: SELECT * FROM np_revisions WHERE document_id='{id}'` shows new revision with `version` incremented.                                      |
 | E5  | Playwright          | Form auto-generation             | 1. Define collection with text, checkbox, select, richText, upload fields 2. Navigate to create view | Each field type renders correct component: `<input>` for text, `<Switch>` for checkbox, `<Select>` for select, Lexical editor for richText, media picker for upload. |
 | E6  | Playwright          | Sidebar groups collections       | 1. Set `admin.group: "Blog"` on posts and categories 2. Visit `/admin`                               | Sidebar contains "Blog" group heading. Posts and Categories links are nested under it.                                                                               |
 
@@ -4628,8 +4628,8 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | #   | Tool       | Scenario                        | Steps                                                                                                                                              | Expected                                                                                                                      |
 | --- | ---------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | F1  | Playwright | Rich text editor loads in admin | 1. Login 2. Navigate to create post 3. Click on content field                                                                                      | Lexical editor initializes. Toolbar visible with configured features (bold, italic, heading, link, image, list, quote, code). |
-| F2  | Playwright | Rich text formatting            | 1. Type text in editor 2. Select text 3. Click bold button 4. Save                                                                                 | `psql: SELECT content FROM nx_c_posts` returns Lexical JSON with `{ "type": "text", "format": 1 }` (bold).                    |
-| F3  | Playwright | Block page editor drag-and-drop | 1. Create a page 2. Add Hero and FeatureGrid blocks 3. Drag FeatureGrid above Hero 4. Save                                                         | `psql: SELECT blocks FROM nx_c_pages` returns JSON array with FeatureGrid at index 0, Hero at index 1.                        |
+| F2  | Playwright | Rich text formatting            | 1. Type text in editor 2. Select text 3. Click bold button 4. Save                                                                                 | `psql: SELECT content FROM np_c_posts` returns Lexical JSON with `{ "type": "text", "format": 1 }` (bold).                    |
+| F3  | Playwright | Block page editor drag-and-drop | 1. Create a page 2. Add Hero and FeatureGrid blocks 3. Drag FeatureGrid above Hero 4. Save                                                         | `psql: SELECT blocks FROM np_c_pages` returns JSON array with FeatureGrid at index 0, Hero at index 1.                        |
 | F4  | Playwright | Block props editor              | 1. Add Hero block to page 2. Click gear icon (⚙) on Hero 3. Edit title prop 4. Save                                                                | Block `props.title` updated in DB.                                                                                            |
 | F5  | Vitest     | renderRichText SSR correctness  | 1. Create Lexical JSON with paragraph, heading, link, image nodes 2. Call `renderRichText(content)` 3. Render to string via `renderToStaticMarkup` | Output HTML contains `<p>`, `<h2>`, `<a href="...">`, `<img>` elements. No Lexical runtime imports.                           |
 | F6  | Vitest     | Block data binding              | 1. Create NpBlockInstance with `dataBinding: { collection: "posts", limit: 3 }` 2. Render block server-side                                        | Block receives 3 posts from DB as props.                                                                                      |
@@ -4638,10 +4638,10 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool                | Scenario                               | Steps                                                                                                                                 | Expected                                                                                                                                                                                                                                                                            |
 | --- | ------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1  | `curl`              | Upload image (async)                   | `curl -X POST http://localhost:3000/api/media/upload -H 'Cookie: nx-session=...' -F 'file=@test.jpg'`                                 | 202 response. Body contains `id`, `filename`, `mimeType`, `status: "processing"`. `sizes` is null (not yet generated). `psql: SELECT status FROM nx_media WHERE id='{id}'` returns `"processing"`.                                                                                  |
-| G2  | `psql` + filesystem | Image variants generated after job     | 1. Upload 2000x1500 JPEG (G1) 2. Wait for worker to process job 3. Check storage and DB                                               | `psql: SELECT status, sizes FROM nx_media WHERE id='{id}'` returns `status = "ready"`, `sizes` JSON has thumbnail/small/medium/large/og entries. Files exist: `{id}/original.jpg`, `{id}/thumbnail.webp`, `{id}/small.webp`, `{id}/medium.webp`, `{id}/large.webp`, `{id}/og.webp`. |
+| G1  | `curl`              | Upload image (async)                   | `curl -X POST http://localhost:3000/api/media/upload -H 'Cookie: nx-session=...' -F 'file=@test.jpg'`                                 | 202 response. Body contains `id`, `filename`, `mimeType`, `status: "processing"`. `sizes` is null (not yet generated). `psql: SELECT status FROM np_media WHERE id='{id}'` returns `"processing"`.                                                                                  |
+| G2  | `psql` + filesystem | Image variants generated after job     | 1. Upload 2000x1500 JPEG (G1) 2. Wait for worker to process job 3. Check storage and DB                                               | `psql: SELECT status, sizes FROM np_media WHERE id='{id}'` returns `status = "ready"`, `sizes` JSON has thumbnail/small/medium/large/og entries. Files exist: `{id}/original.jpg`, `{id}/thumbnail.webp`, `{id}/small.webp`, `{id}/medium.webp`, `{id}/large.webp`, `{id}/og.webp`. |
 | G3  | `curl`              | Unauthenticated upload rejected        | `curl -X POST http://localhost:3000/api/media/upload -F 'file=@test.jpg'` (no cookie)                                                 | 401 response. No file saved.                                                                                                                                                                                                                                                        |
-| G4  | `curl` + `psql`     | Delete unreferenced media soft-deletes | 1. Upload image (no content references) 2. `curl -X DELETE /api/media/{id}` 3. Check DB                                               | 200 response `{ deleted: true }`. `psql: SELECT deleted_at FROM nx_media WHERE id='{id}'` shows non-null timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).                                                                                          |
+| G4  | `curl` + `psql`     | Delete unreferenced media soft-deletes | 1. Upload image (no content references) 2. `curl -X DELETE /api/media/{id}` 3. Check DB                                               | 200 response `{ deleted: true }`. `psql: SELECT deleted_at FROM np_media WHERE id='{id}'` shows non-null timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).                                                                                          |
 | G4b | `curl`              | Delete referenced media blocked        | 1. Upload image 2. Reference it in a post 3. `curl -X DELETE /api/media/{id}`                                                         | 409 response. `{ error: { code: "MEDIA_IN_USE", references: [...] } }`. Media NOT deleted.                                                                                                                                                                                          |
 | G5  | Playwright          | Media library UI                       | 1. Login 2. Navigate to `/admin/media` 3. Upload via drag-drop                                                                        | Upload progress shown. New thumbnail appears in media grid. Folder navigation works.                                                                                                                                                                                                |
 | G6  | Vitest              | Storage adapter interface              | 1. Create `LocalStorageAdapter({ directory: "/tmp/test", baseUrl: "/media" })` 2. Call `upload()`, `getUrl()`, `exists()`, `delete()` | Each method executes without error. `exists()` returns true after upload, false after delete. `getUrl()` returns `/media/{key}`.                                                                                                                                                    |
@@ -4679,7 +4679,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | J2  | `pnpm` CLI       | Scaffolded project builds         | 1. `cd test-site` 2. `pnpm install` 3. `pnpm build`                       | Exit code 0. `.next/` directory created. No type errors.                                                                                                                                                       |
 | J3  | `docker compose` | Docker compose starts full stack  | 1. `cd test-site` 2. `docker compose up -d` 3. Wait for health checks     | `nexpress` and `db` services running. `curl http://localhost:3000` returns 200. `docker compose exec db pg_isready` succeeds.                                                                                  |
 | J4  | `pnpm` CLI       | Turbo pipeline order              | 1. Run `pnpm build` from monorepo root                                    | Packages build in dependency order: core → admin/editor/theme/blocks → cli → apps/web. No circular dependency errors.                                                                                          |
-| J5  | `pnpm` CLI       | DB migration flow                 | 1. `pnpm db:generate` 2. `pnpm db:migrate` 3. `psql -c "\dt nx_*"`        | Migration file created in `drizzle/migrations/`. Tables `nx_users`, `nx_sessions`, `nx_revisions`, `nx_settings`, `nx_navigation`, `nx_plugins`, `nx_media`, `nx_media_folders`, `nx_c_posts`, etc. all exist. |
+| J5  | `pnpm` CLI       | DB migration flow                 | 1. `pnpm db:generate` 2. `pnpm db:migrate` 3. `psql -c "\dt nx_*"`        | Migration file created in `drizzle/migrations/`. Tables `np_users`, `np_sessions`, `np_revisions`, `np_settings`, `np_navigation`, `np_plugins`, `np_media`, `np_media_folders`, `np_c_posts`, etc. all exist. |
 | J6  | `pnpm` CLI       | Dev server starts                 | 1. `pnpm dev` 2. Wait for "Ready" message 3. `curl http://localhost:3000` | Dev server starts. Hot reload works. Public site and `/admin` routes both accessible.                                                                                                                          |
 
 ### QA-K: Routing Contract
@@ -4697,7 +4697,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool            | Scenario                                  | Steps                                                                                                                                                                                        | Expected                                                                                                                                        |
 | --- | --------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| L1  | `curl` + `psql` | saveDocument atomic transaction           | 1. POST to create a post with a `hasMany` relationship 2. Intentionally trigger a constraint violation on the join table (e.g., nonexistent category ID) 3. `psql: SELECT * FROM nx_c_posts` | Post row NOT created (entire transaction rolled back). No orphan rows in join tables.                                                           |
+| L1  | `curl` + `psql` | saveDocument atomic transaction           | 1. POST to create a post with a `hasMany` relationship 2. Intentionally trigger a constraint violation on the join table (e.g., nonexistent category ID) 3. `psql: SELECT * FROM np_c_posts` | Post row NOT created (entire transaction rolled back). No orphan rows in join tables.                                                           |
 | L2  | `curl`          | Zod validation rejects invalid input      | `curl -X POST /api/collections/posts -d '{"title": 123}'` with auth                                                                                                                          | 400 response. Body: `{ error: { code: "VALIDATION_ERROR", details: [{ path: ["title"], message: "Expected string" }] } }`. No document created. |
 | L3  | `curl`          | Access control denies unauthorized create | 1. Configure posts access: `create: ({ user }) => user.role === "admin"` 2. Login as author 3. POST to create post                                                                           | 403 response. `{ error: { code: "FORBIDDEN" } }`. No document created in DB.                                                                    |
 | L4  | `curl` + `psql` | Before hook can modify data               | 1. Add `beforeCreate` hook that sets `slug` from `title` 2. POST with title "Hello World" (no slug)                                                                                          | Document created with `slug: "hello-world"`. Hook transformation applied before DB write.                                                       |
@@ -4708,10 +4708,10 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool            | Scenario                                     | Steps                                                                                                                                                                     | Expected                                                                                                                              |
 | --- | --------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| M1  | `curl` + `psql` | Media upload returns 202 and enqueues job    | 1. POST `/api/media/upload` with a 5MB JPEG 2. Check response 3. `psql: SELECT status FROM nx_media WHERE id='{id}'`                                                      | 202 response with `{ id, status: "processing" }`. DB row has `status = "processing"`. Original file saved to storage.                 |
-| M2  | `psql`          | Image processing job completes               | 1. Upload image (M1) 2. Wait for worker 3. `psql: SELECT status, sizes FROM nx_media WHERE id='{id}'`                                                                     | `status = "ready"`. `sizes` JSON contains thumbnail, small, medium, large, og entries with dimensions. Storage has all variant files. |
-| M3  | `psql`          | Revision pruning job cleans old revisions    | 1. Create 30 revisions for a single post 2. Run `system:revisionPrune` job (or wait for daily cron) 3. `psql: SELECT count(*) FROM nx_revisions WHERE document_id='{id}'` | Count ≤ `maxPublished` (default 20). Latest revision preserved. Oldest excess revisions deleted.                                      |
-| M4  | `psql`          | Session cleanup job                          | 1. Insert expired session rows (past `expires_at`) 2. Run `system:sessionCleanup` job 3. `psql: SELECT count(*) FROM nx_sessions WHERE expires_at < now()`                | Count = 0. Expired sessions purged. Valid sessions untouched.                                                                         |
+| M1  | `curl` + `psql` | Media upload returns 202 and enqueues job    | 1. POST `/api/media/upload` with a 5MB JPEG 2. Check response 3. `psql: SELECT status FROM np_media WHERE id='{id}'`                                                      | 202 response with `{ id, status: "processing" }`. DB row has `status = "processing"`. Original file saved to storage.                 |
+| M2  | `psql`          | Image processing job completes               | 1. Upload image (M1) 2. Wait for worker 3. `psql: SELECT status, sizes FROM np_media WHERE id='{id}'`                                                                     | `status = "ready"`. `sizes` JSON contains thumbnail, small, medium, large, og entries with dimensions. Storage has all variant files. |
+| M3  | `psql`          | Revision pruning job cleans old revisions    | 1. Create 30 revisions for a single post 2. Run `system:revisionPrune` job (or wait for daily cron) 3. `psql: SELECT count(*) FROM np_revisions WHERE document_id='{id}'` | Count ≤ `maxPublished` (default 20). Latest revision preserved. Oldest excess revisions deleted.                                      |
+| M4  | `psql`          | Session cleanup job                          | 1. Insert expired session rows (past `expires_at`) 2. Run `system:sessionCleanup` job 3. `psql: SELECT count(*) FROM np_sessions WHERE expires_at < now()`                | Count = 0. Expired sessions purged. Valid sessions untouched.                                                                         |
 | M5  | `curl` + `psql` | Content save triggers cache invalidation job | 1. GET a cached page (ISR) 2. PATCH the post via API 3. Wait 2s for job 4. GET same page again                                                                            | Updated content appears. `content:afterSave` job ran `revalidateTag`. Second request shows fresh data.                                |
 
 ### QA-N: Platform Policies
@@ -4724,7 +4724,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | N4  | Vitest     | CSS sanitization strips injection   | 1. Call `sanitizeTokenValue("red; } body { background: url(evil)")`                                | Returns `"red  body { background evil"` (semicolons stripped, url() stripped, block terminators stripped). Length ≤ 200 chars.                                                                     |
 | N5  | Vitest     | npCache wraps unstable_cache        | 1. Mock `unstable_cache` 2. Call `npCache(fn, ["key"], { tags: ["t1"] })` 3. Check mock was called | `unstable_cache` called with same arguments. Abstraction is pass-through.                                                                                                                          |
 | N6  | `curl`     | Draft content not cached            | 1. Enter draft mode (`/api/preview?path=/blog/draft`) 2. GET draft page 3. Check response headers  | `Cache-Control: no-store` header present. Draft content served fresh from DB, not from ISR cache.                                                                                                  |
-| N7  | `pnpm` CLI | Local storage multi-node warning    | 1. Set `NX_MULTI_NODE=true` in env 2. Set storage adapter to "local" 3. Start server               | Console output includes WARNING: "LocalStorageAdapter is not compatible with multi-node deployments. Use S3."                                                                                      |
+| N7  | `pnpm` CLI | Local storage multi-node warning    | 1. Set `NP_MULTI_NODE=true` in env 2. Set storage adapter to "local" 3. Start server               | Console output includes WARNING: "LocalStorageAdapter is not compatible with multi-node deployments. Use S3."                                                                                      |
 
 ### QA-O: Schema Evolution & Validation
 
@@ -4735,9 +4735,9 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | O3  | `pnpm` CLI      | Add field generates safe migration          | 1. Add `subtitle: text` field 2. Run `pnpm db:generate`                                                                          | Migration SQL: `ALTER TABLE ADD COLUMN subtitle text`. Column is nullable. No data loss.                                          |
 | O4  | `pnpm` CLI      | Remove field warns about data loss          | 1. Remove `subtitle` field from config 2. Run `pnpm db:generate`                                                                 | CLI prints WARNING: "Field 'subtitle' removed from 'posts'. This will drop data." Migration file generated but NOT auto-applied.  |
 | O5  | `pnpm` CLI      | Type change requires manual migration       | 1. Change field type from `text` to `number` 2. Run `pnpm db:generate`                                                           | CLI prints ERROR: "Type change on field. Manual migration required." Developer must write custom migration with CAST.             |
-| O6  | `curl` + `psql` | Media ref tracking on save                  | 1. Create a post with an upload field referencing media ID `{mid}` 2. `psql: SELECT * FROM nx_media_refs WHERE media_id='{mid}'` | Row exists with `collection: "posts"`, `document_id: "{pid}"`, `field: "image"`.                                                  |
+| O6  | `curl` + `psql` | Media ref tracking on save                  | 1. Create a post with an upload field referencing media ID `{mid}` 2. `psql: SELECT * FROM np_media_refs WHERE media_id='{mid}'` | Row exists with `collection: "posts"`, `document_id: "{pid}"`, `field: "image"`.                                                  |
 | O7  | `curl`          | Delete media blocked when in use            | 1. Upload media 2. Reference it in a post 3. `DELETE /api/media/{id}`                                                            | 409 response. `{ error: { code: "MEDIA_IN_USE", references: [{ collection: "posts", documentId: "..." }] } }`. Media not deleted. |
-| O8  | `curl` + `psql` | Delete unreferenced media soft-deletes      | 1. Upload media (no references) 2. `DELETE /api/media/{id}` 3. `psql: SELECT deleted_at FROM nx_media WHERE id='{id}'`           | 200 response. `deleted_at` is set to current timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).    |
+| O8  | `curl` + `psql` | Delete unreferenced media soft-deletes      | 1. Upload media (no references) 2. `DELETE /api/media/{id}` 3. `psql: SELECT deleted_at FROM np_media WHERE id='{id}'`           | 200 response. `deleted_at` is set to current timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).    |
 
 ### QA-P: Search
 
@@ -4745,6 +4745,6 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | --- | ------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P1  | `curl` | Full-text search returns ranked results | 1. Seed 3 posts: "TypeScript Guide", "JavaScript Tips", "TypeScript Advanced" 2. `GET /api/collections/posts?search=TypeScript`               | 200 response. Results contain 2 posts. Ordered by relevance (ts_rank). "TypeScript Guide" and "TypeScript Advanced" returned, "JavaScript Tips" excluded. |
 | P2  | `curl` | Search works across rich text content   | 1. Create a post with title "Intro" and rich text body containing "PostgreSQL optimization" 2. `GET /api/collections/posts?search=PostgreSQL` | 200 response. Post returned — search vector includes text extracted from Lexical rich text JSON.                                                          |
-| P3  | `psql` | Search vector auto-populated            | 1. Create a post via API 2. `psql: SELECT search_vector FROM nx_c_posts WHERE id='{id}'`                                                      | `search_vector` column is NOT NULL. Contains tsvector tokens from title, excerpt, and rich text content fields.                                           |
+| P3  | `psql` | Search vector auto-populated            | 1. Create a post via API 2. `psql: SELECT search_vector FROM np_c_posts WHERE id='{id}'`                                                      | `search_vector` column is NOT NULL. Contains tsvector tokens from title, excerpt, and rich text content fields.                                           |
 | P4  | `curl` | Empty search returns all documents      | `GET /api/collections/posts` (no `search` param)                                                                                              | 200 response. Returns paginated results sorted by `-createdAt` (default). No FTS filtering applied.                                                       |
-| P5  | `psql` | GIN index exists on search_vector       | `psql: SELECT indexname FROM pg_indexes WHERE tablename='nx_c_posts' AND indexdef LIKE '%gin%'`                                               | At least one GIN index on `search_vector` column.                                                                                                         |
+| P5  | `psql` | GIN index exists on search_vector       | `psql: SELECT indexname FROM pg_indexes WHERE tablename='np_c_posts' AND indexdef LIKE '%gin%'`                                               | At least one GIN index on `search_vector` column.                                                                                                         |

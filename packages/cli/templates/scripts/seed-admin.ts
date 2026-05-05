@@ -47,20 +47,20 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const email = process.argv[2] ?? process.env.NX_ADMIN_EMAIL ?? (await prompt("Admin email: "));
+  const email = process.argv[2] ?? process.env.NP_ADMIN_EMAIL ?? (await prompt("Admin email: "));
   if (!isValidEmail(email)) {
     console.error(`"${email}" is not a valid email address.`);
     process.exit(1);
   }
 
   const password =
-    process.argv[3] ?? process.env.NX_ADMIN_PASSWORD ?? (await prompt("Admin password (min 12 chars): "));
+    process.argv[3] ?? process.env.NP_ADMIN_PASSWORD ?? (await prompt("Admin password (min 12 chars): "));
   if (password.length < 12) {
     console.error("Password must be at least 12 characters.");
     process.exit(1);
   }
 
-  const name = process.argv[4] ?? process.env.NX_ADMIN_NAME ?? "Admin";
+  const name = process.argv[4] ?? process.env.NP_ADMIN_NAME ?? "Admin";
   const passwordHash = await hashPassword(password);
 
   const existingEmail = await db

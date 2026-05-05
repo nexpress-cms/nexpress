@@ -8,7 +8,7 @@ import { readJsonBody } from "@nexpress/next";
 
 /**
  * Phase 20.2 — pause job processing. Persists the flag in
- * `nx_settings` (siteId="_system") so it survives worker
+ * `np_settings` (siteId="_system") so it survives worker
  * restarts, and applies it to the local pg-boss adapter so
  * the in-process worker stops claiming jobs immediately.
  *

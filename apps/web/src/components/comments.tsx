@@ -8,8 +8,8 @@ interface CommentRow {
   memberId: string;
   status: string;
   /**
-   * Phase 21.11 — author's `nx_members.status`. `null` for live
-   * comments today since `nx_member_status` doesn't have a chip
+   * Phase 21.11 — author's `np_members.status`. `null` for live
+   * comments today since `np_member_status` doesn't have a chip
    * for the regular flow; `"imported"` flags WordPress-archived
    * authors so the public site can render an `(imported)` badge
    * next to the timestamp.

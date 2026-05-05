@@ -389,7 +389,7 @@ export {
   updateSite,
   deleteSite,
   getSiteUsageSummary,
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
 } from "./sites/registry.js";
 export type {
   NpSite,

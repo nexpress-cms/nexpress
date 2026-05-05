@@ -30,7 +30,7 @@ import { PageHeader } from "../layout/page-header.js";
  * incidents without paging through history.
  *
  * The endpoint reports a `supported: false` flag when the
- * site runs without pg-boss (NX_ENABLE_JOBS=0); the UI shows
+ * site runs without pg-boss (NP_ENABLE_JOBS=0); the UI shows
  * an empty-state in that case rather than 500ing on every
  * tab fetch.
  */
@@ -353,7 +353,7 @@ export function JobsView() {
         <Card className="border-amber-500/30/60 bg-amber-500/10">
           <CardContent className="text-[13px] text-amber-900 dark:text-amber-100">
             <strong className="font-semibold">Background jobs disabled.</strong> This site is
-            running without pg-boss. Set <code>NX_ENABLE_JOBS=1</code> and restart the worker to
+            running without pg-boss. Set <code>NP_ENABLE_JOBS=1</code> and restart the worker to
             surface queued jobs here.
           </CardContent>
         </Card>

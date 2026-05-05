@@ -92,7 +92,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
       />
 
       {/*
-        Roles panel surfaces the `nx_member_roles` grants. Read is
+        Roles panel surfaces the `np_member_roles` grants. Read is
         staff-mod gated to match the API; write (Grant / Revoke) is
         admin-only because handing a member moderation capabilities
         is a privilege escalation editors don't get to perform.

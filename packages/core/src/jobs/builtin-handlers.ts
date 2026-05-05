@@ -182,7 +182,7 @@ async function handleSessionCleanup(_: unknown): Promise<void> {
 }
 
 /**
- * Phase 20.3 — keep `nx_job_logs` from growing unbounded.
+ * Phase 20.3 — keep `np_job_logs` from growing unbounded.
  * Default retention is 14 days; the cron registration in
  * `pg-boss-adapter.scheduleRecurring()` runs this at 03:30 UTC
  * daily (offset from `system:revisionPrune` at 03:00 so the two

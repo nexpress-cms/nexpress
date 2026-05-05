@@ -2,7 +2,7 @@ import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
 
 /**
- * Phase 10.3 — site-wide SEO defaults read from `nx_settings`.
+ * Phase 10.3 — site-wide SEO defaults read from `np_settings`.
  * Reads three existing keys + a new `seo` key:
  *
  *   - `site`        → { name, url }   (existing General settings)

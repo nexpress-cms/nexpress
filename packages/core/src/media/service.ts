@@ -26,11 +26,11 @@ import type { NpStorageAdapter } from "../storage/types.js";
  * Trailing-window for member upload quotas (`perDay` in
  * `npMemberUploadQuota`). Default 24h matches the historical
  * "daily quota" semantics; override via
- * `NX_MEMBER_QUOTA_WINDOW_HOURS` to shift to weekly or hourly
+ * `NP_MEMBER_QUOTA_WINDOW_HOURS` to shift to weekly or hourly
  * caps without touching code.
  */
 const MEMBER_QUOTA_WINDOW_MS =
-  readEnvPositiveInt("NX_MEMBER_QUOTA_WINDOW_HOURS", 24) * 60 * 60 * 1000;
+  readEnvPositiveInt("NP_MEMBER_QUOTA_WINDOW_HOURS", 24) * 60 * 60 * 1000;
 
 interface SelectQuery extends Promise<unknown[]> {
   where(condition: ReturnType<typeof and> | ReturnType<typeof isNull>): SelectQuery;
@@ -96,9 +96,9 @@ export function getStorageAdapter(): NpStorageAdapter {
 }
 
 /**
- * Polymorphic uploader: a row on `nx_media` is owned by exactly
- * one of staff (`uploadedBy` → `nx_users.id`) or member
- * (`uploadedByMemberId` → `nx_members.id`, Phase 9.7j). Pass a
+ * Polymorphic uploader: a row on `np_media` is owned by exactly
+ * one of staff (`uploadedBy` → `np_users.id`) or member
+ * (`uploadedByMemberId` → `np_members.id`, Phase 9.7j). Pass a
  * `null` value as the second argument to `uploadMedia` for plugin /
  * system uploads with no human owner — both columns stay null and
  * the audit log carries the actor.

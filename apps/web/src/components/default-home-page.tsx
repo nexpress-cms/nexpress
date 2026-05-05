@@ -335,8 +335,8 @@ const CORE_FEATURE_LINKS: ReadonlyArray<{
 ];
 
 // This is the empty-state landing page — it can run on a brand-new
-// install where `pnpm db:migrate` hasn't created the `nx_navigation`
-// or `nx_settings` tables yet. We swallow read errors so the page
+// install where `pnpm db:migrate` hasn't created the `np_navigation`
+// or `np_settings` tables yet. We swallow read errors so the page
 // still renders something useful instead of crashing the whole site.
 async function safeGetNav(location: "header" | "footer"): Promise<NpNavItem[]> {
   try {

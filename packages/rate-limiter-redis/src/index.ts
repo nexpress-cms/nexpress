@@ -12,7 +12,7 @@ import type { NpRateLimitDecision, NpRateLimiterAdapter } from "@nexpress/core/r
  *   import { setRateLimiter } from "@nexpress/core/rate-limit";
  *   import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
  *
- *   setRateLimiter(new RedisRateLimiter({ url: process.env.NX_REDIS_URL }));
+ *   setRateLimiter(new RedisRateLimiter({ url: process.env.NP_REDIS_URL }));
  *
  * Implementation: a single Lua script issues `INCR` + `PTTL` +
  * conditional `PEXPIRE` in one round trip, so an unlucky crash

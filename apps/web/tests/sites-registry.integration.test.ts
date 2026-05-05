@@ -29,7 +29,7 @@ describe.skipIf(skipIfNoTestDb())("sites registry (Phase 15.1)", () => {
     // Wipe non-default sites between tests so id collisions
     // don't cascade. The default site row is preserved by
     // not touching it — `truncateAll` doesn't truncate
-    // `nx_sites`, intentionally.
+    // `np_sites`, intentionally.
     const { listSites, deleteSite } = await import("@nexpress/core");
     const sites = await listSites();
     for (const site of sites) {

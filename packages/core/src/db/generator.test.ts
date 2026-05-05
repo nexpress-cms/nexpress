@@ -18,7 +18,7 @@ describe("generateDrizzleSchema", () => {
     ]);
 
     expect(out).toContain('export const postsTable = pgTable(');
-    expect(out).toContain('"nx_c_posts"');
+    expect(out).toContain('"np_c_posts"');
   });
 
   it("emits relations that reference the owner table, not the literal `table`", () => {
@@ -39,7 +39,7 @@ describe("generateDrizzleSchema", () => {
     ]);
 
     expect(out).toContain('slug: text("slug").notNull()');
-    expect(out).toContain('uniqueIndex("nx_c_posts_site_slug_idx").on(table.siteId, table.slug)');
+    expect(out).toContain('uniqueIndex("np_c_posts_site_slug_idx").on(table.siteId, table.slug)');
   });
 
   it("adds a _status draft column when versions.drafts is true", () => {

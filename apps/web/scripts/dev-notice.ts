@@ -29,7 +29,7 @@ const lines = [
   "",
   `  ${YELLOW}NexPress${RESET} — \`.env\` is missing, so \`pnpm dev\` would just crash a few seconds in.`,
   "",
-  `    ${CYAN}pnpm run setup${RESET}      ${DIM}# browser env wizard (DB / NX_SECRET / storage / migrations / first admin / sample content)${RESET}`,
+  `    ${CYAN}pnpm run setup${RESET}      ${DIM}# browser env wizard (DB / NP_SECRET / storage / migrations / first admin / sample content)${RESET}`,
   `    ${CYAN}pnpm run doctor${RESET}     ${DIM}# diagnose env / runtime if anything stalls${RESET}`,
   "",
   `  ${BOLD}Run \`pnpm run setup\` once, then \`pnpm dev\` will boot.${RESET}`,

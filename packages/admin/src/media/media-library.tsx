@@ -44,7 +44,7 @@ type MediaItem = {
   folderId?: string;
   /**
    * Resolved uploader info (Phase 9.7k). Server-side `listMedia`
-   * LEFT JOINs `nx_users` and `nx_members` so we don't have to do
+   * LEFT JOINs `np_users` and `np_members` so we don't have to do
    * a follow-up lookup per row. `null` for system / plugin
    * uploads where neither column was set.
    */

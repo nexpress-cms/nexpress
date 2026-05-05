@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
   getSiteById,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       const memberships = await listMembershipsForUser(user.id);
       const hasMembership = memberships.some((m) => m.siteId === id);
       const isDefaultGlobalAdmin =
-        id === NX_DEFAULT_SITE_ID && can(user, "admin.manage");
+        id === NP_DEFAULT_SITE_ID && can(user, "admin.manage");
       if (!hasMembership && !isDefaultGlobalAdmin) {
         throw new NpForbiddenError("sites/active", "switch");
       }

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   buildSitemap,
   getCurrentSiteId,
   getI18nConfig,
@@ -55,7 +55,7 @@ function fallbackOrigin(): string {
  */
 async function resolveSiteOrigin(siteId: string): Promise<string> {
   const fallback = fallbackOrigin();
-  if (siteId === NX_DEFAULT_SITE_ID) return fallback;
+  if (siteId === NP_DEFAULT_SITE_ID) return fallback;
   try {
     const site = await getSiteById(siteId);
     if (site?.hostname) {
@@ -146,7 +146,7 @@ function buildSitemapIndexDirect(
  */
 export async function GET(req: Request): Promise<Response> {
   await ensureFor("read");
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const origin = await resolveSiteOrigin(siteId);
   const i18n = getI18nConfig();
 

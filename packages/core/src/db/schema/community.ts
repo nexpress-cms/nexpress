@@ -18,10 +18,10 @@ import { npUsers } from "./system.js";
 
 /**
  * Member-side schema: public site visitors who can register, log in,
- * comment, react, follow, etc. Deliberately separate from `nx_users`
+ * comment, react, follow, etc. Deliberately separate from `np_users`
  * (CMS staff) — separate cookie family, separate JWT audience, no
  * `role` column on the member table itself. Scoped moderator authority
- * is granted via `nx_member_roles` instead. See `docs/design/community-design.md` (frozen design rationale) or `docs/community.md` (live behavior).
+ * is granted via `np_member_roles` instead. See `docs/design/community-design.md` (frozen design rationale) or `docs/community.md` (live behavior).
  */
 
 /**
@@ -32,7 +32,7 @@ import { npUsers } from "./system.js";
  * member's handle with an `(imported)` suffix so visitors can tell
  * archived discussion apart from live activity.
  */
-export const npMemberStatusEnum = pgEnum("nx_member_status", [
+export const npMemberStatusEnum = pgEnum("np_member_status", [
   "active",
   "pending",
   "suspended",
@@ -40,8 +40,8 @@ export const npMemberStatusEnum = pgEnum("nx_member_status", [
   "imported",
 ]);
 
-export const npBanScopeEnum = pgEnum("nx_ban_scope", ["site", "category", "collection"]);
-export const npBanKindEnum = pgEnum("nx_ban_kind", ["temporary", "permanent"]);
+export const npBanScopeEnum = pgEnum("np_ban_scope", ["site", "category", "collection"]);
+export const npBanKindEnum = pgEnum("np_ban_kind", ["temporary", "permanent"]);
 
 /**
  * Comment lifecycle status.
@@ -51,7 +51,7 @@ export const npBanKindEnum = pgEnum("nx_ban_kind", ["temporary", "permanent"]);
  *  - `hidden` — taken down by a mod; row stays for restore + audit.
  *  - `deleted` — soft-delete by the author or post-cascade.
  */
-export const npCommentStatusEnum = pgEnum("nx_comment_status", [
+export const npCommentStatusEnum = pgEnum("np_comment_status", [
   "visible",
   "pending",
   "hidden",
@@ -59,11 +59,11 @@ export const npCommentStatusEnum = pgEnum("nx_comment_status", [
 ]);
 
 /**
- * Type column for `nx_member_roles.scope_type`. Polymorphic across the
+ * Type column for `np_member_roles.scope_type`. Polymorphic across the
  * community surface so the same grants table covers site-wide,
  * per-category, per-collection, and per-thread roles.
  */
-export const npMemberRoleScopeEnum = pgEnum("nx_member_role_scope", [
+export const npMemberRoleScopeEnum = pgEnum("np_member_role_scope", [
   "site",
   "category",
   "collection",
@@ -71,7 +71,7 @@ export const npMemberRoleScopeEnum = pgEnum("nx_member_role_scope", [
 ]);
 
 export const npMembers = pgTable(
-  "nx_members",
+  "np_members",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     handle: text("handle").notNull().unique(),
@@ -113,10 +113,10 @@ export const npMembers = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
-  (table) => [index("nx_members_status_idx").on(table.status)],
+  (table) => [index("np_members_status_idx").on(table.status)],
 );
 
-export const npMemberSessions = pgTable("nx_member_sessions", {
+export const npMemberSessions = pgTable("np_member_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
   memberId: uuid("member_id")
     .notNull()
@@ -129,9 +129,9 @@ export const npMemberSessions = pgTable("nx_member_sessions", {
 });
 
 /**
- * Per-member OAuth identity links. Mirrors `nx_user_oauth_identities`
- * for the staff side (Phase 9.6a) but resolves to `nx_members`
- * instead of `nx_users`. The first row is created either when an
+ * Per-member OAuth identity links. Mirrors `np_user_oauth_identities`
+ * for the staff side (Phase 9.6a) but resolves to `np_members`
+ * instead of `np_users`. The first row is created either when an
  * OAuth callback finds an existing member with the same email, or
  * when a brand-new member is auto-provisioned from the profile
  * (status=`active`, no password).
@@ -142,7 +142,7 @@ export const npMemberSessions = pgTable("nx_member_sessions", {
  * `provider_user_id`; both serve the same role.
  */
 export const npMemberIdentities = pgTable(
-  "nx_member_identities",
+  "np_member_identities",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
@@ -157,9 +157,9 @@ export const npMemberIdentities = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    unique("nx_member_identities_provider_subject_uq").on(table.provider, table.subject),
-    unique("nx_member_identities_member_provider_uq").on(table.memberId, table.provider),
-    index("nx_member_identities_member_idx").on(table.memberId),
+    unique("np_member_identities_provider_subject_uq").on(table.provider, table.subject),
+    unique("np_member_identities_member_provider_uq").on(table.memberId, table.provider),
+    index("np_member_identities_member_idx").on(table.memberId),
   ],
 );
 
@@ -171,7 +171,7 @@ export const npMemberIdentities = pgTable(
  * `memberCan()` so time-boxed promotions are possible.
  */
 export const npMemberRoles = pgTable(
-  "nx_member_roles",
+  "np_member_roles",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
@@ -197,15 +197,15 @@ export const npMemberRoles = pgTable(
   (table) => [
     // Two indexes mirror the two access patterns: "what can this member
     // do?" (memberId scan) and "who mods this scope?" (scope scan).
-    index("nx_member_roles_member_idx").on(table.memberId),
-    index("nx_member_roles_scope_idx").on(table.scopeType, table.scopeId),
-    index("nx_member_roles_site_idx").on(table.siteId, table.memberId),
+    index("np_member_roles_member_idx").on(table.memberId),
+    index("np_member_roles_scope_idx").on(table.scopeType, table.scopeId),
+    index("np_member_roles_site_idx").on(table.siteId, table.memberId),
     // `scope_id` is null for site-wide grants. NULLS NOT
     // DISTINCT makes two null `scope_id`s collide so the
     // unique constraint enforces "one grant per (member, role,
     // scope, site)." `site_id` widens the key so the same
     // member can hold the same role on different tenants.
-    unique("nx_member_roles_grant_uq")
+    unique("np_member_roles_grant_uq")
       .on(table.memberId, table.role, table.scopeType, table.scopeId, table.siteId)
       .nullsNotDistinct(),
   ],
@@ -234,7 +234,7 @@ export const npMemberRoles = pgTable(
  * `community/markdown.ts` for the renderer.
  */
 export const npComments = pgTable(
-  "nx_comments",
+  "np_comments",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     targetType: text("target_type").notNull(),
@@ -263,9 +263,9 @@ export const npComments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_comments_target_idx").on(table.targetType, table.targetId, table.createdAt),
-    index("nx_comments_member_idx").on(table.memberId, table.createdAt),
-    index("nx_comments_site_idx").on(table.siteId, table.createdAt),
+    index("np_comments_target_idx").on(table.targetType, table.targetId, table.createdAt),
+    index("np_comments_member_idx").on(table.memberId, table.createdAt),
+    index("np_comments_site_idx").on(table.siteId, table.createdAt),
   ],
 );
 
@@ -273,14 +273,14 @@ export const npComments = pgTable(
  * Polymorphic reactions. `target_type` is the surface — only
  * `'comment'` is wired today; `'thread'` / `'reply'` are reserved
  * for a future threads schema (the forum plugin shipped without
- * one, reusing `nx_comments` under the `discussions` collection).
+ * one, reusing `np_comments` under the `discussions` collection).
  * `kind` is configurable per site — default vocabulary in v1 is
  * just `'like'`. The unique constraint enforces "one reaction-of-
  * kind per member per target," so toggling a like is an upsert /
  * delete.
  */
 export const npReactions = pgTable(
-  "nx_reactions",
+  "np_reactions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     targetType: text("target_type").notNull(),
@@ -294,26 +294,26 @@ export const npReactions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_reactions_target_idx").on(table.targetType, table.targetId),
-    index("nx_reactions_site_idx").on(table.siteId),
-    unique("nx_reactions_unique").on(table.targetType, table.targetId, table.memberId, table.kind),
+    index("np_reactions_target_idx").on(table.targetType, table.targetId),
+    index("np_reactions_site_idx").on(table.siteId),
+    unique("np_reactions_unique").on(table.targetType, table.targetId, table.memberId, table.kind),
   ],
 );
 
 /**
  * Follow graph. Polymorphic over what's being followed:
- *  - `member` — target_id is `nx_members.id` as a string
+ *  - `member` — target_id is `np_members.id` as a string
  *  - `thread` — reserved; no thread schema today (forum plugin
- *    reuses `nx_comments` so there's nothing to follow per-thread)
+ *    reuses `np_comments` so there's nothing to follow per-thread)
  *  - `tag`    — target_id is the tag slug (no FK; tags are strings)
  *
  * `target_id` is `text` rather than `uuid` so all three kinds share
  * one column. Cascading on a polymorphic id isn't possible in plain
- * SQL; the soft-delete pattern on `nx_members` keeps follows pointing
+ * SQL; the soft-delete pattern on `np_members` keeps follows pointing
  * at a still-valid (if anonymised) row.
  */
 export const npFollows = pgTable(
-  "nx_follows",
+  "np_follows",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     followerId: uuid("follower_id")
@@ -333,9 +333,9 @@ export const npFollows = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_follows_target_idx").on(table.targetType, table.targetId),
-    index("nx_follows_site_idx").on(table.siteId),
-    unique("nx_follows_unique").on(
+    index("np_follows_target_idx").on(table.targetType, table.targetId),
+    index("np_follows_site_idx").on(table.siteId),
+    unique("np_follows_unique").on(
       table.followerId,
       table.targetType,
       table.targetId,
@@ -355,12 +355,12 @@ export const npFollows = pgTable(
  * `(memberId, targetId)` enforces idempotence: muting the same
  * person twice is a no-op rather than two rows.
  *
- * Distinct from `nx_bans` — bans are staff-issued and global
+ * Distinct from `np_bans` — bans are staff-issued and global
  * (block writes). Mutes are member-issued and personal (hide
  * reads).
  */
 export const npMemberMutes = pgTable(
-  "nx_member_mutes",
+  "np_member_mutes",
   {
     memberId: uuid("member_id")
       .notNull()
@@ -380,7 +380,7 @@ export const npMemberMutes = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.memberId, table.targetId, table.siteId] }),
-    index("nx_member_mutes_target_idx").on(table.targetId),
+    index("np_member_mutes_target_idx").on(table.targetId),
   ],
 );
 
@@ -394,7 +394,7 @@ export const npMemberMutes = pgTable(
  * unread-count probe and the recent-list paging that an inbox UI uses.
  */
 export const npNotifications = pgTable(
-  "nx_notifications",
+  "np_notifications",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
@@ -413,8 +413,8 @@ export const npNotifications = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_notifications_inbox_idx").on(table.memberId, table.readAt, table.createdAt),
-    index("nx_notifications_site_inbox_idx").on(table.siteId, table.memberId, table.readAt),
+    index("np_notifications_inbox_idx").on(table.memberId, table.readAt, table.createdAt),
+    index("np_notifications_site_inbox_idx").on(table.siteId, table.memberId, table.readAt),
   ],
 );
 
@@ -429,7 +429,7 @@ export const npNotifications = pgTable(
  * resolutions populate the member.
  */
 export const npReports = pgTable(
-  "nx_reports",
+  "np_reports",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     reporterId: uuid("reporter_id")
@@ -451,9 +451,9 @@ export const npReports = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_reports_queue_idx").on(table.resolvedAt, table.createdAt),
-    index("nx_reports_target_idx").on(table.targetType, table.targetId),
-    index("nx_reports_site_queue_idx").on(table.siteId, table.resolvedAt),
+    index("np_reports_queue_idx").on(table.resolvedAt, table.createdAt),
+    index("np_reports_target_idx").on(table.targetType, table.targetId),
+    index("np_reports_site_queue_idx").on(table.siteId, table.resolvedAt),
   ],
 );
 
@@ -468,7 +468,7 @@ export const npReports = pgTable(
  * ids — like `"posts"` for a `collection-mod` grant scope.
  */
 export const npAuditEvents = pgTable(
-  "nx_audit_events",
+  "np_audit_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     actorKind: text("actor_kind").notNull(),
@@ -488,15 +488,15 @@ export const npAuditEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_audit_target_idx").on(table.targetType, table.targetId, table.createdAt),
-    index("nx_audit_actor_user_idx").on(table.actorUserId, table.createdAt),
-    index("nx_audit_actor_member_idx").on(table.actorMemberId, table.createdAt),
-    index("nx_audit_site_idx").on(table.siteId, table.createdAt),
+    index("np_audit_target_idx").on(table.targetType, table.targetId, table.createdAt),
+    index("np_audit_actor_user_idx").on(table.actorUserId, table.createdAt),
+    index("np_audit_actor_member_idx").on(table.actorMemberId, table.createdAt),
+    index("np_audit_site_idx").on(table.siteId, table.createdAt),
   ],
 );
 
 export const npBans = pgTable(
-  "nx_bans",
+  "np_bans",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
@@ -522,8 +522,8 @@ export const npBans = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_bans_member_scope_idx").on(table.memberId, table.scopeType, table.scopeId),
-    index("nx_bans_active_idx").on(table.memberId, table.expiresAt),
-    index("nx_bans_site_idx").on(table.siteId, table.memberId),
+    index("np_bans_member_scope_idx").on(table.memberId, table.scopeType, table.scopeId),
+    index("np_bans_active_idx").on(table.memberId, table.expiresAt),
+    index("np_bans_site_idx").on(table.siteId, table.memberId),
   ],
 );

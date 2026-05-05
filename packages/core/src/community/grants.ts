@@ -5,14 +5,14 @@ import { getDb } from "../db/runtime.js";
 import { npMemberRoles } from "../db/schema/community.js";
 import { NpConflictError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { getCommunityRole } from "./roles.js";
 import type { CommunityScope } from "./roles.js";
 
 /**
- * Member role grant service. Wraps `nx_member_roles` writes with
+ * Member role grant service. Wraps `np_member_roles` writes with
  * registry validation, audit logging, and friendly errors for the
  * `(member, role, scope_type, scope_id)` unique conflict that
  * Postgres surfaces as a 23505 raw error.
@@ -82,7 +82,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NpMe
 
   // Pre-check for an existing active grant matching the same
   // `(member, role, scope_type, scope_id)` tuple. The schema's
-  // `nx_member_roles_grant_uq` unique constraint catches duplicates
+  // `np_member_roles_grant_uq` unique constraint catches duplicates
   // for non-null scope_ids natively, but site-wide grants have
   // `scope_id = NULL` and the constraint's `NULLS NOT DISTINCT`
   // clause depends on whether the DB was migrated post-PG-15-syntax.
@@ -93,7 +93,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NpMe
   // `scope_type='site'` this column IS the site identifier;
   // for category / collection / thread grants it scopes the
   // slug to a tenant.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const existing = (await db
     .select({ id: npMemberRoles.id })
     .from(npMemberRoles)
@@ -175,7 +175,7 @@ export async function listMemberRoleGrants(memberId: string): Promise<NpMemberRo
   // member who's a community-mod on tenant A and not on
   // tenant B should see exactly one grant when admin pages
   // load on each.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
   return (await db
     .select()

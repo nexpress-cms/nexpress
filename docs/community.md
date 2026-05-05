@@ -35,7 +35,7 @@
 The community layer is one cohesive system, but it ships as
 many independent moving parts. Sites pick what they need:
 
-- **Members** (Phase 9.1) — separate from staff `nx_users`.
+- **Members** (Phase 9.1) — separate from staff `np_users`.
   Members register, log in, have public profiles, and earn
   scoped roles.
 - **Comments** (Phase 9.2) — under any collection's documents,
@@ -59,12 +59,12 @@ many independent moving parts. Sites pick what they need:
 
 ## 2. Member Identity
 
-`nx_members` is **separate** from `nx_users` (the staff
+`np_members` is **separate** from `np_users` (the staff
 table) — different auth flow, different role tree, different
 sessions. The intent: members log into the site to comment
 or post; staff log into `/admin` to moderate.
 
-Schema highlights (`nx_members`):
+Schema highlights (`np_members`):
 
 - `handle` — public, used in `/u/{handle}` URLs
 - `email` — unique, optionally `email_verified`
@@ -97,10 +97,10 @@ Standard email + password flow plus optional SSO:
 
 Tokens:
 
-- **Access JWT** (`nx-mb-session`) — signed by `NX_SECRET`,
+- **Access JWT** (`nx-mb-session`) — signed by `NP_SECRET`,
   short TTL.
 - **Refresh JWT** (`nx-mb-refresh`) — long TTL, rotates per
-  refresh, persisted as `nx_member_sessions` rows so logout
+  refresh, persisted as `np_member_sessions` rows so logout
   revokes immediately (Phase 9.7 closed #45 here — pure JWT
   refresh would have left logout cosmetic).
 - **CSRF** (`nx-mb-csrf`) — separate from the staff
@@ -133,8 +133,8 @@ import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 export default defineConfig({
   plugins: [
     githubOAuthPlugin({
-      clientId: process.env.NX_OAUTH_GITHUB_CLIENT_ID!,
-      clientSecret: process.env.NX_OAUTH_GITHUB_CLIENT_SECRET!,
+      clientId: process.env.NP_OAUTH_GITHUB_CLIENT_ID!,
+      clientSecret: process.env.NP_OAUTH_GITHUB_CLIENT_SECRET!,
     }),
   ],
 });
@@ -195,7 +195,7 @@ the next render (no realtime push).
 
 ## 7. Notifications
 
-`nx_notifications` rows fire on:
+`np_notifications` rows fire on:
 
 - Comment under your own thread / reply / member doc
 - Reply to your comment
@@ -297,7 +297,7 @@ setProfanityAdapter({
 
 setReputationAdapter({
   apply: async ({ event, memberId }) => {
-    // Mutate `nx_members.reputation` atomically.
+    // Mutate `np_members.reputation` atomically.
   },
 });
 ```
@@ -375,7 +375,7 @@ the `memberCan` helper rather than hardcoding role names.
 - **`editWindowMinutes`** — how long after creating a comment
   the author can still edit
 
-Stored in `nx_settings` under `community` key, per-site
+Stored in `np_settings` under `community` key, per-site
 (Phase 15.4 — multi-site siteId scope).
 
 ---
@@ -383,7 +383,7 @@ Stored in `nx_settings` under `community` key, per-site
 ## 14. Audit Log
 
 `recordAuditEvent({ actor, kind, target, payload })` rows
-land in `nx_audit_events` for every staff-initiated state
+land in `np_audit_events` for every staff-initiated state
 change:
 
 - `member.ban.issue` / `member.ban.revoke`
@@ -397,7 +397,7 @@ Surfaces in `/admin/audit` (filtered list). The actor
 reference is polymorphic: staff (`user.id`), member
 (`member.id`), or `system` for adapter-driven actions.
 
-Phase 17 added a nullable `site_id` column to `nx_audit_events`
+Phase 17 added a nullable `site_id` column to `np_audit_events`
 and an index on `(site_id, created_at)`. `recordAuditEvent`
 fills it from the current request's site (resolved by the
 multi-site middleware), so multi-tenant operators can now
@@ -435,9 +435,9 @@ In rough order of likely impact:
 - **Reports for thread / reply targets** — #197 enabled
   `thread` / `reply` as report target types.
 - **Site-scoped community tables** — Phase 18 (#211)
-  added `site_id` to `nx_comments`, `nx_reactions`,
-  `nx_follows`, `nx_member_mutes`, `nx_notifications`,
-  `nx_reports`, and `nx_bans`. `nx_members` itself is
+  added `site_id` to `np_comments`, `np_reactions`,
+  `np_follows`, `np_member_mutes`, `np_notifications`,
+  `np_reports`, and `np_bans`. `np_members` itself is
   still global (one identity, many tenants).
 
 These aren't blockers. The shipped surface is enough to run

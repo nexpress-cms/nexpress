@@ -12,7 +12,7 @@ import type { NextRequest, NextResponse } from "next/server";
 /**
  * Member-side counterpart to `createAuthHelpers`. Same shape, but reads
  * `np-mb-*` cookies, verifies JWTs with `aud: "member"` enforced, and
- * looks members up in `nx_members`. Coexists with the staff helpers in
+ * looks members up in `np_members`. Coexists with the staff helpers in
  * the same Next process.
  */
 
@@ -38,8 +38,8 @@ export interface CreateMemberAuthHelpersOptions<DB> {
 }
 
 function defaultGetSecret(): string {
-  const secret = process.env.NX_SECRET ?? process.env.NX_AUTH_SECRET ?? process.env.AUTH_SECRET;
-  if (!secret) throw new Error("NX_SECRET must be set (see .env.example)");
+  const secret = process.env.NP_SECRET ?? process.env.NP_AUTH_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) throw new Error("NP_SECRET must be set (see .env.example)");
   return secret;
 }
 
@@ -74,10 +74,10 @@ export function createMemberAuthHelpers<DB>(
       // Refuse refresh tokens presented in the session cookie — without
       // this check a leaked refresh JWT was indistinguishable from an
       // access JWT to the auth path because both kinds were stored as
-      // fungible rows in `nx_member_sessions` (#91).
+      // fungible rows in `np_member_sessions` (#91).
       const payload = await verifyMemberToken(token, readSecret(), "access");
       // Pass the raw access token so the resolver can verify a live
-      // row exists in nx_member_sessions — that's what makes
+      // row exists in np_member_sessions — that's what makes
       // `/api/members/logout` actually revoke the token. (#45)
       const member = await getMemberFromTokenPayload(
         options.getDb() as never,
@@ -110,9 +110,9 @@ export function createMemberAuthHelpers<DB>(
 
   const getMemberAuthRuntimeConfig = (): MemberAuthRuntimeConfig => ({
     secret: readSecret(),
-    tokenExpiration: readNumber(process.env.NX_TOKEN_EXPIRATION, DEFAULT_TOKEN_EXPIRATION),
+    tokenExpiration: readNumber(process.env.NP_TOKEN_EXPIRATION, DEFAULT_TOKEN_EXPIRATION),
     refreshTokenExpiration: readNumber(
-      process.env.NX_REFRESH_TOKEN_EXPIRATION,
+      process.env.NP_REFRESH_TOKEN_EXPIRATION,
       DEFAULT_REFRESH_TOKEN_EXPIRATION,
     ),
     secureCookies: process.env.NODE_ENV === "production",

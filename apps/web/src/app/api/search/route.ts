@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   getCurrentSiteId,
   searchCollections,
 } from "@nexpress/core";
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     // attackers spamming unique queries would still hit the
     // origin every time, but the per-key memory cost is the
     // result row, not a re-walk.
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const collectionsKey = collections ? collections.slice().sort().join(",") : "";
     const cached = unstable_cache(
       () =>

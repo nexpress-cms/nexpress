@@ -200,7 +200,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Finish an OAuth login",
         description:
-          "Validates the state cookie, calls the provider's `exchange()` for the normalized profile, then resolves the matching `nx_users` row in this order: (1) durable `(provider, providerUserId)` link, (2) email-match link, (3) auto-provision new user with role `viewer`. On success sets `nx-session` / `nx-refresh` / `nx-csrf` cookies and 302s to `/admin`. Failures redirect to `/admin/login?oauth_error=…` — never expose provider error text.",
+          "Validates the state cookie, calls the provider's `exchange()` for the normalized profile, then resolves the matching `np_users` row in this order: (1) durable `(provider, providerUserId)` link, (2) email-match link, (3) auto-provision new user with role `viewer`. On success sets `nx-session` / `nx-refresh` / `nx-csrf` cookies and 302s to `/admin`. Failures redirect to `/admin/login?oauth_error=…` — never expose provider error text.",
         parameters: [
           { in: "path", name: "provider", required: true, schema: { type: "string" } },
           { in: "query", name: "code", required: true, schema: { type: "string" } },
@@ -227,7 +227,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Finish an OAuth login (member side)",
         description:
-          "Validates `nx-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `nx_members` row in this order: (1) durable `(provider, subject)` link in `nx_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists access + refresh hashes in `nx_member_sessions`, sets `nx-mb-session` / `nx-mb-refresh` / `nx-mb-csrf` cookies, and 302s to `/`. Suspended/deleted members 302 to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
+          "Validates `nx-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `np_members` row in this order: (1) durable `(provider, subject)` link in `np_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists access + refresh hashes in `np_member_sessions`, sets `nx-mb-session` / `nx-mb-refresh` / `nx-mb-csrf` cookies, and 302s to `/`. Suspended/deleted members 302 to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
         parameters: [
           { in: "path", name: "provider", required: true, schema: { type: "string" } },
           { in: "query", name: "code", required: true, schema: { type: "string" } },

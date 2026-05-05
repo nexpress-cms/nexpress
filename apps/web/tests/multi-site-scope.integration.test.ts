@@ -13,10 +13,10 @@ import {
 /**
  * Phase 17 — multi-tenant audit + plugin storage scope.
  *
- *   - `nx_audit_events.site_id` is filled by `recordAuditEvent`
+ *   - `np_audit_events.site_id` is filled by `recordAuditEvent`
  *     from `getCurrentSiteId()` and consulted by `listAuditEvents`
  *     so per-tenant queries don't leak cross-site rows.
- *   - `nx_plugin_storage.site_id` is part of the composite PK so
+ *   - `np_plugin_storage.site_id` is part of the composite PK so
  *     the same plugin key under different sites stays isolated.
  *
  * Tests pin the current site via `withCurrentSite()` so they

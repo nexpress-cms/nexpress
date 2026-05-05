@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import { npStringOverrides } from "../db/schema/system.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Phase D — admin-overridable UI string layer on top of the
@@ -11,7 +11,7 @@ import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
  *
  * Plugins and themes ship base translations via
  * `addStrings()`; admins layer overrides on top via the
- * `nx_string_overrides` table without editing plugin/theme
+ * `np_string_overrides` table without editing plugin/theme
  * code. Per-site composite key (siteId, locale, key) so each
  * tenant can override the same plugin's string differently.
  *
@@ -121,7 +121,7 @@ export async function setStringOverride(
 ): Promise<void> {
   const db = getDb();
   const siteId =
-    options?.siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    options?.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
   await db
     .insert(npStringOverrides)
@@ -160,7 +160,7 @@ export async function deleteStringOverride(
 ): Promise<void> {
   const db = getDb();
   const siteId =
-    options?.siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    options?.siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   await db
     .delete(npStringOverrides)
     .where(

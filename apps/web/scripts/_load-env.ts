@@ -14,7 +14,7 @@ import { config as loadEnv } from "dotenv";
  * doesn't help — the script's own `import` statements have
  * already evaluated by the time the script's first statement
  * runs, and `nexpress.config.ts` (transitively imported by
- * `init-core`) reads `process.env.NX_SECRET` at module-load time.
+ * `init-core`) reads `process.env.NP_SECRET` at module-load time.
  *
  * Resolution order matches the original inline calls:
  *   1. `<repo>/.env` (root) — primary source of truth

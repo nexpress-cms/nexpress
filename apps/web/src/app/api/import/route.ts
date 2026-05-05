@@ -272,10 +272,10 @@ export async function POST(request: NextRequest) {
         // super-admin picking a target site explicitly via a
         // request param) isn't built; the resolved siteId is
         // the only target today.
-        const { getCurrentSiteId, NX_DEFAULT_SITE_ID } = await import(
+        const { getCurrentSiteId, NP_DEFAULT_SITE_ID } = await import(
           "@nexpress/core"
         );
-        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
         await db.transaction(async (tx) => {
           const now = new Date();
 

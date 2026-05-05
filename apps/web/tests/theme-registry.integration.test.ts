@@ -20,7 +20,7 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
   beforeEach(async () => {
     await truncateAll();
     // Restore the canonical default-theme registration after
-    // truncation wipes nx_settings — and reset the in-memory
+    // truncation wipes np_settings — and reset the in-memory
     // registry so prior tests' theme registrations don't leak.
     const { resetThemes, registerThemes } = await import("@nexpress/core");
     resetThemes();
@@ -89,7 +89,7 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
 
   it("getActiveTheme silently falls back when the persisted id no longer resolves", async () => {
     // Operator removed `oldTheme` from nexpress.config.ts but
-    // `nx_settings.activeTheme` still says `oldTheme`. The
+    // `np_settings.activeTheme` still says `oldTheme`. The
     // resolver should NOT throw — it should return the first
     // registered theme so the site keeps rendering.
     const db = await getTestDb();

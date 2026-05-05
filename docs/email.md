@@ -14,16 +14,16 @@ Works with any SMTP-speaking provider (Resend, SES, Mailgun, Postmark,
 Gmail, Zoho, a custom relay). Enable it by setting:
 
 ```dotenv
-NX_EMAIL_ADAPTER=smtp
-NX_SMTP_HOST=smtp.resend.com
-NX_SMTP_PORT=587
-NX_SMTP_USER=resend
-NX_SMTP_PASS=<api-key-or-password>
-NX_SMTP_FROM="NexPress <noreply@yourdomain.com>"
-NX_SMTP_SECURE=false
+NP_EMAIL_ADAPTER=smtp
+NP_SMTP_HOST=smtp.resend.com
+NP_SMTP_PORT=587
+NP_SMTP_USER=resend
+NP_SMTP_PASS=<api-key-or-password>
+NP_SMTP_FROM="NexPress <noreply@yourdomain.com>"
+NP_SMTP_SECURE=false
 ```
 
-`NX_SMTP_SECURE=true` for implicit-TLS ports (465). Leave it `false` for
+`NP_SMTP_SECURE=true` for implicit-TLS ports (465). Leave it `false` for
 STARTTLS ports (587 / 25). Apps using the adapter must include
 `nodemailer` in their dependencies — it's an optional peer of
 `@nexpress/core`.
@@ -33,45 +33,45 @@ STARTTLS ports (587 / 25). Apps using the adapter must include
 **Resend**
 
 ```dotenv
-NX_SMTP_HOST=smtp.resend.com
-NX_SMTP_PORT=465
-NX_SMTP_USER=resend
-NX_SMTP_PASS=re_your_api_key
-NX_SMTP_FROM="NexPress <onboarding@resend.dev>"
-NX_SMTP_SECURE=true
+NP_SMTP_HOST=smtp.resend.com
+NP_SMTP_PORT=465
+NP_SMTP_USER=resend
+NP_SMTP_PASS=re_your_api_key
+NP_SMTP_FROM="NexPress <onboarding@resend.dev>"
+NP_SMTP_SECURE=true
 ```
 
 **AWS SES (SMTP interface)**
 
 ```dotenv
-NX_SMTP_HOST=email-smtp.us-east-1.amazonaws.com
-NX_SMTP_PORT=587
-NX_SMTP_USER=<SES SMTP Username>
-NX_SMTP_PASS=<SES SMTP Password>
-NX_SMTP_FROM="NexPress <noreply@yourdomain.com>"
-NX_SMTP_SECURE=false
+NP_SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+NP_SMTP_PORT=587
+NP_SMTP_USER=<SES SMTP Username>
+NP_SMTP_PASS=<SES SMTP Password>
+NP_SMTP_FROM="NexPress <noreply@yourdomain.com>"
+NP_SMTP_SECURE=false
 ```
 
 **Mailgun**
 
 ```dotenv
-NX_SMTP_HOST=smtp.mailgun.org
-NX_SMTP_PORT=587
-NX_SMTP_USER=postmaster@mg.yourdomain.com
-NX_SMTP_PASS=<mailgun-smtp-password>
-NX_SMTP_FROM="NexPress <noreply@mg.yourdomain.com>"
-NX_SMTP_SECURE=false
+NP_SMTP_HOST=smtp.mailgun.org
+NP_SMTP_PORT=587
+NP_SMTP_USER=postmaster@mg.yourdomain.com
+NP_SMTP_PASS=<mailgun-smtp-password>
+NP_SMTP_FROM="NexPress <noreply@mg.yourdomain.com>"
+NP_SMTP_SECURE=false
 ```
 
 **Gmail** (app passwords; not for production volume)
 
 ```dotenv
-NX_SMTP_HOST=smtp.gmail.com
-NX_SMTP_PORT=465
-NX_SMTP_USER=you@gmail.com
-NX_SMTP_PASS=<app-password>
-NX_SMTP_FROM="NexPress <you@gmail.com>"
-NX_SMTP_SECURE=true
+NP_SMTP_HOST=smtp.gmail.com
+NP_SMTP_PORT=465
+NP_SMTP_USER=you@gmail.com
+NP_SMTP_PASS=<app-password>
+NP_SMTP_FROM="NexPress <you@gmail.com>"
+NP_SMTP_SECURE=true
 ```
 
 ---
@@ -149,7 +149,7 @@ configureBuiltinJobContext({
 
 ## Local development
 
-Leave `NX_EMAIL_ADAPTER` unset and the handler falls back to
+Leave `NP_EMAIL_ADAPTER` unset and the handler falls back to
 `NoopEmailAdapter`, which prints:
 
 ```

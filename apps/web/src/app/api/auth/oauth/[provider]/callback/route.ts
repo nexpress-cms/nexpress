@@ -12,7 +12,7 @@ import { ensureFor } from "@/lib/init-core";
 
 /**
  * Step 2: validate the state cookie, ask the provider to exchange the
- * code for a profile, resolve (or create) the matching `nx_users` row,
+ * code for a profile, resolve (or create) the matching `np_users` row,
  * mint session cookies, and redirect to the admin dashboard. Failures
  * land on `/admin/login?oauth_error=…` so the UI can render a clean
  * message — never expose provider-side error text directly.

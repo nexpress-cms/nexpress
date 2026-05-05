@@ -65,7 +65,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         return;
       }
       // Token is invalidated server-side and existing sessions are
-      // killed (tokenVersion bumped + nx_member_sessions wiped).
+      // killed (tokenVersion bumped + np_member_sessions wiped).
       // Send the user to login with the password-reset banner —
       // distinct flag from `?verified=1` so the banner copy is
       // honest about which flow they came from.

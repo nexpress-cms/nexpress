@@ -33,7 +33,7 @@ Everything below is shipped and merged on `main`:
 - **Post-22 hardening** — site-scope security fixes (#362–367),
   publish dry-run validation, package metadata + LICENSE sweep, per-package
   README stubs, README v1 surface refresh, author attribution rename,
-  build/dev split (`NX_DEV_FAST`).
+  build/dev split (`NP_DEV_FAST`).
 
 The blocker on the actual `npm publish` is the GitHub Actions billing lock
 (`workflow_dispatch`-only on `ci.yml` and `release.yml`); see the **NOTES**
@@ -71,7 +71,7 @@ limitations called out in `AGENTS.md`.
   multi-instance load.
 - **Storage** — `LocalStorageAdapter` is documented as not multi-node safe;
   surface a clearer "use S3 in production" failure mode at boot when
-  `NX_STORAGE_ADAPTER=local` and `NX_REPLICAS>1`-style hint is set.
+  `NP_STORAGE_ADAPTER=local` and `NP_REPLICAS>1`-style hint is set.
 - **Job queue at scale** — heartbeat exists; add a "stuck job" detector and
   a worker-pause UX for incident response.
 - **Backup / restore docs** — pg_dump recipe, media bucket sync, settings
@@ -141,7 +141,7 @@ promote before 1.0. Each promotion is a contract decision.
 Multi-site scoping is in. The product features that ride on top of it are
 not.
 
-- Per-site theme override (today: theme is global by `nx_settings.activeTheme`).
+- Per-site theme override (today: theme is global by `np_settings.activeTheme`).
 - Per-site plugin enable/disable.
 - Per-site quotas (storage, post count, job throughput).
 - Billing hooks (out of scope for the open-source core; document the

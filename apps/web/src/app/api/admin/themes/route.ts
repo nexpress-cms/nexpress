@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     }
     const themes = getRegisteredThemes();
     const activeId = await getActiveThemeId();
-    // When no `nx_settings.activeTheme` is persisted, the
+    // When no `np_settings.activeTheme` is persisted, the
     // resolver falls back to the first registered theme. Mirror
     // that behavior in the listing so the UI's "active" badge
     // matches what `getActiveTheme()` would return.

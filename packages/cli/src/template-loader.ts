@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
  * own (so the file still typechecks). At scaffold time `vars`
  * maps each marker to its real value:
  *
- *     readTemplate("site/layout.tsx", { NX_PROJECT_NAME: "my-app" })
+ *     readTemplate("site/layout.tsx", { NP_PROJECT_NAME: "my-app" })
  *
  * Markers are matched verbatim — no escape, no logic. Branching
  * (e.g. "include example collections vs not") is handled by

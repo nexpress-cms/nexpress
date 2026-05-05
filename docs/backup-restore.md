@@ -14,17 +14,17 @@ isn't there.
 | Store               | What it holds                                                       | Backup mechanism             |
 | ------------------- | ------------------------------------------------------------------- | ---------------------------- |
 | **Postgres**        | Users, content, revisions, jobs, settings, audit log, media records | `pg_dump`                    |
-| **Media storage**   | The actual binary files referenced by `nx_media.path`               | S3 versioning OR file backup |
+| **Media storage**   | The actual binary files referenced by `np_media.path`               | S3 versioning OR file backup |
 
-The Postgres tables `nx_media` (media records) and `nx_media_refs`
+The Postgres tables `np_media` (media records) and `np_media_refs`
 (content → media references) are what tie the two stores together. A
 restore that brings DB rows back without their files leaves the admin
 showing 404s for every image; the inverse leaves orphaned files that
 nothing references.
 
-The data pipeline tracks edit history in `nx_revisions`. That is **not
+The data pipeline tracks edit history in `np_revisions`. That is **not
 a backup** — it's the per-document version history exposed in the admin
-UI. A row deleted by an admin is gone from `nx_revisions` along with
+UI. A row deleted by an admin is gone from `np_revisions` along with
 the document.
 
 ## Backup cadence
@@ -74,17 +74,17 @@ disaster recovery:
 
 | Table family               | Why it matters                                                                |
 | -------------------------- | ----------------------------------------------------------------------------- |
-| `nx_users`, `nx_sessions`  | Staff accounts. After restore, every user keeps their `tokenVersion`.        |
-| `nx_members`, `nx_member_*` | Member accounts and identities.                                              |
-| `nx_c_*`                   | Collection content (posts, pages, taxonomies, discussions, …).                |
-| `nx_revisions`             | Per-document version history.                                                 |
-| `nx_media`, `nx_media_refs`| Media records and their content references — must match the file store.      |
-| `nx_settings`              | Site settings, active theme, plugin enable/disable.                           |
-| `nx_audit_events`          | Compliance log; required for forensic review of past incidents.               |
-| `nx_navigation`            | Header / footer menus per site.                                               |
-| `nx_sites`, `nx_site_memberships` | Multi-tenant configuration; preserves per-site staff mappings.         |
-| `nx_plugin_storage`        | Plugin-owned data; restoring without it can leave plugins in inconsistent state. |
-| `nx_worker_heartbeats`     | Job worker liveness; ignored on restore (next worker start overwrites).       |
+| `np_users`, `np_sessions`  | Staff accounts. After restore, every user keeps their `tokenVersion`.        |
+| `np_members`, `np_member_*` | Member accounts and identities.                                              |
+| `np_c_*`                   | Collection content (posts, pages, taxonomies, discussions, …).                |
+| `np_revisions`             | Per-document version history.                                                 |
+| `np_media`, `np_media_refs`| Media records and their content references — must match the file store.      |
+| `np_settings`              | Site settings, active theme, plugin enable/disable.                           |
+| `np_audit_events`          | Compliance log; required for forensic review of past incidents.               |
+| `np_navigation`            | Header / footer menus per site.                                               |
+| `np_sites`, `np_site_memberships` | Multi-tenant configuration; preserves per-site staff mappings.         |
+| `np_plugin_storage`        | Plugin-owned data; restoring without it can leave plugins in inconsistent state. |
+| `np_worker_heartbeats`     | Job worker liveness; ignored on restore (next worker start overwrites).       |
 
 The pg-boss tables (`job`, `job_common`, `archive`, …) restore along
 with the rest. Jobs that were in flight at backup time will be
@@ -114,7 +114,7 @@ delete is permanent.
 
 ```bash
 aws s3api put-bucket-versioning \
-  --bucket "$NX_S3_BUCKET" \
+  --bucket "$NP_S3_BUCKET" \
   --versioning-configuration Status=Enabled
 ```
 
@@ -125,7 +125,7 @@ to Glacier to cap cost.
 ### Local storage
 
 `LocalStorageAdapter` writes to the directory configured by
-`NX_STORAGE_DIR` (default `./uploads`). Back it up alongside the
+`NP_STORAGE_DIR` (default `./uploads`). Back it up alongside the
 Postgres dump on the same schedule.
 
 ```bash
@@ -193,7 +193,7 @@ rsync -a --delete /backups/uploads-20260502/ ./uploads/
 ### 3. Workers and app
 
 Bring app replicas back up. The worker (`startWorker()` in `apps/web`)
-boots, registers in `nx_worker_heartbeats`, and starts pulling from
+boots, registers in `np_worker_heartbeats`, and starts pulling from
 the pg-boss tables that were restored along with the DB.
 
 ```bash

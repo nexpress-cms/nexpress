@@ -543,7 +543,7 @@ export interface NpConfig {
    * theme they want available; admins switch between them
    * via the settings UI without rebuilding. The first theme
    * in the array is the default-active until an admin sets
-   * a different one (`nx_settings.activeTheme`).
+   * a different one (`np_settings.activeTheme`).
    */
   themes?: NpRegisteredTheme[];
   /**

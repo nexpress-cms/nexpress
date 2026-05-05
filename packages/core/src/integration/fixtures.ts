@@ -1,6 +1,6 @@
 /**
  * Integration-test fixtures. Reuses apps/web's `posts` collection and the
- * generated `nx_c_posts` table so tests exercise the same pipeline path the
+ * generated `np_c_posts` table so tests exercise the same pipeline path the
  * reference app does, without each test having to re-author schema +
  * config.
  *

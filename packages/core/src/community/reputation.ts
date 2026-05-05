@@ -14,7 +14,7 @@ import {
  * Calls the registered reputation adapter for `event`, then applies
  * the returned delta to the affected member's reputation atomically:
  *
- *     UPDATE nx_members SET reputation = reputation + $delta
+ *     UPDATE np_members SET reputation = reputation + $delta
  *     WHERE id = $memberId
  *
  * Failure modes are intentionally fail-soft — a buggy adapter that

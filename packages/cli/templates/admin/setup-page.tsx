@@ -12,7 +12,7 @@ import { SetupWizard } from "./setup-client";
  * so the page can't be replayed by a stale tab. The matching API
  * route enforces the same gate server-side.
  *
- * Pre-fill `NX_ADMIN_EMAIL` / `NX_ADMIN_NAME` from env so an
+ * Pre-fill `NP_ADMIN_EMAIL` / `NP_ADMIN_NAME` from env so an
  * automated boot (compose / fly / secrets manager) doesn't make
  * the operator retype values they've already wired up. Password
  * is never pre-filled; we don't want it in the page source.
@@ -27,8 +27,8 @@ export default async function SetupPage() {
   if (adminCount > 0) redirect("/admin/login");
 
   const prefill = {
-    email: process.env.NX_ADMIN_EMAIL ?? "",
-    name: process.env.NX_ADMIN_NAME ?? "",
+    email: process.env.NP_ADMIN_EMAIL ?? "",
+    name: process.env.NP_ADMIN_NAME ?? "",
   };
 
   return <SetupWizard prefill={prefill} />;

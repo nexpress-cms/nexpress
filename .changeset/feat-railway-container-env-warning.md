@@ -5,7 +5,7 @@
 `verifyStartupSafety`'s container-hint heuristic now recognizes
 Railway alongside Kubernetes / Fly / Render. The warning fires in
 production when `RAILWAY_ENVIRONMENT_NAME` is set and
-`NX_STORAGE_ADAPTER=local`, catching multi-replica Railway deploys
+`NP_STORAGE_ADAPTER=local`, catching multi-replica Railway deploys
 that would otherwise silently desync `./uploads` between nodes.
 
 The warning message is updated to list the new env var so operators

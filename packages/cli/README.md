@@ -41,7 +41,7 @@ A Next.js 15 App Router project with:
 
 ## Next steps after scaffolding
 
-- Seed the first admin: `pnpm seed:admin` (set `NX_ADMIN_EMAIL`, `NX_ADMIN_NAME`, `NX_ADMIN_PASSWORD`)
+- Seed the first admin: `pnpm seed:admin` (set `NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`, `NP_ADMIN_PASSWORD`)
 - Add a collection: edit `src/collections/<name>.ts`, run `pnpm db:generate && pnpm db:migrate`
 - Read [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md) — architecture overview
 - Read [docs/](https://github.com/hahabsw/nexpress/tree/main/docs) — deployment, jobs, observability, theming

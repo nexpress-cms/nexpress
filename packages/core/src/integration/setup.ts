@@ -145,13 +145,13 @@ export async function closeTestDb(): Promise<void> {
  * (we catch duplicates and move on).
  *
  * Idempotent — run it against a fresh DB once; subsequent runs no-op when
- * tables already exist. When NX_TEST_TEMPLATE_READY=1 (set by the
+ * tables already exist. When NP_TEST_TEMPLATE_READY=1 (set by the
  * global-setup hook), this becomes a no-op since the template DB was
  * already migrated and our worker DB is a clone.
  */
 export async function ensureMigrated(): Promise<void> {
   if (migrated) return;
-  if (process.env.NX_TEST_TEMPLATE_READY === "1") {
+  if (process.env.NP_TEST_TEMPLATE_READY === "1") {
     await getTestDb();
     migrated = true;
     return;
@@ -196,50 +196,50 @@ export async function truncateAll(): Promise<void> {
   await getTestDb();
   if (!pool) throw new Error("Pool not initialised.");
   const tables = [
-    "nx_sessions",
-    "nx_revisions",
-    "nx_plugin_storage",
-    "nx_plugins",
-    "nx_worker_heartbeats",
-    "nx_job_logs",
-    "nx_settings",
-    "nx_navigation",
-    "nx_media_refs",
-    "nx_media",
-    "nx_media_folders",
-    "nx_user_oauth_identities",
-    "nx_users",
+    "np_sessions",
+    "np_revisions",
+    "np_plugin_storage",
+    "np_plugins",
+    "np_worker_heartbeats",
+    "np_job_logs",
+    "np_settings",
+    "np_navigation",
+    "np_media_refs",
+    "np_media",
+    "np_media_folders",
+    "np_user_oauth_identities",
+    "np_users",
     // Community tables (Phase 9.1a+). Order doesn't matter under CASCADE
     // — listing them keeps RESTART IDENTITY consistent and the test DB
     // wipes cleanly between cases.
-    "nx_audit_events",
-    "nx_reports",
-    "nx_notifications",
-    "nx_follows",
-    "nx_reactions",
-    "nx_comments",
-    "nx_bans",
-    "nx_member_roles",
-    "nx_member_identities",
-    "nx_member_sessions",
-    "nx_members",
+    "np_audit_events",
+    "np_reports",
+    "np_notifications",
+    "np_follows",
+    "np_reactions",
+    "np_comments",
+    "np_bans",
+    "np_member_roles",
+    "np_member_identities",
+    "np_member_sessions",
+    "np_members",
     // Phase 15.5+ — multi-site residue. Without this, multi-site tests
     // (e.g. `multi-site-*`, the #218 per-site digest case) leave extra
-    // rows in `nx_sites` between tests in the same worker; subsequent
+    // rows in `np_sites` between tests in the same worker; subsequent
     // suites that depend on a clean single-tenant world (digest sweep,
     // anything iterating sites) then see ghost tenants and mis-count.
-    // `nx_sites` itself is handled below so the default row survives.
-    "nx_site_memberships",
+    // `np_sites` itself is handled below so the default row survives.
+    "np_site_memberships",
   ];
   const list = tables.map((t) => `"${t}"`).join(", ");
   // CASCADE handles any FK holdouts. RESTART IDENTITY resets any sequences
   // (unused by the schema today but future-proof).
   await pool.query(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
-  // Wipe non-default sites in place. We can't TRUNCATE nx_sites because
+  // Wipe non-default sites in place. We can't TRUNCATE np_sites because
   // the default row is created exactly once by `ensureDefaultSite()` at
   // bootstrap (idempotent flag) — re-creating it after every truncate
   // would mean every test file pays a write per case.
-  await pool.query(`DELETE FROM "nx_sites" WHERE id <> 'default'`);
+  await pool.query(`DELETE FROM "np_sites" WHERE id <> 'default'`);
 }
 
 /**
@@ -345,7 +345,7 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
     await tplPool.end();
   }
 
-  process.env.NX_TEST_TEMPLATE_READY = "1";
+  process.env.NP_TEST_TEMPLATE_READY = "1";
 
   return async () => {
     // Teardown — drop worker DBs so the next run starts clean. Leave the

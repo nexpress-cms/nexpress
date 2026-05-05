@@ -5,7 +5,7 @@ import { getDb } from "../db/runtime.js";
 import { npMembers, npNotifications } from "../db/schema/community.js";
 import { getEmailAdapter } from "../email/service.js";
 import { getLogger } from "../observability/logger.js";
-import { listSites, NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { listSites, NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { type NpDigestCadence, recordDigestSent } from "./notification-prefs.js";
 
@@ -227,7 +227,7 @@ export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDig
   // recipient gets one email per site they have unread
   // notifications on.
   const sites = await listSites();
-  const candidateSites = sites.length > 0 ? sites : [{ id: NX_DEFAULT_SITE_ID, name: "" }];
+  const candidateSites = sites.length > 0 ? sites : [{ id: NP_DEFAULT_SITE_ID, name: "" }];
   const members = await listMembersForCadence(db, input.cadence);
 
   let considered = 0;

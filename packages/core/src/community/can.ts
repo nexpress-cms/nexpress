@@ -6,7 +6,7 @@ import { NpForbiddenError } from "../errors.js";
 import { getDb } from "../db/runtime.js";
 import { npBans, npMemberRoles } from "../db/schema/community.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { type CommunityCapability, type CommunityScope, getCommunityRole } from "./roles.js";
 
 /**
@@ -39,7 +39,7 @@ export async function isMemberBanned(
   // tenant A doesn't block writes on tenant B; the ban row
   // includes `site_id` and we filter by the resolver's
   // current value.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const bans = (await handle
     .select({
       scopeType: npBans.scopeType,
@@ -155,7 +155,7 @@ interface MemberCanOptions {
  *      includes `action`.
  *   5. Otherwise deny.
  *
- * The resolver ignores staff (`nx_users`) entirely. Staff bypass is the
+ * The resolver ignores staff (`np_users`) entirely. Staff bypass is the
  * caller's responsibility — typically `principalCan(principal, …)` at
  * the API layer, which routes to `memberCan` only when the principal
  * is a member.
@@ -185,7 +185,7 @@ export async function memberCan(
   // shouldn't authorize actions on tenant B. Site-wide grants
   // (scope_type='site') still match every action on the
   // resolved tenant.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const grants = (await db
     .select({
       role: npMemberRoles.role,

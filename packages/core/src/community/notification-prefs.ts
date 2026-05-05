@@ -8,7 +8,7 @@ import { NpNotFoundError, NpValidationError } from "../errors.js";
 /**
  * Phase 16.3 — per-member notification preferences.
  *
- * The persisted shape is a JSONB blob on `nx_members.notification_prefs`
+ * The persisted shape is a JSONB blob on `np_members.notification_prefs`
  * so adding fields (digest cadence in 16.4, channel toggles later)
  * stays a typescript-only change. Today we honor:
  *

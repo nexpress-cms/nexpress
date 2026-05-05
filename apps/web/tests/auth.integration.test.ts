@@ -67,7 +67,7 @@ describe.skipIf(skipIfNoTestDb())("auth API (integration)", () => {
           role: session.role,
           tokenVersion: 0,
         },
-        process.env.NX_SECRET as string,
+        process.env.NP_SECRET as string,
         7200,
         "refresh",
       );
@@ -85,7 +85,7 @@ describe.skipIf(skipIfNoTestDb())("auth API (integration)", () => {
       const session = await seedUser({ email: "rot@example.com", role: "editor" });
       const refresh = await signToken(
         { id: session.userId, role: session.role, tokenVersion: 0 },
-        process.env.NX_SECRET as string,
+        process.env.NP_SECRET as string,
         604800,
         "refresh",
       );
@@ -106,7 +106,7 @@ describe.skipIf(skipIfNoTestDb())("auth API (integration)", () => {
       const session = await seedUser({ email: "rot2@example.com", role: "editor" });
       const access = await signToken(
         { id: session.userId, role: session.role, tokenVersion: 0 },
-        process.env.NX_SECRET as string,
+        process.env.NP_SECRET as string,
         7200,
         "access",
       );

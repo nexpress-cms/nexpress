@@ -374,7 +374,7 @@ export function NavigationEditor() {
     setError(null);
     try {
       // Save an empty nav at the new location — that's what
-      // creates the row in `nx_navigation`. The locations endpoint
+      // creates the row in `np_navigation`. The locations endpoint
       // will return it on the next fetch.
       const response = await npFetch("/api/navigation", {
         method: "PUT",

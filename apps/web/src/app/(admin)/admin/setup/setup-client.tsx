@@ -29,7 +29,7 @@ const PASSWORD_MIN = 12;
 
 export interface SetupWizardProps {
   /**
-   * Server-side env (`NX_ADMIN_EMAIL`, `NX_ADMIN_NAME`) read by the
+   * Server-side env (`NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`) read by the
    * page component and forwarded so an automated boot doesn't make
    * the operator retype values they've already configured. Password
    * is intentionally absent — it never reaches the browser.

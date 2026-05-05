@@ -19,7 +19,7 @@ import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.
 import { applySlugField } from "./slug.js";
 import { getI18nConfig } from "../i18n/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getCollectionZodSchema } from "./validation.js";
 import { getCollectionConfig, getCollectionTable, getCollectionRegistration } from "./registry.js";
 import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
@@ -713,10 +713,10 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
   // original row's site id — body fields can't reassign a doc.
   if (c.operation === "create") {
     const resolved = await getCurrentSiteId();
-    c.prepared.mainData.siteId = resolved ?? NX_DEFAULT_SITE_ID;
+    c.prepared.mainData.siteId = resolved ?? NP_DEFAULT_SITE_ID;
   } else {
     const original = c.originalDoc as { siteId?: string } | null;
-    c.prepared.mainData.siteId = original?.siteId ?? NX_DEFAULT_SITE_ID;
+    c.prepared.mainData.siteId = original?.siteId ?? NP_DEFAULT_SITE_ID;
   }
   // Stamp / strip member_author_id. The column is generated only
   // when `community.memberWrite.create` is on; staff-authored docs
@@ -842,7 +842,7 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       ctx.originalDoc.slug.length > 0 &&
       ctx.originalDoc.slug !== persistedDoc.slug
     ) {
-      const siteId = (persistedDoc.siteId as string | undefined) ?? NX_DEFAULT_SITE_ID;
+      const siteId = (persistedDoc.siteId as string | undefined) ?? NP_DEFAULT_SITE_ID;
       await tx.insert(npSlugHistory).values({
         siteId,
         collection: ctx.collection,
@@ -1008,7 +1008,7 @@ export async function autosaveRevision(
   }
 
   // Reuse the same access gate `saveDocument` runs for an update — autosave
-  // is a write, even if it only lands in nx_revisions.
+  // is a write, even if it only lands in np_revisions.
   await assertWriteAccess(config, collection, "update", user, data, originalDoc);
 
   // Dedup against the latest autosave for this doc.
@@ -1252,7 +1252,7 @@ export async function promoteMemberDocument(
   // `getDocumentByIdInternal` already enforced the site match, but
   // including siteId in the WHERE means even a stale resolver value
   // between the load and the update can't promote the wrong row.
-  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
   const updated = (await db
     .update(table)
@@ -1368,7 +1368,7 @@ async function deleteDocumentImpl(
       );
     // Phase 9.7m: cascade comments + reactions on the deleted doc.
     // The polymorphic `(target_type, target_id)` shape on
-    // `nx_comments` / `nx_reactions` doesn't have a DB-level FK
+    // `np_comments` / `np_reactions` doesn't have a DB-level FK
     // (it can't — the target table varies per row), so without an
     // explicit cleanup these rows would orphan once the parent
     // doc was gone. Order matters: reactions targeting the comments
@@ -1391,7 +1391,7 @@ async function deleteDocumentImpl(
         .where(
           sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(npReactions as unknown as PgTable, "targetId"), commentIds)}`,
         );
-      // Phase 9.7q: same orphan story for `nx_reports` — a member
+      // Phase 9.7q: same orphan story for `np_reports` — a member
       // who reported one of these comments would otherwise be left
       // with a row pointing at a non-existent comment id. The
       // existing audit row carries enough context for after-the-
@@ -1479,7 +1479,7 @@ export async function findDocuments(
     const resolved = await getCurrentSiteId();
     effectiveWhere = {
       ...effectiveWhere,
-      siteId: resolved ?? NX_DEFAULT_SITE_ID,
+      siteId: resolved ?? NP_DEFAULT_SITE_ID,
     };
   } else if (effectiveWhere.siteId === "*") {
     // Sentinel: drop the filter entirely (admin-side
@@ -1552,11 +1552,11 @@ export async function getDocumentById(
   // cross-site` to match the existing pattern callers (e.g.
   // createComment, the sister-PR community fixes #362–#364) already
   // assert against.
-  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const docSiteId =
     typeof doc.siteId === "string" && doc.siteId.length > 0
       ? doc.siteId
-      : NX_DEFAULT_SITE_ID;
+      : NP_DEFAULT_SITE_ID;
   if (docSiteId !== requestSiteId) {
     throw new NpForbiddenError(collection, "cross-site");
   }
@@ -1634,7 +1634,7 @@ async function createMainDocument(
   now: Date,
 ): Promise<Record<string, unknown>> {
   // Member writes (`user === null`) leave `createdBy` / `updatedBy`
-  // unset so the FK to `nx_users` stays null. The audit log captures
+  // unset so the FK to `np_users` stays null. The audit log captures
   // the actual member; readers that need authorship for member-
   // authored docs should join through the dedicated `member_author_id`
   // column (codegen'd onto every collection that opts into
@@ -1816,7 +1816,7 @@ async function insertRevision(
     status,
     snapshot: data,
     changedFields: getChangedFields(data, originalDoc, operation),
-    // `authorId` references nx_users; member-authored revisions
+    // `authorId` references np_users; member-authored revisions
     // store null and the audit log carries the actual member id.
     authorId: user?.id ?? null,
     createdAt: new Date(),
@@ -1979,11 +1979,11 @@ async function getDocumentByIdInternal(
   }
 
   if (!options?.allowCrossSite) {
-    const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const docSiteId =
       typeof doc.siteId === "string" && doc.siteId.length > 0
         ? doc.siteId
-        : NX_DEFAULT_SITE_ID;
+        : NP_DEFAULT_SITE_ID;
     if (docSiteId !== requestSiteId) {
       throw new NpForbiddenError(collection, "cross-site");
     }

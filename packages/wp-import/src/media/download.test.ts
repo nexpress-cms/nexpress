@@ -366,35 +366,35 @@ describe("resolveEnvDownloadOptions (#270)", () => {
     expect(resolveEnvDownloadOptions({})).toEqual({});
   });
 
-  it("sets allowPrivateHosts when NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS=1", () => {
+  it("sets allowPrivateHosts when NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS=1", () => {
     expect(
-      resolveEnvDownloadOptions({ NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "1" }),
+      resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "1" }),
     ).toEqual({ allowPrivateHosts: true });
   });
 
-  it("also accepts NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS=true", () => {
+  it("also accepts NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS=true", () => {
     expect(
-      resolveEnvDownloadOptions({ NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "true" }),
+      resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "true" }),
     ).toEqual({ allowPrivateHosts: true });
   });
 
   it("ignores other truthy-ish values — only \"1\" or \"true\" count", () => {
     for (const v of ["yes", "on", "TRUE", "y", "0"]) {
       expect(
-        resolveEnvDownloadOptions({ NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS: v }).allowPrivateHosts,
+        resolveEnvDownloadOptions({ NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: v }).allowPrivateHosts,
       ).toBeUndefined();
     }
   });
 
-  it("parses NX_WP_IMPORT_MAX_BYTES as a positive integer", () => {
+  it("parses NP_WP_IMPORT_MAX_BYTES as a positive integer", () => {
     expect(
-      resolveEnvDownloadOptions({ NX_WP_IMPORT_MAX_BYTES: "536870912" }),
+      resolveEnvDownloadOptions({ NP_WP_IMPORT_MAX_BYTES: "536870912" }),
     ).toEqual({ maxBytes: 536870912 });
   });
 
   it("ignores non-numeric / non-positive maxBytes silently", () => {
     for (const v of ["", "abc", "0", "-1"]) {
-      const out = resolveEnvDownloadOptions({ NX_WP_IMPORT_MAX_BYTES: v });
+      const out = resolveEnvDownloadOptions({ NP_WP_IMPORT_MAX_BYTES: v });
       expect(out.maxBytes).toBeUndefined();
     }
   });
@@ -402,8 +402,8 @@ describe("resolveEnvDownloadOptions (#270)", () => {
   it("combines both knobs when both are set", () => {
     expect(
       resolveEnvDownloadOptions({
-        NX_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "1",
-        NX_WP_IMPORT_MAX_BYTES: "1024",
+        NP_WP_IMPORT_ALLOW_PRIVATE_HOSTS: "1",
+        NP_WP_IMPORT_MAX_BYTES: "1024",
       }),
     ).toEqual({ allowPrivateHosts: true, maxBytes: 1024 });
   });

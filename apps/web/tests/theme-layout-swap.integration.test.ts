@@ -20,7 +20,7 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     await truncateAll();
     // The framework registers `[defaultTheme, minimalTheme]` from
     // nexpress.config.ts during ensureCoreServices. truncate
-    // clears nx_settings but doesn't touch the in-memory
+    // clears np_settings but doesn't touch the in-memory
     // registry; we just need both themes available + no
     // activeTheme setting (so getActiveTheme falls back to
     // first registered).
@@ -81,7 +81,7 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
 
   it("absent active theme falls back to first registered (resilience)", async () => {
     // Operator removed `default` from nexpress.config.ts but
-    // `nx_settings.activeTheme` still says `default`. Resolver
+    // `np_settings.activeTheme` still says `default`. Resolver
     // should still return SOMETHING (the first remaining theme)
     // rather than null — so the site keeps rendering.
     const { resetThemes, registerThemes, getActiveTheme } = await import(

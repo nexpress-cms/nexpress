@@ -28,7 +28,7 @@ process.stdout.write(
 // almost certainly editing a collection definition. Remind them
 // of the follow-up so they don't trip over a Drizzle schema /
 // Postgres column mismatch on the next request.
-if (process.env.NX_SCHEMA_WATCH === "1") {
+if (process.env.NP_SCHEMA_WATCH === "1") {
   process.stdout.write(
     "  if column shapes changed: run `pnpm db:generate && pnpm db:migrate` " +
       "to produce + apply the migration (review the SQL first).\n",

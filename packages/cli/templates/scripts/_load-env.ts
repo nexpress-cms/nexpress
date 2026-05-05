@@ -14,7 +14,7 @@ import { config as loadEnv } from "dotenv";
  * doesn't help — by the time the script's first statement runs,
  * its own `import` lines have already evaluated, and
  * `nexpress.config.ts` (transitively imported by `init-core`) reads
- * `process.env.NX_SECRET` at module-load time and Zod-validates the
+ * `process.env.NP_SECRET` at module-load time and Zod-validates the
  * result.
  *
  * Import this file FIRST in any script that depends on

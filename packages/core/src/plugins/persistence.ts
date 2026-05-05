@@ -79,7 +79,7 @@ export async function getPluginState(
 }
 
 /**
- * Ensures every known plugin id has a row in `nx_plugins`. Missing rows are
+ * Ensures every known plugin id has a row in `np_plugins`. Missing rows are
  * inserted with `enabled=true` and an empty config. Existing rows are never
  * touched — this is called on boot and must not clobber operator edits.
  *

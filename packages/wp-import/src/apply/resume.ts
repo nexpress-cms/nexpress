@@ -10,7 +10,7 @@
  *     instead of re-querying the DB.
  *   - Skips comments whose `wpCommentId` is already in the marker
  *     — closes the design-§9 idempotency gap (re-runs no longer
- *     create duplicate `nx_comments` rows).
+ *     create duplicate `np_comments` rows).
  *   - Reuses media-id mappings so a partial-failure mid-pipeline
  *     doesn't have to re-download the bytes that already landed.
  *
@@ -32,11 +32,11 @@ export interface ResumeState {
   updatedAt: string;
   /** `${collection}/${slug}` → NexPress doc id. */
   documents: Record<string, string>;
-  /** WP comment id (numeric) → NexPress nx_comments.id. */
+  /** WP comment id (numeric) → NexPress np_comments.id. */
   comments: Record<number, string>;
-  /** WP author login → NexPress nx_users.id. */
+  /** WP author login → NexPress np_users.id. */
   authors: Record<string, string>;
-  /** WP attachment URL → NexPress nx_media.id. */
+  /** WP attachment URL → NexPress np_media.id. */
   media: Record<string, string>;
   /** `${taxonomy}:${slug}` → NexPress taxonomy term id. */
   taxonomies: Record<string, string>;

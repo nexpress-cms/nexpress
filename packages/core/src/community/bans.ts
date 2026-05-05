@@ -5,13 +5,13 @@ import { getDb } from "../db/runtime.js";
 import { npBans } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import type { Principal } from "./principal.js";
 
 /**
- * Ban service. The 9.1a schema already had `nx_bans`; this layer
+ * Ban service. The 9.1a schema already had `np_bans`; this layer
  * adds the issue / list / revoke flow plus audit logging.
  *
  * Scope rules in v1:
@@ -126,7 +126,7 @@ export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
   // intentional. A worker-side reconciler running without site
   // context should still see the default tenant's bans rather
   // than crash.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
   return (await db
     .select()

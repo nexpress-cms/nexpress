@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpValidationError,
   getCurrentSiteId,
   npNavigation,
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     const collection = request.nextUrl.searchParams.get("collection")?.trim() || "pages";
 
     const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const rows = await db.select().from(npNavigation).where(eq(npNavigation.siteId, siteId));
 
     const memberships: MembershipRow[] = [];

@@ -33,13 +33,13 @@
 
   `@nexpress/core` adds `verifyStartupSafety(input)` (re-exported from
   the package root) — a pure function that takes the resolved storage
-  adapter id, the auth secret, `NODE_ENV`, and the `NX_MULTI_NODE` flag,
+  adapter id, the auth secret, `NODE_ENV`, and the `NP_MULTI_NODE` flag,
   and emits warnings through `getScopedLogger({ subsystem: "boot" })`
   for the two operationally-bitten cases:
-  - `LocalStorageAdapter` running with `NX_MULTI_NODE=true` (or `=1`),
+  - `LocalStorageAdapter` running with `NP_MULTI_NODE=true` (or `=1`),
     which silently drops uploads as nodes diverge on the local
     `./uploads` dir.
-  - `NODE_ENV=production` with `NX_SECRET` unset or shorter than 32
+  - `NODE_ENV=production` with `NP_SECRET` unset or shorter than 32
     characters, which lets sessions be forged with a weak key.
 
   `@nexpress/next` calls the helper once per process from

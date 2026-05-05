@@ -40,7 +40,7 @@ async function seedStaff(): Promise<{ token: string; csrf: string }> {
     })) as Array<{ id: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NX_SECRET!,
+    process.env.NP_SECRET!,
   );
   return { token, csrf: "csrf-staff" };
 }

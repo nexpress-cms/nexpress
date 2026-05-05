@@ -112,7 +112,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     expect(body.status).toBe(201);
     expect(body.body.title).toBe("First member-authored thread");
     expect(body.body.status).toBe("published");
-    // `createdBy` references nx_users — for a member-authored doc it
+    // `createdBy` references np_users — for a member-authored doc it
     // must be null (audit log carries the actual member id).
     expect(body.body.createdBy).toBeNull();
 

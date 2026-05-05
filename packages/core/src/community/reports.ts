@@ -7,7 +7,7 @@ import { getDb } from "../db/runtime.js";
 import { npComments, npMembers, npReports } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { withMemberWrite } from "./can.js";
@@ -269,10 +269,10 @@ export async function resolveReport(input: ResolveReportInput): Promise<NpReport
 /**
  * Verify the report's target row actually exists.
  *
- *   - `comment` / `reply` — both stored in `nx_comments`
+ *   - `comment` / `reply` — both stored in `np_comments`
  *     (the forum plugin's replies are just comments under
  *     a discussion thread). Lookup the comment row.
- *   - `member` — direct lookup against `nx_members`.
+ *   - `member` — direct lookup against `np_members`.
  *   - `thread` — Phase 9.9 enabled. The forum plugin
  *     stores threads as rows in the `discussions` collection
  *     (Phase 9.4 decision: no thread-specific tables, reuse
@@ -311,7 +311,7 @@ async function assertReportTargetExists(
       .where(eq(npMembers.id, targetId))
       .limit(1)) as Array<{ id: string }>;
     if (!row) throw new NpNotFoundError("member", targetId);
-    // Members aren't site-scoped (one nx_members row can have
+    // Members aren't site-scoped (one np_members row can have
     // memberships across sites); skip the cross-site check.
     return { siteId: null };
   }
@@ -360,7 +360,7 @@ async function assertReportTargetExists(
 export async function unresolvedReportCount(): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Phase 18 — count only the current tenant's queue.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })
     .from(npReports)

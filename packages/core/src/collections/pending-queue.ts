@@ -21,7 +21,7 @@ import { getDb } from "../db/runtime.js";
  * collection, no SQL `LIMIT`, JS-side merge + page) with a single
  * `UNION ALL` query whose outer `LIMIT/OFFSET` runs at the database.
  * The per-collection `(status, member_author_id)` is still
- * status-indexed (`nx_c_<slug>_status_idx`), so each branch of the
+ * status-indexed (`np_c_<slug>_status_idx`), so each branch of the
  * union narrows fast; the database does the cross-collection
  * `ORDER BY created_at DESC` + paging. A site with dozens of
  * member-writable surfaces no longer fans out N+2 round trips, and
@@ -37,7 +37,7 @@ export interface NpPendingDocSummary {
   status: "pending";
   createdAt: Date;
   /**
-   * Resolved from `nx_members` via `member_author_id`. Null when the
+   * Resolved from `np_members` via `member_author_id`. Null when the
    * member was deleted after authoring (FK is `ON DELETE SET NULL`)
    * — mods see the audit trail for the original actor in that case.
    */
