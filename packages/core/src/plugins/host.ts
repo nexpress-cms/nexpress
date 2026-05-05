@@ -4,7 +4,10 @@ import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/t
 import { npPlugins } from "../db/schema/system.js";
 import { getDb } from "../db/runtime.js";
 import { getLogger } from "../observability/logger.js";
+import { reportError } from "../observability/error-reporter.js";
 import { createPluginRuntimeContext } from "./context.js";
+import { isPluginEnabled } from "./enabled-gate.js";
+import { checkNexpressCompat, topoSort } from "./compat.js";
 
 export interface PluginHookHandler {
   pluginId: string;
@@ -14,6 +17,24 @@ export interface PluginHookHandler {
    * `runHook` ignores returns.
    */
   handler: (data: Record<string, unknown>) => unknown;
+  /**
+   * Lower priority runs first. Default `100`, leaving headroom in both
+   * directions: a plugin that wants to observe AFTER everyone else picks
+   * `200`, one that needs to mutate the payload first picks `0`. Stable
+   * ordering: ties keep registration order (which is itself topo-sorted by
+   * plugin `requires`).
+   */
+  priority: number;
+  /**
+   * Per-handler timeout in milliseconds. When the handler doesn't settle
+   * within the budget, `dispatchHookHandler` treats it as a failure —
+   * logged and reported the same way a thrown error is. The remaining
+   * handlers continue. `undefined` means "no timeout enforced", which is
+   * the default for fire-and-forget hooks (`runHook`); render-collecting
+   * hooks may want a tighter budget (e.g. 250ms) so a slow plugin can't
+   * stall page rendering.
+   */
+  timeoutMs?: number;
 }
 
 export interface PluginRouteHandler {
@@ -174,6 +195,58 @@ const globalHooks = new Map<string, PluginHookHandler[]>();
 const globalRoutes: PluginRouteHandler[] = [];
 
 /**
+ * Default priority assigned to a hook handler that doesn't pick one. The
+ * value matters less than the headroom — a plugin can always go above or
+ * below to override, and 100 leaves room for both. Keep in sync with the
+ * docstring on `PluginHookHandler.priority`.
+ */
+const DEFAULT_HOOK_PRIORITY = 100;
+
+/**
+ * Normalizes the two valid hook value shapes:
+ *   - bare function (the original shape — implicit priority 100, no timeout)
+ *   - `{ handler, priority?, timeoutMs? }` object
+ *
+ * Returns `null` for malformed input so the caller can skip silently —
+ * Zod schema on the plugin-sdk side already rejects bad shapes at
+ * authoring time, so this is just defense in depth at the host boundary.
+ */
+function normalizeHookValue(
+  value: unknown,
+): { handler: ResolvedHookFn; priority: number; timeoutMs?: number } | null {
+  if (typeof value === "function") {
+    return { handler: value as ResolvedHookFn, priority: DEFAULT_HOOK_PRIORITY };
+  }
+  if (value && typeof value === "object") {
+    const v = value as { handler?: unknown; priority?: unknown; timeoutMs?: unknown };
+    if (typeof v.handler !== "function") return null;
+    return {
+      handler: v.handler as ResolvedHookFn,
+      priority: typeof v.priority === "number" ? v.priority : DEFAULT_HOOK_PRIORITY,
+      timeoutMs: typeof v.timeoutMs === "number" && v.timeoutMs > 0 ? v.timeoutMs : undefined,
+    };
+  }
+  return null;
+}
+
+/**
+ * Inserts a handler into the global per-hook list while keeping the array
+ * sorted by `(priority asc, registration order)`. Array sort in V8 is
+ * stable, so we can append + sort and ties keep insertion order.
+ *
+ * Sorting at registration time means dispatch is allocation-free — the
+ * hot path just iterates the array. Registrations happen at boot (and on
+ * a hot reload), so re-sorting on each insert is fine.
+ */
+function insertSortedByPriority(
+  list: PluginHookHandler[],
+  entry: PluginHookHandler,
+): void {
+  list.push(entry);
+  list.sort((a, b) => a.priority - b.priority);
+}
+
+/**
  * Structural shape for plugins built via `@nexpress/plugin-sdk`'s
  * `definePlugin()`. Matches `NpResolvedPluginLike` in config/types.ts —
  * kept deliberately loose so `loadPlugins` can accept the same array
@@ -187,6 +260,19 @@ export interface ResolvedPluginLike {
     description?: string;
     capabilities: readonly string[];
     allowedHosts?: readonly string[];
+    /**
+     * Compatibility range for the framework. The plugin loads only when
+     * `nexpress.minVersion <= host <= nexpress.maxVersion?` (inclusive).
+     * Optional here so legacy / hand-rolled plugins keep loading; the
+     * plugin-sdk schema requires it for new plugins.
+     */
+    nexpress?: { minVersion?: string; maxVersion?: string };
+    /**
+     * IDs of other plugins that must load first. The host topo-sorts the
+     * load list so this plugin's `setup()` can assume its prerequisites
+     * have already registered hooks/actions/blocks.
+     */
+    requires?: readonly string[];
   };
   hooks?: Record<string, unknown>;
   routes?: ReadonlyArray<{
@@ -261,12 +347,12 @@ function registerHookHandler(
   if (!registration.hooks.has(hookName)) {
     registration.hooks.set(hookName, []);
   }
-  registration.hooks.get(hookName)!.push(handler);
+  insertSortedByPriority(registration.hooks.get(hookName)!, handler);
 
   if (!globalHooks.has(hookName)) {
     globalHooks.set(hookName, []);
   }
-  globalHooks.get(hookName)!.push(handler);
+  insertSortedByPriority(globalHooks.get(hookName)!, handler);
 }
 
 function createPluginContext(pluginId: string, registration: PluginRegistration): NpPluginContext {
@@ -295,6 +381,7 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
 
       registerHookHandler(registration, hookName, {
         pluginId,
+        priority: DEFAULT_HOOK_PRIORITY,
         handler: async (data) => {
           if (typeof data.collection === "string" && data.collection !== collection) {
             return;
@@ -308,6 +395,28 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
 
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   const { manifest } = plugin;
+
+  // Defense in depth: if this id was already registered, scrub the old
+  // entry's hooks + routes from the global maps before overwriting. The
+  // documented reload flow (`reloadPlugins()`) always calls `resetPlugins()`
+  // first, so we shouldn't normally hit this — but a stray double-load
+  // would otherwise leave both registrations dispatching, which is much
+  // harder to diagnose than a clean re-register.
+  const previous = pluginRegistry.get(manifest.id);
+  if (previous) {
+    for (const [hookName, list] of previous.hooks) {
+      const global = globalHooks.get(hookName);
+      if (!global) continue;
+      const filtered = global.filter((h) => !list.includes(h));
+      if (filtered.length === 0) globalHooks.delete(hookName);
+      else globalHooks.set(hookName, filtered);
+    }
+    for (const route of previous.routes) {
+      const idx = globalRoutes.indexOf(route);
+      if (idx !== -1) globalRoutes.splice(idx, 1);
+    }
+  }
+
   const registration: PluginRegistration = {
     id: manifest.id,
     name: manifest.name,
@@ -351,21 +460,24 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     }
   }
 
-  for (const [hookName, rawHandler] of Object.entries(plugin.hooks ?? {})) {
-    if (typeof rawHandler !== "function") continue;
+  for (const [hookName, rawValue] of Object.entries(plugin.hooks ?? {})) {
+    const normalized = normalizeHookValue(rawValue);
+    if (!normalized) continue;
 
     const requirement = hookCapabilityFor(hookName);
     if (requirement) {
       assertCapability(manifest.id, requirement, registration.capabilities);
     }
 
-    const handler = rawHandler as ResolvedHookFn;
+    const userHandler = normalized.handler;
     registerHookHandler(registration, hookName, {
       pluginId: manifest.id,
+      priority: normalized.priority,
+      timeoutMs: normalized.timeoutMs,
       handler: async (data) => {
         const collection = typeof data.collection === "string" ? data.collection : undefined;
         const ctx = await buildCtxFor(manifest.id);
-        return await handler({ hook: hookName, data, collection, ctx });
+        return await userHandler({ hook: hookName, data, collection, ctx });
       },
     });
   }
@@ -486,12 +598,116 @@ async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
 export async function loadPlugins(
   plugins: Array<NpPluginConfig | ResolvedPluginLike>,
 ): Promise<void> {
+  // Pass 1 — drop plugins whose declared `nexpress` range excludes the
+  // running framework version. We warn instead of throwing so a host that
+  // ships with eight plugins doesn't refuse to boot when one is stale.
+  const filtered: Array<NpPluginConfig | ResolvedPluginLike> = [];
   for (const plugin of plugins) {
     if (isResolvedPlugin(plugin)) {
-      await loadResolvedPlugin(plugin);
-    } else {
-      await loadLegacyPlugin(plugin);
+      const compat = checkNexpressCompat(plugin.manifest);
+      if (!compat.compatible) {
+        getLogger().warn("Skipping incompatible plugin", {
+          pluginId: plugin.manifest.id,
+          reason: compat.reason,
+        });
+        continue;
+      }
     }
+    filtered.push(plugin);
+  }
+
+  // Pass 2 — order resolved plugins by their `requires` graph. Legacy
+  // (init()-shape) plugins have no manifest so they ride at the front in
+  // their original order; they predate the dependency model and never
+  // declare requirements.
+  const legacy: NpPluginConfig[] = [];
+  const resolved: ResolvedPluginLike[] = [];
+  for (const plugin of filtered) {
+    if (isResolvedPlugin(plugin)) {
+      resolved.push(plugin);
+    } else {
+      legacy.push(plugin);
+    }
+  }
+
+  const sortInput = resolved.map((plugin) => ({
+    id: plugin.manifest.id,
+    requires: plugin.manifest.requires ?? [],
+    plugin,
+  }));
+  const { ordered, skipped } = topoSort(sortInput);
+  for (const entry of skipped) {
+    getLogger().warn("Skipping plugin with unsatisfied dependency", {
+      pluginId: entry.id,
+      reason: entry.reason,
+    });
+  }
+
+  // Pass 3 — actually load. Legacy first, then resolved in topo order.
+  for (const plugin of legacy) {
+    await loadLegacyPlugin(plugin);
+  }
+  for (const entry of ordered) {
+    await loadResolvedPlugin(entry.plugin);
+  }
+}
+
+/**
+ * Invokes one plugin hook handler with error isolation: a thrown handler
+ * is logged, reported, and swallowed so a single broken plugin can't take
+ * down the rest of the dispatch chain (or the caller — pipeline write,
+ * page render, etc.).
+ *
+ * Returns `{ ok: true, value }` on success and `{ ok: false }` on failure.
+ * Callers that aggregate return values (`runHookAndCollect`) skip failed
+ * handlers; fire-and-forget callers (`runHook`) ignore the value entirely.
+ */
+async function dispatchHookHandler(
+  hookName: string,
+  handler: PluginHookHandler,
+  data: Record<string, unknown>,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  try {
+    const result = handler.handler(data);
+    // Fast path: handler returned a non-Promise. Skip the timer +
+    // Promise.race overhead for the common synchronous case.
+    if (handler.timeoutMs === undefined || !(result instanceof Promise)) {
+      const value = await result;
+      return { ok: true, value };
+    }
+    // Slow path: race the handler against a timeout. We allocate the
+    // timer here (not in the resolved Promise.then) so a fast-resolving
+    // handler still pays only the timer-creation cost; the timer is
+    // cleared in `finally`.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(
+            `Plugin hook handler timed out after ${handler.timeoutMs}ms`,
+          ),
+        );
+      }, handler.timeoutMs);
+    });
+    try {
+      const value = await Promise.race([result, timeoutPromise]);
+      return { ok: true, value };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    getLogger().error("Plugin hook handler threw", {
+      pluginId: handler.pluginId,
+      hook: hookName,
+      timeoutMs: handler.timeoutMs,
+      message: err.message,
+      stack: err.stack,
+    });
+    void reportError(err, {
+      tags: { source: "plugin-hook", pluginId: handler.pluginId, hook: hookName },
+    });
+    return { ok: false };
   }
 }
 
@@ -500,7 +716,8 @@ export async function runHook(hookName: string, data: Record<string, unknown>): 
   if (!handlers || handlers.length === 0) return;
 
   for (const handler of handlers) {
-    await handler.handler(data);
+    if (!(await isPluginEnabled(handler.pluginId))) continue;
+    await dispatchHookHandler(hookName, handler, data);
   }
 }
 
@@ -510,9 +727,9 @@ export async function runHook(hookName: string, data: Record<string, unknown>): 
  * etc.) where each plugin contributes structured data — head tags, scripts —
  * that the renderer aggregates into a single output.
  *
- * Handlers that throw propagate the error: a broken plugin taking down the
- * page is preferable to a silent miss for SEO/analytics output. Catch at the
- * call site if a specific hook should be tolerant.
+ * Handlers that throw are isolated (logged + reported, then skipped). A
+ * broken plugin contributing meta tags is allowed to fail silently so the
+ * page itself still ships — incomplete SEO output beats a 500.
  */
 export async function runHookAndCollect<T>(
   hookName: string,
@@ -523,9 +740,10 @@ export async function runHookAndCollect<T>(
 
   const results: T[] = [];
   for (const handler of handlers) {
-    const value = await handler.handler(data);
-    if (value !== undefined && value !== null) {
-      results.push(value as T);
+    if (!(await isPluginEnabled(handler.pluginId))) continue;
+    const outcome = await dispatchHookHandler(hookName, handler, data);
+    if (outcome.ok && outcome.value !== undefined && outcome.value !== null) {
+      results.push(outcome.value as T);
     }
   }
   return results;
@@ -658,6 +876,9 @@ export async function dispatchPluginAction(
   if (!registration) {
     return { ok: false, error: `Plugin "${pluginId}" is not registered` };
   }
+  if (!(await isPluginEnabled(pluginId))) {
+    return { ok: false, error: `Plugin "${pluginId}" is disabled` };
+  }
   const handler = registration.actions.get(actionId);
   if (!handler) {
     return { ok: false, error: `Action "${actionId}" not found on plugin "${pluginId}"` };
@@ -699,6 +920,15 @@ export async function runPluginScheduledTask(pluginId: string, taskId: string): 
   if (!registration) {
     throw new Error(`Plugin "${pluginId}" is not registered`);
   }
+  if (!(await isPluginEnabled(pluginId))) {
+    // pg-boss keeps firing the cron entry even when disabled; bail quietly so
+    // the queue records a successful tick instead of a retry-storm.
+    getLogger().debug("Skipping plugin scheduled task — plugin disabled", {
+      pluginId,
+      taskId,
+    });
+    return;
+  }
   const entry = registration.schedules.get(taskId);
   if (!entry) {
     throw new Error(`Plugin "${pluginId}" has no scheduled task with id "${taskId}"`);
@@ -712,3 +942,5 @@ export function resetPlugins(): void {
   globalHooks.clear();
   globalRoutes.length = 0;
 }
+
+export { isPluginEnabled, invalidatePluginEnabled } from "./enabled-gate.js";

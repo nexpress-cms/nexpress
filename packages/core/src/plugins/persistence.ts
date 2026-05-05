@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { npPlugins } from "../db/schema/system.js";
+import { invalidatePluginEnabled } from "./enabled-gate.js";
 
 export interface NpPluginState {
   id: string;
@@ -134,6 +135,13 @@ export async function updatePluginState(
     installedAt: Date;
     updatedAt: Date;
   }>;
+
+  // Drop the cached enabled flag so the very next dispatch re-reads the row
+  // instead of waiting out the TTL. Without this, a toggle from the admin UI
+  // would feel laggy for up to 5s.
+  if (patch.enabled !== undefined) {
+    invalidatePluginEnabled(id);
+  }
 
   return rows[0] ? toState(rows[0]) : null;
 }

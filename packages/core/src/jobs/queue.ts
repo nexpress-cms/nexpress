@@ -179,6 +179,36 @@ export interface NpJobQueue {
    * omits the stuck-job widget when missing.
    */
   countByState?(options?: NpJobCountOptions): Promise<NpJobStateCounts>;
+  /**
+   * Phase 4.2 — per-plugin schedule observability. Returns one row per
+   * `(pluginId, taskId)` aggregated over the plugin's history in
+   * `pgboss.job` + `pgboss.archive`: last completion, last failure, and
+   * counts split by state over the last `windowDays` (default 7). The
+   * registry-side cron / description is overlaid on top by the caller.
+   *
+   * Optional so test stubs that don't model job history can omit it; the
+   * admin surface degrades to "registered schedules only" without it.
+   */
+  getPluginScheduleStats?(
+    pluginId: string,
+    options?: { windowDays?: number },
+  ): Promise<NpPluginScheduleStats[]>;
+}
+
+export interface NpPluginScheduleStats {
+  taskId: string;
+  /** Most recent run, regardless of state. ISO timestamp or null. */
+  lastRunAt: string | null;
+  /** Most recent successful run. ISO timestamp or null. */
+  lastSuccessAt: string | null;
+  /** Most recent failed run. ISO timestamp or null. */
+  lastFailureAt: string | null;
+  /** Count of successful runs inside the window. */
+  completedCount: number;
+  /** Count of failed runs inside the window. */
+  failedCount: number;
+  /** The window the counts cover, in days. Echoed for UI labels. */
+  windowDays: number;
 }
 
 let jobQueue: NpJobQueue | null = null;

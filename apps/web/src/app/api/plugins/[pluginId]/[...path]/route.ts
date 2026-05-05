@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getPluginRoutes } from "@nexpress/core";
+import { getPluginRoutes, isPluginEnabled } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import { optionalAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
@@ -25,6 +25,18 @@ async function handlePluginRoute(
   );
 
   if (!matched) {
+    return NextResponse.json(
+      { error: { code: "NOT_FOUND", message: "Plugin route not found" }, status: 404 },
+      { status: 404 },
+    );
+  }
+
+  // Toggle takes effect immediately: a disabled plugin's routes return 404
+  // even though the dispatch table still holds them. Reads from the
+  // short-TTL gate so a normal request adds at most one cached lookup, and a
+  // POST /api/plugins/:id { enabled: false } invalidates the cache so the
+  // very next request observes the new state.
+  if (!(await isPluginEnabled(pluginId))) {
     return NextResponse.json(
       { error: { code: "NOT_FOUND", message: "Plugin route not found" }, status: 404 },
       { status: 404 },

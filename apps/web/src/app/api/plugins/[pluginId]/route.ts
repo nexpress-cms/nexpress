@@ -2,9 +2,11 @@ import {
   NpForbiddenError,
   NpNotFoundError,
   NpValidationError,
+  getOptionalJobQueue,
   getPluginRegistration,
   getPluginState,
   updatePluginState,
+  type NpPluginScheduleStats,
   type NpPluginStateUpdate,
   can,
 } from "@nexpress/core";
@@ -17,7 +19,63 @@ import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
-function toDetail(state: {
+interface ScheduleDetail {
+  taskId: string;
+  cron: string;
+  description: string | null;
+  lastRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  completedCount: number;
+  failedCount: number;
+  windowDays: number;
+}
+
+/**
+ * Joins the registry's static schedule list with the queue's per-(pluginId,
+ * taskId) execution history. Falls back gracefully when no queue is wired or
+ * the adapter doesn't implement `getPluginScheduleStats` (e.g. test stubs):
+ * we still return the registered schedules so the admin UI can render the
+ * cadence even without history.
+ */
+async function buildScheduleDetails(pluginId: string): Promise<ScheduleDetail[]> {
+  const reg = getPluginRegistration(pluginId);
+  if (!reg) return [];
+  const schedules = [...reg.schedules.values()];
+  if (schedules.length === 0) return [];
+
+  const queue = getOptionalJobQueue();
+  let statsByTask = new Map<string, NpPluginScheduleStats>();
+  if (queue && typeof queue.getPluginScheduleStats === "function") {
+    try {
+      const stats = await queue.getPluginScheduleStats(pluginId);
+      statsByTask = new Map(stats.map((s) => [s.taskId, s] as const));
+    } catch {
+      // History query failure should not 500 the detail endpoint — we'd
+      // rather show "no history" than break the whole page. Pg-boss errors
+      // here typically mean the schema isn't installed yet.
+    }
+  }
+
+  return schedules
+    .map((schedule) => {
+      const stats = statsByTask.get(schedule.taskId);
+      return {
+        taskId: schedule.taskId,
+        cron: schedule.cron,
+        description: schedule.description ?? null,
+        lastRunAt: stats?.lastRunAt ?? null,
+        lastSuccessAt: stats?.lastSuccessAt ?? null,
+        lastFailureAt: stats?.lastFailureAt ?? null,
+        completedCount: stats?.completedCount ?? 0,
+        failedCount: stats?.failedCount ?? 0,
+        windowDays: stats?.windowDays ?? 7,
+      };
+    })
+    .sort((a, b) => a.taskId.localeCompare(b.taskId));
+}
+
+async function toDetail(state: {
   id: string;
   enabled: boolean;
   config: Record<string, unknown>;
@@ -25,6 +83,7 @@ function toDetail(state: {
   updatedAt: Date;
 }) {
   const reg = getPluginRegistration(state.id);
+  const schedules = await buildScheduleDetails(state.id);
   return {
     id: state.id,
     name: reg?.name ?? state.id,
@@ -39,6 +98,7 @@ function toDetail(state: {
         }))
       : [],
     admin: reg?.admin ?? null,
+    schedules,
     enabled: state.enabled,
     config: state.config,
     installedAt: state.installedAt,
@@ -64,7 +124,7 @@ export async function GET(
       throw new NpNotFoundError("plugin", pluginId);
     }
 
-    return npSuccessResponse(toDetail(state));
+    return npSuccessResponse(await toDetail(state));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
@@ -115,7 +175,7 @@ export async function PATCH(
       throw new NpNotFoundError("plugin", pluginId);
     }
 
-    return npSuccessResponse(toDetail(updated));
+    return npSuccessResponse(await toDetail(updated));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

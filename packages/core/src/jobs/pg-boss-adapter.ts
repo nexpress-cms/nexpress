@@ -12,6 +12,7 @@ import {
   type NpJobState,
   type NpJobStateCounts,
   type NpJobSummary,
+  type NpPluginScheduleStats,
   type NpScheduleSummary,
 } from "./queue.js";
 
@@ -395,6 +396,92 @@ export class PgBossAdapter implements NpJobQueue {
         ORDER BY name ASC, key ASC`,
     );
     return (result.rows ?? []).map(scheduleRowToSummary);
+  }
+
+  /**
+   * Phase 4.2 — pulls per-(pluginId, taskId) execution stats from the
+   * union of `pgboss.job` (in-flight + recently-completed) and
+   * `pgboss.archive` (rolled-over history). One row per taskId so the
+   * caller can index without a second pass.
+   *
+   * The window default is 7 days because longer windows force the
+   * archive table into the hot path and admins typically want recent
+   * health, not lifetime totals. Increase via `windowDays` if surfacing
+   * a "30-day reliability" widget.
+   */
+  async getPluginScheduleStats(
+    pluginId: string,
+    options?: { windowDays?: number },
+  ): Promise<NpPluginScheduleStats[]> {
+    const windowDays = Math.max(1, Math.min(365, options?.windowDays ?? 7));
+    const db = (
+      this.boss as unknown as {
+        db: {
+          executeSql: (
+            sql: string,
+            params?: unknown[],
+          ) => Promise<{
+            rows: Array<{
+              task_id: string | null;
+              last_run: Date | string | null;
+              last_success: Date | string | null;
+              last_failure: Date | string | null;
+              completed_count: string | number;
+              failed_count: string | number;
+            }>;
+          }>;
+        };
+      }
+    ).db;
+
+    // Plugin schedule jobs land in pg-boss under two name shapes:
+    //   - `plugin.scheduledTask`                       — `schedulePluginTask()` enqueues
+    //     here for one-shot "Run now" invocations (handlePluginScheduledTask
+    //     dispatches by `(pluginId, taskId)` from the payload).
+    //   - `plugin.scheduledTask.<pluginId>.<taskId>`   — cron schedules. Each entry
+    //     declared via `definePlugin({ scheduled: [...] })` gets its own queue +
+    //     row in `pgboss.schedule` (Phase 19).
+    // Both share the `(pluginId, taskId)` payload shape, so we filter by name
+    // prefix and join on `data->>'pluginId'` to collect either source. The
+    // earlier `name = 'plugin.scheduledTask'` filter only matched the first
+    // shape, leaving cron-scheduled stats permanently at zero.
+    const result = await db.executeSql(
+      `WITH plugin_jobs AS (
+         SELECT state, completed_on, data
+           FROM pgboss.job
+          WHERE (name = 'plugin.scheduledTask' OR name LIKE 'plugin.scheduledTask.%')
+            AND data->>'pluginId' = $1
+            AND completed_on > NOW() - ($2 || ' days')::interval
+         UNION ALL
+         SELECT state, completed_on, data
+           FROM pgboss.archive
+          WHERE (name = 'plugin.scheduledTask' OR name LIKE 'plugin.scheduledTask.%')
+            AND data->>'pluginId' = $1
+            AND completed_on > NOW() - ($2 || ' days')::interval
+       )
+       SELECT data->>'taskId' AS task_id,
+              MAX(completed_on) AS last_run,
+              MAX(CASE WHEN state = 'completed' THEN completed_on END) AS last_success,
+              MAX(CASE WHEN state = 'failed' THEN completed_on END) AS last_failure,
+              SUM(CASE WHEN state = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+              SUM(CASE WHEN state = 'failed' THEN 1 ELSE 0 END) AS failed_count
+         FROM plugin_jobs
+        WHERE data->>'taskId' IS NOT NULL
+        GROUP BY data->>'taskId'`,
+      [pluginId, String(windowDays)],
+    );
+
+    return (result.rows ?? [])
+      .filter((row): row is typeof row & { task_id: string } => typeof row.task_id === "string")
+      .map((row) => ({
+        taskId: row.task_id,
+        lastRunAt: toIso(row.last_run),
+        lastSuccessAt: toIso(row.last_success),
+        lastFailureAt: toIso(row.last_failure),
+        completedCount: Number(row.completed_count) || 0,
+        failedCount: Number(row.failed_count) || 0,
+        windowDays,
+      }));
   }
 
   /**

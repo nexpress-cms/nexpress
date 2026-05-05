@@ -24,6 +24,7 @@ import {
   npSettings,
 } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
+import { reportError } from "../observability/error-reporter.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -545,6 +546,29 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       error(message: string, data?: Record<string, unknown>): void {
         pluginLog.error(message, data);
+      },
+    },
+
+    errors: {
+      // Plugin-side error reporting with pluginId auto-tagged. The host
+      // already auto-reports thrown hook handlers (in `dispatchHookHandler`),
+      // so plugins typically only need this when *catching* an error
+      // internally — e.g. a non-fatal upstream failure they want to log to
+      // Sentry but recover from.
+      report(
+        error: unknown,
+        context?: {
+          extra?: Record<string, unknown>;
+          tags?: Record<string, string>;
+          user?: { id?: string; email?: string; role?: string };
+        },
+      ): Promise<void> {
+        const err = error instanceof Error ? error : new Error(String(error));
+        return reportError(err, {
+          tags: { source: "plugin", pluginId, ...context?.tags },
+          extra: context?.extra,
+          user: context?.user,
+        });
       },
     },
 

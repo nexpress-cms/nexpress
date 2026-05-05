@@ -129,6 +129,14 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "react-dom": "^19.0.0",
       },
       devDependencies: {
+        // `@nexpress/cli` ships the project-side `nexpress` binary
+        // (plugin add / remove, create block-plugin). Without it, the
+        // commands surfaced by the admin UI ("Reload all" toast,
+        // Discover panel install hint) would fail to resolve in a fresh
+        // scaffold — the operator would have to install it globally
+        // first. Wire it as a devDep so `pnpm exec nexpress …` works
+        // immediately. (#463)
+        "@nexpress/cli": nexpressVersion,
         "@tailwindcss/postcss": "^4.0.0",
         "@types/node": "^22.0.0",
         "@types/react": "^19.0.0",

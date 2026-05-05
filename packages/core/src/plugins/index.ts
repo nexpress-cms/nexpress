@@ -13,6 +13,8 @@ export {
   getRegisteredPluginSchedules,
   runPluginScheduledTask,
   resetPlugins,
+  isPluginEnabled,
+  invalidatePluginEnabled,
 } from "./host.js";
 
 export type {
@@ -34,3 +36,11 @@ export {
 } from "./persistence.js";
 
 export type { NpPluginState, NpPluginStateUpdate } from "./persistence.js";
+
+export {
+  checkNexpressCompat,
+  compareSemver,
+  getFrameworkVersion,
+  topoSort,
+} from "./compat.js";
+export type { NexpressCompatResult, SortedPlugins } from "./compat.js";

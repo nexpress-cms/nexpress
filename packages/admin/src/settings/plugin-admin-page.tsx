@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NpFieldConfig } from "@nexpress/core";
-import { AlertTriangle, CheckCircle2, Loader2, Play } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Loader2, Play } from "lucide-react";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
 import { npFetch } from "../lib/api-client.js";
@@ -12,6 +12,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
 import { PageHeader } from "../layout/page-header.js";
 import { useForm } from "react-hook-form";
+
+interface ScheduleDef {
+  taskId: string;
+  cron: string;
+  description: string | null;
+  lastRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  completedCount: number;
+  failedCount: number;
+  windowDays: number;
+}
 
 interface ColumnDef {
   name: string;
@@ -58,6 +70,10 @@ interface PluginAdminPageProps {
   pluginName: string;
   admin: AdminExtension;
   initialConfig: Record<string, unknown>;
+  /** Phase 4.2 — registered cron tasks + execution history. Empty when the
+   *  plugin doesn't declare scheduled tasks; absent when the queue isn't
+   *  wired (e.g. dev without pg-boss). */
+  schedules?: ScheduleDef[];
 }
 
 type ActionResult = { ok: boolean; data?: unknown; error?: string };
@@ -80,12 +96,14 @@ export function PluginAdminPage({
   pluginName,
   admin,
   initialConfig,
+  schedules,
 }: PluginAdminPageProps) {
-  const sections: Array<"settings" | "widgets" | "actions" | "tables"> = [];
+  const sections: Array<"settings" | "widgets" | "actions" | "tables" | "schedules"> = [];
   if (admin.settings) sections.push("settings");
   if (admin.widgets?.length) sections.push("widgets");
   if (admin.actions?.length) sections.push("actions");
   if (admin.tables?.length) sections.push("tables");
+  if (schedules?.length) sections.push("schedules");
 
   return (
     <div className="flex flex-col gap-6">
@@ -126,6 +144,10 @@ export function PluginAdminPage({
       {admin.tables?.map((table) => (
         <TableCard key={table.id} pluginId={pluginId} table={table} />
       ))}
+
+      {schedules && schedules.length > 0 ? (
+        <SchedulesCard pluginId={pluginId} schedules={schedules} />
+      ) : null}
 
       {sections.length === 0 ? (
         <Card>
@@ -429,6 +451,155 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
       </CardContent>
     </Card>
   );
+}
+
+function SchedulesCard({
+  pluginId,
+  schedules,
+}: {
+  pluginId: string;
+  schedules: ScheduleDef[];
+}) {
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const runNow = useCallback(
+    async (taskId: string) => {
+      setBusyTaskId(taskId);
+      setToast(null);
+      try {
+        const response = await npFetch(`/api/plugins/${pluginId}/schedules/${taskId}/run`, {
+          method: "POST",
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: { message?: string } }
+            | null;
+          setToast({
+            type: "error",
+            message: payload?.error?.message ?? "Failed to enqueue task.",
+          });
+          return;
+        }
+        setToast({ type: "success", message: `Enqueued "${taskId}". Watch /admin/jobs for progress.` });
+      } catch (error) {
+        setToast({
+          type: "error",
+          message: error instanceof Error ? error.message : "Failed to enqueue task.",
+        });
+      } finally {
+        setBusyTaskId(null);
+      }
+    },
+    [pluginId],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Clock className="size-4" />
+          Scheduled tasks
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {toast ? (
+          <div
+            className={
+              toast.type === "success"
+                ? "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+            }
+          >
+            {toast.message}
+          </div>
+        ) : null}
+        {schedules.map((schedule) => (
+          <div
+            key={schedule.taskId}
+            className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {schedule.taskId}
+                <Badge variant="secondary" className="font-mono text-[10px]">
+                  {schedule.cron}
+                </Badge>
+              </div>
+              {schedule.description ? (
+                <div className="text-xs text-muted-foreground">{schedule.description}</div>
+              ) : null}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+                <ScheduleStat label="Last run" value={formatTimestamp(schedule.lastRunAt)} />
+                <ScheduleStat
+                  label="Last success"
+                  value={formatTimestamp(schedule.lastSuccessAt)}
+                />
+                <ScheduleStat
+                  label={`Successes (${schedule.windowDays}d)`}
+                  value={schedule.completedCount.toString()}
+                />
+                <ScheduleStat
+                  label={`Failures (${schedule.windowDays}d)`}
+                  value={schedule.failedCount.toString()}
+                  highlight={schedule.failedCount > 0 ? "warn" : undefined}
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void runNow(schedule.taskId)}
+              disabled={busyTaskId !== null}
+            >
+              {busyTaskId === schedule.taskId ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Play className="size-3.5" />
+              )}
+              Run now
+            </Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScheduleStat({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: "warn";
+}) {
+  return (
+    <div>
+      <div className="text-[10px] font-medium uppercase tracking-[0.08em]">{label}</div>
+      <div
+        className={
+          highlight === "warn"
+            ? "text-rose-600 dark:text-rose-300"
+            : "text-foreground/80"
+        }
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) return "—";
+  try {
+    const date = new Date(value);
+    return date.toLocaleString();
+  } catch {
+    return value;
+  }
 }
 
 function renderCell(value: unknown): string {

@@ -33,6 +33,16 @@ export const npPluginManifestSchema = z.object({
   }),
   capabilities: z.array(z.enum(npPluginCapabilities)),
   allowedHosts: z.array(z.string()).default([]),
+  /**
+   * IDs of other plugins this one depends on. The host loads them in
+   * topological order so this plugin's `setup()` can assume the listed
+   * plugins have already registered their hooks, actions, and blocks.
+   *
+   * A missing dependency or a cycle causes the dependent plugin to be
+   * skipped at boot (logged via the host's logger). Non-fatal — the
+   * remaining plugins still load.
+   */
+  requires: z.array(z.string()).default([]),
   provides: z
     .object({
       blocks: z.array(z.string()).default([]),

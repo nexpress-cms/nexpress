@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { NpFieldConfig } from "@nexpress/core";
 import { ExternalLink, Loader2, Settings2 } from "lucide-react";
+import { useForm } from "react-hook-form";
 
+import { FieldRenderer } from "../collections/field-renderer.js";
 import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
@@ -16,10 +19,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog.js";
+import { Form } from "../ui/form.js";
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
 import { PageHeader } from "../layout/page-header.js";
+
+interface PluginAdminSettings {
+  title?: string;
+  description?: string;
+  fields: NpFieldConfig[];
+}
 
 interface PluginItem {
   id: string;
@@ -30,6 +40,12 @@ interface PluginItem {
   hooks: string[];
   routes: Array<{ method: string; path: string }>;
   hasAdmin?: boolean;
+  /**
+   * When the plugin declares `admin.settings.fields`, the dialog renders a
+   * typed form via `FieldRenderer` instead of the JSON textarea fallback.
+   * Null means "no schema" — the textarea is the only honest UI then.
+   */
+  adminSettings?: PluginAdminSettings | null;
   enabled: boolean;
   config: Record<string, unknown>;
   installedAt: string;
@@ -109,8 +125,8 @@ export function PluginsManager() {
       setToast({
         type: "success",
         message: nextEnabled
-          ? `Enabled ${plugin.name}. Restart required for hooks/routes to activate.`
-          : `Disabled ${plugin.name}. Restart required to unload hooks/routes.`,
+          ? `Enabled ${plugin.name}. Hooks, routes, and scheduled tasks resume immediately.`
+          : `Disabled ${plugin.name}. Hooks, routes, and scheduled tasks pause immediately.`,
       });
       await loadPlugins();
     } catch (error) {
@@ -172,7 +188,7 @@ export function PluginsManager() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Plugins"
-        description="Toggle and configure installed plugins. Changes take effect on the next server restart."
+        description="Toggle and configure installed plugins. Enable / disable applies to the next request; new plugins still need a server restart to register hooks and routes."
       />
 
       {toast ? (
@@ -329,37 +345,156 @@ export function PluginsManager() {
           <DialogHeader>
             <DialogTitle>{configPlugin ? `${configPlugin.name} config` : "Config"}</DialogTitle>
             <DialogDescription>
-              Edit the plugin&rsquo;s JSON config. Changes apply immediately to new requests, but
-              already-loaded plugin code may need a restart.
+              {configPlugin?.adminSettings
+                ? "Edit the plugin's settings. Changes apply immediately to new requests; already-loaded handlers see the new config on their next call."
+                : "Edit the plugin's JSON config. Changes apply immediately to new requests, but already-loaded plugin code may need a restart."}
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            value={configText}
-            onChange={(event) => setConfigText(event.target.value)}
-            rows={14}
-            className="font-mono text-xs"
-            spellCheck={false}
-          />
-          {configError ? (
-            <p className="text-sm text-rose-600 dark:text-rose-300">{configError}</p>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConfigPlugin(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                void saveConfig();
+          {configPlugin?.adminSettings ? (
+            <PluginConfigForm
+              key={configPlugin.id}
+              pluginId={configPlugin.id}
+              settings={configPlugin.adminSettings}
+              initialConfig={configPlugin.config}
+              onSaved={() => {
+                setToast({
+                  type: "success",
+                  message: `Updated ${configPlugin.name} config.`,
+                });
+                setConfigPlugin(null);
+                void loadPlugins();
               }}
-              disabled={savingConfig}
-            >
-              {savingConfig ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Save config
-            </Button>
-          </DialogFooter>
+              onCancel={() => setConfigPlugin(null)}
+            />
+          ) : (
+            <>
+              <Textarea
+                value={configText}
+                onChange={(event) => setConfigText(event.target.value)}
+                rows={14}
+                className="font-mono text-xs"
+                spellCheck={false}
+              />
+              {configError ? (
+                <p className="text-sm text-rose-600 dark:text-rose-300">{configError}</p>
+              ) : null}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setConfigPlugin(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void saveConfig();
+                  }}
+                  disabled={savingConfig}
+                >
+                  {savingConfig ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                  Save config
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Renders a typed config form for a plugin that declared `admin.settings.fields`.
+ * Mirrors the `SettingsCard` in `plugin-admin-page.tsx` but trimmed for use
+ * inside the inline dialog — the dedicated `/admin/plugins/[id]` page is still
+ * the place for widgets / actions / tables; this just lets users tweak
+ * config-only plugins from the list view.
+ */
+function PluginConfigForm({
+  pluginId,
+  settings,
+  initialConfig,
+  onSaved,
+  onCancel,
+}: {
+  pluginId: string;
+  settings: PluginAdminSettings;
+  initialConfig: Record<string, unknown>;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const defaultValues = useMemo(() => {
+    const result: Record<string, unknown> = { ...initialConfig };
+    for (const field of settings.fields) {
+      if (field.type === "row" || field.type === "collapsible") continue;
+      if (result[field.name] === undefined && field.defaultValue !== undefined) {
+        result[field.name] = field.defaultValue;
+      }
+    }
+    return result;
+  }, [settings.fields, initialConfig]);
+
+  const form = useForm<Record<string, unknown>>({ defaultValues });
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    setSaving(true);
+    setErrorMessage(null);
+    try {
+      const response = await npFetch(`/api/plugins/${pluginId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: values }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setErrorMessage(payload?.error?.message ?? "Failed to save settings.");
+        return;
+      }
+      onSaved();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  });
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={(event) => {
+          void onSubmit(event);
+        }}
+        className="space-y-4"
+      >
+        {settings.description ? (
+          <p className="text-sm text-muted-foreground">{settings.description}</p>
+        ) : null}
+        {settings.fields.map((field, index) => (
+          <FieldRenderer
+            key={
+              field.type === "row" || field.type === "collapsible"
+                ? `${field.type}-${index}`
+                : field.name
+            }
+            field={field}
+            control={form.control}
+          />
+        ))}
+        {errorMessage ? (
+          <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Save config
+          </Button>
+        </DialogFooter>
+      </form>
+    </Form>
   );
 }
