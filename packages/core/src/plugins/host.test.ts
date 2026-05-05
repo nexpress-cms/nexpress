@@ -9,12 +9,12 @@ import {
   runHook,
   runHookAndCollect,
 } from "./index.js";
-import type { NxPluginConfig } from "../config/types.js";
+import type { NpPluginConfig } from "../config/types.js";
 
 function legacyPlugin(
   id: string,
-  init?: NxPluginConfig["init"],
-): NxPluginConfig {
+  init?: NpPluginConfig["init"],
+): NpPluginConfig {
   return { id, name: `${id} plugin`, init };
 }
 

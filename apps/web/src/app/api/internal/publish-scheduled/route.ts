@@ -1,8 +1,8 @@
-import { NxAuthError, publishScheduledDocuments } from "@nexpress/core";
+import { NpAuthError, publishScheduledDocuments } from "@nexpress/core";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 /**
@@ -37,14 +37,14 @@ export async function POST(request: NextRequest) {
     const header = request.headers.get("authorization") ?? "";
     const supplied = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     if (!supplied || supplied !== expected) {
-      throw new NxAuthError("Unauthorized");
+      throw new NpAuthError("Unauthorized");
     }
 
     await ensureFor("write");
     const result = await publishScheduledDocuments();
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

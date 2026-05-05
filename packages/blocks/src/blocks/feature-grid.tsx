@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 interface FeatureItem {
   icon: string;
@@ -60,7 +60,7 @@ const parseFeatures = (value: unknown): FeatureItem[] => {
   return features.length > 0 ? features : fallback;
 };
 
-export const featureGridBlock: NxBlockDefinition = {
+export const featureGridBlock: NpBlockDefinition = {
   type: "feature-grid",
   label: "Feature Grid",
   description: "Highlights key product capabilities in a flexible multi-column layout.",

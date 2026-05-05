@@ -20,7 +20,7 @@ import {
 
 import { NextRequest } from "next/server";
 
-import type { NxReputationEvent } from "@nexpress/core";
+import type { NpReputationEvent } from "@nexpress/core";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -141,12 +141,12 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     const { id: docId } = await readJson<{ id: string }>(create).then((r) => r.body);
 
     const db = await getTestDb();
-    const { nxRevisions } = await import("@nexpress/core");
+    const { npRevisions } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const revs = (await db
       .select()
-      .from(nxRevisions)
-      .where(eq(nxRevisions.documentId, docId))) as Array<{
+      .from(npRevisions)
+      .where(eq(npRevisions.documentId, docId))) as Array<{
       authorId: string | null;
       version: number;
       status: string;
@@ -159,7 +159,7 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
 
   it("fires `document.created` reputation event with collection slug + member id", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -191,12 +191,12 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
 
     // Reputation row was bumped.
     const db = await getTestDb();
-    const { nxMembers } = await import("@nexpress/core");
+    const { npMembers } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [row] = (await db
-      .select({ reputation: nxMembers.reputation })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, member.memberId))
+      .select({ reputation: npMembers.reputation })
+      .from(npMembers)
+      .where(eq(npMembers.id, member.memberId))
       .limit(1)) as Array<{ reputation: number }>;
     expect(row.reputation).toBe(10);
   });
@@ -319,12 +319,12 @@ describe.skipIf(skipIfNoTestDb())("member-write discussions (Phase 9.7a)", () =>
     const { id: docId } = await readJson<{ id: string }>(create).then((r) => r.body);
 
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
-      .where(eq(nxAuditEvents.action, "document.create"))) as Array<{
+      .from(npAuditEvents)
+      .where(eq(npAuditEvents.action, "document.create"))) as Array<{
       actorKind: string;
       actorMemberId: string | null;
       actorUserId: string | null;

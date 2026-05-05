@@ -4,7 +4,7 @@
 
 import { relations } from "drizzle-orm";
 import { boolean, customType, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { nxMedia, nxUsers, nxMembers } from "@nexpress/core";
+import { npMedia, npUsers, npMembers } from "@nexpress/core";
 
 const tsvector = customType<{ data: string }>({
   dataType() {
@@ -19,15 +19,15 @@ export const postsTable = pgTable(
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
     title: text("title").notNull(),
     excerpt: text("excerpt"),
-    coverImage: uuid("cover_image").references(() => nxMedia.id),
+    coverImage: uuid("cover_image").references(() => npMedia.id),
     content: jsonb("content").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    author: uuid("author").references(() => nxUsers.id),
+    author: uuid("author").references(() => npUsers.id),
     wpOriginalAuthor: text("wp_original_author"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
@@ -38,10 +38,10 @@ export const postsTable = pgTable(
 );
 
 export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
-  createdByUser: one(nxUsers, { fields: [postsTable.createdBy], references: [nxUsers.id] }),
-  updatedByUser: one(nxUsers, { fields: [postsTable.updatedBy], references: [nxUsers.id] }),
-  coverImage: one(nxMedia, { fields: [postsTable.coverImage], references: [nxMedia.id] }),
-  author: one(nxUsers, { fields: [postsTable.author], references: [nxUsers.id] }),
+  createdByUser: one(npUsers, { fields: [postsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [postsTable.updatedBy], references: [npUsers.id] }),
+  coverImage: one(npMedia, { fields: [postsTable.coverImage], references: [npMedia.id] }),
+  author: one(npUsers, { fields: [postsTable.author], references: [npUsers.id] }),
 }));
 
 export const postsCategoriesTable = pgTable(
@@ -83,8 +83,8 @@ export const pagesTable = pgTable(
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
     title: text("title").notNull(),
     seoDescription: text("seo_description"),
@@ -99,8 +99,8 @@ export const pagesTable = pgTable(
 );
 
 export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
-  createdByUser: one(nxUsers, { fields: [pagesTable.createdBy], references: [nxUsers.id] }),
-  updatedByUser: one(nxUsers, { fields: [pagesTable.updatedBy], references: [nxUsers.id] }),
+  createdByUser: one(npUsers, { fields: [pagesTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [pagesTable.updatedBy], references: [npUsers.id] }),
 }));
 
 export const localizedPagesTable = pgTable(
@@ -110,8 +110,8 @@ export const localizedPagesTable = pgTable(
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
     title: text("title").notNull(),
     body: text("body"),
@@ -126,8 +126,8 @@ export const localizedPagesTable = pgTable(
 );
 
 export const localizedPagesTableRelations = relations(localizedPagesTable, ({ many, one }) => ({
-  createdByUser: one(nxUsers, { fields: [localizedPagesTable.createdBy], references: [nxUsers.id] }),
-  updatedByUser: one(nxUsers, { fields: [localizedPagesTable.updatedBy], references: [nxUsers.id] }),
+  createdByUser: one(npUsers, { fields: [localizedPagesTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [localizedPagesTable.updatedBy], references: [npUsers.id] }),
 }));
 
 export const taxonomiesTable = pgTable(
@@ -137,8 +137,8 @@ export const taxonomiesTable = pgTable(
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
     name: text("name").notNull(),
     taxonomy: text("taxonomy").notNull(),
@@ -151,8 +151,8 @@ export const taxonomiesTable = pgTable(
 );
 
 export const taxonomiesTableRelations = relations(taxonomiesTable, ({ many, one }) => ({
-  createdByUser: one(nxUsers, { fields: [taxonomiesTable.createdBy], references: [nxUsers.id] }),
-  updatedByUser: one(nxUsers, { fields: [taxonomiesTable.updatedBy], references: [nxUsers.id] }),
+  createdByUser: one(npUsers, { fields: [taxonomiesTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [taxonomiesTable.updatedBy], references: [npUsers.id] }),
 }));
 
 export const discussionsTable = pgTable(
@@ -162,10 +162,10 @@ export const discussionsTable = pgTable(
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
-    memberAuthorId: uuid("member_author_id").references(() => nxMembers.id, { onDelete: "set null" }),
+    memberAuthorId: uuid("member_author_id").references(() => npMembers.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     body: jsonb("body"),
     category: text("category"),
@@ -180,7 +180,7 @@ export const discussionsTable = pgTable(
 );
 
 export const discussionsTableRelations = relations(discussionsTable, ({ many, one }) => ({
-  createdByUser: one(nxUsers, { fields: [discussionsTable.createdBy], references: [nxUsers.id] }),
-  updatedByUser: one(nxUsers, { fields: [discussionsTable.updatedBy], references: [nxUsers.id] }),
-  memberAuthor: one(nxMembers, { fields: [discussionsTable.memberAuthorId], references: [nxMembers.id] }),
+  createdByUser: one(npUsers, { fields: [discussionsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [discussionsTable.updatedBy], references: [npUsers.id] }),
+  memberAuthor: one(npMembers, { fields: [discussionsTable.memberAuthorId], references: [npMembers.id] }),
 }));

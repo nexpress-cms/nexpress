@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
+import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -28,12 +28,12 @@ import {
   DialogTitle,
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { cn } from "../ui/utils.js";
 import { PageHeader } from "../layout/page-header.js";
 
 interface CollectionListViewProps {
-  config: NxCollectionConfig;
+  config: NpCollectionConfig;
   // Same id-narrowing rationale as collection-edit-view: pipeline emits
   // string ids; typing it here lets the row keys / link hrefs interpolate
   // without no-base-to-string lint errors.
@@ -43,8 +43,8 @@ interface CollectionListViewProps {
   currentPage: number;
 }
 
-const getNamedFields = (fields: NxFieldConfig[]): Array<Extract<NxFieldConfig, { name: string }>> => {
-  const result: Array<Extract<NxFieldConfig, { name: string }>> = [];
+const getNamedFields = (fields: NpFieldConfig[]): Array<Extract<NpFieldConfig, { name: string }>> => {
+  const result: Array<Extract<NpFieldConfig, { name: string }>> = [];
 
   for (const field of fields) {
     if (field.type === "row" || field.type === "collapsible") {
@@ -205,7 +205,7 @@ export function CollectionListView({
       setBulkBusy(action);
       setBulkToast(null);
       try {
-        const response = await nxFetch(`/api/collections/${config.slug}/bulk`, {
+        const response = await npFetch(`/api/collections/${config.slug}/bulk`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action, ids: [...selectedIds] }),

@@ -53,16 +53,16 @@ async function seedUserIdentity(
   providerUserId: string,
 ): Promise<string> {
   const db = await getTestDb();
-  const { nxUserOAuthIdentities } = await import("@nexpress/core");
+  const { npUserOAuthIdentities } = await import("@nexpress/core");
   const [row] = (await db
-    .insert(nxUserOAuthIdentities)
+    .insert(npUserOAuthIdentities)
     .values({
       userId,
       provider,
       providerUserId,
       metadata: { test: true },
     })
-    .returning({ id: nxUserOAuthIdentities.id })) as Array<{ id: string }>;
+    .returning({ id: npUserOAuthIdentities.id })) as Array<{ id: string }>;
   return row.id;
 }
 
@@ -73,9 +73,9 @@ async function seedMemberIdentity(
   email: string | null = null,
 ): Promise<string> {
   const db = await getTestDb();
-  const { nxMemberIdentities } = await import("@nexpress/core");
+  const { npMemberIdentities } = await import("@nexpress/core");
   const [row] = (await db
-    .insert(nxMemberIdentities)
+    .insert(npMemberIdentities)
     .values({
       memberId,
       provider,
@@ -83,16 +83,16 @@ async function seedMemberIdentity(
       email,
       metadata: { test: true },
     })
-    .returning({ id: nxMemberIdentities.id })) as Array<{ id: string }>;
+    .returning({ id: npMemberIdentities.id })) as Array<{ id: string }>;
   return row.id;
 }
 
 async function seedMember(handle: string): Promise<string> {
   const db = await getTestDb();
-  const { hashPassword, nxMembers } = await import("@nexpress/core");
+  const { hashPassword, npMembers } = await import("@nexpress/core");
   const password = await hashPassword("password-12");
   const [row] = (await db
-    .insert(nxMembers)
+    .insert(npMembers)
     .values({
       handle,
       email: `${handle}@example.com`,
@@ -100,7 +100,7 @@ async function seedMember(handle: string): Promise<string> {
       password,
       status: "active",
     })
-    .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+    .returning({ id: npMembers.id })) as Array<{ id: string }>;
   return row.id;
 }
 
@@ -184,19 +184,19 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
 
       // Verify removal.
       const db = await getTestDb();
-      const { nxUserOAuthIdentities, nxAuditEvents } = await import("@nexpress/core");
+      const { npUserOAuthIdentities, npAuditEvents } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const remaining = (await db
         .select()
-        .from(nxUserOAuthIdentities)
-        .where(eq(nxUserOAuthIdentities.id, identityId))) as Array<unknown>;
+        .from(npUserOAuthIdentities)
+        .where(eq(npUserOAuthIdentities.id, identityId))) as Array<unknown>;
       expect(remaining).toHaveLength(0);
 
       // Audit event captured.
       const audits = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "user.identity.revoke"))) as Array<{
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "user.identity.revoke"))) as Array<{
         actorUserId: string | null;
         targetType: string | null;
         targetId: string | null;
@@ -244,12 +244,12 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
 
       // a's identity should still exist.
       const db = await getTestDb();
-      const { nxUserOAuthIdentities } = await import("@nexpress/core");
+      const { npUserOAuthIdentities } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const remaining = (await db
         .select()
-        .from(nxUserOAuthIdentities)
-        .where(eq(nxUserOAuthIdentities.id, aIdentity))) as Array<unknown>;
+        .from(npUserOAuthIdentities)
+        .where(eq(npUserOAuthIdentities.id, aIdentity))) as Array<unknown>;
       expect(remaining).toHaveLength(1);
     });
 
@@ -315,18 +315,18 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       expect(res.status).toBe(200);
 
       const db = await getTestDb();
-      const { nxMemberIdentities, nxAuditEvents } = await import("@nexpress/core");
+      const { npMemberIdentities, npAuditEvents } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const remaining = (await db
         .select()
-        .from(nxMemberIdentities)
-        .where(eq(nxMemberIdentities.id, identityId))) as Array<unknown>;
+        .from(npMemberIdentities)
+        .where(eq(npMemberIdentities.id, identityId))) as Array<unknown>;
       expect(remaining).toHaveLength(0);
 
       const audits = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "member.identity.revoke"))) as Array<{
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "member.identity.revoke"))) as Array<{
         actorUserId: string | null;
         targetType: string | null;
         targetId: string | null;
@@ -373,12 +373,12 @@ describe.skipIf(skipIfNoTestDb())("identities admin (integration)", () => {
       expect(res.status).toBe(404);
 
       const db = await getTestDb();
-      const { nxMemberIdentities } = await import("@nexpress/core");
+      const { npMemberIdentities } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const remaining = (await db
         .select()
-        .from(nxMemberIdentities)
-        .where(eq(nxMemberIdentities.id, aIdentity))) as Array<unknown>;
+        .from(npMemberIdentities)
+        .where(eq(npMemberIdentities.id, aIdentity))) as Array<unknown>;
       expect(remaining).toHaveLength(1);
     });
   });

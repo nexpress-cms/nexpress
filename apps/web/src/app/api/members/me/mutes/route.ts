@@ -1,8 +1,8 @@
-import { NxValidationError, listMutes, muteMember } from "@nexpress/core";
+import { NpValidationError, listMutes, muteMember } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireMember } from "@/lib/member-auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -23,9 +23,9 @@ export async function GET(request: NextRequest) {
     await ensureFor("read");
     const member = await requireMember(request);
     const mutes = await listMutes(member.id);
-    return nxSuccessResponse({ mutes });
+    return npSuccessResponse({ mutes });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -36,14 +36,14 @@ export async function POST(request: NextRequest) {
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const targetId = body.targetId;
     if (typeof targetId !== "string" || targetId.length === 0) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "targetId", message: "targetId is required" },
       ]);
     }
     await muteMember({ memberId: member.id, targetId });
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

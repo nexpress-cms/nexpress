@@ -1,20 +1,20 @@
 import type { NextRequest } from "next/server";
 
 import { optionalAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   try {
     const user = await optionalAuth(request);
     if (!user) {
-      return nxErrorResponse(
+      return npErrorResponse(
         Object.assign(new Error("Unauthorized"), { code: "UNAUTHORIZED", statusCode: 401 }),
       );
     }
-    return nxSuccessResponse({
+    return npSuccessResponse({
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

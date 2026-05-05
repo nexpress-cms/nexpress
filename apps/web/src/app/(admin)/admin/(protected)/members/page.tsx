@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  nxMembers,
+  NpForbiddenError,
+  npMembers,
   verifyTokenFull,
   can,
 } from "@nexpress/core";
@@ -46,7 +46,7 @@ export default async function MembersAdminPage({
     // Editor-or-above can browse members. Per-row mod actions
     // (ban, role grant, purge) gate independently on the detail
     // page — admin for grants/purge, staff-mod for bans.
-    throw new NxForbiddenError("members", "read");
+    throw new NpForbiddenError("members", "read");
   }
 
   // Phase 9.10 — search + status filter. `q` matches handle,
@@ -64,27 +64,27 @@ export default async function MembersAdminPage({
   if (q) {
     const pattern = `%${q.replace(/[%_]/g, "\\$&")}%`;
     const like = or(
-      ilike(nxMembers.handle, pattern),
-      ilike(nxMembers.email, pattern),
-      ilike(nxMembers.displayName, pattern),
+      ilike(npMembers.handle, pattern),
+      ilike(npMembers.email, pattern),
+      ilike(npMembers.displayName, pattern),
     );
     if (like) conditions.push(like);
   }
   if (status) {
-    conditions.push(sql`${nxMembers.status} = ${status}`);
+    conditions.push(sql`${npMembers.status} = ${status}`);
   }
 
   const baseQuery = db
     .select({
-      id: nxMembers.id,
-      handle: nxMembers.handle,
-      email: nxMembers.email,
-      displayName: nxMembers.displayName,
-      status: nxMembers.status,
-      reputation: nxMembers.reputation,
-      createdAt: nxMembers.createdAt,
+      id: npMembers.id,
+      handle: npMembers.handle,
+      email: npMembers.email,
+      displayName: npMembers.displayName,
+      status: npMembers.status,
+      reputation: npMembers.reputation,
+      createdAt: npMembers.createdAt,
     })
-    .from(nxMembers);
+    .from(npMembers);
 
   const filtered =
     conditions.length === 0
@@ -92,7 +92,7 @@ export default async function MembersAdminPage({
       : baseQuery.where(and(...conditions));
 
   const rows = (await filtered
-    .orderBy(desc(nxMembers.createdAt))
+    .orderBy(desc(npMembers.createdAt))
     .limit(100)) as Array<{
     id: string;
     handle: string;

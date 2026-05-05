@@ -1,4 +1,4 @@
-import { nxMemberSessions, sha256 } from "@nexpress/core";
+import { npMemberSessions, sha256 } from "@nexpress/core";
 import { inArray } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
     try {
       const db = getDb();
       await db
-        .delete(nxMemberSessions)
-        .where(inArray(nxMemberSessions.tokenHash, hashes));
+        .delete(npMemberSessions)
+        .where(inArray(npMemberSessions.tokenHash, hashes));
     } catch {
       // Swallow — caller still gets cookies cleared below.
     }

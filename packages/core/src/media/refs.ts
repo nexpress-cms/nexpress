@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
-import type { NxFieldConfig } from "../config/types.js";
-import { nxMediaRefs } from "../db/schema/media.js";
+import type { NpFieldConfig } from "../config/types.js";
+import { npMediaRefs } from "../db/schema/media.js";
 
 interface InsertValuesQuery extends Promise<unknown> {
   returning(): Promise<unknown[]>;
@@ -25,7 +25,7 @@ export interface DrizzleTransactionLike {
 }
 
 export function extractMediaIds(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   data: Record<string, unknown>,
 ): Array<{ mediaId: string; field: string }> {
   const refs: Array<{ mediaId: string; field: string }> = [];
@@ -41,8 +41,8 @@ export async function syncMediaRefs(
   documentId: string,
   refs: Array<{ mediaId: string; field: string }>,
 ): Promise<void> {
-  await tx.delete(nxMediaRefs).where(
-    and(eq(nxMediaRefs.collection, collection), eq(nxMediaRefs.documentId, documentId)),
+  await tx.delete(npMediaRefs).where(
+    and(eq(npMediaRefs.collection, collection), eq(npMediaRefs.documentId, documentId)),
   );
 
   const uniqueRefs = dedupeRefs(refs);
@@ -51,7 +51,7 @@ export async function syncMediaRefs(
     return;
   }
 
-  await tx.insert(nxMediaRefs).values(
+  await tx.insert(npMediaRefs).values(
     uniqueRefs.map((ref) => ({
       mediaId: ref.mediaId,
       collection,
@@ -62,7 +62,7 @@ export async function syncMediaRefs(
 }
 
 function collectMediaIds(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   data: Record<string, unknown>,
   refs: Array<{ mediaId: string; field: string }>,
   prefix: string[],

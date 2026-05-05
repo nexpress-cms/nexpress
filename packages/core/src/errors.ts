@@ -1,18 +1,18 @@
 /**
  * Public error-code contract (#290).
  *
- * `NxError.code` is the machine-readable string the API surface
+ * `NpError.code` is the machine-readable string the API surface
  * sends to clients (`response.error.code`). The moment a client
  * branches on `error.code === "VALIDATION_ERROR"` it becomes
  * part of the public contract — adding a typo'd code or
  * renaming an existing one breaks every integration.
  *
- * `NxErrorCode` is the union of every code the framework
+ * `NpErrorCode` is the union of every code the framework
  * currently emits. Adding a new code requires extending this
  * union deliberately — no more "casual" string adoption that
  * accumulates over a year of PRs.
  *
- * The `NxError` constructor still accepts plain `string` so
+ * The `NpError` constructor still accepts plain `string` so
  * out-of-tree plugins that throw their own codes keep working;
  * internal code paths use the union to get IntelliSense and
  * catch typos at compile time. The `(string & {})` trick on
@@ -24,7 +24,7 @@
  * `docs/api-error-codes.md` for the catalogue an operator /
  * client team should rely on.
  */
-export type NxErrorCode =
+export type NpErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
@@ -42,80 +42,80 @@ export type NxErrorCode =
  * The constructor signature accepts the union *or* an arbitrary
  * string. Inside the codebase, passing a literal that isn't in
  * the union triggers a TypeScript error in strict editors
- * (autocompletion narrows to `NxErrorCode`). External plugins
+ * (autocompletion narrows to `NpErrorCode`). External plugins
  * authoring their own codes keep working — they just won't get
  * the autocomplete win.
  */
-export type NxErrorCodeInput = NxErrorCode | (string & Record<never, never>);
+export type NpErrorCodeInput = NpErrorCode | (string & Record<never, never>);
 
-export class NxError extends Error {
+export class NpError extends Error {
   constructor(
     message: string,
-    public readonly code: NxErrorCodeInput,
+    public readonly code: NpErrorCodeInput,
     public readonly statusCode: number = 500,
   ) {
     super(message);
-    this.name = "NxError";
+    this.name = "NpError";
   }
 }
 
-export class NxForbiddenError extends NxError {
+export class NpForbiddenError extends NpError {
   constructor(collection: string, operation: string) {
     super(
       `Access denied: ${operation} on ${collection}`,
       "FORBIDDEN",
       403,
     );
-    this.name = "NxForbiddenError";
+    this.name = "NpForbiddenError";
   }
 }
 
-export class NxNotFoundError extends NxError {
+export class NpNotFoundError extends NpError {
   constructor(collection: string, id: string) {
     super(
       `Document not found: ${collection}/${id}`,
       "NOT_FOUND",
       404,
     );
-    this.name = "NxNotFoundError";
+    this.name = "NpNotFoundError";
   }
 }
 
-export class NxValidationError extends NxError {
+export class NpValidationError extends NpError {
   constructor(
     message: string,
     public readonly errors: Array<{ field: string; message: string }>,
   ) {
     super(message, "VALIDATION_ERROR", 400);
-    this.name = "NxValidationError";
+    this.name = "NpValidationError";
   }
 }
 
-export class NxAuthError extends NxError {
+export class NpAuthError extends NpError {
   constructor(message: string = "Unauthorized") {
     super(message, "UNAUTHORIZED", 401);
-    this.name = "NxAuthError";
+    this.name = "NpAuthError";
   }
 }
 
-export class NxConflictError extends NxError {
+export class NpConflictError extends NpError {
   constructor(message: string) {
     super(message, "CONFLICT", 409);
-    this.name = "NxConflictError";
+    this.name = "NpConflictError";
   }
 }
 
 /**
  * Per-actor rate limit / quota exceeded. Distinct from
- * `NxValidationError` because the request shape was valid — the
+ * `NpValidationError` because the request shape was valid — the
  * server is rejecting it on policy grounds. The 429 status lets
  * client UIs recognize the case and surface a "you've hit your
  * daily limit" message rather than a generic validation error.
  */
-export class NxRateLimitError extends NxError {
+export class NpRateLimitError extends NpError {
   constructor(message: string) {
     super(message, "RATE_LIMITED", 429);
-    this.name = "NxRateLimitError";
+    this.name = "NpRateLimitError";
   }
 }
 
@@ -124,13 +124,13 @@ export class NxRateLimitError extends NxError {
  * by `requireSiteId()` on write paths. 500 because this is a
  * server-side wiring bug — the user request was well-formed,
  * but the framework couldn't tell which tenant to write to.
- * Promoted from a plain `Error` to a real `NxError` subclass so
+ * Promoted from a plain `Error` to a real `NpError` subclass so
  * the API layer surfaces it as a uniform error envelope and
  * clients can branch on the stable `SITE_CONTEXT_MISSING` code.
  */
-export class NxSiteContextMissingError extends NxError {
+export class NpSiteContextMissingError extends NpError {
   constructor(message: string) {
     super(message, "SITE_CONTEXT_MISSING", 500);
-    this.name = "NxSiteContextMissingError";
+    this.name = "NpSiteContextMissingError";
   }
 }

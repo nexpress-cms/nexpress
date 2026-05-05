@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   deleteSite,
   getSiteById,
   isSuperAdmin,
@@ -9,7 +9,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 import { canManageSite } from "@/lib/site-authz";
@@ -43,17 +43,17 @@ export async function GET(
     const user = await requireAuth(request);
     const { id } = await context.params;
     if (!(await canManageSite(user, id))) {
-      throw new NxForbiddenError("sites", "read");
+      throw new NpForbiddenError("sites", "read");
     }
     const site = await getSiteById(id);
     if (!site) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
-    return nxSuccessResponse(site);
+    return npSuccessResponse(site);
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -68,7 +68,7 @@ export async function PATCH(
     const user = await requireAuth(request);
     const { id } = await context.params;
     if (!(await canManageSite(user, id))) {
-      throw new NxForbiddenError("sites", "update");
+      throw new NpForbiddenError("sites", "update");
     }
     const body = (await readJsonBody(request)) as {
       name?: unknown;
@@ -84,9 +84,9 @@ export async function PATCH(
       patch.description = body.description;
     }
     const site = await updateSite(id, patch);
-    return nxSuccessResponse(site);
+    return npSuccessResponse(site);
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -103,7 +103,7 @@ export async function DELETE(
     // Even a per-site admin shouldn't be able to remove the
     // tenant they happen to manage; super-admin only.
     if (!(await isSuperAdmin(user))) {
-      throw new NxForbiddenError("sites", "delete");
+      throw new NpForbiddenError("sites", "delete");
     }
     const { id } = await context.params;
     // Phase 15.9 — `?cascade=true` opt-in. Default is the
@@ -113,9 +113,9 @@ export async function DELETE(
     // usage summary.
     const cascade = request.nextUrl.searchParams.get("cascade") === "true";
     await deleteSite(id, { cascade });
-    return nxSuccessResponse({ id, deleted: true, cascade });
+    return npSuccessResponse({ id, deleted: true, cascade });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

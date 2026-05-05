@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  NxAuthError,
+  NpAuthError,
   getMemberFromTokenPayload,
-  nxMemberSessions,
+  npMemberSessions,
   sha256,
   signMemberToken,
   verifyMemberToken,
@@ -12,7 +12,7 @@ import { and, eq, gt } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { nxErrorResponse } from "@/lib/api-response";
+import { npErrorResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { getMemberAuthRuntimeConfig, setMemberAuthCookies } from "@/lib/member-auth-helpers";
 import { ensureFor } from "@/lib/init-core";
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureFor("read");
     const refreshToken = request.cookies.get("nx-mb-refresh")?.value;
-    if (!refreshToken) throw new NxAuthError();
+    if (!refreshToken) throw new NpAuthError();
 
     const { secret, tokenExpiration, refreshTokenExpiration } = getMemberAuthRuntimeConfig();
     // Reject access tokens presented as refresh triggers — without the
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // refresh pair (#91).
     const payload = await verifyMemberToken(refreshToken, secret, "refresh");
     const member = await getMemberFromTokenPayload(getDb() as never, payload);
-    if (!member || member.status !== "active") throw new NxAuthError();
+    if (!member || member.status !== "active") throw new NpAuthError();
 
     const db = getDb();
     const refreshHash = await sha256(refreshToken);
@@ -49,17 +49,17 @@ export async function POST(request: NextRequest) {
     // logout deleted it (or it never existed), refuse — the JWT
     // signature alone is no longer enough.
     const [sessionRow] = await db
-      .select({ id: nxMemberSessions.id })
-      .from(nxMemberSessions)
+      .select({ id: npMemberSessions.id })
+      .from(npMemberSessions)
       .where(
         and(
-          eq(nxMemberSessions.memberId, member.id),
-          eq(nxMemberSessions.tokenHash, refreshHash),
-          gt(nxMemberSessions.expiresAt, now),
+          eq(npMemberSessions.memberId, member.id),
+          eq(npMemberSessions.tokenHash, refreshHash),
+          gt(npMemberSessions.expiresAt, now),
         ),
       )
       .limit(1);
-    if (!sessionRow) throw new NxAuthError();
+    if (!sessionRow) throw new NpAuthError();
 
     const access = await signMemberToken(member, secret, tokenExpiration, "access");
     const refresh = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get("user-agent") ?? null;
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     await db.transaction(async (tx) => {
-      await tx.delete(nxMemberSessions).where(eq(nxMemberSessions.id, sessionRow.id));
-      await tx.insert(nxMemberSessions).values([
+      await tx.delete(npMemberSessions).where(eq(npMemberSessions.id, sessionRow.id));
+      await tx.insert(npMemberSessions).values([
         {
           memberId: member.id,
           tokenHash: await sha256(access),
@@ -104,6 +104,6 @@ export async function POST(request: NextRequest) {
     setMemberAuthCookies(response, { access, refresh, csrf });
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

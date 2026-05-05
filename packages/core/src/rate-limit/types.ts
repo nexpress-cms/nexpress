@@ -19,7 +19,7 @@
  * semantics into the contract. Adapters pick whichever fits.
  */
 
-export interface NxRateLimitDecision {
+export interface NpRateLimitDecision {
   /** True when the request should be rejected (count exceeded). */
   limited: boolean;
   /**
@@ -32,7 +32,7 @@ export interface NxRateLimitDecision {
   retryAfterSeconds?: number;
 }
 
-export interface NxRateLimiterAdapter {
+export interface NpRateLimiterAdapter {
   /**
    * Increment the bucket identified by `key` and return whether
    * the resulting count exceeds `limit` within `windowMs`.
@@ -50,7 +50,7 @@ export interface NxRateLimiterAdapter {
    * from (ip, route-pattern). Adapters should treat it as a
    * binary-safe string and not parse it.
    */
-  check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision>;
+  check(key: string, limit: number, windowMs: number): Promise<NpRateLimitDecision>;
   /**
    * Optional teardown hook for adapters that hold network
    * connections or background timers (Redis client, cleanup

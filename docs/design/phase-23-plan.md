@@ -254,7 +254,7 @@ do I just need to *be* authed").
 
 ### 23.7 — Multi-node rate-limit adapter (done)
 
-Define `NxRateLimiterAdapter` interface in `@nexpress/core` with
+Define `NpRateLimiterAdapter` interface in `@nexpress/core` with
 `InMemoryRateLimiter` (current behavior) as the default and
 `RedisRateLimiter` as the reference multi-node implementation.
 `apps/web/src/proxy.ts` reads the configured adapter via
@@ -279,7 +279,7 @@ register a different adapter at boot. Open question settled:
 
 - New `packages/rate-limiter-redis/` workspace package
   (`@nexpress/rate-limiter-redis`) with `RedisRateLimiter`
-  implementing `NxRateLimiterAdapter`.
+  implementing `NpRateLimiterAdapter`.
 - A single Lua script per check — `INCR` + `PTTL` + conditional
   `PEXPIRE` — for atomicity (no race between increment and TTL
   arm) and one round trip per request.

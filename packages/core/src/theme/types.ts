@@ -1,4 +1,4 @@
-export interface NxThemeColors {
+export interface NpThemeColors {
   primary: string;
   primaryForeground: string;
   background: string;
@@ -14,7 +14,7 @@ export interface NxThemeColors {
   destructiveForeground: string;
 }
 
-export interface NxThemeTypography {
+export interface NpThemeTypography {
   fontHeading: string;
   fontBody: string;
   fontMono: string;
@@ -28,7 +28,7 @@ export interface NxThemeTypography {
   fontSize4xl: string;
 }
 
-export interface NxThemeShape {
+export interface NpThemeShape {
   radiusSm: string;
   radiusMd: string;
   radiusLg: string;
@@ -38,8 +38,8 @@ export interface NxThemeShape {
   shadowLg: string;
 }
 
-export interface NxThemeTokens {
-  colors: NxThemeColors;
-  typography: NxThemeTypography;
-  shape: NxThemeShape;
+export interface NpThemeTokens {
+  colors: NpThemeColors;
+  typography: NpThemeTypography;
+  shape: NpThemeShape;
 }

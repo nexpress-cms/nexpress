@@ -30,7 +30,7 @@ function isMutating(method: string | undefined): method is MutatingMethod {
  * mutating requests by copying the `nx-csrf` cookie that the auth flow set.
  * Returns the raw Response — callers handle parsing.
  */
-export function nxFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export function npFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   const method = init?.method ?? "GET";
 

@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 
 /**
- * Serializable metadata about a block — everything `NxBlockDefinition`
+ * Serializable metadata about a block — everything `NpBlockDefinition`
  * carries *except* the `render` function. The page-builder admin
  * receives this shape (functions can't cross the server → client
  * boundary in Next.js) and uses it for the picker, the props form,
@@ -9,13 +9,13 @@ import type { ReactElement, ReactNode } from "react";
  * `renderBlocks`, which reads the full definition from the shared
  * registry directly.
  */
-export interface NxBlockMetadata {
+export interface NpBlockMetadata {
   type: string;
   label: string;
   description?: string;
   icon?: string;
   defaultProps: Record<string, unknown>;
-  propsSchema: NxBlockPropField[];
+  propsSchema: NpBlockPropField[];
   /**
    * When true, this block is a *container* — the editor offers an
    * add-block UI inside it and the renderer walks the instance's
@@ -27,7 +27,7 @@ export interface NxBlockMetadata {
   acceptsChildren?: boolean;
 }
 
-export interface NxBlockDefinition extends NxBlockMetadata {
+export interface NpBlockDefinition extends NpBlockMetadata {
   /**
    * Block renderer. Container blocks (`acceptsChildren: true`) get
    * the rendered child tree as a React node — they decide where to
@@ -37,7 +37,7 @@ export interface NxBlockDefinition extends NxBlockMetadata {
   render: (props: Record<string, unknown>, children?: ReactNode) => ReactElement;
 }
 
-export interface NxBlockPropField {
+export interface NpBlockPropField {
   name: string;
   label: string;
   type: "text" | "textarea" | "number" | "boolean" | "select" | "url" | "richtext" | "image";
@@ -46,7 +46,7 @@ export interface NxBlockPropField {
   options?: { label: string; value: string }[];
 }
 
-export interface NxBlockInstance {
+export interface NpBlockInstance {
   id: string;
   type: string;
   props: Record<string, unknown>;
@@ -61,7 +61,7 @@ export interface NxBlockInstance {
    * that meta is the parent block's contract — not part of the
    * core type.
    */
-  children?: NxBlockInstance[];
+  children?: NpBlockInstance[];
 }
 
 // The `blocks` field on a document is stored and edited as a flat
@@ -69,9 +69,9 @@ export interface NxBlockInstance {
 // seed scripts, and every theme template all pass an array. The
 // historical `{ blocks: [...] }` wrapper was a typing-only mismatch
 // that crashed `renderBlocks` whenever a page actually had blocks.
-export type NxPageBlocks = NxBlockInstance[];
+export type NpPageBlocks = NpBlockInstance[];
 
-export interface NxDataBinding {
+export interface NpDataBinding {
   collection: string;
   where?: Record<string, unknown>;
   select?: string[];
@@ -79,14 +79,14 @@ export interface NxDataBinding {
   limit?: number;
 }
 
-export interface NxBlockRegistration {
-  definition: NxBlockDefinition;
+export interface NpBlockRegistration {
+  definition: NpBlockDefinition;
 }
 
-export interface NxBlockRegistry {
-  register(definition: NxBlockDefinition): void;
-  get(type: string): NxBlockDefinition | undefined;
-  getAll(): NxBlockDefinition[];
+export interface NpBlockRegistry {
+  register(definition: NpBlockDefinition): void;
+  get(type: string): NpBlockDefinition | undefined;
+  getAll(): NpBlockDefinition[];
   has(type: string): boolean;
 }
 

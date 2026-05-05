@@ -1,1 +1,1 @@
-export { getDb, type NxDb } from "@/lib/bootstrap";
+export { getDb, type NpDb } from "@/lib/bootstrap";

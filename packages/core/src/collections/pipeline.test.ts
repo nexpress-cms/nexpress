@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setLogger, resetLogger, type NxLogger } from "../observability/logger.js";
+import { setLogger, resetLogger, type NpLogger } from "../observability/logger.js";
 import { runPostCommit } from "./pipeline.js";
 
 /**
@@ -12,7 +12,7 @@ import { runPostCommit } from "./pipeline.js";
 
 describe("runPostCommit (#277)", () => {
   let captured: Array<{ level: string; message: string; data: Record<string, unknown> | undefined }> = [];
-  const mockLogger: NxLogger = {
+  const mockLogger: NpLogger = {
     debug: () => {},
     info: () => {},
     warn: (message, data) => {

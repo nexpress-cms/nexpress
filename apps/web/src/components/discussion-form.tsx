@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Suspense, lazy, useState, type ComponentType } from "react";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
 interface DiscussionFormProps {
   mode: "create" | "edit";
@@ -11,7 +11,7 @@ interface DiscussionFormProps {
     docId: string;
     slug: string;
     title: string;
-    body: NxRichTextContent | null;
+    body: NpRichTextContent | null;
   };
 }
 
@@ -53,7 +53,7 @@ function extractMessage(body: unknown): string | null {
  * shouldn't pay for it until they actually click "New discussion".
  */
 interface LazyRichTextEditorProps {
-  value: NxRichTextContent | null;
+  value: NpRichTextContent | null;
   onChange: (value: unknown) => void;
   config?: {
     onUploadImage?: (file: File) => Promise<{ url: string; alt?: string }>;
@@ -63,7 +63,7 @@ interface LazyRichTextEditorProps {
 const LazyRichTextEditor = lazy(async () => {
   const module = await import("@nexpress/editor/client");
   return {
-    default: module.NxRichTextEditor as ComponentType<LazyRichTextEditorProps>,
+    default: module.NpRichTextEditor as ComponentType<LazyRichTextEditorProps>,
   };
 });
 
@@ -104,7 +104,7 @@ async function uploadMemberImage(file: File): Promise<{ url: string }> {
 
 /**
  * Member-side discussion create / edit form. The body field uses
- * the same `NxRichTextEditor` the admin uses for staff-authored
+ * the same `NpRichTextEditor` the admin uses for staff-authored
  * posts — paragraphs, headings, bold/italic/underline, lists, links,
  * code, quotes. No image upload yet (would need member-side media
  * permissions; deferred). The editor produces Lexical-shaped JSON
@@ -114,7 +114,7 @@ async function uploadMemberImage(file: File): Promise<{ url: string }> {
 export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [body, setBody] = useState<NxRichTextContent | null>(initial?.body ?? null);
+  const [body, setBody] = useState<NpRichTextContent | null>(initial?.body ?? null);
   // `slug` is only editable on create — server pipeline uses the
   // configured slugField (derives from title) when the body omits
   // slug. We pre-fill from title so the user sees what their URL
@@ -273,7 +273,7 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
   );
 }
 
-function isRichTextContent(value: unknown): value is NxRichTextContent {
+function isRichTextContent(value: unknown): value is NpRichTextContent {
   if (typeof value !== "object" || value === null) return false;
   const root = (value as { root?: unknown }).root;
   return typeof root === "object" && root !== null;
@@ -285,7 +285,7 @@ function isRichTextContent(value: unknown): value is NxRichTextContent {
  * shape. Submit a single empty paragraph so the row has a valid
  * structure on the way to render.
  */
-function emptyRichText(): NxRichTextContent {
+function emptyRichText(): NpRichTextContent {
   return {
     root: {
       type: "root",
@@ -296,5 +296,5 @@ function emptyRichText(): NxRichTextContent {
         },
       ],
     },
-  } as unknown as NxRichTextContent;
+  } as unknown as NpRichTextContent;
 }

@@ -1,11 +1,11 @@
-import { type NxCollectionConfig, type NxFieldConfig } from "../config/types.js";
+import { type NpCollectionConfig, type NpFieldConfig } from "../config/types.js";
 
-export function generateTypeScript(collections: NxCollectionConfig[]): string {
+export function generateTypeScript(collections: NpCollectionConfig[]): string {
   const interfaces = collections.map((collection) => renderCollectionInterface(collection));
   return interfaces.join("\n\n");
 }
 
-function renderCollectionInterface(collection: NxCollectionConfig): string {
+function renderCollectionInterface(collection: NpCollectionConfig): string {
   const interfaceName = `${toPascalCase(collection.slug)}Document`;
   const fields = [
     'id: string;',
@@ -33,7 +33,7 @@ function renderCollectionInterface(collection: NxCollectionConfig): string {
   return [`export interface ${interfaceName} {`, ...fields.map((field) => `  ${field}`), "}"].join("\n");
 }
 
-function renderFields(fields: NxFieldConfig[], prefix: string[] = []): string[] {
+function renderFields(fields: NpFieldConfig[], prefix: string[] = []): string[] {
   const lines: string[] = [];
 
   for (const field of fields) {
@@ -58,12 +58,12 @@ function renderFields(fields: NxFieldConfig[], prefix: string[] = []): string[] 
   return lines;
 }
 
-function renderObjectType(fields: NxFieldConfig[]): string {
+function renderObjectType(fields: NpFieldConfig[]): string {
   const members = renderFields(fields).map((field) => `  ${field}`);
   return [`{`, ...members, `}`].join("\n");
 }
 
-function getTypeSource(field: Exclude<NxFieldConfig, { type: "row" | "collapsible" | "group" }>): string {
+function getTypeSource(field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>): string {
   switch (field.type) {
     case "text":
     case "textarea":

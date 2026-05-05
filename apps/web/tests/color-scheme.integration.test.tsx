@@ -4,13 +4,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   COLOR_SCHEME_COOKIE,
   COLOR_SCHEME_STORAGE_KEY,
-  NxColorSchemeScript,
+  NpColorSchemeScript,
   isColorScheme,
 } from "@nexpress/theme";
 
 /**
  * Color-scheme primitives. The framework no longer auto-mounts
- * `<NxColorSchemeScript />` — it's exported from `@nexpress/theme`
+ * `<NpColorSchemeScript />` — it's exported from `@nexpress/theme`
  * as an opt-in utility for themes that want a saved-choice
  * dark-mode policy. These tests cover only the utility shape;
  * how a theme renders dark variants is the theme's concern.
@@ -35,26 +35,26 @@ describe("isColorScheme", () => {
   });
 });
 
-describe("NxColorSchemeScript", () => {
+describe("NpColorSchemeScript", () => {
   it("emits an inline script tag", () => {
-    const html = renderToStaticMarkup(<NxColorSchemeScript />);
+    const html = renderToStaticMarkup(<NpColorSchemeScript />);
     expect(html.startsWith("<script>")).toBe(true);
     expect(html.endsWith("</script>")).toBe(true);
   });
 
   it("references the shared cookie + storage names", () => {
-    const html = renderToStaticMarkup(<NxColorSchemeScript />);
+    const html = renderToStaticMarkup(<NpColorSchemeScript />);
     expect(html).toContain(COLOR_SCHEME_COOKIE);
     expect(html).toContain(COLOR_SCHEME_STORAGE_KEY);
   });
 
   it("checks prefers-color-scheme as a fallback", () => {
-    const html = renderToStaticMarkup(<NxColorSchemeScript />);
+    const html = renderToStaticMarkup(<NpColorSchemeScript />);
     expect(html).toContain("prefers-color-scheme: dark");
   });
 
   it("guards against storage exceptions (private mode, opt-out)", () => {
-    const html = renderToStaticMarkup(<NxColorSchemeScript />);
+    const html = renderToStaticMarkup(<NpColorSchemeScript />);
     // Two outer try/catch blocks total — one around the whole
     // routine, one around the localStorage read.
     const tryCount = html.match(/try \{/g)?.length ?? 0;

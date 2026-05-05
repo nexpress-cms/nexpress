@@ -1,20 +1,20 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxConflictError,
-  NxForbiddenError,
-  NxNotFoundError,
-  NxValidationError,
+  NpConflictError,
+  NpForbiddenError,
+  NpNotFoundError,
+  NpValidationError,
   getCurrentSiteId,
-  nxNavigation,
+  npNavigation,
   can,
 } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { optionalAuth, requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 // Theme-baked default locations. Operators can edit their items
@@ -39,7 +39,7 @@ async function bustNavCache(siteId: string, location: string) {
   }
 }
 
-function isNavItem(value: unknown): value is NxNavItem {
+function isNavItem(value: unknown): value is NpNavItem {
   if (!isRecord(value)) return false;
 
   return (
@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
     const [row] = await db
       .select()
-      .from(nxNavigation)
-      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)))
+      .from(npNavigation)
+      .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)))
       .limit(1);
 
-    return nxSuccessResponse(row ?? { location, items: [] });
+    return npSuccessResponse(row ?? { location, items: [] });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -78,7 +78,7 @@ export async function PUT(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("navigation", "update");
+      throw new NpForbiddenError("navigation", "update");
     }
 
     const body = (await readJsonBody(request)) as Record<string, unknown>;
@@ -96,7 +96,7 @@ export async function PUT(request: NextRequest) {
       typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : null;
 
     if (!Array.isArray(items) || !items.every(isNavItem)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "items", message: "items must be a valid navigation item array" },
       ]);
     }
@@ -107,22 +107,22 @@ export async function PUT(request: NextRequest) {
 
     if (expectedUpdatedAt !== null) {
       const [existing] = await db
-        .select({ updatedAt: nxNavigation.updatedAt })
-        .from(nxNavigation)
-        .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)))
+        .select({ updatedAt: npNavigation.updatedAt })
+        .from(npNavigation)
+        .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)))
         .limit(1);
       // Row missing: legitimate first save — let the upsert below
       // create it. Row present but stale token: another writer
       // landed in between, surface the conflict.
       if (existing && existing.updatedAt.toISOString() !== expectedUpdatedAt) {
-        throw new NxConflictError(
+        throw new NpConflictError(
           "Navigation was changed by another writer. Reload to see the latest version.",
         );
       }
     }
 
     const [result] = await db
-      .insert(nxNavigation)
+      .insert(npNavigation)
       .values({
         siteId,
         location,
@@ -131,7 +131,7 @@ export async function PUT(request: NextRequest) {
         updatedBy: user.id,
       })
       .onConflictDoUpdate({
-        target: [nxNavigation.siteId, nxNavigation.location],
+        target: [npNavigation.siteId, npNavigation.location],
         set: { items, updatedAt: now, updatedBy: user.id },
       })
       .returning();
@@ -141,9 +141,9 @@ export async function PUT(request: NextRequest) {
     // pick up the edit on the next render.
     await bustNavCache(siteId, location);
 
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -152,36 +152,36 @@ export async function DELETE(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("navigation", "delete");
+      throw new NpForbiddenError("navigation", "delete");
     }
 
     const location = request.nextUrl.searchParams.get("location")?.trim();
     if (!location) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "location", message: "location query param is required" },
       ]);
     }
     if (PROTECTED_LOCATIONS.has(location)) {
-      throw new NxForbiddenError("navigation", "delete-default-location");
+      throw new NpForbiddenError("navigation", "delete-default-location");
     }
 
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 
     const deleted = await db
-      .delete(nxNavigation)
-      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)))
-      .returning({ location: nxNavigation.location });
+      .delete(npNavigation)
+      .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)))
+      .returning({ location: npNavigation.location });
 
     if (deleted.length === 0) {
-      throw new NxNotFoundError("navigation", location);
+      throw new NpNotFoundError("navigation", location);
     }
 
     await bustNavCache(siteId, location);
 
-    return nxSuccessResponse({ location });
+    return npSuccessResponse({ location });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -190,17 +190,17 @@ export async function PATCH(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("navigation", "rename");
+      throw new NpForbiddenError("navigation", "rename");
     }
 
     const oldLocation = request.nextUrl.searchParams.get("location")?.trim();
     if (!oldLocation) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "location", message: "location query param is required" },
       ]);
     }
     if (PROTECTED_LOCATIONS.has(oldLocation)) {
-      throw new NxForbiddenError("navigation", "rename-default-location");
+      throw new NpForbiddenError("navigation", "rename-default-location");
     }
 
     const body = (await readJsonBody(request)) as Record<string, unknown>;
@@ -208,7 +208,7 @@ export async function PATCH(request: NextRequest) {
       typeof body.newLocation === "string" ? body.newLocation.trim().toLowerCase() : "";
 
     if (!newLocation || !SLUG_RE.test(newLocation)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "newLocation",
           message: "newLocation must be lowercase letters, numbers, or hyphens",
@@ -216,12 +216,12 @@ export async function PATCH(request: NextRequest) {
       ]);
     }
     if (newLocation === oldLocation) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "newLocation", message: "newLocation must differ from current" },
       ]);
     }
     if (PROTECTED_LOCATIONS.has(newLocation)) {
-      throw new NxForbiddenError("navigation", "rename-into-default-location");
+      throw new NpForbiddenError("navigation", "rename-into-default-location");
     }
 
     const db = getDb();
@@ -231,29 +231,29 @@ export async function PATCH(request: NextRequest) {
     // Conflict check before update so we get a 409 instead of a
     // bare unique-constraint violation surfacing as a 500.
     const [conflict] = await db
-      .select({ id: nxNavigation.id })
-      .from(nxNavigation)
-      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, newLocation)))
+      .select({ id: npNavigation.id })
+      .from(npNavigation)
+      .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, newLocation)))
       .limit(1);
     if (conflict) {
-      throw new NxConflictError(`Location "${newLocation}" already exists.`);
+      throw new NpConflictError(`Location "${newLocation}" already exists.`);
     }
 
     const [renamed] = await db
-      .update(nxNavigation)
+      .update(npNavigation)
       .set({ location: newLocation, updatedAt: now, updatedBy: user.id })
-      .where(and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, oldLocation)))
+      .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, oldLocation)))
       .returning();
 
     if (!renamed) {
-      throw new NxNotFoundError("navigation", oldLocation);
+      throw new NpNotFoundError("navigation", oldLocation);
     }
 
     await bustNavCache(siteId, oldLocation);
     await bustNavCache(siteId, newLocation);
 
-    return nxSuccessResponse(renamed);
+    return npSuccessResponse(renamed);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

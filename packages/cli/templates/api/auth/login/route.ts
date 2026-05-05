@@ -1,15 +1,15 @@
 import {
-  NxAuthError,
-  NxError,
-  type NxUserRole,
-  NxValidationError,
+  NpAuthError,
+  NpError,
+  type NpUserRole,
+  NpValidationError,
   signToken,
   verifyPassword,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/bootstrap";
 
 interface LoginUserRow extends Record<string, unknown> {
@@ -17,7 +17,7 @@ interface LoginUserRow extends Record<string, unknown> {
   email: string;
   password: string;
   name: string;
-  role: NxUserRole;
+  role: NpUserRole;
   loginAttempts: number;
   lockUntil: Date | null;
   tokenVersion: number;
@@ -25,18 +25,18 @@ interface LoginUserRow extends Record<string, unknown> {
 
 function validateLoginBody(body: unknown): { email: string; password: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be an object" },
     ]);
   }
   const { email, password } = body as { email?: unknown; password?: unknown };
   if (typeof email !== "string" || !email.includes("@")) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "email", message: "Valid email is required" },
     ]);
   }
   if (typeof password !== "string" || password.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "password", message: "Password is required" },
     ]);
   }
@@ -54,11 +54,11 @@ export async function POST(request: NextRequest) {
       [email],
     );
     const user = result.rows[0];
-    if (!user) throw new NxAuthError("Invalid email or password");
+    if (!user) throw new NpAuthError("Invalid email or password");
 
     const now = new Date();
     if (user.lockUntil && user.lockUntil > now) {
-      throw new NxError("Too many login attempts", "TOO_MANY_REQUESTS", 429);
+      throw new NpError("Too many login attempts", "TOO_MANY_REQUESTS", 429);
     }
 
     const validPassword = await verifyPassword(user.password, password);
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
           user.id,
         ],
       );
-      throw new NxAuthError("Invalid email or password");
+      throw new NpAuthError("Invalid email or password");
     }
 
     await db.$client.query(
@@ -84,12 +84,12 @@ export async function POST(request: NextRequest) {
 
     const access = await signToken(user, config.secret, config.tokenExpiration);
     const refresh = await signToken(user, config.secret, config.refreshTokenExpiration);
-    const response = nxSuccessResponse({
+    const response = npSuccessResponse({
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     });
     setAuthCookies(response, { access, refresh, csrf: crypto.randomUUID() });
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

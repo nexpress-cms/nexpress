@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
-import type { NxFieldConfig, NxPluginConfig, NxPluginContext } from "../config/types.js";
-import { nxPlugins } from "../db/schema/system.js";
+import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
+import { npPlugins } from "../db/schema/system.js";
 import { getDb } from "../db/runtime.js";
 import { getLogger } from "../observability/logger.js";
 import { createPluginRuntimeContext } from "./context.js";
@@ -50,7 +50,7 @@ export interface PluginCapabilityRequirement {
 
 /**
  * Declarative admin extension snapshot stored per registration. Shape mirrors
- * `@nexpress/plugin-sdk`'s `NxAdminExtension` but kept structural here to
+ * `@nexpress/plugin-sdk`'s `NpAdminExtension` but kept structural here to
  * avoid a plugin-sdk → core cycle. The admin UI reads this via
  * `getPluginAdminExtension(id)` and renders it with its own primitives.
  */
@@ -58,7 +58,7 @@ export interface PluginAdminExtension {
   settings?: {
     title?: string;
     description?: string;
-    fields: NxFieldConfig[];
+    fields: NpFieldConfig[];
   };
   widgets?: Array<{
     id: string;
@@ -175,9 +175,9 @@ const globalRoutes: PluginRouteHandler[] = [];
 
 /**
  * Structural shape for plugins built via `@nexpress/plugin-sdk`'s
- * `definePlugin()`. Matches `NxResolvedPluginLike` in config/types.ts —
+ * `definePlugin()`. Matches `NpResolvedPluginLike` in config/types.ts —
  * kept deliberately loose so `loadPlugins` can accept the same array
- * that `NxConfig.plugins` does without narrowing gymnastics.
+ * that `NpConfig.plugins` does without narrowing gymnastics.
  */
 export interface ResolvedPluginLike {
   manifest: {
@@ -215,9 +215,9 @@ async function loadPluginConfig(pluginId: string): Promise<Record<string, unknow
   try {
     const db = getDb();
     const rows = await db
-      .select({ config: nxPlugins.config })
-      .from(nxPlugins)
-      .where(eq(nxPlugins.id, pluginId))
+      .select({ config: npPlugins.config })
+      .from(npPlugins)
+      .where(eq(npPlugins.id, pluginId))
       .limit(1);
     const row = rows[0] as { config?: unknown } | undefined;
     if (row && row.config && typeof row.config === "object" && !Array.isArray(row.config)) {
@@ -269,7 +269,7 @@ function registerHookHandler(
   globalHooks.get(hookName)!.push(handler);
 }
 
-function createPluginContext(pluginId: string, registration: PluginRegistration): NxPluginContext {
+function createPluginContext(pluginId: string, registration: PluginRegistration): NpPluginContext {
   return {
     addCollection: () => {
       throw new Error(
@@ -463,7 +463,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   }
 }
 
-async function loadLegacyPlugin(plugin: NxPluginConfig): Promise<void> {
+async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
   const registration: PluginRegistration = {
     id: plugin.id,
     name: plugin.name,
@@ -484,7 +484,7 @@ async function loadLegacyPlugin(plugin: NxPluginConfig): Promise<void> {
 }
 
 export async function loadPlugins(
-  plugins: Array<NxPluginConfig | ResolvedPluginLike>,
+  plugins: Array<NpPluginConfig | ResolvedPluginLike>,
 ): Promise<void> {
   for (const plugin of plugins) {
     if (isResolvedPlugin(plugin)) {

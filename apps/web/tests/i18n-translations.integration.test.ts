@@ -98,7 +98,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
   });
 
   it("createTranslation rejects duplicates for the same target locale", async () => {
-    const { createTranslation, saveDocument, NxValidationError } =
+    const { createTranslation, saveDocument, NpValidationError } =
       await import("@nexpress/core");
     const en = await saveDocument(
       "localized-pages",
@@ -110,11 +110,11 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     await createTranslation("localized-pages", en.doc.id as string, "ko", actor());
     await expect(
       createTranslation("localized-pages", en.doc.id as string, "ko", actor()),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("createTranslation rejects unknown locales", async () => {
-    const { createTranslation, saveDocument, NxValidationError } =
+    const { createTranslation, saveDocument, NpValidationError } =
       await import("@nexpress/core");
     const en = await saveDocument(
       "localized-pages",
@@ -130,11 +130,11 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
         "fr",
         actor(),
       ),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("createTranslation refuses to create a translation in the source's own locale", async () => {
-    const { createTranslation, saveDocument, NxValidationError } =
+    const { createTranslation, saveDocument, NpValidationError } =
       await import("@nexpress/core");
     const en = await saveDocument(
       "localized-pages",
@@ -150,16 +150,16 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
         "en",
         actor(),
       ),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("findTranslations rejects non-i18n collections", async () => {
-    const { findTranslations, NxValidationError } = await import(
+    const { findTranslations, NpValidationError } = await import(
       "@nexpress/core"
     );
     await expect(
       findTranslations("posts", "00000000-0000-0000-0000-000000000000"),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("GET /api/admin/collections/[slug]/[id]/translations returns siblings (editor+)", async () => {

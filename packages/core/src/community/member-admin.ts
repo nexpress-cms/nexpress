@@ -9,11 +9,11 @@ import {
   getCollectionTable,
   getDb,
 } from "../collections/index.js";
-import type { NxAuthUser } from "../config/types.js";
-import { NxNotFoundError } from "../errors.js";
+import type { NpAuthUser } from "../config/types.js";
+import { NpNotFoundError } from "../errors.js";
 import { deleteMedia } from "../media/service.js";
-import { nxComments, nxMembers } from "../db/schema/community.js";
-import { nxMedia } from "../db/schema/media.js";
+import { npComments, npMembers } from "../db/schema/community.js";
+import { npMedia } from "../db/schema/media.js";
 
 import { recordAuditEvent } from "./audit.js";
 import { staffDeleteComment } from "./comments.js";
@@ -29,7 +29,7 @@ import { staffDeleteComment } from "./comments.js";
  * doc (`nx_media_refs`) — those need to be unlinked first; the
  * mod can re-run after the reference is gone.
  */
-export interface NxMemberPurgeResult {
+export interface NpMemberPurgeResult {
   comments: number;
   documents: Record<string, number>;
   media: { deleted: number; skipped: number };
@@ -54,30 +54,30 @@ export interface NxMemberPurgeResult {
  */
 export async function purgeMemberContent(
   memberId: string,
-  staffUser: NxAuthUser,
-): Promise<NxMemberPurgeResult> {
+  staffUser: NpAuthUser,
+): Promise<NpMemberPurgeResult> {
   // Refuse to act on a member that doesn't exist — saves the
   // operator a confusing zero-count response when the id is a
   // typo. Mirrors the 404 surface from the identities-admin
   // helpers.
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [memberRow] = (await db
-    .select({ id: nxMembers.id })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, memberId))
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.id, memberId))
     .limit(1)) as Array<{ id: string }>;
   if (!memberRow) {
-    throw new NxNotFoundError("member", memberId);
+    throw new NpNotFoundError("member", memberId);
   }
 
   // 1. Comments. Filter out already-deleted rows so re-running
   //    the purge after a partial failure doesn't re-fire delete
   //    events on tombstones.
   const liveComments = (await db
-    .select({ id: nxComments.id })
-    .from(nxComments)
+    .select({ id: npComments.id })
+    .from(npComments)
     .where(
-      and(eq(nxComments.memberId, memberId), ne(nxComments.status, "deleted")),
+      and(eq(npComments.memberId, memberId), ne(npComments.status, "deleted")),
     )) as Array<{ id: string }>;
   let commentsDeleted = 0;
   for (const row of liveComments) {
@@ -85,7 +85,7 @@ export async function purgeMemberContent(
       await staffDeleteComment(row.id, staffUser.id);
       commentsDeleted += 1;
     } catch (err) {
-      if (err instanceof NxNotFoundError) continue;
+      if (err instanceof NpNotFoundError) continue;
       throw err;
     }
   }
@@ -121,7 +121,7 @@ export async function purgeMemberContent(
         await deleteDocument(slug, row.id, staffUser);
         perCollection += 1;
       } catch (err) {
-        if (err instanceof NxNotFoundError) continue;
+        if (err instanceof NpNotFoundError) continue;
         throw err;
       }
     }
@@ -135,10 +135,10 @@ export async function purgeMemberContent(
   //    operator knows manual cleanup is still needed.
   const mediaDb = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const liveMedia = (await mediaDb
-    .select({ id: nxMedia.id })
-    .from(nxMedia)
+    .select({ id: npMedia.id })
+    .from(npMedia)
     .where(
-      and(eq(nxMedia.uploadedByMemberId, memberId), isNull(nxMedia.deletedAt)),
+      and(eq(npMedia.uploadedByMemberId, memberId), isNull(npMedia.deletedAt)),
     )) as Array<{ id: string }>;
   let mediaDeleted = 0;
   let mediaSkipped = 0;

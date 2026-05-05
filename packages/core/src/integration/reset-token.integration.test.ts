@@ -7,8 +7,8 @@ import {
   createPasswordResetToken,
   requestPasswordReset,
 } from "../auth/reset-token.js";
-import { nxSessions, nxUsers } from "../db/schema/system.js";
-import { NxValidationError } from "../errors.js";
+import { npSessions, npUsers } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
@@ -28,7 +28,7 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     const db = await getTestDb();
     const hash = await hashPassword(password);
     const [row] = await db
-      .insert(nxUsers)
+      .insert(npUsers)
       .values({
         email,
         password: hash,
@@ -62,7 +62,7 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     const user = await seedUser();
 
     // Seed a fake active session to prove it gets cleared.
-    await db.insert(nxSessions).values({
+    await db.insert(npSessions).values({
       userId: user.id,
       tokenHash: "a".repeat(64),
       expiresAt: new Date(Date.now() + 60_000),
@@ -81,7 +81,7 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     expect(result.userId).toBe(user.id);
     expect(result.purpose).toBe("reset");
 
-    const [after] = await db.select().from(nxUsers).where(eq(nxUsers.id, user.id));
+    const [after] = await db.select().from(npUsers).where(eq(npUsers.id, user.id));
     expect(after.tokenVersion).toBe(user.tokenVersion + 1);
     expect(after.passwordResetTokenHash).toBeNull();
     expect(after.passwordResetExpiresAt).toBeNull();
@@ -89,7 +89,7 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
     expect(await verifyPassword(after.password, "brandnewpassword")).toBe(true);
     expect(await verifyPassword(after.password, "originalpassword")).toBe(false);
 
-    const sessions = await db.select().from(nxSessions).where(eq(nxSessions.userId, user.id));
+    const sessions = await db.select().from(npSessions).where(eq(npSessions.userId, user.id));
     expect(sessions).toHaveLength(0);
   });
 
@@ -105,7 +105,7 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
 
     await expect(
       consumePasswordResetToken(db, { token: issued.token, newPassword: "brandnewpassword" }),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("consumePasswordResetToken rejects an unknown token without touching the user", async () => {
@@ -117,9 +117,9 @@ describe.skipIf(skipIfNoTestDb())("password reset token (integration)", () => {
         token: "0".repeat(64),
         newPassword: "brandnewpassword",
       }),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
 
-    const [after] = await db.select().from(nxUsers).where(eq(nxUsers.id, user.id));
+    const [after] = await db.select().from(npUsers).where(eq(npUsers.id, user.id));
     expect(after.tokenVersion).toBe(user.tokenVersion);
     expect(after.password).toBe(user.password);
   });

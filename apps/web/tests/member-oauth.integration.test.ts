@@ -146,12 +146,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     expect(me.status).toBe(200);
 
     const db = await getTestDb();
-    const { nxMembers, nxMemberIdentities } = await import("@nexpress/core");
+    const { npMembers, npMemberIdentities } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [created] = (await db
-      .select({ id: nxMembers.id, status: nxMembers.status, handle: nxMembers.handle })
-      .from(nxMembers)
-      .where(eq(nxMembers.email, "fresh@example.com"))
+      .select({ id: npMembers.id, status: npMembers.status, handle: npMembers.handle })
+      .from(npMembers)
+      .where(eq(npMembers.email, "fresh@example.com"))
       .limit(1)) as Array<{ id: string; status: string; handle: string }>;
     expect(created).toBeDefined();
     expect(created.status).toBe("active");
@@ -159,8 +159,8 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
 
     const links = (await db
       .select()
-      .from(nxMemberIdentities)
-      .where(eq(nxMemberIdentities.memberId, created.id))) as Array<unknown>;
+      .from(npMemberIdentities)
+      .where(eq(npMemberIdentities.memberId, created.id))) as Array<unknown>;
     expect(links).toHaveLength(1);
   });
 
@@ -169,9 +169,9 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const id = await registerStub(bookkeeping, { profileEmail: "existing@example.com" });
 
     const db = await getTestDb();
-    const { hashPassword, nxMembers } = await import("@nexpress/core");
+    const { hashPassword, npMembers } = await import("@nexpress/core");
     const password = await hashPassword("password-12");
-    await db.insert(nxMembers).values({
+    await db.insert(npMembers).values({
       email: "existing@example.com",
       password,
       handle: "existing",
@@ -196,8 +196,8 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const { eq } = await import("drizzle-orm");
     const all = (await db
       .select()
-      .from(nxMembers)
-      .where(eq(nxMembers.email, "existing@example.com"))) as Array<unknown>;
+      .from(npMembers)
+      .where(eq(npMembers.email, "existing@example.com"))) as Array<unknown>;
     expect(all).toHaveLength(1); // no duplicate created
   });
 
@@ -250,9 +250,9 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const id = await registerStub(bookkeeping, { profileEmail: "suspended@example.com" });
 
     const db = await getTestDb();
-    const { hashPassword, nxMembers } = await import("@nexpress/core");
+    const { hashPassword, npMembers } = await import("@nexpress/core");
     const password = await hashPassword("password-12");
-    await db.insert(nxMembers).values({
+    await db.insert(npMembers).values({
       email: "suspended@example.com",
       password,
       handle: "suspended",
@@ -289,10 +289,10 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const id = await registerStub(bookkeeping, { profileEmail: "pending@example.com" });
 
     const db = await getTestDb();
-    const { hashPassword, nxMembers, nxMemberIdentities } = await import("@nexpress/core");
+    const { hashPassword, npMembers, npMemberIdentities } = await import("@nexpress/core");
     const password = await hashPassword("password-12");
     const [pendingRow] = (await db
-      .insert(nxMembers)
+      .insert(npMembers)
       .values({
         email: "pending@example.com",
         password,
@@ -300,7 +300,7 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
         displayName: "Pending",
         status: "pending",
       })
-      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+      .returning({ id: npMembers.id })) as Array<{ id: string }>;
 
     const start = await oauthStartGET(
       jsonRequest(`/api/members/oauth/${id}/start`),
@@ -321,8 +321,8 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const { eq } = await import("drizzle-orm");
     const links = (await db
       .select()
-      .from(nxMemberIdentities)
-      .where(eq(nxMemberIdentities.memberId, pendingRow.id))) as Array<unknown>;
+      .from(npMemberIdentities)
+      .where(eq(npMemberIdentities.memberId, pendingRow.id))) as Array<unknown>;
     expect(links).toHaveLength(0);
   });
 
@@ -351,12 +351,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     await runOnce();
 
     const db = await getTestDb();
-    const { nxMemberIdentities } = await import("@nexpress/core");
+    const { npMemberIdentities } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const links = (await db
       .select()
-      .from(nxMemberIdentities)
-      .where(eq(nxMemberIdentities.provider, id))) as Array<unknown>;
+      .from(npMemberIdentities)
+      .where(eq(npMemberIdentities.provider, id))) as Array<unknown>;
     expect(links).toHaveLength(1);
   });
 
@@ -368,7 +368,7 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
   // (durable link or email match against an active member) still
   // work — those aren't new registrations.
   it("auto-provisioning new member is refused when registrationEnabled=false (#118)", async () => {
-    const { updateCommunitySettings, nxMembers } = await import(
+    const { updateCommunitySettings, npMembers } = await import(
       "@nexpress/core"
     );
     await updateCommunitySettings({ registrationEnabled: false }, null);
@@ -400,8 +400,8 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const { eq } = await import("drizzle-orm");
     const created = (await db
       .select()
-      .from(nxMembers)
-      .where(eq(nxMembers.email, "stranger@example.com"))) as Array<unknown>;
+      .from(npMembers)
+      .where(eq(npMembers.email, "stranger@example.com"))) as Array<unknown>;
     expect(created).toHaveLength(0);
   });
 
@@ -412,12 +412,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const {
       updateCommunitySettings,
       hashPassword,
-      nxMembers,
-      nxMemberIdentities,
+      npMembers,
+      npMemberIdentities,
     } = await import("@nexpress/core");
     const db = await getTestDb();
     const password = await hashPassword("password-12");
-    await db.insert(nxMembers).values({
+    await db.insert(npMembers).values({
       email: "preexisting@example.com",
       password,
       handle: "preexisting",
@@ -452,8 +452,8 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     const { eq } = await import("drizzle-orm");
     const links = (await db
       .select()
-      .from(nxMemberIdentities)
-      .where(eq(nxMemberIdentities.provider, id))) as Array<unknown>;
+      .from(npMemberIdentities)
+      .where(eq(npMemberIdentities.provider, id))) as Array<unknown>;
     expect(links).toHaveLength(1);
   });
 });

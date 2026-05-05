@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -127,10 +127,10 @@ export function MemberRolesPanel({
     setError(null);
     try {
       const [grantsRes, rolesRes] = await Promise.all([
-        nxFetch(
+        npFetch(
           `/api/admin/community/role-grants?memberId=${encodeURIComponent(memberId)}`,
         ),
-        nxFetch("/api/admin/community/roles"),
+        npFetch("/api/admin/community/roles"),
       ]);
       const grantsRaw = (await grantsRes.json().catch(() => null)) as Record<
         string,
@@ -175,7 +175,7 @@ export function MemberRolesPanel({
         body.expiresAt = new Date(form.expiresAt).toISOString();
       }
 
-      const res = await nxFetch("/api/admin/community/role-grants", {
+      const res = await npFetch("/api/admin/community/role-grants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -203,7 +203,7 @@ export function MemberRolesPanel({
     setRevokingId(grantId);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/community/role-grants/${encodeURIComponent(grantId)}`,
         { method: "DELETE" },
       );

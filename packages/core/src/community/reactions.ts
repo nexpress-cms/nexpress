@@ -2,8 +2,8 @@ import { and, count, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxComments, nxReactions } from "../db/schema/community.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { npComments, npReactions } from "../db/schema/community.js";
+import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -28,7 +28,7 @@ import { getCommunitySettings } from "./settings.js";
 export const DEFAULT_REACTION_KINDS = ["like"] as const;
 const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 
-export interface NxReactionRow {
+export interface NpReactionRow {
   id: string;
   targetType: string;
   targetId: string;
@@ -37,7 +37,7 @@ export interface NxReactionRow {
   createdAt: Date;
 }
 
-export interface NxReactToInput {
+export interface NpReactToInput {
   targetType: string;
   targetId: string;
   memberId: string;
@@ -46,7 +46,7 @@ export interface NxReactToInput {
 
 function validateKind(kind: string): void {
   if (!KIND_RE.test(kind)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "kind",
         message: "kind must match [a-z][a-z0-9_-]{0,29}",
@@ -61,12 +61,12 @@ function validateKind(kind: string): void {
  * the unique-constraint into an error. The first time a member reacts
  * to a comment we also fire a notification to the comment author.
  */
-export async function addReaction(input: NxReactToInput): Promise<NxReactionRow> {
+export async function addReaction(input: NpReactToInput): Promise<NpReactionRow> {
   validateKind(input.kind);
 
   const settings = await getCommunitySettings();
   if (!settings.reactionKinds.includes(input.kind)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "kind",
         message: `Reaction kind '${input.kind}' is not allowed on this site`,
@@ -89,20 +89,20 @@ export async function addReaction(input: NxReactToInput): Promise<NxReactionRow>
 }
 
 async function deriveScopesFor(
-  input: NxReactToInput,
+  input: NpReactToInput,
 ): Promise<ReadonlyArray<{ type: CommunityScope; id: string }>> {
   if (input.targetType !== "comment") return [];
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [comment] = (await db
-    .select({ targetType: nxComments.targetType })
-    .from(nxComments)
-    .where(eq(nxComments.id, input.targetId))
+    .select({ targetType: npComments.targetType })
+    .from(npComments)
+    .where(eq(npComments.id, input.targetId))
     .limit(1)) as Array<{ targetType: string }>;
   if (!comment) return [];
   return [{ type: "collection", id: comment.targetType }];
 }
 
-async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
+async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
   // Phase 18 — derive site_id from the target so the reaction
@@ -122,16 +122,16 @@ async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
   let targetSiteId: string;
   if (input.targetType === "comment") {
     const [t] = (await db
-      .select({ siteId: nxComments.siteId })
-      .from(nxComments)
-      .where(eq(nxComments.id, input.targetId))
+      .select({ siteId: npComments.siteId })
+      .from(npComments)
+      .where(eq(npComments.id, input.targetId))
       .limit(1)) as Array<{ siteId: string }>;
     targetSiteId = t?.siteId ?? requestSiteId;
   } else {
     targetSiteId = requestSiteId;
   }
   if (targetSiteId !== requestSiteId) {
-    throw new NxForbiddenError("reaction", "cross-site");
+    throw new NpForbiddenError("reaction", "cross-site");
   }
 
   // Idempotent insert via ON CONFLICT. The previous select-then-insert
@@ -145,7 +145,7 @@ async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
   // fires when our insert actually created a new reaction, keeping
   // the "first-time only" semantic.
   const inserted = (await db
-    .insert(nxReactions)
+    .insert(npReactions)
     .values({
       targetType: input.targetType,
       targetId: input.targetId,
@@ -154,24 +154,24 @@ async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
       siteId: targetSiteId,
     })
     .onConflictDoNothing()
-    .returning()) as NxReactionRow[];
+    .returning()) as NpReactionRow[];
 
-  let row: NxReactionRow;
+  let row: NpReactionRow;
   if (inserted.length > 0) {
     row = inserted[0]!;
   } else {
     const [existing] = (await db
       .select()
-      .from(nxReactions)
+      .from(npReactions)
       .where(
         and(
-          eq(nxReactions.targetType, input.targetType),
-          eq(nxReactions.targetId, input.targetId),
-          eq(nxReactions.memberId, input.memberId),
-          eq(nxReactions.kind, input.kind),
+          eq(npReactions.targetType, input.targetType),
+          eq(npReactions.targetId, input.targetId),
+          eq(npReactions.memberId, input.memberId),
+          eq(npReactions.kind, input.kind),
         ),
       )
-      .limit(1)) as NxReactionRow[];
+      .limit(1)) as NpReactionRow[];
     if (!existing) throw new Error("Reaction conflict but row not found");
     return existing;
   }
@@ -180,9 +180,9 @@ async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
   // Self-reactions are filtered for both — neither makes sense.
   if (input.targetType === "comment") {
     const [comment] = (await db
-      .select({ memberId: nxComments.memberId })
-      .from(nxComments)
-      .where(eq(nxComments.id, input.targetId))
+      .select({ memberId: npComments.memberId })
+      .from(npComments)
+      .where(eq(npComments.id, input.targetId))
       .limit(1)) as Array<{ memberId: string }>;
     if (comment && comment.memberId !== input.memberId) {
       await createNotification({
@@ -210,7 +210,7 @@ async function doAddReaction(input: NxReactToInput): Promise<NxReactionRow> {
   return row;
 }
 
-export async function removeReaction(input: NxReactToInput): Promise<void> {
+export async function removeReaction(input: NpReactToInput): Promise<void> {
   validateKind(input.kind);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Look up the reaction's recipient BEFORE deleting so the
@@ -230,12 +230,12 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
   let recipientId: string | null = null;
   if (input.targetType === "comment") {
     const [comment] = (await db
-      .select({ memberId: nxComments.memberId, siteId: nxComments.siteId })
-      .from(nxComments)
-      .where(eq(nxComments.id, input.targetId))
+      .select({ memberId: npComments.memberId, siteId: npComments.siteId })
+      .from(npComments)
+      .where(eq(npComments.id, input.targetId))
       .limit(1)) as Array<{ memberId: string; siteId: string }>;
     if (comment && comment.siteId !== requestSiteId) {
-      throw new NxForbiddenError("reaction", "cross-site");
+      throw new NpForbiddenError("reaction", "cross-site");
     }
     if (comment && comment.memberId !== input.memberId) {
       recipientId = comment.memberId;
@@ -248,17 +248,17 @@ export async function removeReaction(input: NxReactToInput): Promise<void> {
   // otherwise a member could drain a recipient's reputation by
   // hammering the endpoint without ever having reacted.
   const deleted = (await db
-    .delete(nxReactions)
+    .delete(npReactions)
     .where(
       and(
-        eq(nxReactions.targetType, input.targetType),
-        eq(nxReactions.targetId, input.targetId),
-        eq(nxReactions.memberId, input.memberId),
-        eq(nxReactions.kind, input.kind),
-        eq(nxReactions.siteId, requestSiteId),
+        eq(npReactions.targetType, input.targetType),
+        eq(npReactions.targetId, input.targetId),
+        eq(npReactions.memberId, input.memberId),
+        eq(npReactions.kind, input.kind),
+        eq(npReactions.siteId, requestSiteId),
       ),
     )
-    .returning({ id: nxReactions.id })) as Array<{ id: string }>;
+    .returning({ id: npReactions.id })) as Array<{ id: string }>;
 
   if (recipientId && deleted.length > 0) {
     await applyReputation(recipientId, {
@@ -282,10 +282,10 @@ export async function countReactions(
 ): Promise<Record<string, number>> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const rows = (await db
-    .select({ kind: nxReactions.kind, total: count() })
-    .from(nxReactions)
-    .where(and(eq(nxReactions.targetType, targetType), eq(nxReactions.targetId, targetId)))
-    .groupBy(nxReactions.kind)) as Array<{ kind: string; total: number | string }>;
+    .select({ kind: npReactions.kind, total: count() })
+    .from(npReactions)
+    .where(and(eq(npReactions.targetType, targetType), eq(npReactions.targetId, targetId)))
+    .groupBy(npReactions.kind)) as Array<{ kind: string; total: number | string }>;
   const out: Record<string, number> = {};
   for (const row of rows) out[row.kind] = Number(row.total);
   return out;
@@ -302,13 +302,13 @@ export async function listMemberReactions(
 ): Promise<string[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const rows = (await db
-    .select({ kind: nxReactions.kind })
-    .from(nxReactions)
+    .select({ kind: npReactions.kind })
+    .from(npReactions)
     .where(
       and(
-        eq(nxReactions.targetType, targetType),
-        eq(nxReactions.targetId, targetId),
-        eq(nxReactions.memberId, memberId),
+        eq(npReactions.targetType, targetType),
+        eq(npReactions.targetId, targetId),
+        eq(npReactions.memberId, memberId),
       ),
     )) as Array<{ kind: string }>;
   return rows.map((r) => r.kind);
@@ -324,7 +324,7 @@ export async function listMemberReactions(
  */
 export async function assertReactableExists(targetType: string, targetId: string): Promise<void> {
   if (targetType !== "comment") {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetType",
         message: `Reactions on '${targetType}' aren't supported yet — only 'comment' is wired today.`,
@@ -333,13 +333,13 @@ export async function assertReactableExists(targetType: string, targetId: string
   }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [comment] = (await db
-    .select({ id: nxComments.id, status: nxComments.status })
-    .from(nxComments)
-    .where(eq(nxComments.id, targetId))
+    .select({ id: npComments.id, status: npComments.status })
+    .from(npComments)
+    .where(eq(npComments.id, targetId))
     .limit(1)) as Array<{ id: string; status: string }>;
-  if (!comment) throw new NxNotFoundError("comment", targetId);
+  if (!comment) throw new NpNotFoundError("comment", targetId);
   if (comment.status === "deleted") {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "Cannot react to a deleted comment" },
     ]);
   }

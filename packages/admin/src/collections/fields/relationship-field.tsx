@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { NxFindResult } from "@nexpress/core";
+import type { NpFindResult } from "@nexpress/core";
 
 import { Badge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
@@ -61,10 +61,10 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
         }
 
         const payload = (await response.json()) as
-          | NxFindResult<RelatedDocument>
+          | NpFindResult<RelatedDocument>
           | { docs?: RelatedDocument[]; items?: RelatedDocument[] };
-        const docs = Array.isArray((payload as NxFindResult<RelatedDocument>).docs)
-          ? (payload as NxFindResult<RelatedDocument>).docs
+        const docs = Array.isArray((payload as NpFindResult<RelatedDocument>).docs)
+          ? (payload as NpFindResult<RelatedDocument>).docs
           : Array.isArray((payload as { items?: RelatedDocument[] }).items)
             ? (payload as { items: RelatedDocument[] }).items
             : [];

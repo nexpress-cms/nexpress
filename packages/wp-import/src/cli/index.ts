@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-import type { NxAuthUser } from "@nexpress/core";
+import type { NpAuthUser } from "@nexpress/core";
 
 import { type ApplyReport, type CollectionMapping } from "../apply/index.js";
 import { type WpImportBundle } from "../parse/types.js";
@@ -97,7 +97,7 @@ export interface CliApplyHooks {
   applyBundle: (
     bundle: WpImportBundle,
     ctx: {
-      actor: NxAuthUser;
+      actor: NpAuthUser;
       dryRun: boolean;
       log: (line: string) => void;
       /** Phase 21.8 — true when the operator passed `--no-create-authors`. */
@@ -126,7 +126,7 @@ export interface CliApplyHooks {
       resumeStatePath: string | null;
     },
   ) => Promise<ApplyReport>;
-  resolveActor: () => Promise<NxAuthUser>;
+  resolveActor: () => Promise<NpAuthUser>;
 }
 
 export async function runCli(
@@ -207,7 +207,7 @@ export async function runCli(
     return 1;
   }
 
-  let actor: NxAuthUser;
+  let actor: NpAuthUser;
   try {
     actor = await hooks.resolveActor();
   } catch (error) {

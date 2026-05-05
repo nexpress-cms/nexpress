@@ -4,8 +4,8 @@ import type { PgTable } from "drizzle-orm/pg-core";
 
 import { getCollectionRegistration, getCollectionTable } from "../collections/registry.js";
 import { getDb } from "../db/runtime.js";
-import { nxComments, nxMembers, nxReports } from "../db/schema/community.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { npComments, npMembers, npReports } from "../db/schema/community.js";
+import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -17,7 +17,7 @@ const MAX_REASON_LENGTH = 1000;
 const SUPPORTED_TARGETS = ["comment", "thread", "reply", "member"] as const;
 type ReportTarget = (typeof SUPPORTED_TARGETS)[number];
 
-export interface NxReportRow {
+export interface NpReportRow {
   id: string;
   reporterId: string;
   targetType: string;
@@ -40,7 +40,7 @@ export interface FileReportInput {
 
 function validateTargetType(value: string): asserts value is ReportTarget {
   if (!(SUPPORTED_TARGETS as readonly string[]).includes(value)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetType",
         message: `targetType must be one of: ${SUPPORTED_TARGETS.join(", ")}`,
@@ -54,22 +54,22 @@ function validateTargetType(value: string): asserts value is ReportTarget {
  * reason is free-form; mods triage it via `listReports` and
  * `resolveReport`.
  */
-export async function fileReport(input: FileReportInput): Promise<NxReportRow> {
+export async function fileReport(input: FileReportInput): Promise<NpReportRow> {
   validateTargetType(input.targetType);
   const targetId = input.targetId.trim();
   if (targetId.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "targetId required" },
     ]);
   }
   const reason = input.reason.trim();
   if (reason.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "reason", message: "Report reason required" },
     ]);
   }
   if (reason.length > MAX_REASON_LENGTH) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "reason", message: `Reason must be ≤ ${MAX_REASON_LENGTH} characters` },
     ]);
   }
@@ -86,7 +86,7 @@ async function doFileReport(
   input: FileReportInput,
   targetId: string,
   reason: string,
-): Promise<NxReportRow> {
+): Promise<NpReportRow> {
   // Verify the target actually exists. Without this, members can fill
   // the moderation queue with reports against UUIDs that point at
   // nothing — and the audit log captures the phantom target id too,
@@ -106,10 +106,10 @@ async function doFileReport(
   // report would surface in the wrong moderator's queue.
   const siteId = await requireSiteId();
   if (target.siteId !== null && target.siteId !== siteId) {
-    throw new NxForbiddenError("report", "cross-site");
+    throw new NpForbiddenError("report", "cross-site");
   }
   const [row] = (await db
-    .insert(nxReports)
+    .insert(npReports)
     .values({
       reporterId: input.reporterId,
       targetType: input.targetType,
@@ -117,7 +117,7 @@ async function doFileReport(
       reason,
       siteId,
     })
-    .returning()) as NxReportRow[];
+    .returning()) as NpReportRow[];
   if (!row) throw new Error("Report insert returned no row");
 
   await recordAuditEvent({
@@ -148,7 +148,7 @@ export interface ListReportsOptions {
 }
 
 export interface ListReportsResult {
-  reports: NxReportRow[];
+  reports: NpReportRow[];
   totalDocs: number;
 }
 
@@ -158,11 +158,11 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   const offset = Math.max(options.offset ?? 0, 0);
 
   const filters = [];
-  if (options.status === "resolved") filters.push(isNotNull(nxReports.resolvedAt));
+  if (options.status === "resolved") filters.push(isNotNull(npReports.resolvedAt));
   else if (options.status === "all") {
     /* no-op */
-  } else filters.push(isNull(nxReports.resolvedAt));
-  if (options.targetType) filters.push(eq(nxReports.targetType, options.targetType));
+  } else filters.push(isNull(npReports.resolvedAt));
+  if (options.targetType) filters.push(eq(npReports.targetType, options.targetType));
 
   // Phase 18 — scope to current tenant so mods on tenant A
   // don't see tenant B's queue. Pass `siteId: null` to skip
@@ -171,7 +171,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   if (options.siteId !== null) {
     const resolvedSite = options.siteId !== undefined ? options.siteId : await getCurrentSiteId();
     if (resolvedSite !== null) {
-      filters.push(eq(nxReports.siteId, resolvedSite));
+      filters.push(eq(npReports.siteId, resolvedSite));
     }
   }
 
@@ -179,13 +179,13 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
 
   const reports = (await db
     .select()
-    .from(nxReports)
+    .from(npReports)
     .where(where)
-    .orderBy(desc(nxReports.createdAt))
+    .orderBy(desc(npReports.createdAt))
     .limit(limit)
-    .offset(offset)) as NxReportRow[];
+    .offset(offset)) as NpReportRow[];
 
-  const [totalRow] = (await db.select({ total: count() }).from(nxReports).where(where)) as Array<{
+  const [totalRow] = (await db.select({ total: count() }).from(npReports).where(where)) as Array<{
     total: number;
   }>;
 
@@ -204,10 +204,10 @@ export interface ResolveReportInput {
  * actual moderation action (hide, ban, etc.) — this only flips the
  * report row and writes an audit entry.
  */
-export async function resolveReport(input: ResolveReportInput): Promise<NxReportRow> {
+export async function resolveReport(input: ResolveReportInput): Promise<NpReportRow> {
   const resolution = input.resolution.trim();
   if (resolution.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "resolution", message: "Resolution label required" },
     ]);
   }
@@ -224,15 +224,15 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
   const requestSiteId = await requireSiteId();
   const [existing] = (await db
     .select()
-    .from(nxReports)
-    .where(eq(nxReports.id, input.reportId))
-    .limit(1)) as NxReportRow[];
-  if (!existing) throw new NxNotFoundError("report", input.reportId);
+    .from(npReports)
+    .where(eq(npReports.id, input.reportId))
+    .limit(1)) as NpReportRow[];
+  if (!existing) throw new NpNotFoundError("report", input.reportId);
   if (existing.siteId !== requestSiteId) {
-    throw new NxForbiddenError("report", "cross-site");
+    throw new NpForbiddenError("report", "cross-site");
   }
   if (existing.resolvedAt) {
-    throw new NxValidationError("Invalid state", [
+    throw new NpValidationError("Invalid state", [
       { field: "report", message: "Report already resolved" },
     ]);
   }
@@ -241,15 +241,15 @@ export async function resolveReport(input: ResolveReportInput): Promise<NxReport
   const resolvedByMemberId = input.actor.kind === "member" ? input.actor.memberId : null;
 
   const [updated] = (await db
-    .update(nxReports)
+    .update(npReports)
     .set({
       resolvedAt: new Date(),
       resolvedByUserId,
       resolvedByMemberId,
       resolution,
     })
-    .where(and(eq(nxReports.id, input.reportId), eq(nxReports.siteId, requestSiteId)))
-    .returning()) as NxReportRow[];
+    .where(and(eq(npReports.id, input.reportId), eq(npReports.siteId, requestSiteId)))
+    .returning()) as NpReportRow[];
   if (!updated) throw new Error("Report update returned no row");
 
   await recordAuditEvent({
@@ -297,20 +297,20 @@ async function assertReportTargetExists(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   if (targetType === "comment" || targetType === "reply") {
     const [row] = (await db
-      .select({ id: nxComments.id, siteId: nxComments.siteId })
-      .from(nxComments)
-      .where(eq(nxComments.id, targetId))
+      .select({ id: npComments.id, siteId: npComments.siteId })
+      .from(npComments)
+      .where(eq(npComments.id, targetId))
       .limit(1)) as Array<{ id: string; siteId: string }>;
-    if (!row) throw new NxNotFoundError(targetType, targetId);
+    if (!row) throw new NpNotFoundError(targetType, targetId);
     return { siteId: row.siteId };
   }
   if (targetType === "member") {
     const [row] = (await db
-      .select({ id: nxMembers.id })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, targetId))
+      .select({ id: npMembers.id })
+      .from(npMembers)
+      .where(eq(npMembers.id, targetId))
       .limit(1)) as Array<{ id: string }>;
-    if (!row) throw new NxNotFoundError("member", targetId);
+    if (!row) throw new NpNotFoundError("member", targetId);
     // Members aren't site-scoped (one nx_members row can have
     // memberships across sites); skip the cross-site check.
     return { siteId: null };
@@ -329,7 +329,7 @@ async function assertReportTargetExists(
       registered = null;
     }
     if (!registered) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "targetType",
           message:
@@ -345,10 +345,10 @@ async function assertReportTargetExists(
       .from(table)
       .where(eq(idCol as never, targetId))
       .limit(1)) as Array<{ id: string; siteId: string | null }>;
-    if (!row) throw new NxNotFoundError("thread", targetId);
+    if (!row) throw new NpNotFoundError("thread", targetId);
     return { siteId: row.siteId ?? null };
   }
-  throw new NxValidationError("Invalid input", [
+  throw new NpValidationError("Invalid input", [
     {
       field: "targetType",
       message: `Reports against "${targetType}" are not supported`,
@@ -363,8 +363,8 @@ export async function unresolvedReportCount(): Promise<number> {
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })
-    .from(nxReports)
-    .where(and(eq(nxReports.siteId, siteId), isNull(nxReports.resolvedAt)))) as Array<{
+    .from(npReports)
+    .where(and(eq(npReports.siteId, siteId), isNull(npReports.resolvedAt)))) as Array<{
     total: number;
   }>;
   return Number(row?.total ?? 0);

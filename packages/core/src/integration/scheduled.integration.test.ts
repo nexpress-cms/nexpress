@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { eq } from "drizzle-orm";
 
 import { hashPassword } from "../auth/password.js";
-import type { NxAuthUser } from "../config/types.js";
-import { nxUsers } from "../db/schema/system.js";
+import type { NpAuthUser } from "../config/types.js";
+import { npUsers } from "../db/schema/system.js";
 import { publishScheduledDocuments } from "../collections/scheduled.js";
 import { saveDocument } from "../collections/pipeline.js";
 import { loadPlugins, resetPlugins } from "../plugins/host.js";
@@ -31,11 +31,11 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
     await closeTestDb();
   });
 
-  async function seedUser(): Promise<NxAuthUser> {
+  async function seedUser(): Promise<NpAuthUser> {
     const db = await getTestDb();
     const hash = await hashPassword("password12345");
     const [row] = await db
-      .insert(nxUsers)
+      .insert(npUsers)
       .values({
         email: "scheduler@example.com",
         password: hash,

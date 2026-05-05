@@ -45,6 +45,6 @@ const SNIPPET = `
 })();
 `.trim();
 
-export function NxColorSchemeScript() {
+export function NpColorSchemeScript() {
   return <script dangerouslySetInnerHTML={{ __html: SNIPPET }} />;
 }

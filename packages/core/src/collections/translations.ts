@@ -1,9 +1,9 @@
 import { eq, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getI18nConfig } from "../i18n/registry.js";
-import type { NxAuthUser } from "../config/types.js";
+import type { NpAuthUser } from "../config/types.js";
 
 import {
   getAllCollectionSlugs,
@@ -47,7 +47,7 @@ export async function findTranslations(
 ): Promise<TranslationRow[]> {
   const config = getCollectionConfig(collection);
   if (!config.i18n) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "collection",
         message: `Collection "${collection}" is not i18n-enabled`,
@@ -57,7 +57,7 @@ export async function findTranslations(
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb();
   const source = await getDocumentById(collection, docId);
-  if (!source) throw new NxNotFoundError(collection, docId);
+  if (!source) throw new NpNotFoundError(collection, docId);
   const groupId = (source as { translationGroupId?: string }).translationGroupId;
   if (!groupId) {
     throw new Error(
@@ -115,11 +115,11 @@ export async function createTranslation(
   collection: string,
   sourceDocId: string,
   targetLocale: string,
-  user: NxAuthUser,
+  user: NpAuthUser,
 ): Promise<{ id: string }> {
   const config = getCollectionConfig(collection);
   if (!config.i18n) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "collection",
         message: `Collection "${collection}" is not i18n-enabled`,
@@ -131,7 +131,7 @@ export async function createTranslation(
     throw new Error("i18n config is not initialised");
   }
   if (!i18n.locales.includes(targetLocale)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetLocale",
         message: `Locale "${targetLocale}" is not configured`,
@@ -140,11 +140,11 @@ export async function createTranslation(
   }
 
   const source = await getDocumentById(collection, sourceDocId);
-  if (!source) throw new NxNotFoundError(collection, sourceDocId);
+  if (!source) throw new NpNotFoundError(collection, sourceDocId);
 
   const sourceLocale = (source as { locale?: string }).locale;
   if (sourceLocale === targetLocale) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetLocale",
         message: `Source row is already in locale "${targetLocale}"`,
@@ -159,7 +159,7 @@ export async function createTranslation(
   // happily accept (since slug differs).
   const existing = await findTranslations(collection, sourceDocId);
   if (existing.some((r) => r.locale === targetLocale)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetLocale",
         message: `A "${targetLocale}" translation already exists for this document`,
@@ -221,29 +221,29 @@ export async function createTranslation(
  * single query). For 1–2 i18n collections this is well under
  * the cost of the existing dashboard widgets.
  */
-export interface NxTranslationProgressLocaleStats {
+export interface NpTranslationProgressLocaleStats {
   count: number;
   missing: number;
 }
 
-export interface NxCollectionTranslationProgress {
+export interface NpCollectionTranslationProgress {
   collection: string;
   totalGroups: number;
-  perLocale: Record<string, NxTranslationProgressLocaleStats>;
+  perLocale: Record<string, NpTranslationProgressLocaleStats>;
 }
 
-export interface NxTranslationProgress {
+export interface NpTranslationProgress {
   defaultLocale: string;
   locales: string[];
-  collections: NxCollectionTranslationProgress[];
+  collections: NpCollectionTranslationProgress[];
 }
 
-export async function getTranslationProgress(): Promise<NxTranslationProgress | null> {
+export async function getTranslationProgress(): Promise<NpTranslationProgress | null> {
   const i18n = getI18nConfig();
   if (!i18n) return null;
 
   const db = getDb();
-  const out: NxCollectionTranslationProgress[] = [];
+  const out: NpCollectionTranslationProgress[] = [];
 
   for (const slug of getAllCollectionSlugs()) {
     const config = getCollectionConfig(slug);
@@ -285,7 +285,7 @@ export async function getTranslationProgress(): Promise<NxTranslationProgress | 
       }
     }
 
-    const perLocale: Record<string, NxTranslationProgressLocaleStats> = {};
+    const perLocale: Record<string, NpTranslationProgressLocaleStats> = {};
     for (const loc of i18n.locales) {
       const count = counts[loc] ?? 0;
       perLocale[loc] = {

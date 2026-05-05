@@ -19,23 +19,23 @@ import {
   verifyStartupSafety,
   verifyTokenFull,
   NX_DEFAULT_SITE_ID,
-  type NxAuthUser,
-  type NxConfig,
-  type NxPluginConfig,
-  type NxResolvedPluginLike,
+  type NpAuthUser,
+  type NpConfig,
+  type NpPluginConfig,
+  type NpResolvedPluginLike,
 } from "@nexpress/core";
-import { registerBlock, type NxBlockDefinition } from "@nexpress/blocks";
+import { registerBlock, type NpBlockDefinition } from "@nexpress/blocks";
 import { cookies, headers } from "next/headers";
 
 // Plugin definitions can ship a `blocks` array (see plugin-sdk's
-// NxPluginDefinition). Core's `loadPlugins` keeps the shape loose
+// NpPluginDefinition). Core's `loadPlugins` keeps the shape loose
 // to avoid a cycle, so we narrow it here when we know we're in
 // the bootstrap path that owns this wiring.
-function pluginBlocks(plugin: NxPluginConfig | NxResolvedPluginLike): NxBlockDefinition[] {
+function pluginBlocks(plugin: NpPluginConfig | NpResolvedPluginLike): NpBlockDefinition[] {
   const blocks = (plugin as { blocks?: unknown }).blocks;
   if (!Array.isArray(blocks)) return [];
   return blocks.filter(
-    (b): b is NxBlockDefinition =>
+    (b): b is NpBlockDefinition =>
       b !== null &&
       typeof b === "object" &&
       typeof (b as { type?: unknown }).type === "string" &&
@@ -43,18 +43,18 @@ function pluginBlocks(plugin: NxPluginConfig | NxResolvedPluginLike): NxBlockDef
   );
 }
 
-function resolvePluginId(plugin: NxPluginConfig | NxResolvedPluginLike): string {
+function resolvePluginId(plugin: NpPluginConfig | NpResolvedPluginLike): string {
   return "manifest" in plugin ? plugin.manifest.id : plugin.id;
 }
 
-export type NxDb = ReturnType<typeof createDbConnection>;
+export type NpDb = ReturnType<typeof createDbConnection>;
 
 export interface BootstrapOptions {
   /**
    * The project's nexpress.config — typically the default export of
    * `src/nexpress.config.ts`.
    */
-  config: NxConfig;
+  config: NpConfig;
   /**
    * The generated Drizzle schema module (e.g. `import * as schema from
    * "@/db/generated/collections"`). Tables are looked up by
@@ -69,7 +69,7 @@ export interface BootstrapOptions {
 }
 
 export type Bootstrap = {
-  readonly getDb: (this: void) => NxDb;
+  readonly getDb: (this: void) => NpDb;
   readonly ensureCoreServices: (this: void) => void;
   readonly ensurePluginsLoaded: (this: void) => Promise<void>;
   readonly ensureJobProducer: (this: void) => Promise<void>;
@@ -93,7 +93,7 @@ function toCamelCase(slug: string): string {
  * Anyone else falls through and the resolver drops the override.
  */
 export async function canActorUseSite(
-  user: NxAuthUser,
+  user: NpAuthUser,
   siteId: string,
 ): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
@@ -130,7 +130,7 @@ function resolveTable(
 export function createBootstrap(options: BootstrapOptions): Bootstrap {
   const { config, generatedSchema } = options;
 
-  let db: NxDb | null = null;
+  let db: NpDb | null = null;
   let servicesInitialized = false;
   let collectionsRegistered = false;
   let pluginsLoaded = false;
@@ -153,7 +153,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     return connectionString;
   }
 
-  function ensureServices(instance: NxDb): void {
+  function ensureServices(instance: NpDb): void {
     if (servicesInitialized) return;
 
     setDb(instance);
@@ -294,7 +294,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     collectionsRegistered = true;
   }
 
-  function getDbInstance(): NxDb {
+  function getDbInstance(): NpDb {
     if (!db) {
       db = createDbConnection({ connectionString: getConnectionString() });
     }
@@ -308,8 +308,8 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // bootstrap consumers) reading the same handle. The cast is
     // structural — `setDb()` accepts `NodePgDatabase<Record<string,
     // unknown>>`, but the actual instance handed in here is the
-    // schema-typed `NxDb`, so the cast is a no-op at runtime.
-    return getDb() as NxDb;
+    // schema-typed `NpDb`, so the cast is a no-op at runtime.
+    return getDb() as NpDb;
   }
 
   async function ensurePluginsLoaded(): Promise<void> {

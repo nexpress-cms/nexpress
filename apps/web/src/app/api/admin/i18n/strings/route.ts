@@ -1,7 +1,7 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   deleteStringOverride,
   getAllStrings,
   getCurrentSiteId,
@@ -13,7 +13,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("i18n/strings", "list");
+      throw new NpForbiddenError("i18n/strings", "list");
     }
 
     const i18n = getI18nConfig();
@@ -102,14 +102,14 @@ export async function GET(request: NextRequest) {
       return { key, values };
     });
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       locales: localeList,
       defaultLocale,
       keys,
       siteId,
     });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -131,7 +131,7 @@ function assertConfiguredLocale(locale: string): void {
   const i18n = getI18nConfig();
   const configured = i18n?.locales ?? ["en"];
   if (!configured.includes(locale)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "locale",
         message: `Locale "${locale}" is not configured. Allowed: ${configured.join(", ")}.`,
@@ -145,7 +145,7 @@ export async function PUT(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("i18n/strings", "update");
+      throw new NpForbiddenError("i18n/strings", "update");
     }
 
     const body = (await readJsonBody(request)) as {
@@ -156,7 +156,7 @@ export async function PUT(request: NextRequest) {
     const locale = typeof body.locale === "string" ? body.locale : null;
     const key = typeof body.key === "string" ? body.key : null;
     if (!locale || !key) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "body", message: "locale + key are required" },
       ]);
     }
@@ -168,15 +168,15 @@ export async function PUT(request: NextRequest) {
           ? null
           : undefined;
     if (value === undefined) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "value", message: "value must be string or null" },
       ]);
     }
 
     await setStringOverride(locale, key, value, { updatedBy: user.id });
-    return nxSuccessResponse({ locale, key, value });
+    return npSuccessResponse({ locale, key, value });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -187,22 +187,22 @@ export async function DELETE(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("i18n/strings", "delete");
+      throw new NpForbiddenError("i18n/strings", "delete");
     }
 
     const params = request.nextUrl.searchParams;
     const locale = params.get("locale");
     const key = params.get("key");
     if (!locale || !key) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "query", message: "locale + key query params are required" },
       ]);
     }
     assertConfiguredLocale(locale);
     await deleteStringOverride(locale, key);
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

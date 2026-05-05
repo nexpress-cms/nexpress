@@ -1,8 +1,8 @@
-import { NxAuthError, signToken, verifyTokenFull } from "@nexpress/core";
+import { NpAuthError, signToken, verifyTokenFull } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const refreshToken = request.cookies.get("nx-refresh")?.value;
 
     if (!refreshToken) {
-      throw new NxAuthError();
+      throw new NpAuthError();
     }
 
     const db = getDb();
@@ -22,10 +22,10 @@ export async function POST(request: NextRequest) {
     const user = await verifyTokenFull(refreshToken, config.secret, db, "refresh");
 
     if (!user) {
-      throw new NxAuthError();
+      throw new NpAuthError();
     }
 
-    const response = nxSuccessResponse({
+    const response = npSuccessResponse({
       user: {
         id: user.id,
         email: user.email,
@@ -42,6 +42,6 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

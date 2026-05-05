@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, Settings2 } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -66,7 +66,7 @@ export function PluginsManager() {
 
   const loadPlugins = useCallback(async () => {
     try {
-      const response = await nxFetch("/api/plugins");
+      const response = await npFetch("/api/plugins");
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) {
         setState({ kind: "error", message: getErrorMessage(payload, "Unable to load plugins.") });
@@ -94,7 +94,7 @@ export function PluginsManager() {
     setToast(null);
 
     try {
-      const response = await nxFetch(`/api/plugins/${plugin.id}`, {
+      const response = await npFetch(`/api/plugins/${plugin.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextEnabled }),
@@ -148,7 +148,7 @@ export function PluginsManager() {
     }
 
     try {
-      const response = await nxFetch(`/api/plugins/${configPlugin.id}`, {
+      const response = await npFetch(`/api/plugins/${configPlugin.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config: parsed }),

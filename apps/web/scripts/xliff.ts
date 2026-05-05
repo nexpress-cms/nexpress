@@ -1,4 +1,4 @@
-import { type NxAuthUser } from "@nexpress/core";
+import { type NpAuthUser } from "@nexpress/core";
 import { runCli } from "@nexpress/xliff";
 
 import "./_load-env";
@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   await ensureFor("read");
   await ensureFor("plugins");
 
-  const importerUser: NxAuthUser = {
+  const importerUser: NpAuthUser = {
     id: "00000000-0000-0000-0000-000000000000",
     email: "xliff-import@local",
     name: "XLIFF importer",

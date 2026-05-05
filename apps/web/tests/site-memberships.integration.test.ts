@@ -165,11 +165,11 @@ describe.skipIf(skipIfNoTestDb())(
         grantSiteMembership,
         getMembership,
       } = await import("@nexpress/core");
-      const { getDb, nxUsers } = await import("@nexpress/core");
+      const { getDb, npUsers } = await import("@nexpress/core");
       await createSite({ id: "cascade", name: "Cascade" });
       await grantSiteMembership("cascade", user.userId, "editor");
       const { eq } = await import("drizzle-orm");
-      await getDb().delete(nxUsers).where(eq(nxUsers.id, user.userId));
+      await getDb().delete(npUsers).where(eq(npUsers.id, user.userId));
       expect(await getMembership("cascade", user.userId)).toBeNull();
     });
   },

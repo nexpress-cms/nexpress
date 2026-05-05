@@ -515,7 +515,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
    * collection (forum plugin's default slug).
    */
   it("file report accepts a `reply` target by looking up the comment row", async () => {
-    const { fileReport, getDb, nxComments } = await import("@nexpress/core");
+    const { fileReport, getDb, npComments } = await import("@nexpress/core");
     const reporter = await seedActiveMember(
       "reply-reporter",
       "reply-r@example.com",
@@ -533,7 +533,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     // synthetic reply against.
     const db = getDb();
     const replyId = "11111111-1111-4111-8111-111111111111";
-    await db.insert(nxComments).values({
+    await db.insert(npComments).values({
       id: replyId,
       memberId: author.memberId,
       targetType: "posts",
@@ -554,7 +554,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
   });
 
   it("file report rejects a `thread` target with an unresolvable id", async () => {
-    const { fileReport, NxNotFoundError, NxValidationError } = await import(
+    const { fileReport, NpNotFoundError, NpValidationError } = await import(
       "@nexpress/core"
     );
     const reporter = await seedActiveMember(
@@ -566,9 +566,9 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     // Two valid outcomes depending on whether prior tests in
     // the same vitest run registered the `discussions`
     // collection (forum plugin):
-    //   - Not registered → NxValidationError (clear "feature
+    //   - Not registered → NpValidationError (clear "feature
     //     not enabled" message)
-    //   - Registered but no such id → NxNotFoundError
+    //   - Registered but no such id → NpNotFoundError
     // Both are correct rejections — the contract is "fileReport
     // doesn't accept thread targets that can't be resolved."
     await expect(
@@ -580,8 +580,8 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
       }),
     ).rejects.toSatisfy(
       (error: unknown) =>
-        error instanceof NxValidationError ||
-        error instanceof NxNotFoundError,
+        error instanceof NpValidationError ||
+        error instanceof NpNotFoundError,
     );
   });
 });

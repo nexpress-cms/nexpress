@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 
-import type { NxAuthUser, NxUserRole } from "../config/types.js";
+import type { NpAuthUser, NpUserRole } from "../config/types.js";
 import { can } from "./capabilities.js";
 
-function userWithRole(role: NxUserRole): NxAuthUser {
+function userWithRole(role: NpUserRole): NpAuthUser {
   return {
     id: "u1",
     email: "u1@example.com",

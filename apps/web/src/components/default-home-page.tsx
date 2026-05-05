@@ -5,7 +5,7 @@ import {
   getI18nConfig,
   getPluginRegistration,
 } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { getCachedActiveTheme, getCachedNavigation } from "@nexpress/next";
 
 /**
@@ -265,7 +265,7 @@ function collectSiteCollections(): string[] {
   for (const slug of getAllCollectionSlugs()) {
     try {
       const config = getCollectionConfig(slug);
-      // No `hideFromSite` field exists on `NxCollectionConfig` today,
+      // No `hideFromSite` field exists on `NpCollectionConfig` today,
       // so this is a future-proof filter point — for now every
       // registered collection shows.
       void config;
@@ -338,7 +338,7 @@ const CORE_FEATURE_LINKS: ReadonlyArray<{
 // install where `pnpm db:migrate` hasn't created the `nx_navigation`
 // or `nx_settings` tables yet. We swallow read errors so the page
 // still renders something useful instead of crashing the whole site.
-async function safeGetNav(location: "header" | "footer"): Promise<NxNavItem[]> {
+async function safeGetNav(location: "header" | "footer"): Promise<NpNavItem[]> {
   try {
     return await getCachedNavigation(location);
   } catch {
@@ -367,7 +367,7 @@ function NavigationCard({
   emptyHint,
 }: {
   location: "header" | "footer";
-  items: NxNavItem[];
+  items: NpNavItem[];
   emptyHint: string;
 }) {
   return (

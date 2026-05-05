@@ -2,8 +2,8 @@ import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxMemberRoles } from "../db/schema/community.js";
-import { NxConflictError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { npMemberRoles } from "../db/schema/community.js";
+import { NpConflictError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -27,7 +27,7 @@ import type { CommunityScope } from "./roles.js";
  * can grant on behalf of any actor.
  */
 
-export interface NxMemberRoleGrantRow {
+export interface NpMemberRoleGrantRow {
   id: string;
   memberId: string;
   role: string;
@@ -52,13 +52,13 @@ export interface GrantMemberRoleInput {
   grantedByUserId: string;
 }
 
-export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMemberRoleGrantRow> {
+export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NpMemberRoleGrantRow> {
   // Validate the role + scope pair is in the registry. Without this
   // a typo silently writes a row that `memberCan` will never match
   // — the grant looks active in the admin UI but does nothing.
   const definition = getCommunityRole(input.role, input.scopeType);
   if (!definition) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "role",
         message: `Unknown role '${input.role}' for scope '${input.scopeType}'`,
@@ -68,12 +68,12 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMe
 
   const scopeId = input.scopeType === "site" ? null : (input.scopeId ?? "").trim();
   if (input.scopeType !== "site" && !scopeId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "scopeId", message: "scopeId required for non-site grants" },
     ]);
   }
   if (input.expiresAt instanceof Date && input.expiresAt.getTime() <= Date.now()) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "expiresAt", message: "expiresAt must be in the future" },
     ]);
   }
@@ -95,31 +95,31 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMe
   // slug to a tenant.
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const existing = (await db
-    .select({ id: nxMemberRoles.id })
-    .from(nxMemberRoles)
+    .select({ id: npMemberRoles.id })
+    .from(npMemberRoles)
     .where(
       and(
-        eq(nxMemberRoles.memberId, input.memberId),
-        eq(nxMemberRoles.role, input.role),
-        eq(nxMemberRoles.scopeType, input.scopeType),
-        eq(nxMemberRoles.siteId, siteId),
+        eq(npMemberRoles.memberId, input.memberId),
+        eq(npMemberRoles.role, input.role),
+        eq(npMemberRoles.scopeType, input.scopeType),
+        eq(npMemberRoles.siteId, siteId),
         normalizedScopeId === null
-          ? isNull(nxMemberRoles.scopeId)
-          : eq(nxMemberRoles.scopeId, normalizedScopeId),
+          ? isNull(npMemberRoles.scopeId)
+          : eq(npMemberRoles.scopeId, normalizedScopeId),
       ),
     )
     .limit(1)) as Array<{ id: string }>;
   if (existing.length > 0) {
-    throw new NxConflictError(`Member already has this role grant in scope '${input.scopeType}'.`);
+    throw new NpConflictError(`Member already has this role grant in scope '${input.scopeType}'.`);
   }
 
   // Race fallback: even with the pre-check, two concurrent grants
   // could slip through. The DB constraint catches that for
   // non-null scopes; the catch block re-maps the error.
-  let row: NxMemberRoleGrantRow;
+  let row: NpMemberRoleGrantRow;
   try {
     const [inserted] = (await db
-      .insert(nxMemberRoles)
+      .insert(npMemberRoles)
       .values({
         memberId: input.memberId,
         role: input.role,
@@ -129,7 +129,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMe
         grantedBy: input.grantedByUserId,
         expiresAt: input.expiresAt ?? null,
       })
-      .returning()) as NxMemberRoleGrantRow[];
+      .returning()) as NpMemberRoleGrantRow[];
     if (!inserted) throw new Error("Grant insert returned no row");
     row = inserted;
   } catch (err) {
@@ -141,7 +141,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMe
     const code = (err as { code?: string } | null)?.code;
     const message = err instanceof Error ? err.message : "";
     if (code === "23505" || /unique|23505|duplicate key/i.test(message)) {
-      throw new NxConflictError(
+      throw new NpConflictError(
         `Member already has this role grant in scope '${input.scopeType}'.`,
       );
     }
@@ -169,7 +169,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NxMe
  * List currently-active grants for a member. Mirrors the
  * `memberCan` filter so expired rows are hidden.
  */
-export async function listMemberRoleGrants(memberId: string): Promise<NxMemberRoleGrantRow[]> {
+export async function listMemberRoleGrants(memberId: string): Promise<NpMemberRoleGrantRow[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Phase 18 — show only grants on the current tenant. A
   // member who's a community-mod on tenant A and not on
@@ -179,15 +179,15 @@ export async function listMemberRoleGrants(memberId: string): Promise<NxMemberRo
   const now = new Date();
   return (await db
     .select()
-    .from(nxMemberRoles)
+    .from(npMemberRoles)
     .where(
       and(
-        eq(nxMemberRoles.memberId, memberId),
-        eq(nxMemberRoles.siteId, siteId),
-        or(isNull(nxMemberRoles.expiresAt), gt(nxMemberRoles.expiresAt, now)),
+        eq(npMemberRoles.memberId, memberId),
+        eq(npMemberRoles.siteId, siteId),
+        or(isNull(npMemberRoles.expiresAt), gt(npMemberRoles.expiresAt, now)),
       ),
     )
-    .orderBy(desc(nxMemberRoles.grantedAt))) as NxMemberRoleGrantRow[];
+    .orderBy(desc(npMemberRoles.grantedAt))) as NpMemberRoleGrantRow[];
 }
 
 export interface RevokeMemberRoleInput {
@@ -210,15 +210,15 @@ export async function revokeMemberRole(input: RevokeMemberRoleInput): Promise<vo
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const requestSiteId = await requireSiteId();
   const deleted = (await db
-    .delete(nxMemberRoles)
-    .where(and(eq(nxMemberRoles.id, input.grantId), eq(nxMemberRoles.siteId, requestSiteId)))
-    .returning()) as NxMemberRoleGrantRow[];
+    .delete(npMemberRoles)
+    .where(and(eq(npMemberRoles.id, input.grantId), eq(npMemberRoles.siteId, requestSiteId)))
+    .returning()) as NpMemberRoleGrantRow[];
   if (deleted.length === 0) {
     // Use NOT_FOUND so the API maps to 404 — distinguishes "you
     // raced another revoke" from "the grant was never there in
     // the first place" only via response timing, but at least
     // the operator sees the right status code.
-    throw new NxNotFoundError("memberRoleGrant", input.grantId);
+    throw new NpNotFoundError("memberRoleGrant", input.grantId);
   }
   const [existing] = deleted;
   await recordAuditEvent({

@@ -1,13 +1,13 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   isSuperAdmin,
   setSuperAdmin,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -34,19 +34,19 @@ export async function PATCH(
 
     const callerIsSuper = await isSuperAdmin(user);
     if (!callerIsSuper) {
-      throw new NxForbiddenError("users/super-admin", "update");
+      throw new NpForbiddenError("users/super-admin", "update");
     }
 
     const { id } = await context.params;
     const body = (await readJsonBody(request)) as { isSuperAdmin?: unknown };
     if (typeof body.isSuperAdmin !== "boolean") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "isSuperAdmin", message: "boolean isSuperAdmin is required" },
       ]);
     }
 
     if (id === user.id && body.isSuperAdmin === false) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "isSuperAdmin",
           message:
@@ -56,9 +56,9 @@ export async function PATCH(
     }
 
     await setSuperAdmin(id, body.isSuperAdmin);
-    return nxSuccessResponse({ id, isSuperAdmin: body.isSuperAdmin });
+    return npSuccessResponse({ id, isSuperAdmin: body.isSuperAdmin });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

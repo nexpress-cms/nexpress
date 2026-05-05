@@ -1,7 +1,7 @@
 import { renderRichText } from "@nexpress/editor";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Long-form post template — kicker / large headline / byline
@@ -9,12 +9,12 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
  * standard post fields (title, content, author, publishedAt)
  * with optional kicker support if the collection adds one.
  */
-export function PostFeatureTemplate({ doc }: NxTemplateRenderProps) {
+export function PostFeatureTemplate({ doc }: NpTemplateRenderProps) {
   const title = (doc as { title?: string }).title ?? "Untitled";
   const kicker = (doc as { kicker?: string }).kicker;
   const author = (doc as { authorName?: string }).authorName;
   const published = (doc as { publishedAt?: string }).publishedAt;
-  const content = (doc as { content?: NxRichTextContent }).content;
+  const content = (doc as { content?: NpRichTextContent }).content;
 
   return (
     <article className="nx-magazine-feature">

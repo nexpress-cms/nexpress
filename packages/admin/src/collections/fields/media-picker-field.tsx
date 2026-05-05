@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { NxFindResult } from "@nexpress/core";
+import type { NpFindResult } from "@nexpress/core";
 
 import { Button } from "../../ui/button.js";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog.js";
@@ -41,7 +41,7 @@ export function MediaPickerField({ value, onChange, relationTo }: MediaPickerFie
           throw new Error("Failed to load media.");
         }
 
-        const payload = (await response.json()) as NxFindResult<MediaDocument>;
+        const payload = (await response.json()) as NpFindResult<MediaDocument>;
         setItems(payload.docs);
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load media.");

@@ -1,6 +1,6 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxForbiddenError,
+  NpForbiddenError,
   getCurrentSiteId,
   isSuperAdmin,
   listAuditEvents,
@@ -8,7 +8,7 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 import { canModerateSite } from "@/lib/site-authz";
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       const superAdmin = await isSuperAdmin(user);
       if (rawSiteFilter === "all") {
         if (!superAdmin) {
-          throw new NxForbiddenError("audit", "cross-site");
+          throw new NpForbiddenError("audit", "cross-site");
         }
         siteIdFilter = null;
       } else if (superAdmin) {
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
         // their own site's audit.
         siteIdFilter = rawSiteFilter;
       } else {
-        throw new NxForbiddenError("audit", "cross-site");
+        throw new NpForbiddenError("audit", "cross-site");
       }
     } else {
       // Implicit "current site" path. Authorize against the
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       // audit log when the proxy resolves a non-default site.
       const currentSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
       if (!(await canModerateSite(user, currentSiteId))) {
-        throw new NxForbiddenError("audit", "read");
+        throw new NpForbiddenError("audit", "read");
       }
     }
 
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
 
     const totalPages = result.totalDocs === 0 ? 0 : Math.ceil(result.totalDocs / limit);
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       docs: result.events,
       totalDocs: result.totalDocs,
       totalPages,
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
       hasPrevPage: page > 1 && result.totalDocs > 0,
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

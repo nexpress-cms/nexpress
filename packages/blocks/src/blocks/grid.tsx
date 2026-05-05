@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 const readNumber = (value: unknown, fallback: number, min = 1, max = 12): number => {
   const n = typeof value === "number" ? value : Number(value);
@@ -25,7 +25,7 @@ const readString = (value: unknown, fallback: string): string =>
  * grid, which keeps every existing leaf block (hero, cta, …)
  * usable inside or outside a grid without changes.
  */
-export const gridBlock: NxBlockDefinition = {
+export const gridBlock: NpBlockDefinition = {
   type: "grid",
   label: "Grid",
   description:

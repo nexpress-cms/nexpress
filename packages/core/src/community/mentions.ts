@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxMembers } from "../db/schema/community.js";
+import { npMembers } from "../db/schema/community.js";
 
 import { createNotification } from "./notifications.js";
 
@@ -35,7 +35,7 @@ export const MENTION_HANDLE_RE = /^[a-z0-9][a-z0-9_-]{2,29}$/;
 
 const MENTION_PATTERN = /(?<![A-Za-z0-9_])@([a-z0-9][a-z0-9_-]{2,29})(?![A-Za-z0-9_-])/g;
 
-export interface NxMentionTarget {
+export interface NpMentionTarget {
   id: string;
   handle: string;
 }
@@ -127,14 +127,14 @@ export function extractMentionHandlesFromDocData(data: Record<string, unknown>):
  * Lookups are case-insensitive on the handle (the storage column
  * stores the canonical lowercased form).
  */
-export async function resolveMentionedMembers(handles: string[]): Promise<NxMentionTarget[]> {
+export async function resolveMentionedMembers(handles: string[]): Promise<NpMentionTarget[]> {
   if (handles.length === 0) return [];
   const lower = Array.from(new Set(handles.map((h) => h.toLowerCase())));
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const rows = (await db
-    .select({ id: nxMembers.id, handle: nxMembers.handle, status: nxMembers.status })
-    .from(nxMembers)
-    .where(inArray(nxMembers.handle, lower))) as Array<{
+    .select({ id: npMembers.id, handle: npMembers.handle, status: npMembers.status })
+    .from(npMembers)
+    .where(inArray(npMembers.handle, lower))) as Array<{
     id: string;
     handle: string;
     status: string;

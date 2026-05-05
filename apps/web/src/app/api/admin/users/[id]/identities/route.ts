@@ -1,11 +1,11 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   listUserIdentities,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -22,11 +22,11 @@ export async function GET(
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("user.identities", "list");
+      throw new NpForbiddenError("user.identities", "list");
     }
     const { id } = await context.params;
     const rows = await listUserIdentities(id);
-    return nxSuccessResponse({
+    return npSuccessResponse({
       identities: rows.map((row) => ({
         id: row.id,
         userId: row.userId,
@@ -38,6 +38,6 @@ export async function GET(
       })),
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -179,22 +179,22 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     expect(del.status).toBe(204);
 
     const db = await getTestDb();
-    const { nxComments } = await import("@nexpress/core");
+    const { npComments } = await import("@nexpress/core");
     const { and, eq } = await import("drizzle-orm");
 
     const onTarget = (await db
       .select()
-      .from(nxComments)
+      .from(npComments)
       .where(
-        and(eq(nxComments.targetType, "posts"), eq(nxComments.targetId, targetDoc)),
+        and(eq(npComments.targetType, "posts"), eq(npComments.targetId, targetDoc)),
       )) as Array<unknown>;
     expect(onTarget).toHaveLength(0);
 
     const onOther = (await db
       .select()
-      .from(nxComments)
+      .from(npComments)
       .where(
-        and(eq(nxComments.targetType, "posts"), eq(nxComments.targetId, otherDoc)),
+        and(eq(npComments.targetType, "posts"), eq(npComments.targetId, otherDoc)),
       )) as Array<unknown>;
     expect(onOther).toHaveLength(1);
   });
@@ -214,8 +214,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     );
 
     const db = await getTestDb();
-    const { nxComments } = await import("@nexpress/core");
-    const all = (await db.select().from(nxComments)) as Array<unknown>;
+    const { npComments } = await import("@nexpress/core");
+    const all = (await db.select().from(npComments)) as Array<unknown>;
     // Parent + 2 replies all gone (parent went via the explicit
     // cascade in deleteDocumentImpl, replies via the nx_comments
     // parent_id self-FK).
@@ -237,9 +237,9 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     );
 
     const db = await getTestDb();
-    const { nxReactions, nxComments } = await import("@nexpress/core");
-    const reactions = (await db.select().from(nxReactions)) as Array<unknown>;
-    const comments = (await db.select().from(nxComments)) as Array<unknown>;
+    const { npReactions, npComments } = await import("@nexpress/core");
+    const reactions = (await db.select().from(npReactions)) as Array<unknown>;
+    const comments = (await db.select().from(npComments)) as Array<unknown>;
     // Reactions live on the comment via the polymorphic
     // (target_type='comment', target_id=$commentId) shape; there's
     // no DB-level FK from nx_reactions to nx_comments, so the
@@ -263,8 +263,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     // that allows this (the existing reactions API is comment-only
     // until 9.4, but the schema supports the shape).
     const db = await getTestDb();
-    const { nxReactions } = await import("@nexpress/core");
-    await db.insert(nxReactions).values({
+    const { npReactions } = await import("@nexpress/core");
+    await db.insert(npReactions).values({
       targetType: "posts",
       targetId: doc,
       memberId: member.memberId,
@@ -276,7 +276,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
       { params: Promise.resolve({ slug: "posts", id: doc }) },
     );
 
-    const remaining = (await db.select().from(nxReactions)) as Array<unknown>;
+    const remaining = (await db.select().from(npReactions)) as Array<unknown>;
     expect(remaining).toHaveLength(0);
   });
 
@@ -310,8 +310,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     expect(del.status).toBe(204);
 
     const db = await getTestDb();
-    const { nxComments } = await import("@nexpress/core");
-    const remaining = (await db.select().from(nxComments)) as Array<unknown>;
+    const { npComments } = await import("@nexpress/core");
+    const remaining = (await db.select().from(npComments)) as Array<unknown>;
     expect(remaining).toHaveLength(0);
   });
 
@@ -333,24 +333,24 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     );
 
     const db = await getTestDb();
-    const { nxComments, nxReactions } = await import("@nexpress/core");
+    const { npComments, npReactions } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const survivingComments = (await db
       .select()
-      .from(nxComments)
-      .where(eq(nxComments.id, commentB))) as Array<unknown>;
+      .from(npComments)
+      .where(eq(npComments.id, commentB))) as Array<unknown>;
     expect(survivingComments).toHaveLength(1);
     const survivingReactions = (await db
       .select()
-      .from(nxReactions)
-      .where(eq(nxReactions.targetId, commentB))) as Array<unknown>;
+      .from(npReactions)
+      .where(eq(npReactions.targetId, commentB))) as Array<unknown>;
     expect(survivingReactions).toHaveLength(1);
 
     // commentA is gone (cascade cleanup).
     const goneComments = (await db
       .select()
-      .from(nxComments)
-      .where(eq(nxComments.id, commentA))) as Array<unknown>;
+      .from(npComments)
+      .where(eq(npComments.id, commentA))) as Array<unknown>;
     expect(goneComments).toHaveLength(0);
   });
 
@@ -380,7 +380,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
 
     // File two reports — one against each comment. Only the report
     // pointing at the about-to-cascade comment should disappear.
-    const { fileReport, nxReports } = await import("@nexpress/core");
+    const { fileReport, npReports } = await import("@nexpress/core");
     await fileReport({
       reporterId: reporter.memberId,
       targetType: "comment",
@@ -403,7 +403,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
 
     const db = await getTestDb();
     const { eq } = await import("drizzle-orm");
-    const remaining = (await db.select().from(nxReports)) as Array<{
+    const remaining = (await db.select().from(npReports)) as Array<{
       targetId: string;
     }>;
     // The unrelated report still points at the surviving comment.
@@ -414,8 +414,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     // returns zero rows.
     const orphans = (await db
       .select()
-      .from(nxReports)
-      .where(eq(nxReports.targetId, targetCommentId))) as Array<unknown>;
+      .from(npReports)
+      .where(eq(npReports.targetId, targetCommentId))) as Array<unknown>;
     expect(orphans).toHaveLength(0);
   });
 
@@ -429,7 +429,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     const docToKill = await seedStaffPost(editor);
     await postComment(offender, "posts", docToKill, "noise");
 
-    const { fileReport, nxReports } = await import("@nexpress/core");
+    const { fileReport, npReports } = await import("@nexpress/core");
     await fileReport({
       reporterId: reporter.memberId,
       targetType: "member",
@@ -448,8 +448,8 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     const { eq } = await import("drizzle-orm");
     const memberReports = (await db
       .select()
-      .from(nxReports)
-      .where(eq(nxReports.targetType, "member"))) as Array<unknown>;
+      .from(npReports)
+      .where(eq(npReports.targetType, "member"))) as Array<unknown>;
     expect(memberReports).toHaveLength(1);
   });
 });

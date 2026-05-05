@@ -1,13 +1,13 @@
 declare module "@nexpress/core" {
   export type {
-    NxThemeColors,
-    NxThemeShape,
-    NxThemeTokens,
-    NxThemeTypography,
+    NpThemeColors,
+    NpThemeShape,
+    NpThemeTokens,
+    NpThemeTypography,
   } from "../../../core/src/theme/types.js";
   export type {
-    NxThemeManifest,
-    NxRegisteredTheme,
+    NpThemeManifest,
+    NpRegisteredTheme,
   } from "../../../core/src/config/types.js";
   export { DEFAULT_THEME } from "../../../core/src/theme/defaults.js";
   export { sanitizeTokenValue } from "../../../core/src/theme/sanitize.js";

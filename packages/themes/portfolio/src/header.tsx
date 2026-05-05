@@ -1,4 +1,4 @@
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
@@ -20,12 +20,12 @@ export async function PortfolioHeader() {
         <>
           <nav aria-label="Main" className="nx-portfolio-nav-desktop">
             <ul className="nx-portfolio-nav">
-              {items.map((item: NxNavItem, index: number) => (
+              {items.map((item: NpNavItem, index: number) => (
                 <li key={`portfolio-nav-${index.toString()}`} className="nx-portfolio-nav-item">
                   <a href={item.url}>{item.label}</a>
                   {item.children && item.children.length > 0 ? (
                     <ul className="nx-portfolio-subnav">
-                      {item.children.map((child: NxNavItem, childIndex: number) => (
+                      {item.children.map((child: NpNavItem, childIndex: number) => (
                         <li key={`portfolio-nav-${index.toString()}-${childIndex.toString()}`}>
                           <a href={child.url}>{child.label}</a>
                         </li>

@@ -1,7 +1,7 @@
-import { can, NxForbiddenError, staffRestoreComment } from "@nexpress/core";
+import { can, NpForbiddenError, staffRestoreComment } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -13,13 +13,13 @@ export async function POST(
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
-      throw new NxForbiddenError("comments", "restore");
+      throw new NpForbiddenError("comments", "restore");
     }
 
     const { id } = await params;
     await staffRestoreComment(id, user.id);
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

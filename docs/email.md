@@ -78,16 +78,16 @@ NX_SMTP_SECURE=true
 
 ## Custom adapters
 
-Any adapter implementing `NxEmailAdapter` works. Use this when your
+Any adapter implementing `NpEmailAdapter` works. Use this when your
 provider has a native HTTP SDK (Resend, SendGrid, Postmark) that you'd
 rather call directly than go through SMTP.
 
 ```ts
 // apps/web/src/lib/init-core.ts
-import { setEmailAdapter, type NxEmailAdapter, type NxEmailMessage } from "@nexpress/core";
+import { setEmailAdapter, type NpEmailAdapter, type NpEmailMessage } from "@nexpress/core";
 import { Resend } from "resend";
 
-class ResendAdapter implements NxEmailAdapter {
+class ResendAdapter implements NpEmailAdapter {
   readonly kind = "resend";
   private client: Resend;
   private from: string;
@@ -97,7 +97,7 @@ class ResendAdapter implements NxEmailAdapter {
     this.from = from;
   }
 
-  async send(msg: NxEmailMessage) {
+  async send(msg: NpEmailMessage) {
     await this.client.emails.send({
       from: msg.from ?? this.from,
       to: msg.to,
@@ -128,7 +128,7 @@ The handler calls `buildInviteEmail` / `buildResetEmail` from
 inline HTML shell that renders reliably in most webmail clients and
 takes three variables:
 
-- `siteName` — populated from `NxConfig.site.name`.
+- `siteName` — populated from `NpConfig.site.name`.
 - `name` — the recipient's display name.
 - `resetUrl` — the full URL including the one-time token.
 

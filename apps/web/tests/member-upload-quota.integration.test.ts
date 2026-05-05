@@ -79,9 +79,9 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
   // `nx_settings`, so this is belt-and-braces.
   afterEach(async () => {
     const db = await getTestDb();
-    const { nxSettings } = await import("@nexpress/core");
+    const { npSettings } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
-    await db.delete(nxSettings).where(eq(nxSettings.key, "community"));
+    await db.delete(npSettings).where(eq(npSettings.key, "community"));
   });
   afterAll(async () => {
     await closeTestDb();
@@ -145,12 +145,12 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     // `deletedAt`). The next upload should now pass because the
     // quota count filters by `deletedAt IS NULL`.
     const db = await getTestDb();
-    const { nxMedia } = await import("@nexpress/core");
+    const { npMedia } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     await db
-      .update(nxMedia)
+      .update(npMedia)
       .set({ deletedAt: new Date() })
-      .where(eq(nxMedia.id, mediaId));
+      .where(eq(npMedia.id, mediaId));
 
     const retry = await uploadPOST(uploadRequest(member));
     expect(retry.status).toBe(202);
@@ -166,13 +166,13 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     expect(old.status).toBe(202);
     const oldBody = await readJson<{ id: string }>(old);
     const db = await getTestDb();
-    const { nxMedia } = await import("@nexpress/core");
+    const { npMedia } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const longAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
     await db
-      .update(nxMedia)
+      .update(npMedia)
       .set({ createdAt: longAgo })
-      .where(eq(nxMedia.id, oldBody.body.id));
+      .where(eq(npMedia.id, oldBody.body.id));
 
     // Two more should now pass; a fourth would bump us to perDay=3.
     const a = await uploadPOST(uploadRequest(member));
@@ -188,13 +188,13 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     // with a perDay=0 quota that would block any member, staff
     // sail through.
     await setQuota({ perDay: 0, total: 0 });
-    const { uploadMedia, hashPassword, nxUsers } = await import("@nexpress/core");
+    const { uploadMedia, hashPassword, npUsers } = await import("@nexpress/core");
     const db = await getTestDb();
     const password = await hashPassword("password12345");
     const [user] = (await db
-      .insert(nxUsers)
+      .insert(npUsers)
       .values({ email: "quota-staff@example.com", password, name: "S", role: "editor" })
-      .returning({ id: nxUsers.id })) as Array<{ id: string }>;
+      .returning({ id: npUsers.id })) as Array<{ id: string }>;
 
     const result = await uploadMedia(
       {
@@ -208,7 +208,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
   });
 
   it("validation rejects negative or non-integer quota values", async () => {
-    const { validateCommunitySettingsPatch, getCommunitySettings, NxValidationError } =
+    const { validateCommunitySettingsPatch, getCommunitySettings, NpValidationError } =
       await import("@nexpress/core");
     const current = await getCommunitySettings();
 
@@ -217,7 +217,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
         validateCommunitySettingsPatch(current, patch);
         throw new Error("expected validation to throw");
       } catch (err) {
-        if (!(err instanceof NxValidationError)) throw err;
+        if (!(err instanceof NpValidationError)) throw err;
         const detail = err.errors.find((e) => e.field === field);
         expect(detail).toBeDefined();
         expect(detail?.message).toMatch(/non-negative integer/);
@@ -264,15 +264,15 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
 
     // Sanity: exactly one row in the DB despite the race.
     const db = await getTestDb();
-    const { nxMedia } = await import("@nexpress/core");
+    const { npMedia } = await import("@nexpress/core");
     const { and, eq, isNull } = await import("drizzle-orm");
     const rows = (await db
       .select()
-      .from(nxMedia)
+      .from(npMedia)
       .where(
         and(
-          eq(nxMedia.uploadedByMemberId, member.memberId),
-          isNull(nxMedia.deletedAt),
+          eq(npMedia.uploadedByMemberId, member.memberId),
+          isNull(npMedia.deletedAt),
         ),
       )) as Array<unknown>;
     expect(rows).toHaveLength(1);
@@ -323,7 +323,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
       // First upload — storage fails, row should be cleaned up.
       const failed = await uploadPOST(uploadRequest(member));
       // The route maps the thrown error to a 500 (or whatever
-      // `nxErrorResponse` produces for a non-`NxError` throw).
+      // `npErrorResponse` produces for a non-`NpError` throw).
       expect(failed.status).toBeGreaterThanOrEqual(500);
 
       // Restore the working adapter and confirm the member can
@@ -338,15 +338,15 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
 
       // Sanity: the failed row didn't survive in the DB.
       const db = await getTestDb();
-      const { nxMedia } = await import("@nexpress/core");
+      const { npMedia } = await import("@nexpress/core");
       const { and, eq, isNull } = await import("drizzle-orm");
       const live = (await db
         .select()
-        .from(nxMedia)
+        .from(npMedia)
         .where(
           and(
-            eq(nxMedia.uploadedByMemberId, member.memberId),
-            isNull(nxMedia.deletedAt),
+            eq(npMedia.uploadedByMemberId, member.memberId),
+            isNull(npMedia.deletedAt),
           ),
         )) as Array<unknown>;
       expect(live).toHaveLength(2);

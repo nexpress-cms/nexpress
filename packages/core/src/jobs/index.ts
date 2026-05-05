@@ -11,14 +11,14 @@ export {
   listWorkerHealth,
   purgeStaleWorkers,
   countAliveWorkers,
-  type NxWorkerHeartbeat,
-  type NxWorkerHealthSummary,
+  type NpWorkerHeartbeat,
+  type NpWorkerHealthSummary,
 } from "./heartbeat.js";
 export {
   getJobsPauseState,
   setJobsPauseState,
   PAUSE_SYNC_INTERVAL_MS,
-  type NxJobsPauseState,
+  type NpJobsPauseState,
   type SetJobsPauseStateInput,
 } from "./pause-state.js";
 export {
@@ -29,6 +29,6 @@ export {
   runInJobContext,
   getCurrentJobId,
   DEFAULT_JOB_LOG_RETENTION_MS,
-  type NxJobLogEntry,
+  type NpJobLogEntry,
   type ListJobLogsOptions,
 } from "./job-log.js";

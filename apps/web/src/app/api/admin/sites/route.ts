@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   createSite,
   isSuperAdmin,
   listSites,
@@ -8,7 +8,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -31,12 +31,12 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!(await isSuperAdmin(user))) {
-      throw new NxForbiddenError("sites", "list");
+      throw new NpForbiddenError("sites", "list");
     }
     const sites = await listSites();
-    return nxSuccessResponse({ docs: sites });
+    return npSuccessResponse({ docs: sites });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -47,11 +47,11 @@ export async function POST(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!(await isSuperAdmin(user))) {
-      throw new NxForbiddenError("sites", "create");
+      throw new NpForbiddenError("sites", "create");
     }
     const body = await readJsonBody(request);
     if (typeof body !== "object" || body === null) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "body", message: "Request body must be an object" },
       ]);
     }
@@ -62,12 +62,12 @@ export async function POST(request: NextRequest) {
       description?: unknown;
     };
     if (typeof id !== "string" || !id) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: "id is required" },
       ]);
     }
     if (typeof name !== "string" || !name) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "name", message: "name is required" },
       ]);
     }
@@ -77,9 +77,9 @@ export async function POST(request: NextRequest) {
       hostname: typeof hostname === "string" ? hostname : null,
       description: typeof description === "string" ? description : null,
     });
-    return nxSuccessResponse(site);
+    return npSuccessResponse(site);
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

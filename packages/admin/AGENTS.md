@@ -13,13 +13,13 @@ src/
 ├── collections/         # Collection CRUD views
 │   ├── collection-list-view.tsx    # List + pagination + search
 │   ├── collection-edit-view.tsx    # Create/edit form (react-hook-form + Zod)
-│   ├── field-renderer.tsx          # Maps NxFieldConfig → UI controls (490 lines)
+│   ├── field-renderer.tsx          # Maps NpFieldConfig → UI controls (490 lines)
 │   └── fields/                     # Specialized field editors (array, relationship, media-picker)
 ├── media/               # Media library grid + upload zone
 ├── settings/            # Theme editor, navigation editor, user management
 ├── dashboard/           # Dashboard view
 ├── layout/              # AdminShell (sidebar + topbar)
-├── lib/                 # api-client.ts (nxFetch helper for API calls)
+├── lib/                 # api-client.ts (npFetch helper for API calls)
 ├── client.ts            # Package client entry — re-exports all client views + UI primitives
 ├── index.ts             # Package root entry — types + server-safe exports
 └── next-shim.d.ts       # Type shims for next/link and next/navigation (tsup build needs these)
@@ -34,7 +34,7 @@ src/
 | Change admin layout/nav         | `layout/admin-shell.tsx`                                             | Client component; receives user + collections props from server layout     |
 | Change media library UI         | `media/media-library.tsx`                                            | Client component; calls `/api/media` endpoints                             |
 | Add an admin settings page      | `settings/`                                                          | Follow existing view pattern; add to AdminShell nav                        |
-| Change API call patterns        | `lib/api-client.ts`                                                  | `nxFetch` wraps fetch with auth headers + CSRF                             |
+| Change API call patterns        | `lib/api-client.ts`                                                  | `npFetch` wraps fetch with auth headers + CSRF                             |
 
 ## CLIENT/SERVER BOUNDARY
 
@@ -48,7 +48,7 @@ src/
 
 ## CONVENTIONS
 
-- **`@nexpress/core` is types-only here** — admin imports `type { NxCollectionConfig, NxFieldConfig, ... }` from core. Never import runtime/server exports from core. All data access goes through HTTP API calls to `/api/*`.
+- **`@nexpress/core` is types-only here** — admin imports `type { NpCollectionConfig, NpFieldConfig, ... }` from core. Never import runtime/server exports from core. All data access goes through HTTP API calls to `/api/*`.
 - **`next-shim.d.ts`** exists because this package uses `next/link` and `next/navigation` but is built outside a Next app. Do not remove it — tsc will fail.
 - **`.js` extensions** in all relative imports (NodeNext resolution).
 - **`as never` casts** exist in `field-renderer.tsx` and `fields/array-field-editor.tsx` for complex generic intersections. Minimize but don't add more.

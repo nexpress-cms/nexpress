@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
-import { nxStringOverrides } from "../db/schema/system.js";
+import { npStringOverrides } from "../db/schema/system.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -41,12 +41,12 @@ export async function loadStringOverridesForSite(
   const db = getDb();
   const rows = (await db
     .select({
-      locale: nxStringOverrides.locale,
-      key: nxStringOverrides.key,
-      value: nxStringOverrides.value,
+      locale: npStringOverrides.locale,
+      key: npStringOverrides.key,
+      value: npStringOverrides.value,
     })
-    .from(nxStringOverrides)
-    .where(eq(nxStringOverrides.siteId, siteId))) as Array<{
+    .from(npStringOverrides)
+    .where(eq(npStringOverrides.siteId, siteId))) as Array<{
     locale: string;
     key: string;
     value: string | null;
@@ -124,7 +124,7 @@ export async function setStringOverride(
     options?.siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const now = new Date();
   await db
-    .insert(nxStringOverrides)
+    .insert(npStringOverrides)
     .values({
       siteId,
       locale,
@@ -135,9 +135,9 @@ export async function setStringOverride(
     })
     .onConflictDoUpdate({
       target: [
-        nxStringOverrides.siteId,
-        nxStringOverrides.locale,
-        nxStringOverrides.key,
+        npStringOverrides.siteId,
+        npStringOverrides.locale,
+        npStringOverrides.key,
       ],
       set: {
         value,
@@ -162,12 +162,12 @@ export async function deleteStringOverride(
   const siteId =
     options?.siteId ?? (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   await db
-    .delete(nxStringOverrides)
+    .delete(npStringOverrides)
     .where(
       and(
-        eq(nxStringOverrides.siteId, siteId),
-        eq(nxStringOverrides.locale, locale),
-        eq(nxStringOverrides.key, key),
+        eq(npStringOverrides.siteId, siteId),
+        eq(npStringOverrides.locale, locale),
+        eq(npStringOverrides.key, key),
       ),
     );
   clearStringOverrideCacheForSite(siteId);
@@ -178,7 +178,7 @@ export async function deleteStringOverride(
  * and by exporters). Returns the raw rows including null-
  * valued markers so the UI can show "this WAS overridden".
  */
-export interface NxStringOverrideRow {
+export interface NpStringOverrideRow {
   siteId: string;
   locale: string;
   key: string;
@@ -189,11 +189,11 @@ export interface NxStringOverrideRow {
 
 export async function listStringOverridesForSite(
   siteId: string,
-): Promise<NxStringOverrideRow[]> {
+): Promise<NpStringOverrideRow[]> {
   const db = getDb();
   const rows = (await db
     .select()
-    .from(nxStringOverrides)
-    .where(eq(nxStringOverrides.siteId, siteId))) as NxStringOverrideRow[];
+    .from(npStringOverrides)
+    .where(eq(npStringOverrides.siteId, siteId))) as NpStringOverrideRow[];
   return rows;
 }

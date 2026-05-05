@@ -1,4 +1,4 @@
-import { NxThemeStyle } from "@nexpress/theme";
+import { NpThemeStyle } from "@nexpress/theme";
 import { getCachedTheme } from "@nexpress/next";
 
 import { getCachedActiveTheme } from "@/lib/cached-theme";
@@ -54,7 +54,7 @@ export default async function SiteLayout({
 
   return (
     <>
-      <NxThemeStyle theme={tokens} />
+      <NpThemeStyle theme={tokens} />
       {/*
         Theme-owned CSS — emitted as `<style data-nx-theme="{id}">`
         so DevTools makes the source obvious. Inactive themes

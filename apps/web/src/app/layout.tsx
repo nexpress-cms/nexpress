@@ -21,7 +21,7 @@ import { i18nConfig } from "@/i18n.config";
  *
  * Color scheme handling intentionally lives outside the
  * framework: themes that want light/dark switching mount
- * `<NxColorSchemeScript />` (re-exported from `@nexpress/theme`)
+ * `<NpColorSchemeScript />` (re-exported from `@nexpress/theme`)
  * inside their own shell and ship their own CSS overrides.
  * The framework no longer prescribes a dark-mode shape so
  * each theme can choose whatever color-mode policy fits its

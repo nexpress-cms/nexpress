@@ -20,7 +20,7 @@ import { PATCH as collectionPATCH } from "@/app/api/collections/[slug]/[id]/rout
 
 import { NextRequest } from "next/server";
 
-import type { NxReputationEvent } from "@nexpress/core";
+import type { NpReputationEvent } from "@nexpress/core";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -142,7 +142,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
     it("pending creates do NOT credit `document.created` reputation", async () => {
       await registerDiscussionsWith("pending");
       const core = await import("@nexpress/core");
-      const events: NxReputationEvent[] = [];
+      const events: NpReputationEvent[] = [];
       core.setReputationAdapter({
         apply: (event) => {
           events.push(event);
@@ -158,12 +158,12 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       // restore before earning reputation.
       expect(events).toHaveLength(0);
       const db = await getTestDb();
-      const { nxMembers } = await import("@nexpress/core");
+      const { npMembers } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const [row] = (await db
-        .select({ reputation: nxMembers.reputation })
-        .from(nxMembers)
-        .where(eq(nxMembers.id, member.memberId))
+        .select({ reputation: npMembers.reputation })
+        .from(npMembers)
+        .where(eq(npMembers.id, member.memberId))
         .limit(1)) as Array<{ reputation: number }>;
       expect(row.reputation).toBe(0);
     });
@@ -199,12 +199,12 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
 
       // Audit captured `document.flag` (not `document.create`) with metadata.
       const db = await getTestDb();
-      const { nxAuditEvents } = await import("@nexpress/core");
+      const { npAuditEvents } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const audits = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "document.flag"))) as Array<{
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "document.flag"))) as Array<{
         actorMemberId: string | null;
         targetType: string | null;
         payload: Record<string, unknown>;
@@ -289,16 +289,16 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       expect(res.status).toBe(201);
 
       const db = await getTestDb();
-      const { nxAuditEvents } = await import("@nexpress/core");
+      const { npAuditEvents } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const flag = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "document.flag"))) as Array<unknown>;
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "document.flag"))) as Array<unknown>;
       const create = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "document.create"))) as Array<unknown>;
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "document.create"))) as Array<unknown>;
       expect(flag).toHaveLength(1);
       expect(create).toHaveLength(0);
     });
@@ -319,16 +319,16 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       expect(body.body.status).toBe("pending");
 
       const db = await getTestDb();
-      const { nxAuditEvents } = await import("@nexpress/core");
+      const { npAuditEvents } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const flag = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "document.flag"))) as Array<unknown>;
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "document.flag"))) as Array<unknown>;
       const create = (await db
         .select()
-        .from(nxAuditEvents)
-        .where(eq(nxAuditEvents.action, "document.create"))) as Array<unknown>;
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.action, "document.create"))) as Array<unknown>;
       expect(flag).toHaveLength(0);
       expect(create).toHaveLength(1);
     });
@@ -336,7 +336,7 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
     it("flagged creates do NOT credit reputation (mirrors comment.flag)", async () => {
       const core = await import("@nexpress/core");
       core.setSpamAdapter({ check: () => ({ kind: "flag" }) });
-      const events: NxReputationEvent[] = [];
+      const events: NpReputationEvent[] = [];
       core.setReputationAdapter({
         apply: (event) => {
           events.push(event);
@@ -444,15 +444,15 @@ describe.skipIf(skipIfNoTestDb())("member-write moderation gate (Phase 9.7c)", (
       // mod scanning `document.flag` rows can tell create-flags
       // from edit-flags.
       const db = await getTestDb();
-      const { nxAuditEvents } = await import("@nexpress/core");
+      const { npAuditEvents } = await import("@nexpress/core");
       const { and, eq } = await import("drizzle-orm");
       const audits = (await db
         .select()
-        .from(nxAuditEvents)
+        .from(npAuditEvents)
         .where(
           and(
-            eq(nxAuditEvents.action, "document.flag"),
-            eq(nxAuditEvents.targetId, docId),
+            eq(npAuditEvents.action, "document.flag"),
+            eq(npAuditEvents.targetId, docId),
           ),
         )) as Array<{ payload: Record<string, unknown> }>;
       expect(audits).toHaveLength(1);

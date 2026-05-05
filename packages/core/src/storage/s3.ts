@@ -8,7 +8,7 @@ import type { S3Client } from "@aws-sdk/client-s3";
 // don't pay the import cost.
 import type * as awsS3 from "@aws-sdk/client-s3";
 
-import type { NxFileMetadata, NxStorageAdapter } from "./types.js";
+import type { NpFileMetadata, NpStorageAdapter } from "./types.js";
 
 export interface S3StorageAdapterConfig {
   bucket: string;
@@ -24,7 +24,7 @@ type S3Module = typeof awsS3;
 
 let s3ModulePromise: Promise<S3Module> | null = null;
 
-export class S3StorageAdapter implements NxStorageAdapter {
+export class S3StorageAdapter implements NpStorageAdapter {
   private clientPromise: Promise<S3Client> | null = null;
 
   constructor(private readonly config: S3StorageAdapterConfig) {}
@@ -32,7 +32,7 @@ export class S3StorageAdapter implements NxStorageAdapter {
   async upload(
     key: string,
     data: Buffer | ReadableStream,
-    metadata: NxFileMetadata,
+    metadata: NpFileMetadata,
   ): Promise<void> {
     const [{ PutObjectCommand }, client] = await Promise.all([
       loadS3Module(),

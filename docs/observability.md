@@ -21,7 +21,7 @@ the email setup) and every downstream call site picks them up.
 ## Logger
 
 ```ts
-import { setLogger, type NxLogger } from "@nexpress/core";
+import { setLogger, type NpLogger } from "@nexpress/core";
 
 setLogger({
   debug: (msg, ctx) => myLogger.debug({ ctx }, msg),
@@ -43,7 +43,7 @@ its own keys at known call sites:
 | Plugin `ctx.log` | `pluginId` |
 | pg-boss handler error | `type`, `jobId`, `error`, `stack` |
 | `revalidateCollection` skip | `target`, `error` |
-| `nxErrorResponse` 500 | `name`, `message`, `stack` |
+| `npErrorResponse` 500 | `name`, `message`, `stack` |
 
 ### pino example
 
@@ -74,13 +74,13 @@ setLogger({
 ## Error reporter
 
 ```ts
-import { setErrorReporter, type NxErrorReporter } from "@nexpress/core";
+import { setErrorReporter, type NpErrorReporter } from "@nexpress/core";
 
-const reporter: NxErrorReporter = {
+const reporter: NpErrorReporter = {
   captureException(error, context) {
     // Forward to your tracker. The framework guarantees `error` is an
     // Error instance and that this function is never called for handled
-    // NxError responses (only for unexpected 500s).
+    // NpError responses (only for unexpected 500s).
   },
 };
 setErrorReporter(reporter);
@@ -118,7 +118,7 @@ setErrorReporter({
 
 | Boundary | What's reported | Tags |
 |---|---|---|
-| API route 500 | Any non-`NxError` thrown from a handler. `NxValidationError`, `NxForbiddenError`, etc. are intentional 4xx responses and are **not** reported. | `source: "api"` |
+| API route 500 | Any non-`NpError` thrown from a handler. `NpValidationError`, `NpForbiddenError`, etc. are intentional 4xx responses and are **not** reported. | `source: "api"` |
 | pg-boss job handler | Anything the registered handler throws. Re-thrown after reporting so pg-boss applies its retry policy. | `source: "worker"`, `jobType` |
 | Plugin hook handler | Propagates to whoever called `runHook` / `runHookAndCollect`; reaches the API boundary above when a content write triggers it. | `source: "api"` |
 

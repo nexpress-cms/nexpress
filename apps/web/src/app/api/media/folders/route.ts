@@ -1,8 +1,8 @@
 import {
-  NxForbiddenError,
-  NxNotFoundError,
-  NxValidationError,
-  nxMediaFolders,
+  NpForbiddenError,
+  NpNotFoundError,
+  NpValidationError,
+  npMediaFolders,
   can,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // media listing (#73).
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("media-folders", "list");
+      throw new NpForbiddenError("media-folders", "list");
     }
 
     const parentId = request.nextUrl.searchParams.get("parentId");
@@ -28,13 +28,13 @@ export async function GET(request: NextRequest) {
     const folders = parentId
       ? await db
           .select()
-          .from(nxMediaFolders)
-          .where(eq(nxMediaFolders.parentId, parentId))
-      : await db.select().from(nxMediaFolders);
+          .from(npMediaFolders)
+          .where(eq(npMediaFolders.parentId, parentId))
+      : await db.select().from(npMediaFolders);
 
-    return nxSuccessResponse(folders);
+    return npSuccessResponse(folders);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("media-folders", "create");
+      throw new NpForbiddenError("media-folders", "create");
     }
 
     const body = (await readJsonBody(request)) as Record<string, unknown>;
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         : null;
 
     if (!name) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "name", message: "Folder name is required" },
       ]);
     }
@@ -63,23 +63,23 @@ export async function POST(request: NextRequest) {
 
     if (parentId) {
       const [parent] = await db
-        .select({ id: nxMediaFolders.id })
-        .from(nxMediaFolders)
-        .where(eq(nxMediaFolders.id, parentId))
+        .select({ id: npMediaFolders.id })
+        .from(npMediaFolders)
+        .where(eq(npMediaFolders.id, parentId))
         .limit(1);
 
       if (!parent) {
-        throw new NxNotFoundError("media-folder", parentId);
+        throw new NpNotFoundError("media-folder", parentId);
       }
     }
 
     const [created] = await db
-      .insert(nxMediaFolders)
+      .insert(npMediaFolders)
       .values({ name, parentId })
       .returning();
 
-    return nxSuccessResponse(created, { status: 201 });
+    return npSuccessResponse(created, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
+import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import { CalendarClock, Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -19,10 +19,10 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
 import { StatusBadge } from "../ui/status-badge.js";
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
-  config: NxCollectionConfig;
+  config: NpCollectionConfig;
   // Narrow the well-known fields that the view stringifies into URLs
   // and log lines. The pipeline always emits `id` and `publishedAt` as
   // strings (UUIDs / ISO timestamps); typing them here avoids a chain
@@ -56,7 +56,7 @@ const buildInputDateValue = (value: unknown, includeTime: boolean): string => {
   return "";
 };
 
-const getDefaultValue = (field: NxFieldConfig, source: Record<string, unknown>): unknown => {
+const getDefaultValue = (field: NpFieldConfig, source: Record<string, unknown>): unknown => {
   if (field.type === "row" || field.type === "collapsible") {
     return undefined;
   }
@@ -93,7 +93,7 @@ const getDefaultValue = (field: NxFieldConfig, source: Record<string, unknown>):
   }
 };
 
-const buildDefaultValues = (fields: NxFieldConfig[], source: Record<string, unknown>): Record<string, unknown> => {
+const buildDefaultValues = (fields: NpFieldConfig[], source: Record<string, unknown>): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
 
   for (const field of fields) {
@@ -114,7 +114,7 @@ const buildDefaultValues = (fields: NxFieldConfig[], source: Record<string, unkn
   return result;
 };
 
-const buildFieldSchema = (field: NxFieldConfig): z.ZodType<unknown> => {
+const buildFieldSchema = (field: NpFieldConfig): z.ZodType<unknown> => {
   switch (field.type) {
     case "text":
     case "textarea":
@@ -148,7 +148,7 @@ const buildFieldSchema = (field: NxFieldConfig): z.ZodType<unknown> => {
   }
 };
 
-const buildSchemaShape = (fields: NxFieldConfig[]): Record<string, z.ZodType<unknown>> => {
+const buildSchemaShape = (fields: NpFieldConfig[]): Record<string, z.ZodType<unknown>> => {
   const shape: Record<string, z.ZodType<unknown>> = {};
 
   for (const field of fields) {
@@ -169,7 +169,7 @@ const buildSchemaShape = (fields: NxFieldConfig[]): Record<string, z.ZodType<unk
   return shape;
 };
 
-const generateZodSchema = (fields: NxFieldConfig[]) => z.object(buildSchemaShape(fields));
+const generateZodSchema = (fields: NpFieldConfig[]) => z.object(buildSchemaShape(fields));
 
 /**
  * Adds an implicit `slug` text input to the form when the
@@ -185,14 +185,14 @@ const generateZodSchema = (fields: NxFieldConfig[]) => z.object(buildSchemaShape
  * field explicitly — they get whatever shape they want.
  */
 function withImplicitSlugField(
-  fields: NxFieldConfig[],
-  slugField: NxCollectionConfig["slugField"],
-): NxFieldConfig[] {
+  fields: NpFieldConfig[],
+  slugField: NpCollectionConfig["slugField"],
+): NpFieldConfig[] {
   if (!slugField) return fields;
   if (fields.some((f) => f.type !== "row" && f.type !== "collapsible" && f.name === "slug")) {
     return fields;
   }
-  const synthetic: NxFieldConfig = {
+  const synthetic: NpFieldConfig = {
     type: "text",
     name: "slug",
     admin: {
@@ -203,7 +203,7 @@ function withImplicitSlugField(
   return [...fields, synthetic];
 }
 
-const isSidebarField = (field: NxFieldConfig): boolean => {
+const isSidebarField = (field: NpFieldConfig): boolean => {
   if (field.type === "row" || field.type === "collapsible") {
     return false;
   }
@@ -211,7 +211,7 @@ const isSidebarField = (field: NxFieldConfig): boolean => {
   return field.type === "date" || Boolean(field.admin?.width) || namedSidebarFields.has(field.name);
 };
 
-const isVisibleField = (field: NxFieldConfig): boolean => {
+const isVisibleField = (field: NpFieldConfig): boolean => {
   if (field.type === "row" || field.type === "collapsible") {
     return true;
   }
@@ -320,7 +320,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
         if (savingAsRef.current !== null) return;
         try {
           setAutosaveStatus({ kind: "saving" });
-          const response = await nxFetch(
+          const response = await npFetch(
             `/api/collections/${collectionSlug}/${documentId}/autosave`,
             {
               method: "POST",
@@ -403,7 +403,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           body.publishedAt = null;
         }
 
-        const response = await nxFetch(endpoint, {
+        const response = await npFetch(endpoint, {
           method,
           headers: {
             "Content-Type": "application/json",
@@ -464,7 +464,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
     setToast(null);
 
     try {
-      const response = await nxFetch(`/api/collections/${collectionSlug}/${String(doc.id)}`, {
+      const response = await npFetch(`/api/collections/${collectionSlug}/${String(doc.id)}`, {
         method: "DELETE",
       });
 

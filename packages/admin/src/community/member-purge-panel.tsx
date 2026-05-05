@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
@@ -45,7 +45,7 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
     setSubmitting(true);
     setError(null);
     try {
-      const res = await nxFetch(`/api/admin/members/${memberId}/purge-content`, {
+      const res = await npFetch(`/api/admin/members/${memberId}/purge-content`, {
         method: "POST",
       });
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;

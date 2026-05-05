@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import type { NxAuthUser } from "@nexpress/core";
+import type { NpAuthUser } from "@nexpress/core";
 
 import { exportXliff } from "./export.js";
 import { importXliff } from "./import.js";
@@ -42,7 +42,7 @@ Notes:
 export async function runCli(
   io: CliIo,
   args: string[],
-  options: { user: NxAuthUser },
+  options: { user: NpAuthUser },
 ): Promise<CliRunResult> {
   const [command, ...rest] = args;
   if (!command || command === "--help" || command === "-h") {
@@ -63,7 +63,7 @@ export async function runCli(
 async function runExport(
   io: CliIo,
   args: string[],
-  user: NxAuthUser,
+  user: NpAuthUser,
 ): Promise<CliRunResult> {
   const outDir = args[0];
   if (!outDir) {
@@ -97,7 +97,7 @@ async function runExport(
 async function runImport(
   io: CliIo,
   args: string[],
-  user: NxAuthUser,
+  user: NpAuthUser,
 ): Promise<CliRunResult> {
   const positional: string[] = [];
   let dryRun = false;

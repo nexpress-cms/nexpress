@@ -3,15 +3,15 @@ import { closeSync, openSync, writeSync } from "node:fs";
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
-  type NxAuthUser,
+  type NpAuthUser,
   createDbConnection,
   findDocuments,
   getDb,
   hashPassword,
-  nxComments,
-  nxMedia,
-  nxMembers,
-  nxUsers,
+  npComments,
+  npMedia,
+  npMembers,
+  npUsers,
   recordAuditEvent,
   renderCommentMarkdown,
   saveDocument,
@@ -117,9 +117,9 @@ const code = await runCli(process.argv.slice(2), undefined, {
         findExistingByHash: async (sha256) => {
           const db = getDb();
           const [hit] = await db
-            .select({ id: nxMedia.id })
-            .from(nxMedia)
-            .where(and(eq(nxMedia.hash, sha256), isNull(nxMedia.deletedAt)))
+            .select({ id: npMedia.id })
+            .from(npMedia)
+            .where(and(eq(npMedia.hash, sha256), isNull(npMedia.deletedAt)))
             .limit(1);
           return hit ? { id: hit.id } : null;
         },
@@ -166,9 +166,9 @@ const code = await runCli(process.argv.slice(2), undefined, {
         ensureImportedMember: async ({ handle, email, displayName }) => {
           const db = getDb();
           const [existing] = await db
-            .select({ id: nxMembers.id })
-            .from(nxMembers)
-            .where(eq(nxMembers.handle, handle))
+            .select({ id: npMembers.id })
+            .from(npMembers)
+            .where(eq(npMembers.handle, handle))
             .limit(1);
           if (existing) return { id: existing.id };
           // No password, no verified email — `imported` status
@@ -179,7 +179,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
           // nx_members.email doesn't reject the insert.
           const safeEmail = email && (await isEmailFree(email)) ? email : `${handle}@imported.invalid`;
           const [inserted] = await db
-            .insert(nxMembers)
+            .insert(npMembers)
             .values({
               handle,
               email: safeEmail,
@@ -187,14 +187,14 @@ const code = await runCli(process.argv.slice(2), undefined, {
               status: "imported",
               emailVerified: false,
             })
-            .returning({ id: nxMembers.id });
+            .returning({ id: npMembers.id });
           if (!inserted) throw new Error("imported member insert returned no row");
           return { id: inserted.id };
         },
         insertComment: async ({ targetType, targetId, parentId, memberId, bodyMd, bodyHtml, createdAt }) => {
           const db = getDb();
           const [row] = await db
-            .insert(nxComments)
+            .insert(npComments)
             .values({
               targetType,
               targetId,
@@ -205,7 +205,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
               status: "visible",
               createdAt,
             })
-            .returning({ id: nxComments.id });
+            .returning({ id: npComments.id });
           if (!row) throw new Error("comment insert returned no row");
           return { id: row.id };
         },
@@ -231,23 +231,23 @@ const code = await runCli(process.argv.slice(2), undefined, {
                 ? flagImportedEmail(wpAuthor.email)
                 : `${wpAuthorLogin}@wp-import.invalid`;
               const [existing] = await db
-                .select({ id: nxUsers.id })
-                .from(nxUsers)
-                .where(eq(nxUsers.email, email))
+                .select({ id: npUsers.id })
+                .from(npUsers)
+                .where(eq(npUsers.email, email))
                 .limit(1);
               if (existing) return { id: existing.id };
               const password = await hashPassword(
                 `wp-import-${wpAuthorLogin}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
               );
               const [inserted] = await db
-                .insert(nxUsers)
+                .insert(npUsers)
                 .values({
                   email,
                   password,
                   name: wpAuthor?.displayName || wpAuthorLogin,
                   role: "viewer",
                 })
-                .returning({ id: nxUsers.id });
+                .returning({ id: npUsers.id });
               if (!inserted) throw new Error("staff user insert returned no row");
               return { id: inserted.id };
             },
@@ -338,25 +338,25 @@ function flagImportedEmail(original: string): string {
 async function isEmailFree(email: string): Promise<boolean> {
   const db = getDb();
   const [hit] = await db
-    .select({ id: nxMembers.id })
-    .from(nxMembers)
-    .where(eq(nxMembers.email, email))
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.email, email))
     .limit(1);
   return !hit;
 }
 
-async function findFirstAdmin(): Promise<NxAuthUser | null> {
+async function findFirstAdmin(): Promise<NpAuthUser | null> {
   const db = createDbConnection({ connectionString: databaseUrl! });
   const rows = await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.role, "admin"))
+    .from(npUsers)
+    .where(eq(npUsers.role, "admin"))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -364,7 +364,7 @@ async function findFirstAdmin(): Promise<NxAuthUser | null> {
     id: row.id,
     email: row.email,
     name: row.name,
-    role: row.role as NxAuthUser["role"],
+    role: row.role as NpAuthUser["role"],
     tokenVersion: row.tokenVersion,
   };
 }

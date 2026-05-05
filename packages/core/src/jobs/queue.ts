@@ -1,4 +1,4 @@
-import { type NxJobType } from "../config/types.js";
+import { type NpJobType } from "../config/types.js";
 
 /**
  * Phase 13 — admin-side job introspection. pg-boss tracks jobs
@@ -7,7 +7,7 @@ import { type NxJobType } from "../config/types.js";
  * surfaces a unified shape so the admin UI doesn't have to
  * know the storage split.
  */
-export type NxJobState =
+export type NpJobState =
   | "created" // queued, not yet started
   | "active" // worker is processing
   | "completed" // succeeded
@@ -16,11 +16,11 @@ export type NxJobState =
   | "cancelled" // explicitly cancelled
   | "expired"; // exceeded keepUntil
 
-export interface NxJobSummary {
+export interface NpJobSummary {
   id: string;
   /** pg-boss queue name (after `:` → `.` translation). */
   name: string;
-  state: NxJobState;
+  state: NpJobState;
   data: unknown;
   /** Number of retries pg-boss has attempted so far. */
   retryCount?: number;
@@ -41,11 +41,11 @@ export interface NxJobSummary {
   source?: "live" | "archive";
 }
 
-export interface NxJobListOptions {
+export interface NpJobListOptions {
   /** Filter to one queue name (e.g. `"media.processImage"`). */
   name?: string;
   /** Filter to one state. Defaults to all. */
-  state?: NxJobState;
+  state?: NpJobState;
   /** Page size. Default 50, capped at 200. */
   limit?: number;
   /** Skip count for pagination. */
@@ -68,8 +68,8 @@ export interface NxJobListOptions {
   source?: "live" | "archive";
 }
 
-export interface NxJobListResult {
-  jobs: NxJobSummary[];
+export interface NpJobListResult {
+  jobs: NpJobSummary[];
   total: number;
 }
 
@@ -84,7 +84,7 @@ export interface NxJobListResult {
  * caller can index without optional chaining and the UI can render
  * a stable row order.
  */
-export interface NxJobStateCounts {
+export interface NpJobStateCounts {
   created: number;
   active: number;
   completed: number;
@@ -94,7 +94,7 @@ export interface NxJobStateCounts {
   expired: number;
 }
 
-export interface NxJobCountOptions {
+export interface NpJobCountOptions {
   /**
    * Time-bounded query: include only jobs whose `created_on` is at
    * or after this timestamp. Useful for "failures in the last 24
@@ -109,7 +109,7 @@ export interface NxJobCountOptions {
  * operators can confirm `system:revisionPrune` and friends
  * are actually registered, not just declared in code.
  */
-export interface NxScheduleSummary {
+export interface NpScheduleSummary {
   /** pg-boss queue name (after `:` → `.` translation). */
   name: string;
   /**
@@ -130,8 +130,8 @@ export interface NxScheduleSummary {
   updatedOn?: string | null;
 }
 
-export interface NxJobQueue {
-  enqueue(type: NxJobType, data: unknown): Promise<string>;
+export interface NpJobQueue {
+  enqueue(type: NpJobType, data: unknown): Promise<string>;
   start(): Promise<void>;
   stop(): Promise<void>;
   /**
@@ -140,7 +140,7 @@ export interface NxJobQueue {
    * the admin endpoint returns 501 when the active queue
    * doesn't support introspection.
    */
-  listJobs?(options: NxJobListOptions): Promise<NxJobListResult>;
+  listJobs?(options: NpJobListOptions): Promise<NpJobListResult>;
   /** Re-enqueue a failed/cancelled job's payload as a new job. Returns the new job id. */
   retryJob?(id: string): Promise<string>;
   /** Cancel a pending job (no-op for already-running / completed jobs). */
@@ -151,7 +151,7 @@ export interface NxJobQueue {
    * recurring jobs are actually registered, not just declared
    * in code.
    */
-  listSchedules?(): Promise<NxScheduleSummary[]>;
+  listSchedules?(): Promise<NpScheduleSummary[]>;
   /**
    * Phase 20.2 — stop the worker from claiming new jobs without
    * tearing down the queue. In-flight jobs run to completion;
@@ -178,23 +178,23 @@ export interface NxJobQueue {
    * don't model state need not implement it; the admin endpoint
    * omits the stuck-job widget when missing.
    */
-  countByState?(options?: NxJobCountOptions): Promise<NxJobStateCounts>;
+  countByState?(options?: NpJobCountOptions): Promise<NpJobStateCounts>;
 }
 
-let jobQueue: NxJobQueue | null = null;
+let jobQueue: NpJobQueue | null = null;
 
-export function setJobQueue(queue: NxJobQueue | null): void {
+export function setJobQueue(queue: NpJobQueue | null): void {
   jobQueue = queue;
 }
 
-export function getJobQueue(): NxJobQueue {
+export function getJobQueue(): NpJobQueue {
   if (!jobQueue) {
     throw new Error("Job queue not initialized. Call setJobQueue() first.");
   }
   return jobQueue;
 }
 
-export function getOptionalJobQueue(): NxJobQueue | null {
+export function getOptionalJobQueue(): NpJobQueue | null {
   return jobQueue;
 }
 
@@ -203,7 +203,7 @@ export function getOptionalJobQueue(): NxJobQueue | null {
  * (content pipeline, media processing) can run without pg-boss during MVP
  * blog-only workloads. Return value is an empty string in the no-op path.
  */
-export async function enqueueJob(type: NxJobType, data: unknown): Promise<string> {
+export async function enqueueJob(type: NpJobType, data: unknown): Promise<string> {
   if (!jobQueue) return "";
   return jobQueue.enqueue(type, data);
 }

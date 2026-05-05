@@ -2,11 +2,11 @@ import { getAllCollectionSlugs, getCollectionConfig, getPluginRoutes } from "@ne
 import { NextResponse } from "next/server";
 
 import { ensureFor } from "@/lib/init-core";
-import { collectionToManifest, type NxFieldManifest } from "@/lib/manifest";
+import { collectionToManifest, type NpFieldManifest } from "@/lib/manifest";
 
 type OpenApiSchema = Record<string, unknown>;
 
-function fieldToSchema(field: NxFieldManifest): OpenApiSchema {
+function fieldToSchema(field: NpFieldManifest): OpenApiSchema {
   switch (field.type) {
     case "text":
     case "textarea":

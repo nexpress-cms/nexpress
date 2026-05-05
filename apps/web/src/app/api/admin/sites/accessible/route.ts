@@ -8,7 +8,7 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     // reading the HttpOnly cookie from JavaScript.
     const currentId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       docs: accessible.map((site) => ({
         id: site.id,
         name: site.name,
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       currentId,
     });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

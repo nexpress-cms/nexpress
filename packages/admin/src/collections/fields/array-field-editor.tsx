@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { NxArrayField, NxFieldConfig } from "@nexpress/core";
+import type { NpArrayField, NpFieldConfig } from "@nexpress/core";
 import type { Control } from "react-hook-form";
 import { useFieldArray } from "react-hook-form";
 
@@ -8,19 +8,19 @@ import { Button } from "../../ui/button.js";
 import { FormDescription, FormItem, FormLabel, FormMessage } from "../../ui/form.js";
 
 interface RenderFieldArgs {
-  field: NxFieldConfig;
+  field: NpFieldConfig;
   control: Control<Record<string, unknown>>;
   namePrefix: string;
 }
 
 interface ArrayFieldEditorProps {
-  field: NxArrayField;
+  field: NpArrayField;
   control: Control<Record<string, unknown>>;
   name: string;
   renderField: (args: RenderFieldArgs) => ReactNode;
 }
 
-const createEmptyRow = (fields: NxFieldConfig[]): Record<string, unknown> => {
+const createEmptyRow = (fields: NpFieldConfig[]): Record<string, unknown> => {
   const row: Record<string, unknown> = {};
 
   for (const field of fields) {

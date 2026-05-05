@@ -1,9 +1,9 @@
-import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
-import type { NxBlockDefinition, NxBlockPropField } from "@nexpress/blocks";
+import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
+import type { NpBlockDefinition, NpBlockPropField } from "@nexpress/blocks";
 
-export interface NxFieldManifest {
+export interface NpFieldManifest {
   name: string;
-  type: NxFieldConfig["type"];
+  type: NpFieldConfig["type"];
   label?: string;
   description?: string;
   required?: boolean;
@@ -12,27 +12,27 @@ export interface NxFieldManifest {
   relationTo?: string | string[];
   hasMany?: boolean;
   integerOnly?: boolean;
-  fields?: NxFieldManifest[];
+  fields?: NpFieldManifest[];
 }
 
-export interface NxCollectionManifest {
+export interface NpCollectionManifest {
   slug: string;
   labels: { singular: string; plural: string };
   description?: string;
   slug_auto?: boolean;
   versions: { drafts: boolean; max?: number };
-  fields: NxFieldManifest[];
+  fields: NpFieldManifest[];
 }
 
-export interface NxBlockManifest {
+export interface NpBlockManifest {
   type: string;
   label: string;
   description?: string;
   icon?: string;
-  propsSchema: NxBlockPropField[];
+  propsSchema: NpBlockPropField[];
 }
 
-export interface NxPluginManifest {
+export interface NpPluginManifest {
   id: string;
   name: string;
   version?: string;
@@ -42,7 +42,7 @@ export interface NxPluginManifest {
   routes: Array<{ method: string; path: string }>;
 }
 
-export function collectionToManifest(config: NxCollectionConfig): NxCollectionManifest {
+export function collectionToManifest(config: NpCollectionConfig): NpCollectionManifest {
   return {
     slug: config.slug,
     labels: config.labels,
@@ -53,7 +53,7 @@ export function collectionToManifest(config: NxCollectionConfig): NxCollectionMa
   };
 }
 
-function fieldToManifest(field: NxFieldConfig): NxFieldManifest {
+function fieldToManifest(field: NpFieldConfig): NpFieldManifest {
   if (field.type === "row" || field.type === "collapsible") {
     return {
       name: field.type === "collapsible" ? field.label : "row",
@@ -62,7 +62,7 @@ function fieldToManifest(field: NxFieldConfig): NxFieldManifest {
     };
   }
 
-  const base: NxFieldManifest = {
+  const base: NpFieldManifest = {
     name: field.name,
     type: field.type,
     label: field.label,
@@ -95,7 +95,7 @@ function fieldToManifest(field: NxFieldConfig): NxFieldManifest {
   return base;
 }
 
-export function blockToManifest(definition: NxBlockDefinition): NxBlockManifest {
+export function blockToManifest(definition: NpBlockDefinition): NpBlockManifest {
   return {
     type: definition.type,
     label: definition.label,

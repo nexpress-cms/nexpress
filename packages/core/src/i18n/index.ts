@@ -18,9 +18,9 @@ export {
   t,
   tSync,
 } from "./strings.js";
-export type { NxTranslationBundle, NxTranslationParams } from "./strings.js";
+export type { NpTranslationBundle, NpTranslationParams } from "./strings.js";
 export { getLocaleDirection } from "./direction.js";
-export type { NxLocaleDirection } from "./direction.js";
+export type { NpLocaleDirection } from "./direction.js";
 export { formatNumber, formatDate, formatRelativeTime, resetIntlFormatterCache } from "./format.js";
 export {
   loadStringOverridesForSite,
@@ -32,4 +32,4 @@ export {
   deleteStringOverride,
   listStringOverridesForSite,
 } from "./string-overrides.js";
-export type { NxStringOverrideRow } from "./string-overrides.js";
+export type { NpStringOverrideRow } from "./string-overrides.js";

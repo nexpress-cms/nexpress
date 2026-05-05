@@ -16,10 +16,10 @@ pnpm add @nexpress/editor
 ```ts
 // Server-safe — types + SSR renderer
 import { renderRichText } from "@nexpress/editor";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
 // Client-only — interactive editor
-import { NxRichTextEditor } from "@nexpress/editor/client";
+import { NpRichTextEditor } from "@nexpress/editor/client";
 ```
 
 Server pages render rich text without pulling in Lexical:
@@ -38,9 +38,9 @@ Admin edit forms lazy-load the editor:
 
 ```tsx
 // any "use client" admin form
-import { NxRichTextEditor } from "@nexpress/editor/client";
+import { NpRichTextEditor } from "@nexpress/editor/client";
 
-<NxRichTextEditor
+<NpRichTextEditor
   value={value}
   onChange={setValue}
   config={{ placeholder: "Write…", onUploadImage }}

@@ -1,5 +1,5 @@
 import { findDocuments, saveDocument } from "@nexpress/core";
-import type { NxAuthUser } from "@nexpress/core";
+import type { NpAuthUser } from "@nexpress/core";
 
 import { htmlToLexical, type LexicalRoot } from "../convert/html-to-lexical.js";
 import {
@@ -74,7 +74,7 @@ import {
 
 export interface ApplyOptions {
   /** Staff user that the import is attributed to. Required by `saveDocument`. */
-  actor: NxAuthUser;
+  actor: NpAuthUser;
   /** Set true for a dry run — counts what would happen without writing. */
   dryRun?: boolean;
   /** Optional sink for per-record progress messages. Defaults to no-op. */

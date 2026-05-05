@@ -4,7 +4,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getCollectionTable,
-  nxMedia,
+  npMedia,
 } from "@nexpress/core";
 
 import { getDb } from "@/lib/db";
@@ -119,8 +119,8 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
 
   const mediaRows = (await db
     .select({ total: count() })
-    .from(nxMedia)
-    .where(isNull(nxMedia.deletedAt))) as Array<{ total: number | string }>;
+    .from(npMedia)
+    .where(isNull(npMedia.deletedAt))) as Array<{ total: number | string }>;
 
   const recentActivity = activityCandidates
     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())

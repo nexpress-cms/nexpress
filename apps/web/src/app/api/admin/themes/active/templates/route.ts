@@ -1,12 +1,12 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getThemeTemplateSummaries,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -31,18 +31,18 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("themeTemplates", "list");
+      throw new NpForbiddenError("themeTemplates", "list");
     }
     const collection = request.nextUrl.searchParams.get("collection");
     if (!collection) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "collection", message: "collection query param required" },
       ]);
     }
     const docs = await getThemeTemplateSummaries(collection);
-    return nxSuccessResponse({ docs });
+    return npSuccessResponse({ docs });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

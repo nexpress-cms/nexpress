@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
-import { nxSettings } from "../db/schema/system.js";
+import { npSettings } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
-import { type NxJobQueue } from "./queue.js";
+import { type NpJobQueue } from "./queue.js";
 
 /**
  * Phase 20.2 — global pause / resume for job processing.
@@ -19,7 +19,7 @@ import { type NxJobQueue } from "./queue.js";
 const SYSTEM_SITE_ID = "_system";
 const JOBS_PAUSED_KEY = "jobs.paused";
 
-export interface NxJobsPauseState {
+export interface NpJobsPauseState {
   paused: boolean;
   /** ISO timestamp captured the last time the flag flipped. */
   changedAt: string;
@@ -29,25 +29,25 @@ export interface NxJobsPauseState {
   reason: string | null;
 }
 
-const DEFAULT_STATE: NxJobsPauseState = {
+const DEFAULT_STATE: NpJobsPauseState = {
   paused: false,
   changedAt: new Date(0).toISOString(),
   changedByUserId: null,
   reason: null,
 };
 
-export async function getJobsPauseState(): Promise<NxJobsPauseState> {
+export async function getJobsPauseState(): Promise<NpJobsPauseState> {
   const db = getDb();
   const rows = await db
     .select()
-    .from(nxSettings)
-    .where(and(eq(nxSettings.siteId, SYSTEM_SITE_ID), eq(nxSettings.key, JOBS_PAUSED_KEY)))
+    .from(npSettings)
+    .where(and(eq(npSettings.siteId, SYSTEM_SITE_ID), eq(npSettings.key, JOBS_PAUSED_KEY)))
     .limit(1);
 
   const row = rows[0];
   if (!row) return DEFAULT_STATE;
 
-  const value = row.value as Partial<NxJobsPauseState> | null;
+  const value = row.value as Partial<NpJobsPauseState> | null;
   if (!value || typeof value.paused !== "boolean") return DEFAULT_STATE;
 
   return {
@@ -64,9 +64,9 @@ export interface SetJobsPauseStateInput {
   reason?: string | null;
 }
 
-export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<NxJobsPauseState> {
+export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<NpJobsPauseState> {
   const db = getDb();
-  const next: NxJobsPauseState = {
+  const next: NpJobsPauseState = {
     paused: input.paused,
     changedAt: new Date().toISOString(),
     changedByUserId: input.changedByUserId ?? null,
@@ -74,14 +74,14 @@ export async function setJobsPauseState(input: SetJobsPauseStateInput): Promise<
   };
 
   await db
-    .insert(nxSettings)
+    .insert(npSettings)
     .values({
       siteId: SYSTEM_SITE_ID,
       key: JOBS_PAUSED_KEY,
       value: next,
     })
     .onConflictDoUpdate({
-      target: [nxSettings.siteId, nxSettings.key],
+      target: [npSettings.siteId, npSettings.key],
       set: {
         value: next,
         updatedAt: new Date(),
@@ -123,7 +123,7 @@ export interface PauseSyncLoopHandle {
  * successful tick.
  */
 export function startPauseSyncLoop(
-  queue: NxJobQueue,
+  queue: NpJobQueue,
   intervalMs: number = PAUSE_SYNC_INTERVAL_MS,
 ): PauseSyncLoopHandle {
   const log = getLogger();

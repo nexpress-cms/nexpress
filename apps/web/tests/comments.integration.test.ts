@@ -47,17 +47,17 @@ async function seedActiveMember(
 
 async function seedStaffPost(): Promise<string> {
   // Need a staff user to author the post via /api/collections/posts.
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({ email: "staff@example.com", password, name: "Staff", role: "editor" })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
@@ -91,8 +91,8 @@ async function grantRole(
   scopeId: string | null,
 ): Promise<void> {
   const db = await getTestDb();
-  const { nxMemberRoles } = await import("@nexpress/core");
-  await db.insert(nxMemberRoles).values({ memberId, role, scopeType, scopeId });
+  const { npMemberRoles } = await import("@nexpress/core");
+  await db.insert(npMemberRoles).values({ memberId, role, scopeType, scopeId });
 }
 
 describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
@@ -369,12 +369,12 @@ describe.skipIf(skipIfNoTestDb())("comments API (integration)", () => {
     // state after a mod-hide flow without needing a staff session
     // or another seeded user.
     const db = await getTestDb();
-    const { nxComments } = await import("@nexpress/core");
+    const { npComments } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     await db
-      .update(nxComments)
+      .update(npComments)
       .set({ status: "hidden" })
-      .where(eq(nxComments.id, parentId));
+      .where(eq(npComments.id, parentId));
 
     // Reply attempt — should be rejected with the parent-status
     // check.

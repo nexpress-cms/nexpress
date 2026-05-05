@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 interface PricingPlan {
   name: string;
@@ -88,7 +88,7 @@ const parsePlans = (value: unknown): PricingPlan[] => {
   return plans.length > 0 ? plans : fallback;
 };
 
-export const pricingBlock: NxBlockDefinition = {
+export const pricingBlock: NpBlockDefinition = {
   type: "pricing",
   label: "Pricing",
   description: "Structured pricing cards for subscription tiers or service packages.",

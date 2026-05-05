@@ -2,8 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxMemberMutes, nxMembers } from "../db/schema/community.js";
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { npMemberMutes, npMembers } from "../db/schema/community.js";
+import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -17,7 +17,7 @@ import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
  * for their own mute list, never for someone else's.
  */
 
-export interface NxMemberMuteRow {
+export interface NpMemberMuteRow {
   memberId: string;
   targetId: string;
   createdAt: Date;
@@ -32,7 +32,7 @@ export interface MuteMemberInput {
 
 export async function muteMember(input: MuteMemberInput): Promise<void> {
   if (input.memberId === input.targetId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "Cannot mute yourself." },
     ]);
   }
@@ -42,17 +42,17 @@ export async function muteMember(input: MuteMemberInput): Promise<void> {
   // surfaces as an opaque 500. NotFound is the right shape:
   // a deleted member shouldn't be muteable.
   const [muter] = (await db
-    .select({ id: nxMembers.id })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, input.memberId))
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.id, input.memberId))
     .limit(1)) as Array<{ id: string }>;
-  if (!muter) throw new NxNotFoundError("member", input.memberId);
+  if (!muter) throw new NpNotFoundError("member", input.memberId);
   const [target] = (await db
-    .select({ id: nxMembers.id, status: nxMembers.status })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, input.targetId))
+    .select({ id: npMembers.id, status: npMembers.status })
+    .from(npMembers)
+    .where(eq(npMembers.id, input.targetId))
     .limit(1)) as Array<{ id: string; status: string }>;
-  if (!target) throw new NxNotFoundError("member", input.targetId);
+  if (!target) throw new NpNotFoundError("member", input.targetId);
 
   // Phase 18 — site_id is part of the PK so the same muter can
   // hold a separate "muted-on-site-A" / "muted-on-site-B" set.
@@ -60,7 +60,7 @@ export async function muteMember(input: MuteMemberInput): Promise<void> {
   // #272 — write: must NOT silently fall through to default site.
   const siteId = await requireSiteId();
   await db
-    .insert(nxMemberMutes)
+    .insert(npMemberMutes)
     .values({
       memberId: input.memberId,
       targetId: input.targetId,
@@ -71,7 +71,7 @@ export async function muteMember(input: MuteMemberInput): Promise<void> {
 
 export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
   if (input.memberId === input.targetId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "Cannot unmute yourself." },
     ]);
   }
@@ -79,15 +79,15 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
   // #272 — write: must NOT silently fall through to default site.
   const siteId = await requireSiteId();
   const result = (await db
-    .delete(nxMemberMutes)
+    .delete(npMemberMutes)
     .where(
       and(
-        eq(nxMemberMutes.memberId, input.memberId),
-        eq(nxMemberMutes.targetId, input.targetId),
-        eq(nxMemberMutes.siteId, siteId),
+        eq(npMemberMutes.memberId, input.memberId),
+        eq(npMemberMutes.targetId, input.targetId),
+        eq(npMemberMutes.siteId, siteId),
       ),
     )
-    .returning({ memberId: nxMemberMutes.memberId })) as Array<{
+    .returning({ memberId: npMemberMutes.memberId })) as Array<{
     memberId: string;
   }>;
   return result.length > 0;
@@ -103,13 +103,13 @@ export async function isMuted(input: MuteMemberInput): Promise<boolean> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
-    .select({ memberId: nxMemberMutes.memberId })
-    .from(nxMemberMutes)
+    .select({ memberId: npMemberMutes.memberId })
+    .from(npMemberMutes)
     .where(
       and(
-        eq(nxMemberMutes.memberId, input.memberId),
-        eq(nxMemberMutes.targetId, input.targetId),
-        eq(nxMemberMutes.siteId, siteId),
+        eq(npMemberMutes.memberId, input.memberId),
+        eq(npMemberMutes.targetId, input.targetId),
+        eq(npMemberMutes.siteId, siteId),
       ),
     )
     .limit(1)) as Array<{ memberId: string }>;
@@ -125,15 +125,15 @@ export async function getMutedTargetIds(memberId: string): Promise<Set<string>> 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const rows = (await db
-    .select({ targetId: nxMemberMutes.targetId })
-    .from(nxMemberMutes)
-    .where(and(eq(nxMemberMutes.memberId, memberId), eq(nxMemberMutes.siteId, siteId)))) as Array<{
+    .select({ targetId: npMemberMutes.targetId })
+    .from(npMemberMutes)
+    .where(and(eq(npMemberMutes.memberId, memberId), eq(npMemberMutes.siteId, siteId)))) as Array<{
     targetId: string;
   }>;
   return new Set(rows.map((r) => r.targetId));
 }
 
-export interface NxMemberMuteSummary {
+export interface NpMemberMuteSummary {
   targetId: string;
   handle: string;
   displayName: string;
@@ -153,7 +153,7 @@ export interface ListMutesOptions {
 export async function listMutes(
   memberId: string,
   options: ListMutesOptions = {},
-): Promise<NxMemberMuteSummary[]> {
+): Promise<NpMemberMuteSummary[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   // Phase 18 — settings list is per-site. The same muter can
@@ -161,15 +161,15 @@ export async function listMutes(
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const rows = (await db
     .select({
-      targetId: nxMemberMutes.targetId,
-      handle: nxMembers.handle,
-      displayName: nxMembers.displayName,
-      createdAt: nxMemberMutes.createdAt,
+      targetId: npMemberMutes.targetId,
+      handle: npMembers.handle,
+      displayName: npMembers.displayName,
+      createdAt: npMemberMutes.createdAt,
     })
-    .from(nxMemberMutes)
-    .innerJoin(nxMembers, eq(nxMemberMutes.targetId, nxMembers.id))
-    .where(and(eq(nxMemberMutes.memberId, memberId), eq(nxMemberMutes.siteId, siteId)))
-    .orderBy(desc(nxMemberMutes.createdAt))
+    .from(npMemberMutes)
+    .innerJoin(npMembers, eq(npMemberMutes.targetId, npMembers.id))
+    .where(and(eq(npMemberMutes.memberId, memberId), eq(npMemberMutes.siteId, siteId)))
+    .orderBy(desc(npMemberMutes.createdAt))
     .limit(limit)) as Array<{
     targetId: string;
     handle: string;

@@ -1,13 +1,13 @@
 import {
   can,
-  NxForbiddenError,
+  NpForbiddenError,
   getJobsPauseState,
   getOptionalJobQueue,
   listWorkerHealth,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor, nexpressConfig } from "@/lib/init-core";
 
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     await ensureFor("read");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("workers", "read");
+      throw new NpForbiddenError("workers", "read");
     }
 
     const queue = getOptionalJobQueue();
@@ -58,13 +58,13 @@ export async function GET(request: NextRequest) {
     };
     const stuck = counts ? { counts, thresholds } : null;
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       ...summary,
       pause: pauseState,
       stuck,
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

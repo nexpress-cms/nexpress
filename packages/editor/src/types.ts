@@ -1,7 +1,7 @@
 import type { SerializedLexicalNode } from "lexical";
 
-export interface NxEditorConfig {
-  features?: NxEditorFeature[];
+export interface NpEditorConfig {
+  features?: NpEditorFeature[];
   /**
    * Async upload callback. The toolbar's Insert Image dialog
    * (Phase 9.7j) calls this with the user-selected file and uses
@@ -15,7 +15,7 @@ export interface NxEditorConfig {
   readOnly?: boolean;
 }
 
-export type NxEditorFeature =
+export type NpEditorFeature =
   | "heading"
   | "bold"
   | "italic"
@@ -31,7 +31,7 @@ export type NxEditorFeature =
   | "table"
   | "alignment";
 
-export const DEFAULT_FEATURES: NxEditorFeature[] = [
+export const DEFAULT_FEATURES: NpEditorFeature[] = [
   "heading",
   "bold",
   "italic",
@@ -46,7 +46,7 @@ export const DEFAULT_FEATURES: NxEditorFeature[] = [
   "alignment",
 ];
 
-export interface NxRichTextContent {
+export interface NpRichTextContent {
   root: {
     type: "root";
     children: SerializedLexicalNode[];

@@ -41,17 +41,17 @@ async function seedActiveMember(
 }
 
 async function seedStaffPost(): Promise<string> {
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({ email: "spam-staff@example.com", password, name: "Staff", role: "editor" })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
@@ -144,12 +144,12 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
 
     // Audit log captured the flag with adapter metadata.
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
-      .where(eq(nxAuditEvents.action, "comment.flag"))) as Array<{
+      .from(npAuditEvents)
+      .where(eq(npAuditEvents.action, "comment.flag"))) as Array<{
       payload: Record<string, unknown>;
     }>;
     expect(audits).toHaveLength(1);
@@ -268,12 +268,12 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     // dora (parent author) should NOT have a notification — the
     // pending reply is invisible to her until a mod restores it.
     const db = await getTestDb();
-    const { nxNotifications } = await import("@nexpress/core");
+    const { npNotifications } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const inbox = (await db
       .select()
-      .from(nxNotifications)
-      .where(eq(nxNotifications.memberId, parentAuthor.memberId))) as Array<unknown>;
+      .from(npNotifications)
+      .where(eq(npNotifications.memberId, parentAuthor.memberId))) as Array<unknown>;
     expect(inbox).toHaveLength(0);
   });
 
@@ -328,15 +328,15 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     // Audit row carries `event: "update"` so mods scanning
     // `comment.flag` rows can tell create-flags from edit-flags.
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { and, eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
+      .from(npAuditEvents)
       .where(
         and(
-          eq(nxAuditEvents.action, "comment.flag"),
-          eq(nxAuditEvents.targetId, commentId),
+          eq(npAuditEvents.action, "comment.flag"),
+          eq(npAuditEvents.targetId, commentId),
         ),
       )) as Array<{ payload: Record<string, unknown> }>;
     expect(audits).toHaveLength(1);
@@ -390,12 +390,12 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
 
     // Body wasn't updated — the reject throws before the UPDATE runs.
     const db = await getTestDb();
-    const { nxComments } = await import("@nexpress/core");
+    const { npComments } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [row] = (await db
-      .select({ bodyMd: nxComments.bodyMd, status: nxComments.status })
-      .from(nxComments)
-      .where(eq(nxComments.id, commentId))
+      .select({ bodyMd: npComments.bodyMd, status: npComments.status })
+      .from(npComments)
+      .where(eq(npComments.id, commentId))
       .limit(1)) as Array<{ bodyMd: string; status: string }>;
     expect(row.bodyMd).toBe("Clean");
     expect(row.status).toBe("visible");

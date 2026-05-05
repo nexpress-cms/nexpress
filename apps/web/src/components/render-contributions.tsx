@@ -1,9 +1,9 @@
-import type { NxBodyEntry, NxHeadEntry, NxRenderContribution } from "@nexpress/plugin-sdk";
+import type { NpBodyEntry, NpHeadEntry, NpRenderContribution } from "@nexpress/plugin-sdk";
 import { runHookAndCollect } from "@nexpress/core";
 
 /**
  * Fires the `render:beforePage` hook against every registered plugin and
- * collects their `NxRenderContribution` returns into a single flattened
+ * collects their `NpRenderContribution` returns into a single flattened
  * pair. The data argument becomes the hook's `data` object — plugins read
  * `{ collection, slug, document }` to compute per-document output.
  */
@@ -11,15 +11,15 @@ export async function collectRenderContributions(data: {
   collection: string;
   slug: string;
   document: Record<string, unknown>;
-}): Promise<{ head: NxHeadEntry[]; bodyEnd: NxBodyEntry[] }> {
-  const contributions = await runHookAndCollect<NxRenderContribution>("render:beforePage", {
+}): Promise<{ head: NpHeadEntry[]; bodyEnd: NpBodyEntry[] }> {
+  const contributions = await runHookAndCollect<NpRenderContribution>("render:beforePage", {
     collection: data.collection,
     slug: data.slug,
     document: data.document,
   });
 
-  const head: NxHeadEntry[] = [];
-  const bodyEnd: NxBodyEntry[] = [];
+  const head: NpHeadEntry[] = [];
+  const bodyEnd: NpBodyEntry[] = [];
   for (const entry of contributions) {
     if (!entry || typeof entry !== "object") continue;
     if (Array.isArray(entry.head)) head.push(...entry.head);
@@ -38,7 +38,7 @@ export async function collectRenderContributions(data: {
  * Inline `<script>` children are injected via `dangerouslySetInnerHTML` —
  * plugins in v1 are trusted code (see capability model).
  */
-export function RenderHead({ entries }: { entries: NxHeadEntry[] }) {
+export function RenderHead({ entries }: { entries: NpHeadEntry[] }) {
   if (entries.length === 0) return null;
   return (
     <>
@@ -47,7 +47,7 @@ export function RenderHead({ entries }: { entries: NxHeadEntry[] }) {
   );
 }
 
-export function RenderBodyEnd({ entries }: { entries: NxBodyEntry[] }) {
+export function RenderBodyEnd({ entries }: { entries: NpBodyEntry[] }) {
   if (entries.length === 0) return null;
   return (
     <>
@@ -56,7 +56,7 @@ export function RenderBodyEnd({ entries }: { entries: NxBodyEntry[] }) {
   );
 }
 
-function renderHeadEntry(entry: NxHeadEntry, key: number) {
+function renderHeadEntry(entry: NpHeadEntry, key: number) {
   switch (entry.tag) {
     case "meta":
       return <meta key={key} {...entry.attrs} />;
@@ -85,7 +85,7 @@ function renderHeadEntry(entry: NxHeadEntry, key: number) {
   }
 }
 
-function renderBodyEntry(entry: NxBodyEntry, key: number) {
+function renderBodyEntry(entry: NpBodyEntry, key: number) {
   switch (entry.tag) {
     case "script":
       return entry.children ? (

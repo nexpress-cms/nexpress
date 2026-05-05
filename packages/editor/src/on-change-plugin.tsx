@@ -3,17 +3,17 @@ import { useRef } from "react";
 import { OnChangePlugin as LexicalOnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $getRoot } from "lexical";
 
-import type { NxRichTextContent } from "./types.js";
+import type { NpRichTextContent } from "./types.js";
 
-interface NxEditorOnChangePluginProps {
-  onChange: (value: NxRichTextContent) => void;
+interface NpEditorOnChangePluginProps {
+  onChange: (value: NpRichTextContent) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isRichTextContent(value: unknown): value is NxRichTextContent {
+function isRichTextContent(value: unknown): value is NpRichTextContent {
   if (!isRecord(value)) {
     return false;
   }
@@ -44,7 +44,7 @@ function isInitialEditorState(): boolean {
   return firstChild?.getType() === "paragraph" && firstChild.getTextContent().trim().length === 0;
 }
 
-export function NxEditorOnChangePlugin({ onChange }: NxEditorOnChangePluginProps) {
+export function NpEditorOnChangePlugin({ onChange }: NpEditorOnChangePluginProps) {
   const hasObservedInitialState = useRef(false);
 
   return (

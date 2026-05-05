@@ -1,51 +1,51 @@
 export type {
-  NxUserRole,
-  NxAuthUser,
-  NxAccessFunction,
-  NxFieldCondition,
-  NxFieldValidator,
-  NxRichTextContent,
-  NxEditorConfig,
-  NxTextField,
-  NxTextareaField,
-  NxNumberField,
-  NxRichTextField,
-  NxBlocksField,
-  NxCheckboxField,
-  NxDateField,
-  NxUploadField,
-  NxRelationshipField,
-  NxSelectField,
-  NxRadioField,
-  NxEmailField,
-  NxJsonField,
-  NxArrayField,
-  NxGroupField,
-  NxRowField,
-  NxCollapsibleField,
-  NxFieldConfig,
-  NxCollectionHook,
-  NxHookPrincipal,
-  NxPrincipal,
-  NxUploadConfig,
-  NxImageSize,
-  NxCollectionConfig,
-  NxBlockConfig,
-  NxBlockInstance,
-  NxPluginConfig,
-  NxPluginContext,
-  NxResolvedPluginLike,
-  NxNavItem,
-  NxConfig,
-  NxThemeManifest,
-  NxRegisteredTheme,
-  NxI18nConfig,
-  NxJobType,
-  NxFindOptions,
-  NxFindResult,
-  NxSaveOptions,
-  NxSaveResult,
-  NxDocumentStatus,
+  NpUserRole,
+  NpAuthUser,
+  NpAccessFunction,
+  NpFieldCondition,
+  NpFieldValidator,
+  NpRichTextContent,
+  NpEditorConfig,
+  NpTextField,
+  NpTextareaField,
+  NpNumberField,
+  NpRichTextField,
+  NpBlocksField,
+  NpCheckboxField,
+  NpDateField,
+  NpUploadField,
+  NpRelationshipField,
+  NpSelectField,
+  NpRadioField,
+  NpEmailField,
+  NpJsonField,
+  NpArrayField,
+  NpGroupField,
+  NpRowField,
+  NpCollapsibleField,
+  NpFieldConfig,
+  NpCollectionHook,
+  NpHookPrincipal,
+  NpPrincipal,
+  NpUploadConfig,
+  NpImageSize,
+  NpCollectionConfig,
+  NpBlockConfig,
+  NpBlockInstance,
+  NpPluginConfig,
+  NpPluginContext,
+  NpResolvedPluginLike,
+  NpNavItem,
+  NpConfig,
+  NpThemeManifest,
+  NpRegisteredTheme,
+  NpI18nConfig,
+  NpJobType,
+  NpFindOptions,
+  NpFindResult,
+  NpSaveOptions,
+  NpSaveResult,
+  NpDocumentStatus,
 } from "./config/types.js";
 
 // `hasRole` / `isStaffMod` were retired in favour of `can(user, capability)` (#273).
@@ -55,16 +55,16 @@ export { defineCollection } from "./config/define-collection.js";
 export { authenticated, isAdmin, isEditorOrAbove, isOwnerOrAdmin } from "./config/access.js";
 
 export {
-  NxError,
-  NxForbiddenError,
-  NxNotFoundError,
-  NxValidationError,
-  NxAuthError,
-  NxConflictError,
-  NxRateLimitError,
-  NxSiteContextMissingError,
-  type NxErrorCode,
-  type NxErrorCodeInput,
+  NpError,
+  NpForbiddenError,
+  NpNotFoundError,
+  NpValidationError,
+  NpAuthError,
+  NpConflictError,
+  NpRateLimitError,
+  NpSiteContextMissingError,
+  type NpErrorCode,
+  type NpErrorCodeInput,
 } from "./errors.js";
 
 export {
@@ -72,15 +72,15 @@ export {
   buildSearchVectorParts,
   buildWeightedSearchVectorSql,
 } from "./collections/search.js";
-export type { NxSearchVectorParts } from "./collections/search.js";
+export type { NpSearchVectorParts } from "./collections/search.js";
 export {
   buildSitemap,
   renderSitemapXml,
   renderSitemapIndexXml,
 } from "./seo/sitemap.js";
 export type {
-  NxSitemapEntry,
-  NxSitemapIndexEntry,
+  NpSitemapEntry,
+  NpSitemapIndexEntry,
   BuildSitemapOptions,
 } from "./seo/sitemap.js";
 export {
@@ -90,13 +90,13 @@ export {
   validateSeoSettingsPatch,
 } from "./seo/page-metadata.js";
 export type {
-  NxSiteSeoSettings,
-  NxPageMetadata,
-  NxPageMetadataInput,
-  NxSeoSettingsPatch,
+  NpSiteSeoSettings,
+  NpPageMetadata,
+  NpPageMetadataInput,
+  NpSeoSettingsPatch,
 } from "./seo/page-metadata.js";
 export { buildAtomFeed, renderAtomFeed } from "./seo/feed.js";
-export type { NxFeedEntry, BuildAtomFeedOptions } from "./seo/feed.js";
+export type { NpFeedEntry, BuildAtomFeedOptions } from "./seo/feed.js";
 export {
   buildArticleJsonLd,
   buildDiscussionForumPostingJsonLd,
@@ -142,26 +142,26 @@ export {
   getTranslationProgress,
 } from "./collections/index.js";
 export type {
-  NxTranslationProgress,
-  NxCollectionTranslationProgress,
-  NxTranslationProgressLocaleStats,
+  NpTranslationProgress,
+  NpCollectionTranslationProgress,
+  NpTranslationProgressLocaleStats,
 } from "./collections/translations.js";
 export type {
-  NxRevision,
-  NxRevisionSummary,
-  NxRevisionStatus,
-  NxRevisionListOptions,
-  NxRevisionListResult,
+  NpRevision,
+  NpRevisionSummary,
+  NpRevisionStatus,
+  NpRevisionListOptions,
+  NpRevisionListResult,
   PublishScheduledResult,
-  NxPendingDocSummary,
-  NxListPendingDocsOptions,
-  NxListPendingDocsResult,
+  NpPendingDocSummary,
+  NpListPendingDocsOptions,
+  NpListPendingDocsResult,
   SearchCollectionsOptions,
   SearchResult,
   SearchResultItem,
   ReindexResult,
-  NxSearchAdapter,
-  NxSearchAdapterContext,
+  NpSearchAdapter,
+  NpSearchAdapterContext,
 } from "./collections/index.js";
 
 export {
@@ -176,7 +176,7 @@ export {
 } from "./content/index.js";
 export { buildZodSchema, getCollectionZodSchema } from "./collections/validation.js";
 
-export { collectionConfigSchema, nxConfigSchema } from "./config/validation.js";
+export { collectionConfigSchema, npConfigSchema } from "./config/validation.js";
 
 export { createDbConnection } from "./db/connection.js";
 export { setDb, getDb } from "./db/runtime.js";
@@ -185,10 +185,10 @@ export { generateDrizzleSchema } from "./db/generator.js";
 export { generateTypeScript } from "./db/type-generator.js";
 
 export { signToken, verifyToken, isTokenVerificationError } from "./auth/token.js";
-export type { NxTokenPayload } from "./auth/token.js";
+export type { NpTokenPayload } from "./auth/token.js";
 export { hashPassword, verifyPassword, ARGON2_OPTIONS } from "./auth/password.js";
 export { verifyCsrf } from "./auth/csrf.js";
-export { can, type NxCapability } from "./auth/capabilities.js";
+export { can, type NpCapability } from "./auth/capabilities.js";
 export {
   registerOAuthProvider,
   getOAuthProvider,
@@ -232,16 +232,16 @@ export {
   revokeUserIdentity,
   revokeMemberIdentity,
 } from "./auth/identities-admin.js";
-export type { NxUserIdentityRow, NxMemberIdentityRow } from "./auth/identities-admin.js";
+export type { NpUserIdentityRow, NpMemberIdentityRow } from "./auth/identities-admin.js";
 export {
   createPasswordResetToken,
   requestPasswordReset,
   consumePasswordResetToken,
 } from "./auth/reset-token.js";
 export { signMemberToken, verifyMemberToken } from "./auth/member-token.js";
-export type { NxMemberTokenPayload } from "./auth/member-token.js";
+export type { NpMemberTokenPayload } from "./auth/member-token.js";
 export { getMemberFromTokenPayload, invalidateAllMemberSessions } from "./auth/member-session.js";
-export type { NxMemberAuthRow } from "./auth/member-session.js";
+export type { NpMemberAuthRow } from "./auth/member-session.js";
 export {
   createMemberEmailVerifyToken,
   consumeMemberEmailVerifyToken,
@@ -249,18 +249,18 @@ export {
   consumeMemberPasswordReset,
 } from "./auth/member-credentials.js";
 export type {
-  NxIssuedMemberToken,
-  NxConsumeMemberEmailVerifyResult,
-  NxMemberResetRequestResult,
-  NxConsumeMemberResetResult,
+  NpIssuedMemberToken,
+  NpConsumeMemberEmailVerifyResult,
+  NpMemberResetRequestResult,
+  NpConsumeMemberResetResult,
 } from "./auth/member-credentials.js";
 export type {
-  NxPasswordResetPurpose,
-  NxIssuedResetToken,
-  NxCreateResetTokenOptions,
-  NxResetRequestResult,
-  NxConsumeResetTokenOptions,
-  NxConsumeResetTokenResult,
+  NpPasswordResetPurpose,
+  NpIssuedResetToken,
+  NpCreateResetTokenOptions,
+  NpResetRequestResult,
+  NpConsumeResetTokenOptions,
+  NpConsumeResetTokenResult,
 } from "./auth/reset-token.js";
 
 export {
@@ -296,33 +296,33 @@ export {
   DEFAULT_JOB_LOG_RETENTION_MS,
 } from "./jobs/index.js";
 export type {
-  NxJobHandler,
-  NxJobQueue,
-  NxJobState,
-  NxJobSummary,
-  NxJobListOptions,
-  NxJobListResult,
-  NxJobCountOptions,
-  NxJobStateCounts,
-  NxScheduleSummary,
-  NxWorkerHeartbeat,
-  NxWorkerHealthSummary,
-  NxJobsPauseState,
+  NpJobHandler,
+  NpJobQueue,
+  NpJobState,
+  NpJobSummary,
+  NpJobListOptions,
+  NpJobListResult,
+  NpJobCountOptions,
+  NpJobStateCounts,
+  NpScheduleSummary,
+  NpWorkerHeartbeat,
+  NpWorkerHealthSummary,
+  NpJobsPauseState,
   SetJobsPauseStateInput,
-  NxJobLogEntry,
+  NpJobLogEntry,
   ListJobLogsOptions,
 } from "./jobs/index.js";
 
-export type { NxStorageAdapter, NxFileMetadata } from "./storage/types.js";
+export type { NpStorageAdapter, NpFileMetadata } from "./storage/types.js";
 export { LocalStorageAdapter } from "./storage/local.js";
 export { S3StorageAdapter } from "./storage/s3.js";
 export { createStorageAdapter } from "./storage/index.js";
 
 export type {
-  NxEmailAdapter,
-  NxEmailMessage,
-  NxEmailTemplate,
-  NxPasswordResetTemplateData,
+  NpEmailAdapter,
+  NpEmailMessage,
+  NpEmailTemplate,
+  NpPasswordResetTemplateData,
   SmtpEmailAdapterOptions,
 } from "./email/index.js";
 export {
@@ -345,16 +345,16 @@ export {
   listMedia,
   cleanupDeletedMedia,
 } from "./media/service.js";
-export type { NxMediaUploader, NxMediaUploaderKindFilter } from "./media/service.js";
+export type { NpMediaUploader, NpMediaUploaderKindFilter } from "./media/service.js";
 export { processImage, DEFAULT_IMAGE_SIZES } from "./media/processor.js";
-export type { NxProcessedImageVariant, NxProcessedImageResult } from "./media/processor.js";
+export type { NpProcessedImageVariant, NpProcessedImageResult } from "./media/processor.js";
 export { extractMediaIds } from "./media/refs.js";
 
 export type {
-  NxThemeTokens,
-  NxThemeColors,
-  NxThemeTypography,
-  NxThemeShape,
+  NpThemeTokens,
+  NpThemeColors,
+  NpThemeTypography,
+  NpThemeShape,
 } from "./theme/types.js";
 export { DEFAULT_THEME } from "./theme/defaults.js";
 export { sanitizeTokenValue } from "./theme/sanitize.js";
@@ -370,7 +370,7 @@ export {
   getThemeTemplateSummaries,
   resolveTemplateComponent,
 } from "./themes/registry.js";
-export type { NxThemeTemplateSummary } from "./themes/registry.js";
+export type { NpThemeTemplateSummary } from "./themes/registry.js";
 
 export {
   registerPluginTemplates,
@@ -392,9 +392,9 @@ export {
   NX_DEFAULT_SITE_ID,
 } from "./sites/registry.js";
 export type {
-  NxSite,
-  NxSiteUsage,
-  NxDeleteSiteOptions,
+  NpSite,
+  NpSiteUsage,
+  NpDeleteSiteOptions,
   CreateSiteInput,
 } from "./sites/registry.js";
 export {
@@ -426,10 +426,10 @@ export {
   getAllStrings,
   t,
   tSync,
-  type NxTranslationParams,
+  type NpTranslationParams,
 } from "./i18n/strings.js";
-export type { NxTranslationBundle } from "./i18n/strings.js";
-export { getLocaleDirection, type NxLocaleDirection } from "./i18n/direction.js";
+export type { NpTranslationBundle } from "./i18n/strings.js";
+export { getLocaleDirection, type NpLocaleDirection } from "./i18n/direction.js";
 export {
   formatNumber,
   formatDate,
@@ -446,7 +446,7 @@ export {
   deleteStringOverride,
   listStringOverridesForSite,
 } from "./i18n/string-overrides.js";
-export type { NxStringOverrideRow } from "./i18n/string-overrides.js";
+export type { NpStringOverrideRow } from "./i18n/string-overrides.js";
 
 export { configureBuiltinJobContext } from "./jobs/builtin-handlers.js";
 
@@ -478,8 +478,8 @@ export type {
   PluginAdminExtension,
   ResolvedCollectionTab,
   ResolvedDashboardWidget,
-  NxPluginState,
-  NxPluginStateUpdate,
+  NpPluginState,
+  NpPluginStateUpdate,
 } from "./plugins/index.js";
 
 export {
@@ -496,11 +496,11 @@ export {
   verifyStartupSafety,
 } from "./observability/index.js";
 export type {
-  NxLogLevel,
-  NxLogger,
-  NxErrorReporter,
-  NxErrorReportContext,
-  NxStartupSafetyInput,
+  NpLogLevel,
+  NpLogger,
+  NpErrorReporter,
+  NpErrorReportContext,
+  NpStartupSafetyInput,
 } from "./observability/index.js";
 
 // Phase 23.7 — pluggable rate-limiter adapter. The full surface
@@ -514,8 +514,8 @@ export {
   getOptionalRateLimiter,
 } from "./rate-limit/index.js";
 export type {
-  NxRateLimitDecision,
-  NxRateLimiterAdapter,
+  NpRateLimitDecision,
+  NpRateLimiterAdapter,
 } from "./rate-limit/index.js";
 
 export {
@@ -606,36 +606,36 @@ export type {
   CommunityScope,
   MemberAction,
   MemberCanTarget,
-  NxSpamAdapter,
-  NxSpamCheckContext,
-  NxSpamVerdict,
-  NxSpamVerdictKind,
-  NxProfanityAdapter,
-  NxProfanityCheckContext,
-  NxProfanityVerdict,
-  NxProfanityVerdictKind,
-  NxReputationAdapter,
-  NxReputationEvent,
-  NxCommunitySettings,
-  NxMemberUploadQuota,
+  NpSpamAdapter,
+  NpSpamCheckContext,
+  NpSpamVerdict,
+  NpSpamVerdictKind,
+  NpProfanityAdapter,
+  NpProfanityCheckContext,
+  NpProfanityVerdict,
+  NpProfanityVerdictKind,
+  NpReputationAdapter,
+  NpReputationEvent,
+  NpCommunitySettings,
+  NpMemberUploadQuota,
   CommentStatus,
-  NxCommentRow,
-  NxCommentCreateInput,
-  NxCommentListOptions,
-  NxCommentListResult,
-  NxCommentSort,
-  NxCommentUpdateInput,
-  NxCommentDeleteInput,
-  NxCommentHideInput,
-  NxCommentRestoreInput,
-  NxReactionRow,
-  NxReactToInput,
-  NxFollowRow,
-  NxFollowInput,
-  NxNotificationRow,
+  NpCommentRow,
+  NpCommentCreateInput,
+  NpCommentListOptions,
+  NpCommentListResult,
+  NpCommentSort,
+  NpCommentUpdateInput,
+  NpCommentDeleteInput,
+  NpCommentHideInput,
+  NpCommentRestoreInput,
+  NpReactionRow,
+  NpReactToInput,
+  NpFollowRow,
+  NpFollowInput,
+  NpNotificationRow,
   CreateNotificationInput,
   ListNotificationsOptions,
-  NxNotificationListResult,
+  NpNotificationListResult,
   MarkReadInput,
   Principal,
   AuditActor,
@@ -643,32 +643,32 @@ export type {
   AuditEventRow,
   RecordAuditEventInput,
   ListAuditOptions,
-  NxReportRow,
+  NpReportRow,
   FileReportInput,
   ListReportsOptions,
   ListReportsResult,
   ResolveReportInput,
-  NxBanRow,
+  NpBanRow,
   BanScope,
   BanKind,
   IssueBanInput,
   RevokeBanInput,
-  NxMemberRoleGrantRow,
+  NpMemberRoleGrantRow,
   GrantMemberRoleInput,
   RevokeMemberRoleInput,
-  NxMemberPurgeResult,
-  NxMemberMuteRow,
-  NxMemberMuteSummary,
+  NpMemberPurgeResult,
+  NpMemberMuteRow,
+  NpMemberMuteSummary,
   MuteMemberInput,
   ListMutesOptions,
-  NxMentionTarget,
+  NpMentionTarget,
   FanOutMentionsInput,
-  NxNotificationKindMeta,
-  NxNotificationPrefs,
-  NxDigestCadence,
+  NpNotificationKindMeta,
+  NpNotificationPrefs,
+  NpDigestCadence,
   SetMemberNotificationPrefsInput,
-  NxDigestEmailContent,
-  NxDigestNotificationSummary,
+  NpDigestEmailContent,
+  NpDigestNotificationSummary,
   BuildDigestEmailInput,
   RunDigestSweepInput,
   RunDigestSweepResult,

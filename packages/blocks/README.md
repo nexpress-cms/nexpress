@@ -57,9 +57,9 @@ directly.
 ## Authoring a custom block
 
 ```ts
-import type { NxBlockDefinition } from "@nexpress/blocks";
+import type { NpBlockDefinition } from "@nexpress/blocks";
 
-export const calloutBlock: NxBlockDefinition = {
+export const calloutBlock: NpBlockDefinition = {
   type: "callout",
   label: "Callout",
   fields: [

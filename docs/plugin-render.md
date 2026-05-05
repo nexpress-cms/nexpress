@@ -14,7 +14,7 @@ extension model.
 ## Handler shape
 
 ```ts
-import { definePlugin, type NxRenderContribution } from "@nexpress/plugin-sdk";
+import { definePlugin, type NpRenderContribution } from "@nexpress/plugin-sdk";
 
 export default definePlugin({
   manifest: {
@@ -22,7 +22,7 @@ export default definePlugin({
     capabilities: ["hooks:render" /* , … */],
   },
   hooks: {
-    "render:beforePage": ({ data }): NxRenderContribution | undefined => {
+    "render:beforePage": ({ data }): NpRenderContribution | undefined => {
       const doc = data.document as Record<string, unknown>;
       return {
         head: [
@@ -70,7 +70,7 @@ your page tree so tag order is preserved.
 
 1. Resolves the document for the current URL (`pages/:slug` or
    `posts/:slug`).
-2. Calls `runHookAndCollect<NxRenderContribution>("render:beforePage", {
+2. Calls `runHookAndCollect<NpRenderContribution>("render:beforePage", {
    collection, slug, document })` — fires every registered handler in
    registration order, collects non-null returns.
 3. Flattens all `head` and `bodyEnd` arrays into two lists.

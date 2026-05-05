@@ -6,9 +6,9 @@ import {
   isEditorOrAbove,
   isOwnerOrAdmin,
 } from "./access.js";
-import type { NxAuthUser } from "./types.js";
+import type { NpAuthUser } from "./types.js";
 
-function user(role: NxAuthUser["role"], id = "user-1"): NxAuthUser {
+function user(role: NpAuthUser["role"], id = "user-1"): NpAuthUser {
   return {
     id,
     email: `${id}@example.com`,

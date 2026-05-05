@@ -1,7 +1,7 @@
 import { renderBlocks } from "@nexpress/blocks";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Gallery template — renders the page title centered, then
@@ -13,8 +13,8 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
  * the block type — but the simplest case is "drop blocks in,
  * grid takes care of it".
  */
-export function PageGalleryTemplate({ doc }: NxTemplateRenderProps) {
-  const blocks = (doc as { blocks?: NxPageBlocks }).blocks;
+export function PageGalleryTemplate({ doc }: NpTemplateRenderProps) {
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
     <section className="nx-portfolio-gallery">

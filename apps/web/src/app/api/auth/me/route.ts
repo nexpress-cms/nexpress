@@ -1,13 +1,13 @@
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       user: {
         id: user.id,
         email: user.email,
@@ -16,6 +16,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

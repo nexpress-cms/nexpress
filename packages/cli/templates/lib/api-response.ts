@@ -1,1 +1,1 @@
-export { nxSuccessResponse, nxErrorResponse, type NxApiError } from "@nexpress/next";
+export { npSuccessResponse, npErrorResponse, type NpApiError } from "@nexpress/next";

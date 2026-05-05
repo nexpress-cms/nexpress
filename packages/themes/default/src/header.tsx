@@ -1,5 +1,5 @@
 import { getI18nConfig } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation, resolveAvailableLocales } from "@nexpress/next";
 import { headers } from "next/headers";
 
@@ -50,12 +50,12 @@ export async function DefaultHeader() {
         </a>
         <nav className="nx-site-nav-desktop" aria-label="Primary">
           <ul className="nx-site-nav">
-            {headerNav.map((item: NxNavItem, index: number) => (
+            {headerNav.map((item: NpNavItem, index: number) => (
               <li key={`nav-${index.toString()}`} className="nx-site-nav-item">
                 <a href={item.url}>{item.label}</a>
                 {item.children && item.children.length > 0 ? (
                   <ul className="nx-site-subnav">
-                    {item.children.map((child: NxNavItem, childIndex: number) => (
+                    {item.children.map((child: NpNavItem, childIndex: number) => (
                       <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
                         <a href={child.url}>{child.label}</a>
                       </li>

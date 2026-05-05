@@ -1,4 +1,4 @@
-export type { NxEmailAdapter, NxEmailMessage } from "./types.js";
+export type { NpEmailAdapter, NpEmailMessage } from "./types.js";
 export { NoopEmailAdapter } from "./noop.js";
 export { SmtpEmailAdapter, type SmtpEmailAdapterOptions } from "./smtp.js";
 export { getEmailAdapter, setEmailAdapter, resetEmailAdapter } from "./service.js";
@@ -6,7 +6,7 @@ export {
   buildInviteEmail,
   buildMemberVerifyEmail,
   buildResetEmail,
-  type NxEmailTemplate,
-  type NxMemberVerifyTemplateData,
-  type NxPasswordResetTemplateData,
+  type NpEmailTemplate,
+  type NpMemberVerifyTemplateData,
+  type NpPasswordResetTemplateData,
 } from "./templates.js";

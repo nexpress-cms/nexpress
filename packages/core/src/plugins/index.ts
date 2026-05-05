@@ -33,4 +33,4 @@ export {
   updatePluginState,
 } from "./persistence.js";
 
-export type { NxPluginState, NxPluginStateUpdate } from "./persistence.js";
+export type { NpPluginState, NpPluginStateUpdate } from "./persistence.js";

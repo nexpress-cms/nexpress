@@ -5,7 +5,7 @@
  * resolver reads `headers()` / `cookies()` from Next's request-scope
  * AsyncLocalStorage which isn't populated for these synthetic
  * requests, so it returns `null` and writes that newly call
- * `requireSiteId()` (#272) trip `NxSiteContextMissing`.
+ * `requireSiteId()` (#272) trip `NpSiteContextMissing`.
  *
  * Pin the resolver to the default site for every test. Multi-site
  * tests still override per-block via `withCurrentSite()` — that

@@ -1,17 +1,17 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   createMemberEmailVerifyToken,
   enqueueJob,
   getCommunitySettings,
   hashPassword,
-  nxMembers,
+  npMembers,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { verifyTtlMs } from "@/lib/token-ttl";
@@ -28,7 +28,7 @@ interface RegisterBody {
 
 function validate(raw: unknown): RegisterBody {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Body must be a JSON object" },
     ]);
   }
@@ -59,7 +59,7 @@ function validate(raw: unknown): RegisterBody {
     errors.push({ field: "displayName", message: "Display name 1–80 characters" });
   }
 
-  if (errors.length > 0) throw new NxValidationError("Invalid input", errors);
+  if (errors.length > 0) throw new NpValidationError("Invalid input", errors);
   return { email, password, handle, displayName };
 }
 
@@ -90,27 +90,27 @@ export async function POST(request: NextRequest) {
     // still sign in — the gate is on /register only.
     const settings = await getCommunitySettings();
     if (!settings.registrationEnabled) {
-      throw new NxForbiddenError("members", "register");
+      throw new NpForbiddenError("members", "register");
     }
 
     const body = validate(await readJsonBody(request));
     const db = getDb();
 
     const [existingByEmail] = await db
-      .select({ id: nxMembers.id })
-      .from(nxMembers)
-      .where(eq(nxMembers.email, body.email))
+      .select({ id: npMembers.id })
+      .from(npMembers)
+      .where(eq(npMembers.email, body.email))
       .limit(1);
     const [existingByHandle] = await db
-      .select({ id: nxMembers.id })
-      .from(nxMembers)
-      .where(eq(nxMembers.handle, body.handle))
+      .select({ id: npMembers.id })
+      .from(npMembers)
+      .where(eq(npMembers.handle, body.handle))
       .limit(1);
 
     if (existingByEmail || existingByHandle) {
       // Constant-time-ish: still pretend to enqueue. Caller can't tell
       // a collision from a fresh registration.
-      return nxSuccessResponse({ ok: true });
+      return npSuccessResponse({ ok: true });
     }
 
     const passwordHash = await hashPassword(body.password);
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     let created: { id: string } | undefined;
     try {
       [created] = await db
-        .insert(nxMembers)
+        .insert(npMembers)
         .values({
           email: body.email,
           password: passwordHash,
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
           // is the soft-delete sink.
           status: "pending",
         })
-        .returning({ id: nxMembers.id });
+        .returning({ id: npMembers.id });
     } catch (err) {
       // Two concurrent registrations for the same email/handle could
       // both pass the preflight select; one insert wins, the other
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
         "code" in err &&
         (err as { code?: string }).code === "23505"
       ) {
-        return nxSuccessResponse({ ok: true });
+        return npSuccessResponse({ ok: true });
       }
       throw err;
     }
@@ -158,8 +158,8 @@ export async function POST(request: NextRequest) {
       siteName: nexpressConfig.site.name,
     });
 
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -1,15 +1,15 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
-  nxMedia,
-  nxPlugins,
-  nxSettings,
-  nxNavigation,
+  NpForbiddenError,
+  NpValidationError,
+  npMedia,
+  npPlugins,
+  npSettings,
+  npNavigation,
   getAllCollectionSlugs,
   saveDocument,
   can,
 } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import { and, eq, isNull } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -17,7 +17,7 @@ import type { NextRequest } from "next/server";
 const SUPPORTED_EXPORT_VERSION = "1";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
@@ -42,8 +42,8 @@ interface ImportPayload {
   theme?: Record<string, unknown>;
   settings?: Record<string, unknown>;
   navigation?:
-    | Record<string, NxNavItem[]>
-    | Array<{ location?: string; items: NxNavItem[] }>;
+    | Record<string, NpNavItem[]>
+    | Array<{ location?: string; items: NpNavItem[] }>;
   collections?: Record<string, Record<string, unknown>[]>;
   media?: ImportMedia[];
   plugins?: ImportPlugin[];
@@ -51,7 +51,7 @@ interface ImportPayload {
 
 function validatePayload(body: unknown): ImportPayload {
   if (!isRecord(body)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be a JSON object" },
     ]);
   }
@@ -61,7 +61,7 @@ function validatePayload(body: unknown): ImportPayload {
       typeof body.version === "string" || typeof body.version === "number"
         ? String(body.version)
         : "unknown";
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "version",
         message: `Unsupported export version "${supplied}" (expected "${SUPPORTED_EXPORT_VERSION}")`,
@@ -70,27 +70,27 @@ function validatePayload(body: unknown): ImportPayload {
   }
 
   if (body.theme !== undefined && !isRecord(body.theme)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "theme", message: "theme must be an object" },
     ]);
   }
 
   if (body.settings !== undefined && !isRecord(body.settings)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "settings", message: "settings must be an object" },
     ]);
   }
 
   if (body.collections !== undefined) {
     if (!isRecord(body.collections)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "collections", message: "collections must be an object" },
       ]);
     }
 
     for (const [slug, docs] of Object.entries(body.collections)) {
       if (!Array.isArray(docs) || !docs.every(isRecord)) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: `collections.${slug}`, message: "Must be an array of objects" },
         ]);
       }
@@ -99,14 +99,14 @@ function validatePayload(body: unknown): ImportPayload {
 
   if (body.media !== undefined) {
     if (!Array.isArray(body.media)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "media", message: "media must be an array" },
       ]);
     }
 
     for (const [i, entry] of body.media.entries()) {
       if (!isRecord(entry) || typeof entry.id !== "string") {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: `media.${i}`, message: "Each media item must include an id" },
         ]);
       }
@@ -115,13 +115,13 @@ function validatePayload(body: unknown): ImportPayload {
 
   if (body.plugins !== undefined) {
     if (!Array.isArray(body.plugins)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "plugins", message: "plugins must be an array" },
       ]);
     }
     for (const [i, entry] of body.plugins.entries()) {
       if (!isRecord(entry) || typeof entry.id !== "string") {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: `plugins.${i}.id`, message: "Each plugin must include an id" },
         ]);
       }
@@ -149,7 +149,7 @@ function replaceMediaRefs(value: unknown, mediaMap: ReadonlyMap<string, string |
 
 function resolveNavEntries(
   navigation: ImportPayload["navigation"],
-): Array<{ location: string; items: NxNavItem[] }> {
+): Array<{ location: string; items: NpNavItem[] }> {
   if (!navigation) return [];
 
   if (Array.isArray(navigation)) {
@@ -184,7 +184,7 @@ function parseCollectionsFilter(
   if (slugs.length === 0) return null;
   const unknown = slugs.filter((slug) => !registered.has(slug));
   if (unknown.length > 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "collections", message: `Unknown collection(s): ${unknown.join(", ")}` },
     ]);
   }
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("import", "create");
+      throw new NpForbiddenError("import", "create");
     }
 
     await ensureFor("write");
@@ -227,9 +227,9 @@ export async function POST(request: NextRequest) {
       for (const m of payload.media) {
         if (m.hash) {
           const [match] = await db
-            .select({ id: nxMedia.id })
-            .from(nxMedia)
-            .where(and(eq(nxMedia.hash, m.hash), isNull(nxMedia.deletedAt)))
+            .select({ id: npMedia.id })
+            .from(npMedia)
+            .where(and(eq(npMedia.hash, m.hash), isNull(npMedia.deletedAt)))
             .limit(1);
 
           if (match) {
@@ -240,9 +240,9 @@ export async function POST(request: NextRequest) {
 
         if (m.filename) {
           const [match] = await db
-            .select({ id: nxMedia.id })
-            .from(nxMedia)
-            .where(and(eq(nxMedia.filename, m.filename), isNull(nxMedia.deletedAt)))
+            .select({ id: npMedia.id })
+            .from(npMedia)
+            .where(and(eq(npMedia.filename, m.filename), isNull(npMedia.deletedAt)))
             .limit(1);
 
           if (match) {
@@ -281,10 +281,10 @@ export async function POST(request: NextRequest) {
 
           if (payload.theme) {
             await tx
-              .insert(nxSettings)
+              .insert(npSettings)
               .values({ siteId, key: "theme", value: payload.theme, updatedAt: now, updatedBy: user.id })
               .onConflictDoUpdate({
-                target: [nxSettings.siteId, nxSettings.key],
+                target: [npSettings.siteId, npSettings.key],
                 set: { value: payload.theme, updatedAt: now, updatedBy: user.id },
               });
             imported.theme = 1;
@@ -295,10 +295,10 @@ export async function POST(request: NextRequest) {
               if (key === "theme") continue;
 
               await tx
-                .insert(nxSettings)
+                .insert(npSettings)
                 .values({ siteId, key, value, updatedAt: now, updatedBy: user.id })
                 .onConflictDoUpdate({
-                  target: [nxSettings.siteId, nxSettings.key],
+                  target: [npSettings.siteId, npSettings.key],
                   set: { value, updatedAt: now, updatedBy: user.id },
                 });
               imported.settings++;
@@ -307,10 +307,10 @@ export async function POST(request: NextRequest) {
 
           for (const { location, items } of resolveNavEntries(payload.navigation)) {
             await tx
-              .insert(nxNavigation)
+              .insert(npNavigation)
               .values({ siteId, location, items, updatedAt: now, updatedBy: user.id })
               .onConflictDoUpdate({
-                target: [nxNavigation.siteId, nxNavigation.location],
+                target: [npNavigation.siteId, npNavigation.location],
                 set: { items, updatedAt: now, updatedBy: user.id },
               });
             imported.navigation++;
@@ -362,9 +362,9 @@ export async function POST(request: NextRequest) {
         // installed via nexpress.config.ts — importing never registers new
         // plugin code). Missing plugins are warned but not error.
         const [existing] = await db
-          .select({ id: nxPlugins.id })
-          .from(nxPlugins)
-          .where(eq(nxPlugins.id, plugin.id))
+          .select({ id: npPlugins.id })
+          .from(npPlugins)
+          .where(eq(npPlugins.id, plugin.id))
           .limit(1);
         if (!existing) {
           warnings.push(
@@ -390,15 +390,15 @@ export async function POST(request: NextRequest) {
         }
         if (Object.keys(updateValues).length > 1) {
           if (!dryRun) {
-            await db.update(nxPlugins).set(updateValues).where(eq(nxPlugins.id, plugin.id));
+            await db.update(npPlugins).set(updateValues).where(eq(npPlugins.id, plugin.id));
           }
           imported.pluginsUpdated++;
         }
       }
     }
 
-    return nxSuccessResponse({ imported, warnings, dryRun, partial });
+    return npSuccessResponse({ imported, warnings, dryRun, partial });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

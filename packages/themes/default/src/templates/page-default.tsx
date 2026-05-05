@@ -1,7 +1,7 @@
 import { renderBlocks } from "@nexpress/blocks";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Default page template — the historical NexPress page render.
@@ -10,8 +10,8 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
  * doesn't pick a specific template, or as the fallback when
  * the chosen template id doesn't resolve.
  */
-export function PageDefaultTemplate({ doc }: NxTemplateRenderProps) {
-  const blocks = (doc as { blocks?: NxPageBlocks }).blocks;
+export function PageDefaultTemplate({ doc }: NpTemplateRenderProps) {
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
     <div className="nx-page nx-page-default">

@@ -1,16 +1,16 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   getOptionalJobQueue,
-  type NxJobState,
+  type NpJobState,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
-const VALID_STATES: ReadonlyArray<NxJobState> = [
+const VALID_STATES: ReadonlyArray<NpJobState> = [
   "created",
   "active",
   "completed",
@@ -40,11 +40,11 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("jobs", "list");
+      throw new NpForbiddenError("jobs", "list");
     }
     const queue = getOptionalJobQueue();
     if (!queue || typeof queue.listJobs !== "function") {
-      return nxSuccessResponse({
+      return npSuccessResponse({
         supported: false,
         jobs: [],
         total: 0,
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const stateRaw = params.get("state");
     const state =
       stateRaw && (VALID_STATES as readonly string[]).includes(stateRaw)
-        ? (stateRaw as NxJobState)
+        ? (stateRaw as NpJobState)
         : undefined;
     const limit = parseIntParam(params.get("limit"), 50, 200);
     const offset = parseIntParam(params.get("offset"), 0, 100_000);
@@ -82,9 +82,9 @@ export async function GET(request: NextRequest) {
       limit,
       offset,
     });
-    return nxSuccessResponse({ supported: true, ...result });
+    return npSuccessResponse({ supported: true, ...result });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

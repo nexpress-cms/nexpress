@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronsUpDown, Globe2, Loader2 } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,7 +51,7 @@ export function SitePicker() {
 
   async function load() {
     try {
-      const res = await nxFetch("/api/admin/sites/accessible");
+      const res = await npFetch("/api/admin/sites/accessible");
       if (!res.ok) {
         setSites([]);
         return;
@@ -73,7 +73,7 @@ export function SitePicker() {
   async function handleSelect(id: string) {
     setBusyId(id);
     try {
-      const res = await nxFetch("/api/admin/sites/active", {
+      const res = await npFetch("/api/admin/sites/active", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),

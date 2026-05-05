@@ -1,4 +1,4 @@
-export interface NxPasswordResetTemplateData {
+export interface NpPasswordResetTemplateData {
   siteName: string;
   name: string;
   resetUrl: string;
@@ -6,7 +6,7 @@ export interface NxPasswordResetTemplateData {
   expiresAt?: string;
 }
 
-export interface NxEmailTemplate {
+export interface NpEmailTemplate {
   subject: string;
   text: string;
   html: string;
@@ -40,7 +40,7 @@ function wrap(siteName: string, contentHtml: string): string {
 </html>`;
 }
 
-export function buildInviteEmail(data: NxPasswordResetTemplateData): NxEmailTemplate {
+export function buildInviteEmail(data: NpPasswordResetTemplateData): NpEmailTemplate {
   const subject = `You're invited to ${data.siteName}`;
   const text =
     `Hi ${data.name},\n\n` +
@@ -63,7 +63,7 @@ export function buildInviteEmail(data: NxPasswordResetTemplateData): NxEmailTemp
   return { subject, text, html };
 }
 
-export interface NxMemberVerifyTemplateData {
+export interface NpMemberVerifyTemplateData {
   siteName: string;
   displayName: string;
   verifyUrl: string;
@@ -74,7 +74,7 @@ export interface NxMemberVerifyTemplateData {
  * from the staff invite (members self-register, no admin invited them)
  * but reuses the same wrapper styling.
  */
-export function buildMemberVerifyEmail(data: NxMemberVerifyTemplateData): NxEmailTemplate {
+export function buildMemberVerifyEmail(data: NpMemberVerifyTemplateData): NpEmailTemplate {
   const subject = `Confirm your ${data.siteName} account`;
   const text =
     `Hi ${data.displayName},\n\n` +
@@ -97,7 +97,7 @@ export function buildMemberVerifyEmail(data: NxMemberVerifyTemplateData): NxEmai
   return { subject, text, html };
 }
 
-export function buildResetEmail(data: NxPasswordResetTemplateData): NxEmailTemplate {
+export function buildResetEmail(data: NpPasswordResetTemplateData): NpEmailTemplate {
   const subject = `Reset your ${data.siteName} password`;
   const text =
     `Hi ${data.name},\n\n` +

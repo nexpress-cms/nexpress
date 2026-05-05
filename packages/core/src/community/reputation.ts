@@ -2,12 +2,12 @@ import { eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxMembers } from "../db/schema/community.js";
+import { npMembers } from "../db/schema/community.js";
 import { getLogger } from "../observability/logger.js";
 
 import {
   getReputationAdapter,
-  type NxReputationEvent,
+  type NpReputationEvent,
 } from "./reputation-adapter.js";
 
 /**
@@ -25,7 +25,7 @@ import {
  */
 export async function applyReputation(
   memberId: string,
-  event: NxReputationEvent,
+  event: NpReputationEvent,
 ): Promise<void> {
   let delta: number;
   try {
@@ -53,12 +53,12 @@ export async function applyReputation(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   try {
     await db
-      .update(nxMembers)
+      .update(npMembers)
       .set({
-        reputation: sql`${nxMembers.reputation} + ${truncated}`,
+        reputation: sql`${npMembers.reputation} + ${truncated}`,
         updatedAt: new Date(),
       })
-      .where(eq(nxMembers.id, memberId));
+      .where(eq(npMembers.id, memberId));
   } catch (err) {
     getLogger().warn("reputation update failed — skipping", {
       error: err instanceof Error ? err.message : String(err),

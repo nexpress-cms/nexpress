@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { NxFieldConfig } from "@nexpress/core";
+import type { NpFieldConfig } from "@nexpress/core";
 import { AlertTriangle, CheckCircle2, Loader2, Play } from "lucide-react";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -46,7 +46,7 @@ interface AdminExtension {
   settings?: {
     title?: string;
     description?: string;
-    fields: NxFieldConfig[];
+    fields: NpFieldConfig[];
   };
   widgets?: WidgetDef[];
   actions?: ActionDef[];
@@ -63,7 +63,7 @@ interface PluginAdminPageProps {
 type ActionResult = { ok: boolean; data?: unknown; error?: string };
 
 async function dispatch(pluginId: string, actionId: string, payload?: unknown): Promise<ActionResult> {
-  const response = await nxFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
+  const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: payload === undefined ? "" : JSON.stringify(payload),
@@ -171,7 +171,7 @@ function SettingsCard({
     setSaving(true);
     setToast(null);
     try {
-      const response = await nxFetch(`/api/plugins/${pluginId}`, {
+      const response = await npFetch(`/api/plugins/${pluginId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config: values }),

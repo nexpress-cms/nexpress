@@ -1,7 +1,7 @@
 import { renderBlocks } from "@nexpress/blocks";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Cover template — full-bleed hero image with the page title
@@ -13,8 +13,8 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
  * image, so the template still renders meaningfully on a fresh
  * draft.
  */
-export function PageCoverTemplate({ doc }: NxTemplateRenderProps) {
-  const blocks = (doc as { blocks?: NxPageBlocks }).blocks;
+export function PageCoverTemplate({ doc }: NpTemplateRenderProps) {
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title ?? "";
   const cover = (doc as { coverImage?: unknown }).coverImage;
   const coverUrl =

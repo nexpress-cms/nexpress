@@ -100,17 +100,17 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     expect(typeof body.body.url).toBe("string");
 
     const db = await getTestDb();
-    const { nxMedia } = await import("@nexpress/core");
+    const { npMedia } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [row] = (await db
       .select({
-        id: nxMedia.id,
-        uploadedBy: nxMedia.uploadedBy,
-        uploadedByMemberId: nxMedia.uploadedByMemberId,
-        mimeType: nxMedia.mimeType,
+        id: npMedia.id,
+        uploadedBy: npMedia.uploadedBy,
+        uploadedByMemberId: npMedia.uploadedByMemberId,
+        mimeType: npMedia.mimeType,
       })
-      .from(nxMedia)
-      .where(eq(nxMedia.id, body.body.id!))
+      .from(npMedia)
+      .where(eq(npMedia.id, body.body.id!))
       .limit(1)) as Array<{
       id: string;
       uploadedBy: string | null;
@@ -193,12 +193,12 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
 
     // Confirm no row was inserted.
     const db = await getTestDb();
-    const { nxMedia } = await import("@nexpress/core");
+    const { npMedia } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const rows = (await db
       .select()
-      .from(nxMedia)
-      .where(eq(nxMedia.uploadedByMemberId, member.memberId))) as Array<unknown>;
+      .from(npMedia)
+      .where(eq(npMedia.uploadedByMemberId, member.memberId))) as Array<unknown>;
     expect(rows).toHaveLength(0);
   });
 

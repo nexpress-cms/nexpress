@@ -1,26 +1,26 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getCurrentSiteId,
-  nxSettings,
+  npSettings,
   DEFAULT_THEME,
   can,
 } from "@nexpress/core";
-import type { NxThemeTokens } from "@nexpress/core";
+import type { NpThemeTokens } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function isValidTheme(value: unknown): value is NxThemeTokens {
+function isValidTheme(value: unknown): value is NpThemeTokens {
   return (
     isRecord(value) && isRecord(value.colors) && isRecord(value.typography) && isRecord(value.shape)
   );
@@ -32,13 +32,13 @@ export async function GET(_request: NextRequest) {
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
     const [row] = await db
       .select()
-      .from(nxSettings)
-      .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")))
+      .from(npSettings)
+      .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")))
       .limit(1);
 
-    return nxSuccessResponse(row?.value ?? DEFAULT_THEME);
+    return npSuccessResponse(row?.value ?? DEFAULT_THEME);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -47,13 +47,13 @@ export async function PUT(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("settings/theme", "update");
+      throw new NpForbiddenError("settings/theme", "update");
     }
 
     const theme = await readJsonBody(request);
 
     if (!isValidTheme(theme)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "theme", message: "Theme must have colors, typography, and shape objects" },
       ]);
     }
@@ -63,10 +63,10 @@ export async function PUT(request: NextRequest) {
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 
     await db
-      .insert(nxSettings)
+      .insert(npSettings)
       .values({ siteId, key: "theme", value: theme, updatedAt: now, updatedBy: user.id })
       .onConflictDoUpdate({
-        target: [nxSettings.siteId, nxSettings.key],
+        target: [npSettings.siteId, npSettings.key],
         set: { value: theme, updatedAt: now, updatedBy: user.id },
       });
 
@@ -84,9 +84,9 @@ export async function PUT(request: NextRequest) {
       // Swallow — see active-theme route's matching catch.
     }
 
-    return nxSuccessResponse(theme);
+    return npSuccessResponse(theme);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

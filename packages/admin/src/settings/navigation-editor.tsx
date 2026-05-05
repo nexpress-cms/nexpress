@@ -9,7 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import {
   CornerDownRight,
   GripVertical,
@@ -39,7 +39,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -70,14 +70,14 @@ import {
 const NO_PARENT = "__top__";
 
 type EditableNavItem = Pick<
-  NxNavItem,
+  NpNavItem,
   "id" | "label" | "url" | "pageId" | "collection" | "collectionSlug"
 > & {
-  type: Extract<NxNavItem["type"], "link" | "page" | "collection">;
+  type: Extract<NpNavItem["type"], "link" | "page" | "collection">;
   // Optional `id` of another (top-level) item this one is nested
   // under. Editor enforces a single level of nesting — children
   // can't themselves be parents — so the saved tree never grows
-  // deeper than `children: NxNavItem[]` of length N.
+  // deeper than `children: NpNavItem[]` of length N.
   parentId?: string;
 };
 
@@ -324,7 +324,7 @@ export function NavigationEditor() {
     setMessage(null);
 
     try {
-      const response = await nxFetch("/api/navigation", {
+      const response = await npFetch("/api/navigation", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -376,7 +376,7 @@ export function NavigationEditor() {
       // Save an empty nav at the new location — that's what
       // creates the row in `nx_navigation`. The locations endpoint
       // will return it on the next fetch.
-      const response = await nxFetch("/api/navigation", {
+      const response = await npFetch("/api/navigation", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ location: slug, items: [] }),
@@ -442,7 +442,7 @@ export function NavigationEditor() {
     setBusyLocation(oldSlug);
     setError(null);
     try {
-      const response = await nxFetch(
+      const response = await npFetch(
         `/api/navigation?location=${encodeURIComponent(oldSlug)}`,
         {
           method: "PATCH",
@@ -476,7 +476,7 @@ export function NavigationEditor() {
     setBusyLocation(slug);
     setError(null);
     try {
-      const response = await nxFetch(
+      const response = await npFetch(
         `/api/navigation?location=${encodeURIComponent(slug)}`,
         { method: "DELETE" },
       );
@@ -1262,10 +1262,10 @@ function SortableRow({
   );
 }
 
-function buildNavTree(items: EditableNavItem[]): NxNavItem[] {
+function buildNavTree(items: EditableNavItem[]): NpNavItem[] {
   const idSet = new Set(items.map((item) => item.id));
-  const top: NxNavItem[] = [];
-  const childrenByParent = new Map<string, NxNavItem[]>();
+  const top: NpNavItem[] = [];
+  const childrenByParent = new Map<string, NpNavItem[]>();
 
   for (const item of items) {
     const node = toNavItem(item);
@@ -1287,7 +1287,7 @@ function buildNavTree(items: EditableNavItem[]): NxNavItem[] {
   return top;
 }
 
-function toNavItem(item: EditableNavItem): NxNavItem {
+function toNavItem(item: EditableNavItem): NpNavItem {
   if (item.type === "page") {
     return {
       id: item.id,

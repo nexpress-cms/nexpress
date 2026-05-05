@@ -1,5 +1,5 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   getCommunitySettings,
   updateCommunitySettings,
   can,
@@ -7,7 +7,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -25,12 +25,12 @@ export async function GET(request: NextRequest) {
     // would accept `author` too because moderator and author share rank
     // 1 in `ROLE_HIERARCHY`.
     if (!can(user, "community.moderate")) {
-      throw new NxForbiddenError("community.settings", "read");
+      throw new NpForbiddenError("community.settings", "read");
     }
     const settings = await getCommunitySettings();
-    return nxSuccessResponse(settings);
+    return npSuccessResponse(settings);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -39,12 +39,12 @@ export async function PUT(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("community.settings", "update");
+      throw new NpForbiddenError("community.settings", "update");
     }
     const body = await readJsonBody(request);
     const updated = await updateCommunitySettings(body, user.id);
-    return nxSuccessResponse(updated);
+    return npSuccessResponse(updated);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

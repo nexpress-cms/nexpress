@@ -1,5 +1,5 @@
-import { NxError } from "../errors.js";
-import type { NxEmailAdapter, NxEmailMessage } from "./types.js";
+import { NpError } from "../errors.js";
+import type { NpEmailAdapter, NpEmailMessage } from "./types.js";
 
 export interface SmtpEmailAdapterOptions {
   host: string;
@@ -35,7 +35,7 @@ interface NodemailerTransporterLike {
  * `nodemailer` is loaded dynamically on first send so that apps that don't
  * use the SMTP adapter (noop or custom adapter) never pay its import cost.
  */
-export class SmtpEmailAdapter implements NxEmailAdapter {
+export class SmtpEmailAdapter implements NpEmailAdapter {
   readonly kind = "smtp";
   private readonly options: SmtpEmailAdapterOptions;
   private transporter: NodemailerTransporterLike | null = null;
@@ -59,7 +59,7 @@ export class SmtpEmailAdapter implements NxEmailAdapter {
       nodemailer = (await import(moduleId)) as typeof nodemailer;
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
-      throw new NxError(
+      throw new NpError(
         `Could not load \`nodemailer\` — add it to the app's dependencies to use the SMTP adapter. Cause: ${cause}`,
         "EMAIL_ADAPTER_MISSING_DEPENDENCY",
         500,
@@ -78,7 +78,7 @@ export class SmtpEmailAdapter implements NxEmailAdapter {
     return this.transporter;
   }
 
-  async send(message: NxEmailMessage): Promise<void> {
+  async send(message: NpEmailMessage): Promise<void> {
     const transporter = await this.ensureTransporter();
     try {
       await transporter.sendMail({
@@ -90,7 +90,7 @@ export class SmtpEmailAdapter implements NxEmailAdapter {
       });
     } catch (error) {
       const cause = error instanceof Error ? error.message : String(error);
-      throw new NxError(
+      throw new NpError(
         `Failed to deliver email via SMTP: ${cause}`,
         "EMAIL_DELIVERY_FAILED",
         502,

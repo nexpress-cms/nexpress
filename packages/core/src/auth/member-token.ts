@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT, type JWTPayload } from "jose";
 
-import { NxAuthError } from "../errors.js";
+import { NpAuthError } from "../errors.js";
 
 /**
  * Member-side JWT helpers. Mirrors `signToken` / `verifyToken` for
@@ -25,16 +25,16 @@ import { NxAuthError } from "../errors.js";
  * bearer access token because both kinds were stored as fungible
  * rows in `nx_member_sessions` with no row-level kind column.
  */
-export type NxMemberTokenUse = "access" | "refresh";
+export type NpMemberTokenUse = "access" | "refresh";
 
-export interface NxMemberTokenPayload {
+export interface NpMemberTokenPayload {
   sub: string;
   aud: "member";
   ver: number;
   /** Required. `verifyMemberToken` refuses tokens missing this claim
    *  so legacy refresh JWTs from before #92 cannot be smuggled into
    *  the session cookie path (#91 reopen). */
-  use: NxMemberTokenUse;
+  use: NpMemberTokenUse;
   /** Optional only for the deploy window; new tokens always carry
    *  one. */
   jti?: string;
@@ -49,7 +49,7 @@ export async function signMemberToken(
   member: { id: string; tokenVersion: number },
   secret: string,
   expirationSeconds: number = 7200,
-  tokenUse: NxMemberTokenUse = "access",
+  tokenUse: NpMemberTokenUse = "access",
 ): Promise<string> {
   const secretKey = textEncoder.encode(secret);
   return new SignJWT({ sub: member.id, ver: member.tokenVersion, use: tokenUse })
@@ -81,8 +81,8 @@ export async function signMemberToken(
 export async function verifyMemberToken(
   token: string,
   secret: string,
-  expectedUse?: NxMemberTokenUse,
-): Promise<NxMemberTokenPayload> {
+  expectedUse?: NpMemberTokenUse,
+): Promise<NpMemberTokenPayload> {
   const secretKey = textEncoder.encode(secret);
   const { payload } = await jwtVerify(token, secretKey, { audience: MEMBER_AUDIENCE });
   // jwtVerify already validated `aud === MEMBER_AUDIENCE`; cast through
@@ -92,16 +92,16 @@ export async function verifyMemberToken(
     ver: number;
     iat: number;
     exp: number;
-    use?: NxMemberTokenUse;
+    use?: NpMemberTokenUse;
   };
   if (typed.use !== "access" && typed.use !== "refresh") {
-    throw new NxAuthError("Member token missing `use` claim");
+    throw new NpAuthError("Member token missing `use` claim");
   }
-  const use: NxMemberTokenUse = typed.use;
+  const use: NpMemberTokenUse = typed.use;
   if (expectedUse && use !== expectedUse) {
-    // Throw `NxAuthError` so the response mapper emits 401 instead of
+    // Throw `NpAuthError` so the response mapper emits 401 instead of
     // a plain 500 — this is an auth failure, not a server failure.
-    throw new NxAuthError(
+    throw new NpAuthError(
       `Member token use mismatch: expected ${expectedUse}, got ${use}`,
     );
   }

@@ -1,7 +1,7 @@
-import { NxError, NxValidationError, getLogger, reportError } from "@nexpress/core";
+import { NpError, NpValidationError, getLogger, reportError } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
-export interface NxApiError {
+export interface NpApiError {
   error: {
     code: string;
     message: string;
@@ -18,11 +18,11 @@ function isZodLikeError(error: Error): error is ZodLikeError {
   return "issues" in error;
 }
 
-export function nxSuccessResponse<T>(body: T, init?: ResponseInit): NextResponse<T> {
+export function npSuccessResponse<T>(body: T, init?: ResponseInit): NextResponse<T> {
   return NextResponse.json(body, init);
 }
 
-export function nxErrorResponse(error: Error): NextResponse<NxApiError> {
+export function npErrorResponse(error: Error): NextResponse<NpApiError> {
   if (isZodLikeError(error)) {
     return NextResponse.json(
       {
@@ -37,8 +37,8 @@ export function nxErrorResponse(error: Error): NextResponse<NxApiError> {
     );
   }
 
-  if (error instanceof NxError) {
-    const details = error instanceof NxValidationError ? error.errors : undefined;
+  if (error instanceof NpError) {
+    const details = error instanceof NpValidationError ? error.errors : undefined;
 
     return NextResponse.json(
       {

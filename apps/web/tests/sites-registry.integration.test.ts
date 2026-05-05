@@ -62,15 +62,15 @@ describe.skipIf(skipIfNoTestDb())("sites registry (Phase 15.1)", () => {
   });
 
   it("createSite rejects invalid id formats (validates against codepath used by collection slugs)", async () => {
-    const { createSite, NxValidationError } = await import("@nexpress/core");
+    const { createSite, NpValidationError } = await import("@nexpress/core");
     await expect(createSite({ id: "Bad ID", name: "x" })).rejects.toBeInstanceOf(
-      NxValidationError,
+      NpValidationError,
     );
     await expect(createSite({ id: "1starts", name: "x" })).rejects.toBeInstanceOf(
-      NxValidationError,
+      NpValidationError,
     );
     await expect(createSite({ id: "has_underscore", name: "x" })).rejects.toBeInstanceOf(
-      NxValidationError,
+      NpValidationError,
     );
   });
 
@@ -143,8 +143,8 @@ describe.skipIf(skipIfNoTestDb())("sites registry (Phase 15.1)", () => {
   });
 
   it("deleteSite refuses to delete the default site (framework invariant)", async () => {
-    const { deleteSite, NxValidationError } = await import("@nexpress/core");
-    await expect(deleteSite("default")).rejects.toBeInstanceOf(NxValidationError);
+    const { deleteSite, NpValidationError } = await import("@nexpress/core");
+    await expect(deleteSite("default")).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("deleteSite removes a non-default site cleanly", async () => {

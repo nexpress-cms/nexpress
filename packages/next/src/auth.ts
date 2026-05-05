@@ -1,10 +1,10 @@
 import {
-  NxAuthError,
+  NpAuthError,
   getLogger,
   isTokenVerificationError,
   verifyCsrf,
   verifyTokenFull,
-  type NxAuthUser,
+  type NpAuthUser,
 } from "@nexpress/core";
 import type { NextRequest, NextResponse } from "next/server";
 
@@ -71,8 +71,8 @@ function getRuntimeConfig(secret: string): AuthRuntimeConfig {
 
 export type AuthHelpers = {
   readonly getAuthRuntimeConfig: (this: void) => AuthRuntimeConfig;
-  readonly requireAuth: (this: void, request: NextRequest) => Promise<NxAuthUser>;
-  readonly optionalAuth: (this: void, request: NextRequest) => Promise<NxAuthUser | null>;
+  readonly requireAuth: (this: void, request: NextRequest) => Promise<NpAuthUser>;
+  readonly optionalAuth: (this: void, request: NextRequest) => Promise<NpAuthUser | null>;
   readonly requireCsrf: (this: void, request: NextRequest) => void;
   readonly setAuthCookies: (this: void, response: NextResponse, tokens: AuthCookieTokens) => void;
   readonly clearAuthCookies: (this: void, response: NextResponse) => void;
@@ -88,14 +88,14 @@ export type AuthHelpers = {
 export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): AuthHelpers {
   const readSecret = options.getSecret ?? defaultGetSecret;
 
-  async function getSessionUser(request: NextRequest): Promise<NxAuthUser | null> {
+  async function getSessionUser(request: NextRequest): Promise<NpAuthUser | null> {
     const token = request.cookies.get("nx-session")?.value;
     if (!token) return null;
 
     try {
       // Pass `"access"` so a refresh JWT (longer-lived `nx-refresh`
       // cookie) cannot be replayed in the session cookie. `verifyToken`
-      // throws `NxAuthError` on mismatch.
+      // throws `NpAuthError` on mismatch.
       return await verifyTokenFull(token, readSecret(), options.getDb() as never, "access");
     } catch (err) {
       // Distinguish "bad/forged token" (security signal, not an
@@ -119,13 +119,13 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
 
   const getAuthRuntimeConfig = (): AuthRuntimeConfig => getRuntimeConfig(readSecret());
 
-  const requireAuth = async (request: NextRequest): Promise<NxAuthUser> => {
+  const requireAuth = async (request: NextRequest): Promise<NpAuthUser> => {
     const user = await getSessionUser(request);
-    if (!user) throw new NxAuthError();
+    if (!user) throw new NpAuthError();
     return user;
   };
 
-  const optionalAuth = (request: NextRequest): Promise<NxAuthUser | null> =>
+  const optionalAuth = (request: NextRequest): Promise<NpAuthUser | null> =>
     getSessionUser(request);
 
   const requireCsrf = (request: NextRequest): void => {
@@ -134,7 +134,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
       request.cookies.get("nx-csrf")?.value,
       request.headers.get("x-csrf-token") ?? undefined,
     );
-    if (!ok) throw new NxAuthError("Invalid CSRF token");
+    if (!ok) throw new NpAuthError("Invalid CSRF token");
   };
 
   const setAuthCookies = (response: NextResponse, tokens: AuthCookieTokens): void => {

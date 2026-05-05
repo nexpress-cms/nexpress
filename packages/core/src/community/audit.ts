@@ -2,7 +2,7 @@ import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxAuditEvents } from "../db/schema/community.js";
+import { npAuditEvents } from "../db/schema/community.js";
 import { getLogger } from "../observability/logger.js";
 import { getCurrentSiteId } from "../sites/context.js";
 
@@ -64,7 +64,7 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
     // record as a NULL site so super-admin queries can find
     // them via "no site filter."
     const siteId = input.siteId === undefined ? await getCurrentSiteId() : input.siteId;
-    await db.insert(nxAuditEvents).values({
+    await db.insert(npAuditEvents).values({
       actorKind: input.actor.kind,
       actorUserId: input.actor.userId ?? null,
       actorMemberId: input.actor.memberId ?? null,
@@ -124,13 +124,13 @@ export async function listAuditEvents(
   const offset = Math.max(options.offset ?? 0, 0);
 
   const filters = [];
-  if (options.targetType) filters.push(eq(nxAuditEvents.targetType, options.targetType));
-  if (options.targetId) filters.push(eq(nxAuditEvents.targetId, options.targetId));
-  if (options.actorUserId) filters.push(eq(nxAuditEvents.actorUserId, options.actorUserId));
-  if (options.actorMemberId) filters.push(eq(nxAuditEvents.actorMemberId, options.actorMemberId));
-  if (options.action) filters.push(eq(nxAuditEvents.action, options.action));
-  if (options.since) filters.push(gte(nxAuditEvents.createdAt, options.since));
-  if (options.until) filters.push(lt(nxAuditEvents.createdAt, options.until));
+  if (options.targetType) filters.push(eq(npAuditEvents.targetType, options.targetType));
+  if (options.targetId) filters.push(eq(npAuditEvents.targetId, options.targetId));
+  if (options.actorUserId) filters.push(eq(npAuditEvents.actorUserId, options.actorUserId));
+  if (options.actorMemberId) filters.push(eq(npAuditEvents.actorMemberId, options.actorMemberId));
+  if (options.action) filters.push(eq(npAuditEvents.action, options.action));
+  if (options.since) filters.push(gte(npAuditEvents.createdAt, options.since));
+  if (options.until) filters.push(lt(npAuditEvents.createdAt, options.until));
 
   // Phase 17 — site scope.
   // `undefined` (default) → use the resolver's current site if
@@ -139,7 +139,7 @@ export async function listAuditEvents(
   if (options.siteId !== null) {
     const resolvedSite = options.siteId !== undefined ? options.siteId : await getCurrentSiteId();
     if (resolvedSite !== null) {
-      filters.push(eq(nxAuditEvents.siteId, resolvedSite));
+      filters.push(eq(npAuditEvents.siteId, resolvedSite));
     }
   }
 
@@ -147,15 +147,15 @@ export async function listAuditEvents(
 
   const rows = (await db
     .select()
-    .from(nxAuditEvents)
+    .from(npAuditEvents)
     .where(where)
-    .orderBy(desc(nxAuditEvents.createdAt))
+    .orderBy(desc(npAuditEvents.createdAt))
     .limit(limit)
     .offset(offset)) as AuditEventRow[];
 
   const [totalRow] = (await db
     .select({ total: count() })
-    .from(nxAuditEvents)
+    .from(npAuditEvents)
     .where(where)) as Array<{ total: number }>;
   const totalDocs = Number(totalRow?.total ?? 0);
   return { events: rows, totalDocs };

@@ -1,14 +1,14 @@
 import type { ComponentType, ReactNode } from "react";
 
 import type {
-  NxRegisteredTheme,
-  NxThemeManifest,
-  NxThemeTokens,
+  NpRegisteredTheme,
+  NpThemeManifest,
+  NpThemeTokens,
 } from "@nexpress/core";
 
 /**
- * Phase 11.1 — `NxTheme` is the typed shape themes export.
- * Extends the core's opaque `NxRegisteredTheme.impl` slot
+ * Phase 11.1 — `NpTheme` is the typed shape themes export.
+ * Extends the core's opaque `NpRegisteredTheme.impl` slot
  * with React component types so consumers (the framework's
  * site layout, the admin theme picker) can render the right
  * pieces without typing them as `unknown` everywhere.
@@ -18,11 +18,11 @@ import type {
  * in `nexpress.config.ts`'s `themes` array.
  */
 
-export interface NxThemeShellProps {
+export interface NpThemeShellProps {
   children: ReactNode;
 }
 
-export interface NxThemeSlots {
+export interface NpThemeSlots {
   /**
    * Renders inside the shell, above the main content area.
    * Typically the site nav. The framework provides no fallback;
@@ -41,7 +41,7 @@ export interface NxThemeSlots {
   afterContent?: ComponentType;
 }
 
-export interface NxTemplateRenderProps<T = Record<string, unknown>> {
+export interface NpTemplateRenderProps<T = Record<string, unknown>> {
   /** The doc being rendered, in whatever shape the collection produces. */
   doc: T;
 }
@@ -52,13 +52,13 @@ export interface NxTemplateRenderProps<T = Record<string, unknown>> {
  * dropdown — bare component refs would force callers to maintain
  * a parallel id→label map.
  */
-export interface NxThemeTemplate<T = Record<string, unknown>> {
+export interface NpThemeTemplate<T = Record<string, unknown>> {
   /** Human label shown in the admin template picker. */
   label: string;
   /** Optional description shown beneath the picker. */
   description?: string;
   /** The render component receives `{ doc }` and returns the page body. */
-  component: ComponentType<NxTemplateRenderProps<T>>;
+  component: ComponentType<NpTemplateRenderProps<T>>;
 }
 
 /**
@@ -77,19 +77,19 @@ export interface NxThemeTemplate<T = Record<string, unknown>> {
  * declare templates for a collection let the framework's existing
  * rendering path run.
  */
-export type NxThemeTemplates = Record<
+export type NpThemeTemplates = Record<
   string,
-  Record<string, NxThemeTemplate>
+  Record<string, NpThemeTemplate>
 >;
 
-export interface NxThemeImpl {
+export interface NpThemeImpl {
   /** Site-wide shell. Wraps every (site) route. */
-  shell?: ComponentType<NxThemeShellProps>;
-  slots?: NxThemeSlots;
+  shell?: ComponentType<NpThemeShellProps>;
+  slots?: NpThemeSlots;
   /** Per-collection page templates (`{ posts: { default: ..., featured: ... } }`). */
-  templates?: NxThemeTemplates;
+  templates?: NpThemeTemplates;
   /** Default tokens. Admin overrides via the theme settings tab (11.4). */
-  tokens?: Partial<NxThemeTokens>;
+  tokens?: Partial<NpThemeTokens>;
   /**
    * Theme-owned CSS, served alongside the theme's components.
    * The framework injects this as a `<style data-nx-theme="{id}">`
@@ -118,17 +118,17 @@ export interface NxThemeImpl {
   i18n?: Record<string, Record<string, string>>;
 }
 
-export interface NxTheme extends NxRegisteredTheme {
-  manifest: NxThemeManifest;
-  impl: NxThemeImpl;
+export interface NpTheme extends NpRegisteredTheme {
+  manifest: NpThemeManifest;
+  impl: NpThemeImpl;
 }
 
 /**
  * Identity helper. Themes call this so TypeScript infers the
- * full `NxTheme` shape; the runtime is a no-op pass-through.
+ * full `NpTheme` shape; the runtime is a no-op pass-through.
  * Mirrors `definePlugin()` and `defineCollection()` from the
  * rest of the framework.
  */
-export function defineTheme(theme: NxTheme): NxTheme {
+export function defineTheme(theme: NpTheme): NpTheme {
   return theme;
 }

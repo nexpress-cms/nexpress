@@ -107,7 +107,7 @@ The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access c
 
 ### Plugin model (v1)
 
-For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04-17 snapshot — high-level decisions still apply, code samples may have drifted). v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, scheduled tasks, and **page builder blocks** (`definePlugin({ blocks: NxBlockDefinition[] })`) at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
+For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04-17 snapshot — high-level decisions still apply, code samples may have drifted). v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, scheduled tasks, and **page builder blocks** (`definePlugin({ blocks: NpBlockDefinition[] })`) at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
 
 Plugin-contributed blocks merge into the same shared registry as the built-ins (`@nexpress/blocks`'s `getSharedRegistry()`). The `@nexpress/next` bootstrap calls `registerBlock` for each plugin block right after `loadPlugins`. The admin's Add-block popover (`field-renderer.tsx`) reads via `getRegisteredBlocks()` so plugin blocks surface there automatically. Re-registering a type overwrites silently — HMR / repeated boots in the same process don't blow up the editor.
 
@@ -125,7 +125,7 @@ Auth is JWT + Argon2 (`packages/core/src/auth`); sessions have a `tokenVersion` 
 
 Role checks go through `can(user, capability)` from `@nexpress/core/auth` (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers were retired — they no longer exist on the public surface. Client UI components (e.g. `AdminShell`) MUST receive resolved capability flags as props from a server parent — calling `can()` from a client component drags `@nexpress/core` into the browser bundle (#343).
 
-The "actor on an operation" is modeled as a single union `NxPrincipal = { kind: "staff"; user } | { kind: "member"; memberId }` (#319). The pipeline, plugin hooks (`NxHookPrincipal` is the same shape under a historical name), and `principalCan()` all consume this union. Adding a new variant requires updating every `switch (principal.kind)` site — exhaustive switches with `_exhaustive: never` (#313) deliberately fail to compile when the union grows.
+The "actor on an operation" is modeled as a single union `NpPrincipal = { kind: "staff"; user } | { kind: "member"; memberId }` (#319). The pipeline, plugin hooks (`NpHookPrincipal` is the same shape under a historical name), and `principalCan()` all consume this union. Adding a new variant requires updating every `switch (principal.kind)` site — exhaustive switches with `_exhaustive: never` (#313) deliberately fail to compile when the union grows.
 
 Member-side write services (comments, reactions, reports, follows) MUST go through `withMemberWrite(memberId, scopes, async () => { ... })` from `@nexpress/core/community` (#311). The wrapper enforces the ban-check gate by structure — adding a new write path without `withMemberWrite` is impossible to do silently. Pre-validation that doesn't write (input shape, target lookup) can run before the call; the wrapper guards the moment between "we know enough to attempt the write" and the first DB mutation.
 
@@ -137,7 +137,7 @@ Packages that contain React UI split exports to keep client-only code out of RSC
 
 | Package            | Root export (server-safe)               | `./client` export               | `./server` export |
 | ------------------ | --------------------------------------- | ------------------------------- | ----------------- |
-| `@nexpress/editor` | types + renderRichText                  | NxRichTextEditor, ToolbarPlugin | renderRichText    |
+| `@nexpress/editor` | types + renderRichText                  | NpRichTextEditor, ToolbarPlugin | renderRichText    |
 | `@nexpress/blocks` | types, registry, renderBlocks, blocks/* | —                               | —                 |
 | `@nexpress/admin`  | types + views                           | AdminShell, all client views    | —                 |
 
@@ -145,7 +145,7 @@ Packages that contain React UI split exports to keep client-only code out of RSC
 
 Each `./client` bundle is built by tsup with `"use client"` banner injection. Consumers import `@nexpress/editor/client` for interactive components; server code imports the root or `./server`. Admin lazy-loads heavy editors via `React.lazy(() => import("@nexpress/editor/client"))`.
 
-- `@nexpress/theme` — CSS-custom-property generation from design tokens. `NxThemeStyle` component emits `<style>` tag.
+- `@nexpress/theme` — CSS-custom-property generation from design tokens. `NpThemeStyle` component emits `<style>` tag.
 
 ### Storage
 
@@ -178,7 +178,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 | Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts` | JWT sign/verify in core; cookie helpers in next                                                                                                                                 |
 | Change middleware (rate limits, CSP)             | `apps/web/src/proxy.ts`                                 | In-memory rate limiter, security headers (Next 16 renamed `middleware.ts` → `proxy.ts`)                                                                                         |
 | Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                        | `createBootstrap()` — the singleton factory                                                                                                                                     |
-| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | nxUsers, nxMedia, nxRevisions, nxSettings                                                                                                                                       |
+| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                          | npUsers, npMedia, npRevisions, npSettings                                                                                                                                       |
 | Scaffold templates (create-nexpress)             | `packages/cli/templates/` (real .ts files) + `packages/cli/src/templates.ts` (loader) | 7-PR split (#268) moved templates to on-disk files with their own `tsconfig.templates.json`; loader is the 384-line orchestrator. Edit the file, not a string literal           |
 | Modify worker shutdown / signal handling         | `packages/core/src/jobs/worker.ts`                      | Owns SIGINT/SIGTERM, drains in-flight jobs, cleans up partial state on setup failure (#318)                                                                                     |
 | Run a WordPress import                           | `packages/wp-import/src/`                               | `parse/`, `convert/`, `media/`, `apply/`, `cli/`. Long-running pg-boss job; surfaces in `/admin/jobs`                                                                          |
@@ -188,7 +188,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 
 ## Conventions
 
-- **Error types**: throw `NxForbiddenError` / `NxNotFoundError` / `NxValidationError` / `NxAuthError` / `NxConflictError` / `NxRateLimitError` / `NxSiteContextMissingError` from `@nexpress/core`. The API layer converts these to HTTP responses with stable `code` strings — see `docs/api-error-codes.md` for the catalogue and stability guarantee. New codes extend the `NxErrorCode` union (#290).
+- **Error types**: throw `NpForbiddenError` / `NpNotFoundError` / `NpValidationError` / `NpAuthError` / `NpConflictError` / `NpRateLimitError` / `NpSiteContextMissingError` from `@nexpress/core`. The API layer converts these to HTTP responses with stable `code` strings — see `docs/api-error-codes.md` for the catalogue and stability guarantee. New codes extend the `NpErrorCode` union (#290).
 - **Type-only imports**: enforced by ESLint (`@typescript-eslint/consistent-type-imports` with inline fix style). Prefer `import { type Foo } from "..."`.
 - **No import cycles**: enforced by `import-x/no-cycle`.
 - **React packages** declare React as a `peerDependency`; do not bundle it.
@@ -223,24 +223,24 @@ What v0.1 of the published `@nexpress/*` packages commits to. Anything not on th
 
 These are the public APIs we'll honor with semver and migration notes. Breaking them rides a **minor bump pre-1.0** and ships a CHANGELOG line operators can search for.
 
-- **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NxTextField`, `NxRichTextField`, `NxRelationshipField`, `NxBlocksField`, `NxArrayField`, `NxGroupField`, `NxRowField`, `NxCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
-- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, scheduled, blocks })`. The hook names `content:beforeSave`, `content:afterSave`, `content:beforeDelete`, `content:afterDelete` are stable. Member / media hooks (`member:*`, `media:*`) are stable; new hook names will be added with the same prefix scheme. `blocks` ships an `NxBlockDefinition[]` registered into the shared block registry at boot.
+- **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NpTextField`, `NpRichTextField`, `NpRelationshipField`, `NpBlocksField`, `NpArrayField`, `NpGroupField`, `NpRowField`, `NpCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
+- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, scheduled, blocks })`. The hook names `content:beforeSave`, `content:afterSave`, `content:beforeDelete`, `content:afterDelete` are stable. Member / media hooks (`member:*`, `media:*`) are stable; new hook names will be added with the same prefix scheme. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
 - **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "write")`. Adding a new intent is non-breaking; semantics of the existing three are pinned.
-- **Error classes + codes** — `NxForbiddenError`, `NxNotFoundError`, `NxValidationError`, `NxAuthError`, `NxConflictError`, `NxRateLimitError`, `NxSiteContextMissingError`, and the `NxErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
+- **Error classes + codes** — `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpRateLimitError`, `NpSiteContextMissingError`, and the `NpErrorCode` union. The string code per class is stable per [docs/api-error-codes.md](./docs/api-error-codes.md).
 - **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
 - **Subpath exports** — `@nexpress/core/auth`, `/community`, `/db`, `/i18n`, `/jobs`, `/media`, `/observability`, `/seo`. Symbols inside each are stable per the rules above.
-- **Adapters** — `NxStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NxJobQueue` (with `PgBossAdapter`), `NxLogger` + `setLogger`, `NxErrorReporter` + `setErrorReporter`, `NxEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NxJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
-- **`NxPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
-- **Block authoring** — `NxBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NxBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NxBlockInstance[]`). Adding optional fields to either is non-breaking. `NxBlockMetadata` (= `NxBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable.
-- **Plugin block contribution** — `definePlugin({ blocks: NxBlockDefinition[] })`. The bootstrap (`@nexpress/next`) registers each plugin block into the shared registry at boot. Re-registration of the same `type` overwrites silently to keep HMR safe.
+- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter`. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
+- **Block authoring** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional `children: NpBlockInstance[]`). Adding optional fields to either is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable.
+- **Plugin block contribution** — `definePlugin({ blocks: NpBlockDefinition[] })`. The bootstrap (`@nexpress/next`) registers each plugin block into the shared registry at boot. Re-registration of the same `type` overwrites silently to keep HMR safe.
 - **Block server → client metadata bridge** — host apps wrap their admin children with `<BlocksRegistryProvider metadata={getRegisteredBlockMetadata()}>` (called server-side). The page builder reads it via the `useBlocksRegistry()` hook. Without the provider, plugin blocks render correctly on the public site but are absent from the admin's Add-block popover (the registry singleton is module-scoped and the browser instance only has the built-in defaults).
 
 ### Experimental — no stability promise
 
 These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
 
-- **Lexical content shape** — `NxRichTextContent` is whatever Lexical's serializer emits. We track Lexical upstream; their JSON shape is not part of NexPress's commitment.
-- **`_layout` meta convention on grid children** — children of a `gridBlock` carry `props._layout: { colSpan: 1–12 }`. Today only the built-in `gridBlock` reads it; if more container blocks land before 1.0 the convention may move to a top-level `NxBlockInstance.layout?` field instead of being nested inside `props`.
+- **Lexical content shape** — `NpRichTextContent` is whatever Lexical's serializer emits. We track Lexical upstream; their JSON shape is not part of NexPress's commitment.
+- **`_layout` meta convention on grid children** — children of a `gridBlock` carry `props._layout: { colSpan: 1–12 }`. Today only the built-in `gridBlock` reads it; if more container blocks land before 1.0 the convention may move to a top-level `NpBlockInstance.layout?` field instead of being nested inside `props`.
 - **Block prop field types** — the `propsSchema` field type set (`text` / `textarea` / `number` / `boolean` / `select` / `url` / `richtext` / `image`) is what the admin renders today. Adding new types is non-breaking; existing ones won't be renamed in 0.x but the *editor renderer* for a type may upgrade visually (e.g. phase 5 swapped the `richtext` JSON-textarea for a Lexical editor without changing the wire format).
 - **Theme token names** — `colors`, `fonts`, `radii`, etc. are stable as a *category*, but specific token keys may be renamed if a token system overhaul lands before 1.0.
 - **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
@@ -252,7 +252,7 @@ These exist on the published surface but are explicitly NOT covered by the rules
 
 - `hasRole(user, minRole)` / `isStaffMod(user)` — replaced by `can(user, capability)` (#273).
 - `@nexpress/blocks/client` subpath — the page-builder editor moved into `@nexpress/admin` (#444). `@nexpress/blocks` is server-safe end-to-end now (types, registry, renderBlocks, block definitions). Sites importing `BlockPageEditor` from the old subpath should switch to letting `field-renderer` handle blocks fields automatically.
-- `NxBlockRegistration` (the legacy `component: string` shape exported from `@nexpress/plugin-sdk`) — replaced by the real `NxBlockDefinition` from `@nexpress/blocks` on `NxPluginDefinition.blocks` (#446). The old type stays exported as `@deprecated` for type compatibility but was never wired and has no consumers.
+- `NpBlockRegistration` (the legacy `component: string` shape exported from `@nexpress/plugin-sdk`) — replaced by the real `NpBlockDefinition` from `@nexpress/blocks` on `NpPluginDefinition.blocks` (#446). The old type stays exported as `@deprecated` for type compatibility but was never wired and has no consumers.
 
 ### What this section is NOT
 

@@ -1,4 +1,4 @@
-import { buildPersonJsonLd, getSiteSeoSettings, nxMembers } from "@nexpress/core";
+import { buildPersonJsonLd, getSiteSeoSettings, npMembers } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -18,17 +18,17 @@ async function loadActiveMember(handle: string) {
   await ensureFor("read");
   const [row] = await getDb()
     .select({
-      id: nxMembers.id,
-      handle: nxMembers.handle,
-      displayName: nxMembers.displayName,
-      bio: nxMembers.bio,
-      avatar: nxMembers.avatar,
-      reputation: nxMembers.reputation,
-      status: nxMembers.status,
-      createdAt: nxMembers.createdAt,
+      id: npMembers.id,
+      handle: npMembers.handle,
+      displayName: npMembers.displayName,
+      bio: npMembers.bio,
+      avatar: npMembers.avatar,
+      reputation: npMembers.reputation,
+      status: npMembers.status,
+      createdAt: npMembers.createdAt,
     })
-    .from(nxMembers)
-    .where(eq(nxMembers.handle, handle.toLowerCase()))
+    .from(npMembers)
+    .where(eq(npMembers.handle, handle.toLowerCase()))
     .limit(1);
   return row && row.status === "active" ? row : null;
 }

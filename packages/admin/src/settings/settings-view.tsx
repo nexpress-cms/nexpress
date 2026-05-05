@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -79,7 +79,7 @@ export function SettingsView() {
       ];
 
       for (const update of updates) {
-        const response = await nxFetch("/api/settings", {
+        const response = await npFetch("/api/settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(update),

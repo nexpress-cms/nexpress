@@ -1,12 +1,12 @@
 export type {
-  NxBlockDefinition,
-  NxBlockMetadata,
-  NxBlockPropField,
-  NxBlockInstance,
-  NxBlockRegistration,
-  NxBlockRegistry,
-  NxPageBlocks,
-  NxDataBinding,
+  NpBlockDefinition,
+  NpBlockMetadata,
+  NpBlockPropField,
+  NpBlockInstance,
+  NpBlockRegistration,
+  NpBlockRegistry,
+  NpPageBlocks,
+  NpDataBinding,
 } from "./types.js";
 export {
   createBlockRegistry,

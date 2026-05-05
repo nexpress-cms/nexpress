@@ -100,7 +100,7 @@ export default definePlugin({
 
 ### `settings` — configuration form
 
-Reuses the collection field system (`NxFieldConfig`), so every field type
+Reuses the collection field system (`NpFieldConfig`), so every field type
 supported in collections works here: `text`, `textarea`, `number`,
 `checkbox`, `date`, `select`, `radio`, `relationship`, `array`, `group`,
 and layout fields (`row`, `collapsible`).

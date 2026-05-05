@@ -25,7 +25,7 @@ import { localizedPagesCollection } from "../../../../apps/web/src/collections/l
 import { taxonomiesCollection } from "../../../../apps/web/src/collections/taxonomies.js";
 import { registerCollection } from "../collections/registry.js";
 import { setI18nConfig } from "../i18n/registry.js";
-import type { NxCollectionConfig } from "../config/types.js";
+import type { NpCollectionConfig } from "../config/types.js";
 
 let registered = false;
 
@@ -43,21 +43,21 @@ let registered = false;
 export function registerTestCollections(): void {
   if (registered) return;
 
-  const postsConfig: NxCollectionConfig = {
+  const postsConfig: NpCollectionConfig = {
     ...postsCollection,
     access: undefined,
     hooks: undefined,
   };
   registerCollection("posts", postsTable as never, postsConfig);
 
-  const pagesConfig: NxCollectionConfig = {
+  const pagesConfig: NpCollectionConfig = {
     ...pagesCollection,
     access: undefined,
     hooks: undefined,
   };
   registerCollection("pages", pagesTable as never, pagesConfig);
 
-  const localizedConfig: NxCollectionConfig = {
+  const localizedConfig: NpCollectionConfig = {
     ...localizedPagesCollection,
     access: undefined,
     hooks: undefined,
@@ -67,7 +67,7 @@ export function registerTestCollections(): void {
   // Phase 21.6 — taxonomies collection. Posts reference it via the
   // `categories` / `tags` relationship fields, so saving a post
   // with terms requires this registration to be present.
-  const taxonomiesConfig: NxCollectionConfig = {
+  const taxonomiesConfig: NpCollectionConfig = {
     ...taxonomiesCollection,
     access: undefined,
     hooks: undefined,

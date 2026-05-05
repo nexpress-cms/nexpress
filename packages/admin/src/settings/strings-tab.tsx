@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, RotateCcw, Save, Search } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -50,7 +50,7 @@ export function StringsTab() {
   async function load() {
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/i18n/strings");
+      const res = await npFetch("/api/admin/i18n/strings");
       const body = (await res.json().catch(() => null)) as
         | StringsPayload
         | { error?: { message?: string } }
@@ -77,7 +77,7 @@ export function StringsTab() {
     setBusyKey(`${key}::${locale}`);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/i18n/strings", {
+      const res = await npFetch("/api/admin/i18n/strings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, locale, value }),
@@ -101,7 +101,7 @@ export function StringsTab() {
     setBusyKey(`${key}::${locale}`);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/i18n/strings?locale=${encodeURIComponent(locale)}&key=${encodeURIComponent(key)}`,
         { method: "DELETE" },
       );

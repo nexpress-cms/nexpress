@@ -8,9 +8,9 @@ import {
   getThemeById,
 } from "@nexpress/core";
 import type {
-  NxNavItem,
-  NxRegisteredTheme,
-  NxThemeTokens,
+  NpNavItem,
+  NpRegisteredTheme,
+  NpThemeTokens,
 } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
 
@@ -61,7 +61,7 @@ export function navCacheTag(siteId: string, location: string): string {
   return `nx:nav:${siteId}:${location}`;
 }
 
-export async function getCachedTheme(): Promise<NxThemeTokens> {
+export async function getCachedTheme(): Promise<NpThemeTokens> {
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
     () => getTheme(),
@@ -105,7 +105,7 @@ export async function getCachedActiveThemeId(): Promise<string | null> {
  * uncached after preserves the in-process registry semantics
  * while skipping the DB hit.
  */
-export async function getCachedActiveTheme(): Promise<NxRegisteredTheme | null> {
+export async function getCachedActiveTheme(): Promise<NpRegisteredTheme | null> {
   const id = await getCachedActiveThemeId();
   if (id) {
     const theme = getThemeById(id);
@@ -117,7 +117,7 @@ export async function getCachedActiveTheme(): Promise<NxRegisteredTheme | null> 
 
 export async function getCachedNavigation(
   location: string = "header",
-): Promise<NxNavItem[]> {
+): Promise<NpNavItem[]> {
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
     () => getNavigation(location),

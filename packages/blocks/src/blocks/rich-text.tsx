@@ -1,13 +1,13 @@
 import { renderRichText } from "@nexpress/editor/server";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 type RichTextContent = Parameters<typeof renderRichText>[0];
 
 const isRichTextContent = (value: unknown): value is RichTextContent =>
   typeof value === "object" && value !== null;
 
-export const richTextBlock: NxBlockDefinition = {
+export const richTextBlock: NpBlockDefinition = {
   type: "rich-text",
   label: "Rich Text",
   description: "Server-rendered Lexical content for long-form text, lists, and formatting.",

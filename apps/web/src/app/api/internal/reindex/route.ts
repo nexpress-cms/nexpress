@@ -1,8 +1,8 @@
-import { NxAuthError, getAllCollectionSlugs, reindexCollection } from "@nexpress/core";
+import { NpAuthError, getAllCollectionSlugs, reindexCollection } from "@nexpress/core";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 /**
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const header = request.headers.get("authorization") ?? "";
     const supplied = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     if (!supplied || supplied !== expected) {
-      throw new NxAuthError("Unauthorized");
+      throw new NpAuthError("Unauthorized");
     }
 
     await ensureFor("write");
@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
     }
 
     const total = results.reduce((sum, r) => sum + r.processed, 0);
-    return nxSuccessResponse({ total, collections: results });
+    return npSuccessResponse({ total, collections: results });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

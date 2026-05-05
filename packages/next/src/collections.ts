@@ -1,10 +1,10 @@
 import {
-  NxValidationError,
-  type NxAuthUser,
-  type NxFindOptions,
-  type NxFindResult,
-  type NxSaveOptions,
-  type NxSaveResult,
+  NpValidationError,
+  type NpAuthUser,
+  type NpFindOptions,
+  type NpFindResult,
+  type NpSaveOptions,
+  type NpSaveResult,
   findDocuments as coreFindDocuments,
   getDocumentById as coreGetDocumentById,
   saveDocument as coreSaveDocument,
@@ -17,32 +17,32 @@ export interface CollectionHelpersOptions {
 }
 
 export type CollectionHelpers = {
-  readonly parseFindOptions: (this: void, searchParams: URLSearchParams) => NxFindOptions;
+  readonly parseFindOptions: (this: void, searchParams: URLSearchParams) => NpFindOptions;
   readonly findCollectionDocuments: (
     this: void,
     slug: string,
-    options: NxFindOptions,
-    user: NxAuthUser | null,
-  ) => Promise<NxFindResult>;
+    options: NpFindOptions,
+    user: NpAuthUser | null,
+  ) => Promise<NpFindResult>;
   readonly getCollectionDocument: (
     this: void,
     slug: string,
     id: string,
-    user: NxAuthUser | null,
+    user: NpAuthUser | null,
   ) => Promise<Record<string, unknown> | null>;
   readonly saveCollectionDocument: (
     this: void,
     slug: string,
     id: string | null,
     data: Record<string, unknown>,
-    user: NxAuthUser,
-    options?: NxSaveOptions,
-  ) => Promise<NxSaveResult>;
+    user: NpAuthUser,
+    options?: NpSaveOptions,
+  ) => Promise<NpSaveResult>;
   readonly deleteCollectionDocument: (
     this: void,
     slug: string,
     id: string,
-    user: NxAuthUser,
+    user: NpAuthUser,
   ) => Promise<void>;
 };
 
@@ -53,13 +53,13 @@ function parseWhere(where: string | null): Record<string, unknown> | undefined {
   try {
     parsed = JSON.parse(where);
   } catch {
-    throw new NxValidationError("Invalid query parameters", [
+    throw new NpValidationError("Invalid query parameters", [
       { field: "where", message: "Must be valid JSON" },
     ]);
   }
 
   if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new NxValidationError("Invalid query parameters", [
+    throw new NpValidationError("Invalid query parameters", [
       { field: "where", message: "Must be a JSON object" },
     ]);
   }
@@ -76,7 +76,7 @@ function parsePositiveInt(
 
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0 || (max !== undefined && parsed > max)) {
-    throw new NxValidationError("Invalid query parameters", [
+    throw new NpValidationError("Invalid query parameters", [
       {
         field,
         message:
@@ -103,7 +103,7 @@ export function createCollectionHelpers(
     await options.ensureReady();
   }
 
-  const parseFindOptions = (searchParams: URLSearchParams): NxFindOptions => {
+  const parseFindOptions = (searchParams: URLSearchParams): NpFindOptions => {
     const sort = searchParams.get("sort");
     const search = searchParams.get("search");
     return {
@@ -117,9 +117,9 @@ export function createCollectionHelpers(
 
   const findCollectionDocuments = async (
     slug: string,
-    opts: NxFindOptions,
-    user: NxAuthUser | null,
-  ): Promise<NxFindResult> => {
+    opts: NpFindOptions,
+    user: NpAuthUser | null,
+  ): Promise<NpFindResult> => {
     await ready();
     return coreFindDocuments(slug, opts, user ?? undefined);
   };
@@ -127,7 +127,7 @@ export function createCollectionHelpers(
   const getCollectionDocument = async (
     slug: string,
     id: string,
-    user: NxAuthUser | null,
+    user: NpAuthUser | null,
   ): Promise<Record<string, unknown> | null> => {
     await ready();
     return coreGetDocumentById(slug, id, user ?? undefined);
@@ -137,9 +137,9 @@ export function createCollectionHelpers(
     slug: string,
     id: string | null,
     data: Record<string, unknown>,
-    user: NxAuthUser,
-    options?: NxSaveOptions,
-  ): Promise<NxSaveResult> => {
+    user: NpAuthUser,
+    options?: NpSaveOptions,
+  ): Promise<NpSaveResult> => {
     await ready();
     return coreSaveDocument(slug, id, data, user, options);
   };
@@ -147,7 +147,7 @@ export function createCollectionHelpers(
   const deleteCollectionDocument = async (
     slug: string,
     id: string,
-    user: NxAuthUser,
+    user: NpAuthUser,
   ): Promise<void> => {
     await ready();
     await coreDeleteDocument(slug, id, user);

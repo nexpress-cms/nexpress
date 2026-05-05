@@ -12,7 +12,7 @@
 
 import { eq } from "drizzle-orm";
 
-import { createDbConnection, hashPassword, nxUsers } from "@nexpress/core";
+import { createDbConnection, hashPassword, npUsers } from "@nexpress/core";
 
 export const E2E_ADMIN = {
   email: "e2e-admin@example.com",
@@ -29,9 +29,9 @@ export async function seedE2EAdmin(): Promise<void> {
   const passwordHash = await hashPassword(E2E_ADMIN.password);
 
   const [existing] = await db
-    .select({ id: nxUsers.id })
-    .from(nxUsers)
-    .where(eq(nxUsers.email, E2E_ADMIN.email))
+    .select({ id: npUsers.id })
+    .from(npUsers)
+    .where(eq(npUsers.email, E2E_ADMIN.email))
     .limit(1);
 
   if (existing) {
@@ -41,7 +41,7 @@ export async function seedE2EAdmin(): Promise<void> {
     // sign in. Without the reset the spec randomly 401s after a
     // failed-password test runs first.
     await db
-      .update(nxUsers)
+      .update(npUsers)
       .set({
         password: passwordHash,
         role: "admin",
@@ -49,11 +49,11 @@ export async function seedE2EAdmin(): Promise<void> {
         loginAttempts: 0,
         lockUntil: null,
       })
-      .where(eq(nxUsers.id, existing.id));
+      .where(eq(npUsers.id, existing.id));
     return;
   }
 
-  await db.insert(nxUsers).values({
+  await db.insert(npUsers).values({
     email: E2E_ADMIN.email,
     password: passwordHash,
     name: E2E_ADMIN.name,

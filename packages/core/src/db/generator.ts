@@ -1,8 +1,8 @@
 import {
-  type NxArrayField,
-  type NxCollectionConfig,
-  type NxFieldConfig,
-  type NxRelationshipField,
+  type NpArrayField,
+  type NpCollectionConfig,
+  type NpFieldConfig,
+  type NpRelationshipField,
 } from "../config/types.js";
 
 interface TableRelation {
@@ -38,7 +38,7 @@ interface TableContext {
 
 export interface GenerateDrizzleSchemaOptions {
   /**
-   * Module specifier to import the core schema tables (nxUsers, nxMedia) from.
+   * Module specifier to import the core schema tables (npUsers, npMedia) from.
    * Defaults to "@nexpress/core". Override when the consumer's tooling
    * (e.g. drizzle-kit's CJS resolver) can't load the core package via its
    * exports map — point at a relative path to core's source in that case.
@@ -47,7 +47,7 @@ export interface GenerateDrizzleSchemaOptions {
 }
 
 export function generateDrizzleSchema(
-  collections: NxCollectionConfig[],
+  collections: NpCollectionConfig[],
   options?: GenerateDrizzleSchemaOptions,
 ): string {
   const schemaImport = options?.schemaImport ?? "@nexpress/core";
@@ -68,14 +68,14 @@ export function generateDrizzleSchema(
       {
         key: "createdByUser",
         kind: "one",
-        targetIdentifier: "nxUsers",
+        targetIdentifier: "npUsers",
         fields: ["createdBy"],
         references: ["id"],
       },
       {
         key: "updatedByUser",
         kind: "one",
-        targetIdentifier: "nxUsers",
+        targetIdentifier: "npUsers",
         fields: ["updatedBy"],
         references: ["id"],
       },
@@ -90,7 +90,7 @@ export function generateDrizzleSchema(
     const memberAuthored = Boolean(collection.community?.memberWrite?.create);
     if (memberAuthored) {
       columns.push(
-        'memberAuthorId: uuid("member_author_id").references(() => nxMembers.id, { onDelete: "set null" })',
+        'memberAuthorId: uuid("member_author_id").references(() => npMembers.id, { onDelete: "set null" })',
       );
       indexes.push(
         `index("${tableName}_member_author_idx").on(table.memberAuthorId)`,
@@ -98,7 +98,7 @@ export function generateDrizzleSchema(
       relations.push({
         key: "memberAuthor",
         kind: "one",
-        targetIdentifier: "nxMembers",
+        targetIdentifier: "npMembers",
         fields: ["memberAuthorId"],
         references: ["id"],
       });
@@ -191,7 +191,7 @@ export function generateDrizzleSchema(
 
   const body = tables.map(renderTable).join("\n\n");
   const usesMembers = collections.some((c) => c.community?.memberWrite?.create);
-  const schemaImports = ["nxMedia", "nxUsers", ...(usesMembers ? ["nxMembers"] : [])];
+  const schemaImports = ["npMedia", "npUsers", ...(usesMembers ? ["npMembers"] : [])];
 
   return [
     'import { relations } from "drizzle-orm";',
@@ -210,7 +210,7 @@ export function generateDrizzleSchema(
 
 function createNestedTables(
   context: TableContext,
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   tables: GeneratedTable[],
   collectionTables: Map<string, string>,
 ): void {
@@ -240,7 +240,7 @@ function createNestedTables(
 
 function createArrayTable(
   context: TableContext,
-  field: NxArrayField,
+  field: NpArrayField,
   tables: GeneratedTable[],
   collectionTables: Map<string, string>,
 ): GeneratedTable {
@@ -288,7 +288,7 @@ function createArrayTable(
 
 function createHasManyJoinTable(
   context: TableContext,
-  field: NxRelationshipField & { relationTo: string; hasMany: true },
+  field: NpRelationshipField & { relationTo: string; hasMany: true },
   collectionTables: Map<string, string>,
 ): GeneratedTable {
   const path = [...context.fieldPath, field.name];
@@ -330,7 +330,7 @@ function createHasManyJoinTable(
 }
 
 function collectScalarColumns(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   prefix: string[],
   collectionTables: Map<string, string>,
 ): ScalarFieldResult {
@@ -376,7 +376,7 @@ function collectScalarColumns(
 }
 
 function buildScalarColumn(
-  field: Exclude<NxFieldConfig, { type: "row" | "collapsible" | "group" | "array" }> ,
+  field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" | "array" }> ,
   propertyName: string,
   columnName: string,
   collectionTables: Map<string, string>,
@@ -407,12 +407,12 @@ function buildScalarColumn(
       };
     case "upload": {
       return {
-        columns: [`${propertyName}: uuid("${columnName}").references(() => nxMedia.id)${notNull}`],
+        columns: [`${propertyName}: uuid("${columnName}").references(() => npMedia.id)${notNull}`],
         relations: [
           {
             key: propertyName,
             kind: "one",
-            targetIdentifier: "nxMedia",
+            targetIdentifier: "npMedia",
             fields: [propertyName],
             references: ["id"],
           },
@@ -443,7 +443,7 @@ function buildScalarColumn(
   }
 }
 
-function getBaseColumns(collection: NxCollectionConfig): string[] {
+function getBaseColumns(collection: NpCollectionConfig): string[] {
   const columns = ['id: uuid("id").defaultRandom().primaryKey()'];
 
   columns.push(
@@ -452,8 +452,8 @@ function getBaseColumns(collection: NxCollectionConfig): string[] {
 
   columns.push('createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()');
   columns.push('updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()');
-  columns.push('createdBy: uuid("created_by").references(() => nxUsers.id)');
-  columns.push('updatedBy: uuid("updated_by").references(() => nxUsers.id)');
+  columns.push('createdBy: uuid("created_by").references(() => npUsers.id)');
+  columns.push('updatedBy: uuid("updated_by").references(() => npUsers.id)');
 
   // Phase 21.17 — per-doc visibility flag. Orthogonal to
   // `status` (workflow state): a row can be published-public,
@@ -510,11 +510,11 @@ function renderRelation(relation: TableRelation, ownerIdentifier: string): strin
   return `  ${relation.key}: one(${relation.targetIdentifier}, { fields: [${fields}], references: [${references}] }),`;
 }
 
-function hasSlugField(collection: NxCollectionConfig): boolean {
+function hasSlugField(collection: NpCollectionConfig): boolean {
   return collection.slugField !== undefined && collection.slugField !== false;
 }
 
-function hasDraftVersions(collection: NxCollectionConfig): boolean {
+function hasDraftVersions(collection: NpCollectionConfig): boolean {
   return Boolean(collection.versions?.drafts);
 }
 
@@ -523,11 +523,11 @@ function resolveRelationTarget(
   collectionTables: Map<string, string>,
 ): string {
   if (relationTo === "media") {
-    return "nxMedia";
+    return "npMedia";
   }
 
   if (relationTo === "users") {
-    return "nxUsers";
+    return "npUsers";
   }
 
   return collectionTables.get(relationTo) ?? getCollectionTableIdentifier(relationTo);

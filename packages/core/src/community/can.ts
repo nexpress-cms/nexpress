@@ -1,10 +1,10 @@
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { NxForbiddenError } from "../errors.js";
+import { NpForbiddenError } from "../errors.js";
 
 import { getDb } from "../db/runtime.js";
-import { nxBans, nxMemberRoles } from "../db/schema/community.js";
+import { npBans, npMemberRoles } from "../db/schema/community.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { type CommunityCapability, type CommunityScope, getCommunityRole } from "./roles.js";
@@ -42,15 +42,15 @@ export async function isMemberBanned(
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const bans = (await handle
     .select({
-      scopeType: nxBans.scopeType,
-      scopeId: nxBans.scopeId,
+      scopeType: npBans.scopeType,
+      scopeId: npBans.scopeId,
     })
-    .from(nxBans)
+    .from(npBans)
     .where(
       and(
-        eq(nxBans.memberId, memberId),
-        eq(nxBans.siteId, siteId),
-        or(isNull(nxBans.expiresAt), gt(nxBans.expiresAt, now)),
+        eq(npBans.memberId, memberId),
+        eq(npBans.siteId, siteId),
+        or(isNull(npBans.expiresAt), gt(npBans.expiresAt, now)),
       ),
     )) as Array<{
     scopeType: "site" | "category" | "collection";
@@ -64,7 +64,7 @@ export async function isMemberBanned(
 }
 
 /**
- * Throws `NxForbiddenError` if the member is currently banned for any
+ * Throws `NpForbiddenError` if the member is currently banned for any
  * scope in the chain. Used at the top of community write services
  * before any DB mutation. Pre-existing `memberCan` enforces the same
  * rule for permission-based actions; this helper is the catch-all
@@ -75,7 +75,7 @@ export async function assertNotBanned(
   scopes: ReadonlyArray<{ type: CommunityScope; id: string }> = [],
 ): Promise<void> {
   if (await isMemberBanned(memberId, scopes)) {
-    throw new NxForbiddenError("community", "banned");
+    throw new NpForbiddenError("community", "banned");
   }
 }
 
@@ -188,16 +188,16 @@ export async function memberCan(
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const grants = (await db
     .select({
-      role: nxMemberRoles.role,
-      scopeType: nxMemberRoles.scopeType,
-      scopeId: nxMemberRoles.scopeId,
+      role: npMemberRoles.role,
+      scopeType: npMemberRoles.scopeType,
+      scopeId: npMemberRoles.scopeId,
     })
-    .from(nxMemberRoles)
+    .from(npMemberRoles)
     .where(
       and(
-        eq(nxMemberRoles.memberId, memberId),
-        eq(nxMemberRoles.siteId, siteId),
-        or(isNull(nxMemberRoles.expiresAt), gt(nxMemberRoles.expiresAt, now)),
+        eq(npMemberRoles.memberId, memberId),
+        eq(npMemberRoles.siteId, siteId),
+        or(isNull(npMemberRoles.expiresAt), gt(npMemberRoles.expiresAt, now)),
       ),
     )) as Array<{
     role: string;

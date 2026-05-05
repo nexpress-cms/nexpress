@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { applySlugField, slugify } from "./slug.js";
-import type { NxCollectionConfig } from "../config/types.js";
+import type { NpCollectionConfig } from "../config/types.js";
 
-function collection(overrides: Partial<NxCollectionConfig> = {}): NxCollectionConfig {
+function collection(overrides: Partial<NpCollectionConfig> = {}): NpCollectionConfig {
   return {
     slug: "posts",
     labels: { singular: "Post", plural: "Posts" },

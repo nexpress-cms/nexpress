@@ -1,22 +1,22 @@
-import { NxValidationError, enqueueJob, requestPasswordReset } from "@nexpress/core";
+import { NpValidationError, enqueueJob, requestPasswordReset } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { resetTtlMs } from "@/lib/token-ttl";
 
 function validateBody(body: unknown): { email: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be an object" },
     ]);
   }
 
   const { email } = body as { email?: unknown };
   if (typeof email !== "string" || !email.includes("@")) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "email", message: "Valid email is required" },
     ]);
   }
@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
 
     // Response is identical whether or not the email matched an account —
     // prevents enumeration of which emails are registered.
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

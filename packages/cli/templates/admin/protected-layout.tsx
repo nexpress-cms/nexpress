@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
 
-import { nxUsers, verifyTokenFull } from "@nexpress/core";
+import { npUsers, verifyTokenFull } from "@nexpress/core";
 import { getRegisteredBlockMetadata } from "@nexpress/blocks";
 import { BlocksRegistryProvider } from "@nexpress/admin/client";
 import { ensureFor, getDb } from "@/lib/bootstrap";
@@ -25,8 +25,8 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
     const db = getDb();
     const rows = await db
       .select({ value: count() })
-      .from(nxUsers)
-      .where(eq(nxUsers.role, "admin"));
+      .from(npUsers)
+      .where(eq(npUsers.role, "admin"));
     if ((rows[0]?.value ?? 0) === 0) redirect("/admin/setup");
     redirect("/admin/login");
   }

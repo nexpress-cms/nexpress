@@ -41,7 +41,7 @@ Tables (in the `pgboss.*` schema):
 - `pgboss.schedule` — registered cron entries
 - `pgboss.subscription`, `pgboss.queue` — pg-boss internals
 
-The framework wraps pg-boss with a thin `NxJobQueue`
+The framework wraps pg-boss with a thin `NpJobQueue`
 interface (`packages/core/src/jobs/queue.ts`) so a future
 swap to a different broker only touches the adapter layer.
 
@@ -249,7 +249,7 @@ A worker-health card sits above the tabs (Phase 20.4 / 23.5):
   ```
 
   The widget reads from `/api/admin/jobs/health`, which calls
-  `NxJobQueue.countByState()` under the hood. Plugin authors
+  `NpJobQueue.countByState()` under the hood. Plugin authors
   building their own monitoring can call `countByState({ since })`
   on the queue directly — same shape, optionally time-bounded.
 

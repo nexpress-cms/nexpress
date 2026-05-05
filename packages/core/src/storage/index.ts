@@ -1,15 +1,15 @@
-import type { NxConfig } from "../config/types.js";
+import type { NpConfig } from "../config/types.js";
 import { LocalStorageAdapter } from "./local.js";
 import { S3StorageAdapter } from "./s3.js";
-import type { NxStorageAdapter } from "./types.js";
+import type { NpStorageAdapter } from "./types.js";
 
-export type { NxFileMetadata, NxStorageAdapter } from "./types.js";
+export type { NpFileMetadata, NpStorageAdapter } from "./types.js";
 export { LocalStorageAdapter } from "./local.js";
 export { S3StorageAdapter } from "./s3.js";
 
-type NxStorageConfig = NonNullable<NxConfig["storage"]>;
+type NpStorageConfig = NonNullable<NpConfig["storage"]>;
 
-export function createStorageAdapter(config: NxConfig["storage"]): NxStorageAdapter {
+export function createStorageAdapter(config: NpConfig["storage"]): NpStorageAdapter {
   if (!config) {
     throw new Error("Storage configuration is required.");
   }
@@ -26,7 +26,7 @@ export function createStorageAdapter(config: NxConfig["storage"]): NxStorageAdap
     throw new Error("S3 storage configuration is required.");
   }
 
-  const s3Config = config.s3 as NxStorageConfig["s3"] & {
+  const s3Config = config.s3 as NpStorageConfig["s3"] & {
     credentials?: {
       accessKeyId: string;
       secretAccessKey: string;

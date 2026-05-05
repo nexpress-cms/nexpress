@@ -39,17 +39,17 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(slug: string): Promise<string> {
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({ email: `staff-${slug}@example.com`, password, name: "Staff", role: "editor" })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
@@ -233,12 +233,12 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     const m = await seedActiveMember("prefsmerge");
     // Seed an unrelated key directly in DB.
     const db = await getTestDb();
-    const { nxMembers } = await import("@nexpress/core");
+    const { npMembers } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     await db
-      .update(nxMembers)
+      .update(npMembers)
       .set({ notificationPrefs: { digest: "weekly", custom: { foo: "bar" } } })
-      .where(eq(nxMembers.id, m.memberId));
+      .where(eq(npMembers.id, m.memberId));
 
     // PUT updates only `disabled`; other keys must survive.
     await prefsPUT(
@@ -251,9 +251,9 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     );
 
     const [row] = (await db
-      .select({ prefs: nxMembers.notificationPrefs })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, m.memberId))) as Array<{ prefs: Record<string, unknown> }>;
+      .select({ prefs: npMembers.notificationPrefs })
+      .from(npMembers)
+      .where(eq(npMembers.id, m.memberId))) as Array<{ prefs: Record<string, unknown> }>;
     expect(row.prefs.digest).toBe("weekly");
     expect((row.prefs.custom as Record<string, unknown>).foo).toBe("bar");
     expect(row.prefs.disabled).toEqual(["follow.received"]);

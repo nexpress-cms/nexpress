@@ -4,7 +4,7 @@ import {
   can,
   getMembership,
   isSuperAdmin,
-  type NxAuthUser,
+  type NpAuthUser,
 } from "@nexpress/core";
 
 /**
@@ -28,7 +28,7 @@ import {
  * access to every site — `getMembership` is the explicit-row check
  * that gate stands behind.
  */
-export async function canManageSite(user: NxAuthUser, siteId: string): Promise<boolean> {
+export async function canManageSite(user: NpAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
   if (siteId === NX_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
   const membership = await getMembership(siteId, user.id);
@@ -47,7 +47,7 @@ export async function canManageSite(user: NxAuthUser, siteId: string): Promise<b
  * read a foreign tenant's audit log via `?siteId=<foreign>`. Use
  * this helper for any cross-tenant moderator-rank gate.
  */
-export async function canModerateSite(user: NxAuthUser, siteId: string): Promise<boolean> {
+export async function canModerateSite(user: NpAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
   if (siteId === NX_DEFAULT_SITE_ID && can(user, "community.moderate")) return true;
   const membership = await getMembership(siteId, user.id);

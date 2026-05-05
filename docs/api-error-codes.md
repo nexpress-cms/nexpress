@@ -29,7 +29,7 @@ patch releases; codes follow semver.
 - **Status code → error code mapping** is also stable. A given code
   always carries the same HTTP status across releases.
 
-The TypeScript union `NxErrorCode` (exported from `@nexpress/core`) is
+The TypeScript union `NpErrorCode` (exported from `@nexpress/core`) is
 the canonical source of truth — adding a new code requires extending
 the union, which makes the addition visible in code review.
 
@@ -37,18 +37,18 @@ the union, which makes the addition visible in code review.
 
 | Code | HTTP | Thrown by | Meaning |
 |---|---|---|---|
-| `VALIDATION_ERROR` | 400 | `NxValidationError`, Zod validators | Request shape was malformed. `details` carries field-level errors. |
+| `VALIDATION_ERROR` | 400 | `NpValidationError`, Zod validators | Request shape was malformed. `details` carries field-level errors. |
 | `INVALID_URL` | 400 | Plugin `ctx.http.fetch` | Plugin tried to fetch a URL that wouldn't parse. |
-| `UNAUTHORIZED` | 401 | `NxAuthError` | Caller is not authenticated (no/invalid session). |
-| `FORBIDDEN` | 403 | `NxForbiddenError` | Caller is authenticated but lacks the required role/capability. |
-| `NOT_FOUND` | 404 | `NxNotFoundError` | Document / resource doesn't exist. |
-| `CONFLICT` | 409 | `NxConflictError`, `ctx.media.delete` with refs | Conflicting state — typically uniqueness or referential integrity. |
-| `RATE_LIMITED` | 429 | `NxRateLimitError`, member quota | Per-actor quota or rate limit exceeded. |
+| `UNAUTHORIZED` | 401 | `NpAuthError` | Caller is not authenticated (no/invalid session). |
+| `FORBIDDEN` | 403 | `NpForbiddenError` | Caller is authenticated but lacks the required role/capability. |
+| `NOT_FOUND` | 404 | `NpNotFoundError` | Document / resource doesn't exist. |
+| `CONFLICT` | 409 | `NpConflictError`, `ctx.media.delete` with refs | Conflicting state — typically uniqueness or referential integrity. |
+| `RATE_LIMITED` | 429 | `NpRateLimitError`, member quota | Per-actor quota or rate limit exceeded. |
 | `TOO_MANY_REQUESTS` | 429 | Login lockout | Distinct from `RATE_LIMITED` so client UIs can differentiate "wait a bit" vs. "your account is locked." |
 | `SITE_CONTEXT_MISSING` | 500 | `requireSiteId()` on writes (#272) | Server-side wiring bug — no site resolver was set on a write path. Clients shouldn't see this in healthy production. |
 | `EMAIL_ADAPTER_MISSING_DEPENDENCY` | 500 | SMTP adapter | Operator configured `NX_EMAIL_ADAPTER=smtp` but the `nodemailer` package isn't installed. |
 | `EMAIL_DELIVERY_FAILED` | 502 | SMTP adapter | Outbound SMTP rejected the message. |
-| `INTERNAL_ERROR` | 500 | Catch-all in `nxErrorResponse` | An unexpected error reached the API layer. Body contains no stack trace; check server logs. |
+| `INTERNAL_ERROR` | 500 | Catch-all in `npErrorResponse` | An unexpected error reached the API layer. Body contains no stack trace; check server logs. |
 
 ## Notes for client integrations
 
@@ -64,8 +64,8 @@ the union, which makes the addition visible in code review.
 
 Adding a new error code:
 
-1. Extend the `NxErrorCode` union in `packages/core/src/errors.ts`.
-2. Throw it via `new NxError(message, "YOUR_CODE", status)` or a new
+1. Extend the `NpErrorCode` union in `packages/core/src/errors.ts`.
+2. Throw it via `new NpError(message, "YOUR_CODE", status)` or a new
    subclass (recommended for codes thrown from many sites).
 3. Update this doc's catalogue.
 4. The change is a minor release bump.

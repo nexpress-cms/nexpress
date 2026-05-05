@@ -45,7 +45,7 @@ const TOKEN = randomUUID();
 interface SetupBody {
   databaseUrl: string;
   testDatabaseUrl?: string;
-  nxSecret: string;
+  npSecret: string;
   siteUrl: string;
   storage: "local" | "s3";
   s3Bucket?: string;
@@ -143,8 +143,8 @@ function validateBody(
   if (!/^postgres(?:ql)?:\/\//.test(databaseUrl)) {
     return { error: "DATABASE_URL must start with postgres:// or postgresql://" };
   }
-  const nxSecret = (raw.nxSecret ?? "").trim();
-  if (nxSecret.length < 32) {
+  const npSecret = (raw.npSecret ?? "").trim();
+  if (npSecret.length < 32) {
     return { error: "NX_SECRET must be at least 32 characters" };
   }
   const siteUrl = (raw.siteUrl ?? "").trim();
@@ -160,7 +160,7 @@ function validateBody(
     body: {
       databaseUrl,
       testDatabaseUrl: raw.testDatabaseUrl?.trim() || undefined,
-      nxSecret,
+      npSecret,
       siteUrl,
       storage,
       s3Bucket: raw.s3Bucket?.trim() || undefined,
@@ -183,7 +183,7 @@ async function saveEnv(body: SetupBody): Promise<void> {
     `DATABASE_URL=${body.databaseUrl}`,
   ];
   if (body.testDatabaseUrl) lines.push(`TEST_DATABASE_URL=${body.testDatabaseUrl}`);
-  lines.push(`NX_SECRET=${body.nxSecret}`, `SITE_URL=${body.siteUrl}`, "");
+  lines.push(`NX_SECRET=${body.npSecret}`, `SITE_URL=${body.siteUrl}`, "");
 
   if (body.storage === "s3") {
     lines.push(
@@ -327,7 +327,7 @@ function envForChild(body: SetupBody): Record<string, string> {
   // the operator's terminal.
   const env: Record<string, string> = {
     DATABASE_URL: body.databaseUrl,
-    NX_SECRET: body.nxSecret,
+    NX_SECRET: body.npSecret,
     SITE_URL: body.siteUrl,
   };
   if (body.testDatabaseUrl) env.TEST_DATABASE_URL = body.testDatabaseUrl;
@@ -461,7 +461,7 @@ function renderHtml(): string {
     <label>
       <span>NX_SECRET</span>
       <span class="hint">JWT signing key. We generated 32 random bytes; rotate freely. Anything ≥32 chars works.</span>
-      <input id="nxSecret" name="nxSecret" type="text" required spellcheck="false" value="${defaultSecret}" />
+      <input id="npSecret" name="npSecret" type="text" required spellcheck="false" value="${defaultSecret}" />
     </label>
     <label>
       <span>SITE_URL</span>
@@ -562,7 +562,7 @@ function renderHtml(): string {
     const payload = {
       databaseUrl: $("databaseUrl").value.trim(),
       testDatabaseUrl: $("testDatabaseUrl").value.trim(),
-      nxSecret: $("nxSecret").value.trim(),
+      npSecret: $("npSecret").value.trim(),
       siteUrl: $("siteUrl").value.trim(),
       storage,
       s3Bucket: storage === "s3" ? $("s3Bucket").value.trim() : undefined,

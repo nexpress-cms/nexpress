@@ -1,13 +1,13 @@
 import { NoopEmailAdapter } from "./noop.js";
-import type { NxEmailAdapter } from "./types.js";
+import type { NpEmailAdapter } from "./types.js";
 
-let adapter: NxEmailAdapter = new NoopEmailAdapter();
+let adapter: NpEmailAdapter = new NoopEmailAdapter();
 
-export function setEmailAdapter(next: NxEmailAdapter): void {
+export function setEmailAdapter(next: NpEmailAdapter): void {
   adapter = next;
 }
 
-export function getEmailAdapter(): NxEmailAdapter {
+export function getEmailAdapter(): NpEmailAdapter {
   return adapter;
 }
 

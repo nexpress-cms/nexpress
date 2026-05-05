@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "../ui/dialog.js";
 import { ScrollArea } from "../ui/scroll-area.js";
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 
 interface RevisionsPanelProps {
   collectionSlug: string;
@@ -69,7 +69,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
   const loadRevisions = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      const response = await nxFetch(
+      const response = await npFetch(
         `/api/collections/${collectionSlug}/${documentId}/revisions?limit=50`,
       );
       if (!response.ok) {
@@ -100,7 +100,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
     setLoadingDetail(true);
     setSelected({ ...revision, snapshot: {} });
     try {
-      const response = await nxFetch(
+      const response = await npFetch(
         `/api/collections/${collectionSlug}/${documentId}/revisions/${revision.id}`,
       );
       if (!response.ok) {
@@ -128,7 +128,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
     setToast(null);
 
     try {
-      const response = await nxFetch(
+      const response = await npFetch(
         `/api/collections/${collectionSlug}/${documentId}/revisions/${revision.id}/restore`,
         { method: "POST" },
       );

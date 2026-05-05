@@ -31,7 +31,7 @@
 - 4c01668: Phase 22.4 — readiness probe round-trip for the job queue.
 
   Adds an optional `isHealthy?(): Promise<boolean>` method to the
-  `NxJobQueue` interface and implements it on `PgBossAdapter` via
+  `NpJobQueue` interface and implements it on `PgBossAdapter` via
   `PgBoss.isInstalled()` (a single SELECT against `pgboss.version`).
   Adapters that don't implement it are assumed healthy — the readiness
   probe never fails on a missing answer.

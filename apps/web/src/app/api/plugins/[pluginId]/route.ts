@@ -1,18 +1,18 @@
 import {
-  NxForbiddenError,
-  NxNotFoundError,
-  NxValidationError,
+  NpForbiddenError,
+  NpNotFoundError,
+  NpValidationError,
   getPluginRegistration,
   getPluginState,
   updatePluginState,
-  type NxPluginStateUpdate,
+  type NpPluginStateUpdate,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
@@ -54,19 +54,19 @@ export async function GET(
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("plugins", "read");
+      throw new NpForbiddenError("plugins", "read");
     }
 
     await ensureFor("plugins");
     const { pluginId } = await params;
     const state = await getPluginState(getDb(), pluginId);
     if (!state) {
-      throw new NxNotFoundError("plugin", pluginId);
+      throw new NpNotFoundError("plugin", pluginId);
     }
 
-    return nxSuccessResponse(toDetail(state));
+    return npSuccessResponse(toDetail(state));
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -77,17 +77,17 @@ export async function PATCH(
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("plugins", "update");
+      throw new NpForbiddenError("plugins", "update");
     }
 
 
     const { pluginId } = await params;
     const body = parseBodyRecord(await readJsonBody(request));
-    const patch: NxPluginStateUpdate = {};
+    const patch: NpPluginStateUpdate = {};
 
     if (body.enabled !== undefined) {
       if (typeof body.enabled !== "boolean") {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "enabled", message: "Must be a boolean" },
         ]);
       }
@@ -96,7 +96,7 @@ export async function PATCH(
 
     if (body.config !== undefined) {
       if (!body.config || typeof body.config !== "object" || Array.isArray(body.config)) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "config", message: "Must be a JSON object" },
         ]);
       }
@@ -104,7 +104,7 @@ export async function PATCH(
     }
 
     if (patch.enabled === undefined && patch.config === undefined) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "body", message: "Provide enabled or config to update" },
       ]);
     }
@@ -112,12 +112,12 @@ export async function PATCH(
     await ensureFor("plugins");
     const updated = await updatePluginState(getDb(), pluginId, patch);
     if (!updated) {
-      throw new NxNotFoundError("plugin", pluginId);
+      throw new NpNotFoundError("plugin", pluginId);
     }
 
-    return nxSuccessResponse(toDetail(updated));
+    return npSuccessResponse(toDetail(updated));
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

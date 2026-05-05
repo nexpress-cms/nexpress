@@ -1,8 +1,8 @@
-import { can, NxForbiddenError, resolveReport } from "@nexpress/core";
+import { can, NpForbiddenError, resolveReport } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -18,7 +18,7 @@ export async function POST(
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
-      throw new NxForbiddenError("reports", "resolve");
+      throw new NpForbiddenError("reports", "resolve");
     }
 
     const { id } = await params;
@@ -31,8 +31,8 @@ export async function POST(
       actor: { kind: "staff", user },
     });
 
-    return nxSuccessResponse(row);
+    return npSuccessResponse(row);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -1,13 +1,13 @@
 import { getAllPluginIds, getPluginRegistration } from "@nexpress/core";
 
 import { ensureFor } from "@/lib/init-core";
-import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
-import type { NxPluginManifest } from "@/lib/manifest";
+import { npSuccessResponse, npErrorResponse } from "@/lib/api-response";
+import type { NpPluginManifest } from "@/lib/manifest";
 
 export async function GET() {
   try {
     await ensureFor("plugins");
-    const pluginItems: NxPluginManifest[] = getAllPluginIds()
+    const pluginItems: NpPluginManifest[] = getAllPluginIds()
       .flatMap((id) => {
         const reg = getPluginRegistration(id);
 
@@ -25,14 +25,14 @@ export async function GET() {
               method: route.method.toUpperCase(),
               path: route.path,
             })),
-          } satisfies NxPluginManifest,
+          } satisfies NpPluginManifest,
         ];
       });
 
-    const items: NxPluginManifest[] = pluginItems.sort((a, b) => a.id.localeCompare(b.id));
+    const items: NpPluginManifest[] = pluginItems.sort((a, b) => a.id.localeCompare(b.id));
 
-    return nxSuccessResponse({ items });
+    return npSuccessResponse({ items });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

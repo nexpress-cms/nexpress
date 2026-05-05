@@ -1,12 +1,12 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   dispatchPluginAction,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -17,7 +17,7 @@ import { ensureFor } from "@/lib/init-core";
  *
  * The dispatcher returns the handler's `{ ok, data?, error? }` result as-is,
  * wrapped in the standard API success envelope. Handlers that throw turn
- * into 500s via nxErrorResponse — callers can distinguish "action failed
+ * into 500s via npErrorResponse — callers can distinguish "action failed
  * cleanly" (`{ ok: false, error }`) from "action crashed" (HTTP 500).
  */
 export async function POST(
@@ -27,7 +27,7 @@ export async function POST(
   try {
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("plugin action", "dispatch");
+      throw new NpForbiddenError("plugin action", "dispatch");
     }
 
     await ensureFor("plugins");
@@ -48,9 +48,9 @@ export async function POST(
     }
 
     const result = await dispatchPluginAction(pluginId, actionId, payload);
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

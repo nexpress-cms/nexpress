@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, asc } from "drizzle-orm";
 
 import { hashPassword } from "../auth/password.js";
-import type { NxAuthUser } from "../config/types.js";
-import { nxRevisions, nxUsers } from "../db/schema/system.js";
+import type { NpAuthUser } from "../config/types.js";
+import { npRevisions, npUsers } from "../db/schema/system.js";
 import {
   deleteDocument,
   findDocuments,
@@ -37,11 +37,11 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     await closeTestDb();
   });
 
-  async function seedUser(): Promise<NxAuthUser> {
+  async function seedUser(): Promise<NpAuthUser> {
     const db = await getTestDb();
     const hash = await hashPassword("password12345");
     const [row] = await db
-      .insert(nxUsers)
+      .insert(npUsers)
       .values({
         email: "author@example.com",
         password: hash,
@@ -75,11 +75,11 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     const db = await getTestDb();
     const revs = await db
       .select()
-      .from(nxRevisions)
+      .from(npRevisions)
       .where(
         and(
-          eq(nxRevisions.collection, "posts"),
-          eq(nxRevisions.documentId, result.doc.id as string),
+          eq(npRevisions.collection, "posts"),
+          eq(npRevisions.documentId, result.doc.id as string),
         ),
       );
     expect(revs).toHaveLength(1);
@@ -109,9 +109,9 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     const db = await getTestDb();
     const revs = await db
       .select()
-      .from(nxRevisions)
-      .where(eq(nxRevisions.documentId, created.doc.id as string))
-      .orderBy(asc(nxRevisions.version));
+      .from(npRevisions)
+      .where(eq(npRevisions.documentId, created.doc.id as string))
+      .orderBy(asc(npRevisions.version));
     expect(revs.map((r) => r.version)).toEqual([1, 2, 3]);
     expect(revs.at(-1)?.status).toBe("published");
   });

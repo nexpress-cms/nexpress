@@ -1,6 +1,6 @@
-import type { NxThemeTokens } from "./types.js";
+import type { NpThemeTokens } from "./types.js";
 
-export const DEFAULT_THEME: NxThemeTokens = {
+export const DEFAULT_THEME: NpThemeTokens = {
   colors: {
     primary: "oklch(0.546 0.245 262.881)",
     primaryForeground: "oklch(0.985 0.001 106.423)",

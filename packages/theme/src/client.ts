@@ -17,5 +17,5 @@ export {
   COLOR_SCHEME_COOKIE,
   COLOR_SCHEME_STORAGE_KEY,
   isColorScheme,
-  type NxColorScheme,
+  type NpColorScheme,
 } from "./color-scheme-keys.js";

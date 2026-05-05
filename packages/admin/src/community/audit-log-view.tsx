@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -75,7 +75,7 @@ export function AuditLogView() {
         params.set("until", new Date(filters.until).toISOString());
       }
 
-      const res = await nxFetch(`/api/admin/audit?${params.toString()}`);
+      const res = await npFetch(`/api/admin/audit?${params.toString()}`);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         const err = raw && typeof raw.error === "object" && raw.error

@@ -1,4 +1,4 @@
-import type { NxThemeTokens } from "@nexpress/core";
+import type { NpThemeTokens } from "@nexpress/core";
 
 /**
  * Phase 11.6 — theme JSON export/import helpers, split out
@@ -6,7 +6,7 @@ import type { NxThemeTokens } from "@nexpress/core";
  * testable without mounting React.
  *
  * The editor already has a `normalizeTheme()` that accepts an
- * arbitrary `unknown` and folds it into a valid `NxThemeTokens`
+ * arbitrary `unknown` and folds it into a valid `NpThemeTokens`
  * (filling missing keys with defaults). The import path here
  * reuses that contract — the only thing this layer adds is
  * "is this string parseable JSON containing an object at all?"
@@ -16,7 +16,7 @@ import type { NxThemeTokens } from "@nexpress/core";
 
 export interface ParseResult {
   ok: true;
-  theme: NxThemeTokens;
+  theme: NpThemeTokens;
 }
 
 export interface ParseError {
@@ -24,13 +24,13 @@ export interface ParseError {
   reason: "invalid_json" | "not_an_object" | "no_theme_fields";
 }
 
-const REQUIRED_TOP_KEYS: ReadonlyArray<keyof NxThemeTokens> = [
+const REQUIRED_TOP_KEYS: ReadonlyArray<keyof NpThemeTokens> = [
   "colors",
   "typography",
   "shape",
 ];
 
-export function serializeTheme(theme: NxThemeTokens): string {
+export function serializeTheme(theme: NpThemeTokens): string {
   return JSON.stringify(theme, null, 2);
 }
 
@@ -58,7 +58,7 @@ export function downloadFilename(now: Date = new Date()): string {
  */
 export function parseImportedTheme(
   text: string,
-  normalize: (raw: unknown) => NxThemeTokens,
+  normalize: (raw: unknown) => NpThemeTokens,
 ): ParseResult | ParseError {
   let parsed: unknown;
   try {

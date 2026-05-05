@@ -3,7 +3,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   getI18nConfig,
-  type NxAuthUser,
+  type NpAuthUser,
 } from "@nexpress/core";
 
 import { renderXliff, type XliffFile, type XliffTransUnit } from "./format.js";
@@ -36,7 +36,7 @@ export interface XliffExportOptions {
    * of both the source scan and the existing-target scan, so
    * private docs can't round-trip through XLIFF at all.
    */
-  user?: NxAuthUser;
+  user?: NpAuthUser;
 }
 
 export interface XliffExportFile {

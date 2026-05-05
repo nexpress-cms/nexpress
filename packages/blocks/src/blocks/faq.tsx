@@ -1,4 +1,4 @@
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 interface FaqItem {
   question: string;
@@ -41,7 +41,7 @@ const parseFaqItems = (value: unknown): FaqItem[] => {
   return items.length > 0 ? items : fallback;
 };
 
-export const faqBlock: NxBlockDefinition = {
+export const faqBlock: NpBlockDefinition = {
   type: "faq",
   label: "FAQ",
   description: "Expandable questions and answers for support, sales, or onboarding content.",

@@ -1,5 +1,5 @@
 import {
-  NxValidationError,
+  NpValidationError,
   getMemberNotificationPrefs,
   listNotificationKinds,
   setMemberNotificationPrefs,
@@ -7,7 +7,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -27,9 +27,9 @@ export async function GET(request: NextRequest) {
     const member = await requireMember(request);
     const prefs = await getMemberNotificationPrefs(member.id);
     const kinds = listNotificationKinds();
-    return nxSuccessResponse({ prefs, kinds });
+    return npSuccessResponse({ prefs, kinds });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest) {
     };
     if (disabledRaw !== undefined) {
       if (!Array.isArray(disabledRaw)) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "disabled", message: "disabled must be an array of strings" },
         ]);
       }
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
     }
     if (digestRaw !== undefined) {
       if (digestRaw !== "off" && digestRaw !== "daily" && digestRaw !== "weekly") {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "digest", message: "digest must be one of: off, daily, weekly" },
         ]);
       }
@@ -62,9 +62,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const prefs = await setMemberNotificationPrefs(patch);
-    return nxSuccessResponse({ prefs });
+    return npSuccessResponse({ prefs });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

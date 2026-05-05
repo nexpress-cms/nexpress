@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { NxFieldConfig } from "../config/types.js";
+import type { NpFieldConfig } from "../config/types.js";
 
 // `hasPublishedAtField` is a module-private helper inside scheduled.ts.
 // Rather than pierce the abstraction, we re-implement its structural rule
@@ -8,7 +8,7 @@ import type { NxFieldConfig } from "../config/types.js";
 // field named "publishedAt" at any nesting level opts in) holds. If the
 // module's detection semantics change, this test must change with it —
 // which is the right pressure to have on a behaviour contract.
-function findPublishedAt(fields: NxFieldConfig[]): boolean {
+function findPublishedAt(fields: NpFieldConfig[]): boolean {
   for (const field of fields) {
     if (field.type === "row" || field.type === "collapsible") {
       if (findPublishedAt(field.fields)) return true;

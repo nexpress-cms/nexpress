@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   createTranslation,
   findTranslations,
   can,
@@ -8,7 +8,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -36,13 +36,13 @@ export async function GET(
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("translations", "list");
+      throw new NpForbiddenError("translations", "list");
     }
     const { slug, id } = await context.params;
     const docs = await findTranslations(slug, id);
-    return nxSuccessResponse({ docs });
+    return npSuccessResponse({ docs });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -56,7 +56,7 @@ export async function POST(
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("translations", "create");
+      throw new NpForbiddenError("translations", "create");
     }
     const { slug, id } = await context.params;
     const body = await readJsonBody(request);
@@ -65,14 +65,14 @@ export async function POST(
         ? (body as { targetLocale?: unknown }).targetLocale
         : undefined;
     if (typeof targetLocale !== "string" || targetLocale.length === 0) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "targetLocale", message: "targetLocale is required" },
       ]);
     }
     const result = await createTranslation(slug, id, targetLocale, user);
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

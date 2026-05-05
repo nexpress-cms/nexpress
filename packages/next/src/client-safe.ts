@@ -1,4 +1,4 @@
-import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
+import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 
 /**
  * Strip the server-side function values from a collection config so it can be
@@ -10,7 +10,7 @@ import type { NxCollectionConfig, NxFieldConfig } from "@nexpress/core";
  * admin UI never needs them and they're always re-evaluated on the server
  * anyway.
  */
-export function toClientCollectionConfig(config: NxCollectionConfig): NxCollectionConfig {
+export function toClientCollectionConfig(config: NpCollectionConfig): NpCollectionConfig {
   const { access: _access, hooks: _hooks, seo, fields, ...rest } = config;
   void _access;
   void _hooks;
@@ -21,7 +21,7 @@ export function toClientCollectionConfig(config: NxCollectionConfig): NxCollecti
   };
 }
 
-function stripSeoFunctions(seo: NonNullable<NxCollectionConfig["seo"]>): NonNullable<NxCollectionConfig["seo"]> {
+function stripSeoFunctions(seo: NonNullable<NpCollectionConfig["seo"]>): NonNullable<NpCollectionConfig["seo"]> {
   // Walk the seo block and drop any function-valued slot. `urlPath`
   // is the one that's always a function today; the loop survives a
   // future addition without another patch here.
@@ -30,10 +30,10 @@ function stripSeoFunctions(seo: NonNullable<NxCollectionConfig["seo"]>): NonNull
     if (typeof value === "function") continue;
     safe[key] = value;
   }
-  return safe as NonNullable<NxCollectionConfig["seo"]>;
+  return safe as NonNullable<NpCollectionConfig["seo"]>;
 }
 
-function stripFieldFunctions(field: NxFieldConfig): NxFieldConfig {
+function stripFieldFunctions(field: NpFieldConfig): NpFieldConfig {
   if (field.type === "row") {
     return { ...field, fields: field.fields.map(stripFieldFunctions) };
   }
@@ -55,11 +55,11 @@ function stripFieldFunctions(field: NxFieldConfig): NxFieldConfig {
   const withAdmin = strippedAdmin === undefined ? rest : { ...rest, admin: strippedAdmin };
 
   if (field.type === "group") {
-    return { ...withAdmin, fields: field.fields.map(stripFieldFunctions) } as NxFieldConfig;
+    return { ...withAdmin, fields: field.fields.map(stripFieldFunctions) } as NpFieldConfig;
   }
   if (field.type === "array") {
-    return { ...withAdmin, fields: field.fields.map(stripFieldFunctions) } as NxFieldConfig;
+    return { ...withAdmin, fields: field.fields.map(stripFieldFunctions) } as NpFieldConfig;
   }
 
-  return withAdmin as NxFieldConfig;
+  return withAdmin as NpFieldConfig;
 }

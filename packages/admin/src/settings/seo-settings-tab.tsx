@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
@@ -46,7 +46,7 @@ export function SeoSettingsTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await nxFetch("/api/settings");
+      const res = await npFetch("/api/settings");
       const raw = (await res.json().catch(() => null)) as Record<
         string,
         unknown
@@ -90,7 +90,7 @@ export function SeoSettingsTab() {
           settings.twitterHandle.trim().replace(/^@/, "") || null,
         defaultLocale: settings.defaultLocale.trim() || "en_US",
       };
-      const res = await nxFetch("/api/settings", {
+      const res = await npFetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: "seo", value }),

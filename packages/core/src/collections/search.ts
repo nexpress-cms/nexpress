@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import { type NxCollectionConfig, type NxRichTextContent } from "../config/types.js";
+import { type NpCollectionConfig, type NpRichTextContent } from "../config/types.js";
 
 /**
  * Plain-text concatenation of every searchable field. Used by
@@ -8,7 +8,7 @@ import { type NxCollectionConfig, type NxRichTextContent } from "../config/types
  * full text, weights don't matter there).
  */
 export function buildSearchVector(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   data: Record<string, unknown>,
 ): string {
   const parts: string[] = [];
@@ -20,7 +20,7 @@ export function buildSearchVector(
     }
     if (field.type === "richText") {
       const value = data[field.name];
-      if (value) parts.push(extractPlainText(value as NxRichTextContent));
+      if (value) parts.push(extractPlainText(value as NpRichTextContent));
     }
   }
 
@@ -47,7 +47,7 @@ export function buildSearchVector(
  * { D: 0.1, C: 0.2, B: 0.4, A: 1.0 }, so an A-weighted match
  * scores ~10× a D-weighted one — meaningful boost for titles.
  */
-export interface NxSearchVectorParts {
+export interface NpSearchVectorParts {
   /** Title-like fields. Highest rank weight. */
   a: string;
   /** Body fields (text/textarea/email). */
@@ -61,11 +61,11 @@ export interface NxSearchVectorParts {
 const TITLE_LIKE_NAMES = new Set(["title", "name"]);
 
 export function buildSearchVectorParts(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   data: Record<string, unknown>,
-): NxSearchVectorParts {
-  const parts: NxSearchVectorParts = { a: "", b: "", c: "", d: "" };
-  const append = (bucket: keyof NxSearchVectorParts, value: string): void => {
+): NpSearchVectorParts {
+  const parts: NpSearchVectorParts = { a: "", b: "", c: "", d: "" };
+  const append = (bucket: keyof NpSearchVectorParts, value: string): void => {
     parts[bucket] = parts[bucket] ? `${parts[bucket]} ${value}` : value;
   };
 
@@ -86,7 +86,7 @@ export function buildSearchVectorParts(
     if (field.type === "richText") {
       const value = data[field.name];
       if (!value) continue;
-      const text = extractPlainText(value as NxRichTextContent);
+      const text = extractPlainText(value as NpRichTextContent);
       if (text.length > 0) append("c", text);
     }
   }
@@ -107,7 +107,7 @@ export function buildSearchVectorParts(
  * vector value.
  */
 export function buildWeightedSearchVectorSql(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   data: Record<string, unknown>,
 ): SQL {
   const parts = buildSearchVectorParts(config, data);
@@ -131,7 +131,7 @@ export function buildWeightedSearchVectorSql(
   return sql.join(chunks, sql` || `);
 }
 
-function extractPlainText(content: NxRichTextContent): string {
+function extractPlainText(content: NpRichTextContent): string {
   if (!content || typeof content !== "object") return "";
 
   const root = content.root as { children?: unknown[] } | undefined;

@@ -14,7 +14,7 @@ export {
   type CreateMemberAuthHelpersOptions,
 } from "./member-auth.js";
 
-export { nxSuccessResponse, nxErrorResponse, type NxApiError } from "./response.js";
+export { npSuccessResponse, npErrorResponse, type NpApiError } from "./response.js";
 export { readJsonBody } from "./safe-json.js";
 
 export {
@@ -41,7 +41,7 @@ export {
   createBootstrap,
   type Bootstrap,
   type BootstrapOptions,
-  type NxDb,
+  type NpDb,
 } from "./bootstrap.js";
 
 export { toClientCollectionConfig } from "./client-safe.js";

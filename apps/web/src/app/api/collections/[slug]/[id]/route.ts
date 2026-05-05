@@ -1,7 +1,7 @@
 import {
-  NxAuthError,
-  NxForbiddenError,
-  NxNotFoundError,
+  NpAuthError,
+  NpForbiddenError,
+  NpNotFoundError,
   deleteMemberDocument,
   getCollectionConfig,
   updateMemberDocument,
@@ -10,7 +10,7 @@ import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { optionalAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import {
   deleteCollectionDocument,
   extractSaveOptions,
@@ -32,7 +32,7 @@ export async function GET(
     const document = await getCollectionDocument(slug, id, user);
 
     if (!document) {
-      throw new NxNotFoundError(slug, id);
+      throw new NpNotFoundError(slug, id);
     }
 
     // Anonymous callers must not see non-published rows for collections
@@ -42,13 +42,13 @@ export async function GET(
       await ensureFor("read");
       const config = getCollectionConfig(slug);
       if (config.versions?.drafts && document.status !== "published") {
-        throw new NxNotFoundError(slug, id);
+        throw new NpNotFoundError(slug, id);
       }
     }
 
-    return nxSuccessResponse(document);
+    return npSuccessResponse(document);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -79,16 +79,16 @@ export async function PATCH(
       if (previous && previous.slug !== result.doc.slug) {
         revalidateCollection(slug, previous);
       }
-      return nxSuccessResponse(result.doc);
+      return npSuccessResponse(result.doc);
     }
 
     const member = await optionalMember(request);
-    if (!member) throw new NxAuthError();
+    if (!member) throw new NpAuthError();
 
     await ensureFor("read");
     const config = getCollectionConfig(slug);
     if (!config.community?.memberWrite?.update) {
-      throw new NxForbiddenError(slug, "update");
+      throw new NpForbiddenError(slug, "update");
     }
 
     await ensureFor("write");
@@ -101,9 +101,9 @@ export async function PATCH(
     if (previous && previous.slug !== result.doc.slug) {
       revalidateCollection(slug, previous);
     }
-    return nxSuccessResponse(result.doc);
+    return npSuccessResponse(result.doc);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -123,12 +123,12 @@ export async function DELETE(
     }
 
     const member = await optionalMember(request);
-    if (!member) throw new NxAuthError();
+    if (!member) throw new NpAuthError();
 
     await ensureFor("read");
     const config = getCollectionConfig(slug);
     if (!config.community?.memberWrite?.delete) {
-      throw new NxForbiddenError(slug, "delete");
+      throw new NpForbiddenError(slug, "delete");
     }
 
     await ensureFor("write");
@@ -137,6 +137,6 @@ export async function DELETE(
     revalidateCollection(slug, previous);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

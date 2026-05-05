@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { NxThemeTokens } from "@nexpress/core";
+import type { NpThemeTokens } from "@nexpress/core";
 import {
   Download,
   Palette,
@@ -21,7 +21,7 @@ import {
 } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import {
   PARSE_ERROR_MESSAGES,
   downloadFilename,
@@ -29,7 +29,7 @@ import {
   serializeTheme,
 } from "./theme-io.js";
 
-const defaultTheme: NxThemeTokens = {
+const defaultTheme: NpThemeTokens = {
   colors: {
     primary: "#111827",
     primaryForeground: "#ffffff",
@@ -69,7 +69,7 @@ const defaultTheme: NxThemeTokens = {
   },
 };
 
-const colorFields: Array<{ key: keyof NxThemeTokens["colors"]; label: string }> = [
+const colorFields: Array<{ key: keyof NpThemeTokens["colors"]; label: string }> = [
   { key: "primary", label: "Primary" },
   { key: "primaryForeground", label: "Primary foreground" },
   { key: "background", label: "Background" },
@@ -86,7 +86,7 @@ const colorFields: Array<{ key: keyof NxThemeTokens["colors"]; label: string }> 
 ];
 
 const typographyFields: Array<{
-  key: keyof NxThemeTokens["typography"];
+  key: keyof NpThemeTokens["typography"];
   label: string;
 }> = [
   { key: "fontHeading", label: "Heading font" },
@@ -102,7 +102,7 @@ const typographyFields: Array<{
   { key: "fontSize4xl", label: "4XL text size" },
 ];
 
-const shapeFields: Array<{ key: keyof NxThemeTokens["shape"]; label: string }> = [
+const shapeFields: Array<{ key: keyof NpThemeTokens["shape"]; label: string }> = [
   { key: "radiusSm", label: "Small radius" },
   { key: "radiusMd", label: "Medium radius" },
   { key: "radiusLg", label: "Large radius" },
@@ -113,7 +113,7 @@ const shapeFields: Array<{ key: keyof NxThemeTokens["shape"]; label: string }> =
 ];
 
 export function ThemeEditor() {
-  const [theme, setTheme] = useState<NxThemeTokens>(defaultTheme);
+  const [theme, setTheme] = useState<NpThemeTokens>(defaultTheme);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +125,7 @@ export function ThemeEditor() {
     setError(null);
 
     try {
-      const response = await nxFetch("/api/settings/theme");
+      const response = await npFetch("/api/settings/theme");
       const payload = (await response.json().catch(() => null)) as unknown;
 
       if (!response.ok) {
@@ -152,7 +152,7 @@ export function ThemeEditor() {
     setMessage(null);
 
     try {
-      const response = await nxFetch("/api/settings/theme", {
+      const response = await npFetch("/api/settings/theme", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(theme),
@@ -454,7 +454,7 @@ export function ThemeEditor() {
   );
 }
 
-function normalizeTheme(payload: unknown): NxThemeTokens {
+function normalizeTheme(payload: unknown): NpThemeTokens {
   if (!isRecord(payload)) {
     return defaultTheme;
   }
@@ -468,7 +468,7 @@ function normalizeTheme(payload: unknown): NxThemeTokens {
   };
 }
 
-function mergeColors(incoming: unknown): NxThemeTokens["colors"] {
+function mergeColors(incoming: unknown): NpThemeTokens["colors"] {
   const next = { ...defaultTheme.colors };
 
   if (!isRecord(incoming)) {
@@ -486,7 +486,7 @@ function mergeColors(incoming: unknown): NxThemeTokens["colors"] {
   return next;
 }
 
-function mergeTypography(incoming: unknown): NxThemeTokens["typography"] {
+function mergeTypography(incoming: unknown): NpThemeTokens["typography"] {
   const next = { ...defaultTheme.typography };
 
   if (!isRecord(incoming)) {
@@ -504,7 +504,7 @@ function mergeTypography(incoming: unknown): NxThemeTokens["typography"] {
   return next;
 }
 
-function mergeShape(incoming: unknown): NxThemeTokens["shape"] {
+function mergeShape(incoming: unknown): NpThemeTokens["shape"] {
   const next = { ...defaultTheme.shape };
 
   if (!isRecord(incoming)) {

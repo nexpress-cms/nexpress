@@ -1,5 +1,5 @@
 import { InMemoryRateLimiter } from "./in-memory.js";
-import type { NxRateLimiterAdapter } from "./types.js";
+import type { NpRateLimiterAdapter } from "./types.js";
 
 /**
  * Phase 23.7 — singleton registration for the rate limiter, mirroring
@@ -14,19 +14,19 @@ import type { NxRateLimiterAdapter } from "./types.js";
  * code.
  */
 
-let rateLimiter: NxRateLimiterAdapter | null = null;
+let rateLimiter: NpRateLimiterAdapter | null = null;
 
-export function setRateLimiter(adapter: NxRateLimiterAdapter | null): void {
+export function setRateLimiter(adapter: NpRateLimiterAdapter | null): void {
   rateLimiter = adapter;
 }
 
-export function getRateLimiter(): NxRateLimiterAdapter {
+export function getRateLimiter(): NpRateLimiterAdapter {
   if (!rateLimiter) {
     rateLimiter = new InMemoryRateLimiter();
   }
   return rateLimiter;
 }
 
-export function getOptionalRateLimiter(): NxRateLimiterAdapter | null {
+export function getOptionalRateLimiter(): NpRateLimiterAdapter | null {
   return rateLimiter;
 }

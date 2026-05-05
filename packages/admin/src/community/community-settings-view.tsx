@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -48,7 +48,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
       setLoading(true);
       setError(null);
       try {
-        const res = await nxFetch("/api/admin/community/settings");
+        const res = await npFetch("/api/admin/community/settings");
         const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         if (!res.ok || !raw) {
           setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
@@ -87,7 +87,7 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
     setError(null);
     setMessage(null);
     try {
-      const res = await nxFetch("/api/admin/community/settings", {
+      const res = await npFetch("/api/admin/community/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),

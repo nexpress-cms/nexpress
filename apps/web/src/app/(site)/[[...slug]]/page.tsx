@@ -13,7 +13,7 @@ import type { ComponentType } from "react";
 import type { Metadata } from "next";
 import { draftMode } from "next/headers";
 import { notFound, permanentRedirect } from "next/navigation";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
 import { JsonLd } from "@/components/json-ld";
@@ -180,7 +180,7 @@ export default async function CatchAllPage({ params }: PageProps) {
     notFound();
   }
 
-  const pageBlocks = page.blocks as NxPageBlocks | undefined;
+  const pageBlocks = page.blocks as NpPageBlocks | undefined;
 
   const { head, bodyEnd } = await collectRenderContributions({
     collection: "pages",

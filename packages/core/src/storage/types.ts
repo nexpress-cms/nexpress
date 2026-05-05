@@ -1,16 +1,16 @@
 import type { ReadableStream } from "node:stream/web";
 
-export interface NxFileMetadata {
+export interface NpFileMetadata {
   contentType: string;
   contentLength: number;
   originalFilename: string;
 }
 
-export interface NxStorageAdapter {
+export interface NpStorageAdapter {
   upload(
     key: string,
     data: Buffer | ReadableStream,
-    metadata: NxFileMetadata,
+    metadata: NpFileMetadata,
   ): Promise<void>;
   getStream(key: string): Promise<ReadableStream>;
   getUrl(key: string): Promise<string>;

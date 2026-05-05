@@ -1,37 +1,37 @@
 import { and, desc, eq, count } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
-import { nxRevisions } from "../db/schema/system.js";
-import type { NxAuthUser, NxSaveResult } from "../config/types.js";
+import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
+import { npRevisions } from "../db/schema/system.js";
+import type { NpAuthUser, NpSaveResult } from "../config/types.js";
 import { getCollectionConfig } from "./registry.js";
 import { getDocumentById, saveDocument } from "./pipeline.js";
 import { getDb } from "../db/runtime.js";
 
-export type NxRevisionStatus = "draft" | "published" | "autosave";
+export type NpRevisionStatus = "draft" | "published" | "autosave";
 
-export interface NxRevisionSummary {
+export interface NpRevisionSummary {
   id: string;
   collection: string;
   documentId: string;
   version: number;
-  status: NxRevisionStatus;
+  status: NpRevisionStatus;
   changedFields: string[];
   authorId: string | null;
   createdAt: Date;
 }
 
-export interface NxRevision extends NxRevisionSummary {
+export interface NpRevision extends NpRevisionSummary {
   snapshot: Record<string, unknown>;
 }
 
-export interface NxRevisionListOptions {
+export interface NpRevisionListOptions {
   limit?: number;
   offset?: number;
 }
 
-export interface NxRevisionListResult {
-  revisions: NxRevisionSummary[];
+export interface NpRevisionListResult {
+  revisions: NpRevisionSummary[];
   total: number;
 }
 
@@ -52,7 +52,7 @@ function normalizeOffset(offset: number | undefined): number {
 function assertVersionsEnabled(collection: string): void {
   const config = getCollectionConfig(collection);
   if (!config.versions) {
-    throw new NxValidationError("Revisions not enabled", [
+    throw new NpValidationError("Revisions not enabled", [
       {
         field: "collection",
         message: `Collection "${collection}" has no versions config — enable versions.drafts to persist revisions.`,
@@ -75,18 +75,18 @@ function assertVersionsEnabled(collection: string): void {
  */
 async function assertReadAccess(
   collection: string,
-  user: NxAuthUser | null,
+  user: NpAuthUser | null,
   doc: Record<string, unknown> | null,
 ): Promise<void> {
   const config = getCollectionConfig(collection);
   if (!user) {
-    throw new NxForbiddenError(collection, "read-revision");
+    throw new NpForbiddenError(collection, "read-revision");
   }
 
   if (config.access?.update) {
     const allowed = await config.access.update({ user, doc: doc ?? undefined });
     if (!allowed) {
-      throw new NxForbiddenError(collection, "read-revision");
+      throw new NpForbiddenError(collection, "read-revision");
     }
     return;
   }
@@ -95,13 +95,13 @@ async function assertReadAccess(
   // can author content). `viewer`/`author` are stricter than `access
   // .read` would have been.
   if (user.role !== "admin" && user.role !== "editor") {
-    throw new NxForbiddenError(collection, "read-revision");
+    throw new NpForbiddenError(collection, "read-revision");
   }
 }
 
 function toRevisionSnapshot(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new NxValidationError("Invalid revision snapshot", [
+    throw new NpValidationError("Invalid revision snapshot", [
       { field: "snapshot", message: "Snapshot must be a JSON object" },
     ]);
   }
@@ -112,9 +112,9 @@ function toRevisionSnapshot(value: unknown): Record<string, unknown> {
 export async function listRevisions(
   collection: string,
   documentId: string,
-  options: NxRevisionListOptions = {},
-  user: NxAuthUser | null = null,
-): Promise<NxRevisionListResult> {
+  options: NpRevisionListOptions = {},
+  user: NpAuthUser | null = null,
+): Promise<NpRevisionListResult> {
   assertVersionsEnabled(collection);
   // Load the doc so `access.update` (per #58) gets the actual row
   // instead of `null`. Collections that gate access by ownership /
@@ -127,31 +127,31 @@ export async function listRevisions(
   const offset = normalizeOffset(options.offset);
 
   const filter = and(
-    eq(nxRevisions.collection, collection),
-    eq(nxRevisions.documentId, documentId),
+    eq(npRevisions.collection, collection),
+    eq(npRevisions.documentId, documentId),
   );
 
   const rows = (await db
     .select({
-      id: nxRevisions.id,
-      collection: nxRevisions.collection,
-      documentId: nxRevisions.documentId,
-      version: nxRevisions.version,
-      status: nxRevisions.status,
-      changedFields: nxRevisions.changedFields,
-      authorId: nxRevisions.authorId,
-      createdAt: nxRevisions.createdAt,
+      id: npRevisions.id,
+      collection: npRevisions.collection,
+      documentId: npRevisions.documentId,
+      version: npRevisions.version,
+      status: npRevisions.status,
+      changedFields: npRevisions.changedFields,
+      authorId: npRevisions.authorId,
+      createdAt: npRevisions.createdAt,
     })
-    .from(nxRevisions)
+    .from(npRevisions)
     .where(filter)
-    .orderBy(desc(nxRevisions.version))
+    .orderBy(desc(npRevisions.version))
     .limit(limit)
     .offset(offset)) as Array<{
     id: string;
     collection: string;
     documentId: string;
     version: number;
-    status: NxRevisionStatus;
+    status: NpRevisionStatus;
     changedFields: string[];
     authorId: string | null;
     createdAt: Date;
@@ -159,7 +159,7 @@ export async function listRevisions(
 
   const [totalRow] = (await db
     .select({ total: count() })
-    .from(nxRevisions)
+    .from(npRevisions)
     .where(filter)) as Array<{ total: number | string }>;
 
   return {
@@ -175,8 +175,8 @@ export async function getRevision(
   collection: string,
   documentId: string,
   revisionId: string,
-  user: NxAuthUser | null = null,
-): Promise<NxRevision> {
+  user: NpAuthUser | null = null,
+): Promise<NpRevision> {
   assertVersionsEnabled(collection);
   // Load the doc so `access.update` (per #58) gets the actual row.
   const targetDoc = await getDocumentById(collection, documentId, user ?? undefined);
@@ -186,12 +186,12 @@ export async function getRevision(
 
   const [row] = (await db
     .select()
-    .from(nxRevisions)
+    .from(npRevisions)
     .where(
       and(
-        eq(nxRevisions.id, revisionId),
-        eq(nxRevisions.collection, collection),
-        eq(nxRevisions.documentId, documentId),
+        eq(npRevisions.id, revisionId),
+        eq(npRevisions.collection, collection),
+        eq(npRevisions.documentId, documentId),
       ),
     )
     .limit(1)) as Array<{
@@ -199,7 +199,7 @@ export async function getRevision(
     collection: string;
     documentId: string;
     version: number;
-    status: NxRevisionStatus;
+    status: NpRevisionStatus;
     changedFields: string[];
     snapshot: Record<string, unknown>;
     authorId: string | null;
@@ -207,7 +207,7 @@ export async function getRevision(
   }>;
 
   if (!row) {
-    throw new NxNotFoundError("revision", revisionId);
+    throw new NpNotFoundError("revision", revisionId);
   }
 
   return {
@@ -227,8 +227,8 @@ export async function restoreRevision(
   collection: string,
   documentId: string,
   revisionId: string,
-  user: NxAuthUser,
-): Promise<NxSaveResult> {
+  user: NpAuthUser,
+): Promise<NpSaveResult> {
   const revision = await getRevision(collection, documentId, revisionId, user);
 
   return saveDocument(collection, documentId, revision.snapshot, user, {

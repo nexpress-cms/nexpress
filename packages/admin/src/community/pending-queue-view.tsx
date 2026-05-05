@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -57,7 +57,7 @@ export function PendingQueueView() {
     setLoading(true);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/collections/pending?limit=100");
+      const res = await npFetch("/api/admin/collections/pending?limit=100");
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
@@ -90,7 +90,7 @@ export function PendingQueueView() {
           ? `/api/admin/collections/${row.collectionSlug}/${row.id}/promote`
           : `/api/collections/${row.collectionSlug}/${row.id}`;
       const method = verb === "approve" ? "POST" : "DELETE";
-      const res = await nxFetch(url, { method });
+      const res = await npFetch(url, { method });
       if (!res.ok) {
         const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
@@ -151,7 +151,7 @@ export function PendingQueueView() {
           : `/api/collections/${row.collectionSlug}/${row.id}`;
       const method = verb === "approve" ? "POST" : "DELETE";
       try {
-        const res = await nxFetch(url, { method });
+        const res = await npFetch(url, { method });
         if (res.ok) ok++;
         else fail++;
       } catch {

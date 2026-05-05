@@ -2,7 +2,7 @@ import { buildArticleJsonLd, getPostBySlug, getSiteSeoSettings } from "@nexpress
 import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
-import { NxImage, getMediaUrl } from "@/components/nx-image";
+import { NpImage, getMediaUrl } from "@/components/nx-image";
 import { ensureFor } from "@/lib/init-core";
 import {
   RenderBodyEnd,
@@ -12,7 +12,7 @@ import {
 import { Comments } from "@/components/comments";
 import { JsonLd } from "@/components/json-ld";
 import type { Metadata } from "next";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
 interface PostPageProps {
   params: Promise<{ slug: string }>;
@@ -25,7 +25,7 @@ export default async function PostPage({ params }: PostPageProps) {
   const post = await getPostBySlug(slug, { draft: isDraft });
   if (!post) notFound();
 
-  const content = post.content as NxRichTextContent | undefined;
+  const content = post.content as NpRichTextContent | undefined;
 
   const { head, bodyEnd } = await collectRenderContributions({
     collection: "posts",
@@ -76,7 +76,7 @@ export default async function PostPage({ params }: PostPageProps) {
       </header>
       {post.coverImage ? (
         <div className="nx-post-cover">
-          <NxImage media={post.coverImage as string} size="large" priority />
+          <NpImage media={post.coverImage as string} size="large" priority />
         </div>
       ) : null}
       {content && (

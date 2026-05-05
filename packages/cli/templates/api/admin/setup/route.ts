@@ -1,16 +1,16 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxConflictError,
-  NxValidationError,
+  NpConflictError,
+  NpValidationError,
   hashPassword,
-  nxUsers,
+  npUsers,
   signToken,
   updateSite,
 } from "@nexpress/core";
 import { count, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/bootstrap";
 
@@ -40,7 +40,7 @@ const PASSWORD_MIN = 12;
 
 function validateBody(raw: unknown): SetupBody {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be an object" },
     ]);
   }
@@ -63,7 +63,7 @@ function validateBody(raw: unknown): SetupBody {
     errors.push({ field: "siteName", message: "Site name must be a string" });
   }
   if (errors.length > 0) {
-    throw new NxValidationError("Invalid input", errors);
+    throw new NpValidationError("Invalid input", errors);
   }
 
   return {
@@ -82,17 +82,17 @@ async function adminCount(): Promise<number> {
   const db = getDb();
   const rows = await db
     .select({ value: count() })
-    .from(nxUsers)
-    .where(eq(nxUsers.role, "admin"));
+    .from(npUsers)
+    .where(eq(npUsers.role, "admin"));
   return rows[0]?.value ?? 0;
 }
 
 export async function GET(): Promise<Response> {
   try {
     const existing = await adminCount();
-    return nxSuccessResponse({ available: existing === 0 });
+    return npSuccessResponse({ available: existing === 0 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -100,23 +100,23 @@ export async function POST(request: NextRequest): Promise<Response> {
   try {
     const body = validateBody(await request.json());
     if ((await adminCount()) > 0) {
-      throw new NxConflictError("Setup already completed");
+      throw new NpConflictError("Setup already completed");
     }
 
     const db = getDb();
     const passwordHash = await hashPassword(body.password);
 
     const existingEmail = await db
-      .select({ id: nxUsers.id })
-      .from(nxUsers)
-      .where(eq(nxUsers.email, body.email))
+      .select({ id: npUsers.id })
+      .from(npUsers)
+      .where(eq(npUsers.email, body.email))
       .limit(1);
     if (existingEmail[0]) {
-      throw new NxConflictError("A user with that email already exists");
+      throw new NpConflictError("A user with that email already exists");
     }
 
     const [created] = await db
-      .insert(nxUsers)
+      .insert(npUsers)
       .values({
         email: body.email,
         password: passwordHash,
@@ -124,11 +124,11 @@ export async function POST(request: NextRequest): Promise<Response> {
         role: "admin",
       })
       .returning({
-        id: nxUsers.id,
-        email: nxUsers.email,
-        name: nxUsers.name,
-        role: nxUsers.role,
-        tokenVersion: nxUsers.tokenVersion,
+        id: npUsers.id,
+        email: npUsers.email,
+        name: npUsers.name,
+        role: npUsers.role,
+        tokenVersion: npUsers.tokenVersion,
       });
     if (!created) {
       throw new Error("Failed to create admin row");
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       config.refreshTokenExpiration,
       "refresh",
     );
-    const response = nxSuccessResponse({
+    const response = npSuccessResponse({
       user: {
         id: created.id,
         email: created.email,
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

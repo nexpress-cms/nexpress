@@ -1,11 +1,11 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   listPendingMemberDocs,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
-      throw new NxForbiddenError("collection.pending", "list");
+      throw new NpForbiddenError("collection.pending", "list");
     }
 
     const params = request.nextUrl.searchParams;
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const totalPages = result.totalDocs === 0 ? 0 : Math.ceil(result.totalDocs / limit);
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       docs: result.docs.map((doc) => ({
         ...doc,
         createdAt: doc.createdAt.toISOString(),
@@ -59,6 +59,6 @@ export async function GET(request: NextRequest) {
       hasPrevPage: page > 1 && result.totalDocs > 0,
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

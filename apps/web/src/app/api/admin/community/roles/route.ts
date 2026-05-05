@@ -1,7 +1,7 @@
-import { can, NxForbiddenError, listCommunityRoles } from "@nexpress/core";
+import { can, NpForbiddenError, listCommunityRoles } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -18,12 +18,12 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "community.moderate")) {
-      throw new NxForbiddenError("communityRoles", "list");
+      throw new NpForbiddenError("communityRoles", "list");
     }
     const docs = listCommunityRoles();
-    return nxSuccessResponse({ docs });
+    return npSuccessResponse({ docs });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

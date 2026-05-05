@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { jwtVerify, SignJWT, errors as joseErrors, type JWTPayload } from "jose";
 
-import type { NxUserRole } from "../config/types.js";
-import { NxAuthError } from "../errors.js";
+import type { NpUserRole } from "../config/types.js";
+import { NpAuthError } from "../errors.js";
 
 /**
  * Staff-side JWT helpers. Both access (`nx-session`) and refresh
@@ -18,16 +18,16 @@ import { NxAuthError } from "../errors.js";
  * cost is one forced re-login for staff sessions issued before the
  * deploy; bounded by the 7-day refresh TTL.
  */
-export type NxTokenUse = "access" | "refresh";
+export type NpTokenUse = "access" | "refresh";
 
-export interface NxTokenPayload {
+export interface NpTokenPayload {
   sub: string;
-  role: NxUserRole;
+  role: NpUserRole;
   ver: number;
   /** Required. `verifyToken` refuses tokens missing this claim so
    *  legacy refresh JWTs cannot be smuggled into the session
    *  cookie path. */
-  use: NxTokenUse;
+  use: NpTokenUse;
   /** Random per-token id — needed if rotation lands on the staff
    *  side (mirrors the member-side `jti` for #45). Optional today
    *  but populated on every newly-minted token. */
@@ -39,10 +39,10 @@ export interface NxTokenPayload {
 const textEncoder = new TextEncoder();
 
 export async function signToken(
-  user: { id: string; role: NxUserRole; tokenVersion: number },
+  user: { id: string; role: NpUserRole; tokenVersion: number },
   secret: string,
   expirationSeconds: number = 7200,
-  tokenUse: NxTokenUse = "access",
+  tokenUse: NpTokenUse = "access",
 ): Promise<string> {
   const secretKey = textEncoder.encode(secret);
 
@@ -75,24 +75,24 @@ export async function signToken(
 export async function verifyToken(
   token: string,
   secret: string,
-  expectedUse?: NxTokenUse,
-): Promise<NxTokenPayload> {
+  expectedUse?: NpTokenUse,
+): Promise<NpTokenPayload> {
   const secretKey = textEncoder.encode(secret);
   const { payload } = await jwtVerify(token, secretKey);
   const typed = payload as JWTPayload & {
     sub: string;
-    role: NxUserRole;
+    role: NpUserRole;
     ver: number;
     iat: number;
     exp: number;
-    use?: NxTokenUse;
+    use?: NpTokenUse;
   };
   if (typed.use !== "access" && typed.use !== "refresh") {
-    throw new NxAuthError("Staff token missing `use` claim");
+    throw new NpAuthError("Staff token missing `use` claim");
   }
-  const use: NxTokenUse = typed.use;
+  const use: NpTokenUse = typed.use;
   if (expectedUse && use !== expectedUse) {
-    throw new NxAuthError(
+    throw new NpAuthError(
       `Staff token use mismatch: expected ${expectedUse}, got ${use}`,
     );
   }
@@ -106,14 +106,14 @@ export async function verifyToken(
  * silent while letting infrastructure failures surface as 5xx.
  *
  * Covers:
- *   - `NxAuthError` — `verifyToken` / `verifyMemberToken` rejecting a
+ *   - `NpAuthError` — `verifyToken` / `verifyMemberToken` rejecting a
  *     missing or wrong `use` claim, or `verifyCsrf` failing.
  *   - `jose.errors.JOSEError` — every JWT signature / format /
  *     expiration failure, including subclasses like `JWTExpired`,
  *     `JWSSignatureVerificationFailed`, `JWTInvalid`.
  */
 export function isTokenVerificationError(err: unknown): boolean {
-  if (err instanceof NxAuthError) return true;
+  if (err instanceof NpAuthError) return true;
   if (err instanceof joseErrors.JOSEError) return true;
   return false;
 }

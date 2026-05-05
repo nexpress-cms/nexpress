@@ -2,7 +2,7 @@ import { consumeMemberEmailVerifyToken } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
@@ -12,12 +12,12 @@ export async function POST(request: NextRequest) {
     const body = (await readJsonBody(request)) as { token?: unknown } | null;
     const token = typeof body?.token === "string" ? body.token : "";
     const result = await consumeMemberEmailVerifyToken(getDb(), token);
-    return nxSuccessResponse({
+    return npSuccessResponse({
       memberId: result.memberId,
       handle: result.handle,
       email: result.email,
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

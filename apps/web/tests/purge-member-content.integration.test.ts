@@ -232,18 +232,18 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
 
     // Verify DB state.
     const db = await getTestDb();
-    const { nxComments, nxMedia } = await import("@nexpress/core");
+    const { npComments, npMedia } = await import("@nexpress/core");
     const { discussionsTable } = await import("@/db/generated/collections");
     const { and, eq, isNull, ne } = await import("drizzle-orm");
 
     // Target's comments are tombstoned.
     const targetLiveComments = (await db
-      .select({ id: nxComments.id })
-      .from(nxComments)
+      .select({ id: npComments.id })
+      .from(npComments)
       .where(
         and(
-          eq(nxComments.memberId, target.memberId),
-          ne(nxComments.status, "deleted"),
+          eq(npComments.memberId, target.memberId),
+          ne(npComments.status, "deleted"),
         ),
       )) as Array<unknown>;
     expect(targetLiveComments).toHaveLength(0);
@@ -258,23 +258,23 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
     // Target's media are soft-deleted (deletedAt set).
     const targetLiveMedia = (await db
       .select()
-      .from(nxMedia)
+      .from(npMedia)
       .where(
         and(
-          eq(nxMedia.uploadedByMemberId, target.memberId),
-          isNull(nxMedia.deletedAt),
+          eq(npMedia.uploadedByMemberId, target.memberId),
+          isNull(npMedia.deletedAt),
         ),
       )) as Array<unknown>;
     expect(targetLiveMedia).toHaveLength(0);
 
     // Bystander's content is untouched.
     const bystanderLiveComments = (await db
-      .select({ id: nxComments.id })
-      .from(nxComments)
+      .select({ id: npComments.id })
+      .from(npComments)
       .where(
         and(
-          eq(nxComments.memberId, bystander.memberId),
-          ne(nxComments.status, "deleted"),
+          eq(npComments.memberId, bystander.memberId),
+          ne(npComments.status, "deleted"),
         ),
       )) as Array<unknown>;
     expect(bystanderLiveComments).toHaveLength(1);
@@ -287,11 +287,11 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
 
     const bystanderLiveMedia = (await db
       .select()
-      .from(nxMedia)
+      .from(npMedia)
       .where(
         and(
-          eq(nxMedia.uploadedByMemberId, bystander.memberId),
-          isNull(nxMedia.deletedAt),
+          eq(npMedia.uploadedByMemberId, bystander.memberId),
+          isNull(npMedia.deletedAt),
         ),
       )) as Array<unknown>;
     expect(bystanderLiveMedia).toHaveLength(1);
@@ -388,7 +388,7 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
   // (incl. `role`) to `deleteDocument` so the collection's
   // `access.delete` function (e.g. `isOwnerOrAdmin`, which reads
   // `user.role`) gets enough info to authorize. An earlier draft
-  // narrowed staffUser to `Pick<NxAuthUser, "id">`, which silently
+  // narrowed staffUser to `Pick<NpAuthUser, "id">`, which silently
   // 403'd every doc deletion against real access policies. The
   // other tests in this file strip `access` for convenience, so
   // re-register discussions WITH the access tree intact for this
@@ -447,15 +447,15 @@ describe.skipIf(skipIfNoTestDb())("purge member content (Phase 9.7l)", () => {
     );
 
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { and, eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
+      .from(npAuditEvents)
       .where(
         and(
-          eq(nxAuditEvents.action, "member.content.purge"),
-          eq(nxAuditEvents.targetId, target.memberId),
+          eq(npAuditEvents.action, "member.content.purge"),
+          eq(npAuditEvents.targetId, target.memberId),
         ),
       )) as Array<{
       actorKind: string;

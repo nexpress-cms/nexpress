@@ -1,12 +1,12 @@
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
-import { nxSettings } from "../db/schema/system.js";
-import { NxValidationError } from "../errors.js";
+import { npSettings } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
 import { addStrings } from "../i18n/strings.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
-import type { NxRegisteredTheme } from "../config/types.js";
+import type { NpRegisteredTheme } from "../config/types.js";
 
 /**
  * Phase 11.1 — theme registry. Sites declare an array of themes
@@ -22,14 +22,14 @@ import type { NxRegisteredTheme } from "../config/types.js";
  * by `manifest.id` so a hot-reload during dev doesn't accumulate
  * stale entries.
  */
-const registry = new Map<string, NxRegisteredTheme>();
+const registry = new Map<string, NpRegisteredTheme>();
 
 /**
  * Idempotent — call once at boot from the framework's
  * bootstrap, again from a hot-reload, etc. Themes are matched
  * by `manifest.id`; later registrations replace earlier ones.
  */
-export function registerThemes(themes: NxRegisteredTheme[]): void {
+export function registerThemes(themes: NpRegisteredTheme[]): void {
   for (const theme of themes) {
     if (!theme?.manifest?.id) {
       throw new Error("Theme is missing manifest.id");
@@ -52,11 +52,11 @@ export function registerThemes(themes: NxRegisteredTheme[]): void {
   }
 }
 
-export function getRegisteredThemes(): NxRegisteredTheme[] {
+export function getRegisteredThemes(): NpRegisteredTheme[] {
   return Array.from(registry.values());
 }
 
-export function getThemeById(id: string): NxRegisteredTheme | undefined {
+export function getThemeById(id: string): NpRegisteredTheme | undefined {
   return registry.get(id);
 }
 
@@ -81,8 +81,8 @@ export async function getActiveThemeId(): Promise<string | null> {
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
-    .from(nxSettings)
-    .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "activeTheme")))
+    .from(npSettings)
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "activeTheme")))
     .limit(1)) as Array<{ value: unknown }>;
   const row = rows[0];
   if (!row) return null;
@@ -97,7 +97,7 @@ export async function getActiveThemeId(): Promise<string | null> {
  * `nexpress.config.ts` between deploys). Returns `null` only
  * when the registry is completely empty.
  */
-export async function getActiveTheme(): Promise<NxRegisteredTheme | null> {
+export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
   const id = await getActiveThemeId();
   if (id) {
     const theme = registry.get(id);
@@ -120,7 +120,7 @@ export async function setActiveThemeId(
   updatedBy: string | null = null,
 ): Promise<void> {
   if (!registry.has(id)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "themeId",
         message: `Unknown theme '${id}'. Register it in nexpress.config.ts first.`,
@@ -132,10 +132,10 @@ export async function setActiveThemeId(
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   // Phase 15.4 — composite (site_id, key) PK.
   await db
-    .insert(nxSettings)
+    .insert(npSettings)
     .values({ siteId, key: "activeTheme", value: id, updatedAt: now, updatedBy })
     .onConflictDoUpdate({
-      target: [nxSettings.siteId, nxSettings.key],
+      target: [npSettings.siteId, npSettings.key],
       set: { value: id, updatedAt: now, updatedBy },
     });
 }
@@ -148,7 +148,7 @@ export async function setActiveThemeId(
  * ization (no React component refs leak through this path) so
  * the same shape is safe to send over the API to the admin UI.
  */
-export interface NxThemeTemplateSummary {
+export interface NpThemeTemplateSummary {
   id: string;
   label: string;
   description?: string;
@@ -156,8 +156,8 @@ export interface NxThemeTemplateSummary {
 
 export async function getThemeTemplateSummaries(
   collectionSlug: string,
-): Promise<NxThemeTemplateSummary[]> {
-  const summaries = new Map<string, NxThemeTemplateSummary>();
+): Promise<NpThemeTemplateSummary[]> {
+  const summaries = new Map<string, NpThemeTemplateSummary>();
 
   // Phase 14.5 — start with plugin-contributed templates so
   // theme entries naturally overwrite them on id collision.

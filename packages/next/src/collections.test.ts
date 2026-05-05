@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NxValidationError } from "@nexpress/core";
+import { NpValidationError } from "@nexpress/core";
 import type * as CoreModule from "@nexpress/core";
 
 // Mock core's pipeline entry points so we can verify the helpers forward args
@@ -44,13 +44,13 @@ describe("parseFindOptions", () => {
 
   it("rejects a non-positive page", () => {
     expect(() => helpers.parseFindOptions(new URLSearchParams("page=0"))).toThrow(
-      NxValidationError,
+      NpValidationError,
     );
   });
 
   it("caps limit at 100", () => {
     expect(() => helpers.parseFindOptions(new URLSearchParams("limit=101"))).toThrow(
-      NxValidationError,
+      NpValidationError,
     );
   });
 
@@ -64,7 +64,7 @@ describe("parseFindOptions", () => {
   it("rejects a non-JSON where", () => {
     expect(() =>
       helpers.parseFindOptions(new URLSearchParams("where=not-json")),
-    ).toThrow(NxValidationError);
+    ).toThrow(NpValidationError);
   });
 
   it("rejects a non-object where", () => {
@@ -72,7 +72,7 @@ describe("parseFindOptions", () => {
       helpers.parseFindOptions(
         new URLSearchParams(`where=${encodeURIComponent("[1,2]")}`),
       ),
-    ).toThrow(NxValidationError);
+    ).toThrow(NpValidationError);
   });
 
   it("treats empty string sort/search as absent", () => {

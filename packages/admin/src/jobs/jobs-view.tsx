@@ -14,7 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
@@ -184,7 +184,7 @@ export function JobsView() {
       // we round-trip per state. Buckets have 1-3 states max.
       const results = await Promise.all(
         states.map(async (state) => {
-          const res = await nxFetch(
+          const res = await npFetch(
             `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}${sourceParam}`,
           );
           return (await res.json().catch(() => null)) as JobListResponse | null;
@@ -207,7 +207,7 @@ export function JobsView() {
     setRefreshing(true);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/jobs/schedules");
+      const res = await npFetch("/api/admin/jobs/schedules");
       const body = (await res.json().catch(() => null)) as ScheduleListResponse | null;
       setSchedulesSupported(body?.supported ?? false);
       setSchedules(body?.schedules ?? []);
@@ -223,7 +223,7 @@ export function JobsView() {
     setBusyJobId(id);
     setError(null);
     try {
-      const res = await nxFetch(`/api/admin/jobs/${encodeURIComponent(id)}/retry`, {
+      const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(id)}/retry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -248,7 +248,7 @@ export function JobsView() {
     setBusyJobId(id);
     setError(null);
     try {
-      const res = await nxFetch(`/api/admin/jobs/${encodeURIComponent(id)}/cancel`, {
+      const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(id)}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -270,7 +270,7 @@ export function JobsView() {
     setRefreshing(true);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/jobs/retry-all?state=failed", {
+      const res = await npFetch("/api/admin/jobs/retry-all?state=failed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -439,7 +439,7 @@ function WorkerHealthCard() {
     setRefreshing(true);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/jobs/health");
+      const res = await npFetch("/api/admin/jobs/health");
       if (!res.ok) {
         // editor-gated route; non-200 means no role or no queue.
         setError("Worker health unavailable.");
@@ -685,7 +685,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
       }
     }
     try {
-      const res = await nxFetch("/api/admin/jobs/enqueue", {
+      const res = await npFetch("/api/admin/jobs/enqueue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, data }),
@@ -919,7 +919,7 @@ function JobLogsSection({ jobId }: { jobId: string }) {
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const res = await nxFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
+        const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }

@@ -19,7 +19,7 @@ import { POST as promotePOST } from "@/app/api/admin/collections/[slug]/[id]/pro
 
 import { NextRequest } from "next/server";
 
-import type { NxReputationEvent } from "@nexpress/core";
+import type { NpReputationEvent } from "@nexpress/core";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -281,7 +281,7 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
 
   it("backfills `document.created` reputation for the original author", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -296,12 +296,12 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
     // Pending create did NOT credit reputation (9.7c semantic).
     expect(events.filter((e) => e.kind === "document.created")).toHaveLength(0);
     const db = await getTestDb();
-    const { nxMembers } = await import("@nexpress/core");
+    const { npMembers } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const beforeRow = (await db
-      .select({ reputation: nxMembers.reputation })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, member.memberId))
+      .select({ reputation: npMembers.reputation })
+      .from(npMembers)
+      .where(eq(npMembers.id, member.memberId))
       .limit(1)) as Array<{ reputation: number }>;
     expect(beforeRow[0].reputation).toBe(0);
 
@@ -323,9 +323,9 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
     }
 
     const afterRow = (await db
-      .select({ reputation: nxMembers.reputation })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, member.memberId))
+      .select({ reputation: npMembers.reputation })
+      .from(npMembers)
+      .where(eq(npMembers.id, member.memberId))
       .limit(1)) as Array<{ reputation: number }>;
     expect(afterRow[0].reputation).toBe(5);
   });
@@ -338,7 +338,7 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
   // (or two mods racing) would double-credit reputation.
   it("concurrent promote calls — only one fires audit + reputation", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -378,15 +378,15 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
 
     // Audit `document.promote` recorded exactly once.
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { and, eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
+      .from(npAuditEvents)
       .where(
         and(
-          eq(nxAuditEvents.action, "document.promote"),
-          eq(nxAuditEvents.targetId, docId),
+          eq(npAuditEvents.action, "document.promote"),
+          eq(npAuditEvents.targetId, docId),
         ),
       )) as Array<unknown>;
     expect(audits).toHaveLength(1);
@@ -405,15 +405,15 @@ describe.skipIf(skipIfNoTestDb())("promote pending member-authored doc (Phase 9.
     );
 
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { and, eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
+      .from(npAuditEvents)
       .where(
         and(
-          eq(nxAuditEvents.action, "document.promote"),
-          eq(nxAuditEvents.targetId, docId),
+          eq(npAuditEvents.action, "document.promote"),
+          eq(npAuditEvents.targetId, docId),
         ),
       )) as Array<{
       actorKind: string;

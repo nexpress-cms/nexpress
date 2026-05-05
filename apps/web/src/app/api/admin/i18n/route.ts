@@ -1,11 +1,11 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   getI18nConfig,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -29,19 +29,19 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("i18n", "read");
+      throw new NpForbiddenError("i18n", "read");
     }
     const config = getI18nConfig();
     if (!config) {
-      return nxSuccessResponse({ enabled: false });
+      return npSuccessResponse({ enabled: false });
     }
-    return nxSuccessResponse({
+    return npSuccessResponse({
       enabled: true,
       locales: config.locales,
       defaultLocale: config.defaultLocale,
     });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

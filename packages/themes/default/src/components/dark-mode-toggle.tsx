@@ -4,14 +4,14 @@ import {
   COLOR_SCHEME_COOKIE,
   COLOR_SCHEME_STORAGE_KEY,
   isColorScheme,
-  type NxColorScheme,
+  type NpColorScheme,
 } from "@nexpress/theme/client";
 import { useEffect, useState } from "react";
 
 /**
  * Phase 11.5 — user-facing dark/light toggle.
  *
- * The early-init `<NxColorSchemeScript />` already set the
+ * The early-init `<NpColorSchemeScript />` already set the
  * right attribute on `<html>` before this component mounted,
  * so we just read the current value and let the user flip it.
  * State persists in:
@@ -25,13 +25,13 @@ import { useEffect, useState } from "react";
  */
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
-function readCurrent(): NxColorScheme | null {
+function readCurrent(): NpColorScheme | null {
   if (typeof document === "undefined") return null;
   const attr = document.documentElement.dataset.theme;
   return isColorScheme(attr) ? attr : null;
 }
 
-function writeChoice(choice: NxColorScheme): void {
+function writeChoice(choice: NpColorScheme): void {
   document.documentElement.dataset.theme = choice;
   document.cookie = `${COLOR_SCHEME_COOKIE}=${choice}; path=/; max-age=${ONE_YEAR_SECONDS}; SameSite=Lax`;
   try {
@@ -43,7 +43,7 @@ function writeChoice(choice: NxColorScheme): void {
 
 export function DarkModeToggle() {
   const [mounted, setMounted] = useState(false);
-  const [scheme, setScheme] = useState<NxColorScheme | null>(null);
+  const [scheme, setScheme] = useState<NpColorScheme | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -62,7 +62,7 @@ export function DarkModeToggle() {
     );
   }
 
-  const next: NxColorScheme = scheme === "dark" ? "light" : "dark";
+  const next: NpColorScheme = scheme === "dark" ? "light" : "dark";
   const label = scheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
 
   return (

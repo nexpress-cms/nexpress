@@ -1,8 +1,8 @@
-import { can, NxForbiddenError, NxValidationError, listMedia } from "@nexpress/core";
+import { can, NpForbiddenError, NpValidationError, listMedia } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 function parsePositiveInt(
@@ -16,7 +16,7 @@ function parsePositiveInt(
   const parsed = Number(value);
 
   if (!Number.isInteger(parsed) || parsed <= 0 || (max !== undefined && parsed > max)) {
-    throw new NxValidationError("Invalid query parameters", [
+    throw new NpValidationError("Invalid query parameters", [
       {
         field,
         message:
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     // admin-library shape. Require at least an editor session.
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("media", "list");
+      throw new NpForbiddenError("media", "list");
     }
     await ensureFor("read");
 
@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
       uploadedByMemberId,
     });
 
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

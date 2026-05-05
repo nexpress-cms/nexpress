@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Plus, Trash2, Users } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -70,7 +70,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   async function load() {
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/sites/${encodeURIComponent(siteId)}/memberships`,
       );
       if (!res.ok) {
@@ -101,7 +101,7 @@ export function MembershipsView({ siteId }: { siteId: string }) {
     setBusyUserId(userId);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/sites/${encodeURIComponent(siteId)}/memberships/${encodeURIComponent(userId)}`,
         { method: "DELETE" },
       );
@@ -273,7 +273,7 @@ function GrantDialog({
     const runSearch = async () => {
       setSearching(true);
       try {
-        const res = await nxFetch(
+        const res = await npFetch(
           `/api/users?search=${encodeURIComponent(search.trim())}&limit=8`,
         );
         if (!res.ok) {
@@ -299,7 +299,7 @@ function GrantDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/sites/${encodeURIComponent(siteId)}/memberships`,
         {
           method: "POST",

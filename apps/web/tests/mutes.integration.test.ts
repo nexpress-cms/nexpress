@@ -56,17 +56,17 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(slug = "9-3-mute-target"): Promise<string> {
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({ email: `staff-${slug}@example.com`, password, name: "Staff", role: "editor" })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },

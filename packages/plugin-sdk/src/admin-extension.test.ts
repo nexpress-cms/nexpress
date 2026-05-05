@@ -1,33 +1,33 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  nxAdminActionSchema,
-  nxAdminDashboardWidgetSchema,
-  nxAdminExtensionSchema,
-  nxAdminSettingsSchema,
-  nxAdminTableSchema,
-  nxAdminWidgetSchema,
-  nxCollectionTabSchema,
+  npAdminActionSchema,
+  npAdminDashboardWidgetSchema,
+  npAdminExtensionSchema,
+  npAdminSettingsSchema,
+  npAdminTableSchema,
+  npAdminWidgetSchema,
+  npCollectionTabSchema,
 } from "./manifest.js";
 
-describe("nxAdminSettingsSchema", () => {
+describe("npAdminSettingsSchema", () => {
   it("accepts a minimal settings block", () => {
     expect(() =>
-      nxAdminSettingsSchema.parse({
+      npAdminSettingsSchema.parse({
         fields: [{ type: "text", name: "foo" }],
       }),
     ).not.toThrow();
   });
 
   it("requires at least one field", () => {
-    expect(() => nxAdminSettingsSchema.parse({ fields: [] })).toThrow();
+    expect(() => npAdminSettingsSchema.parse({ fields: [] })).toThrow();
   });
 });
 
-describe("nxAdminWidgetSchema", () => {
+describe("npAdminWidgetSchema", () => {
   it("accepts metric + status kinds", () => {
     expect(() =>
-      nxAdminWidgetSchema.parse({
+      npAdminWidgetSchema.parse({
         id: "a",
         label: "Quota",
         kind: "metric",
@@ -35,7 +35,7 @@ describe("nxAdminWidgetSchema", () => {
       }),
     ).not.toThrow();
     expect(() =>
-      nxAdminWidgetSchema.parse({
+      npAdminWidgetSchema.parse({
         id: "b",
         label: "Health",
         kind: "status",
@@ -46,7 +46,7 @@ describe("nxAdminWidgetSchema", () => {
 
   it("rejects an unknown kind", () => {
     expect(() =>
-      nxAdminWidgetSchema.parse({
+      npAdminWidgetSchema.parse({
         id: "a",
         label: "Quota",
         kind: "graph",
@@ -57,7 +57,7 @@ describe("nxAdminWidgetSchema", () => {
 
   it("requires a non-empty actionId", () => {
     expect(() =>
-      nxAdminWidgetSchema.parse({
+      npAdminWidgetSchema.parse({
         id: "a",
         label: "Quota",
         kind: "metric",
@@ -67,10 +67,10 @@ describe("nxAdminWidgetSchema", () => {
   });
 });
 
-describe("nxAdminActionSchema", () => {
+describe("npAdminActionSchema", () => {
   it("accepts a minimal action", () => {
     expect(() =>
-      nxAdminActionSchema.parse({
+      npAdminActionSchema.parse({
         id: "resync",
         label: "Resync",
         actionId: "fullResync",
@@ -80,7 +80,7 @@ describe("nxAdminActionSchema", () => {
 
   it("accepts optional confirm + description", () => {
     expect(() =>
-      nxAdminActionSchema.parse({
+      npAdminActionSchema.parse({
         id: "resync",
         label: "Resync",
         actionId: "fullResync",
@@ -91,10 +91,10 @@ describe("nxAdminActionSchema", () => {
   });
 });
 
-describe("nxAdminTableSchema", () => {
+describe("npAdminTableSchema", () => {
   it("requires at least one column", () => {
     expect(() =>
-      nxAdminTableSchema.parse({
+      npAdminTableSchema.parse({
         id: "t",
         label: "Things",
         columns: [],
@@ -105,7 +105,7 @@ describe("nxAdminTableSchema", () => {
 
   it("accepts a valid table", () => {
     expect(() =>
-      nxAdminTableSchema.parse({
+      npAdminTableSchema.parse({
         id: "t",
         label: "Things",
         columns: [{ name: "a", label: "A" }],
@@ -115,14 +115,14 @@ describe("nxAdminTableSchema", () => {
   });
 });
 
-describe("nxAdminExtensionSchema", () => {
+describe("npAdminExtensionSchema", () => {
   it("all sections are optional", () => {
-    expect(() => nxAdminExtensionSchema.parse({})).not.toThrow();
+    expect(() => npAdminExtensionSchema.parse({})).not.toThrow();
   });
 
   it("combines settings + widgets + actions + tables", () => {
     expect(() =>
-      nxAdminExtensionSchema.parse({
+      npAdminExtensionSchema.parse({
         settings: { fields: [{ type: "text", name: "x" }] },
         widgets: [{ id: "w", label: "W", kind: "metric", actionId: "a" }],
         actions: [{ id: "a", label: "A", actionId: "doIt" }],
@@ -135,17 +135,17 @@ describe("nxAdminExtensionSchema", () => {
 
   it("rejects malformed widget entries", () => {
     expect(() =>
-      nxAdminExtensionSchema.parse({
+      npAdminExtensionSchema.parse({
         widgets: [{ id: "", label: "W", kind: "metric", actionId: "x" }],
       }),
     ).toThrow();
   });
 });
 
-describe("nxCollectionTabSchema", () => {
+describe("npCollectionTabSchema", () => {
   it("accepts a tab scoped to a specific collection with at least one widget", () => {
     expect(() =>
-      nxCollectionTabSchema.parse({
+      npCollectionTabSchema.parse({
         id: "seo",
         label: "SEO",
         collections: ["posts"],
@@ -156,7 +156,7 @@ describe("nxCollectionTabSchema", () => {
 
   it("accepts `*` as a match-any-collection token", () => {
     expect(() =>
-      nxCollectionTabSchema.parse({
+      npCollectionTabSchema.parse({
         id: "readingTime",
         label: "Reading time",
         collections: "*",
@@ -169,7 +169,7 @@ describe("nxCollectionTabSchema", () => {
 
   it("rejects an empty collections array", () => {
     expect(() =>
-      nxCollectionTabSchema.parse({
+      npCollectionTabSchema.parse({
         id: "x",
         label: "X",
         collections: [],
@@ -180,7 +180,7 @@ describe("nxCollectionTabSchema", () => {
 
   it("rejects tabs with neither widgets nor actions", () => {
     expect(() =>
-      nxCollectionTabSchema.parse({
+      npCollectionTabSchema.parse({
         id: "empty",
         label: "Empty",
         collections: "*",
@@ -188,9 +188,9 @@ describe("nxCollectionTabSchema", () => {
     ).toThrow(/widget or action/);
   });
 
-  it("nxAdminExtensionSchema accepts collectionTabs alongside other sections", () => {
+  it("npAdminExtensionSchema accepts collectionTabs alongside other sections", () => {
     expect(() =>
-      nxAdminExtensionSchema.parse({
+      npAdminExtensionSchema.parse({
         widgets: [{ id: "w", label: "W", kind: "metric", actionId: "a" }],
         collectionTabs: [
           {
@@ -205,10 +205,10 @@ describe("nxCollectionTabSchema", () => {
   });
 });
 
-describe("nxAdminDashboardWidgetSchema", () => {
+describe("npAdminDashboardWidgetSchema", () => {
   it("accepts a widget with an optional priority", () => {
     expect(() =>
-      nxAdminDashboardWidgetSchema.parse({
+      npAdminDashboardWidgetSchema.parse({
         id: "quota",
         label: "Quota",
         kind: "metric",
@@ -220,7 +220,7 @@ describe("nxAdminDashboardWidgetSchema", () => {
 
   it("rejects a non-integer priority", () => {
     expect(() =>
-      nxAdminDashboardWidgetSchema.parse({
+      npAdminDashboardWidgetSchema.parse({
         id: "quota",
         label: "Quota",
         kind: "metric",
@@ -230,9 +230,9 @@ describe("nxAdminDashboardWidgetSchema", () => {
     ).toThrow();
   });
 
-  it("nxAdminExtensionSchema accepts dashboardWidgets", () => {
+  it("npAdminExtensionSchema accepts dashboardWidgets", () => {
     expect(() =>
-      nxAdminExtensionSchema.parse({
+      npAdminExtensionSchema.parse({
         dashboardWidgets: [
           { id: "q", label: "Q", kind: "metric", actionId: "getQuota" },
         ],

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 
@@ -46,7 +46,7 @@ async function dispatch(
   actionId: string,
   payload: Record<string, unknown>,
 ): Promise<ActionResult> {
-  const response = await nxFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
+  const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

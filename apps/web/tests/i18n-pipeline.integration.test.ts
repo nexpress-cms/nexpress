@@ -90,7 +90,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
   });
 
   it("rejects unknown locales at write time", async () => {
-    const { saveDocument, NxValidationError } = await import("@nexpress/core");
+    const { saveDocument, NpValidationError } = await import("@nexpress/core");
     await expect(
       saveDocument(
         "localized-pages",
@@ -98,7 +98,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
         { title: "Bogus", body: "...", locale: "fr" },
         actor(),
       ),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("the same slug can exist in two locales (uniqueness is per-locale)", async () => {

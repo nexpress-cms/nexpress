@@ -3,9 +3,9 @@ import { webcrypto } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import type { NxAuthUser } from "../config/types.js";
-import { verifyToken, type NxTokenUse } from "./token.js";
-import { nxSessions, nxUsers } from "../db/schema/system.js";
+import type { NpAuthUser } from "../config/types.js";
+import { verifyToken, type NpTokenUse } from "./token.js";
+import { npSessions, npUsers } from "../db/schema/system.js";
 
 /**
  * Loose Drizzle handle type — every staff-auth caller passes
@@ -39,26 +39,26 @@ export async function sha256(input: string): Promise<string> {
  * its `nx-refresh` read.
  *
  * Tokens missing the `use` claim throw via `verifyToken`; we let
- * that propagate so a `NxAuthError` surfaces as 401 at the API
+ * that propagate so a `NpAuthError` surfaces as 401 at the API
  * layer.
  */
 export async function verifyTokenFull(
   token: string,
   secret: string,
   db: SessionDb,
-  expectedUse: NxTokenUse = "access",
-): Promise<NxAuthUser | null> {
+  expectedUse: NpTokenUse = "access",
+): Promise<NpAuthUser | null> {
   const payload = await verifyToken(token, secret, expectedUse);
   const [user] = await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, payload.sub))
+    .from(npUsers)
+    .where(eq(npUsers.id, payload.sub))
     .limit(1);
 
   if (!user || user.tokenVersion !== payload.ver) {
@@ -74,12 +74,12 @@ export async function invalidateAllSessions(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
-      .update(nxUsers)
+      .update(npUsers)
       .set({
-        tokenVersion: sql`${nxUsers.tokenVersion} + 1`,
+        tokenVersion: sql`${npUsers.tokenVersion} + 1`,
       })
-      .where(eq(nxUsers.id, userId));
+      .where(eq(npUsers.id, userId));
 
-    await tx.delete(nxSessions).where(eq(nxSessions.userId, userId));
+    await tx.delete(npSessions).where(eq(npSessions.userId, userId));
   });
 }
