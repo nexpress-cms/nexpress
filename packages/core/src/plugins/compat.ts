@@ -146,22 +146,34 @@ export interface SortedPlugins<T> {
 export function topoSort<T extends { id: string; requires: readonly string[] }>(
   plugins: T[],
 ): SortedPlugins<T> {
-  const known = new Set(plugins.map((p) => p.id));
   const skipped: Array<{ id: string; reason: string }> = [];
 
-  // Filter out plugins whose deps aren't even installed — they can't load
-  // and including them would block their dependents indefinitely.
-  const eligible: T[] = [];
-  for (const plugin of plugins) {
-    const missing = plugin.requires.filter((dep) => !known.has(dep));
-    if (missing.length > 0) {
-      skipped.push({
-        id: plugin.id,
-        reason: `missing required plugin(s): ${missing.join(", ")}`,
-      });
-      continue;
+  // Iteratively narrow the eligible set: any plugin whose `requires` aren't
+  // all in the *current* eligible set gets skipped, which may then make its
+  // own dependents ineligible. Repeat until the set stops shrinking. The
+  // earlier single-pass version (#464) only checked the *original* input ids,
+  // so a plugin A → B chain where B was skipped (because B → missing C) would
+  // still let A load with no error — A passed the input-set check, then the
+  // edge-build phase silently dropped the B → A link.
+  let eligible: T[] = [...plugins];
+  while (true) {
+    const eligibleIds = new Set(eligible.map((p) => p.id));
+    const stillEligible: T[] = [];
+    let dropped = false;
+    for (const plugin of eligible) {
+      const missing = plugin.requires.filter((dep) => !eligibleIds.has(dep));
+      if (missing.length > 0) {
+        skipped.push({
+          id: plugin.id,
+          reason: `missing required plugin(s): ${missing.join(", ")}`,
+        });
+        dropped = true;
+        continue;
+      }
+      stillEligible.push(plugin);
     }
-    eligible.push(plugin);
+    eligible = stillEligible;
+    if (!dropped) break;
   }
 
   const eligibleIds = new Set(eligible.map((p) => p.id));

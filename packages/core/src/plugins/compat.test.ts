@@ -96,6 +96,33 @@ describe("topoSort", () => {
     expect(result.skipped[0]?.reason).toMatch(/missing/);
   });
 
+  it("cascades skips: a plugin whose dep was skipped is itself skipped (#464)", () => {
+    // A requires B; B requires missing C. The earlier single-pass check let
+    // A slip through because B was in the input set — but B never actually
+    // loaded. The cascade fix should mark A as missing-dep too, with a
+    // reason that names B (A doesn't know about C).
+    const result = topoSort([
+      { id: "a", requires: ["b"] },
+      { id: "b", requires: ["c"] },
+    ]);
+    expect(result.ordered).toEqual([]);
+    expect(result.skipped.map((s) => s.id).sort()).toEqual(["a", "b"]);
+    const reasonForA = result.skipped.find((s) => s.id === "a")?.reason ?? "";
+    expect(reasonForA).toMatch(/b/);
+  });
+
+  it("cascades multiple levels of missing-dep skips", () => {
+    // Chain: A → B → C → missing D. All three should be skipped.
+    const result = topoSort([
+      { id: "a", requires: ["b"] },
+      { id: "b", requires: ["c"] },
+      { id: "c", requires: ["d"] },
+      { id: "independent", requires: [] },
+    ]);
+    expect(result.ordered.map((p) => p.id)).toEqual(["independent"]);
+    expect(result.skipped.map((s) => s.id).sort()).toEqual(["a", "b", "c"]);
+  });
+
   it("breaks cycles by skipping every plugin involved", () => {
     const result = topoSort([
       { id: "a", requires: ["b"] },
