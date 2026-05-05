@@ -33,11 +33,14 @@ export async function POST(request: NextRequest) {
 
     // Make sure core services + the queue are wired before we tear down
     // the registry — the reload below ends with a fresh ensurePluginsLoaded()
-    // that needs the DB + storage adapter ready.
-    await ensureFor("read");
-    await reloadPlugins();
+    // that needs the DB + storage adapter ready. Use `"write"` so the job
+    // queue producer is guaranteed up; the schedule reconcile inside
+    // `reloadPlugins()` needs `getOptionalJobQueue()` to return a real
+    // adapter instead of null on a fresh request.
+    await ensureFor("write");
+    const result = await reloadPlugins();
 
-    return npSuccessResponse({ reloaded: true });
+    return npSuccessResponse(result);
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

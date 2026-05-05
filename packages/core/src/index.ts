@@ -305,6 +305,7 @@ export type {
   NpJobCountOptions,
   NpJobStateCounts,
   NpPluginScheduleStats,
+  NpReconcileSchedulesResult,
   NpScheduleSummary,
   NpWorkerHeartbeat,
   NpWorkerHealthSummary,

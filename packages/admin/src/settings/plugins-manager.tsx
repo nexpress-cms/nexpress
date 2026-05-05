@@ -199,7 +199,17 @@ export function PluginsManager() {
     setToast(null);
     try {
       const response = await npFetch("/api/admin/plugins/reload", { method: "POST" });
-      const payload = (await response.json().catch(() => null)) as unknown;
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            reloaded?: boolean;
+            schedules?: {
+              added: number;
+              updated: number;
+              removed: number;
+              workerOwnsRegistrations: boolean | null;
+            } | null;
+          }
+        | null;
       if (!response.ok) {
         setToast({
           type: "error",
@@ -207,11 +217,32 @@ export function PluginsManager() {
         });
         return;
       }
-      setToast({
-        type: "success",
-        message:
-          "Re-registered every plugin. Code edits to plugin handlers still need a dev-server restart to take effect.",
-      });
+      const lines: string[] = [
+        "Re-registered every plugin.",
+        "Code edits to plugin handlers still need a dev-server restart.",
+      ];
+      const sched = payload?.schedules ?? null;
+      if (sched) {
+        const total = sched.added + sched.updated + sched.removed;
+        if (total > 0) {
+          lines.push(
+            `Schedules: +${sched.added} added, ${sched.updated} cron updated, -${sched.removed} removed.`,
+          );
+          // Issue #461 — when the web process *isn't* the worker (the
+          // common production setup), `boss.work()` registrations live
+          // in the worker process, which we can't poke from here. The
+          // cron rows are updated, but a freshly-added schedule's job
+          // won't be picked up until the worker restarts.
+          if (sched.workerOwnsRegistrations === false && sched.added > 0) {
+            lines.push(
+              "Note: this process isn't the worker — restart your worker process to pick up newly-added schedules.",
+            );
+          }
+        } else {
+          lines.push("Schedules unchanged.");
+        }
+      }
+      setToast({ type: "success", message: lines.join(" ") });
       await loadPlugins();
     } catch (error) {
       setToast({

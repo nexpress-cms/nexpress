@@ -193,6 +193,47 @@ export interface NpJobQueue {
     pluginId: string,
     options?: { windowDays?: number },
   ): Promise<NpPluginScheduleStats[]>;
+  /**
+   * Issue #461 — bring the queue's `pgboss.schedule` rows in sync with
+   * what `getRegisteredPluginSchedules()` reports today. Bootstrap
+   * registers schedules once at worker startup; without this method,
+   * `reloadPlugins()` could only update the in-memory registry, leaving
+   * pg-boss firing the *old* set of crons until the worker restarted.
+   *
+   * Behavior:
+   *   - schedule entry in registry but missing from pg-boss → added
+   *   - schedule entry in pg-boss but missing from registry → removed
+   *   - same name + different cron expression → re-added (unschedule
+   *     then schedule, since pg-boss has no in-place cron update)
+   *
+   * `boss.work()` registration is NOT touched: in production deploys
+   * the worker lives in a separate process from the admin web server,
+   * so the web process can't install / drop work loops on its boss
+   * instance for the worker process to pick up. Operators see their
+   * cron rows updated immediately; jobs that fire for newly-added
+   * schedules will still need a worker restart to be processed.
+   * Documented in the admin reload toast.
+   *
+   * Optional on the interface so test stubs / non-pg-boss adapters
+   * skip cleanly.
+   */
+  reconcilePluginSchedules?(): Promise<NpReconcileSchedulesResult>;
+}
+
+export interface NpReconcileSchedulesResult {
+  /** New schedule rows written to `pgboss.schedule`. */
+  added: number;
+  /** Existing rows whose cron expression changed (unschedule → reschedule). */
+  updated: number;
+  /** Stale rows removed (plugin was uninstalled / disabled / renamed). */
+  removed: number;
+  /**
+   * `true` when this process holds the worker `boss.work()` registrations
+   * for the affected schedules. When false, operators should restart the
+   * worker to pick up newly-added schedules. Adapters that can't tell
+   * (in-memory test queue, future adapters) return `null`.
+   */
+  workerOwnsRegistrations: boolean | null;
 }
 
 export interface NpPluginScheduleStats {
