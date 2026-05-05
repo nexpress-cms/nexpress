@@ -399,12 +399,45 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
     );
   }
 
+  if (field.type === "color") {
+    // Browser native picker. Store as `#rrggbb` so `style={{ color }}`
+    // works directly. The text input next to it lets operators paste
+    // arbitrary CSS colors (rgb/hsl/var(...)) when the picker is too
+    // restrictive for theme-token references.
+    const stringValue = typeof value === "string" ? value : "";
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          id={inputId}
+          type="color"
+          value={/^#([0-9a-fA-F]{6})$/.test(stringValue) ? stringValue : "#000000"}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          className="h-9 w-12 cursor-pointer rounded-md border border-input bg-background"
+        />
+        <Input
+          value={stringValue}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="#000000 or var(--np-color-primary)"
+          className="flex-1 font-mono text-xs"
+        />
+      </div>
+    );
+  }
+
+  const requiredMissing = field.required === true && (value === undefined || value === "" || value === null);
+
   return (
     <Input
       id={inputId}
       type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
       value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
       onChange={(event) => onChange(parseFieldInput(field, event.currentTarget.value))}
+      aria-invalid={requiredMissing || undefined}
+      className={
+        requiredMissing
+          ? "border-rose-500/60 focus-visible:ring-rose-500/40"
+          : undefined
+      }
     />
   );
 }
@@ -576,10 +609,20 @@ function SortableBlockItem({
                 definition.propsSchema.map((field) => {
                   const value = getFieldValue(field, block.props[field.name]);
                   const inputId = `${fieldIdPrefix}-${field.name}`;
+                  const isRequiredMissing =
+                    field.required === true &&
+                    (value === undefined || value === "" || value === null);
                   return (
                     <div key={field.name} className="grid gap-1.5">
                       {field.type !== "boolean" ? (
-                        <Label htmlFor={inputId}>{field.label}</Label>
+                        <Label htmlFor={inputId} className="flex items-center gap-1">
+                          <span>{field.label}</span>
+                          {field.required ? (
+                            <span aria-label="required" className="text-rose-500">
+                              *
+                            </span>
+                          ) : null}
+                        </Label>
                       ) : null}
                       <FieldControl
                         field={field}
@@ -589,6 +632,14 @@ function SortableBlockItem({
                         }
                         inputId={inputId}
                       />
+                      {field.description ? (
+                        <p className="text-xs text-muted-foreground">{field.description}</p>
+                      ) : null}
+                      {isRequiredMissing ? (
+                        <p className="text-xs text-rose-600 dark:text-rose-300">
+                          {field.label} is required.
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })

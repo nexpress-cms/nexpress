@@ -10,17 +10,22 @@ import {
   removePluginFromConfig,
   type PluginEntry,
 } from "./config-editor.js";
+import { scaffoldBlockPlugin } from "./scaffold-block-plugin.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
 Usage:
-  nexpress plugin add <package>      Install a plugin and register it in nexpress.config.ts
-  nexpress plugin remove <package>   Uninstall a plugin and unregister it
-  nexpress --help                    Show this message
+  nexpress plugin add <package>          Install a plugin and register it in nexpress.config.ts
+  nexpress plugin remove <package>       Uninstall a plugin and unregister it
+  nexpress create block-plugin <slug>    Scaffold a new block plugin in ./<slug>/
+  nexpress --help                        Show this message
 
 Notes:
-  - Run from the project root (where nexpress.config.ts lives).
-  - The config file must include marker comments for automated edits:
+  - "plugin add/remove" runs from the project root (where nexpress.config.ts lives).
+  - "create block-plugin" writes a starter package to the current directory; you
+    then add it to your workspace (e.g. into packages/plugins/<slug>/) and run
+    pnpm install + pnpm --filter <packageName> build before importing.
+  - The config file must include marker comments for automated plugin add/remove:
       // @nexpress:plugins-imports-start
       // @nexpress:plugins-imports-end
       // @nexpress:plugins-list-start
@@ -206,6 +211,36 @@ async function main(argv: string[]): Promise<number> {
     if (sub === "remove") return pluginRemove(target, cwd);
     process.stderr.write(`Unknown subcommand: plugin ${sub}\n`);
     return 2;
+  }
+
+  if (args[0] === "create") {
+    const sub = args[1];
+    const slug = args[2];
+    if (sub !== "block-plugin" || !slug) {
+      process.stderr.write(
+        `Missing arguments. Usage: nexpress create block-plugin <slug>\n`,
+      );
+      return 2;
+    }
+    const cwd = process.cwd();
+    try {
+      const result = await scaffoldBlockPlugin({ slug, outDir: cwd });
+      process.stdout.write(
+        `\n✓ Scaffolded block plugin in ${result.pluginDir}\n` +
+          `  Files written:\n` +
+          result.files.map((f) => `    - ${f}\n`).join("") +
+          `\n  Next:\n` +
+          `    1. Move the directory under your monorepo (e.g. packages/plugins/${slug}/) if needed.\n` +
+          `    2. pnpm install\n` +
+          `    3. pnpm --filter <packageName> build\n` +
+          `    4. Import the plugin in nexpress.config.ts and add it to plugins: [...].\n`,
+      );
+      return 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`\nnexpress: ${message}\n`);
+      return 1;
+    }
   }
 
   process.stderr.write(`Unknown command: ${args[0] ?? ""}\n${HELP_TEXT}`);

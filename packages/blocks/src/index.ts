@@ -5,6 +5,7 @@ export type {
   NpBlockInstance,
   NpBlockRegistration,
   NpBlockRegistry,
+  NpBlockRenderContext,
   NpPageBlocks,
   NpDataBinding,
 } from "./types.js";
@@ -17,3 +18,5 @@ export {
   registerBlock,
 } from "./registry.js";
 export { renderBlocks } from "./render-blocks.js";
+export type { NpRenderBlocksOptions } from "./render-blocks.js";
+export { createDefaultBlockRenderContext } from "./render-context.js";
