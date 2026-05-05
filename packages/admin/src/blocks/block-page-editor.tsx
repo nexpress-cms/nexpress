@@ -17,6 +17,8 @@ import {
   ChevronRight,
   ChevronUp,
   Copy,
+  Eye,
+  EyeOff,
   GripVertical,
   Plus,
   Trash2,
@@ -74,6 +76,7 @@ import { Textarea } from "../ui/textarea.js";
 import { cn } from "../ui/utils.js";
 
 import { BlockPalette } from "./block-palette.js";
+import { PreviewPanel } from "./preview-panel.js";
 import { useCollectionOptions } from "./registry-context.js";
 
 declare const crypto: { randomUUID(): string };
@@ -1400,6 +1403,35 @@ export function BlockPageEditor({
   const [blocks, dispatch] = useReducer(reducer, initialBlocks);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
+  // Live preview toggle. Persisted in localStorage so an operator
+  // who keeps it open across sessions doesn't need to flip it on
+  // every page load. Defaults to off — preview costs an extra
+  // server round trip and not every editor session needs it.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("np-page-builder.preview");
+      if (stored === "1") setPreviewOpen(true);
+    } catch {
+      // localStorage may throw in private-browsing or SSR contexts —
+      // fall back to the default (closed).
+    }
+  }, []);
+  const togglePreview = () => {
+    setPreviewOpen((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(
+          "np-page-builder.preview",
+          next ? "1" : "0",
+        );
+      } catch {
+        // Same as above — silent.
+      }
+      return next;
+    });
+  };
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -1533,7 +1565,28 @@ export function BlockPageEditor({
           <Braces className="mr-1.5 h-4 w-4" />
           Edit JSON
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={previewOpen}
+          onClick={togglePreview}
+        >
+          {previewOpen ? (
+            <>
+              <EyeOff className="mr-1.5 h-4 w-4" />
+              Hide preview
+            </>
+          ) : (
+            <>
+              <Eye className="mr-1.5 h-4 w-4" />
+              Show preview
+            </>
+          )}
+        </Button>
       </div>
+
+      {previewOpen ? <PreviewPanel blocks={blocks} /> : null}
 
       <PageJsonDialog
         open={pageJsonOpen}
