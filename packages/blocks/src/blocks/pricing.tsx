@@ -21,56 +21,68 @@ const readString = (value: unknown, fallback: string): string =>
 const readBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
 
-const parseStringArray = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return [];
+// `features` is a one-per-line textarea on the editor side and a real
+// `string[]` on the wire. Accept both to keep older pages renderable.
+const parsePlanFeatures = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
   }
 
-  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  if (typeof value === "string") {
+    return value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+
+  return [];
 };
 
-const parsePlans = (value: unknown): PricingPlan[] => {
-  const fallback: PricingPlan[] = [
-    {
-      name: "Starter",
-      price: "$19",
-      period: "/month",
-      features: ["Unlimited blocks", "Server rendering", "Email support"],
-      ctaText: "Choose Starter",
-      ctaUrl: "/pricing/starter",
-      highlighted: false,
-    },
-    {
-      name: "Growth",
-      price: "$79",
-      period: "/month",
-      features: ["Advanced layouts", "Team collaboration", "Priority onboarding"],
-      ctaText: "Choose Growth",
-      ctaUrl: "/pricing/growth",
-      highlighted: true,
-    },
-    {
-      name: "Scale",
-      price: "$199",
-      period: "/month",
-      features: ["Custom integrations", "Dedicated support", "Security review"],
-      ctaText: "Talk to sales",
-      ctaUrl: "/contact",
-      highlighted: false,
-    },
-  ];
+const DEFAULT_PLANS: PricingPlan[] = [
+  {
+    name: "Starter",
+    price: "$19",
+    period: "/month",
+    features: ["Unlimited blocks", "Server rendering", "Email support"],
+    ctaText: "Choose Starter",
+    ctaUrl: "/pricing/starter",
+    highlighted: false,
+  },
+  {
+    name: "Growth",
+    price: "$79",
+    period: "/month",
+    features: ["Advanced layouts", "Team collaboration", "Priority onboarding"],
+    ctaText: "Choose Growth",
+    ctaUrl: "/pricing/growth",
+    highlighted: true,
+  },
+  {
+    name: "Scale",
+    price: "$199",
+    period: "/month",
+    features: ["Custom integrations", "Dedicated support", "Security review"],
+    ctaText: "Talk to sales",
+    ctaUrl: "/contact",
+    highlighted: false,
+  },
+];
 
-  const source = typeof value === "string" ? (() => {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      return parsed;
-    } catch {
-      return fallback;
-    }
-  })() : value;
+const parsePlans = (value: unknown): PricingPlan[] => {
+  // Backward-compat: legacy pages stored a JSON string in this prop.
+  const source =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            return DEFAULT_PLANS;
+          }
+        })()
+      : value;
 
   if (!Array.isArray(source)) {
-    return fallback;
+    return DEFAULT_PLANS;
   }
 
   const plans = source
@@ -79,13 +91,13 @@ const parsePlans = (value: unknown): PricingPlan[] => {
       name: readString(item.name, "Plan"),
       price: readString(item.price, "$0"),
       period: readString(item.period, "/month"),
-      features: parseStringArray(item.features),
+      features: parsePlanFeatures(item.features),
       ctaText: readString(item.ctaText, "Get started"),
       ctaUrl: readString(item.ctaUrl, "/start"),
       highlighted: readBoolean(item.highlighted, false),
     }));
 
-  return plans.length > 0 ? plans : fallback;
+  return plans.length > 0 ? plans : DEFAULT_PLANS;
 };
 
 export const pricingBlock: NpBlockDefinition = {
@@ -93,81 +105,42 @@ export const pricingBlock: NpBlockDefinition = {
   label: "Pricing",
   description: "Structured pricing cards for subscription tiers or service packages.",
   icon: "💳",
+  summaryFields: ["heading"],
   defaultProps: {
     heading: "Simple pricing for every stage",
-    plans: JSON.stringify(
-      [
-        {
-          name: "Starter",
-          price: "$19",
-          period: "/month",
-          features: ["Unlimited blocks", "Server rendering", "Email support"],
-          ctaText: "Choose Starter",
-          ctaUrl: "/pricing/starter",
-          highlighted: false,
-        },
-        {
-          name: "Growth",
-          price: "$79",
-          period: "/month",
-          features: ["Advanced layouts", "Team collaboration", "Priority onboarding"],
-          ctaText: "Choose Growth",
-          ctaUrl: "/pricing/growth",
-          highlighted: true,
-        },
-        {
-          name: "Scale",
-          price: "$199",
-          period: "/month",
-          features: ["Custom integrations", "Dedicated support", "Security review"],
-          ctaText: "Talk to sales",
-          ctaUrl: "/contact",
-          highlighted: false,
-        },
-      ],
-      null,
-      2,
-    ),
+    plans: DEFAULT_PLANS.map((plan) => ({ ...plan, features: plan.features.join("\n") })),
   },
   propsSchema: [
     { name: "heading", label: "Heading", type: "text", defaultValue: "Simple pricing for every stage" },
     {
       name: "plans",
       label: "Plans",
-      type: "textarea",
-      defaultValue: JSON.stringify(
-        [
-          {
-            name: "Starter",
-            price: "$19",
-            period: "/month",
-            features: ["Unlimited blocks", "Server rendering", "Email support"],
-            ctaText: "Choose Starter",
-            ctaUrl: "/pricing/starter",
-            highlighted: false,
-          },
-          {
-            name: "Growth",
-            price: "$79",
-            period: "/month",
-            features: ["Advanced layouts", "Team collaboration", "Priority onboarding"],
-            ctaText: "Choose Growth",
-            ctaUrl: "/pricing/growth",
-            highlighted: true,
-          },
-          {
-            name: "Scale",
-            price: "$199",
-            period: "/month",
-            features: ["Custom integrations", "Dedicated support", "Security review"],
-            ctaText: "Talk to sales",
-            ctaUrl: "/contact",
-            highlighted: false,
-          },
-        ],
-        null,
-        2,
-      ),
+      type: "array",
+      defaultValue: DEFAULT_PLANS.map((plan) => ({ ...plan, features: plan.features.join("\n") })),
+      itemDefault: {
+        name: "New plan",
+        price: "$0",
+        period: "/month",
+        features: "Feature one\nFeature two\nFeature three",
+        ctaText: "Get started",
+        ctaUrl: "/start",
+        highlighted: false,
+      },
+      itemSchema: [
+        { name: "name", label: "Plan name", type: "text", defaultValue: "New plan" },
+        { name: "price", label: "Price", type: "text", defaultValue: "$0" },
+        { name: "period", label: "Period", type: "text", defaultValue: "/month" },
+        {
+          name: "features",
+          label: "Features",
+          type: "textarea",
+          defaultValue: "Feature one\nFeature two\nFeature three",
+          description: "One feature per line.",
+        },
+        { name: "ctaText", label: "CTA text", type: "text", defaultValue: "Get started" },
+        { name: "ctaUrl", label: "CTA URL", type: "url", defaultValue: "/start" },
+        { name: "highlighted", label: "Highlight this plan", type: "boolean", defaultValue: false },
+      ],
     },
   ],
   render: (props) => {

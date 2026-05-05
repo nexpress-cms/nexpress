@@ -28,44 +28,53 @@ const readNumber = (value: unknown, fallback: number): number => {
   return fallback;
 };
 
-const parseImages = (value: unknown): GalleryImage[] => {
-  const fallback: GalleryImage[] = [
-    {
-      src: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80",
-      alt: "Workspace setup",
-    },
-    {
-      src: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
-      alt: "Team collaboration",
-    },
-    {
-      src: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
-      alt: "Product planning board",
-    },
-  ];
+const DEFAULT_IMAGES: GalleryImage[] = [
+  {
+    src: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80",
+    alt: "Workspace setup",
+  },
+  {
+    src: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
+    alt: "Team collaboration",
+  },
+  {
+    src: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
+    alt: "Product planning board",
+  },
+];
 
-  const source = typeof value === "string" ? (() => {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      return parsed;
-    } catch {
-      return fallback;
-    }
-  })() : value;
+const parseImages = (value: unknown): GalleryImage[] => {
+  // Backward-compat: legacy pages stored a JSON string in this prop.
+  const source =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            return DEFAULT_IMAGES;
+          }
+        })()
+      : value;
 
   if (!Array.isArray(source)) {
-    return fallback;
+    return DEFAULT_IMAGES;
   }
 
   const images = source
     .filter(isRecord)
     .map((item) => ({
-      src: readString(item.src, fallback[0]?.src ?? ""),
+      // Don't fall back to a stock photo when src is empty —
+      // unfilled rows should be filtered out below, not silently
+      // populated with the first DEFAULT_IMAGES entry. The array
+      // editor lets operators add a row before they pick an image,
+      // and the previous fallback turned that into a random stock
+      // photo on the rendered page.
+      src: typeof item.src === "string" ? item.src.trim() : "",
       alt: readString(item.alt, "Gallery image"),
     }))
     .filter((item) => item.src.length > 0);
 
-  return images.length > 0 ? images : fallback;
+  return images.length > 0 ? images : DEFAULT_IMAGES;
 };
 
 export const imageGalleryBlock: NpBlockDefinition = {
@@ -73,27 +82,11 @@ export const imageGalleryBlock: NpBlockDefinition = {
   label: "Image Gallery",
   description: "Responsive gallery block for portfolios, campaigns, or product storytelling.",
   icon: "🖼️",
+  summaryFields: ["heading"],
   defaultProps: {
     heading: "Moments from the workflow",
     columns: 3,
-    images: JSON.stringify(
-      [
-        {
-          src: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80",
-          alt: "Workspace setup",
-        },
-        {
-          src: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
-          alt: "Team collaboration",
-        },
-        {
-          src: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
-          alt: "Product planning board",
-        },
-      ],
-      null,
-      2,
-    ),
+    images: DEFAULT_IMAGES,
   },
   propsSchema: [
     { name: "heading", label: "Heading", type: "text", defaultValue: "Moments from the workflow" },
@@ -101,25 +94,13 @@ export const imageGalleryBlock: NpBlockDefinition = {
     {
       name: "images",
       label: "Images",
-      type: "textarea",
-      defaultValue: JSON.stringify(
-        [
-          {
-            src: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80",
-            alt: "Workspace setup",
-          },
-          {
-            src: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
-            alt: "Team collaboration",
-          },
-          {
-            src: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
-            alt: "Product planning board",
-          },
-        ],
-        null,
-        2,
-      ),
+      type: "array",
+      defaultValue: DEFAULT_IMAGES,
+      itemDefault: { src: "", alt: "" },
+      itemSchema: [
+        { name: "src", label: "Image", type: "image", defaultValue: "" },
+        { name: "alt", label: "Alt text", type: "text", defaultValue: "" },
+      ],
     },
   ],
   render: (props) => {

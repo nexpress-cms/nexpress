@@ -2,26 +2,42 @@ import type { CSSProperties } from "react";
 
 import type { NpBlockDefinition } from "../types.js";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
 
+const DEFAULT_FIELD_LABELS = ["Name", "Email", "Company"];
+const DEFAULT_FIELDS = DEFAULT_FIELD_LABELS.map((label) => ({ label }));
+
+// Accepts the new `[{ label }]` shape, the legacy `string[]`, or a
+// JSON-encoded version of either, so older pages keep rendering.
 const parseFields = (value: unknown): string[] => {
-  const fallback = ["Name", "Email", "Company"];
-  const source = typeof value === "string" ? (() => {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      return parsed;
-    } catch {
-      return fallback;
-    }
-  })() : value;
+  const source =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            return DEFAULT_FIELD_LABELS;
+          }
+        })()
+      : value;
 
   if (!Array.isArray(source)) {
-    return fallback;
+    return DEFAULT_FIELD_LABELS;
   }
 
-  const fields = source.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-  return fields.length > 0 ? fields : fallback;
+  const fields = source
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (isRecord(item)) return readString(item.label, "").trim();
+      return "";
+    })
+    .filter((label) => label.length > 0);
+
+  return fields.length > 0 ? fields : DEFAULT_FIELD_LABELS;
 };
 
 export const contactFormBlock: NpBlockDefinition = {
@@ -29,15 +45,25 @@ export const contactFormBlock: NpBlockDefinition = {
   label: "Contact Form",
   description: "Lead capture placeholder with configurable fields and contact destination.",
   icon: "✉️",
+  summaryFields: ["heading"],
   defaultProps: {
     heading: "Talk to our team",
     email: "hello@example.com",
-    fields: JSON.stringify(["Name", "Email", "Company"], null, 2),
+    fields: DEFAULT_FIELDS,
   },
   propsSchema: [
     { name: "heading", label: "Heading", type: "text", defaultValue: "Talk to our team" },
     { name: "email", label: "Email", type: "text", defaultValue: "hello@example.com" },
-    { name: "fields", label: "Fields", type: "textarea", defaultValue: JSON.stringify(["Name", "Email", "Company"], null, 2) },
+    {
+      name: "fields",
+      label: "Fields",
+      type: "array",
+      defaultValue: DEFAULT_FIELDS,
+      itemDefault: { label: "New field" },
+      itemSchema: [
+        { name: "label", label: "Field label", type: "text", defaultValue: "New field" },
+      ],
+    },
   ],
   render: (props) => {
     const heading = readString(props.heading, "Talk to our team");

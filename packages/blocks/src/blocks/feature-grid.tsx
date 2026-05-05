@@ -29,24 +29,27 @@ const readNumber = (value: unknown, fallback: number): number => {
   return fallback;
 };
 
-const parseFeatures = (value: unknown): FeatureItem[] => {
-  const fallback: FeatureItem[] = [
-    { icon: "⚡", title: "Fast to launch", description: "Compose sections quickly with reusable defaults." },
-    { icon: "🧩", title: "Modular", description: "Mix content patterns without rebuilding the page shell." },
-    { icon: "🖥️", title: "Server-friendly", description: "Render blocks into stable markup for production pages." },
-  ];
+const DEFAULT_FEATURES: FeatureItem[] = [
+  { icon: "⚡", title: "Fast to launch", description: "Compose sections quickly with reusable defaults." },
+  { icon: "🧩", title: "Modular", description: "Mix content patterns without rebuilding the page shell." },
+  { icon: "🖥️", title: "Server-friendly", description: "Render blocks into stable markup for production pages." },
+];
 
-  const source = typeof value === "string" ? (() => {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      return parsed;
-    } catch {
-      return fallback;
-    }
-  })() : value;
+const parseFeatures = (value: unknown): FeatureItem[] => {
+  // Backward-compat: legacy pages stored a JSON string in this prop.
+  const source =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            return DEFAULT_FEATURES;
+          }
+        })()
+      : value;
 
   if (!Array.isArray(source)) {
-    return fallback;
+    return DEFAULT_FEATURES;
   }
 
   const features = source
@@ -57,7 +60,7 @@ const parseFeatures = (value: unknown): FeatureItem[] => {
       description: readString(item.description, "Add a short explanation for this feature."),
     }));
 
-  return features.length > 0 ? features : fallback;
+  return features.length > 0 ? features : DEFAULT_FEATURES;
 };
 
 export const featureGridBlock: NpBlockDefinition = {
@@ -65,18 +68,11 @@ export const featureGridBlock: NpBlockDefinition = {
   label: "Feature Grid",
   description: "Highlights key product capabilities in a flexible multi-column layout.",
   icon: "🧱",
+  summaryFields: ["heading"],
   defaultProps: {
     heading: "Everything your team needs",
     columns: 3,
-    features: JSON.stringify(
-      [
-        { icon: "⚡", title: "Fast to launch", description: "Compose sections quickly with reusable defaults." },
-        { icon: "🧩", title: "Modular", description: "Mix content patterns without rebuilding the page shell." },
-        { icon: "🖥️", title: "Server-friendly", description: "Render blocks into stable markup for production pages." },
-      ],
-      null,
-      2,
-    ),
+    features: DEFAULT_FEATURES,
   },
   propsSchema: [
     { name: "heading", label: "Heading", type: "text", defaultValue: "Everything your team needs" },
@@ -84,16 +80,14 @@ export const featureGridBlock: NpBlockDefinition = {
     {
       name: "features",
       label: "Features",
-      type: "textarea",
-      defaultValue: JSON.stringify(
-        [
-          { icon: "⚡", title: "Fast to launch", description: "Compose sections quickly with reusable defaults." },
-          { icon: "🧩", title: "Modular", description: "Mix content patterns without rebuilding the page shell." },
-          { icon: "🖥️", title: "Server-friendly", description: "Render blocks into stable markup for production pages." },
-        ],
-        null,
-        2,
-      ),
+      type: "array",
+      defaultValue: DEFAULT_FEATURES,
+      itemDefault: { icon: "✨", title: "New feature", description: "Add a short explanation for this feature." },
+      itemSchema: [
+        { name: "icon", label: "Icon", type: "text", defaultValue: "✨", description: "Emoji or short symbol." },
+        { name: "title", label: "Title", type: "text", defaultValue: "New feature" },
+        { name: "description", label: "Description", type: "textarea", defaultValue: "Add a short explanation for this feature." },
+      ],
     },
   ],
   render: (props) => {
