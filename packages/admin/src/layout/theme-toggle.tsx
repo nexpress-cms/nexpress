@@ -95,25 +95,3 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }): Rea
   );
 }
 
-/**
- * Inline-script primitive that runs before React hydrates. Render it
- * in the admin route group's layout (server component) so the right
- * .dark class is on <html> at the very first paint — no FOUC on
- * navigation between site / admin shells.
- */
-export function ThemeInit(): React.JSX.Element {
-  // The script body has to stay self-contained and synchronous; React
-  // only emits this on the SSR pass and the browser executes it as
-  // soon as it's parsed.
-  const script = `
-(function() {
-  try {
-    var stored = localStorage.getItem(${JSON.stringify(STORAGE_KEY)});
-    var mode = stored === 'light' || stored === 'dark' ? stored : 'system';
-    var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    if (dark) document.documentElement.classList.add('dark');
-  } catch (e) {}
-})();
-`;
-  return <script dangerouslySetInnerHTML={{ __html: script }} suppressHydrationWarning />;
-}

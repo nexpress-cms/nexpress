@@ -1,4 +1,4 @@
-import { ThemeInit } from "@nexpress/admin/client";
+import { ThemeInit } from "@nexpress/admin";
 
 /**
  * Admin route-group layout. The only thing it does today is mount

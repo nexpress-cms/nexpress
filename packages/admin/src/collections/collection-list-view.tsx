@@ -76,7 +76,7 @@ const formatCellValue = (value: unknown): string => {
   }
 
   if (value instanceof Date) {
-    return value.toLocaleString();
+    return value.toLocaleString("en-US");
   }
 
   if (Array.isArray(value)) {

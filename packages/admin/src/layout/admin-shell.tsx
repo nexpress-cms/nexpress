@@ -209,7 +209,12 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       });
     }
     if (communityItems.length > 0) {
-      result.push({ eyebrow: "Community", items: communityItems });
+      const existing = result.find((g) => g.eyebrow === "Community");
+      if (existing) {
+        existing.items = [...existing.items, ...communityItems];
+      } else {
+        result.push({ eyebrow: "Community", items: communityItems });
+      }
     }
 
     const systemItems: NavItem[] = [

@@ -1,6 +1,6 @@
 export { AdminShell } from "./layout/admin-shell.js";
 export { AdminTopbar } from "./layout/admin-topbar.js";
-export { ThemeToggle, ThemeInit } from "./layout/theme-toggle.js";
+export { ThemeToggle } from "./layout/theme-toggle.js";
 export { NpMark } from "./layout/np-mark.js";
 export { PageHeader } from "./layout/page-header.js";
 export {
