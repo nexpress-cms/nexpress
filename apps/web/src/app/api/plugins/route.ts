@@ -39,6 +39,12 @@ export async function GET(request: NextRequest) {
               }))
             : [],
           hasAdmin: reg?.admin !== undefined,
+          // The settings sub-tree (if declared) is forwarded so the inline
+          // config dialog in `/admin/plugins` can render a typed form via
+          // FieldRenderer instead of falling back to a raw JSON textarea.
+          // When absent, the dialog keeps the textarea as the only honest
+          // option — we don't synthesize a schema we can't trust.
+          adminSettings: reg?.admin?.settings ?? null,
           enabled: state.enabled,
           config: state.config,
           installedAt: state.installedAt,
