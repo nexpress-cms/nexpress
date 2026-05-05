@@ -67,7 +67,7 @@ test.describe("theme switcher", () => {
       data: { id: "default" },
       headers: {
         "x-csrf-token": (await context.cookies())
-          .find((c) => c.name === "nx-csrf")?.value ?? "",
+          .find((c) => c.name === "np-csrf")?.value ?? "",
       },
     });
     expect(resetRes.status()).toBe(200);

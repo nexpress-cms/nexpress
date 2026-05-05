@@ -89,11 +89,11 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
   const readSecret = options.getSecret ?? defaultGetSecret;
 
   async function getSessionUser(request: NextRequest): Promise<NpAuthUser | null> {
-    const token = request.cookies.get("nx-session")?.value;
+    const token = request.cookies.get("np-session")?.value;
     if (!token) return null;
 
     try {
-      // Pass `"access"` so a refresh JWT (longer-lived `nx-refresh`
+      // Pass `"access"` so a refresh JWT (longer-lived `np-refresh`
       // cookie) cannot be replayed in the session cookie. `verifyToken`
       // throws `NpAuthError` on mismatch.
       return await verifyTokenFull(token, readSecret(), options.getDb() as never, "access");
@@ -131,7 +131,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
   const requireCsrf = (request: NextRequest): void => {
     const ok = verifyCsrf(
       request.method,
-      request.cookies.get("nx-csrf")?.value,
+      request.cookies.get("np-csrf")?.value,
       request.headers.get("x-csrf-token") ?? undefined,
     );
     if (!ok) throw new NpAuthError("Invalid CSRF token");
@@ -141,7 +141,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     const { tokenExpiration, refreshTokenExpiration, secureCookies } = getAuthRuntimeConfig();
 
     response.cookies.set({
-      name: "nx-session",
+      name: "np-session",
       value: tokens.access,
       httpOnly: true,
       secure: secureCookies,
@@ -151,7 +151,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     });
 
     response.cookies.set({
-      name: "nx-refresh",
+      name: "np-refresh",
       value: tokens.refresh,
       httpOnly: true,
       secure: secureCookies,
@@ -161,7 +161,7 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     });
 
     response.cookies.set({
-      name: "nx-csrf",
+      name: "np-csrf",
       value: tokens.csrf,
       httpOnly: false,
       secure: secureCookies,
@@ -175,16 +175,16 @@ export function createAuthHelpers<DB>(options: CreateAuthHelpersOptions<DB>): Au
     const { secureCookies } = getAuthRuntimeConfig();
 
     for (const [name, path] of [
-      ["nx-session", "/"],
-      ["nx-refresh", "/api/auth/refresh"],
-      ["nx-csrf", "/"],
+      ["np-session", "/"],
+      ["np-refresh", "/api/auth/refresh"],
+      ["np-csrf", "/"],
     ] as const) {
       response.cookies.set({
         name,
         value: "",
-        httpOnly: name !== "nx-csrf",
+        httpOnly: name !== "np-csrf",
         secure: secureCookies,
-        sameSite: name === "nx-refresh" ? "strict" : "lax",
+        sameSite: name === "np-refresh" ? "strict" : "lax",
         path,
         maxAge: 0,
       });

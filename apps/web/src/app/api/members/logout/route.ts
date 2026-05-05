@@ -9,8 +9,8 @@ import { ensureFor } from "@/lib/init-core";
 
 export async function POST(request: NextRequest) {
   await ensureFor("read");
-  const sessionToken = request.cookies.get("nx-mb-session")?.value;
-  const refreshToken = request.cookies.get("nx-mb-refresh")?.value;
+  const sessionToken = request.cookies.get("np-mb-session")?.value;
+  const refreshToken = request.cookies.get("np-mb-refresh")?.value;
 
   // Revoke BOTH session rows (access + refresh) so a stolen refresh
   // JWT can't mint new access tokens after the user logged out (#45).

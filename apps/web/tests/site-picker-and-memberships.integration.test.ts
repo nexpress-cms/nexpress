@@ -127,7 +127,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
 
   // Issue #221 — admin override cookie / header is untrusted.
   // The bootstrap resolver re-validates against the session
-  // before honoring the override so a forged `nx-admin-site`
+  // before honoring the override so a forged `np-admin-site`
   // value can't change the tenant context.
   //
   // Note: the resolver itself reads `next/headers()` /
@@ -209,7 +209,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     expect(body.id).toBe("switchable");
     // Set-Cookie header should carry the cookie.
     const setCookie = res.headers.get("set-cookie") ?? "";
-    expect(setCookie).toContain("nx-admin-site=switchable");
+    expect(setCookie).toContain("np-admin-site=switchable");
     expect(setCookie).toMatch(/HttpOnly/i);
   });
 
@@ -254,7 +254,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     expect(status).toBe(200);
     const setCookie = res.headers.get("set-cookie") ?? "";
     // Deleting sets Max-Age=0 (or expires past) on the same name.
-    expect(setCookie).toMatch(/nx-admin-site=/i);
+    expect(setCookie).toMatch(/np-admin-site=/i);
   });
 
   // ============== /api/admin/sites/[id]/memberships ==============

@@ -66,7 +66,7 @@ async function seedStaffPostId(slug: string): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "digest target",
@@ -90,7 +90,7 @@ async function postComment(
   const res = await commentsPOST(
     jsonRequest(`/api/collections/posts/${postId}/comments`, {
       method: "POST",
-      cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+      cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
       headers: { "x-csrf-token": author.csrfCookie },
       body: JSON.stringify(parentId ? { bodyMd, parentId } : { bodyMd }),
     }),
@@ -141,7 +141,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     const res = await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${m.sessionCookie}`, `nx-mb-csrf=${m.csrfCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
         headers: { "x-csrf-token": m.csrfCookie },
         body: JSON.stringify({ digest: "daily" }),
       }),
@@ -156,7 +156,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     const res = await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${m.sessionCookie}`, `nx-mb-csrf=${m.csrfCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
         headers: { "x-csrf-token": m.csrfCookie },
         body: JSON.stringify({ digest: "monthly" }),
       }),
@@ -173,7 +173,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ digest: "daily" }),
       }),
@@ -216,7 +216,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${m.sessionCookie}`, `nx-mb-csrf=${m.csrfCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
         headers: { "x-csrf-token": m.csrfCookie },
         body: JSON.stringify({ digest: "daily" }),
       }),
@@ -236,7 +236,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ digest: "daily" }),
       }),
@@ -246,7 +246,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     await followsPOST(
       jsonRequest("/api/follows", {
         method: "POST",
-        cookies: [`nx-mb-session=${follower.sessionCookie}`, `nx-mb-csrf=${follower.csrfCookie}`],
+        cookies: [`np-mb-session=${follower.sessionCookie}`, `np-mb-csrf=${follower.csrfCookie}`],
         headers: { "x-csrf-token": follower.csrfCookie },
         body: JSON.stringify({ targetType: "member", targetId: author.memberId }),
       }),
@@ -289,7 +289,7 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${subscriber.sessionCookie}`, `nx-mb-csrf=${subscriber.csrfCookie}`],
+        cookies: [`np-mb-session=${subscriber.sessionCookie}`, `np-mb-csrf=${subscriber.csrfCookie}`],
         headers: { "x-csrf-token": subscriber.csrfCookie },
         body: JSON.stringify({ digest: "daily" }),
       }),

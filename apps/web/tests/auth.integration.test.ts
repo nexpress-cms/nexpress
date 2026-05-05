@@ -57,7 +57,7 @@ describe.skipIf(skipIfNoTestDb())("auth API (integration)", () => {
     // Regression for #94: a staff refresh JWT must NOT be accepted in
     // the session cookie. Before the fix `signToken` minted identical
     // shapes for access and refresh, so a 7-day refresh could be
-    // smuggled into `nx-session` and bought a 7-day admin bearer.
+    // smuggled into `np-session` and bought a 7-day admin bearer.
     it("401s when a refresh JWT is used as the session cookie", async () => {
       const { signToken } = await import("@nexpress/core");
       const session = await seedUser({ email: "ref@example.com", role: "admin" });
@@ -91,7 +91,7 @@ describe.skipIf(skipIfNoTestDb())("auth API (integration)", () => {
       );
       const req = new NextRequest("http://localhost:3000/api/auth/refresh", {
         method: "POST",
-        headers: { cookie: `nx-refresh=${refresh}` },
+        headers: { cookie: `np-refresh=${refresh}` },
       });
       const res = await refreshPOST(req);
       expect(res.status).toBe(200);
@@ -112,7 +112,7 @@ describe.skipIf(skipIfNoTestDb())("auth API (integration)", () => {
       );
       const req = new NextRequest("http://localhost:3000/api/auth/refresh", {
         method: "POST",
-        headers: { cookie: `nx-refresh=${access}` },
+        headers: { cookie: `np-refresh=${access}` },
       });
       const res = await refreshPOST(req);
       expect(res.status).toBe(401);

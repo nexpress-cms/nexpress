@@ -20,7 +20,7 @@ import { PostListTemplate } from "./templates/post-list.js";
  * surface excerpt / cover / tags / reading time, and three page
  * templates (default centered column, edge-to-edge wide, marketing
  * landing, doc-style sidebar). All CSS is theme-owned so the
- * framework drops it as a single `<style data-nx-theme="default">`
+ * framework drops it as a single `<style data-np-theme="default">`
  * tag at SSR time — no extra round-trip.
  *
  * Sites brand by overriding the design tokens (`--np-color-*` etc).

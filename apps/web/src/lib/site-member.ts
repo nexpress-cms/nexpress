@@ -9,7 +9,7 @@ import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 
 /**
- * Resolves the currently-signed-in member from `nx-mb-session`
+ * Resolves the currently-signed-in member from `np-mb-session`
  * cookies for use inside Server Components / route handlers that
  * don't have a `NextRequest` (the standard `optionalMember` helper
  * needs the request object). Returns null when:
@@ -26,7 +26,7 @@ import { getDb } from "@/lib/db";
 export async function getSiteMember(): Promise<NpMemberAuthRow | null> {
   await ensureFor("read");
   const cookieStore = await cookies();
-  const token = cookieStore.get("nx-mb-session")?.value;
+  const token = cookieStore.get("np-mb-session")?.value;
   if (!token) return null;
   const secret = process.env.NP_SECRET;
   if (!secret) return null;

@@ -102,7 +102,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
     const session = await seedUser({ role: "admin" });
     const { NextRequest } = await import("next/server");
     const headers = new Headers({
-      cookie: `nx-session=${session.accessToken}; nx-csrf=${session.csrfToken}`,
+      cookie: `np-session=${session.accessToken}; np-csrf=${session.csrfToken}`,
       "x-csrf-token": session.csrfToken,
     });
     const req = new NextRequest("http://localhost:3000/api/admin/jobs/health", {
@@ -126,7 +126,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
     const session = await seedUser({ role: "editor" });
     const { NextRequest } = await import("next/server");
     const headers = new Headers({
-      cookie: `nx-session=${session.accessToken}; nx-csrf=${session.csrfToken}`,
+      cookie: `np-session=${session.accessToken}; np-csrf=${session.csrfToken}`,
       "x-csrf-token": session.csrfToken,
     });
     const req = new NextRequest("http://localhost:3000/api/admin/jobs/health", {

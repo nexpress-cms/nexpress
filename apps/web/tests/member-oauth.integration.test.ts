@@ -90,7 +90,7 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     await closeTestDb();
   });
 
-  it("/start sets nx-mb-oauth-state and 302s to the provider", async () => {
+  it("/start sets np-mb-oauth-state and 302s to the provider", async () => {
     const bookkeeping: Bookkeeping = { authorizeCalls: 0, exchangeCalls: 0 };
     const id = await registerStub(bookkeeping);
 
@@ -100,7 +100,7 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
     );
     expect(res.status).toBe(307);
     expect(res.headers.get("location") ?? "").toContain("https://example.invalid/oauth/authorize");
-    const cookieState = cookieValue(res.headers.get("set-cookie"), "nx-mb-oauth-state");
+    const cookieState = cookieValue(res.headers.get("set-cookie"), "np-mb-oauth-state");
     expect(cookieState).toBeDefined();
     expect(cookieState).toBe(bookkeeping.lastAuthorizeState);
   });
@@ -121,27 +121,27 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const callback = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(callback.status).toBe(307);
     expect(callback.headers.get("location") ?? "").toMatch(/\/(?:$|\?)/);
     const setCookies = callback.headers.get("set-cookie") ?? "";
-    expect(setCookies).toMatch(/nx-mb-session=/);
-    expect(setCookies).toMatch(/nx-mb-csrf=/);
+    expect(setCookies).toMatch(/np-mb-session=/);
+    expect(setCookies).toMatch(/np-mb-csrf=/);
 
-    const session = cookieValue(setCookies, "nx-mb-session");
+    const session = cookieValue(setCookies, "np-mb-session");
     expect(session).toBeDefined();
 
     // Cookie minted by OAuth callback must work on a member-auth route.
     const me = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${session}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${session}`] }),
     );
     expect(me.status).toBe(200);
 
@@ -183,11 +183,11 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -209,12 +209,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const cookieState = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const cookieState = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=tampered`,
-        { cookies: [`nx-mb-oauth-state=${cookieState}`] },
+        { cookies: [`np-mb-oauth-state=${cookieState}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -232,12 +232,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -264,18 +264,18 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(cb.status).toBe(307);
     expect(cb.headers.get("location") ?? "").toContain("oauth_error=member_inactive");
     // No session cookie set.
-    expect(cb.headers.get("set-cookie") ?? "").not.toMatch(/nx-mb-session=[^;]+;/);
+    expect(cb.headers.get("set-cookie") ?? "").not.toMatch(/np-mb-session=[^;]+;/);
   });
 
   // Regression: an OAuth profile whose email matches a non-active
@@ -306,12 +306,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -338,11 +338,11 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
         jsonRequest(`/api/members/oauth/${id}/start`),
         { params: Promise.resolve({ provider: id }) },
       );
-      const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+      const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
       return oauthCallbackGET(
         jsonRequest(
           `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-          { cookies: [`nx-mb-oauth-state=${state}`] },
+          { cookies: [`np-mb-oauth-state=${state}`] },
         ),
         { params: Promise.resolve({ provider: id }) },
       );
@@ -382,12 +382,12 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
 
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -436,11 +436,11 @@ describe.skipIf(skipIfNoTestDb())("member oauth (integration)", () => {
       jsonRequest(`/api/members/oauth/${id}/start`),
       { params: Promise.resolve({ provider: id }) },
     );
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-mb-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-mb-oauth-state")!;
     const cb = await oauthCallbackGET(
       jsonRequest(
         `/api/members/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-mb-oauth-state=${state}`] },
+        { cookies: [`np-mb-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );

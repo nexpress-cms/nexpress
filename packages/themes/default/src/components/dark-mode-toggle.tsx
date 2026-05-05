@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
  * right attribute on `<html>` before this component mounted,
  * so we just read the current value and let the user flip it.
  * State persists in:
- *   - the `nx-color-scheme` cookie (so the server can render
+ *   - the `np-color-scheme` cookie (so the server can render
  *     the right initial attribute on the next request)
  *   - localStorage (covers cookie loss in private mode etc.)
  *

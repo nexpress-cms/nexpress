@@ -56,11 +56,11 @@ WordPress의 쉬움과 범용성을 Next.js 위에서 다시 만드는 오픈소
 
   Layer 3: Block Overrides — className 슬롯 (고급, 선택적)
   Layer 2: Site Theme     — CSS Custom Properties 오버라이드
-  Layer 1: Token Contract — --nx-color-*, --nx-font-*, --nx-radius-*
+  Layer 1: Token Contract — --np-color-*, --np-font-*, --np-radius-*
 
-  @layer nx-base, nx-blocks, nx-theme, nx-overrides;
+  @layer np-base, np-blocks, np-theme, np-overrides;
 
-- 플러그인 블록은 --nx-* 변수만 참조 → 사이트 테마에 자동 적응
+- 플러그인 블록은 --np-* 변수만 참조 → 사이트 테마에 자동 적응
 - Admin UI에서 비개발자가 색상/폰트/radius 조절 가능
 - 에이전트는 테마 JSON으로 시각 아이덴티티 선언적 제어
 - RSC 환경에서 zero-runtime (서버에서 CSS 변수 주입)

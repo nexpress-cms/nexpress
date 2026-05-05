@@ -18,7 +18,7 @@ function staffPostsRequest(staff: TestUserSession, body: object): NextRequest {
   return new NextRequest("http://localhost:3000/api/collections/posts", {
     method: "POST",
     headers: {
-      cookie: `nx-session=${staff.accessToken}; nx-csrf=${staff.csrfToken}`,
+      cookie: `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`,
       "x-csrf-token": staff.csrfToken,
       "content-type": "application/json",
     },

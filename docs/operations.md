@@ -189,7 +189,7 @@ forth.
 - Confirm `NP_SECRET` is the same across all nodes. If a load
   balancer is fronting two nodes signed with different secrets,
   every other request will fail JWT verification.
-- Clear the `nx-session` cookie in the browser DevTools. A token
+- Clear the `np-session` cookie in the browser DevTools. A token
   signed with the previous `NP_SECRET` won't verify, but Next won't
   always volunteer a 401 — sometimes the redirect path runs first.
 - Confirm `cookies()` resolves on the same domain as `SITE_URL`. A

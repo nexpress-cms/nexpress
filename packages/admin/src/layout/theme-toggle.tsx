@@ -15,12 +15,12 @@ import { cn } from "../ui/utils.js";
  *   - "light"   force-removes the .dark class
  *   - "dark"    force-adds the .dark class
  *
- * Persisted to `localStorage` under the key `nx-theme`. The matching
+ * Persisted to `localStorage` under the key `np-theme`. The matching
  * <ThemeInit /> component runs an inline <script> on first paint so
  * the operator never sees a flash of the wrong palette.
  */
 
-const STORAGE_KEY = "nx-theme";
+const STORAGE_KEY = "np-theme";
 type Mode = "system" | "light" | "dark";
 
 function readMode(): Mode {

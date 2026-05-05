@@ -3,8 +3,8 @@
  * color scheme to `<html>` BEFORE first paint.
  *
  * Order of resolution:
- *   1. The `nx-color-scheme` cookie if set ("dark" | "light")
- *   2. The `nx-color-scheme` localStorage key (in case cookie
+ *   1. The `np-color-scheme` cookie if set ("dark" | "light")
+ *   2. The `np-color-scheme` localStorage key (in case cookie
  *      was cleared but the user already chose)
  *   3. `prefers-color-scheme: dark` system preference
  *   4. Else: leave the attribute unset (light defaults)

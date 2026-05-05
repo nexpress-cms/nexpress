@@ -60,9 +60,9 @@ export async function POST(
     const { slug } = await params;
 
     // Two auth surfaces converge on this endpoint:
-    //   1. Staff session (`nx-session`) → standard path through
+    //   1. Staff session (`np-session`) → standard path through
     //      `saveCollectionDocument`, which honors `access.create`.
-    //   2. Member session (`nx-mb-session`) → only valid when the
+    //   2. Member session (`np-mb-session`) → only valid when the
     //      collection opted into `community.memberWrite.create`;
     //      goes through `createMemberDocument`, which bypasses
     //      `access.create` and gates on `assertNotBanned` instead.

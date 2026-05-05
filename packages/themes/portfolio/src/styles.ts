@@ -2,7 +2,7 @@
  * Theme-owned CSS for `@nexpress/theme-portfolio`. Dark surface,
  * visual-first layouts, scoped under `.np-portfolio-*` so swapping
  * themes never leaves residue. The framework injects this string
- * as a `<style data-nx-theme="portfolio">` tag at SSR time.
+ * as a `<style data-np-theme="portfolio">` tag at SSR time.
  */
 export const portfolioCss = `
 .np-portfolio {

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function PluginsPage() {
   await ensureFor("read");
 
-  const token = (await cookies()).get("nx-session")?.value;
+  const token = (await cookies()).get("np-session")?.value;
   const { secret } = getAuthRuntimeConfig();
   const user = token ? await verifyTokenFull(token, secret, getDb()) : null;
 

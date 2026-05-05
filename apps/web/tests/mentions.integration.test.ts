@@ -32,7 +32,7 @@ function memberRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [`nx-mb-session=${member.sessionCookie}`, `nx-mb-csrf=${member.csrfCookie}`],
+    cookies: [`np-mb-session=${member.sessionCookie}`, `np-mb-csrf=${member.csrfCookie}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": member.csrfCookie },
   });
 }
@@ -70,7 +70,7 @@ async function seedStaffPostId(slug: string): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "Mention target",
@@ -94,7 +94,7 @@ async function postComment(
   const res = await commentsPOST(
     jsonRequest(`/api/collections/posts/${postId}/comments`, {
       method: "POST",
-      cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+      cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
       headers: { "x-csrf-token": author.csrfCookie },
       body: JSON.stringify(parentId ? { bodyMd, parentId } : { bodyMd }),
     }),
@@ -110,7 +110,7 @@ async function notificationsFor(member: {
 }): Promise<Array<{ kind: string; payload: Record<string, unknown> }>> {
   const list = await notificationsGET(
     jsonRequest("/api/notifications", {
-      cookies: [`nx-mb-session=${member.sessionCookie}`],
+      cookies: [`np-mb-session=${member.sessionCookie}`],
     }),
   );
   const body = await readJson<{
@@ -191,7 +191,7 @@ describe.skipIf(skipIfNoTestDb())("16.2 @mention notifications (integration)", (
     await mutesPOST(
       jsonRequest("/api/members/me/mutes", {
         method: "POST",
-        cookies: [`nx-mb-session=${muter.sessionCookie}`, `nx-mb-csrf=${muter.csrfCookie}`],
+        cookies: [`np-mb-session=${muter.sessionCookie}`, `np-mb-csrf=${muter.csrfCookie}`],
         headers: { "x-csrf-token": muter.csrfCookie },
         body: JSON.stringify({ targetId: noisy.memberId }),
       }),

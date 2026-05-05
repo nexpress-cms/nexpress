@@ -179,7 +179,7 @@ function buildSpec(): OpenApiSchema {
             },
           },
         },
-        responses: { "200": { description: "Sets nx-session/nx-refresh/nx-csrf cookies and returns the user" } },
+        responses: { "200": { description: "Sets np-session/np-refresh/np-csrf cookies and returns the user" } },
       },
     },
     "/api/auth/logout": { post: { summary: "Clear auth cookies", responses: { "204": { description: "No content" } } } },
@@ -188,7 +188,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Begin an OAuth login (staff side)",
         description:
-          "Mints a signed `nx-oauth-state` cookie and 302s the browser to the provider's authorize URL. Provider must be registered in-process via `registerOAuthProvider({ id, authorize, exchange })` from `@nexpress/core` — typically by a plugin's `setup()`.",
+          "Mints a signed `np-oauth-state` cookie and 302s the browser to the provider's authorize URL. Provider must be registered in-process via `registerOAuthProvider({ id, authorize, exchange })` from `@nexpress/core` — typically by a plugin's `setup()`.",
         parameters: [{ in: "path", name: "provider", required: true, schema: { type: "string" } }],
         responses: {
           "307": { description: "Redirect to provider authorize URL" },
@@ -200,7 +200,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Finish an OAuth login",
         description:
-          "Validates the state cookie, calls the provider's `exchange()` for the normalized profile, then resolves the matching `np_users` row in this order: (1) durable `(provider, providerUserId)` link, (2) email-match link, (3) auto-provision new user with role `viewer`. On success sets `nx-session` / `nx-refresh` / `nx-csrf` cookies and 302s to `/admin`. Failures redirect to `/admin/login?oauth_error=…` — never expose provider error text.",
+          "Validates the state cookie, calls the provider's `exchange()` for the normalized profile, then resolves the matching `np_users` row in this order: (1) durable `(provider, providerUserId)` link, (2) email-match link, (3) auto-provision new user with role `viewer`. On success sets `np-session` / `np-refresh` / `np-csrf` cookies and 302s to `/admin`. Failures redirect to `/admin/login?oauth_error=…` — never expose provider error text.",
         parameters: [
           { in: "path", name: "provider", required: true, schema: { type: "string" } },
           { in: "query", name: "code", required: true, schema: { type: "string" } },
@@ -215,7 +215,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Begin an OAuth login (member side)",
         description:
-          "Member-side mirror of `/api/auth/oauth/{provider}/start`. Mints a signed `nx-mb-oauth-state` cookie and 302s to the provider. The provider registry is shared with the staff route — a single registered provider works for both audiences; the routes choose which user pool to resolve to.",
+          "Member-side mirror of `/api/auth/oauth/{provider}/start`. Mints a signed `np-mb-oauth-state` cookie and 302s to the provider. The provider registry is shared with the staff route — a single registered provider works for both audiences; the routes choose which user pool to resolve to.",
         parameters: [{ in: "path", name: "provider", required: true, schema: { type: "string" } }],
         responses: {
           "307": { description: "Redirect to provider authorize URL" },
@@ -227,7 +227,7 @@ function buildSpec(): OpenApiSchema {
       get: {
         summary: "Finish an OAuth login (member side)",
         description:
-          "Validates `nx-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `np_members` row in this order: (1) durable `(provider, subject)` link in `np_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists access + refresh hashes in `np_member_sessions`, sets `nx-mb-session` / `nx-mb-refresh` / `nx-mb-csrf` cookies, and 302s to `/`. Suspended/deleted members 302 to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
+          "Validates `np-mb-oauth-state`, calls `provider.exchange()`, resolves the matching `np_members` row in this order: (1) durable `(provider, subject)` link in `np_member_identities`, (2) email-match link, (3) auto-provision a new member with `status='active'` and `email_verified=true`. On success persists access + refresh hashes in `np_member_sessions`, sets `np-mb-session` / `np-mb-refresh` / `np-mb-csrf` cookies, and 302s to `/`. Suspended/deleted members 302 to `/members/login?oauth_error=member_inactive`. Other failures redirect with `oauth_error=<code>` — never echo provider error text.",
         parameters: [
           { in: "path", name: "provider", required: true, schema: { type: "string" } },
           { in: "query", name: "code", required: true, schema: { type: "string" } },
@@ -242,7 +242,7 @@ function buildSpec(): OpenApiSchema {
       post: {
         summary: "Exchange refresh token for a new session",
         description:
-          "Reads the `nx-refresh` cookie and, on success, rotates `nx-session` / `nx-refresh` / `nx-csrf`.",
+          "Reads the `np-refresh` cookie and, on success, rotates `np-session` / `np-refresh` / `np-csrf`.",
         responses: {
           "200": { description: "Fresh session + CSRF cookie; body contains user + tokens" },
           "401": { description: "Refresh cookie missing, expired, or revoked" },
@@ -425,7 +425,7 @@ function buildSpec(): OpenApiSchema {
       post: {
         summary: "Member login",
         description:
-          "Sets `nx-mb-session` / `nx-mb-refresh` / `nx-mb-csrf` cookies. Refuses login for non-active members (pending / suspended / deleted) with the same generic 401 used for wrong passwords (anti-enumeration).",
+          "Sets `np-mb-session` / `np-mb-refresh` / `np-mb-csrf` cookies. Refuses login for non-active members (pending / suspended / deleted) with the same generic 401 used for wrong passwords (anti-enumeration).",
         requestBody: {
           required: true,
           content: {
@@ -450,7 +450,7 @@ function buildSpec(): OpenApiSchema {
     "/api/members/refresh": {
       post: {
         summary: "Rotate member session",
-        description: "Reads `nx-mb-refresh`; on success rotates session + refresh + CSRF cookies.",
+        description: "Reads `np-mb-refresh`; on success rotates session + refresh + CSRF cookies.",
         responses: {
           "200": { description: "Fresh tokens" },
           "401": { description: "Refresh cookie missing or invalid" },
@@ -2030,7 +2030,7 @@ function buildSpec(): OpenApiSchema {
     components: {
       schemas,
       securitySchemes: {
-        sessionCookie: { type: "apiKey", in: "cookie", name: "nx-session" },
+        sessionCookie: { type: "apiKey", in: "cookie", name: "np-session" },
         csrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
       },
     },

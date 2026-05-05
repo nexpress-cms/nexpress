@@ -36,7 +36,7 @@ test.describe("admin sign-in / sign-out", () => {
     const logoutRes = await page.request.post("/api/auth/logout");
     expect(logoutRes.status()).toBe(200);
 
-    // With nx-session cleared, /admin must bounce back to /admin/login.
+    // With np-session cleared, /admin must bounce back to /admin/login.
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/admin\/login$/);
   });

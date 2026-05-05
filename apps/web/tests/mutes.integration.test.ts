@@ -76,7 +76,7 @@ async function seedStaffPostId(slug = "9-3-mute-target"): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "16.1 mute target",
@@ -100,8 +100,8 @@ async function postComment(
     jsonRequest(`/api/collections/posts/${postId}/comments`, {
       method: "POST",
       cookies: [
-        `nx-mb-session=${authorCookies.sessionCookie}`,
-        `nx-mb-csrf=${authorCookies.csrfCookie}`,
+        `np-mb-session=${authorCookies.sessionCookie}`,
+        `np-mb-csrf=${authorCookies.csrfCookie}`,
       ],
       headers: { "x-csrf-token": authorCookies.csrfCookie },
       body: JSON.stringify({ bodyMd }),
@@ -136,7 +136,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     const mute = await mutesPOST(
       jsonRequest("/api/members/me/mutes", {
         method: "POST",
-        cookies: [`nx-mb-session=${muter.sessionCookie}`, `nx-mb-csrf=${muter.csrfCookie}`],
+        cookies: [`np-mb-session=${muter.sessionCookie}`, `np-mb-csrf=${muter.csrfCookie}`],
         headers: { "x-csrf-token": muter.csrfCookie },
         body: JSON.stringify({ targetId: noisy.memberId }),
       }),
@@ -146,7 +146,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     // Muter listing — noisy comment hidden.
     const listMuter = await commentsGET(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
-        cookies: [`nx-mb-session=${muter.sessionCookie}`],
+        cookies: [`np-mb-session=${muter.sessionCookie}`],
       }),
       { params: Promise.resolve({ slug: "posts", id: postId }) },
     );
@@ -178,7 +178,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     await mutesPOST(
       jsonRequest("/api/members/me/mutes", {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ targetId: noisy.memberId }),
       }),
@@ -188,7 +188,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     await reactionsPOST(
       jsonRequest("/api/reactions", {
         method: "POST",
-        cookies: [`nx-mb-session=${noisy.sessionCookie}`, `nx-mb-csrf=${noisy.csrfCookie}`],
+        cookies: [`np-mb-session=${noisy.sessionCookie}`, `np-mb-csrf=${noisy.csrfCookie}`],
         headers: { "x-csrf-token": noisy.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
       }),
@@ -196,7 +196,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
 
     const inbox = await notificationsGET(
       jsonRequest("/api/notifications", {
-        cookies: [`nx-mb-session=${author.sessionCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`],
       }),
     );
     const inboxBody = await readJson<{ unread: number }>(inbox);
@@ -208,7 +208,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     const res = await mutesPOST(
       jsonRequest("/api/members/me/mutes", {
         method: "POST",
-        cookies: [`nx-mb-session=${m.sessionCookie}`, `nx-mb-csrf=${m.csrfCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
         headers: { "x-csrf-token": m.csrfCookie },
         body: JSON.stringify({ targetId: m.memberId }),
       }),
@@ -224,7 +224,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     await mutesPOST(
       jsonRequest("/api/members/me/mutes", {
         method: "POST",
-        cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
         headers: { "x-csrf-token": a.csrfCookie },
         body: JSON.stringify({ targetId: b.memberId }),
       }),
@@ -233,7 +233,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     // List shows b.
     const list = await mutesGET(
       jsonRequest("/api/members/me/mutes", {
-        cookies: [`nx-mb-session=${a.sessionCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`],
       }),
     );
     const listBody = await readJson<{
@@ -247,7 +247,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     const del = await muteDELETE(
       jsonRequest(`/api/members/me/mutes/${b.memberId}`, {
         method: "DELETE",
-        cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
         headers: { "x-csrf-token": a.csrfCookie },
       }),
       { params: Promise.resolve({ targetId: b.memberId }) },
@@ -259,7 +259,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     const del2 = await muteDELETE(
       jsonRequest(`/api/members/me/mutes/${b.memberId}`, {
         method: "DELETE",
-        cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
         headers: { "x-csrf-token": a.csrfCookie },
       }),
       { params: Promise.resolve({ targetId: b.memberId }) },
@@ -270,7 +270,7 @@ describe.skipIf(skipIfNoTestDb())("16.1 member mutes (integration)", () => {
     // List is empty again.
     const list2 = await mutesGET(
       jsonRequest("/api/members/me/mutes", {
-        cookies: [`nx-mb-session=${a.sessionCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`],
       }),
     );
     const list2Body = await readJson<{ mutes: unknown[] }>(list2);

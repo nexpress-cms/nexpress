@@ -95,7 +95,7 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
     const create = await collectionPOST(
       jsonRequest("/api/collections/discussions", {
         method: "POST",
-        cookies: [`nx-session=${staff.token}`, `nx-csrf=${staff.csrf}`],
+        cookies: [`np-session=${staff.token}`, `np-csrf=${staff.csrf}`],
         headers: { "x-csrf-token": staff.csrf },
         body: JSON.stringify({
           title: "Welcome to the forum",
@@ -118,8 +118,8 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
       jsonRequest(`/api/collections/discussions/${created.id}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${member.sessionCookie}`,
-          `nx-mb-csrf=${member.csrfCookie}`,
+          `np-mb-session=${member.sessionCookie}`,
+          `np-mb-csrf=${member.csrfCookie}`,
         ],
         headers: { "x-csrf-token": member.csrfCookie },
         body: JSON.stringify({ bodyMd: "First reply, **excited** to be here." }),
@@ -151,8 +151,8 @@ describe.skipIf(skipIfNoTestDb())("forum (plugin-forum + discussions collection)
       jsonRequest("/api/collections/discussions", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${member.sessionCookie}`,
-          `nx-mb-csrf=${member.csrfCookie}`,
+          `np-mb-session=${member.sessionCookie}`,
+          `np-mb-csrf=${member.csrfCookie}`,
         ],
         headers: { "x-csrf-token": member.csrfCookie },
         body: JSON.stringify({

@@ -82,7 +82,7 @@ function toCamelCase(slug: string): string {
 /**
  * Issue #221 — central access predicate the resolver uses to
  * confirm the authenticated session is allowed to operate on the
- * site id pulled from `nx-admin-site`. Mirrors the rule in the
+ * site id pulled from `np-admin-site`. Mirrors the rule in the
  * `/api/admin/sites/active` setter so the two paths can't drift:
  *
  *   - Super-admin can switch to anywhere.
@@ -229,7 +229,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // Issue #221 — the override cookie is *untrusted input*.
     // The setter route validates membership before writing,
     // but the cookie itself is plain-text and anyone who
-    // knows a target site id can forge `nx-admin-site=<id>`.
+    // knows a target site id can forge `np-admin-site=<id>`.
     // We re-validate the override against the current
     // session here: load the access JWT, call
     // `assertCanUseSite()`, and only honor the override when
@@ -268,13 +268,13 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         const [headerList, cookieJar] = await Promise.all([headers(), cookies()]);
         // Phase 15.6 — the admin site-picker cookie wins over
         // hostname mapping inside admin paths. The middleware
-        // only forwards `x-nx-admin-site` for /admin and
+        // only forwards `x-np-admin-site` for /admin and
         // /api/admin URLs, so public site rendering still
         // routes by Host header even when an admin has a
         // picker cookie set.
-        const adminOverride = headerList.get("x-nx-admin-site");
+        const adminOverride = headerList.get("x-np-admin-site");
         if (adminOverride) {
-          const sessionToken = cookieJar.get("nx-session")?.value ?? null;
+          const sessionToken = cookieJar.get("np-session")?.value ?? null;
           const validated = await validateOverride(adminOverride, sessionToken);
           if (validated) return validated;
           // Drop through to host-based resolution when the

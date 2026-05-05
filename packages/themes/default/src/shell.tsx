@@ -6,7 +6,7 @@ import type { NpThemeShellProps } from "@nexpress/theme";
 /**
  * Default theme shell — wraps every (site) route. The shell
  * also owns this theme's color-mode policy: it mounts
- * `<NpColorSchemeScript />` so the saved `nx-color-scheme`
+ * `<NpColorSchemeScript />` so the saved `np-color-scheme`
  * cookie / `prefers-color-scheme` choice is applied to
  * `<html data-theme="…">` before first paint, and the dark
  * variants ride on the rules in `defaultThemeCss`.

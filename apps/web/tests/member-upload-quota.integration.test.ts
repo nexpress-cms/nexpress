@@ -48,7 +48,7 @@ function uploadRequest(member: {
   const headers = new Headers();
   headers.set(
     "cookie",
-    `nx-mb-session=${member.sessionCookie}; nx-mb-csrf=${member.csrfCookie}`,
+    `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
   );
   headers.set("x-csrf-token", member.csrfCookie);
   return new NextRequest("http://localhost:3000/api/members/media/upload", {

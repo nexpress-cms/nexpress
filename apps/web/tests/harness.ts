@@ -225,7 +225,7 @@ export interface RequestOptions {
 
 /**
  * Build a `NextRequest` matching how `middleware.ts` + `requireAuth` /
- * `requireCsrf` see incoming traffic: `nx-session` + `nx-csrf` cookies plus
+ * `requireCsrf` see incoming traffic: `np-session` + `np-csrf` cookies plus
  * the `X-CSRF-Token` header when a session is provided.
  */
 export function buildRequest(path: string, options: RequestOptions = {}): NextRequest {
@@ -243,8 +243,8 @@ export function buildRequest(path: string, options: RequestOptions = {}): NextRe
   const cookies: string[] = [];
 
   if (options.session) {
-    cookies.push(`nx-session=${options.session.accessToken}`);
-    cookies.push(`nx-csrf=${options.session.csrfToken}`);
+    cookies.push(`np-session=${options.session.accessToken}`);
+    cookies.push(`np-csrf=${options.session.csrfToken}`);
     if (!headers["x-csrf-token"]) {
       headers["x-csrf-token"] = options.session.csrfToken;
     }

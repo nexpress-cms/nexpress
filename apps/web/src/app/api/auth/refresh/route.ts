@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
-    const refreshToken = request.cookies.get("nx-refresh")?.value;
+    const refreshToken = request.cookies.get("np-refresh")?.value;
 
     if (!refreshToken) {
       throw new NpAuthError();

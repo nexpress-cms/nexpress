@@ -34,7 +34,7 @@ export function DiscussionAuthorActions({ docId, slug }: DiscussionAuthorActions
     setSubmitting(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const headers: Record<string, string> = csrf ? { "X-CSRF-Token": csrf } : {};
       const res = await fetch(`/api/collections/discussions/${docId}`, {
         method: "DELETE",

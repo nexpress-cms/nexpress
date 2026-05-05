@@ -111,11 +111,11 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
       }),
     );
     expect(login.status).toBe(200);
-    const sessionCookie = cookieValue(login.headers.get("set-cookie"), "nx-mb-session");
+    const sessionCookie = cookieValue(login.headers.get("set-cookie"), "np-mb-session");
     expect(sessionCookie).toBeTruthy();
 
     const meRes = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${sessionCookie}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
     );
     const me = await readJson<{ member: { handle: string; emailVerified: boolean } }>(meRes);
     expect(me.status).toBe(200);
@@ -209,7 +209,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const patch = await mePATCH(
       jsonRequest("/api/members/me", {
         method: "PATCH",
-        cookies: [`nx-mb-session=${sessionCookie}`, `nx-mb-csrf=${csrfCookie}`],
+        cookies: [`np-mb-session=${sessionCookie}`, `np-mb-csrf=${csrfCookie}`],
         headers: { "x-csrf-token": csrfCookie ?? "" },
         body: JSON.stringify({ displayName: "Dave the Brave" }),
       }),
@@ -217,7 +217,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     expect(patch.status).toBe(200);
 
     const meAfter = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${sessionCookie}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
     );
     const me = await readJson<{ member: { displayName: string } }>(meAfter);
     expect(me.body.member.displayName).toBe("Dave the Brave");
@@ -225,7 +225,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const del = await meDELETE(
       jsonRequest("/api/members/me", {
         method: "DELETE",
-        cookies: [`nx-mb-session=${sessionCookie}`, `nx-mb-csrf=${csrfCookie}`],
+        cookies: [`np-mb-session=${sessionCookie}`, `np-mb-csrf=${csrfCookie}`],
         headers: { "x-csrf-token": csrfCookie ?? "" },
       }),
     );
@@ -233,7 +233,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
 
     // The session is invalidated; a fresh me lookup should 401.
     const me401 = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${sessionCookie}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
     );
     expect(me401.status).toBe(401);
   });
@@ -283,11 +283,11 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const logout = await logoutPOST(
       jsonRequest("/api/members/logout", {
         method: "POST",
-        cookies: [`nx-mb-session=${sessionCookie}`],
+        cookies: [`np-mb-session=${sessionCookie}`],
       }),
     );
     expect(logout.status).toBe(200);
-    const cleared = cookieValue(logout.headers.get("set-cookie"), "nx-mb-session");
+    const cleared = cookieValue(logout.headers.get("set-cookie"), "np-mb-session");
     expect(cleared === "" || cleared === undefined).toBe(true);
   });
 
@@ -302,8 +302,8 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
       }),
     );
     const cookies = login.headers.get("set-cookie");
-    const sessionCookie = cookieValue(cookies, "nx-mb-session");
-    const refreshCookie = cookieValue(cookies, "nx-mb-refresh");
+    const sessionCookie = cookieValue(cookies, "np-mb-session");
+    const refreshCookie = cookieValue(cookies, "np-mb-refresh");
     expect(sessionCookie).toBeDefined();
     expect(refreshCookie).toBeDefined();
 
@@ -311,18 +311,18 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const refreshOk = await refreshPOST(
       jsonRequest("/api/members/refresh", {
         method: "POST",
-        cookies: [`nx-mb-refresh=${refreshCookie}`],
+        cookies: [`np-mb-refresh=${refreshCookie}`],
       }),
     );
     expect(refreshOk.status).toBe(200);
-    const rotatedRefresh = cookieValue(refreshOk.headers.get("set-cookie"), "nx-mb-refresh");
+    const rotatedRefresh = cookieValue(refreshOk.headers.get("set-cookie"), "np-mb-refresh");
     expect(rotatedRefresh).toBeDefined();
     // After rotation, the original refresh token is no longer valid —
     // its session row was deleted as part of the rotation.
     const replayOldRefresh = await refreshPOST(
       jsonRequest("/api/members/refresh", {
         method: "POST",
-        cookies: [`nx-mb-refresh=${refreshCookie}`],
+        cookies: [`np-mb-refresh=${refreshCookie}`],
       }),
     );
     expect(replayOldRefresh.status).toBe(401);
@@ -332,15 +332,15 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
       jsonRequest("/api/members/logout", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${sessionCookie}`,
-          `nx-mb-refresh=${rotatedRefresh}`,
+          `np-mb-session=${sessionCookie}`,
+          `np-mb-refresh=${rotatedRefresh}`,
         ],
       }),
     );
     const refreshAfterLogout = await refreshPOST(
       jsonRequest("/api/members/refresh", {
         method: "POST",
-        cookies: [`nx-mb-refresh=${rotatedRefresh}`],
+        cookies: [`np-mb-refresh=${rotatedRefresh}`],
       }),
     );
     expect(refreshAfterLogout.status).toBe(401);
@@ -359,14 +359,14 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
       }),
     );
     const cookies = login.headers.get("set-cookie");
-    const sessionCookie = cookieValue(cookies, "nx-mb-session");
-    const refreshCookie = cookieValue(cookies, "nx-mb-refresh");
+    const sessionCookie = cookieValue(cookies, "np-mb-session");
+    const refreshCookie = cookieValue(cookies, "np-mb-refresh");
     expect(sessionCookie).toBeDefined();
     expect(refreshCookie).toBeDefined();
 
     // Sanity: real session cookie works on /me.
     const okMe = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${sessionCookie}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${sessionCookie}`] }),
     );
     expect(okMe.status).toBe(200);
 
@@ -374,7 +374,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     // The refresh row is still in `np_member_sessions`, so without
     // the `use` claim check this returned 200.
     const smuggle = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${refreshCookie}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${refreshCookie}`] }),
     );
     expect(smuggle.status).toBe(401);
 
@@ -382,7 +382,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const wrongRotation = await refreshPOST(
       jsonRequest("/api/members/refresh", {
         method: "POST",
-        cookies: [`nx-mb-refresh=${sessionCookie}`],
+        cookies: [`np-mb-refresh=${sessionCookie}`],
       }),
     );
     expect(wrongRotation.status).toBe(401);
@@ -418,7 +418,7 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
     const legacyToken = `${header}.${payload}.${sig}`;
 
     const res = await meGET(
-      jsonRequest("/api/members/me", { cookies: [`nx-mb-session=${legacyToken}`] }),
+      jsonRequest("/api/members/me", { cookies: [`np-mb-session=${legacyToken}`] }),
     );
     expect(res.status).toBe(401);
   });
@@ -459,7 +459,7 @@ async function registerAndVerify(
   );
   const setCookies = login.headers.get("set-cookie");
   return {
-    sessionCookie: cookieValue(setCookies, "nx-mb-session"),
-    csrfCookie: cookieValue(setCookies, "nx-mb-csrf"),
+    sessionCookie: cookieValue(setCookies, "np-mb-session"),
+    csrfCookie: cookieValue(setCookies, "np-mb-csrf"),
   };
 }

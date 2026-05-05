@@ -58,9 +58,9 @@ src/
 
 ## AUTH FLOW
 
-1. **Login**: POST `/api/auth/login` → verify password → `signToken` (access + refresh) → `setAuthCookies` (nx-session, nx-refresh, nx-csrf)
-2. **Refresh**: POST `/api/auth/refresh` → read nx-refresh cookie → `verifyTokenFull` → reissue tokens
-3. **Admin guard**: `(protected)/layout.tsx` reads nx-session cookie server-side → `verifyTokenFull` → redirect to `/admin/login` if invalid
+1. **Login**: POST `/api/auth/login` → verify password → `signToken` (access + refresh) → `setAuthCookies` (np-session, np-refresh, np-csrf)
+2. **Refresh**: POST `/api/auth/refresh` → read np-refresh cookie → `verifyTokenFull` → reissue tokens
+3. **Admin guard**: `(protected)/layout.tsx` reads np-session cookie server-side → `verifyTokenFull` → redirect to `/admin/login` if invalid
 4. **API protection**: Handlers call `requireAuth(request)` → throws `NpAuthError` if unauthorized; `requireCsrf(request)` on state-changing ops
 5. **Invalidation**: `invalidateAllSessions` bumps `tokenVersion` in DB; all existing tokens become invalid
 

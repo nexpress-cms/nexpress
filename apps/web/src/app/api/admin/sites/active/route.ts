@@ -28,7 +28,7 @@ import { ensureFor } from "@/lib/init-core";
  * is admin and they have no explicit memberships — preserves
  * single-tenant behavior).
  *
- * Cookie shape: `nx-admin-site=<id>; HttpOnly; SameSite=Lax;
+ * Cookie shape: `np-admin-site=<id>; HttpOnly; SameSite=Lax;
  * Path=/; Secure (in prod)`. HttpOnly because client JS
  * doesn't need it; the resolver reads it server-side via the
  * request headers.
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const isProduction = process.env.NODE_ENV === "production";
     const response = npSuccessResponse({ id });
     response.cookies.set({
-      name: "nx-admin-site",
+      name: "np-admin-site",
       value: id,
       httpOnly: true,
       sameSite: "lax",
@@ -96,7 +96,7 @@ export async function DELETE(request: NextRequest) {
     await requireAuth(request);
 
     const response = npSuccessResponse({ ok: true });
-    response.cookies.delete("nx-admin-site");
+    response.cookies.delete("np-admin-site");
     return response;
   } catch (error) {
     return npErrorResponse(

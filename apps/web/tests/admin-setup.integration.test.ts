@@ -48,8 +48,8 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
     const res = await POST(req);
     expect(res.status).toBe(200);
     const setCookie = res.headers.get("set-cookie") ?? "";
-    expect(setCookie).toMatch(/nx-session=/);
-    expect(setCookie).toMatch(/nx-csrf=/);
+    expect(setCookie).toMatch(/np-session=/);
+    expect(setCookie).toMatch(/np-csrf=/);
 
     const { getDb } = await import("@/lib/db");
     const { npUsers, getSiteById, NP_DEFAULT_SITE_ID } = await import(

@@ -76,7 +76,7 @@ const LazyRichTextEditor = lazy(async () => {
  * (`/uploads/...`) and S3 (CDN URL) storage adapters.
  */
 async function uploadMemberImage(file: File): Promise<{ url: string }> {
-  const csrf = readCookie("nx-mb-csrf");
+  const csrf = readCookie("np-mb-csrf");
   const headers: Record<string, string> = csrf ? { "X-CSRF-Token": csrf } : {};
   const formData = new FormData();
   formData.append("file", file);
@@ -128,7 +128,7 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),

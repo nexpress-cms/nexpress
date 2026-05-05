@@ -30,7 +30,7 @@ import { ensureFor } from "@/lib/init-core";
 export async function POST(request: NextRequest) {
   try {
     await ensureFor("read");
-    const refreshToken = request.cookies.get("nx-mb-refresh")?.value;
+    const refreshToken = request.cookies.get("np-mb-refresh")?.value;
     if (!refreshToken) throw new NpAuthError();
 
     const { secret, tokenExpiration, refreshTokenExpiration } = getMemberAuthRuntimeConfig();

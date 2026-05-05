@@ -283,7 +283,7 @@ function readCsrfCookie(): string | undefined {
   if (typeof document === "undefined") return undefined;
   for (const raw of document.cookie.split(";")) {
     const [name, ...rest] = raw.trim().split("=");
-    if (name === "nx-csrf") {
+    if (name === "np-csrf") {
       return decodeURIComponent(rest.join("="));
     }
   }

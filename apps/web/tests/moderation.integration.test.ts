@@ -46,7 +46,7 @@ function staffRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [`nx-session=${user.accessToken}`, `nx-csrf=${user.csrfToken}`],
+    cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": user.csrfToken },
   });
 }
@@ -102,7 +102,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "spam content" }),
       }),
@@ -115,7 +115,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const filed = await reportPOST(
       jsonRequest("/api/reports", {
         method: "POST",
-        cookies: [`nx-mb-session=${reporter.sessionCookie}`, `nx-mb-csrf=${reporter.csrfCookie}`],
+        cookies: [`np-mb-session=${reporter.sessionCookie}`, `np-mb-csrf=${reporter.csrfCookie}`],
         headers: { "x-csrf-token": reporter.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, reason: "spam" }),
       }),
@@ -167,7 +167,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "rude" }),
       }),
@@ -315,7 +315,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const filed = await reportPOST(
       jsonRequest("/api/reports", {
         method: "POST",
-        cookies: [`nx-mb-session=${reporter.sessionCookie}`, `nx-mb-csrf=${reporter.csrfCookie}`],
+        cookies: [`np-mb-session=${reporter.sessionCookie}`, `np-mb-csrf=${reporter.csrfCookie}`],
         headers: { "x-csrf-token": reporter.csrfCookie },
         body: JSON.stringify({
           targetType: "member",
@@ -463,7 +463,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "delete-me" }),
       }),
@@ -498,7 +498,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
     const res = await reportPOST(
       jsonRequest("/api/reports", {
         method: "POST",
-        cookies: [`nx-mb-session=${reporter.sessionCookie}`, `nx-mb-csrf=${reporter.csrfCookie}`],
+        cookies: [`np-mb-session=${reporter.sessionCookie}`, `np-mb-csrf=${reporter.csrfCookie}`],
         headers: { "x-csrf-token": reporter.csrfCookie },
         // targetId omitted on purpose — route coerces to "" and forwards.
         body: JSON.stringify({ targetType: "comment", reason: "spam" }),

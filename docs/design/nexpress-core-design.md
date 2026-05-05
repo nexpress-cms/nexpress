@@ -663,7 +663,7 @@ Layer 3: Block Overrides — className slots (advanced, optional)
 Layer 2: Site Theme     — CSS Custom Properties override
 Layer 1: Token Contract — --np-color-*, --np-font-*, --np-radius-*
 
-@layer np-base, np-blocks, nx-theme, np-overrides;
+@layer np-base, np-blocks, np-theme, np-overrides;
 ```
 
 ### H.2 Design Token Contract
@@ -740,7 +740,7 @@ export function NpThemeStyle({ theme }: { theme: NpThemeTokens }) {
 }
 
 function generateThemeCss(theme: NpThemeTokens): string {
-  const lines: string[] = ["@layer nx-theme {", ":root {"];
+  const lines: string[] = ["@layer np-theme {", ":root {"];
 
   // Colors
   for (const [key, value] of Object.entries(theme.colors)) {
@@ -768,7 +768,7 @@ function generateThemeCss(theme: NpThemeTokens): string {
 
   // Dark mode
   if (theme.darkMode?.enabled && theme.darkMode.colors) {
-    lines.push("@layer nx-theme {", '[data-theme="dark"] {');
+    lines.push("@layer np-theme {", '[data-theme="dark"] {');
     for (const [key, value] of Object.entries(theme.darkMode.colors)) {
       const cssVar = `--np-color-${camelToKebab(key)}`;
       lines.push(`  ${cssVar}: ${value};`);
@@ -1600,7 +1600,7 @@ nexpress.config.ts (collection config)
 
 ```typescript
 /**
- * All NexPress system tables use `nx_` prefix.
+ * All NexPress system tables use `np_` prefix.
  * Generated collection tables use `np_c_` prefix.
  * This avoids collisions with user's own tables.
  */
@@ -2261,7 +2261,7 @@ Rationale: For a self-hosted CMS admin, local auth is the right default. It's si
 │  Form    │                          │           │
 │          │◀─────────────────────────│  1. Verify password (argon2)
 │          │  Set-Cookie:             │  2. Check lockout
-│          │    nx-session=<JWT>      │  3. Create session record
+│          │    np-session=<JWT>      │  3. Create session record
 │          │    HttpOnly; Secure;     │  4. Sign JWT (jose)
 │          │    SameSite=Lax;         │  5. Set httpOnly cookie
 │          │    Path=/;               │  6. Return user info
@@ -2271,7 +2271,7 @@ Rationale: For a self-hosted CMS admin, local auth is the right default. It's si
 Subsequent requests:
 ┌─────────┐   Any /admin/* or /api/* request   ┌──────────────┐
 │  Browser │──────────────────────────────────▶│  Middleware   │
-│          │  Cookie: nx-session=<JWT>          │  (Tier 1)    │
+│          │  Cookie: np-session=<JWT>          │  (Tier 1)    │
 │          │                                    │              │
 │          │                                    │  1. Extract JWT from cookie
 │          │                                    │  2. Verify signature + expiration (jose)
@@ -2412,14 +2412,14 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
   });
-  response.cookies.set("nx-session", token, {
+  response.cookies.set("np-session", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 7200,
   });
-  response.cookies.set("nx-refresh", refreshToken, {
+  response.cookies.set("np-refresh", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -2431,15 +2431,15 @@ export async function POST(request: NextRequest) {
 
 // app/api/auth/logout/route.ts
 export async function POST(request: NextRequest) {
-  const refreshToken = request.cookies.get("nx-refresh")?.value;
+  const refreshToken = request.cookies.get("np-refresh")?.value;
   if (refreshToken) {
     // Delete session from DB
     await db.delete(npSessions).where(eq(npSessions.tokenHash, await sha256(refreshToken)));
   }
 
   const response = NextResponse.json({ success: true });
-  response.cookies.delete("nx-session");
-  response.cookies.delete("nx-refresh");
+  response.cookies.delete("np-session");
+  response.cookies.delete("np-refresh");
   return response;
 }
 ```
@@ -2455,7 +2455,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Runs on edge — lightweight JWT verification only.
  */
 export async function npAuthMiddleware(request: NextRequest): Promise<NextResponse | null> {
-  const token = request.cookies.get("nx-session")?.value;
+  const token = request.cookies.get("np-session")?.value;
   if (!token) return redirectToLogin(request);
 
   try {
@@ -2588,7 +2588,7 @@ export async function verifyTokenFull(token: string): Promise<NpAuthUser | null>
 // app/api/auth/change-password/route.ts
 export async function PATCH(request: NextRequest) {
   // 1. Verify current user
-  const user = await verifyTokenFull(request.cookies.get("nx-session")?.value || "");
+  const user = await verifyTokenFull(request.cookies.get("np-session")?.value || "");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { currentPassword, newPassword } = await request.json();
@@ -2631,14 +2631,14 @@ export async function PATCH(request: NextRequest) {
   });
 
   const response = NextResponse.json({ success: true });
-  response.cookies.set("nx-session", token, {
+  response.cookies.set("np-session", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 7200,
   });
-  response.cookies.set("nx-refresh", refreshToken, {
+  response.cookies.set("np-refresh", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -2655,11 +2655,11 @@ export async function PATCH(request: NextRequest) {
 // app/api/auth/refresh/route.ts
 
 /**
- * Consumes the nx-refresh cookie (UUID) to issue a new access token.
+ * Consumes the np-refresh cookie (UUID) to issue a new access token.
  * Implements refresh token rotation: old token is deleted, new one issued.
  */
 export async function POST(request: NextRequest) {
-  const refreshToken = request.cookies.get("nx-refresh")?.value;
+  const refreshToken = request.cookies.get("np-refresh")?.value;
   if (!refreshToken) {
     return NextResponse.json({ error: "No refresh token" }, { status: 401 });
   }
@@ -2676,8 +2676,8 @@ export async function POST(request: NextRequest) {
       await db.delete(npSessions).where(eq(npSessions.id, session.id));
     }
     const response = NextResponse.json({ error: "Session expired" }, { status: 401 });
-    response.cookies.delete("nx-session");
-    response.cookies.delete("nx-refresh");
+    response.cookies.delete("np-session");
+    response.cookies.delete("np-refresh");
     return response;
   }
 
@@ -2710,14 +2710,14 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
   });
-  response.cookies.set("nx-session", token, {
+  response.cookies.set("np-session", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 7200,
   });
-  response.cookies.set("nx-refresh", newRefreshToken, {
+  response.cookies.set("np-refresh", newRefreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -2735,7 +2735,7 @@ export async function POST(request: NextRequest) {
  * Cookie-based auth requires CSRF protection.
  * Strategy: double-submit cookie pattern.
  *
- * 1. On login, server sets a non-httpOnly CSRF cookie: `nx-csrf=<random>`
+ * 1. On login, server sets a non-httpOnly CSRF cookie: `np-csrf=<random>`
  * 2. Client reads this cookie and sends it as `X-CSRF-Token` header on mutations
  * 3. Server middleware compares cookie value to header value
  * 4. Mismatch → 403
@@ -2747,7 +2747,7 @@ export async function POST(request: NextRequest) {
  */
 
 // In login/refresh handlers, add after setting session cookies:
-response.cookies.set("nx-csrf", crypto.randomUUID(), {
+response.cookies.set("np-csrf", crypto.randomUUID(), {
   httpOnly: false, // JS must read this
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax",
@@ -2758,7 +2758,7 @@ response.cookies.set("nx-csrf", crypto.randomUUID(), {
 // Middleware check for mutation requests:
 function verifyCsrf(request: NextRequest): boolean {
   if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return true;
-  const cookieToken = request.cookies.get("nx-csrf")?.value;
+  const cookieToken = request.cookies.get("np-csrf")?.value;
   const headerToken = request.headers.get("x-csrf-token");
   return !!cookieToken && cookieToken === headerToken;
 }
@@ -2825,9 +2825,9 @@ Auto-refresh flow (client-side):
     │                       │───────────────────▶│ INSERT (tokenHash, expiresAt)
     │                       │ signToken(user)    │
     │  Set-Cookie:          │                    │
-    │    nx-session=<JWT>   │                    │
-    │    nx-refresh=<UUID>  │                    │
-    │    nx-csrf=<UUID>     │                    │
+    │    np-session=<JWT>   │                    │
+    │    np-refresh=<UUID>  │                    │
+    │    np-csrf=<UUID>     │                    │
     │◀──────────────────────│                    │
     │  200 { user }         │                    │
 
@@ -2837,7 +2837,7 @@ Auto-refresh flow (client-side):
 
   Client              Middleware (Tier 1)       API Handler
     │ GET /admin/...        │                    │
-    │ Cookie: nx-session    │                    │
+    │ Cookie: np-session    │                    │
     │──────────────────────▶│                    │
     │                       │ verify JWT sig+exp │
     │                       │ (NO DB query)      │
@@ -2852,7 +2852,7 @@ Auto-refresh flow (client-side):
 
   Client              Middleware (Tier 1)       API Handler (Tier 2)    DB
     │ POST /api/collections │                    │                      │
-    │ Cookie: nx-session    │                    │                      │
+    │ Cookie: np-session    │                    │                      │
     │ X-CSRF-Token: <csrf>  │                    │                      │
     │──────────────────────▶│                    │                      │
     │                       │ verify JWT sig+exp │                      │
@@ -2870,7 +2870,7 @@ Auto-refresh flow (client-side):
 
   Client (AuthProvider)   Server (C.10)            DB
     │ POST /api/auth/refresh │                      │
-    │ Cookie: nx-refresh     │                      │
+    │ Cookie: np-refresh     │                      │
     │───────────────────────▶│                      │
     │                        │ sha256(refreshToken) │
     │                        │ find np_sessions     │
@@ -2889,9 +2889,9 @@ Auto-refresh flow (client-side):
     │                        │─────────────────────▶│ INSERT
     │                        │ signToken(user)      │
     │  Set-Cookie:           │                      │
-    │    nx-session=<newJWT> │                      │
-    │    nx-refresh=<newUUID>│                      │
-    │    nx-csrf=<newUUID>   │                      │
+    │    np-session=<newJWT> │                      │
+    │    np-refresh=<newUUID>│                      │
+    │    np-csrf=<newUUID>   │                      │
     │◀───────────────────────│                      │
     │  200 { user }          │                      │
 
@@ -2925,9 +2925,9 @@ Auto-refresh flow (client-side):
     │                       │───────────────────▶│ INSERT np_sessions
     │                       │ signToken(updated) │
     │  Set-Cookie:          │                    │
-    │    nx-session=<newJWT>│                    │
-    │    nx-refresh=<newUUID>│                   │
-    │    nx-csrf=<newUUID>  │                    │
+    │    np-session=<newJWT>│                    │
+    │    np-refresh=<newUUID>│                   │
+    │    np-csrf=<newUUID>  │                    │
     │◀──────────────────────│                    │
     │  200 { success }      │                    │
 
@@ -2940,19 +2940,19 @@ Auto-refresh flow (client-side):
 
   Client              Server (C.5)             DB
     │ POST /api/auth/logout │                    │
-    │ Cookie: nx-refresh    │                    │
+    │ Cookie: np-refresh    │                    │
     │──────────────────────▶│                    │
     │                       │ sha256(refreshToken)│
     │                       │ DELETE np_sessions │
     │                       │───────────────────▶│ DELETE by tokenHash
     │  Clear-Cookie:        │                    │
-    │    nx-session          │                    │
-    │    nx-refresh          │                    │
-    │    nx-csrf             │                    │
+    │    np-session          │                    │
+    │    np-refresh          │                    │
+    │    np-csrf             │                    │
     │◀──────────────────────│                    │
     │  200 { success }      │                    │
 
-  Note: JWT (nx-session) remains valid until expiry (max 2h),
+  Note: JWT (np-session) remains valid until expiry (max 2h),
   but without the refresh token, the client cannot renew.
   Tier 2 checks will reject the JWT once tokenVersion is bumped
   (only if admin force-invalidates; normal logout does not bump).
@@ -3131,7 +3131,7 @@ import { draftMode } from "next/headers";
 
 export async function GET(request: NextRequest) {
   // 1. Verify admin is authenticated
-  const user = await verifyTokenFull(request.cookies.get("nx-session")?.value || "");
+  const user = await verifyTokenFull(request.cookies.get("np-session")?.value || "");
   if (!user || !hasRole(user, "editor")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -3294,7 +3294,7 @@ import { getCollectionConfigs } from "@nexpress/core/config";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Auth gate — redirect to login if not authenticated
   const cookieStore = await cookies();
-  const token = cookieStore.get("nx-session")?.value;
+  const token = cookieStore.get("np-session")?.value;
   if (!token) redirect("/admin/login");
 
   const user = await verifyTokenFull(token);
@@ -4595,11 +4595,11 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool            | Scenario                              | Steps                                                                                                                                            | Expected                                                                                                                                       |
 | --- | --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1  | `curl`          | Successful login                      | `curl -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@test.com","password":"password"}' -v` | 200 status. Response body contains `user` object. `Set-Cookie` headers include `nx-session` (httpOnly, Secure, SameSite=Lax) and `nx-refresh`. |
+| C1  | `curl`          | Successful login                      | `curl -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@test.com","password":"password"}' -v` | 200 status. Response body contains `user` object. `Set-Cookie` headers include `np-session` (httpOnly, Secure, SameSite=Lax) and `np-refresh`. |
 | C2  | `curl`          | Failed login increments attempts      | 1. Send 3 POSTs to `/api/auth/login` with wrong password 2. Query `np_users` table                                                               | Each returns 401. `login_attempts` column equals 3.                                                                                            |
 | C3  | `curl` + `psql` | Account lockout                       | 1. Set `maxLoginAttempts=3` in config 2. Send 3 wrong-password requests 3. Send correct password                                                 | First 3 return 401. 4th returns 429 with "Account locked". `psql: SELECT lock_until FROM np_users` shows future timestamp.                     |
 | C4  | `curl`          | Token invalidation on password change | 1. Login (save cookie) 2. PATCH `/api/auth/change-password` 3. GET `/api/auth/me` with old cookie                                                | Step 3 returns 401 (tokenVersion mismatch after password change).                                                                              |
-| C5  | `curl`          | Expired token rejected                | 1. Login with `tokenExpiration: 1` (1 second) 2. Wait 2 seconds 3. GET `/api/auth/me`                                                            | 401 response. `nx-session` cookie is expired/invalid.                                                                                          |
+| C5  | `curl`          | Expired token rejected                | 1. Login with `tokenExpiration: 1` (1 second) 2. Wait 2 seconds 3. GET `/api/auth/me`                                                            | 401 response. `np-session` cookie is expired/invalid.                                                                                          |
 | C6  | `curl`          | Role-based access denied              | 1. Login as user with role "author" 2. `curl -X DELETE /api/collections/posts/{id}` with session cookie                                          | 403 response. Body: `{"error":"Forbidden"}`.                                                                                                   |
 
 ### QA-D: Rendering Layer
@@ -4638,7 +4638,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool                | Scenario                               | Steps                                                                                                                                 | Expected                                                                                                                                                                                                                                                                            |
 | --- | ------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1  | `curl`              | Upload image (async)                   | `curl -X POST http://localhost:3000/api/media/upload -H 'Cookie: nx-session=...' -F 'file=@test.jpg'`                                 | 202 response. Body contains `id`, `filename`, `mimeType`, `status: "processing"`. `sizes` is null (not yet generated). `psql: SELECT status FROM np_media WHERE id='{id}'` returns `"processing"`.                                                                                  |
+| G1  | `curl`              | Upload image (async)                   | `curl -X POST http://localhost:3000/api/media/upload -H 'Cookie: np-session=...' -F 'file=@test.jpg'`                                 | 202 response. Body contains `id`, `filename`, `mimeType`, `status: "processing"`. `sizes` is null (not yet generated). `psql: SELECT status FROM np_media WHERE id='{id}'` returns `"processing"`.                                                                                  |
 | G2  | `psql` + filesystem | Image variants generated after job     | 1. Upload 2000x1500 JPEG (G1) 2. Wait for worker to process job 3. Check storage and DB                                               | `psql: SELECT status, sizes FROM np_media WHERE id='{id}'` returns `status = "ready"`, `sizes` JSON has thumbnail/small/medium/large/og entries. Files exist: `{id}/original.jpg`, `{id}/thumbnail.webp`, `{id}/small.webp`, `{id}/medium.webp`, `{id}/large.webp`, `{id}/og.webp`. |
 | G3  | `curl`              | Unauthenticated upload rejected        | `curl -X POST http://localhost:3000/api/media/upload -F 'file=@test.jpg'` (no cookie)                                                 | 401 response. No file saved.                                                                                                                                                                                                                                                        |
 | G4  | `curl` + `psql`     | Delete unreferenced media soft-deletes | 1. Upload image (no content references) 2. `curl -X DELETE /api/media/{id}` 3. Check DB                                               | 200 response `{ deleted: true }`. `psql: SELECT deleted_at FROM np_media WHERE id='{id}'` shows non-null timestamp. Storage files still exist (hard-deleted by cleanup job after 30 days).                                                                                          |
@@ -4650,7 +4650,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool       | Scenario                         | Steps                                                                                                          | Expected                                                                                                                      |
 | --- | ---------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| H1  | Vitest     | Theme JSON → CSS conversion      | 1. Call `generateThemeCss(DEFAULT_THEME)`                                                                      | Output string contains `@layer nx-theme { :root { --np-color-primary: oklch(0.55 0.20 250); ... } }`. All token keys present. |
+| H1  | Vitest     | Theme JSON → CSS conversion      | 1. Call `generateThemeCss(DEFAULT_THEME)`                                                                      | Output string contains `@layer np-theme { :root { --np-color-primary: oklch(0.55 0.20 250); ... } }`. All token keys present. |
 | H2  | Vitest     | Dark mode CSS                    | 1. Call `generateThemeCss(DEFAULT_THEME)` with `darkMode.enabled: true`                                        | Output contains `[data-theme="dark"] { --np-color-background: oklch(0.15 0.02 260); ... }`.                                   |
 | H3  | Playwright | Theme changes apply live         | 1. Login 2. Navigate to `/admin/settings/theme` 3. Change primary color 4. Save 5. Open public site in new tab | Public site `<style>` tag contains updated `--np-color-primary` value.                                                        |
 | H4  | Playwright | Tailwind v4 uses NexPress tokens | 1. Add `className="bg-primary text-primary-foreground"` to a block 2. Visit public page                        | Element has background color matching `--np-color-primary` and text color matching `--np-color-primary-foreground`.           |
@@ -4663,9 +4663,9 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | I1  | `curl`          | Block manifest API                      | `curl http://localhost:3000/api/manifest/blocks`                                                                          | 200 response. JSON array of blocks, each with `type`, `label`, `description`, `propsSchema` (valid JSON Schema), `defaultProps`, `category`.                                                                         |
 | I2  | `curl`          | Collection manifest API                 | `curl http://localhost:3000/api/manifest/collections`                                                                     | 200 response. JSON array of collections, each with `slug`, `labels`, `fields` (schema descriptions), `access` booleans.                                                                                              |
 | I3  | `curl`          | OpenAPI spec generated                  | `curl http://localhost:3000/api/openapi.json`                                                                             | Valid OpenAPI 3.1 JSON. Contains CRUD paths for each collection (`/api/collections/{slug}`), auth endpoints, media endpoints, manifest endpoints.                                                                    |
-| I4  | `curl`          | Import preflight rejects unknown blocks | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d '{"pages":[{"slug":"test","blocks":[{"type":"nonexistent"}]}]}'` | 422 response. Body: `{ error: { code: "IMPORT_PREFLIGHT_FAILED", details: ["Unknown block type: nonexistent"] } }`. No data written.                                                                                 |
-| I5  | `curl`          | Import succeeds with valid payload      | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d @site-export.json`                                               | 200 response. Body: `{ "success": true, "created": N, "updated": M, "skipped": [], "warnings": [] }`. Pages, navigation, theme, plugin configs applied.                                                              |
-| I6  | `curl`          | Export site config                      | `curl /api/export -H 'Cookie: nx-session=...'`                                                                            | 200 response. Body matches `NpSiteConfig` schema. Contains collection schemas, pages, theme, navigation, plugins, settings. Media refs include `{ id, filename, hash }`. Excludes passwords and API keys.            |
+| I4  | `curl`          | Import preflight rejects unknown blocks | `curl -X POST /api/import -H 'Cookie: np-session=...' -d '{"pages":[{"slug":"test","blocks":[{"type":"nonexistent"}]}]}'` | 422 response. Body: `{ error: { code: "IMPORT_PREFLIGHT_FAILED", details: ["Unknown block type: nonexistent"] } }`. No data written.                                                                                 |
+| I5  | `curl`          | Import succeeds with valid payload      | `curl -X POST /api/import -H 'Cookie: np-session=...' -d @site-export.json`                                               | 200 response. Body: `{ "success": true, "created": N, "updated": M, "skipped": [], "warnings": [] }`. Pages, navigation, theme, plugin configs applied.                                                              |
+| I6  | `curl`          | Export site config                      | `curl /api/export -H 'Cookie: np-session=...'`                                                                            | 200 response. Body matches `NpSiteConfig` schema. Contains collection schemas, pages, theme, navigation, plugins, settings. Media refs include `{ id, filename, hash }`. Excludes passwords and API keys.            |
 | I7  | Vitest          | NpSiteConfig round-trip                 | 1. Export config 2. Reset DB 3. Import exported config 4. Export again                                                    | Second export matches first export (modulo timestamps, UUIDs). Slug-based upsert produces identical content.                                                                                                         |
 | I8  | `curl` + `psql` | Import is transactional                 | 1. Send import with valid theme + page referencing nonexistent media 2. Check DB                                          | 200 response with `warnings` listing unresolved media ref. Theme AND page both written (media ref nullified). If payload has structural error mid-write, entire import rolls back — `psql` confirms no partial data. |
 | I9  | `curl`          | Import is idempotent                    | 1. POST same import payload twice                                                                                         | Both return 200. Second run: `created: 0, updated: N`. No duplicate pages or settings.                                                                                                                               |
@@ -4679,7 +4679,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | J2  | `pnpm` CLI       | Scaffolded project builds         | 1. `cd test-site` 2. `pnpm install` 3. `pnpm build`                       | Exit code 0. `.next/` directory created. No type errors.                                                                                                                                                       |
 | J3  | `docker compose` | Docker compose starts full stack  | 1. `cd test-site` 2. `docker compose up -d` 3. Wait for health checks     | `nexpress` and `db` services running. `curl http://localhost:3000` returns 200. `docker compose exec db pg_isready` succeeds.                                                                                  |
 | J4  | `pnpm` CLI       | Turbo pipeline order              | 1. Run `pnpm build` from monorepo root                                    | Packages build in dependency order: core → admin/editor/theme/blocks → cli → apps/web. No circular dependency errors.                                                                                          |
-| J5  | `pnpm` CLI       | DB migration flow                 | 1. `pnpm db:generate` 2. `pnpm db:migrate` 3. `psql -c "\dt nx_*"`        | Migration file created in `drizzle/migrations/`. Tables `np_users`, `np_sessions`, `np_revisions`, `np_settings`, `np_navigation`, `np_plugins`, `np_media`, `np_media_folders`, `np_c_posts`, etc. all exist. |
+| J5  | `pnpm` CLI       | DB migration flow                 | 1. `pnpm db:generate` 2. `pnpm db:migrate` 3. `psql -c "\dt np_*"`        | Migration file created in `drizzle/migrations/`. Tables `np_users`, `np_sessions`, `np_revisions`, `np_settings`, `np_navigation`, `np_plugins`, `np_media`, `np_media_folders`, `np_c_posts`, etc. all exist. |
 | J6  | `pnpm` CLI       | Dev server starts                 | 1. `pnpm dev` 2. Wait for "Ready" message 3. `curl http://localhost:3000` | Dev server starts. Hot reload works. Public site and `/admin` routes both accessible.                                                                                                                          |
 
 ### QA-K: Routing Contract

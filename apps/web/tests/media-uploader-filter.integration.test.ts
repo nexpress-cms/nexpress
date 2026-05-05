@@ -39,7 +39,7 @@ function staffRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [`nx-session=${user.accessToken}`, `nx-csrf=${user.csrfToken}`],
+    cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": user.csrfToken },
   });
 }
@@ -72,7 +72,7 @@ async function memberUpload(
   const headers = new Headers();
   headers.set(
     "cookie",
-    `nx-mb-session=${member.sessionCookie}; nx-mb-csrf=${member.csrfCookie}`,
+    `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
   );
   headers.set("x-csrf-token", member.csrfCookie);
   const req = new NextRequest("http://localhost:3000/api/members/media/upload", {

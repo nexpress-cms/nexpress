@@ -29,7 +29,7 @@ interface MemberDetailPageProps {
 export default async function MemberDetailPage({ params }: MemberDetailPageProps) {
   await ensureFor("read");
   const cookieStore = await cookies();
-  const token = cookieStore.get("nx-session")?.value;
+  const token = cookieStore.get("np-session")?.value;
   if (!token) redirect("/admin/login");
   const { secret } = getAuthRuntimeConfig();
   const db = getDb();

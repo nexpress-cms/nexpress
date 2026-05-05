@@ -22,7 +22,7 @@ interface PageProps {
 export default async function PluginAdminRoute({ params }: PageProps) {
   await ensureFor("plugins");
 
-  const token = (await cookies()).get("nx-session")?.value;
+  const token = (await cookies()).get("np-session")?.value;
   const { secret } = getAuthRuntimeConfig();
   const user = token ? await verifyTokenFull(token, secret, getDb()) : null;
   if (!user || !can(user, "admin.manage")) {
