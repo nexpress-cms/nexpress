@@ -69,6 +69,9 @@ export const featureGridBlock: NpBlockDefinition = {
   description: "Highlights key product capabilities in a flexible multi-column layout.",
   icon: "🧱",
   summaryFields: ["heading"],
+  category: "Content",
+  source: "built-in",
+  keywords: ["features", "benefits", "tiles", "capabilities"],
   defaultProps: {
     heading: "Everything your team needs",
     columns: 3,

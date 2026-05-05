@@ -14,6 +14,9 @@ export const ctaBlock: NpBlockDefinition = {
   description: "Focused conversion block with a single message and button.",
   icon: "📣",
   summaryFields: ["heading", "buttonText"],
+  category: "Content",
+  source: "built-in",
+  keywords: ["call to action", "button banner", "conversion", "signup"],
   defaultProps: {
     heading: "Launch your next page faster",
     description: "Turn structured content into polished pages with reusable server-renderable blocks.",

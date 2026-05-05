@@ -106,6 +106,9 @@ export const pricingBlock: NpBlockDefinition = {
   description: "Structured pricing cards for subscription tiers or service packages.",
   icon: "💳",
   summaryFields: ["heading"],
+  category: "Commerce",
+  source: "built-in",
+  keywords: ["plans", "tiers", "subscription", "billing"],
   defaultProps: {
     heading: "Simple pricing for every stage",
     plans: DEFAULT_PLANS.map((plan) => ({ ...plan, features: plan.features.join("\n") })),

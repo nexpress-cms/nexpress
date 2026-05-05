@@ -12,6 +12,9 @@ export const richTextBlock: NpBlockDefinition = {
   label: "Rich Text",
   description: "Server-rendered Lexical content for long-form text, lists, and formatting.",
   icon: "📝",
+  category: "Content",
+  source: "built-in",
+  keywords: ["text", "paragraph", "body", "long-form", "article"],
   defaultProps: {
     content: {
       root: {

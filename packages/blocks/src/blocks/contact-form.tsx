@@ -46,6 +46,9 @@ export const contactFormBlock: NpBlockDefinition = {
   description: "Lead capture placeholder with configurable fields and contact destination.",
   icon: "✉️",
   summaryFields: ["heading"],
+  category: "Community",
+  source: "built-in",
+  keywords: ["contact", "lead", "form", "inquiry", "support"],
   defaultProps: {
     heading: "Talk to our team",
     email: "hello@example.com",

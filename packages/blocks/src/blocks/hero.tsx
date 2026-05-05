@@ -11,6 +11,9 @@ export const heroBlock: NpBlockDefinition = {
   description: "Large introductory section with headline, supporting copy, and a call to action.",
   icon: "🌅",
   summaryFields: ["title"],
+  category: "Content",
+  source: "built-in",
+  keywords: ["headline", "banner", "intro", "landing"],
   defaultProps: {
     title: "Build pages block by block",
     subtitle:
