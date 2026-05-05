@@ -31,7 +31,11 @@ export const npPluginManifestSchema = z.object({
     minVersion: npPluginVersionSchema,
     maxVersion: npPluginVersionSchema.optional(),
   }),
-  capabilities: z.array(z.enum(npPluginCapabilities)),
+  // Defaults to an empty array so block-only / declarative-only plugins
+  // (no hooks, no routes) don't have to type out `capabilities: []`. The
+  // host enforces capability gates at registration time, so omitting this
+  // is the most-restrictive option, not the most-permissive.
+  capabilities: z.array(z.enum(npPluginCapabilities)).default([]),
   allowedHosts: z.array(z.string()).default([]),
   /**
    * IDs of other plugins this one depends on. The host loads them in
@@ -60,12 +64,19 @@ export const npPluginManifestSchema = z.object({
       apiRoutes: [],
       hooks: [],
     }),
-  agent: z.object({
-    description: z.string(),
-    category: z.enum(npPluginAgentCategories),
-    tags: z.array(z.string()).default([]),
-    configSchema: z.record(z.string(), z.unknown()).optional(),
-  }),
+  // The agent block exists for AI assistants / catalog generators that
+  // want a richer summary than the plain `description`. Defaults to an
+  // empty descriptor so plugins that don't care don't have to fabricate
+  // a category — the catalog falls back to the manifest's top-level
+  // `description` when `agent.description` is empty.
+  agent: z
+    .object({
+      description: z.string().default(""),
+      category: z.enum(npPluginAgentCategories).optional(),
+      tags: z.array(z.string()).default([]),
+      configSchema: z.record(z.string(), z.unknown()).optional(),
+    })
+    .default({ description: "", tags: [] }),
   usesTokens: z.array(z.string()).default([]),
   styleSlots: z.record(z.string(), z.string()).default({}),
 });

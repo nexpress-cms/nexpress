@@ -1,5 +1,28 @@
 import type { ReactElement, ReactNode } from "react";
 
+import type { NpFindOptions, NpFindResult } from "@nexpress/core";
+
+/**
+ * Read-only data API exposed to a block's `render()` so blocks can
+ * surface live counts / lists without each plugin writing its own
+ * `findDocuments` boilerplate. Server-only by design — `renderBlocks`
+ * runs on the server, the metadata that crosses the server → client
+ * boundary (`NpBlockMetadata`) deliberately omits `render` and `ctx`.
+ *
+ * Capabilities aren't enforced here: every block sees the same read
+ * surface. The dispatcher (host app's site renderer) is responsible
+ * for not piping privileged data into a public page render. Mutations
+ * are intentionally absent — blocks are display-only at v1.
+ */
+export interface NpBlockRenderContext {
+  readonly content: {
+    /** Equivalent to `findDocuments`. Includes ACL + draft/published filtering. */
+    find(collection: string, options?: Partial<NpFindOptions>): Promise<NpFindResult>;
+    findOne(collection: string, id: string): Promise<Record<string, unknown> | null>;
+    count(collection: string): Promise<number>;
+  };
+}
+
 /**
  * Serializable metadata about a block — everything `NpBlockDefinition`
  * carries *except* the `render` function. The page-builder admin
@@ -33,17 +56,40 @@ export interface NpBlockDefinition extends NpBlockMetadata {
    * the rendered child tree as a React node — they decide where to
    * place it in their JSX (e.g. inside the grid wrapper). Leaf
    * blocks ignore the second argument.
+   *
+   * The third argument is a read-only data ctx (`NpBlockRenderContext`)
+   * so blocks can surface live counts / lists without reaching into
+   * `@nexpress/core` directly. The return type allows `Promise<ReactElement>`
+   * because most data-bound blocks are React Server Components — React 19
+   * resolves them as part of the render tree. Static blocks keep the
+   * historical sync `(props) => <jsx />` shape unchanged.
    */
-  render: (props: Record<string, unknown>, children?: ReactNode) => ReactElement;
+  render: (
+    props: Record<string, unknown>,
+    children?: ReactNode,
+    ctx?: NpBlockRenderContext,
+  ) => ReactElement | Promise<ReactElement>;
 }
 
 export interface NpBlockPropField {
   name: string;
   label: string;
-  type: "text" | "textarea" | "number" | "boolean" | "select" | "url" | "richtext" | "image";
+  type:
+    | "text"
+    | "textarea"
+    | "number"
+    | "boolean"
+    | "select"
+    | "url"
+    | "richtext"
+    | "image"
+    /** CSS color picker (`<input type="color">`). Stores `#rrggbb`. */
+    | "color";
   required?: boolean;
   defaultValue?: unknown;
   options?: { label: string; value: string }[];
+  /** Optional helper text rendered under the field in the props form. */
+  description?: string;
 }
 
 export interface NpBlockInstance {

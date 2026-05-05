@@ -4,6 +4,9 @@ import {
   forumPlugin,
 } from "@nexpress/plugin-forum";
 // @nexpress:plugins-imports-start
+import { calloutPlugin } from "@nexpress/plugin-block-callout";
+import { embedPlugin } from "@nexpress/plugin-block-embed";
+import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
@@ -82,6 +85,9 @@ export default defineConfig({
   plugins: [
     forumPlugin,
     // @nexpress:plugins-list-start
+    calloutPlugin,
+    embedPlugin,
+    statsBlockPlugin,
     readingTimePlugin,
     seoAuditPlugin,
     githubOAuthPlugin,

@@ -2,7 +2,7 @@ import type { ZodType } from "zod";
 import type { NpBlockDefinition } from "@nexpress/blocks";
 import type { NpFieldConfig } from "@nexpress/core";
 
-import type { NpPluginManifest } from "./manifest.js";
+import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 
 // Re-export NpBlockDefinition so plugin authors get a single
 // import: definePlugin({ blocks: [...] }) typed via the same
@@ -659,5 +659,13 @@ export type NpResolvedPlugin<TConfig = Record<string, unknown>> = Omit<
   NpPluginDefinition<TConfig>,
   "manifest"
 > & {
-  manifest: NpPluginManifest;
+  /**
+   * Post-parse manifest with every default applied. `definePlugin()`
+   * runs the manifest through Zod, so by the time the host receives a
+   * resolved plugin every optional-with-default field
+   * (`capabilities`, `provides`, `agent`, `usesTokens`, `styleSlots`,
+   * etc.) is populated. The author-facing `NpPluginManifest` keeps the
+   * input shape where those fields are optional.
+   */
+  manifest: NpPluginManifestResolved;
 };
