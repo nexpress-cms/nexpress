@@ -63,7 +63,13 @@ const parseImages = (value: unknown): GalleryImage[] => {
   const images = source
     .filter(isRecord)
     .map((item) => ({
-      src: readString(item.src, DEFAULT_IMAGES[0]?.src ?? ""),
+      // Don't fall back to a stock photo when src is empty —
+      // unfilled rows should be filtered out below, not silently
+      // populated with the first DEFAULT_IMAGES entry. The array
+      // editor lets operators add a row before they pick an image,
+      // and the previous fallback turned that into a random stock
+      // photo on the rendered page.
+      src: typeof item.src === "string" ? item.src.trim() : "",
       alt: readString(item.alt, "Gallery image"),
     }))
     .filter((item) => item.src.length > 0);

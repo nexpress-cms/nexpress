@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   Suspense,
   lazy,
   useCallback,
@@ -1045,38 +1046,42 @@ function ChildrenArea({
               No children yet. Add one to start.
             </p>
           ) : (
-            children.map((child, index) => (
-              <div key={child.id} className="grid gap-2">
-                {index === 0 ? (
+            children.map((child, index) => {
+              const childDefinition = definitions.get(child.type);
+              const childLabel = childDefinition?.label ?? child.type;
+              return (
+                <Fragment key={child.id}>
+                  {index === 0 ? (
+                    <InsertSlot
+                      availableBlocks={availableBlocks}
+                      onInsert={(blockType) => onInsert("before", child.id, blockType)}
+                      ariaLabel={`Insert block before ${childLabel}`}
+                    />
+                  ) : null}
+                  <SortableBlockItem
+                    block={child}
+                    definition={childDefinition}
+                    parentBlock={container}
+                    parentDefinition={containerDefinition}
+                    availableBlocks={availableBlocks}
+                    definitions={definitions}
+                    onMoveUp={onMoveUp}
+                    onMoveDown={onMoveDown}
+                    onDuplicate={onDuplicate}
+                    onDelete={onDelete}
+                    onUpdateProps={onUpdateProps}
+                    onReplaceProps={onReplaceProps}
+                    onAddChild={onAddChild}
+                    onInsert={onInsert}
+                  />
                   <InsertSlot
                     availableBlocks={availableBlocks}
-                    onInsert={(blockType) => onInsert("before", child.id, blockType)}
-                    ariaLabel="Insert block before"
+                    onInsert={(blockType) => onInsert("after", child.id, blockType)}
+                    ariaLabel={`Insert block after ${childLabel}`}
                   />
-                ) : null}
-                <SortableBlockItem
-                  block={child}
-                  definition={definitions.get(child.type)}
-                  parentBlock={container}
-                  parentDefinition={containerDefinition}
-                  availableBlocks={availableBlocks}
-                  definitions={definitions}
-                  onMoveUp={onMoveUp}
-                  onMoveDown={onMoveDown}
-                  onDuplicate={onDuplicate}
-                  onDelete={onDelete}
-                  onUpdateProps={onUpdateProps}
-                  onReplaceProps={onReplaceProps}
-                  onAddChild={onAddChild}
-                  onInsert={onInsert}
-                />
-                <InsertSlot
-                  availableBlocks={availableBlocks}
-                  onInsert={(blockType) => onInsert("after", child.id, blockType)}
-                  ariaLabel="Insert block after"
-                />
-              </div>
-            ))
+                </Fragment>
+              );
+            })
           )}
         </div>
       </SortableContext>
@@ -1866,46 +1871,50 @@ export function BlockPageEditor({
           strategy={verticalListSortingStrategy}
         >
           <div className="flex flex-col gap-3">
-            {blocks.map((block, index) => (
-              <div key={block.id} className="flex flex-col gap-3">
-                {index === 0 ? (
+            {blocks.map((block, index) => {
+              const blockDefinition = definitions.get(block.type);
+              const blockLabel = blockDefinition?.label ?? block.type;
+              return (
+                <Fragment key={block.id}>
+                  {index === 0 ? (
+                    <InsertSlot
+                      availableBlocks={availableBlocks}
+                      onInsert={(blockType) =>
+                        onInsert("before", block.id, blockType)
+                      }
+                      ariaLabel={`Insert block before ${blockLabel}`}
+                    />
+                  ) : null}
+                  <SortableBlockItem
+                    block={block}
+                    definition={blockDefinition}
+                    availableBlocks={availableBlocks}
+                    definitions={definitions}
+                    onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
+                    onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
+                    onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
+                    onDelete={(id) => dispatch({ type: "DELETE", id })}
+                    onUpdateProps={(id, props) =>
+                      dispatch({ type: "UPDATE_PROPS", id, props })
+                    }
+                    onReplaceProps={(id, props) =>
+                      dispatch({ type: "REPLACE_PROPS", id, props })
+                    }
+                    onAddChild={(parentId, blockType) =>
+                      dispatch({ type: "ADD", blockType, parentId })
+                    }
+                    onInsert={onInsert}
+                  />
                   <InsertSlot
                     availableBlocks={availableBlocks}
                     onInsert={(blockType) =>
-                      onInsert("before", block.id, blockType)
+                      onInsert("after", block.id, blockType)
                     }
-                    ariaLabel="Insert block before"
+                    ariaLabel={`Insert block after ${blockLabel}`}
                   />
-                ) : null}
-                <SortableBlockItem
-                  block={block}
-                  definition={definitions.get(block.type)}
-                  availableBlocks={availableBlocks}
-                  definitions={definitions}
-                  onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
-                  onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
-                  onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
-                  onDelete={(id) => dispatch({ type: "DELETE", id })}
-                  onUpdateProps={(id, props) =>
-                    dispatch({ type: "UPDATE_PROPS", id, props })
-                  }
-                  onReplaceProps={(id, props) =>
-                    dispatch({ type: "REPLACE_PROPS", id, props })
-                  }
-                  onAddChild={(parentId, blockType) =>
-                    dispatch({ type: "ADD", blockType, parentId })
-                  }
-                  onInsert={onInsert}
-                />
-                <InsertSlot
-                  availableBlocks={availableBlocks}
-                  onInsert={(blockType) =>
-                    onInsert("after", block.id, blockType)
-                  }
-                  ariaLabel="Insert block after"
-                />
-              </div>
-            ))}
+                </Fragment>
+              );
+            })}
             {blocks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
                 <p className="mb-3 text-sm text-muted-foreground">

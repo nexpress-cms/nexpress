@@ -23,3 +23,10 @@ arrays / objects instead of JSON strings. Each block's render-time
 parser still accepts the legacy JSON-string shape, so pages saved
 with the old admin keep rendering. New entries written through the
 admin go out as plain arrays.
+
+`pricing.plans[].features` is a special case: the new admin-editor
+format is a single newline-separated `string` (per-line one
+feature, edited via a textarea inside each plan row), while the
+legacy default exported a `string[]`. The parser accepts both
+shapes — new pages persist a `string`, older pages keep their
+`string[]` until the operator next edits and saves the plan.
