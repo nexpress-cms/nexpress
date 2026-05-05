@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NpForbiddenError } from "../errors.js";
 import { createPluginRuntimeContext } from "./context.js";
+import {
+  resetErrorReporter,
+  setErrorReporter,
+  type NpErrorReportContext,
+} from "../observability/error-reporter.js";
 
 // The context module pulls in `getDb`, media, and storage adapter singletons
 // transitively. The tests below only exercise surfaces that DON'T touch
@@ -42,6 +47,9 @@ function buildCtx(overrides?: {
     };
     storage: {
       get(key: string): Promise<unknown>;
+    };
+    errors: {
+      report(error: unknown, context?: { extra?: Record<string, unknown>; tags?: Record<string, string> }): Promise<void>;
     };
   };
 }
@@ -190,5 +198,52 @@ describe("ctx.storage capability gating", () => {
     await expect(ctx.storage.get("any-key")).rejects.toBeInstanceOf(
       NpForbiddenError,
     );
+  });
+});
+
+describe("ctx.errors.report", () => {
+  let captured: Array<{ error: Error; context?: NpErrorReportContext }> = [];
+
+  beforeEach(() => {
+    captured = [];
+    setErrorReporter({
+      captureException: (error, context) => {
+        captured.push({ error, context });
+      },
+    });
+  });
+
+  afterEach(() => {
+    resetErrorReporter();
+  });
+
+  it("forwards the error to the installed reporter with pluginId tagged", async () => {
+    const ctx = buildCtx();
+    const err = new Error("upstream blew up");
+
+    await ctx.errors.report(err, { extra: { docId: "doc-1" } });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.error.message).toBe("upstream blew up");
+    expect(captured[0]?.context?.tags?.pluginId).toBe("test-plugin");
+    expect(captured[0]?.context?.tags?.source).toBe("plugin");
+    expect(captured[0]?.context?.extra).toEqual({ docId: "doc-1" });
+  });
+
+  it("wraps non-Error values so the reporter always sees an Error", async () => {
+    const ctx = buildCtx();
+    await ctx.errors.report("plain-string-failure");
+    expect(captured[0]?.error).toBeInstanceOf(Error);
+    expect(captured[0]?.error.message).toBe("plain-string-failure");
+  });
+
+  it("lets the caller add extra tags without losing pluginId", async () => {
+    const ctx = buildCtx();
+    await ctx.errors.report(new Error("x"), { tags: { feature: "search" } });
+    expect(captured[0]?.context?.tags).toMatchObject({
+      pluginId: "test-plugin",
+      source: "plugin",
+      feature: "search",
+    });
   });
 });
