@@ -81,21 +81,90 @@ limitations called out in `AGENTS.md`.
 ### 3. Plugin v2 (deferred — likely 1.x)
 
 Current v1 is npm-package + rebuild, full Node access, no runtime collection
-definition. These are the obvious next steps but each is a research project,
-not a sprint.
+definition. The 0.1 cycle hardened the v1 surface (host hardening, schedule
+reconcile, block SDK, scaffold + docs — see PRs #459 / #468 / #469 / #470 /
+#471). What's left for v2 is the structural changes the v1 model can't
+absorb without a redesign.
+
+**Originally listed:**
 
 - Hot-reload plugins (no rebuild loop).
 - Runtime collection definition (today: codegen + migrate is mandatory).
 - Sandbox / capability model for untrusted plugins.
 
+**Surfaced during 0.1 review / dogfood (added 2026-05-05):**
+
+- **Hot module reload for plugin handler code.** `/admin/plugins` "Reload all"
+  rebuilds the in-memory registry and reconciles `pgboss.schedule`, but it
+  doesn't bust the Node module cache. Editing
+  `packages/plugins/<name>/src/index.ts` and clicking reload reuses the same
+  handler closures captured at server boot. v2 wants a real dev-mode HMR
+  signal (or a scoped `import.meta.hot` integration with the framework's
+  bundler) so authoring iterates without restarting.
+
+- **Cross-process worker reconcile.** Plugin schedule `boss.work()`
+  registrations live in the worker process, separate from the admin web
+  process. Today's reconcile updates `pgboss.schedule` rows but can't install
+  new work loops in the worker — the admin toast warns "restart your worker
+  process to pick up newly-added schedules." A real fix needs an
+  out-of-band signal between processes (LISTEN/NOTIFY on a control channel,
+  a "schedule version" row, or a sidecar reload trigger). See #461 and
+  `docs/plugin-reload.md` for the limit; lifting it is a v2 task.
+
+- **First-class anonymous principal in core auth.** `findDocuments` and
+  `getDocumentById` accept `user?: NpAuthUser`, and the pipeline already
+  treats `null` as "anonymous reader" for visibility filtering. But callers
+  (the block render ctx, public-page renderers) still juggle synthesised
+  principals or omit `user` and hope. v2 should give the auth model a real
+  `null`-principal story — `NpAuthUser | { kind: "anonymous" }` or a
+  `NpReader` interface — so consumers stop pretending and the access fns
+  get a clearer contract. The synth-principal hack from PR #469 was
+  removed in PR #469's last commit; the lack of a typed alternative
+  remains.
+
+- **Capability-aware `ctx` typing.** `manifest.capabilities` is enforced at
+  runtime with `NpForbiddenError` but doesn't change the type of `ctx.*` —
+  the SDK exports the same surface regardless of what the plugin declared.
+  v2 should narrow `ctx` based on `capabilities` so missing-capability bugs
+  surface at compile time, not the first request that hits a gated method.
+  Requires `definePlugin<TConfig, TCaps>` plumbing + conditional types on
+  every namespace; non-trivial but high authoring-quality payoff.
+
+- **Block `propsSchema` ↔ `NpFieldConfig` unification.** Today blocks have
+  their own field-type vocabulary (`text` / `select` / `array` / `media` /
+  ...) that mirrors `NpFieldConfig` but is structurally separate. Plugin
+  authors who already know the collection field system have to learn a
+  second one. v2 should let `propsSchema` accept either shape and have the
+  admin form-renderer dispatch — same form code, fewer concepts.
+
+- **Plugin marketplace install + update flow.** PR #468 wired npm-registry
+  search so the Discover panel shows installable plugins; the actual install
+  still goes through the operator's terminal. v2 wants a "click to install"
+  flow tied into the install-without-rebuild story below — neither piece
+  ships independently of the other.
+
+- **Sandbox / capability scoping at runtime.** v1 capabilities are an
+  honor system: declaring `storage:kv` lets the plugin call `ctx.storage.*`,
+  but nothing prevents a plugin from `import("pg")` directly and writing
+  whatever it wants. v2 wants a real isolation story — VM context,
+  worker_threads, or compile-time blocking of forbidden imports — so
+  third-party plugins can be treated as untrusted code. This is the
+  hardest item on the list and the most likely to slip past 1.x.
+
 Probably 1.x, not 1.0. Calling it out so it doesn't accidentally creep into
-0.x.
+0.x. The hot-reload / cross-process / anonymous-principal / typing items are
+quality-of-life work that 1.x can absorb in stages; runtime sandboxing is
+the structural change that defines a v2.
 
 ### 4. Developer experience & ecosystem
 
 What a new developer sees in their first hour with NexPress.
 
-- Plugin author quickstart (single page: scaffold, hook, ship).
+- ~~Plugin author quickstart (single page: scaffold, hook, ship).~~
+  Done in #471 — see `docs/plugin-quickstart.md` plus the dedicated
+  `plugin-manifest.md` / `plugin-capabilities.md` / `plugin-reload.md`
+  pages it links to. Five `nexpress create *-plugin` generators
+  (block / hook / route / admin / scheduled) cover the scaffold step.
 - Theme author quickstart (we have `theme-authoring.md`; needs an
   end-to-end example PR walkthrough).
 - E2E test coverage on the reference app — Playwright covering the golden
