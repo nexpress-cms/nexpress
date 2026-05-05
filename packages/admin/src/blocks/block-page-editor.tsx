@@ -829,6 +829,7 @@ function SortableBlockItem({
           onOpenChange={setJsonOpen}
           blockType={block.type}
           props={block.props}
+          propsSchema={definition?.propsSchema}
           onApply={(nextProps) => onReplaceProps(block.id, nextProps)}
         />
         <DeleteBlockDialog
@@ -1099,24 +1100,57 @@ interface BlockJsonDialogProps {
   onOpenChange: (open: boolean) => void;
   blockType: string;
   props: Record<string, unknown>;
+  propsSchema?: NpBlockPropField[];
   onApply: (nextProps: Record<string, unknown>) => void;
+}
+
+// Lints `props` against the registered prop schema and returns
+// soft warnings (missing required, unknown keys). Returning a
+// string (not throwing) keeps Apply non-blocking — operators can
+// still save a paste that hasn't been schema-finalized yet, the
+// banner just flags it.
+function lintBlockProps(
+  props: Record<string, unknown>,
+  schema: NpBlockPropField[] | undefined,
+): string | null {
+  if (!schema || schema.length === 0) return null;
+  const known = new Set(schema.map((field) => field.name));
+  const warnings: string[] = [];
+
+  for (const field of schema) {
+    if (!field.required) continue;
+    const value = props[field.name];
+    if (value === undefined || value === "" || value === null) {
+      warnings.push(`missing required \`${field.name}\``);
+    }
+  }
+
+  for (const key of Object.keys(props)) {
+    if (key === "_layout") continue; // grid-child layout meta, not in propsSchema
+    if (!known.has(key)) warnings.push(`unknown key \`${key}\``);
+  }
+
+  return warnings.length > 0 ? warnings.join("; ") : null;
 }
 
 // Per-block JSON editor. Shows the block's `props` as pretty-
 // printed JSON, lets the operator hand-edit, and dispatches
 // REPLACE_PROPS on Apply (replace, not merge — operators expect
 // "remove key in JSON" to actually remove). Validates JSON.parse
-// + non-array object shape; richer schema validation is out of
-// scope for v1 (server-side validation will catch the rest).
+// + non-array object shape, plus soft warnings against the
+// registered propsSchema (missing required / unknown keys).
 function BlockJsonDialog({
   open,
   onOpenChange,
   blockType,
   props,
+  propsSchema,
   onApply,
 }: BlockJsonDialogProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Reseed the textarea every time the dialog opens, so closing
   // and reopening reflects the latest committed state — operators
@@ -1126,9 +1160,36 @@ function BlockJsonDialog({
     if (open) {
       setText(JSON.stringify(props, null, 2));
       setError(null);
+      setWarning(null);
+      setCopied(false);
     }
   }, [open, props]);
 
+  function handleFormat() {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      setText(JSON.stringify(parsed, null, 2));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid JSON");
+    }
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API failures are silent — operators can still
+      // select-all + Cmd-C from the textarea.
+    }
+  }
+
+  // Two-stage Apply when there's a lint warning. The first click
+  // surfaces the banner (so the operator actually sees it); the
+  // second click commits. When the input lints clean, Apply is
+  // one click as before.
   function handleApply() {
     let parsed: unknown;
     try {
@@ -1139,6 +1200,15 @@ function BlockJsonDialog({
     }
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       setError("Block props must be a JSON object.");
+      return;
+    }
+    const lintWarning = lintBlockProps(parsed as Record<string, unknown>, propsSchema);
+    if (lintWarning && lintWarning !== warning) {
+      // First time seeing this exact warning — show it and pause.
+      // The operator clicks Apply again to confirm; the comparison
+      // resets the moment they edit the textarea (`onChange` clears
+      // `warning`).
+      setWarning(lintWarning);
       return;
     }
     onApply(parsed as Record<string, unknown>);
@@ -1156,11 +1226,27 @@ function BlockJsonDialog({
             be dropped on save.
           </DialogDescription>
         </DialogHeader>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={handleFormat}>
+            Format
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void handleCopy();
+            }}
+          >
+            {copied ? "Copied!" : "Copy"}
+          </Button>
+        </div>
         <Textarea
           value={text}
           onChange={(e) => {
             setText(e.currentTarget.value);
             setError(null);
+            setWarning(null);
           }}
           rows={16}
           className="font-mono text-xs"
@@ -1174,12 +1260,20 @@ function BlockJsonDialog({
             {error}
           </div>
         ) : null}
+        {warning ? (
+          <div
+            role="status"
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+          >
+            Schema warning: {warning}. Click Apply again to commit anyway.
+          </div>
+        ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button type="button" onClick={handleApply}>
-            Apply
+            {warning ? "Apply anyway" : "Apply"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1264,6 +1358,57 @@ interface PageJsonDialogProps {
   onApply: (nextBlocks: NpBlockInstance[]) => void;
 }
 
+// Walk a tree and emit `id → type` pairs so the diff can detect
+// "same id, different type" as a *modified* block instead of one
+// add + one remove. We don't try to deep-diff props — that's what
+// the per-block JSON editor is for; the page-level diff just
+// summarizes structural delta.
+function flattenIdTypes(blocks: NpBlockInstance[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const walk = (arr: NpBlockInstance[]): void => {
+    for (const b of arr) {
+      out.set(b.id, b.type);
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  return out;
+}
+
+interface ApplyDiff {
+  totalBefore: number;
+  totalAfter: number;
+  added: number;
+  removed: number;
+  modified: number;
+}
+
+function summarizeApplyDiff(
+  before: NpBlockInstance[],
+  after: NpBlockInstance[],
+): ApplyDiff {
+  const beforeMap = flattenIdTypes(before);
+  const afterMap = flattenIdTypes(after);
+  let added = 0;
+  let removed = 0;
+  let modified = 0;
+  for (const [id, type] of afterMap) {
+    const prev = beforeMap.get(id);
+    if (prev === undefined) added += 1;
+    else if (prev !== type) modified += 1;
+  }
+  for (const id of beforeMap.keys()) {
+    if (!afterMap.has(id)) removed += 1;
+  }
+  return {
+    totalBefore: beforeMap.size,
+    totalAfter: afterMap.size,
+    added,
+    removed,
+    modified,
+  };
+}
+
 // Page-level JSON editor. Shows the entire blocks tree, lets the
 // operator hand-edit, and dispatches RESET on Apply. Validates:
 //   1. valid JSON
@@ -1274,6 +1419,12 @@ interface PageJsonDialogProps {
 // Unknown types are allowed but get an inline warning so operators
 // can paste in JSON for plugin blocks that aren't loaded yet (the
 // type might come back later) without being locked out.
+//
+// Two modes:
+// - Replace (default): Apply replaces the entire tree.
+// - Import as new blocks: validated input gets fresh ids and
+//   appends to the existing tree. Lets operators paste a section
+//   from another page without nuking the current one.
 function PageJsonDialog({
   open,
   onOpenChange,
@@ -1284,12 +1435,22 @@ function PageJsonDialog({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [importAsNew, setImportAsNew] = useState(false);
+  const [pendingApply, setPendingApply] = useState<{
+    next: NpBlockInstance[];
+    diff: ApplyDiff;
+    warning: string | null;
+  } | null>(null);
 
   useEffect(() => {
     if (open) {
       setText(JSON.stringify(blocks, null, 2));
       setError(null);
       setWarning(null);
+      setCopied(false);
+      setImportAsNew(false);
+      setPendingApply(null);
     }
   }, [open, blocks]);
 
@@ -1322,7 +1483,30 @@ function PageJsonDialog({
     };
   }
 
-  function handleApply() {
+  function handleFormat() {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      setText(JSON.stringify(parsed, null, 2));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid JSON");
+    }
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API failures are silent — operators can still
+      // select-all + Cmd-C from the textarea.
+    }
+  }
+
+  // Stage-1 click: validate JSON + compute the apply diff and
+  // park the pending result. Stage-2 click confirms.
+  function handlePreview() {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -1348,15 +1532,32 @@ function PageJsonDialog({
     // plugin-block JSON before the plugin is enabled. The save
     // path doesn't strip these; the editor just shows "Unknown
     // block type" in the row UI until the type is registered.
-    const unknown = collectUnknownTypes(validated, new Set(knownTypes));
-    if (unknown.length > 0) {
-      setWarning(
-        `Unknown block type${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. The blocks will save but won't render until those types are registered.`,
-      );
-    }
+    const unknownTypes = collectUnknownTypes(validated, new Set(knownTypes));
+    const unknownWarning =
+      unknownTypes.length > 0
+        ? `Unknown block type${unknownTypes.length > 1 ? "s" : ""}: ${unknownTypes.join(", ")}. The blocks will save but won't render until those types are registered.`
+        : null;
 
-    onApply(validated);
+    // `cloneBlockDeep` re-ids the whole subtree (recursive over
+    // `children`), so a paste from another page doesn't bring its
+    // source ids along — those would collide with existing rows
+    // or carry stale dnd-kit state across sessions.
+    const next = importAsNew
+      ? [...blocks, ...validated.map(cloneBlockDeep)]
+      : validated;
+    const diff = summarizeApplyDiff(blocks, next);
+    setPendingApply({ next, diff, warning: unknownWarning });
+    setWarning(unknownWarning);
+  }
+
+  function handleConfirm() {
+    if (!pendingApply) return;
+    onApply(pendingApply.next);
     onOpenChange(false);
+  }
+
+  function clearPreview() {
+    setPendingApply(null);
   }
 
   return (
@@ -1369,12 +1570,44 @@ function PageJsonDialog({
             paste-from-another-page, or recovering from a corrupted state.
           </DialogDescription>
         </DialogHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={handleFormat}>
+            Format
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void handleCopy();
+            }}
+          >
+            {copied ? "Copied!" : "Copy"}
+          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Switch
+              id="np-page-json-import-as-new"
+              checked={importAsNew}
+              onCheckedChange={(checked) => {
+                setImportAsNew(checked);
+                clearPreview();
+              }}
+            />
+            <Label
+              htmlFor="np-page-json-import-as-new"
+              className="text-xs font-normal text-muted-foreground"
+            >
+              Import as new blocks (append, fresh ids)
+            </Label>
+          </div>
+        </div>
         <Textarea
           value={text}
           onChange={(e) => {
             setText(e.currentTarget.value);
             setError(null);
             setWarning(null);
+            clearPreview();
           }}
           rows={20}
           className="font-mono text-xs"
@@ -1396,13 +1629,57 @@ function PageJsonDialog({
             {warning}
           </div>
         ) : null}
+        {pendingApply ? (
+          <div
+            role="status"
+            className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
+          >
+            <div className="font-medium uppercase tracking-wider text-primary">
+              Apply preview
+            </div>
+            <div className="mt-1 text-foreground">
+              {pendingApply.diff.totalBefore} block
+              {pendingApply.diff.totalBefore === 1 ? "" : "s"} →{" "}
+              {pendingApply.diff.totalAfter} block
+              {pendingApply.diff.totalAfter === 1 ? "" : "s"} (
+              <span className="text-emerald-600 dark:text-emerald-400">
+                +{pendingApply.diff.added}
+              </span>
+              {" "}
+              <span className="text-rose-600 dark:text-rose-400">
+                −{pendingApply.diff.removed}
+              </span>
+              {" "}
+              <span className="text-amber-600 dark:text-amber-400">
+                ~{pendingApply.diff.modified}
+              </span>
+              )
+            </div>
+            <div className="mt-1 text-muted-foreground">
+              {importAsNew
+                ? "Import-as-new mode — validated input appends with fresh ids."
+                : "Replace mode — current tree is overwritten."}
+            </div>
+          </div>
+        ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="button" onClick={handleApply}>
-            Apply
-          </Button>
+          {pendingApply ? (
+            <>
+              <Button type="button" variant="outline" onClick={clearPreview}>
+                Edit more
+              </Button>
+              <Button type="button" onClick={handleConfirm}>
+                Confirm apply
+              </Button>
+            </>
+          ) : (
+            <Button type="button" onClick={handlePreview}>
+              Preview
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
