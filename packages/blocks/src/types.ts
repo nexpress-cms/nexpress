@@ -57,6 +57,32 @@ export interface NpBlockMetadata {
    * it. When omitted the row falls back to label + type only.
    */
   summaryFields?: readonly string[];
+  /**
+   * Optional grouping hint for the admin's Add-block popover.
+   * Blocks with the same `category` render under one section
+   * header (Layout, Content, Media, Commerce, Community, Plugin,
+   * Other). Omitted falls into "Other" so existing definitions
+   * keep showing up. Free-form string so themes / plugins can add
+   * their own sections without lobbying the framework.
+   */
+  category?: string;
+  /**
+   * Optional fuzzy-match tokens for the palette's search filter.
+   * Adds searchable terms beyond `label` / `type` / `description`
+   * — e.g. `["call to action", "cta strip", "button banner"]` on
+   * the CTA block so operators who don't remember the exact label
+   * still find it. Empty / omitted leaves the existing match
+   * surface intact.
+   */
+  keywords?: readonly string[];
+  /**
+   * Where this block came from. Defaults to "built-in" via the
+   * shared registry seed; plugin contributions register with
+   * `source: "plugin"` so the palette can show a small badge and
+   * group them separately. Theme-bundled blocks would use "theme".
+   * Free-form to leave room for future ownership scopes.
+   */
+  source?: "built-in" | "plugin" | "theme" | (string & {});
 }
 
 export interface NpBlockDefinition extends NpBlockMetadata {

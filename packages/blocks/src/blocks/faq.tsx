@@ -50,6 +50,9 @@ export const faqBlock: NpBlockDefinition = {
   description: "Expandable questions and answers for support, sales, or onboarding content.",
   icon: "❓",
   summaryFields: ["heading"],
+  category: "Content",
+  source: "built-in",
+  keywords: ["accordion", "questions", "answers", "support", "help"],
   defaultProps: {
     heading: "Frequently asked questions",
     items: DEFAULT_ITEMS,

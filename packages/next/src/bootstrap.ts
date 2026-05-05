@@ -376,7 +376,11 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // re-bootstrap on the same process don't blow up.
       for (const plugin of enabled) {
         for (const block of pluginBlocks(plugin)) {
-          registerBlock(block);
+          // Default `source: "plugin"` (#467) so the admin's Add-
+          // block popover can group plugin contributions under
+          // their own header. Authors who set `source` explicitly
+          // (theme-bundled blocks, etc.) keep their value.
+          registerBlock({ ...block, source: block.source ?? "plugin" });
         }
       }
       pluginsLoaded = true;
@@ -434,7 +438,8 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       await loadPlugins(enabled);
       for (const plugin of enabled) {
         for (const block of pluginBlocks(plugin)) {
-          registerBlock(block);
+          // Same source-default tagging as `ensurePluginsLoaded`.
+          registerBlock({ ...block, source: block.source ?? "plugin" });
         }
       }
       pluginsLoaded = true;
