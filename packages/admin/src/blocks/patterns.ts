@@ -269,3 +269,70 @@ export async function deleteServerPattern(id: string): Promise<boolean> {
     return false;
   }
 }
+
+const MIGRATION_FLAG_KEY = "np-page-builder.patterns-migrated";
+
+/**
+ * One-shot localStorage → server migration. Runs at most once per
+ * browser (guarded by `MIGRATION_FLAG_KEY`). Pushes every local
+ * pattern whose id isn't already on the server, then clears the
+ * local list so the operator stops seeing duplicate entries from
+ * the merged view. No-op when the user lacks permission to write
+ * server patterns — `saveServerPattern` returns `null` and we
+ * simply leave the local copy alone.
+ *
+ * Returns the patterns that successfully migrated so the caller
+ * can refresh its in-memory list without a second server fetch.
+ */
+export async function migrateLocalPatternsToServer(
+  serverPatterns: NpPattern[],
+): Promise<NpPattern[]> {
+  if (typeof window === "undefined") return [];
+  try {
+    if (window.localStorage.getItem(MIGRATION_FLAG_KEY) === "1") return [];
+  } catch {
+    return [];
+  }
+  const local = getCustomPatterns();
+  if (local.length === 0) {
+    try {
+      window.localStorage.setItem(MIGRATION_FLAG_KEY, "1");
+    } catch {
+      // Migration flag is a hint; if storage is locked we'll
+      // re-attempt next time, which is fine since the migration
+      // is idempotent (server upsert by id).
+    }
+    return [];
+  }
+  const serverIds = new Set(serverPatterns.map((p) => p.id));
+  const candidates = local.filter((p) => !serverIds.has(p.id));
+  const migrated: NpPattern[] = [];
+  for (const pattern of candidates) {
+    const saved = await saveServerPattern(pattern);
+    if (saved) migrated.push(saved);
+  }
+  // Drop migrated ids from the local list. Patterns that failed
+  // to migrate (server unreachable mid-loop, validation failure)
+  // stay local for a future retry.
+  if (migrated.length > 0) {
+    const migratedIds = new Set(migrated.map((p) => p.id));
+    const remaining = local.filter((p) => !migratedIds.has(p.id));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+    } catch {
+      // Same reasoning as above — local cleanup is best-effort.
+    }
+  }
+  // Mark the migration done only when *something* was successfully
+  // pushed up, or when the local list was empty all along. A total
+  // failure (no migrations succeeded with non-empty local) leaves
+  // the flag unset so the next session can retry.
+  if (migrated.length === candidates.length) {
+    try {
+      window.localStorage.setItem(MIGRATION_FLAG_KEY, "1");
+    } catch {
+      // ignore
+    }
+  }
+  return migrated;
+}
