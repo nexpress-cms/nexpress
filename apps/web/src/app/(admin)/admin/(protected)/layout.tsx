@@ -62,10 +62,26 @@ export default async function AdminLayout({
   // blocks (which only land in the SERVER module-instance during
   // bootstrap) reach the browser editor through React props.
   const blocksMetadata = getRegisteredBlockMetadata();
+  // Same trick for collection-slug options used by `propsSchema`
+  // entries with `type: "collection"`. The picker can't ask the
+  // browser for the registered slugs (block render runs on the
+  // server, the registry is module-scoped), so we snapshot the
+  // list once at request time. Label is the slug for now;
+  // collections.label.plural would be friendlier — left as a
+  // follow-up so this PR keeps moving.
+  const collectionOptions = collections.map((c) => ({
+    label: c.labels.plural,
+    value: c.slug,
+  }));
 
   return (
     <AdminShell user={user} collections={collections} caps={caps}>
-      <BlocksRegistryProvider metadata={blocksMetadata}>{children}</BlocksRegistryProvider>
+      <BlocksRegistryProvider
+        metadata={blocksMetadata}
+        collectionOptions={collectionOptions}
+      >
+        {children}
+      </BlocksRegistryProvider>
     </AdminShell>
   );
 }

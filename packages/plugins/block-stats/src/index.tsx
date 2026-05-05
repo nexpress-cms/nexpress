@@ -20,15 +20,12 @@ async function StatsCounterBody({
   label: string;
   ctx: NpBlockRenderContext;
 }) {
-  let count = 0;
-  let errored = false;
-  try {
-    count = await ctx.content.count(collection);
-  } catch {
-    // Bootstrap not run, collection doesn't exist, etc. Render zero
-    // rather than throwing — a broken stats card shouldn't 500 the page.
-    errored = true;
-  }
+  // No try/catch — `renderBlocks` wraps every block in `SafeBlock`, which
+  // catches both sync throws AND awaited rejections from a `Promise<ReactElement>`
+  // return value. A failed `ctx.content.count` (collection doesn't exist,
+  // DB unreachable, etc.) surfaces as the framework's red error placeholder
+  // in dev and a hidden empty div in prod — the page itself still ships.
+  const count = await ctx.content.count(collection);
 
   const wrapperStyle: CSSProperties = {
     display: "inline-flex",
@@ -46,13 +43,13 @@ async function StatsCounterBody({
     fontSize: "2.25rem",
     fontWeight: 700,
     lineHeight: 1.1,
-    color: errored ? "#94a3b8" : "#0f172a",
+    color: "#0f172a",
     fontVariantNumeric: "tabular-nums",
   };
 
   return (
     <div className="np-block-stats" style={wrapperStyle}>
-      <span style={valueStyle}>{errored ? "—" : formatNumber(count)}</span>
+      <span style={valueStyle}>{formatNumber(count)}</span>
       <span style={{ fontSize: "0.875rem", color: "#475569", textTransform: "uppercase", letterSpacing: "0.04em" }}>
         {label}
       </span>
@@ -72,8 +69,8 @@ const statsCounterBlock: NpBlockDefinition = {
   propsSchema: [
     {
       name: "collection",
-      label: "Collection slug",
-      type: "text",
+      label: "Collection",
+      type: "collection",
       required: true,
       defaultValue: "posts",
     },

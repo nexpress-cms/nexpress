@@ -3,6 +3,7 @@ import * as React from "react";
 import { readGridChildLayout } from "./blocks/grid.js";
 import { getSharedRegistry } from "./registry.js";
 import type {
+  NpBlockDefinition,
   NpBlockInstance,
   NpBlockRegistry,
   NpBlockRenderContext,
@@ -81,6 +82,77 @@ function isRegistry(
   );
 }
 
+/**
+ * Renders one block with a built-in error boundary so a thrown handler
+ * can't crash the rest of the page.
+ *
+ * The wrapper is async so it covers BOTH error shapes block authors hit:
+ *   - sync throws inside `render(props, children, ctx)` itself
+ *   - rejections from a returned `Promise<ReactElement>` (the RSC pattern
+ *     for data-bound blocks like `stats.counter` / `latest-posts`)
+ *
+ * Without this, every data-bound block had to wrap its body in a manual
+ * try/catch and emit its own placeholder — that boilerplate is now gone.
+ *
+ * In dev (`NODE_ENV !== "production"`) the placeholder shows the block
+ * type + the error message, so authors get a fast visual signal. In prod
+ * it renders an empty `<div>` so a single broken block doesn't visually
+ * destroy a published page; the error still flows through React's
+ * console + any RSC error reporter installed by the host.
+ */
+async function SafeBlock({
+  definition,
+  props,
+  children,
+  ctx,
+}: {
+  definition: NpBlockDefinition;
+  props: Record<string, unknown>;
+  children?: React.ReactNode;
+  ctx: NpBlockRenderContext | undefined;
+}): Promise<React.ReactElement> {
+  try {
+    const result = definition.render(props, children, ctx);
+    const node = await result;
+    return <>{node}</>;
+  } catch (error) {
+    // Always log so server-side observability picks it up — the host's
+    // logger is wired through console by default and replaced with a
+    // structured logger in production. We don't dynamic-import
+    // `@nexpress/core`'s logger here because that would drag the server-
+    // only package back into the client graph (the same trap that broke
+    // the build in PR #465's earlier round). console.error is fine —
+    // Next pipes it into its own error reporter.
+    // eslint-disable-next-line no-console
+    console.error(`[blocks] render failed for "${definition.type}"`, error);
+
+    const isProd = typeof process !== "undefined" && process.env.NODE_ENV === "production";
+    if (isProd) {
+      return <div className="np-block-error" data-block-type={definition.type} hidden />;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+      <div
+        className="np-block-error"
+        data-block-type={definition.type}
+        style={{
+          margin: "1rem 0",
+          padding: "0.875rem 1rem",
+          borderRadius: "0.5rem",
+          border: "1px dashed #fca5a5",
+          backgroundColor: "#fef2f2",
+          color: "#991b1b",
+          fontSize: "0.85rem",
+          fontFamily:
+            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        }}
+      >
+        Block <strong>{definition.type}</strong> failed to render: {message}
+      </div>
+    );
+  }
+}
+
 function renderBlock(
   instance: NpBlockInstance,
   registry: NpBlockRegistry,
@@ -107,10 +179,20 @@ function renderBlock(
     );
   }
 
-  // The render type allows `Promise<ReactElement>` so blocks can be
-  // async server components. React 19 resolves promise children inline,
-  // so cast through `ReactNode` here keeps `<>{node}</>` typed.
-  const node = definition.render(instance.props, rendered, ctx) as React.ReactNode;
+  // SafeBlock is itself an async server component — it owns the try/catch
+  // for both sync throws and Promise rejections from `definition.render`.
+  // Returning the JSX element means React picks up the async resolution
+  // through Suspense; the boundary stays at this single seam instead of
+  // each block reimplementing it.
+  const node = (
+    <SafeBlock
+      key={instance.id}
+      definition={definition}
+      props={instance.props}
+      children={rendered}
+      ctx={ctx}
+    />
+  );
 
   // When this block is itself a grid child, wrap it in a span div
   // so the grid layout reads the colSpan meta off `props._layout`.
@@ -129,5 +211,5 @@ function renderBlock(
     );
   }
 
-  return <React.Fragment key={instance.id}>{node}</React.Fragment>;
+  return node;
 }

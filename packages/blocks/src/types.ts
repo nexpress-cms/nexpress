@@ -84,12 +84,57 @@ export interface NpBlockPropField {
     | "richtext"
     | "image"
     /** CSS color picker (`<input type="color">`). Stores `#rrggbb`. */
-    | "color";
+    | "color"
+    /**
+     * Picker that lists collection slugs registered with the host. The
+     * admin renderer feeds the option list at form time via
+     * `useCollectionOptions()` (see registry-context). Stops
+     * `latest-posts` / `stats.counter` style blocks from silently
+     * empty-listing on a typed slug.
+     */
+    | "collection"
+    /**
+     * Repeating list of nested fields. Stores `unknown[]` on the block
+     * props; the admin renderer shows an Add / Remove / Reorder UI and
+     * recurses into `itemSchema` for each entry. Use for things like a
+     * pricing table's tiers, a feature-grid's items, or a CTA strip's
+     * buttons. `itemSchema` cannot itself contain another `array`
+     * (one level of nesting in v1) — keeps the renderer + storage
+     * shape predictable.
+     */
+    | "array"
+    /**
+     * Media-library picker. Stores the media id (string) the host's
+     * media service hands back. `image` is the legacy "URL string"
+     * field; `media` is the proper picker with a thumbnail preview.
+     * Resolves to a real `<img>` at render time via the host's media
+     * adapter (`ctx.media.getUrl()`).
+     */
+    | "media";
   required?: boolean;
   defaultValue?: unknown;
   options?: { label: string; value: string }[];
   /** Optional helper text rendered under the field in the props form. */
   description?: string;
+  /**
+   * For `type: "array"`. Schema applied to every entry in the stored
+   * `unknown[]`. The admin renderer recurses through this list when an
+   * operator clicks "Add" — fields here use the same `NpBlockPropField`
+   * shape minus a second-level `array` (rejected by the renderer).
+   */
+  itemSchema?: NpBlockPropField[];
+  /**
+   * For `type: "array"`. Default object shape inserted when the
+   * operator clicks "Add". Optional; falls back to a `{}` populated
+   * from each `itemSchema[].defaultValue`.
+   */
+  itemDefault?: Record<string, unknown>;
+  /**
+   * For `type: "media"`. Restricts the picker to the listed mime
+   * prefixes (e.g. `["image/", "video/mp4"]`). Empty / omitted
+   * accepts everything the media library has.
+   */
+  accept?: readonly string[];
 }
 
 export interface NpBlockInstance {
