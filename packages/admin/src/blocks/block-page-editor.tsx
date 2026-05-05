@@ -81,9 +81,12 @@ import { cn } from "../ui/utils.js";
 
 import { BlockPalette } from "./block-palette.js";
 import {
+  deleteCustomPattern,
+  deleteServerPattern,
   fetchServerPatterns,
   getBuiltInPatterns,
   getCustomPatterns,
+  migrateLocalPatternsToServer,
   saveCustomPattern,
   saveServerPattern,
   type NpPattern,
@@ -2112,6 +2115,7 @@ interface CommandMenuProps {
   onOpenPageJson: () => void;
   patterns: NpPattern[];
   onSaveFocusedAsPattern: (focusedBlockId: string) => void;
+  onDeletePattern: (patternId: string) => void;
 }
 
 // Cmd-K command palette for the page-builder. Built on the
@@ -2132,6 +2136,7 @@ function CommandMenu({
   onOpenPageJson,
   patterns,
   onSaveFocusedAsPattern,
+  onDeletePattern,
 }: CommandMenuProps) {
   const [query, setQuery] = useState("");
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
@@ -2250,10 +2255,11 @@ function CommandMenu({
     });
   }
 
-  // Patterns (#467 phase 4). Built-ins ship with the editor;
-  // custom patterns come from localStorage and survive across
-  // sessions. Both surface under the same "Pattern" group so
-  // operators don't have to know which is which.
+  // Patterns (#467 phase 4 + follow-up). Built-ins ship with the
+  // editor; custom patterns come from server (when available) and
+  // localStorage. Both surface under the same "Pattern" group so
+  // operators don't have to know which is which. Delete actions
+  // appear only for custom patterns — built-ins are immutable.
   for (const pattern of patterns) {
     actions.push({
       id: `pattern.insert.${pattern.id}`,
@@ -2261,6 +2267,21 @@ function CommandMenu({
       hint: pattern.source === "custom" ? "saved" : pattern.id,
       group: "Pattern",
       run: () => dispatch({ type: "INSERT_PATTERN", pattern }),
+    });
+  }
+  for (const pattern of patterns) {
+    if (pattern.source !== "custom") continue;
+    actions.push({
+      id: `pattern.delete.${pattern.id}`,
+      label: `Delete pattern: ${pattern.label}`,
+      hint: "destructive",
+      group: "Pattern",
+      run: () => {
+        const confirmed = window.confirm(
+          `Delete the saved pattern "${pattern.label}"? This can't be undone.`,
+        );
+        if (confirmed) onDeletePattern(pattern.id);
+      },
     });
   }
   if (focusedBlock && focusedBlockId) {
@@ -2969,18 +2990,29 @@ export function BlockPageEditor({
   // tab) flows through without a page reload.
   const [customPatterns, setCustomPatterns] = useState<NpPattern[]>([]);
   const refreshPatterns = useCallback(async () => {
-    const local = getCustomPatterns();
     const server = await fetchServerPatterns();
     if (server === null) {
       // API unreachable — show local-only list.
-      setCustomPatterns(local);
+      setCustomPatterns(getCustomPatterns());
       return;
     }
-    // Merge: server first (canonical), then any local-only ids the
-    // operator hasn't pushed up yet. Same id → server wins.
-    const serverIds = new Set(server.map((p) => p.id));
+    // First successful server fetch in this browser: migrate any
+    // local-only patterns up to the server. Idempotent — guarded
+    // by a localStorage flag inside `migrateLocalPatternsToServer`.
+    const migrated = await migrateLocalPatternsToServer(server);
+    const finalServer =
+      migrated.length > 0
+        ? [
+            ...migrated,
+            ...server.filter(
+              (p) => !migrated.some((m) => m.id === p.id),
+            ),
+          ]
+        : server;
+    const local = getCustomPatterns(); // Re-read post-migration cleanup.
+    const serverIds = new Set(finalServer.map((p) => p.id));
     const localOnly = local.filter((p) => !serverIds.has(p.id));
-    setCustomPatterns([...server, ...localOnly]);
+    setCustomPatterns([...finalServer, ...localOnly]);
   }, []);
   useEffect(() => {
     if (commandOpen) void refreshPatterns();
@@ -3024,6 +3056,21 @@ export function BlockPageEditor({
     },
     [blocks],
   );
+  const handleDeletePattern = useCallback(async (patternId: string) => {
+    // Server delete is the canonical path — it returns 200 even
+    // when the id wasn't there, so we always succeed when the
+    // user has permission. Local cleanup runs unconditionally so
+    // a server-only pattern doesn't leave a stale localStorage
+    // copy behind, and a local-only pattern still gets removed
+    // even if the API is unreachable.
+    const ok = await deleteServerPattern(patternId);
+    if (!ok) {
+      // Server unreachable / forbidden — fall through and clear
+      // the local copy at minimum.
+    }
+    deleteCustomPattern(patternId);
+    setCustomPatterns((current) => current.filter((p) => p.id !== patternId));
+  }, []);
   // Live preview toggle. Persisted in localStorage so an operator
   // who keeps it open across sessions doesn't need to flip it on
   // every page load. Defaults to off — preview costs an extra
@@ -3399,6 +3446,7 @@ export function BlockPageEditor({
         onOpenPageJson={() => setPageJsonOpen(true)}
         patterns={patterns}
         onSaveFocusedAsPattern={handleSaveFocusedAsPattern}
+        onDeletePattern={(id) => void handleDeletePattern(id)}
       />
     </section>
   );
