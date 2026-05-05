@@ -13,6 +13,7 @@ export const ctaBlock: NpBlockDefinition = {
   label: "Call to Action",
   description: "Focused conversion block with a single message and button.",
   icon: "📣",
+  summaryFields: ["heading", "buttonText"],
   defaultProps: {
     heading: "Launch your next page faster",
     description: "Turn structured content into polished pages with reusable server-renderable blocks.",

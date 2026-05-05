@@ -11,24 +11,27 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
 
-const parseFaqItems = (value: unknown): FaqItem[] => {
-  const fallback: FaqItem[] = [
-    { question: "How do blocks work?", answer: "Each block definition controls its schema, default props, and server-rendered output." },
-    { question: "Can editors reorder sections?", answer: "Yes. The page editor supports drag-and-drop plus keyboard-friendly reordering controls." },
-    { question: "Do blocks support SSR?", answer: "Yes. All default blocks render to plain React elements that work on the server." },
-  ];
+const DEFAULT_ITEMS: FaqItem[] = [
+  { question: "How do blocks work?", answer: "Each block definition controls its schema, default props, and server-rendered output." },
+  { question: "Can editors reorder sections?", answer: "Yes. The page editor supports drag-and-drop plus keyboard-friendly reordering controls." },
+  { question: "Do blocks support SSR?", answer: "Yes. All default blocks render to plain React elements that work on the server." },
+];
 
-  const source = typeof value === "string" ? (() => {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      return parsed;
-    } catch {
-      return fallback;
-    }
-  })() : value;
+const parseFaqItems = (value: unknown): FaqItem[] => {
+  // Backward-compat: legacy pages stored a JSON string in this prop.
+  const source =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            return DEFAULT_ITEMS;
+          }
+        })()
+      : value;
 
   if (!Array.isArray(source)) {
-    return fallback;
+    return DEFAULT_ITEMS;
   }
 
   const items = source
@@ -38,7 +41,7 @@ const parseFaqItems = (value: unknown): FaqItem[] => {
       answer: readString(item.answer, "Answer"),
     }));
 
-  return items.length > 0 ? items : fallback;
+  return items.length > 0 ? items : DEFAULT_ITEMS;
 };
 
 export const faqBlock: NpBlockDefinition = {
@@ -46,33 +49,23 @@ export const faqBlock: NpBlockDefinition = {
   label: "FAQ",
   description: "Expandable questions and answers for support, sales, or onboarding content.",
   icon: "❓",
+  summaryFields: ["heading"],
   defaultProps: {
     heading: "Frequently asked questions",
-    items: JSON.stringify(
-      [
-        { question: "How do blocks work?", answer: "Each block definition controls its schema, default props, and server-rendered output." },
-        { question: "Can editors reorder sections?", answer: "Yes. The page editor supports drag-and-drop plus keyboard-friendly reordering controls." },
-        { question: "Do blocks support SSR?", answer: "Yes. All default blocks render to plain React elements that work on the server." },
-      ],
-      null,
-      2,
-    ),
+    items: DEFAULT_ITEMS,
   },
   propsSchema: [
     { name: "heading", label: "Heading", type: "text", defaultValue: "Frequently asked questions" },
     {
       name: "items",
       label: "Items",
-      type: "textarea",
-      defaultValue: JSON.stringify(
-        [
-          { question: "How do blocks work?", answer: "Each block definition controls its schema, default props, and server-rendered output." },
-          { question: "Can editors reorder sections?", answer: "Yes. The page editor supports drag-and-drop plus keyboard-friendly reordering controls." },
-          { question: "Do blocks support SSR?", answer: "Yes. All default blocks render to plain React elements that work on the server." },
-        ],
-        null,
-        2,
-      ),
+      type: "array",
+      defaultValue: DEFAULT_ITEMS,
+      itemDefault: { question: "New question", answer: "New answer" },
+      itemSchema: [
+        { name: "question", label: "Question", type: "text", defaultValue: "New question" },
+        { name: "answer", label: "Answer", type: "textarea", defaultValue: "New answer" },
+      ],
     },
   ],
   render: (props) => {

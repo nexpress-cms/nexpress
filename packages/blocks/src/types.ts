@@ -48,6 +48,15 @@ export interface NpBlockMetadata {
    * ignored at render time.
    */
   acceptsChildren?: boolean;
+  /**
+   * Optional list of prop names the page-builder reads to render a
+   * one-line summary on the collapsed block row (e.g. `["heading",
+   * "title"]`). The first non-empty string-shaped value wins, gets
+   * truncated, and is shown next to the block label. Purely a
+   * presentational hint for the admin UI — runtime renders ignore
+   * it. When omitted the row falls back to label + type only.
+   */
+  summaryFields?: readonly string[];
 }
 
 export interface NpBlockDefinition extends NpBlockMetadata {

@@ -3,6 +3,7 @@
 import {
   Suspense,
   lazy,
+  useCallback,
   useEffect,
   useMemo,
   useReducer,
@@ -19,7 +20,9 @@ import {
   Copy,
   GripVertical,
   Plus,
+  Redo2,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import {
   DndContext,
@@ -108,6 +111,8 @@ interface BlockPageEditorProps {
 type EditorAction =
   | { type: "RESET"; blocks: NpBlockInstance[] }
   | { type: "ADD"; blockType: string; parentId?: string }
+  | { type: "INSERT_BEFORE"; targetId: string; blockType: string }
+  | { type: "INSERT_AFTER"; targetId: string; blockType: string }
   | { type: "DELETE"; id: string }
   | { type: "DUPLICATE"; id: string }
   | { type: "MOVE_WITHIN_PARENT"; parentId: string | null; fromId: string; toId: string }
@@ -227,6 +232,20 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         const parentId = action.parentId ?? null;
         return updateContainerChildren(state, parentId, (siblings) => [...siblings, next]);
       }
+      case "INSERT_BEFORE":
+      case "INSERT_AFTER": {
+        const definition = definitions.get(action.blockType);
+        if (!definition) return state;
+        const loc = locateBlock(state, action.targetId);
+        if (!loc) return state;
+        const next = createBlockInstance(definition);
+        const offset = action.type === "INSERT_AFTER" ? 1 : 0;
+        return updateContainerChildren(state, loc.parentId, (siblings) => [
+          ...siblings.slice(0, loc.index + offset),
+          next,
+          ...siblings.slice(loc.index + offset),
+        ]);
+      }
       case "DELETE":
         return filterTree(state, (block) => block.id !== action.id);
       case "DUPLICATE": {
@@ -285,6 +304,73 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
     }
   };
 };
+
+// Undo/redo wraps the inner reducer with a past/future stack. Only
+// state-mutating actions push history; UPDATE_PROPS is coalesced
+// when the operator is typing into the same block (consecutive
+// `coalesce: true` dispatches replace `present` without growing
+// `past`), so a sentence-long edit collapses to a single undo step.
+//
+// `RESET` clears history — used when the backing document changes
+// underneath the editor (server reload, JSON-apply, route nav).
+interface HistoryState<T> {
+  past: T[];
+  present: T;
+  future: T[];
+}
+
+type HistoryAction =
+  | { type: "DO"; action: EditorAction; coalesce: boolean }
+  | { type: "UNDO" }
+  | { type: "REDO" }
+  | { type: "RESET_HISTORY"; blocks: NpBlockInstance[] };
+
+const HISTORY_LIMIT = 50;
+
+const createHistoryReducer = (
+  inner: (state: NpBlockInstance[], action: EditorAction) => NpBlockInstance[],
+) =>
+  (
+    state: HistoryState<NpBlockInstance[]>,
+    action: HistoryAction,
+  ): HistoryState<NpBlockInstance[]> => {
+    switch (action.type) {
+      case "RESET_HISTORY":
+        return { past: [], present: action.blocks, future: [] };
+      case "UNDO": {
+        if (state.past.length === 0) return state;
+        const previous = state.past[state.past.length - 1];
+        return {
+          past: state.past.slice(0, -1),
+          present: previous,
+          future: [state.present, ...state.future],
+        };
+      }
+      case "REDO": {
+        if (state.future.length === 0) return state;
+        const [next, ...rest] = state.future;
+        return {
+          past: [...state.past, state.present],
+          present: next,
+          future: rest,
+        };
+      }
+      case "DO": {
+        const next = inner(state.present, action.action);
+        if (next === state.present) return state;
+        if (action.coalesce && state.past.length > 0) {
+          // Replace `present` without growing `past` so a typing
+          // burst collapses into one undo step.
+          return { past: state.past, present: next, future: [] };
+        }
+        const past = [...state.past, state.present];
+        if (past.length > HISTORY_LIMIT) past.shift();
+        return { past, present: next, future: [] };
+      }
+      default:
+        return state;
+    }
+  };
 
 const parseFieldInput = (
   field: NpBlockPropField,
@@ -507,6 +593,80 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
   );
 }
 
+// Reads the first non-empty string-shaped prop named in
+// `definition.summaryFields` and returns it for display on the
+// collapsed row header. Falls back to `null` so callers can render
+// a different layout (block type only) when no summary is available.
+function getRowSummary(
+  definition: NpBlockMetadata | undefined,
+  block: NpBlockInstance,
+): string | null {
+  const fields = definition?.summaryFields;
+  if (!fields || fields.length === 0) return null;
+  for (const name of fields) {
+    const value = block.props[name];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+// Decides whether a delete should ask for confirmation. We confirm
+// when the operator might lose work — block has children or has any
+// prop that diverges from the registered defaults. Plain rows whose
+// props still match `defaultProps` delete in one click.
+function deleteNeedsConfirmation(
+  definition: NpBlockMetadata | undefined,
+  block: NpBlockInstance,
+): boolean {
+  if (block.children && block.children.length > 0) return true;
+  const defaults = definition?.defaultProps ?? {};
+  const propKeys = new Set([
+    ...Object.keys(defaults),
+    ...Object.keys(block.props),
+  ]);
+  for (const key of propKeys) {
+    if (key === "_layout") continue; // grid-child layout meta is structural
+    const next = block.props[key];
+    const prev = defaults[key];
+    if (JSON.stringify(next) !== JSON.stringify(prev)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+interface InsertSlotProps {
+  availableBlocks: NpBlockMetadata[];
+  onInsert: (blockType: string) => void;
+  ariaLabel?: string;
+}
+
+// Thin gap between rows that surfaces a "+" button on hover/focus.
+// The button opens the standard BlockPalette popover; picking a
+// block type fires `onInsert(type)` so the parent can dispatch the
+// right INSERT_BEFORE / INSERT_AFTER action with the right target.
+function InsertSlot({ availableBlocks, onInsert, ariaLabel }: InsertSlotProps) {
+  return (
+    <div className="group/slot relative -my-1 flex h-3 items-center justify-center">
+      <BlockPalette
+        availableBlocks={availableBlocks}
+        onAdd={onInsert}
+        trigger={
+          <button
+            type="button"
+            aria-label={ariaLabel ?? "Insert block here"}
+            className="invisible inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background text-muted-foreground shadow-sm transition hover:border-primary/60 hover:text-primary group-hover/slot:visible focus-visible:visible data-[state=open]:visible"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        }
+      />
+    </div>
+  );
+}
+
 interface SortableBlockItemProps {
   block: NpBlockInstance;
   definition?: NpBlockMetadata;
@@ -521,6 +681,11 @@ interface SortableBlockItemProps {
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
   onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
+  onInsert: (
+    position: "before" | "after",
+    targetId: string,
+    blockType: string,
+  ) => void;
 }
 
 function SortableBlockItem({
@@ -537,11 +702,13 @@ function SortableBlockItem({
   onUpdateProps,
   onReplaceProps,
   onAddChild,
+  onInsert,
 }: SortableBlockItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id });
   const [open, setOpen] = useState(true);
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -552,6 +719,16 @@ function SortableBlockItem({
   const fieldIdPrefix = `np-block-${block.id}`;
   const isContainer = Boolean(definition?.acceptsChildren);
   const isChildOfGrid = parentBlock?.type === "grid";
+  const summary = getRowSummary(definition, block);
+  const childCount = block.children?.length ?? 0;
+
+  const handleDelete = () => {
+    if (deleteNeedsConfirmation(definition, block)) {
+      setDeleteOpen(true);
+      return;
+    }
+    onDelete(block.id);
+  };
 
   return (
     <Card ref={setNodeRef} style={style} className="overflow-hidden border-border/60">
@@ -585,6 +762,11 @@ function SortableBlockItem({
               {isContainer ? (
                 <span className="ml-2 inline-flex items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
                   container
+                </span>
+              ) : null}
+              {summary ? (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  — {summary}
                 </span>
               ) : null}
             </div>
@@ -634,7 +816,7 @@ function SortableBlockItem({
               variant="ghost"
               size="icon"
               aria-label="Delete"
-              onClick={() => onDelete(block.id)}
+              onClick={handleDelete}
               className="text-destructive hover:text-destructive"
             >
               <Trash2 className="h-4 w-4" />
@@ -647,6 +829,17 @@ function SortableBlockItem({
           blockType={block.type}
           props={block.props}
           onApply={(nextProps) => onReplaceProps(block.id, nextProps)}
+        />
+        <DeleteBlockDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          label={definition?.label ?? block.type}
+          summary={summary}
+          childCount={childCount}
+          onConfirm={() => {
+            setDeleteOpen(false);
+            onDelete(block.id);
+          }}
         />
         <CollapsibleContent>
           <div className="grid gap-4 p-4">
@@ -731,6 +924,7 @@ function SortableBlockItem({
                 onUpdateProps={onUpdateProps}
                 onReplaceProps={onReplaceProps}
                 onAddChild={onAddChild}
+                onInsert={onInsert}
               />
             ) : null}
           </div>
@@ -802,6 +996,11 @@ interface ChildrenAreaProps {
   onUpdateProps: (id: string, props: Record<string, unknown>) => void;
   onReplaceProps: (id: string, props: Record<string, unknown>) => void;
   onAddChild: (parentId: string, blockType: string) => void;
+  onInsert: (
+    position: "before" | "after",
+    targetId: string,
+    blockType: string,
+  ) => void;
 }
 
 function ChildrenArea({
@@ -815,6 +1014,7 @@ function ChildrenArea({
   onUpdateProps,
   onReplaceProps,
   onAddChild,
+  onInsert,
 }: ChildrenAreaProps) {
   const children = container.children ?? [];
   const containerDefinition = definitions.get(container.type);
@@ -845,23 +1045,37 @@ function ChildrenArea({
               No children yet. Add one to start.
             </p>
           ) : (
-            children.map((child) => (
-              <SortableBlockItem
-                key={child.id}
-                block={child}
-                definition={definitions.get(child.type)}
-                parentBlock={container}
-                parentDefinition={containerDefinition}
-                availableBlocks={availableBlocks}
-                definitions={definitions}
-                onMoveUp={onMoveUp}
-                onMoveDown={onMoveDown}
-                onDuplicate={onDuplicate}
-                onDelete={onDelete}
-                onUpdateProps={onUpdateProps}
-                onReplaceProps={onReplaceProps}
-                onAddChild={onAddChild}
-              />
+            children.map((child, index) => (
+              <div key={child.id} className="grid gap-2">
+                {index === 0 ? (
+                  <InsertSlot
+                    availableBlocks={availableBlocks}
+                    onInsert={(blockType) => onInsert("before", child.id, blockType)}
+                    ariaLabel="Insert block before"
+                  />
+                ) : null}
+                <SortableBlockItem
+                  block={child}
+                  definition={definitions.get(child.type)}
+                  parentBlock={container}
+                  parentDefinition={containerDefinition}
+                  availableBlocks={availableBlocks}
+                  definitions={definitions}
+                  onMoveUp={onMoveUp}
+                  onMoveDown={onMoveDown}
+                  onDuplicate={onDuplicate}
+                  onDelete={onDelete}
+                  onUpdateProps={onUpdateProps}
+                  onReplaceProps={onReplaceProps}
+                  onAddChild={onAddChild}
+                  onInsert={onInsert}
+                />
+                <InsertSlot
+                  availableBlocks={availableBlocks}
+                  onInsert={(blockType) => onInsert("after", child.id, blockType)}
+                  ariaLabel="Insert block after"
+                />
+              </div>
             ))
           )}
         </div>
@@ -961,6 +1175,75 @@ function BlockJsonDialog({
           </Button>
           <Button type="button" onClick={handleApply}>
             Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface DeleteBlockDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  label: string;
+  summary: string | null;
+  childCount: number;
+  onConfirm: () => void;
+}
+
+// Confirms a delete that would lose work — block has children OR
+// has props that diverge from the registered defaults. Plain rows
+// skip this dialog entirely (the trash button calls `onDelete`
+// directly).
+function DeleteBlockDialog({
+  open,
+  onOpenChange,
+  label,
+  summary,
+  childCount,
+  onConfirm,
+}: DeleteBlockDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete this block?</DialogTitle>
+          <DialogDescription asChild>
+            <div className="space-y-2">
+              <div>
+                <span className="font-semibold text-foreground">{label}</span>
+                {summary ? (
+                  <span className="ml-1 text-muted-foreground">— {summary}</span>
+                ) : null}
+              </div>
+              {childCount > 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  Contains {childCount} nested block
+                  {childCount === 1 ? "" : "s"}, which will also be removed.
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  This block has edits that will be lost. Use Undo to restore
+                  if you delete by mistake.
+                </div>
+              )}
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onConfirm}
+          >
+            Delete
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1393,11 +1676,44 @@ export function BlockPageEditor({
     () => new Map(availableBlocks.map((block) => [block.type, block])),
     [availableBlocks],
   );
-  const reducer = useMemo(
+  const innerReducer = useMemo(
     () => createEditorReducer(availableBlocks),
     [availableBlocks],
   );
-  const [blocks, dispatch] = useReducer(reducer, initialBlocks);
+  const historyReducer = useMemo(
+    () => createHistoryReducer(innerReducer),
+    [innerReducer],
+  );
+  const [history, historyDispatch] = useReducer(historyReducer, {
+    past: [],
+    present: initialBlocks,
+    future: [],
+  } as HistoryState<NpBlockInstance[]>);
+  const blocks = history.present;
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
+
+  // Coalescing window for typing. Consecutive UPDATE_PROPS calls to
+  // the same block within this window collapse into a single undo
+  // step so a sentence-long edit doesn't bury earlier history.
+  const lastUpdateRef = useRef<{ time: number; id: string } | null>(null);
+  const dispatch = useCallback((action: EditorAction) => {
+    let coalesce = false;
+    if (action.type === "UPDATE_PROPS") {
+      const now = Date.now();
+      const last = lastUpdateRef.current;
+      if (last && last.id === action.id && now - last.time < 600) {
+        coalesce = true;
+      }
+      lastUpdateRef.current = { time: now, id: action.id };
+    } else {
+      lastUpdateRef.current = null;
+    }
+    historyDispatch({ type: "DO", action, coalesce });
+  }, []);
+  const undo = useCallback(() => historyDispatch({ type: "UNDO" }), []);
+  const redo = useCallback(() => historyDispatch({ type: "REDO" }), []);
+
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const sensors = useSensors(
@@ -1411,7 +1727,8 @@ export function BlockPageEditor({
   );
 
   useEffect(() => {
-    dispatch({ type: "RESET", blocks: initialBlocks });
+    historyDispatch({ type: "RESET_HISTORY", blocks: initialBlocks });
+    lastUpdateRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBlocksKey]);
 
@@ -1423,6 +1740,47 @@ export function BlockPageEditor({
     }
     onChange(blocks);
   }, [blocks, onChange]);
+
+  // Cmd/Ctrl-Z / Cmd-Shift-Z / Ctrl-Y bound at window level. We
+  // skip the shortcut while focus sits on a text-entry surface so
+  // operators still get native input undo while typing into prop
+  // fields — the editor's coalesced UPDATE_PROPS history covers
+  // the structural changes that survive blur.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.matches("input, textarea") ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const meta = event.metaKey || event.ctrlKey;
+      if (!meta) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === "z" && event.shiftKey) || key === "y") {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
+  const onInsert = useCallback(
+    (position: "before" | "after", targetId: string, blockType: string) => {
+      dispatch({
+        type: position === "before" ? "INSERT_BEFORE" : "INSERT_AFTER",
+        targetId,
+        blockType,
+      });
+    },
+    [dispatch],
+  );
 
   // Locate the active block anywhere in the tree (it may be a
   // top-level block or nested inside a container). The drag
@@ -1462,6 +1820,30 @@ export function BlockPageEditor({
 
   return (
     <section className={cn("np-block-page-editor flex flex-col gap-4")}>
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label="Undo"
+          onClick={undo}
+          disabled={!canUndo}
+        >
+          <Undo2 className="mr-1.5 h-4 w-4" />
+          Undo
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label="Redo"
+          onClick={redo}
+          disabled={!canRedo}
+        >
+          <Redo2 className="mr-1.5 h-4 w-4" />
+          Redo
+        </Button>
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -1474,27 +1856,45 @@ export function BlockPageEditor({
           strategy={verticalListSortingStrategy}
         >
           <div className="flex flex-col gap-3">
-            {blocks.map((block) => (
-              <SortableBlockItem
-                key={block.id}
-                block={block}
-                definition={definitions.get(block.type)}
-                availableBlocks={availableBlocks}
-                definitions={definitions}
-                onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
-                onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
-                onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
-                onDelete={(id) => dispatch({ type: "DELETE", id })}
-                onUpdateProps={(id, props) =>
-                  dispatch({ type: "UPDATE_PROPS", id, props })
-                }
-                onReplaceProps={(id, props) =>
-                  dispatch({ type: "REPLACE_PROPS", id, props })
-                }
-                onAddChild={(parentId, blockType) =>
-                  dispatch({ type: "ADD", blockType, parentId })
-                }
-              />
+            {blocks.map((block, index) => (
+              <div key={block.id} className="flex flex-col gap-3">
+                {index === 0 ? (
+                  <InsertSlot
+                    availableBlocks={availableBlocks}
+                    onInsert={(blockType) =>
+                      onInsert("before", block.id, blockType)
+                    }
+                    ariaLabel="Insert block before"
+                  />
+                ) : null}
+                <SortableBlockItem
+                  block={block}
+                  definition={definitions.get(block.type)}
+                  availableBlocks={availableBlocks}
+                  definitions={definitions}
+                  onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
+                  onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
+                  onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
+                  onDelete={(id) => dispatch({ type: "DELETE", id })}
+                  onUpdateProps={(id, props) =>
+                    dispatch({ type: "UPDATE_PROPS", id, props })
+                  }
+                  onReplaceProps={(id, props) =>
+                    dispatch({ type: "REPLACE_PROPS", id, props })
+                  }
+                  onAddChild={(parentId, blockType) =>
+                    dispatch({ type: "ADD", blockType, parentId })
+                  }
+                  onInsert={onInsert}
+                />
+                <InsertSlot
+                  availableBlocks={availableBlocks}
+                  onInsert={(blockType) =>
+                    onInsert("after", block.id, blockType)
+                  }
+                  ariaLabel="Insert block after"
+                />
+              </div>
             ))}
             {blocks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
@@ -1540,7 +1940,9 @@ export function BlockPageEditor({
         onOpenChange={setPageJsonOpen}
         blocks={blocks}
         knownTypes={availableBlocks.map((b) => b.type)}
-        onApply={(nextBlocks) => dispatch({ type: "RESET", blocks: nextBlocks })}
+        onApply={(nextBlocks) =>
+          historyDispatch({ type: "RESET_HISTORY", blocks: nextBlocks })
+        }
       />
     </section>
   );

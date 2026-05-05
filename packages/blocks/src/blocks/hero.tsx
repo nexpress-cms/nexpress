@@ -10,6 +10,7 @@ export const heroBlock: NpBlockDefinition = {
   label: "Hero",
   description: "Large introductory section with headline, supporting copy, and a call to action.",
   icon: "🌅",
+  summaryFields: ["title"],
   defaultProps: {
     title: "Build pages block by block",
     subtitle:
