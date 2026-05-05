@@ -122,6 +122,22 @@ type EditorAction =
   | { type: "MOVE_WITHIN_PARENT"; parentId: string | null; fromId: string; toId: string }
   | { type: "MOVE_UP"; id: string }
   | { type: "MOVE_DOWN"; id: string }
+  // Cross-hierarchy moves (#467 phase 4). All three preserve
+  // children + props of the moved subtree; only its position
+  // changes.
+  // - MOVE_INTO: detach the block and append it as the last
+  //   child of `targetParentId` (a container block). No-op when
+  //   targetParentId == id (would orphan the block) or when
+  //   the target is a descendant of `id` (would create a cycle).
+  // - MOVE_OUT: detach the block from its current parent and
+  //   place it immediately AFTER its parent in the grandparent's
+  //   sibling list. No-op for top-level blocks (no grandparent).
+  // - WRAP_IN: replace the block in place with a new container
+  //   of `containerType` that has the block as its sole child.
+  //   Container's `defaultProps` apply.
+  | { type: "MOVE_INTO"; id: string; targetParentId: string }
+  | { type: "MOVE_OUT"; id: string }
+  | { type: "WRAP_IN"; id: string; containerType: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
   | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> };
 
@@ -222,6 +238,51 @@ const cloneBlockDeep = (block: NpBlockInstance): NpBlockInstance => ({
   ...(block.children ? { children: block.children.map(cloneBlockDeep) } : {}),
 });
 
+// Flat tree-walk that returns the block instance with the given
+// id, anywhere in the tree. Mirrors `findInTree` inside the
+// editor but lives at module scope so the reducer can use it.
+function findBlockInTreeFlat(
+  blocks: NpBlockInstance[],
+  id: string,
+): NpBlockInstance | null {
+  for (const b of blocks) {
+    if (b.id === id) return b;
+    if (b.children) {
+      const found = findBlockInTreeFlat(b.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// True when `candidateId` lives inside the subtree rooted at
+// `ancestorId`. Used by MOVE_INTO to reject moves that would
+// create a cycle (move a block into its own descendant).
+function isDescendantOf(
+  blocks: NpBlockInstance[],
+  candidateId: string,
+  ancestorId: string,
+): boolean {
+  const ancestor = findBlockInTreeFlat(blocks, ancestorId);
+  if (!ancestor || !ancestor.children) return false;
+  return findBlockInTreeFlat(ancestor.children, candidateId) !== null;
+}
+
+// Removes the block with `id` from anywhere in the tree, returning
+// the new tree plus the detached block. Returns null when the
+// block isn't found.
+function detachBlock(
+  blocks: NpBlockInstance[],
+  id: string,
+): { tree: NpBlockInstance[]; removed: NpBlockInstance } | null {
+  const found = findBlockInTreeFlat(blocks, id);
+  if (!found) return null;
+  return {
+    tree: filterTree(blocks, (b) => b.id !== id),
+    removed: found,
+  };
+}
+
 const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
   const definitions = new Map(availableBlocks.map((block) => [block.type, block]));
 
@@ -289,6 +350,67 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         return updateContainerChildren(state, loc.parentId, (siblings) => {
           if (loc.index >= siblings.length - 1) return siblings;
           return arrayMove(siblings, loc.index, loc.index + 1);
+        });
+      }
+      case "MOVE_INTO": {
+        // Detach + append into target container. Reject the
+        // self-into-self and into-descendant cases up front so the
+        // tree can never form a cycle.
+        if (action.id === action.targetParentId) return state;
+        const sourceLoc = locateBlock(state, action.id);
+        if (!sourceLoc) return state;
+        const targetDef = definitions.get(
+          findBlockInTreeFlat(state, action.targetParentId)?.type ?? "",
+        );
+        if (!targetDef?.acceptsChildren) return state;
+        if (isDescendantOf(state, action.targetParentId, action.id)) {
+          return state;
+        }
+        const detached = detachBlock(state, action.id);
+        if (!detached) return state;
+        return updateContainerChildren(
+          detached.tree,
+          action.targetParentId,
+          (siblings) => [...siblings, detached.removed],
+        );
+      }
+      case "MOVE_OUT": {
+        // Promote one level: drop into grandparent immediately
+        // after the current parent. No-op at top-level (no
+        // grandparent to receive the block).
+        const sourceLoc = locateBlock(state, action.id);
+        if (!sourceLoc || sourceLoc.parentId === null) return state;
+        const parentId = sourceLoc.parentId;
+        const parentLoc = locateBlock(state, parentId);
+        if (!parentLoc) return state;
+        const detached = detachBlock(state, action.id);
+        if (!detached) return state;
+        return updateContainerChildren(
+          detached.tree,
+          parentLoc.parentId,
+          (siblings) => {
+            const parentIndex = siblings.findIndex((s) => s.id === parentId);
+            if (parentIndex === -1) {
+              return [...siblings, detached.removed];
+            }
+            return [
+              ...siblings.slice(0, parentIndex + 1),
+              detached.removed,
+              ...siblings.slice(parentIndex + 1),
+            ];
+          },
+        );
+      }
+      case "WRAP_IN": {
+        const containerDef = definitions.get(action.containerType);
+        if (!containerDef || !containerDef.acceptsChildren) return state;
+        return mapTree(state, (block) => {
+          if (block.id !== action.id) return block;
+          const wrapper = createBlockInstance(containerDef);
+          return {
+            ...wrapper,
+            children: [block],
+          };
         });
       }
       case "UPDATE_PROPS":
@@ -1975,6 +2097,46 @@ function CommandMenu({
         run: () => dispatch({ type: "DELETE", id }),
       },
     );
+
+    // Hierarchy moves (#467 phase 4). MOVE_OUT only shows when
+    // the block has a grandparent; MOVE_INTO appears once per
+    // candidate container so operators can pick a target without
+    // a separate target-picker UI.
+    const focusedLoc = locateBlock(blocks, id);
+    if (focusedLoc && focusedLoc.parentId !== null) {
+      actions.push({
+        id: "block.move-out",
+        label: `Move ${focusedLabel} out of parent`,
+        group: "Block",
+        run: () => dispatch({ type: "MOVE_OUT", id }),
+      });
+    }
+    for (const candidate of collectContainerCandidates(blocks, id, definitions)) {
+      actions.push({
+        id: `block.move-into.${candidate.id}`,
+        label: `Move ${focusedLabel} into ${candidate.label}`,
+        hint: candidate.id.slice(0, 8),
+        group: "Block",
+        run: () =>
+          dispatch({ type: "MOVE_INTO", id, targetParentId: candidate.id }),
+      });
+    }
+    // Wrap in container — currently the only built-in container
+    // is `grid`; plugins / themes can ship more, and they show up
+    // here automatically because the lookup walks `availableBlocks`.
+    for (const def of availableBlocks) {
+      if (!def.acceptsChildren) continue;
+      // Skip wrapping a container in itself — the wrap is intended
+      // to introduce structure around a leaf, not nest containers.
+      if (def.type === focusedBlock.type) continue;
+      actions.push({
+        id: `block.wrap-in.${def.type}`,
+        label: `Wrap ${focusedLabel} in ${def.label}`,
+        group: "Block",
+        run: () =>
+          dispatch({ type: "WRAP_IN", id, containerType: def.type }),
+      });
+    }
   }
 
   for (const def of availableBlocks) {
@@ -2088,6 +2250,36 @@ function findBlockInTree(
     }
   }
   return null;
+}
+
+interface ContainerCandidate {
+  id: string;
+  label: string;
+}
+
+// Walks the tree and collects container blocks that are valid
+// MOVE_INTO targets for `sourceId`: any container block that
+// isn't `sourceId` itself and isn't a descendant of it (which
+// would create a cycle).
+function collectContainerCandidates(
+  blocks: NpBlockInstance[],
+  sourceId: string,
+  definitions: Map<string, NpBlockMetadata>,
+): ContainerCandidate[] {
+  const out: ContainerCandidate[] = [];
+  const walk = (arr: NpBlockInstance[]): void => {
+    for (const b of arr) {
+      if (b.id !== sourceId) {
+        const def = definitions.get(b.type);
+        if (def?.acceptsChildren && !isDescendantOf(blocks, b.id, sourceId)) {
+          out.push({ id: b.id, label: def.label });
+        }
+      }
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  return out;
 }
 
 function filterCommandActions(
