@@ -967,6 +967,10 @@ function BlockJsonDialog({
     }
   }
 
+  // Two-stage Apply when there's a lint warning. The first click
+  // surfaces the banner (so the operator actually sees it); the
+  // second click commits. When the input lints clean, Apply is
+  // one click as before.
   function handleApply() {
     let parsed: unknown;
     try {
@@ -980,10 +984,13 @@ function BlockJsonDialog({
       return;
     }
     const lintWarning = lintBlockProps(parsed as Record<string, unknown>, propsSchema);
-    if (lintWarning) {
-      // Soft warning — record it but still apply. The dialog
-      // closes; operator sees the warning context in the row UI.
+    if (lintWarning && lintWarning !== warning) {
+      // First time seeing this exact warning — show it and pause.
+      // The operator clicks Apply again to confirm; the comparison
+      // resets the moment they edit the textarea (`onChange` clears
+      // `warning`).
       setWarning(lintWarning);
+      return;
     }
     onApply(parsed as Record<string, unknown>);
     onOpenChange(false);
@@ -1039,7 +1046,7 @@ function BlockJsonDialog({
             role="status"
             className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
           >
-            Schema warning: {warning}. Applied anyway — adjust if unintentional.
+            Schema warning: {warning}. Click Apply again to commit anyway.
           </div>
         ) : null}
         <DialogFooter>
@@ -1047,7 +1054,7 @@ function BlockJsonDialog({
             Cancel
           </Button>
           <Button type="button" onClick={handleApply}>
-            Apply
+            {warning ? "Apply anyway" : "Apply"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1112,18 +1119,6 @@ function summarizeApplyDiff(
     removed,
     modified,
   };
-}
-
-// Recursively re-id every block in the tree. Used by the
-// "Import as new blocks" mode so a paste from another page
-// doesn't bring its source ids along — those would collide with
-// existing rows or carry stale dnd-kit state across sessions.
-function rebuildIds(blocks: NpBlockInstance[]): NpBlockInstance[] {
-  return blocks.map((block) => ({
-    ...block,
-    id: createBlockId(),
-    ...(block.children ? { children: rebuildIds(block.children) } : {}),
-  }));
 }
 
 // Page-level JSON editor. Shows the entire blocks tree, lets the
@@ -1255,7 +1250,13 @@ function PageJsonDialog({
         ? `Unknown block type${unknownTypes.length > 1 ? "s" : ""}: ${unknownTypes.join(", ")}. The blocks will save but won't render until those types are registered.`
         : null;
 
-    const next = importAsNew ? [...blocks, ...rebuildIds(validated)] : validated;
+    // `cloneBlockDeep` re-ids the whole subtree (recursive over
+    // `children`), so a paste from another page doesn't bring its
+    // source ids along — those would collide with existing rows
+    // or carry stale dnd-kit state across sessions.
+    const next = importAsNew
+      ? [...blocks, ...validated.map(cloneBlockDeep)]
+      : validated;
     const diff = summarizeApplyDiff(blocks, next);
     setPendingApply({ next, diff, warning: unknownWarning });
     setWarning(unknownWarning);
