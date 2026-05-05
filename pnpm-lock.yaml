@@ -74,6 +74,9 @@ importers:
       '@nexpress/plugin-block-latest-posts':
         specifier: workspace:*
         version: link:../../packages/plugins/block-latest-posts
+      '@nexpress/plugin-block-newsletter':
+        specifier: workspace:*
+        version: link:../../packages/plugins/block-newsletter
       '@nexpress/plugin-block-stats':
         specifier: workspace:*
         version: link:../../packages/plugins/block-stats
@@ -554,6 +557,31 @@ importers:
         version: 5.9.3
 
   packages/plugins/block-latest-posts:
+    dependencies:
+      '@nexpress/blocks':
+        specifier: workspace:*
+        version: link:../../blocks
+      '@nexpress/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/plugins/block-newsletter:
     dependencies:
       '@nexpress/blocks':
         specifier: workspace:*
