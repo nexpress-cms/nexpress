@@ -7,6 +7,7 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@nexpress/blocks", () => ({
   registerBlock: vi.fn(),
+  resetSharedBlockRegistry: vi.fn(),
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -15,12 +16,14 @@ vi.mock("@nexpress/core", () => ({
   createDbConnection: vi.fn(() => ({ kind: "db" })),
   createStorageAdapter: vi.fn(() => ({ kind: "storage" })),
   getDb: vi.fn(() => ({ kind: "db" })),
+  getOptionalJobQueue: vi.fn(() => null),
   isSuperAdmin: vi.fn(() => false),
   listMembershipsForUser: vi.fn(() => Promise.resolve([])),
   listPluginStates: vi.fn(() => Promise.resolve([])),
   loadPlugins: vi.fn(() => Promise.resolve()),
   registerCollection: vi.fn(),
   registerThemes: vi.fn(),
+  resetPlugins: vi.fn(),
   resolveSiteForHostname: vi.fn(),
   setCurrentSiteResolver: vi.fn(),
   setDb: vi.fn(),
@@ -33,6 +36,7 @@ vi.mock("@nexpress/core", () => ({
 }));
 
 const core = await import("@nexpress/core");
+const blocks = await import("@nexpress/blocks");
 const { createBootstrap } = await import("./bootstrap.js");
 
 function buildConfig() {
@@ -83,5 +87,24 @@ describe("createBootstrap", () => {
     await expect(bootstrap.ensureJobProducer()).rejects.toThrow("producer timeout");
     await expect(bootstrap.ensureJobProducer()).resolves.toBeUndefined();
     expect(core.startProducer).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the shared block registry on plugin reload (#477)", async () => {
+    // Issue #477 — `reloadPlugins()` must drop plugin-contributed
+    // block definitions from the shared block registry, otherwise
+    // disabled plugins keep surfacing in the admin's Add-block
+    // popover and resolving server-side after a reload. The
+    // bootstrap re-registers every enabled plugin's blocks
+    // immediately after the reset, so the registry settles on
+    // `built-ins + currently-enabled plugins`.
+    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+    await bootstrap.ensurePluginsLoaded();
+    vi.mocked(blocks.resetSharedBlockRegistry).mockClear();
+    vi.mocked(core.resetPlugins).mockClear();
+
+    await bootstrap.reloadPlugins();
+
+    expect(core.resetPlugins).toHaveBeenCalledTimes(1);
+    expect(blocks.resetSharedBlockRegistry).toHaveBeenCalledTimes(1);
   });
 });
