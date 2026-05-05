@@ -83,6 +83,43 @@ export interface NpBlockMetadata {
    * Free-form to leave room for future ownership scopes.
    */
   source?: "built-in" | "plugin" | "theme" | (string & {});
+  /**
+   * Optional contract for container blocks (`acceptsChildren:
+   * true`). Restricts which child types may be added or moved
+   * into this container. Empty / omitted accepts every block
+   * type (the historical behavior).
+   *
+   *   allowedChildTypes: ["pricing", "feature-grid"]
+   *
+   * Wildcard `"*"` is shorthand for "anything". The admin uses
+   * the contract to:
+   * - Filter the Add-block popover to valid types when rendered
+   *   inside the container.
+   * - Reject `MOVE_INTO` actions that violate the contract.
+   * - Surface a soft warning when a previously-valid block now
+   *   sits under a stricter contract (e.g. plugin tightened the
+   *   allowed list).
+   *
+   * Plugin / theme containers are recommended to set this; the
+   * built-in `grid` keeps the open default since its purpose is
+   * arbitrary layout composition.
+   */
+  allowedChildTypes?: readonly string[];
+  /**
+   * Optional lower bound on the container's children count. The
+   * admin shows a warning beneath the container when fewer
+   * children are present (it's intentionally not enforced at
+   * save time — an in-progress page mid-edit naturally violates
+   * lower bounds).
+   */
+  minChildren?: number;
+  /**
+   * Optional upper bound on the container's children count. Add-
+   * block UI inside the container hides when the count is at
+   * `maxChildren`; `MOVE_INTO` rejects when adding would exceed
+   * the cap.
+   */
+  maxChildren?: number;
 }
 
 export interface NpBlockDefinition extends NpBlockMetadata {

@@ -268,6 +268,28 @@ function isDescendantOf(
   return findBlockInTreeFlat(ancestor.children, candidateId) !== null;
 }
 
+// Decides whether the container described by `parentDef` can
+// accept a child of `childType` given its current children
+// count. A container with no `allowedChildTypes` accepts every
+// type; with `["*"]` is the same. `maxChildren` (when set)
+// caps the count.
+function canAcceptChild(
+  parentDef: NpBlockMetadata,
+  childType: string,
+  currentCount: number,
+): boolean {
+  if (
+    typeof parentDef.maxChildren === "number" &&
+    currentCount >= parentDef.maxChildren
+  ) {
+    return false;
+  }
+  const allowed = parentDef.allowedChildTypes;
+  if (!allowed || allowed.length === 0) return true;
+  if (allowed.includes("*")) return true;
+  return allowed.includes(childType);
+}
+
 // Removes the block with `id` from anywhere in the tree, returning
 // the new tree plus the detached block. Returns null when the
 // block isn't found.
@@ -293,8 +315,18 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
       case "ADD": {
         const definition = definitions.get(action.blockType);
         if (!definition) return state;
-        const next = createBlockInstance(definition);
         const parentId = action.parentId ?? null;
+        // Honor container contracts (#467) — reject when the
+        // type isn't allowed or the cap is hit. Top-level adds
+        // skip the check (no parent contract to honor).
+        if (parentId !== null) {
+          const parent = findBlockInTreeFlat(state, parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (parentDef && !canAcceptChild(parentDef, action.blockType, parent?.children?.length ?? 0)) {
+            return state;
+          }
+        }
+        const next = createBlockInstance(definition);
         return updateContainerChildren(state, parentId, (siblings) => [...siblings, next]);
       }
       case "INSERT_BEFORE":
@@ -355,15 +387,27 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
       case "MOVE_INTO": {
         // Detach + append into target container. Reject the
         // self-into-self and into-descendant cases up front so the
-        // tree can never form a cycle.
+        // tree can never form a cycle, and honor any
+        // `allowedChildTypes` / `maxChildren` contract on the
+        // target.
         if (action.id === action.targetParentId) return state;
         const sourceLoc = locateBlock(state, action.id);
         if (!sourceLoc) return state;
-        const targetDef = definitions.get(
-          findBlockInTreeFlat(state, action.targetParentId)?.type ?? "",
-        );
+        const target = findBlockInTreeFlat(state, action.targetParentId);
+        const targetDef = target ? definitions.get(target.type) : null;
         if (!targetDef?.acceptsChildren) return state;
         if (isDescendantOf(state, action.targetParentId, action.id)) {
+          return state;
+        }
+        const source = findBlockInTreeFlat(state, action.id);
+        if (
+          source &&
+          !canAcceptChild(
+            targetDef,
+            source.type,
+            target?.children?.length ?? 0,
+          )
+        ) {
           return state;
         }
         const detached = detachBlock(state, action.id);
@@ -1313,23 +1357,48 @@ function ChildrenArea({
 }: ChildrenAreaProps) {
   const children = container.children ?? [];
   const containerDefinition = definitions.get(container.type);
+  // Container contracts (#467 phase 4) — filter the Add-block
+  // popover to types this container actually accepts, hide the
+  // Add UI when at `maxChildren`, and surface min/max status.
+  const allowedChildBlocks = containerDefinition
+    ? availableBlocks.filter((def) =>
+        canAcceptChild(containerDefinition, def.type, children.length),
+      )
+    : availableBlocks;
+  const max = containerDefinition?.maxChildren;
+  const min = containerDefinition?.minChildren;
+  const atMax = typeof max === "number" && children.length >= max;
+  const belowMin = typeof min === "number" && children.length < min;
   return (
     <div className="grid gap-2 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          Children ({children.length})
+          Children ({children.length}
+          {typeof max === "number" ? ` / ${max}` : ""})
         </p>
-        <BlockPalette
-          availableBlocks={availableBlocks}
-          onAdd={(type) => onAddChild(container.id, type)}
-          trigger={
-            <Button type="button" variant="outline" size="sm">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add child
-            </Button>
-          }
-        />
+        {atMax ? (
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Max reached
+          </span>
+        ) : (
+          <BlockPalette
+            availableBlocks={allowedChildBlocks}
+            onAdd={(type) => onAddChild(container.id, type)}
+            trigger={
+              <Button type="button" variant="outline" size="sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add child
+              </Button>
+            }
+          />
+        )}
       </div>
+      {belowMin ? (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          This container expects at least {min} child
+          {min === 1 ? "" : "ren"}. Currently {children.length}.
+        </p>
+      ) : null}
       <SortableContext
         items={children.map((c) => c.id)}
         strategy={verticalListSortingStrategy}
