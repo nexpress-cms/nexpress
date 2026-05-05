@@ -9,6 +9,7 @@ import {
   loadPlugins,
   registerCollection,
   registerThemes,
+  resetPlugins,
   resolveSiteForHostname,
   setCurrentSiteResolver,
   setDb,
@@ -73,6 +74,22 @@ export type Bootstrap = {
   readonly ensureCoreServices: (this: void) => void;
   readonly ensurePluginsLoaded: (this: void) => Promise<void>;
   readonly ensureJobProducer: (this: void) => Promise<void>;
+  /**
+   * Phase 5.1 — reset the registered plugin set + re-run the load
+   * pipeline. Picks up DB-side state changes (enabled toggles, config
+   * edits) and re-runs each plugin's `setup(ctx)` so handlers that
+   * read config at boot get a fresh value. Does NOT bust the Node
+   * module cache — code edits to a plugin still need a dev server
+   * restart to take effect.
+   *
+   * Block registry isn't cleared (it would orphan in-flight pages
+   * mid-render). Re-registration overwrites by `type`, so the next
+   * boot of each plugin fixes any stale block definitions naturally.
+   *
+   * Idempotent on success: a fresh `ensurePluginsLoaded()` call after
+   * `reloadPlugins()` is a no-op until the next reload.
+   */
+  readonly reloadPlugins: (this: void) => Promise<void>;
 };
 
 function toCamelCase(slug: string): string {
@@ -348,6 +365,55 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     }
   }
 
+  async function reloadPlugins(): Promise<void> {
+    // Drain any in-flight load before resetting so we don't race a
+    // concurrent boot path mid-stream.
+    if (pluginsLoadingPromise) {
+      try {
+        await pluginsLoadingPromise;
+      } catch {
+        // The previous load failed; we're about to redo it anyway.
+      }
+    }
+
+    // Build the reload as a single Promise installed into
+    // `pluginsLoadingPromise` BEFORE we await any of its body. An earlier
+    // version `pluginsLoaded = false; await ensurePluginsLoaded()` left a
+    // window where a concurrent request could see `pluginsLoaded === false`
+    // AND `pluginsLoadingPromise === null`, kick off its own load, and end
+    // up registering every plugin twice — leaving stale handlers in
+    // `globalHooks` after both loads completed. Stashing the promise first
+    // makes `ensurePluginsLoaded()` callers piggyback on the in-progress
+    // reload instead of starting a parallel one.
+    const loading = (async () => {
+      resetPlugins();
+      const instance = getDbInstance();
+      const configured = config.plugins ?? [];
+      const configuredIds = configured.map(resolvePluginId);
+
+      await syncPluginRegistrations(instance, configuredIds);
+      const states = await listPluginStates(instance);
+      const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
+
+      const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
+      await loadPlugins(enabled);
+      for (const plugin of enabled) {
+        for (const block of pluginBlocks(plugin)) {
+          registerBlock(block);
+        }
+      }
+      pluginsLoaded = true;
+    })();
+
+    pluginsLoaded = false;
+    pluginsLoadingPromise = loading;
+    try {
+      await loading;
+    } finally {
+      pluginsLoadingPromise = null;
+    }
+  }
+
   const ensureCoreServices = (): void => {
     getDbInstance();
   };
@@ -385,5 +451,6 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     ensureCoreServices,
     ensurePluginsLoaded,
     ensureJobProducer,
+    reloadPlugins,
   };
 }
