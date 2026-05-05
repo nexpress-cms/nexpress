@@ -15,16 +15,18 @@ import { scaffoldBlockPlugin } from "./scaffold-block-plugin.js";
 const HELP_TEXT = `nexpress — project-side CLI
 
 Usage:
-  nexpress plugin add <package>          Install a plugin and register it in nexpress.config.ts
-  nexpress plugin remove <package>       Uninstall a plugin and unregister it
-  nexpress create block-plugin <slug>    Scaffold a new block plugin in ./<slug>/
-  nexpress --help                        Show this message
+  nexpress plugin add <package>                       Install a plugin and register it
+  nexpress plugin remove <package>                    Uninstall a plugin and unregister it
+  nexpress create block-plugin <slug>                 Scaffold a static block plugin
+  nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
 
 Notes:
   - "plugin add/remove" runs from the project root (where nexpress.config.ts lives).
   - "create block-plugin" writes a starter package to the current directory; you
     then add it to your workspace (e.g. into packages/plugins/<slug>/) and run
     pnpm install + pnpm --filter <packageName> build before importing.
+  - --interactive emits a second client entry with the boundary wiring (splitting
+    off, self-import external, DOM lib) pre-configured.
   - The config file must include marker comments for automated plugin add/remove:
       // @nexpress:plugins-imports-start
       // @nexpress:plugins-imports-end
@@ -215,18 +217,21 @@ async function main(argv: string[]): Promise<number> {
 
   if (args[0] === "create") {
     const sub = args[1];
-    const slug = args[2];
+    const positional = args.slice(2).filter((a) => !a.startsWith("--"));
+    const flags = new Set(args.slice(2).filter((a) => a.startsWith("--")));
+    const slug = positional[0];
     if (sub !== "block-plugin" || !slug) {
       process.stderr.write(
-        `Missing arguments. Usage: nexpress create block-plugin <slug>\n`,
+        `Missing arguments. Usage: nexpress create block-plugin <slug> [--interactive]\n`,
       );
       return 2;
     }
+    const interactive = flags.has("--interactive");
     const cwd = process.cwd();
     try {
-      const result = await scaffoldBlockPlugin({ slug, outDir: cwd });
+      const result = await scaffoldBlockPlugin({ slug, outDir: cwd, interactive });
       process.stdout.write(
-        `\n✓ Scaffolded block plugin in ${result.pluginDir}\n` +
+        `\n✓ Scaffolded ${interactive ? "interactive " : ""}block plugin in ${result.pluginDir}\n` +
           `  Files written:\n` +
           result.files.map((f) => `    - ${f}\n`).join("") +
           `\n  Next:\n` +

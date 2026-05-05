@@ -1,5 +1,48 @@
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
-import type { NpPluginDefinition, NpResolvedPlugin } from "./types.js";
+import type {
+  NpPluginCapability,
+  NpPluginDefinition,
+  NpResolvedPlugin,
+} from "./types.js";
+
+/**
+ * Capabilities the host can confidently infer from the plugin's declared
+ * surface. We only auto-add ones whose presence is *unambiguous* from the
+ * top-level definition — adding more permissive ones (`storage:kv`,
+ * `media:write`, `network:fetch`, `content:write`) would require static
+ * analysis of `setup` / route handler bodies, which is fragile and risks
+ * silently granting privilege the author didn't ask for. So:
+ *
+ *   - Any `routes: [...]` entry → `api:route`. The host gates route
+ *     registration on this capability already; failing to declare it is
+ *     a guaranteed boot crash, so adding it is strictly correctness.
+ *   - Any `hooks: { "<ns>:<event>": ... }` key → `hooks:<ns>`. Same
+ *     story — `host.ts:hookCapabilityFor()` requires `hooks:<ns>`
+ *     before allowing the registration to land.
+ *
+ * Author-declared capabilities keep their slot and merge with the
+ * derived set — listing more (e.g. the always-explicit `storage:kv`
+ * for plugins that touch `ctx.storage`) is still required.
+ */
+function deriveCapabilities(
+  definition: NpPluginDefinition<unknown>,
+  declared: readonly NpPluginCapability[] | undefined,
+): NpPluginCapability[] {
+  const set = new Set<NpPluginCapability>(declared ?? []);
+
+  if (definition.routes && definition.routes.length > 0) {
+    set.add("api:route");
+  }
+
+  for (const hookName of Object.keys(definition.hooks ?? {})) {
+    const namespace = hookName.split(":")[0];
+    if (!namespace) continue;
+    const cap = `hooks:${namespace}` as NpPluginCapability;
+    set.add(cap);
+  }
+
+  return [...set];
+}
 
 /**
  * Reads the surface declared on the plugin definition (`blocks`, `routes`,
@@ -77,12 +120,16 @@ export function definePlugin<TConfig = Record<string, unknown>>(
   const declaredProvides = (
     definition.manifest as { provides?: Parameters<typeof deriveProvides>[1] }
   ).provides;
-  const manifestWithProvides = {
+  const declaredCaps = (
+    definition.manifest as { capabilities?: readonly NpPluginCapability[] }
+  ).capabilities;
+  const manifestWithDerived = {
     ...definition.manifest,
     provides: deriveProvides(definition as NpPluginDefinition<unknown>, declaredProvides),
+    capabilities: deriveCapabilities(definition as NpPluginDefinition<unknown>, declaredCaps),
   };
 
-  const manifest = npPluginManifestSchema.parse(manifestWithProvides);
+  const manifest = npPluginManifestSchema.parse(manifestWithDerived);
   if (definition.admin !== undefined) {
     // Structural validation — catches typos in widget kinds, missing
     // actionIds, etc. at plugin-build time rather than runtime render.
