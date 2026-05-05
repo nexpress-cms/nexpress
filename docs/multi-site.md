@@ -94,8 +94,8 @@ np_sites          ← one row per tenant
 
 Per-request, in priority order:
 
-1. **`x-nx-admin-site` header** — the middleware forwards
-   the `nx-admin-site` cookie (set by the admin site-picker)
+1. **`x-np-admin-site` header** — the middleware forwards
+   the `np-admin-site` cookie (set by the admin site-picker)
    on `/admin` and `/api/admin` paths only. Lets a super-
    admin operate on any site without changing the URL.
 2. **`x-np-host` header** — middleware forwards the request
@@ -184,7 +184,7 @@ what the middleware matches request `Host` headers against.
 **Switch site context** — admin topbar's site picker
 (visible to super-admins always, and to non-super users when
 they hold memberships on > 1 site). Selecting a site sets
-`nx-admin-site=<id>` (HttpOnly, SameSite=Lax, Secure-in-prod,
+`np-admin-site=<id>` (HttpOnly, SameSite=Lax, Secure-in-prod,
 30-day TTL). The override is scoped to admin paths — public
 site rendering still uses `Host`.
 
@@ -226,13 +226,13 @@ that's the bootstrap path for the first promotion.
 ## 9. Operational Notes
 
 **Site context cookie + load balancers**: the
-`nx-admin-site` cookie is HttpOnly and tied to the request's
+`np-admin-site` cookie is HttpOnly and tied to the request's
 session. It works correctly across load-balanced workers
 because the resolver reads it on every request — there's no
 sticky-session requirement.
 
 **Logout cookie hygiene**: `/api/auth/logout` clears
-`nx-admin-site` alongside the session cookies (Phase 15.7).
+`np-admin-site` alongside the session cookies (Phase 15.7).
 Prevents stale site context for the next user on shared
 devices.
 

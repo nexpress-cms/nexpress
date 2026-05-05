@@ -68,7 +68,7 @@ export function createMemberAuthHelpers<DB>(
   const readSecret = options.getSecret ?? defaultGetSecret;
 
   async function getSessionMember(request: NextRequest): Promise<NpMemberAuthRow | null> {
-    const token = request.cookies.get("nx-mb-session")?.value;
+    const token = request.cookies.get("np-mb-session")?.value;
     if (!token) return null;
     try {
       // Refuse refresh tokens presented in the session cookie — without
@@ -130,7 +130,7 @@ export function createMemberAuthHelpers<DB>(
   const requireMemberCsrf = (request: NextRequest): void => {
     const ok = verifyCsrf(
       request.method,
-      request.cookies.get("nx-mb-csrf")?.value,
+      request.cookies.get("np-mb-csrf")?.value,
       request.headers.get("x-csrf-token") ?? undefined,
     );
     if (!ok) throw new NpAuthError("Invalid CSRF token");
@@ -144,7 +144,7 @@ export function createMemberAuthHelpers<DB>(
       getMemberAuthRuntimeConfig();
 
     response.cookies.set({
-      name: "nx-mb-session",
+      name: "np-mb-session",
       value: tokens.access,
       httpOnly: true,
       secure: secureCookies,
@@ -154,7 +154,7 @@ export function createMemberAuthHelpers<DB>(
     });
 
     response.cookies.set({
-      name: "nx-mb-refresh",
+      name: "np-mb-refresh",
       value: tokens.refresh,
       httpOnly: true,
       secure: secureCookies,
@@ -164,7 +164,7 @@ export function createMemberAuthHelpers<DB>(
     });
 
     response.cookies.set({
-      name: "nx-mb-csrf",
+      name: "np-mb-csrf",
       value: tokens.csrf,
       httpOnly: false,
       secure: secureCookies,
@@ -177,16 +177,16 @@ export function createMemberAuthHelpers<DB>(
   const clearMemberAuthCookies = (response: NextResponse): void => {
     const { secureCookies } = getMemberAuthRuntimeConfig();
     for (const [name, path] of [
-      ["nx-mb-session", "/"],
-      ["nx-mb-refresh", "/api/members/refresh"],
-      ["nx-mb-csrf", "/"],
+      ["np-mb-session", "/"],
+      ["np-mb-refresh", "/api/members/refresh"],
+      ["np-mb-csrf", "/"],
     ] as const) {
       response.cookies.set({
         name,
         value: "",
-        httpOnly: name !== "nx-mb-csrf",
+        httpOnly: name !== "np-mb-csrf",
         secure: secureCookies,
-        sameSite: name === "nx-mb-refresh" ? "strict" : "lax",
+        sameSite: name === "np-mb-refresh" ? "strict" : "lax",
         path,
         maxAge: 0,
       });

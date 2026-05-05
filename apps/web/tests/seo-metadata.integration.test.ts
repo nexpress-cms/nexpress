@@ -26,7 +26,7 @@ function adminRequest(
   const headers = new Headers(init.headers);
   headers.set(
     "cookie",
-    `nx-session=${staff.accessToken}; nx-csrf=${staff.csrfToken}`,
+    `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`,
   );
   if (init.body) headers.set("content-type", "application/json");
   if (init.method && init.method !== "GET") {

@@ -11,7 +11,7 @@
  * different palette override the same custom properties — this
  * file is structural.
  *
- * The framework injects this string as a `<style data-nx-theme="default">`
+ * The framework injects this string as a `<style data-np-theme="default">`
  * tag at SSR time so the rules race the document with no extra
  * stylesheet round-trip.
  */

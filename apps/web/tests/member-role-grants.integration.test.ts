@@ -39,7 +39,7 @@ function staffRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [`nx-session=${user.accessToken}`, `nx-csrf=${user.csrfToken}`],
+    cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": user.csrfToken },
   });
 }

@@ -20,7 +20,7 @@ import { ensureFor } from "@/lib/init-core";
  * Member-side OAuth callback. Mirrors the staff callback at
  * `/api/auth/oauth/{provider}/callback`:
  *
- *   - validate the `nx-mb-oauth-state` cookie, including HMAC + TTL
+ *   - validate the `np-mb-oauth-state` cookie, including HMAC + TTL
  *   - call `provider.exchange()` for the normalized profile
  *   - resolve the matching `np_members` row via
  *     `resolveMemberOAuthLogin` (durable link → email-match → auto-
@@ -34,7 +34,7 @@ import { ensureFor } from "@/lib/init-core";
  * map to a friendly message.
  */
 
-const STATE_COOKIE = "nx-mb-oauth-state";
+const STATE_COOKIE = "np-mb-oauth-state";
 const SUCCESS_REDIRECT = "/";
 const FAIL_REDIRECT = "/members/login";
 

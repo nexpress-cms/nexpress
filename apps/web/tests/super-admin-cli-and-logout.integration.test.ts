@@ -93,7 +93,7 @@ describe.skipIf(skipIfNoTestDb())(
       ).toBe(false);
     });
 
-    it("logout clears nx-admin-site cookie alongside the session cookies", async () => {
+    it("logout clears np-admin-site cookie alongside the session cookies", async () => {
       const user = await seedUser({ role: "admin" });
       const { POST } = await import("@/app/api/auth/logout/route");
       const req = buildRequest("/api/auth/logout", {
@@ -103,19 +103,19 @@ describe.skipIf(skipIfNoTestDb())(
         // request (the user had switched to a non-default
         // site before clicking Logout).
         headers: {
-          cookie: `nx-session=${user.accessToken}; nx-csrf=${user.csrfToken}; nx-admin-site=acme`,
+          cookie: `np-session=${user.accessToken}; np-csrf=${user.csrfToken}; np-admin-site=acme`,
         },
       });
       const res = await POST(req);
       const { status } = await readJson(res);
       expect(status).toBe(200);
 
-      // The Set-Cookie header must include a `nx-admin-site=`
+      // The Set-Cookie header must include a `np-admin-site=`
       // line with an immediate-expiry directive (Max-Age=0
       // or expires in the past). Next.js's cookies.delete()
       // uses Max-Age=0.
       const setCookie = res.headers.get("set-cookie") ?? "";
-      expect(setCookie.toLowerCase()).toContain("nx-admin-site=");
+      expect(setCookie.toLowerCase()).toContain("np-admin-site=");
       expect(setCookie.toLowerCase()).toMatch(/max-age=0|expires=/);
     });
 
@@ -128,9 +128,9 @@ describe.skipIf(skipIfNoTestDb())(
       });
       const res = await POST(req);
       const setCookie = res.headers.get("set-cookie") ?? "";
-      expect(setCookie.toLowerCase()).toContain("nx-session=");
-      expect(setCookie.toLowerCase()).toContain("nx-refresh=");
-      expect(setCookie.toLowerCase()).toContain("nx-csrf=");
+      expect(setCookie.toLowerCase()).toContain("np-session=");
+      expect(setCookie.toLowerCase()).toContain("np-refresh=");
+      expect(setCookie.toLowerCase()).toContain("np-csrf=");
     });
   },
 );

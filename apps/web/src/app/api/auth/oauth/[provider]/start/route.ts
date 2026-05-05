@@ -12,7 +12,7 @@ import { ensureFor } from "@/lib/init-core";
  * route's `:provider` segment the request 404s.
  */
 
-const STATE_COOKIE = "nx-oauth-state";
+const STATE_COOKIE = "np-oauth-state";
 const STATE_COOKIE_MAX_AGE = 600;
 
 function buildRedirectUri(request: NextRequest, provider: string): string {

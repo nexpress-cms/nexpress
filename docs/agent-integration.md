@@ -51,13 +51,13 @@ collection's `access.read` allows it.
 ### Machine-to-machine (recommended for agents)
 
 1. `POST /api/auth/login` with `{ email, password }`.
-2. Server sets three cookies: `nx-session`, `nx-refresh`, `nx-csrf`.
+2. Server sets three cookies: `np-session`, `np-refresh`, `np-csrf`.
 3. For every subsequent write, send:
-   - `Cookie: nx-session=…; nx-csrf=…` (your HTTP client does this
+   - `Cookie: np-session=…; np-csrf=…` (your HTTP client does this
      automatically if cookies are enabled).
-   - `X-CSRF-Token: <value of nx-csrf cookie>` as a header.
+   - `X-CSRF-Token: <value of np-csrf cookie>` as a header.
 4. When the session expires (`401`), call `POST /api/auth/refresh` with
-   `Cookie: nx-refresh=…` to rotate the session cookie.
+   `Cookie: np-refresh=…` to rotate the session cookie.
 
 Example (Node/undici):
 
@@ -70,7 +70,7 @@ const login = await fetch("https://site.example/api/auth/login", {
   body: JSON.stringify({ email: "bot@example.com", password: process.env.AGENT_PASSWORD }),
 });
 const cookies = login.headers.getSetCookie();
-const csrf = /nx-csrf=([^;]+)/.exec(cookies.join(";"))?.[1] ?? "";
+const csrf = /np-csrf=([^;]+)/.exec(cookies.join(";"))?.[1] ?? "";
 
 await fetch("https://site.example/api/collections/posts", {
   method: "POST",

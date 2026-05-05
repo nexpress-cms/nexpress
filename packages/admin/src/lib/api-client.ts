@@ -27,7 +27,7 @@ function isMutating(method: string | undefined): method is MutatingMethod {
 
 /**
  * `fetch` wrapper for admin UI calls. Adds the `X-CSRF-Token` header on
- * mutating requests by copying the `nx-csrf` cookie that the auth flow set.
+ * mutating requests by copying the `np-csrf` cookie that the auth flow set.
  * Returns the raw Response — callers handle parsing.
  */
 export function npFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -35,7 +35,7 @@ export function npFetch(input: RequestInfo | URL, init?: RequestInit): Promise<R
   const method = init?.method ?? "GET";
 
   if (isMutating(method) && !headers.has("X-CSRF-Token")) {
-    const token = readCookie("nx-csrf");
+    const token = readCookie("np-csrf");
 
     if (token) {
       headers.set("X-CSRF-Token", token);

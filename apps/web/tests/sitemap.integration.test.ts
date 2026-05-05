@@ -20,7 +20,7 @@ function staffPostsRequest(staff: { accessToken: string; csrfToken: string }, bo
   return new NextRequest("http://localhost:3000/api/collections/posts", {
     method: "POST",
     headers: {
-      cookie: `nx-session=${staff.accessToken}; nx-csrf=${staff.csrfToken}`,
+      cookie: `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`,
       "x-csrf-token": staff.csrfToken,
       "content-type": "application/json",
     },
@@ -114,7 +114,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       new NextRequest("http://localhost:3000/api/collections/pages", {
         method: "POST",
         headers: {
-          cookie: `nx-session=${staff.accessToken}; nx-csrf=${staff.csrfToken}`,
+          cookie: `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`,
           "x-csrf-token": staff.csrfToken,
           "content-type": "application/json",
         },
@@ -142,7 +142,7 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
       new NextRequest("http://localhost:3000/api/collections/pages", {
         method: "POST",
         headers: {
-          cookie: `nx-session=${staff.accessToken}; nx-csrf=${staff.csrfToken}`,
+          cookie: `np-session=${staff.accessToken}; np-csrf=${staff.csrfToken}`,
           "x-csrf-token": staff.csrfToken,
           "content-type": "application/json",
         },

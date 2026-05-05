@@ -5,8 +5,8 @@ import type { NpUserRole } from "../config/types.js";
 import { NpAuthError } from "../errors.js";
 
 /**
- * Staff-side JWT helpers. Both access (`nx-session`) and refresh
- * (`nx-refresh`) cookies are signed with this module; the
+ * Staff-side JWT helpers. Both access (`np-session`) and refresh
+ * (`np-refresh`) cookies are signed with this module; the
  * `use: "access" | "refresh"` claim separates them so a stolen
  * refresh JWT cannot be replayed as a session cookie. Without this
  * separation a leaked 7-day refresh became a 7-day admin bearer

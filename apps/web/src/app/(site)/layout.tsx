@@ -56,14 +56,14 @@ export default async function SiteLayout({
     <>
       <NpThemeStyle theme={tokens} />
       {/*
-        Theme-owned CSS — emitted as `<style data-nx-theme="{id}">`
+        Theme-owned CSS — emitted as `<style data-np-theme="{id}">`
         so DevTools makes the source obvious. Inactive themes
         don't leak their styles (only the active theme's CSS
         string is rendered).
       */}
       {themeCss ? (
         <style
-          data-nx-theme={themeId}
+          data-np-theme={themeId}
           dangerouslySetInnerHTML={{ __html: themeCss }}
         />
       ) : null}

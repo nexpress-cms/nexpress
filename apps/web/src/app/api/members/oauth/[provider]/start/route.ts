@@ -7,13 +7,13 @@ import { ensureFor } from "@/lib/init-core";
 /**
  * Member-side OAuth start. Mirrors the staff start route
  * (`/api/auth/oauth/{provider}/start`) but uses a separate state
- * cookie (`nx-mb-oauth-state`) and a separate callback path. The
+ * cookie (`np-mb-oauth-state`) and a separate callback path. The
  * provider registry is shared — a single registered GitHub provider
  * works for both staff and member logins; the routes just choose
  * which user pool to resolve to.
  */
 
-const STATE_COOKIE = "nx-mb-oauth-state";
+const STATE_COOKIE = "np-mb-oauth-state";
 const STATE_COOKIE_MAX_AGE = 600;
 
 function buildRedirectUri(request: NextRequest, provider: string): string {

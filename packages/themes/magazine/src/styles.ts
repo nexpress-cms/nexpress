@@ -2,7 +2,7 @@
  * Theme-owned CSS for `@nexpress/theme-magazine`. Scoped under
  * `.np-magazine-*` so swapping back to a different theme doesn't
  * leave residue. The framework injects this string as a
- * `<style data-nx-theme="magazine">` tag at SSR time.
+ * `<style data-np-theme="magazine">` tag at SSR time.
  */
 export const magazineCss = `
 .np-magazine {

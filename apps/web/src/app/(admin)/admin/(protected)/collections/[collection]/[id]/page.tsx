@@ -31,7 +31,7 @@ export default async function EditPage({ params }: Props) {
   // (#57). Previously the SSR fetch ran anonymous and returned data for
   // collections whose access function should have refused it.
   const cookieStore = await cookies();
-  const token = cookieStore.get("nx-session")?.value;
+  const token = cookieStore.get("np-session")?.value;
   if (!token) redirect("/admin/login");
   const { secret } = getAuthRuntimeConfig();
   const user = await verifyTokenFull(token, secret, getDb());

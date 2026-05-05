@@ -62,7 +62,7 @@ async function seedStaffPost(): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "Spam target",
@@ -101,7 +101,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Genuine comment" }),
       }),
@@ -124,7 +124,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Suspicious content" }),
       }),
@@ -177,7 +177,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     const res = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Buy cheap pills here" }),
       }),
@@ -216,7 +216,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
     const created = await commentsPOST(
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Genuine comment" }),
       }),
@@ -236,8 +236,8 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${parentAuthor.sessionCookie}`,
-          `nx-mb-csrf=${parentAuthor.csrfCookie}`,
+          `np-mb-session=${parentAuthor.sessionCookie}`,
+          `np-mb-csrf=${parentAuthor.csrfCookie}`,
         ],
         headers: { "x-csrf-token": parentAuthor.csrfCookie },
         body: JSON.stringify({ bodyMd: "parent" }),
@@ -256,8 +256,8 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${replier.sessionCookie}`,
-          `nx-mb-csrf=${replier.csrfCookie}`,
+          `np-mb-session=${replier.sessionCookie}`,
+          `np-mb-csrf=${replier.csrfCookie}`,
         ],
         headers: { "x-csrf-token": replier.csrfCookie },
         body: JSON.stringify({ bodyMd: "reply", parentId }),
@@ -291,8 +291,8 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Clean original" }),
@@ -313,7 +313,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       new NextRequest(`http://localhost:3000/api/comments/${commentId}`, {
         method: "PATCH",
         headers: {
-          cookie: `nx-mb-session=${author.sessionCookie}; nx-mb-csrf=${author.csrfCookie}`,
+          cookie: `np-mb-session=${author.sessionCookie}; np-mb-csrf=${author.csrfCookie}`,
           "x-csrf-token": author.csrfCookie,
           "content-type": "application/json",
         },
@@ -358,8 +358,8 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Clean" }),
@@ -378,7 +378,7 @@ describe.skipIf(skipIfNoTestDb())("spam adapter (integration)", () => {
       new NextRequest(`http://localhost:3000/api/comments/${commentId}`, {
         method: "PATCH",
         headers: {
-          cookie: `nx-mb-session=${author.sessionCookie}; nx-mb-csrf=${author.csrfCookie}`,
+          cookie: `np-mb-session=${author.sessionCookie}; np-mb-csrf=${author.csrfCookie}`,
           "x-csrf-token": author.csrfCookie,
           "content-type": "application/json",
         },

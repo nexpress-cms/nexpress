@@ -10,8 +10,8 @@
  * value is the literal `"dark"` or `"light"`; missing means
  * "follow system preference".
  */
-export const COLOR_SCHEME_COOKIE = "nx-color-scheme";
-export const COLOR_SCHEME_STORAGE_KEY = "nx-color-scheme";
+export const COLOR_SCHEME_COOKIE = "np-color-scheme";
+export const COLOR_SCHEME_STORAGE_KEY = "np-color-scheme";
 
 export type NpColorScheme = "dark" | "light";
 

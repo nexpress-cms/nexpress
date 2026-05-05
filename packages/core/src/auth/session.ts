@@ -31,12 +31,12 @@ export async function sha256(input: string): Promise<string> {
  * Verify a staff JWT and resolve the active user.
  *
  * `expectedUse` defaults to `"access"` because every caller of this
- * helper outside the rotation endpoint reads `nx-session` (server
+ * helper outside the rotation endpoint reads `np-session` (server
  * components, route handlers, the bootstrap layout). Defaulting
  * means a fresh route or RSC page can't accidentally tolerate a
  * refresh JWT in the session cookie just by forgetting the
  * argument. The rotation route explicitly passes `"refresh"` for
- * its `nx-refresh` read.
+ * its `np-refresh` read.
  *
  * Tokens missing the `use` claim throw via `verifyToken`; we let
  * that propagate so a `NpAuthError` surfaces as 401 at the API

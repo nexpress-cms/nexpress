@@ -18,7 +18,7 @@ import { ensureFor } from "@/lib/init-core";
  * message — never expose provider-side error text directly.
  */
 
-const STATE_COOKIE = "nx-oauth-state";
+const STATE_COOKIE = "np-oauth-state";
 const SUCCESS_REDIRECT = "/admin";
 const FAIL_REDIRECT = "/admin/login";
 

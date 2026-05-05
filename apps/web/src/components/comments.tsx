@@ -30,7 +30,7 @@ interface CommentsProps {
  * reloads the list after each successful action — paginated polling
  * lands later when reactions / notifications need it.
  *
- * The CSRF token comes from the `nx-mb-csrf` cookie which is non-
+ * The CSRF token comes from the `np-mb-csrf` cookie which is non-
  * httpOnly so the client can read it. If a member isn't logged in,
  * the form is hidden and only the read view shows.
  */
@@ -85,7 +85,7 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const res = await fetch(`/api/collections/${collectionSlug}/${documentId}/comments`, {
         method: "POST",
         credentials: "include",
@@ -320,7 +320,7 @@ function MuteButton({ targetMemberId, onMuted }: MuteButtonProps) {
     setBusy(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const res = await fetch("/api/members/me/mutes", {
         method: "POST",
         credentials: "include",
@@ -407,7 +407,7 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
     setBusy(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),
@@ -509,7 +509,7 @@ function ReportDialog({ targetType, targetId, onClose }: ReportDialogProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const res = await fetch("/api/reports", {
         method: "POST",
         credentials: "include",

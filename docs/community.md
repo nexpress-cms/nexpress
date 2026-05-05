@@ -97,14 +97,14 @@ Standard email + password flow plus optional SSO:
 
 Tokens:
 
-- **Access JWT** (`nx-mb-session`) — signed by `NP_SECRET`,
+- **Access JWT** (`np-mb-session`) — signed by `NP_SECRET`,
   short TTL.
-- **Refresh JWT** (`nx-mb-refresh`) — long TTL, rotates per
+- **Refresh JWT** (`np-mb-refresh`) — long TTL, rotates per
   refresh, persisted as `np_member_sessions` rows so logout
   revokes immediately (Phase 9.7 closed #45 here — pure JWT
   refresh would have left logout cosmetic).
-- **CSRF** (`nx-mb-csrf`) — separate from the staff
-  `nx-csrf` cookie so member tokens can't authorize admin
+- **CSRF** (`np-mb-csrf`) — separate from the staff
+  `np-csrf` cookie so member tokens can't authorize admin
   writes and vice-versa.
 
 Public site UI (Phase 9.7g/h) covers register, login, verify,

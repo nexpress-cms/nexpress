@@ -40,7 +40,7 @@ function staffRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [`nx-session=${user.accessToken}`, `nx-csrf=${user.csrfToken}`],
+    cookies: [`np-session=${user.accessToken}`, `np-csrf=${user.csrfToken}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": user.csrfToken },
   });
 }
@@ -52,7 +52,7 @@ function memberRequest(
 ): NextRequest {
   return jsonRequest(path, {
     ...init,
-    cookies: [`nx-mb-session=${member.sessionCookie}`, `nx-mb-csrf=${member.csrfCookie}`],
+    cookies: [`np-mb-session=${member.sessionCookie}`, `np-mb-csrf=${member.csrfCookie}`],
     headers: { ...(init.headers ?? {}), "x-csrf-token": member.csrfCookie },
   });
 }

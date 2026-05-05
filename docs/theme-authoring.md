@@ -198,7 +198,7 @@ A theme ships its layout CSS as a string in `impl.css`. The
 framework injects it at SSR time as:
 
 ```html
-<style data-nx-theme="mybrand">/* your CSS */</style>
+<style data-np-theme="mybrand">/* your CSS */</style>
 ```
 
 Why a string and not a stylesheet?
@@ -206,8 +206,8 @@ Why a string and not a stylesheet?
 - **No round trip** — bytes race with the document, no FOUC.
 - **Active-only** — only the active theme's CSS is rendered.
   Switching themes doesn't leave dead rules behind.
-- **`data-nx-theme` attribute** — DevTools makes the source
-  obvious; selectors can scope by `[data-nx-theme="mybrand"]`
+- **`data-np-theme` attribute** — DevTools makes the source
+  obvious; selectors can scope by `[data-np-theme="mybrand"]`
   if a parent adopts the attribute.
 
 Put **layout-specific** rules here:

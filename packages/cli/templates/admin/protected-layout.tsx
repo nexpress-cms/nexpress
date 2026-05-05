@@ -18,7 +18,7 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
   // silently absent from the editor.
   await ensureFor("plugins");
 
-  const token = (await cookies()).get("nx-session")?.value;
+  const token = (await cookies()).get("np-session")?.value;
   if (!token) {
     // No session AND no admin in the DB → first-boot wizard;
     // otherwise the regular login form.

@@ -44,13 +44,13 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * deliberate decision, not an oversight:
  *
  *   - Pre-auth flows (login / register / refresh / password
- *     reset / email verify): the user has no nx-csrf cookie
+ *     reset / email verify): the user has no np-csrf cookie
  *     yet, so a same-site CSRF check is meaningless. These
  *     routes have their own anti-replay (per-IP rate limit on
  *     /api/auth/*, single-use email tokens for reset / verify).
  *   - `/api/admin/setup`: first-boot wizard. The visitor doesn't
  *     have a session yet — that's literally what the route is for —
- *     so they can't have an nx-csrf cookie either. The handler
+ *     so they can't have an np-csrf cookie either. The handler
  *     guards with the "no admin yet" precondition (409 once one
  *     exists) which is a strictly stronger gate than CSRF.
  *   - `/api/internal/*`: bearer-token auth via NP_SCHEDULER_TOKEN.
@@ -200,13 +200,13 @@ export async function proxy(request: NextRequest) {
     // Now that this proxy is the single enforcement point, the
     // per-handler calls have been removed. The list of exempt
     // patterns is deliberately small and explicit — pre-auth
-    // flows that have no nx-csrf cookie yet, scheduler-token-
+    // flows that have no np-csrf cookie yet, scheduler-token-
     // authenticated internals, and the plugin proxy where
     // plugins handle their own auth.
     if (!CSRF_SAFE_METHODS.has(request.method) && !isCsrfExempt(pathname)) {
       const headerToken = request.headers.get("x-csrf-token");
-      const staffCookie = request.cookies.get("nx-csrf")?.value;
-      const memberCookie = request.cookies.get("nx-mb-csrf")?.value;
+      const staffCookie = request.cookies.get("np-csrf")?.value;
+      const memberCookie = request.cookies.get("np-mb-csrf")?.value;
       // Either staff or member CSRF cookie can satisfy the check —
       // proxy doesn't know which lane the request is on, and the
       // per-handler auth still enforces the right session shape.
@@ -247,15 +247,15 @@ export async function proxy(request: NextRequest) {
   // Phase 15.6 — admin context override. The site-picker UI
   // sets this cookie when an admin (typically a super-admin)
   // chooses which tenant to operate on. The bootstrap's
-  // resolver reads `x-nx-admin-site` BEFORE x-np-host, so the
+  // resolver reads `x-np-admin-site` BEFORE x-np-host, so the
   // cookie wins inside the admin area; the public site is
   // unaffected (the resolver only checks the override on
   // /admin and /api/admin paths). Validation that the user is
   // ALLOWED to operate on this site happens at the resolver
   // layer in core, not here — the middleware just forwards.
-  const adminSite = request.cookies.get("nx-admin-site")?.value;
+  const adminSite = request.cookies.get("np-admin-site")?.value;
   if (adminSite && (pathname.startsWith("/admin") || pathname.startsWith("/api/admin"))) {
-    requestHeaders.set("x-nx-admin-site", adminSite);
+    requestHeaders.set("x-np-admin-site", adminSite);
   }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });

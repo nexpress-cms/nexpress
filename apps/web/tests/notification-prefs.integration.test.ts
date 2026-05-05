@@ -59,7 +59,7 @@ async function seedStaffPostId(slug: string): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "prefs target",
@@ -83,7 +83,7 @@ async function postComment(
   const res = await commentsPOST(
     jsonRequest(`/api/collections/posts/${postId}/comments`, {
       method: "POST",
-      cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+      cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
       headers: { "x-csrf-token": author.csrfCookie },
       body: JSON.stringify(parentId ? { bodyMd, parentId } : { bodyMd }),
     }),
@@ -100,7 +100,7 @@ async function inboxOf(member: { sessionCookie: string }): Promise<{
 }> {
   const list = await notificationsGET(
     jsonRequest("/api/notifications", {
-      cookies: [`nx-mb-session=${member.sessionCookie}`],
+      cookies: [`np-mb-session=${member.sessionCookie}`],
     }),
   );
   const body = await readJson<{
@@ -126,7 +126,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     const m = await seedActiveMember("prefs1");
     const res = await prefsGET(
       jsonRequest("/api/members/me/notification-prefs", {
-        cookies: [`nx-mb-session=${m.sessionCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`],
       }),
     );
     const body = await readJson<{
@@ -152,7 +152,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     const put = await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ disabled: ["comment.reply"] }),
       }),
@@ -179,7 +179,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${author.sessionCookie}`, `nx-mb-csrf=${author.csrfCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`, `np-mb-csrf=${author.csrfCookie}`],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ disabled: ["reaction.received"] }),
       }),
@@ -191,7 +191,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     await reactionsPOST(
       jsonRequest("/api/reactions", {
         method: "POST",
-        cookies: [`nx-mb-session=${reactor.sessionCookie}`, `nx-mb-csrf=${reactor.csrfCookie}`],
+        cookies: [`np-mb-session=${reactor.sessionCookie}`, `np-mb-csrf=${reactor.csrfCookie}`],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
       }),
@@ -201,7 +201,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     await followsPOST(
       jsonRequest("/api/follows", {
         method: "POST",
-        cookies: [`nx-mb-session=${follower.sessionCookie}`, `nx-mb-csrf=${follower.csrfCookie}`],
+        cookies: [`np-mb-session=${follower.sessionCookie}`, `np-mb-csrf=${follower.csrfCookie}`],
         headers: { "x-csrf-token": follower.csrfCookie },
         body: JSON.stringify({ targetType: "member", targetId: author.memberId }),
       }),
@@ -217,7 +217,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     const res = await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${m.sessionCookie}`, `nx-mb-csrf=${m.csrfCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
         headers: { "x-csrf-token": m.csrfCookie },
         body: JSON.stringify({ disabled: ["definitely.not.a.kind"] }),
       }),
@@ -244,7 +244,7 @@ describe.skipIf(skipIfNoTestDb())("16.3 notification preferences (integration)",
     await prefsPUT(
       jsonRequest("/api/members/me/notification-prefs", {
         method: "PUT",
-        cookies: [`nx-mb-session=${m.sessionCookie}`, `nx-mb-csrf=${m.csrfCookie}`],
+        cookies: [`np-mb-session=${m.sessionCookie}`, `np-mb-csrf=${m.csrfCookie}`],
         headers: { "x-csrf-token": m.csrfCookie },
         body: JSON.stringify({ disabled: ["follow.received"] }),
       }),

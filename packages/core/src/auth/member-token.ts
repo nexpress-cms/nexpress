@@ -19,7 +19,7 @@ import { NpAuthError } from "../errors.js";
  * tokenHash would still resolve the rotated row.
  *
  * `use: "access" | "refresh"` separates the two token purposes. A
- * refresh JWT cannot be presented as the `nx-mb-session` cookie and
+ * refresh JWT cannot be presented as the `np-mb-session` cookie and
  * a session JWT cannot drive the rotation endpoint — without this
  * separation a leaked refresh token effectively became a long-lived
  * bearer access token because both kinds were stored as fungible

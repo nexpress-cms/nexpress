@@ -6,8 +6,8 @@ import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 /**
- * Per-device logout. Clears the current `nx-session` / `nx-refresh` /
- * `nx-csrf` cookies. Previously this also called
+ * Per-device logout. Clears the current `np-session` / `np-refresh` /
+ * `np-csrf` cookies. Previously this also called
  * `invalidateAllSessions(user.id)`, which bumped `np_users.tokenVersion`
  * and forcibly logged the user out of every other device they had —
  * routine logout had global side effects. (#74)
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     // tenant they don't have access to, which leads to
     // confusing 403s in the admin UI even though it's not a
     // security hole — downstream role checks still gate).
-    response.cookies.delete("nx-admin-site");
+    response.cookies.delete("np-admin-site");
 
     return response;
   } catch (error) {

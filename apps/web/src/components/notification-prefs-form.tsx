@@ -37,7 +37,7 @@ export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefs
     setSaving(true);
     setError(null);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const res = await fetch("/api/members/me/notification-prefs", {
         method: "PUT",
         credentials: "include",

@@ -52,8 +52,8 @@ function uploadRequest(
 
   const cookies: string[] = [];
   if (member) {
-    cookies.push(`nx-mb-session=${member.sessionCookie}`);
-    cookies.push(`nx-mb-csrf=${member.csrfCookie}`);
+    cookies.push(`np-mb-session=${member.sessionCookie}`);
+    cookies.push(`np-mb-csrf=${member.csrfCookie}`);
   }
   const headers = new Headers();
   if (cookies.length > 0) headers.set("cookie", cookies.join("; "));
@@ -209,7 +209,7 @@ describe.skipIf(skipIfNoTestDb())("member image upload (Phase 9.7j)", () => {
     const headers = new Headers();
     headers.set(
       "cookie",
-      `nx-mb-session=${member.sessionCookie}; nx-mb-csrf=${member.csrfCookie}`,
+      `np-mb-session=${member.sessionCookie}; np-mb-csrf=${member.csrfCookie}`,
     );
     headers.set("x-csrf-token", member.csrfCookie);
     const req = new NextRequest("http://localhost:3000/api/members/media/upload", {

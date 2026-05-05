@@ -108,7 +108,7 @@ export function FollowButton({ memberId }: FollowButtonProps) {
     const next = !following;
     setFollowing(next);
     try {
-      const csrf = readCookie("nx-mb-csrf");
+      const csrf = readCookie("np-mb-csrf");
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),

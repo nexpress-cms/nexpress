@@ -100,7 +100,7 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     expect(location).toContain("https://example.invalid/oauth/authorize");
     expect(location).toContain("state=");
     expect(bookkeeping.authorizeCalls).toBe(1);
-    const state = cookieValue(res.headers.get("set-cookie"), "nx-oauth-state");
+    const state = cookieValue(res.headers.get("set-cookie"), "np-oauth-state");
     expect(state).toBeDefined();
     expect(state).toBe(bookkeeping.lastAuthorizeState);
   });
@@ -119,20 +119,20 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const start = await oauthStartGET(jsonRequest(`/api/auth/oauth/${id}/start`), {
       params: Promise.resolve({ provider: id }),
     });
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
 
     const callback = await oauthCallbackGET(
       jsonRequest(
         `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-oauth-state=${state}`] },
+        { cookies: [`np-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
     expect(callback.status).toBe(307);
     expect(callback.headers.get("location") ?? "").toMatch(/\/admin($|\?|\/)/);
     const cookies = callback.headers.get("set-cookie") ?? "";
-    expect(cookies).toMatch(/nx-session=/);
-    expect(cookies).toMatch(/nx-csrf=/);
+    expect(cookies).toMatch(/np-session=/);
+    expect(cookies).toMatch(/np-csrf=/);
     expect(bookkeeping.exchangeCalls).toBe(1);
 
     const db = await getTestDb();
@@ -168,11 +168,11 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const start = await oauthStartGET(jsonRequest(`/api/auth/oauth/${id}/start`), {
       params: Promise.resolve({ provider: id }),
     });
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
     const callback = await oauthCallbackGET(
       jsonRequest(
         `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-oauth-state=${state}`] },
+        { cookies: [`np-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -190,12 +190,12 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const start = await oauthStartGET(jsonRequest(`/api/auth/oauth/${id}/start`), {
       params: Promise.resolve({ provider: id }),
     });
-    const cookieState = cookieValue(start.headers.get("set-cookie"), "nx-oauth-state")!;
+    const cookieState = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
 
     const res = await oauthCallbackGET(
       jsonRequest(
         `/api/auth/oauth/${id}/callback?code=abc&state=tampered`,
-        { cookies: [`nx-oauth-state=${cookieState}`] },
+        { cookies: [`np-oauth-state=${cookieState}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -213,11 +213,11 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const start = await oauthStartGET(jsonRequest(`/api/auth/oauth/${id}/start`), {
       params: Promise.resolve({ provider: id }),
     });
-    const state = cookieValue(start.headers.get("set-cookie"), "nx-oauth-state")!;
+    const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
     const res = await oauthCallbackGET(
       jsonRequest(
         `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-        { cookies: [`nx-oauth-state=${state}`] },
+        { cookies: [`np-oauth-state=${state}`] },
       ),
       { params: Promise.resolve({ provider: id }) },
     );
@@ -233,11 +233,11 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
       const start = await oauthStartGET(jsonRequest(`/api/auth/oauth/${id}/start`), {
         params: Promise.resolve({ provider: id }),
       });
-      const state = cookieValue(start.headers.get("set-cookie"), "nx-oauth-state")!;
+      const state = cookieValue(start.headers.get("set-cookie"), "np-oauth-state")!;
       return oauthCallbackGET(
         jsonRequest(
           `/api/auth/oauth/${id}/callback?code=abc&state=${encodeURIComponent(state)}`,
-          { cookies: [`nx-oauth-state=${state}`] },
+          { cookies: [`np-oauth-state=${state}`] },
         ),
         { params: Promise.resolve({ provider: id }) },
       );

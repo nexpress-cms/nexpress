@@ -21,7 +21,7 @@ export default async function AdminLayout({
   await ensureFor("plugins");
 
   const cookieStore = await cookies();
-  const token = cookieStore.get("nx-session")?.value;
+  const token = cookieStore.get("np-session")?.value;
   if (!token) {
     // No session AND no admin in the DB → first-boot wizard;
     // otherwise the regular login form.

@@ -23,7 +23,7 @@ import {
  * there's no decision to surface.
  *
  * Selecting a site POSTs `/api/admin/sites/active`, which
- * sets the `nx-admin-site` cookie. The component reloads the
+ * sets the `np-admin-site` cookie. The component reloads the
  * page after a successful switch so server components re-
  * resolve the active site context from the new cookie.
  */

@@ -641,7 +641,7 @@
  *
  * The site theme packages (`@nexpress/theme-default` etc.) flip their
  * design tokens via `[data-theme="dark"]` because the site reads the
- * `nx-color-scheme` cookie. The admin's ThemeToggle takes a different
+ * `np-color-scheme` cookie. The admin's ThemeToggle takes a different
  * path: it adds a `.dark` class to <html> directly so Tailwind's
  * `dark:` variant works inside the admin shell (see `@variant dark`
  * at the top of this file).

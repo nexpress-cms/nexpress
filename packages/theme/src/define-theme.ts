@@ -92,7 +92,7 @@ export interface NpThemeImpl {
   tokens?: Partial<NpThemeTokens>;
   /**
    * Theme-owned CSS, served alongside the theme's components.
-   * The framework injects this as a `<style data-nx-theme="{id}">`
+   * The framework injects this as a `<style data-np-theme="{id}">`
    * tag in the layout's head when this theme is active. Phase 11.2
    * lets themes ship the layout-level rules (header / footer /
    * shell) that previously lived in `apps/web/globals.css` so a

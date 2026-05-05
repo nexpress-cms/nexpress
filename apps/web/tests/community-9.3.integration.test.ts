@@ -69,7 +69,7 @@ async function seedStaffPostId(): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "9.3 target",
@@ -94,8 +94,8 @@ async function postComment(
     jsonRequest(`/api/collections/posts/${postId}/comments`, {
       method: "POST",
       cookies: [
-        `nx-mb-session=${authorCookies.sessionCookie}`,
-        `nx-mb-csrf=${authorCookies.csrfCookie}`,
+        `np-mb-session=${authorCookies.sessionCookie}`,
+        `np-mb-csrf=${authorCookies.csrfCookie}`,
       ],
       headers: { "x-csrf-token": authorCookies.csrfCookie },
       body: JSON.stringify(parentId ? { bodyMd, parentId } : { bodyMd }),
@@ -129,8 +129,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       jsonRequest("/api/reactions", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${reactor.sessionCookie}`,
-          `nx-mb-csrf=${reactor.csrfCookie}`,
+          `np-mb-session=${reactor.sessionCookie}`,
+          `np-mb-csrf=${reactor.csrfCookie}`,
         ],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
@@ -143,8 +143,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       jsonRequest("/api/reactions", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${reactor.sessionCookie}`,
-          `nx-mb-csrf=${reactor.csrfCookie}`,
+          `np-mb-session=${reactor.sessionCookie}`,
+          `np-mb-csrf=${reactor.csrfCookie}`,
         ],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
@@ -167,8 +167,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
         {
           method: "DELETE",
           cookies: [
-            `nx-mb-session=${reactor.sessionCookie}`,
-            `nx-mb-csrf=${reactor.csrfCookie}`,
+            `np-mb-session=${reactor.sessionCookie}`,
+            `np-mb-csrf=${reactor.csrfCookie}`,
           ],
           headers: { "x-csrf-token": reactor.csrfCookie },
         },
@@ -194,8 +194,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       jsonRequest("/api/reactions", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${reactor.sessionCookie}`,
-          `nx-mb-csrf=${reactor.csrfCookie}`,
+          `np-mb-session=${reactor.sessionCookie}`,
+          `np-mb-csrf=${reactor.csrfCookie}`,
         ],
         headers: { "x-csrf-token": reactor.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
@@ -204,7 +204,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
 
     const list = await notificationsGET(
       jsonRequest("/api/notifications", {
-        cookies: [`nx-mb-session=${author.sessionCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`],
       }),
     );
     const notifs = await readJson<{
@@ -220,8 +220,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       jsonRequest("/api/reactions", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ targetType: "comment", targetId: commentId, kind: "like" }),
@@ -229,7 +229,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     );
     const list2 = await notificationsGET(
       jsonRequest("/api/notifications", {
-        cookies: [`nx-mb-session=${author.sessionCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`],
       }),
     );
     const notifs2 = await readJson<{ unread: number }>(list2);
@@ -245,7 +245,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
 
     const list = await notificationsGET(
       jsonRequest("/api/notifications", {
-        cookies: [`nx-mb-session=${author.sessionCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`],
       }),
     );
     const notifs = await readJson<{
@@ -264,7 +264,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const f = await followsPOST(
       jsonRequest("/api/follows", {
         method: "POST",
-        cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
         headers: { "x-csrf-token": a.csrfCookie },
         body: JSON.stringify({ targetType: "member", targetId: b.memberId }),
       }),
@@ -274,7 +274,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     // b should have a follow.received notification.
     const inbox = await notificationsGET(
       jsonRequest("/api/notifications", {
-        cookies: [`nx-mb-session=${b.sessionCookie}`],
+        cookies: [`np-mb-session=${b.sessionCookie}`],
       }),
     );
     const inboxBody = await readJson<{ unread: number }>(inbox);
@@ -283,7 +283,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     // List a's follows.
     const list = await followsGET(
       jsonRequest("/api/follows?targetType=member", {
-        cookies: [`nx-mb-session=${a.sessionCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`],
       }),
     );
     const listBody = await readJson<{ follows: Array<{ targetId: string }> }>(list);
@@ -292,14 +292,14 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const un = await followsDELETE(
       jsonRequest(`/api/follows?targetType=member&targetId=${b.memberId}`, {
         method: "DELETE",
-        cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
         headers: { "x-csrf-token": a.csrfCookie },
       }),
     );
     expect(un.status).toBe(200);
 
     const after = await followsGET(
-      jsonRequest("/api/follows", { cookies: [`nx-mb-session=${a.sessionCookie}`] }),
+      jsonRequest("/api/follows", { cookies: [`np-mb-session=${a.sessionCookie}`] }),
     );
     const afterBody = await readJson<{ follows: unknown[] }>(after);
     expect(afterBody.body.follows).toHaveLength(0);
@@ -313,7 +313,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const before = await followsCheckGET(
       jsonRequest(
         `/api/follows/check?targetType=member&targetId=${target.memberId}`,
-        { cookies: [`nx-mb-session=${viewer.sessionCookie}`] },
+        { cookies: [`np-mb-session=${viewer.sessionCookie}`] },
       ),
     );
     const beforeBody = await readJson<{ following: boolean }>(before);
@@ -323,7 +323,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     await followsPOST(
       jsonRequest("/api/follows", {
         method: "POST",
-        cookies: [`nx-mb-session=${viewer.sessionCookie}`, `nx-mb-csrf=${viewer.csrfCookie}`],
+        cookies: [`np-mb-session=${viewer.sessionCookie}`, `np-mb-csrf=${viewer.csrfCookie}`],
         headers: { "x-csrf-token": viewer.csrfCookie },
         body: JSON.stringify({ targetType: "member", targetId: target.memberId }),
       }),
@@ -332,7 +332,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const after = await followsCheckGET(
       jsonRequest(
         `/api/follows/check?targetType=member&targetId=${target.memberId}`,
-        { cookies: [`nx-mb-session=${viewer.sessionCookie}`] },
+        { cookies: [`np-mb-session=${viewer.sessionCookie}`] },
       ),
     );
     const afterBody = await readJson<{ following: boolean }>(after);
@@ -352,7 +352,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       followsPOST(
         jsonRequest("/api/follows", {
           method: "POST",
-          cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+          cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
           headers: { "x-csrf-token": a.csrfCookie },
           body: JSON.stringify({ targetType: "member", targetId: b.memberId }),
         }),
@@ -384,7 +384,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     // path doesn't re-fire it.
     const inbox = await notificationsGET(
       jsonRequest("/api/notifications", {
-        cookies: [`nx-mb-session=${b.sessionCookie}`],
+        cookies: [`np-mb-session=${b.sessionCookie}`],
       }),
     );
     const inboxBody = await readJson<{ unread: number }>(inbox);
@@ -396,7 +396,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     const res = await followsPOST(
       jsonRequest("/api/follows", {
         method: "POST",
-        cookies: [`nx-mb-session=${a.sessionCookie}`, `nx-mb-csrf=${a.csrfCookie}`],
+        cookies: [`np-mb-session=${a.sessionCookie}`, `np-mb-csrf=${a.csrfCookie}`],
         headers: { "x-csrf-token": a.csrfCookie },
         body: JSON.stringify({ targetType: "member", targetId: a.memberId }),
       }),
@@ -417,8 +417,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
         jsonRequest("/api/reactions", {
           method: "POST",
           cookies: [
-            `nx-mb-session=${reactor.sessionCookie}`,
-            `nx-mb-csrf=${reactor.csrfCookie}`,
+            `np-mb-session=${reactor.sessionCookie}`,
+            `np-mb-csrf=${reactor.csrfCookie}`,
           ],
           headers: { "x-csrf-token": reactor.csrfCookie },
           body: JSON.stringify({ targetType: "comment", targetId: id, kind: "like" }),
@@ -431,8 +431,8 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
       jsonRequest("/api/notifications/mark-read", {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ all: true }),
@@ -445,7 +445,7 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     // Unread is now 0.
     const probe = await notificationsGET(
       jsonRequest("/api/notifications?count=1", {
-        cookies: [`nx-mb-session=${author.sessionCookie}`],
+        cookies: [`np-mb-session=${author.sessionCookie}`],
       }),
     );
     const probeBody = await readJson<{ unread: number }>(probe);

@@ -68,7 +68,7 @@ async function seedStaffPost(): Promise<string> {
   const create = await collectionPOST(
     jsonRequest("/api/collections/posts", {
       method: "POST",
-      cookies: [`nx-session=${token}`, `nx-csrf=${csrf}`],
+      cookies: [`np-session=${token}`, `np-csrf=${csrf}`],
       headers: { "x-csrf-token": csrf },
       body: JSON.stringify({
         title: "Profanity target",
@@ -109,8 +109,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Clean comment" }),
@@ -139,8 +139,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "edgy content" }),
@@ -188,8 +188,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "anything" }),
@@ -224,8 +224,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "irrelevant" }),
@@ -255,8 +255,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "edgy but not spam" }),
@@ -288,8 +288,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "questionable" }),
@@ -328,8 +328,8 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
       jsonRequest(`/api/collections/posts/${postId}/comments`, {
         method: "POST",
         cookies: [
-          `nx-mb-session=${author.sessionCookie}`,
-          `nx-mb-csrf=${author.csrfCookie}`,
+          `np-mb-session=${author.sessionCookie}`,
+          `np-mb-csrf=${author.csrfCookie}`,
         ],
         headers: { "x-csrf-token": author.csrfCookie },
         body: JSON.stringify({ bodyMd: "Genuine comment" }),

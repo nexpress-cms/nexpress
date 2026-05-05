@@ -94,8 +94,8 @@ Why a separate table from `np_users`:
 
 - Different access policies. Members never get `role: "admin"` by
   accident — there's no role column at all on the member table.
-- Different cookie families: `nx-mb-session` / `nx-mb-refresh` /
-  `nx-mb-csrf`. Staff and member sessions can coexist in the same
+- Different cookie families: `np-mb-session` / `np-mb-refresh` /
+  `np-mb-csrf`. Staff and member sessions can coexist in the same
   browser; visiting `/admin` while logged in as a member doesn't
   leak anything.
 - Different rate-limit buckets at the middleware level (registration
