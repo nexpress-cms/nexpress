@@ -6,6 +6,7 @@ import {
 // @nexpress:plugins-imports-start
 import { calloutPlugin } from "@nexpress/plugin-block-callout";
 import { embedPlugin } from "@nexpress/plugin-block-embed";
+import { latestPostsPlugin } from "@nexpress/plugin-block-latest-posts";
 import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
@@ -87,6 +88,7 @@ export default defineConfig({
     // @nexpress:plugins-list-start
     calloutPlugin,
     embedPlugin,
+    latestPostsPlugin,
     statsBlockPlugin,
     readingTimePlugin,
     seoAuditPlugin,
