@@ -375,10 +375,43 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         // The previous load failed; we're about to redo it anyway.
       }
     }
-    resetPlugins();
+
+    // Build the reload as a single Promise installed into
+    // `pluginsLoadingPromise` BEFORE we await any of its body. An earlier
+    // version `pluginsLoaded = false; await ensurePluginsLoaded()` left a
+    // window where a concurrent request could see `pluginsLoaded === false`
+    // AND `pluginsLoadingPromise === null`, kick off its own load, and end
+    // up registering every plugin twice — leaving stale handlers in
+    // `globalHooks` after both loads completed. Stashing the promise first
+    // makes `ensurePluginsLoaded()` callers piggyback on the in-progress
+    // reload instead of starting a parallel one.
+    const loading = (async () => {
+      resetPlugins();
+      const instance = getDbInstance();
+      const configured = config.plugins ?? [];
+      const configuredIds = configured.map(resolvePluginId);
+
+      await syncPluginRegistrations(instance, configuredIds);
+      const states = await listPluginStates(instance);
+      const disabledIds = new Set(states.filter((s) => !s.enabled).map((s) => s.id));
+
+      const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
+      await loadPlugins(enabled);
+      for (const plugin of enabled) {
+        for (const block of pluginBlocks(plugin)) {
+          registerBlock(block);
+        }
+      }
+      pluginsLoaded = true;
+    })();
+
     pluginsLoaded = false;
-    pluginsLoadingPromise = null;
-    await ensurePluginsLoaded();
+    pluginsLoadingPromise = loading;
+    try {
+      await loading;
+    } finally {
+      pluginsLoadingPromise = null;
+    }
   }
 
   const ensureCoreServices = (): void => {

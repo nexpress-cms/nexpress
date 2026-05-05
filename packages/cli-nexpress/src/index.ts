@@ -104,17 +104,39 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
   };
   const project = resolveProject(cwd);
 
+  // Validate the config edit BEFORE running the package manager. If the
+  // operator's nexpress.config.ts doesn't have markers, we'd rather bail
+  // with a clear error than leave them with a half-installed state where
+  // the package is on disk but the framework doesn't know about it.
+  const original = await readConfig(project.configPath);
+  const dryRun = addPluginToConfig(original, entry);
+  if (dryRun.kind === "no-markers") {
+    process.stdout.write(
+      `\n⚠ ${project.configPath} doesn't have plugin markers, so I won't run "${project.packageManager} add" yet.\n` +
+        `  Add the markers below to your config (or paste the snippet directly), then re-run.\n\n` +
+        `${buildManualSnippet(entry)}\n\n` +
+        `Marker template:\n` +
+        `  // @nexpress:plugins-imports-start\n` +
+        `  // @nexpress:plugins-imports-end\n` +
+        `  // @nexpress:plugins-list-start\n` +
+        `  // @nexpress:plugins-list-end\n`,
+    );
+    return 1;
+  }
+
   process.stdout.write(`\n→ Installing ${packageName} via ${project.packageManager}…\n`);
   await runPackageManager(project.packageManager, "add", packageName, cwd);
 
-  const original = await readConfig(project.configPath);
-  const result = addPluginToConfig(original, entry);
+  // Re-read after install — formatters / lockfile updates rarely touch the
+  // config, but if anything did the dry-run is no longer authoritative.
+  const afterInstall = await readConfig(project.configPath);
+  const result = addPluginToConfig(afterInstall, entry);
 
   if (result.kind === "ok") {
     await writeConfig(project.configPath, result.content);
     process.stdout.write(
       `✓ Registered ${entry.identifier} in ${project.configPath}\n` +
-        `  Restart the dev server (or run \`nexpress plugins reload\` from the admin) to load it.\n`,
+        `  Restart the dev server (or click "Reload all" in /admin/plugins) to load it.\n`,
     );
     return 0;
   }
@@ -125,9 +147,10 @@ async function pluginAdd(packageName: string, cwd: string): Promise<number> {
     return 0;
   }
 
-  // no-markers branch — print the manual snippet so the operator finishes by hand.
+  // The dry-run passed but the post-install read changed shape. Tell the
+  // operator what to paste so they can finish the registration by hand.
   process.stdout.write(
-    `\n⚠ ${project.configPath} doesn't have plugin markers. Add this manually:\n\n${buildManualSnippet(
+    `\n⚠ ${project.configPath} changed during install and no longer has plugin markers. Add this manually:\n\n${buildManualSnippet(
       entry,
     )}\n\nThen restart the dev server.\n`,
   );
