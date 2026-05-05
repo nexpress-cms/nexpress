@@ -3,10 +3,12 @@ import {
   defineDiscussionsCollection,
   forumPlugin,
 } from "@nexpress/plugin-forum";
+// @nexpress:plugins-imports-start
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
+// @nexpress:plugins-imports-end
 import { defaultTheme } from "@nexpress/theme-default";
 import { magazineTheme } from "@nexpress/theme-magazine";
 import { minimalTheme } from "@nexpress/theme-minimal";
@@ -78,11 +80,13 @@ export default defineConfig({
   // default-active until an admin overrides.
   themes: [defaultTheme, minimalTheme, magazineTheme, portfolioTheme],
   plugins: [
+    forumPlugin,
+    // @nexpress:plugins-list-start
     readingTimePlugin,
     seoAuditPlugin,
-    forumPlugin,
     githubOAuthPlugin,
     googleOAuthPlugin,
+    // @nexpress:plugins-list-end
   ],
   auth: {
     secret: process.env.NP_SECRET ?? "",

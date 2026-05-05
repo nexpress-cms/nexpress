@@ -1,0 +1,47 @@
+{
+  "name": "@nexpress/cli",
+  "version": "0.1.0",
+  "description": "Project-side CLI for NexPress — manage plugins (add/remove), inspect config.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/cli-nexpress"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "cli",
+    "plugins"
+  ],
+  "type": "module",
+  "bin": {
+    "nexpress": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

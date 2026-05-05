@@ -9,6 +9,7 @@ import {
   loadPlugins,
   registerCollection,
   registerThemes,
+  resetPlugins,
   resolveSiteForHostname,
   setCurrentSiteResolver,
   setDb,
@@ -73,6 +74,22 @@ export type Bootstrap = {
   readonly ensureCoreServices: (this: void) => void;
   readonly ensurePluginsLoaded: (this: void) => Promise<void>;
   readonly ensureJobProducer: (this: void) => Promise<void>;
+  /**
+   * Phase 5.1 — reset the registered plugin set + re-run the load
+   * pipeline. Picks up DB-side state changes (enabled toggles, config
+   * edits) and re-runs each plugin's `setup(ctx)` so handlers that
+   * read config at boot get a fresh value. Does NOT bust the Node
+   * module cache — code edits to a plugin still need a dev server
+   * restart to take effect.
+   *
+   * Block registry isn't cleared (it would orphan in-flight pages
+   * mid-render). Re-registration overwrites by `type`, so the next
+   * boot of each plugin fixes any stale block definitions naturally.
+   *
+   * Idempotent on success: a fresh `ensurePluginsLoaded()` call after
+   * `reloadPlugins()` is a no-op until the next reload.
+   */
+  readonly reloadPlugins: (this: void) => Promise<void>;
 };
 
 function toCamelCase(slug: string): string {
@@ -348,6 +365,22 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     }
   }
 
+  async function reloadPlugins(): Promise<void> {
+    // Drain any in-flight load before resetting so we don't race a
+    // concurrent boot path mid-stream.
+    if (pluginsLoadingPromise) {
+      try {
+        await pluginsLoadingPromise;
+      } catch {
+        // The previous load failed; we're about to redo it anyway.
+      }
+    }
+    resetPlugins();
+    pluginsLoaded = false;
+    pluginsLoadingPromise = null;
+    await ensurePluginsLoaded();
+  }
+
   const ensureCoreServices = (): void => {
     getDbInstance();
   };
@@ -385,5 +418,6 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     ensureCoreServices,
     ensurePluginsLoaded,
     ensureJobProducer,
+    reloadPlugins,
   };
 }
