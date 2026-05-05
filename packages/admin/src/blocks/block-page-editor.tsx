@@ -22,6 +22,7 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  MoreHorizontal,
   Plus,
   Redo2,
   Trash2,
@@ -66,6 +67,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import {
@@ -999,6 +1008,15 @@ interface SortableBlockItemProps {
     targetId: string,
     blockType: string,
   ) => void;
+  // Hierarchy moves (#467 follow-up): make MOVE_INTO / MOVE_OUT /
+  // WRAP_IN reachable from the row's header dropdown so mouse
+  // operators don't have to know the Cmd-K command names.
+  onMoveOut: (id: string) => void;
+  onMoveInto: (id: string, targetParentId: string) => void;
+  onWrapIn: (id: string, containerType: string) => void;
+  // Lazy candidate resolution — the dropdown calls this on open
+  // so we don't pay the tree-walk cost on every render.
+  getMoveIntoCandidates: (id: string) => ContainerCandidate[];
 }
 
 function SortableBlockItem({
@@ -1016,6 +1034,10 @@ function SortableBlockItem({
   onReplaceProps,
   onAddChild,
   onInsert,
+  onMoveOut,
+  onMoveInto,
+  onWrapIn,
+  getMoveIntoCandidates,
 }: SortableBlockItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id });
@@ -1141,6 +1163,15 @@ function SortableBlockItem({
             >
               <Braces className="h-4 w-4" />
             </Button>
+            <HierarchyMenu
+              block={block}
+              parentBlock={parentBlock}
+              availableBlocks={availableBlocks}
+              onMoveOut={onMoveOut}
+              onMoveInto={onMoveInto}
+              onWrapIn={onWrapIn}
+              getMoveIntoCandidates={getMoveIntoCandidates}
+            />
             <Button
               type="button"
               variant="ghost"
@@ -1295,12 +1326,123 @@ function SortableBlockItem({
                 onReplaceProps={onReplaceProps}
                 onAddChild={onAddChild}
                 onInsert={onInsert}
+                onMoveOut={onMoveOut}
+                onMoveInto={onMoveInto}
+                onWrapIn={onWrapIn}
+                getMoveIntoCandidates={getMoveIntoCandidates}
               />
             ) : null}
           </div>
         </CollapsibleContent>
       </Collapsible>
     </Card>
+  );
+}
+
+interface HierarchyMenuProps {
+  block: NpBlockInstance;
+  parentBlock?: NpBlockInstance;
+  availableBlocks: NpBlockMetadata[];
+  onMoveOut: (id: string) => void;
+  onMoveInto: (id: string, targetParentId: string) => void;
+  onWrapIn: (id: string, containerType: string) => void;
+  getMoveIntoCandidates: (id: string) => ContainerCandidate[];
+}
+
+// Row-header dropdown for cross-hierarchy moves (#467 follow-up).
+// Mirrors the Cmd-K commands so mouse operators don't need to
+// know the keyboard shortcut. Move-into candidates are resolved
+// lazily on dropdown open via `getMoveIntoCandidates(id)` so we
+// don't pay the tree-walk cost on every render.
+function HierarchyMenu({
+  block,
+  parentBlock,
+  availableBlocks,
+  onMoveOut,
+  onMoveInto,
+  onWrapIn,
+  getMoveIntoCandidates,
+}: HierarchyMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [candidates, setCandidates] = useState<ContainerCandidate[]>([]);
+
+  useEffect(() => {
+    if (open) setCandidates(getMoveIntoCandidates(block.id));
+  }, [open, block.id, getMoveIntoCandidates]);
+
+  // Wrap-in targets — every container block except the source's
+  // own type. We compute this every render because availableBlocks
+  // is small + `acceptsChildren` is a flat field on the metadata
+  // (no tree walk).
+  const wrapTargets = availableBlocks.filter(
+    (def) => def.acceptsChildren && def.type !== block.type,
+  );
+  const canMoveOut = parentBlock !== undefined;
+
+  // Hide the dropdown entirely when there are no actions to
+  // surface — keeps the row header tidy on a top-level leaf
+  // block with no other containers in the page.
+  const hasActions = canMoveOut || candidates.length > 0 || wrapTargets.length > 0;
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="More actions"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {!hasActions ? (
+          <DropdownMenuLabel className="text-xs text-muted-foreground">
+            No hierarchy moves available
+          </DropdownMenuLabel>
+        ) : null}
+        {canMoveOut ? (
+          <DropdownMenuItem onSelect={() => onMoveOut(block.id)}>
+            Move out of {parentBlock?.type ?? "parent"}
+          </DropdownMenuItem>
+        ) : null}
+        {candidates.length > 0 ? (
+          <>
+            {canMoveOut ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Move into
+            </DropdownMenuLabel>
+            {candidates.map((c) => (
+              <DropdownMenuItem
+                key={`into-${c.id}`}
+                onSelect={() => onMoveInto(block.id, c.id)}
+              >
+                {c.label}
+              </DropdownMenuItem>
+            ))}
+          </>
+        ) : null}
+        {wrapTargets.length > 0 ? (
+          <>
+            {canMoveOut || candidates.length > 0 ? (
+              <DropdownMenuSeparator />
+            ) : null}
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Wrap in
+            </DropdownMenuLabel>
+            {wrapTargets.map((def) => (
+              <DropdownMenuItem
+                key={`wrap-${def.type}`}
+                onSelect={() => onWrapIn(block.id, def.type)}
+              >
+                {def.label}
+              </DropdownMenuItem>
+            ))}
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1371,6 +1513,10 @@ interface ChildrenAreaProps {
     targetId: string,
     blockType: string,
   ) => void;
+  onMoveOut: (id: string) => void;
+  onMoveInto: (id: string, targetParentId: string) => void;
+  onWrapIn: (id: string, containerType: string) => void;
+  getMoveIntoCandidates: (id: string) => ContainerCandidate[];
 }
 
 function ChildrenArea({
@@ -1385,6 +1531,10 @@ function ChildrenArea({
   onReplaceProps,
   onAddChild,
   onInsert,
+  onMoveOut,
+  onMoveInto,
+  onWrapIn,
+  getMoveIntoCandidates,
 }: ChildrenAreaProps) {
   const children = container.children ?? [];
   const containerDefinition = definitions.get(container.type);
@@ -1467,6 +1617,10 @@ function ChildrenArea({
                     onReplaceProps={onReplaceProps}
                     onAddChild={onAddChild}
                     onInsert={onInsert}
+                    onMoveOut={onMoveOut}
+                    onMoveInto={onMoveInto}
+                    onWrapIn={onWrapIn}
+                    getMoveIntoCandidates={getMoveIntoCandidates}
                   />
                   <InsertSlot
                     availableBlocks={availableBlocks}
@@ -2665,16 +2819,17 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
     setPreviewBroken(false);
   }, [value]);
 
-  // The media route exposes page-based pagination and no server-
-  // side search yet, so we keep loading pages and filter
-  // client-side by filename / alt text. Server-side search is a
-  // follow-up — once /api/media accepts a `q` parameter we drop
-  // the client filter and pass it through.
+  // Server-side search via /api/media `q` param (#467 follow-up).
+  // The route runs an ILIKE over filename + alt and returns
+  // matching docs only, so the picker can search the whole library
+  // instead of paging through everything client-side.
   const loadMedia = useCallback(
-    async (page: number, mode: "replace" | "append") => {
+    async (page: number, query: string, mode: "replace" | "append") => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("page", String(page));
+      const trimmed = query.trim();
+      if (trimmed.length > 0) params.set("q", trimmed);
       setLoading(true);
       setError(null);
       try {
@@ -2700,22 +2855,13 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
     [],
   );
 
-  // Reset + load page 1 on open. We don't refetch on query change
-  // since filtering is client-side.
+  // Reset + load page 1 when the dialog opens OR the debounced
+  // query changes. Server applies the filter so we re-fetch
+  // instead of slicing the loaded page client-side.
   useEffect(() => {
     if (!open) return;
-    void loadMedia(1, "replace");
-  }, [open, loadMedia]);
-
-  const filteredItems = useMemo(() => {
-    const q = debouncedQuery.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => {
-      const haystack =
-        `${item.filename ?? ""} ${item.alt ?? ""}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [items, debouncedQuery]);
+    void loadMedia(1, debouncedQuery, "replace");
+  }, [open, debouncedQuery, loadMedia]);
 
   const currentPage = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
 
@@ -2743,7 +2889,7 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
         }
       }
       // Refresh listing so the new asset shows at the top.
-      await loadMedia(1, "replace");
+      await loadMedia(1, debouncedQuery, "replace");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -2842,14 +2988,14 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
             </p>
           ) : null}
           <div className="grid max-h-[28rem] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
-            {filteredItems.length === 0 && !loading ? (
+            {items.length === 0 && !loading ? (
               <div className="col-span-full px-2 py-6 text-center text-xs text-muted-foreground">
                 {debouncedQuery
-                  ? "No assets match your search. Load more pages to broaden the result set."
+                  ? "No assets match your search."
                   : "Library is empty. Use Upload to add an image."}
               </div>
             ) : null}
-            {filteredItems.map((item) => (
+            {items.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -2884,7 +3030,9 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
                   variant="outline"
                   size="sm"
                   disabled={loading}
-                  onClick={() => void loadMedia(currentPage + 1, "append")}
+                  onClick={() =>
+                  void loadMedia(currentPage + 1, debouncedQuery, "append")
+                }
                 >
                   {loading ? "Loading…" : "Load more"}
                 </Button>
@@ -3350,6 +3498,20 @@ export function BlockPageEditor({
                       dispatch({ type: "ADD", blockType, parentId })
                     }
                     onInsert={onInsert}
+                    onMoveOut={(id) => dispatch({ type: "MOVE_OUT", id })}
+                    onMoveInto={(id, targetParentId) =>
+                      dispatch({
+                        type: "MOVE_INTO",
+                        id,
+                        targetParentId,
+                      })
+                    }
+                    onWrapIn={(id, containerType) =>
+                      dispatch({ type: "WRAP_IN", id, containerType })
+                    }
+                    getMoveIntoCandidates={(id) =>
+                      collectContainerCandidates(blocks, id, definitions)
+                    }
                   />
                   <InsertSlot
                     availableBlocks={availableBlocks}

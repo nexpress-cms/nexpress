@@ -58,6 +58,10 @@ export async function GET(request: NextRequest) {
         ? uploaderKindRaw
         : undefined;
     const uploadedByMemberId = params.get("uploadedByMemberId") ?? undefined;
+    // Substring search over filename + alt, server-side. Used by
+    // the page-builder block-image picker; empty / missing falls
+    // through to the historical "list everything" behavior.
+    const q = params.get("q") ?? undefined;
 
     const result = await listMedia({
       page,
@@ -66,6 +70,7 @@ export async function GET(request: NextRequest) {
       mimeType,
       uploaderKind,
       uploadedByMemberId,
+      q,
     });
 
     return npSuccessResponse(result);

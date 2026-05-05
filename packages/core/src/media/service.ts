@@ -3,7 +3,7 @@ import { extname } from "node:path";
 import { buffer as consumeBuffer } from "node:stream/consumers";
 import { Readable } from "node:stream";
 
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
@@ -410,6 +410,14 @@ export async function listMedia(options: {
   mimeType?: string;
   uploaderKind?: NpMediaUploaderKindFilter;
   uploadedByMemberId?: string;
+  /**
+   * Substring match against `filename` and `alt`. Matches
+   * server-side via `ILIKE`, so the page-builder block-image
+   * picker can search the whole library without paging through
+   * every result client-side. Empty / whitespace-only `q` is
+   * treated as no filter.
+   */
+  q?: string;
 }): Promise<NpFindResult> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
@@ -433,6 +441,21 @@ export async function listMedia(options: {
 
   if (options.uploadedByMemberId) {
     conditions.push(eq(npMedia.uploadedByMemberId, options.uploadedByMemberId));
+  }
+
+  // Substring search across filename + alt. We match `ILIKE
+  // %q%` against both columns and OR them so the picker's
+  // search box hits filenames the operator remembers and alt
+  // text they wrote. SQL escapes the literal `%` / `_` chars
+  // by doubling them so a filename containing them isn't
+  // treated as a wildcard.
+  if (options.q && options.q.trim().length > 0) {
+    const needle = `%${options.q.trim().replace(/[%_]/g, (c) => `\\${c}`)}%`;
+    const search = or(
+      ilike(npMedia.filename, needle),
+      ilike(npMedia.alt, needle),
+    );
+    if (search) conditions.push(search);
   }
 
   const whereClause = combineConditions(conditions);
