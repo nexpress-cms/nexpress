@@ -1711,8 +1711,18 @@ export function BlockPageEditor({
     }
     historyDispatch({ type: "DO", action, coalesce });
   }, []);
-  const undo = useCallback(() => historyDispatch({ type: "UNDO" }), []);
-  const redo = useCallback(() => historyDispatch({ type: "REDO" }), []);
+  // Clearing `lastUpdateRef` on undo/redo prevents the next typing
+  // burst from being coalesced into the post-undo state — without
+  // this, an edit made within 600 ms of an undo would replace
+  // `present` without growing `past`, so it couldn't be undone.
+  const undo = useCallback(() => {
+    lastUpdateRef.current = null;
+    historyDispatch({ type: "UNDO" });
+  }, []);
+  const redo = useCallback(() => {
+    lastUpdateRef.current = null;
+    historyDispatch({ type: "REDO" });
+  }, []);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
@@ -1941,7 +1951,11 @@ export function BlockPageEditor({
         blocks={blocks}
         knownTypes={availableBlocks.map((b) => b.type)}
         onApply={(nextBlocks) =>
-          historyDispatch({ type: "RESET_HISTORY", blocks: nextBlocks })
+          // Route through `dispatch` (not `historyDispatch RESET_HISTORY`)
+          // so the apply lands as one undo step. JSON apply is the
+          // most destructive operator action — losing the safety net
+          // here would be a regression vs. the per-block JSON dialog.
+          dispatch({ type: "RESET", blocks: nextBlocks })
         }
       />
     </section>
