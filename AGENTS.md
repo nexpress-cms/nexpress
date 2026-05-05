@@ -2,7 +2,26 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-05-02 (publish-readiness sweep — subpath exports, metadata, Stability section)
+**Last refreshed:** 2026-05-05 (post `np` prefix migration — every `nx`/`Nx`/`NX_`/`nx_`/`nx-`/`--nx-` is now `np`/`Np`/`NP_`/`np_`/`np-`/`--np-`. Package names `@nexpress/*` are unchanged. See `.changeset/breaking-np-prefix-rename.md` for the migration runbook.)
+
+## Naming convention
+
+The framework reserves a single prefix for every symbol/identifier it
+owns: **`np` / `Np` / `NP_` / `np_` / `np-` / `--np-`**. The choice of
+casing follows the host language:
+
+| Layer | Form | Example |
+|-------|------|---------|
+| TypeScript type / interface / class | `Np<Capital>` | `NpAuthUser`, `NpForbiddenError`, `NpBlockDefinition` |
+| Runtime variable / function | `np<Capital>` | `npFetch`, `npUsers` (Drizzle), `npMedia` |
+| Environment variable | `NP_<UPPER>` | `NP_SECRET`, `NP_S3_BUCKET` |
+| Database table | `np_<lower>` | `np_users`, `np_settings`, `np_c_posts` |
+| Cookie / HTTP header | `np-<lower>` / `x-np-<lower>` | `np-session`, `x-np-admin-site` |
+| CSS custom property | `--np-<lower>` | `--np-color-primary`, `--np-radius-md` |
+| CSS class / `@layer` / `data-` attribute | `np-<lower>` / `@layer np-<lower>` / `data-np-<lower>` | `.np-form-input`, `@layer np-theme`, `data-np-theme` |
+
+Package names use the brand name `@nexpress/*` and stay as-is — they're
+orthogonal to the `np` prefix.
 
 ## Commands
 
