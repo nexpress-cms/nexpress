@@ -304,6 +304,7 @@ export type {
   NpJobListResult,
   NpJobCountOptions,
   NpJobStateCounts,
+  NpPluginScheduleStats,
   NpScheduleSummary,
   NpWorkerHeartbeat,
   NpWorkerHealthSummary,
@@ -465,10 +466,15 @@ export {
   getRegisteredPluginSchedules,
   runPluginScheduledTask,
   resetPlugins,
+  isPluginEnabled,
+  invalidatePluginEnabled,
   listPluginStates,
   getPluginState,
   syncPluginRegistrations,
   updatePluginState,
+  checkNexpressCompat,
+  compareSemver,
+  getFrameworkVersion,
 } from "./plugins/index.js";
 export type {
   PluginHookHandler,
@@ -480,6 +486,7 @@ export type {
   ResolvedDashboardWidget,
   NpPluginState,
   NpPluginStateUpdate,
+  NexpressCompatResult,
 } from "./plugins/index.js";
 
 export {

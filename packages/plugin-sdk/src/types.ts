@@ -31,7 +31,46 @@ export const npPluginCapabilities = [
   "hooks:auth",
   "hooks:render",
   "hooks:scheduled",
+  "hooks:media",
 ] as const;
+
+/**
+ * Map from a `ctx.<namespace>.<method>` call to the capability that gates
+ * it. Plugin authors and the admin UI both read this — authors to know
+ * which capabilities to declare, the admin to render a "this plugin can
+ * do X" summary alongside each entry in `/admin/plugins`.
+ *
+ * Methods that are NOT gated (e.g. `ctx.cache.*`, `ctx.log.*`, `ctx.errors.*`,
+ * `ctx.next.*`, `ctx.actions.*`) are deliberately omitted: they're either
+ * in-process bookkeeping that costs nothing, or already gated upstream
+ * (action dispatch is admin-only at the API layer).
+ */
+export const npCapabilityToCtxMembers: Readonly<
+  Record<NpPluginCapability, readonly string[]>
+> = Object.freeze({
+  "content:read": ["content.find", "content.findOne", "content.count"],
+  "content:write": ["content.create", "content.update"],
+  "content:delete": ["content.delete"],
+  "media:read": ["media.list", "media.getById", "media.getUrl"],
+  "media:write": ["media.upload"],
+  "media:delete": ["media.delete"],
+  "settings:read": ["settings.getSite"],
+  "settings:write": [],
+  "theme:read": ["theme.getTokens"],
+  "theme:write": ["theme.setTokens"],
+  "admin:panel": [],
+  "admin:dashboard": [],
+  "admin:collection-tab": [],
+  "api:route": ["routes[].handler"],
+  "site:route": [],
+  "network:fetch": ["http.fetch"],
+  "storage:kv": ["storage.get", "storage.set", "storage.delete", "storage.list", "storage.has"],
+  "hooks:content": ["hooks.content:*"],
+  "hooks:auth": ["hooks.auth:*"],
+  "hooks:render": ["hooks.render:*"],
+  "hooks:scheduled": ["hooks.scheduled:*"],
+  "hooks:media": ["hooks.media:*"],
+});
 
 export type NpPluginCapability = (typeof npPluginCapabilities)[number];
 
@@ -477,6 +516,22 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
     warn(message: string, data?: Record<string, unknown>): void;
     error(message: string, data?: Record<string, unknown>): void;
   };
+  /**
+   * Forwards an error to the host's installed error reporter (Sentry, Bugsnag,
+   * etc.) with `pluginId` automatically tagged. The host already auto-reports
+   * thrown hook handlers, so use this only when you *catch* an error
+   * internally (e.g. a non-fatal upstream failure you log but recover from).
+   */
+  readonly errors: {
+    report(
+      error: unknown,
+      context?: {
+        extra?: Record<string, unknown>;
+        tags?: Record<string, string>;
+        user?: { id?: string; email?: string; role?: string };
+      },
+    ): Promise<void>;
+  };
   readonly cache: {
     get<T = unknown>(key: string): Promise<T | null>;
     set(key: string, value: unknown, ttl?: number): Promise<void>;
@@ -505,8 +560,24 @@ export type NpHookHandler<TConfig = Record<string, unknown>> =
   | ((ctx: NpHookContext<TConfig>) => unknown)
   | string;
 
+/**
+ * Object form of a hook registration: lets a plugin pick a non-default
+ * priority and / or per-handler timeout while still using the same handler
+ * signature as the plain-function form.
+ *
+ * - `priority` — lower runs first, default 100. Use `<100` to mutate the
+ *   payload before observers run, `>100` to react after the dust has settled.
+ * - `timeoutMs` — when set, the host treats a handler that doesn't settle in
+ *   time as a failure (logged + reported, then skipped). Untouched payload.
+ */
+export interface NpHookRegistrationDescriptor<TConfig = Record<string, unknown>> {
+  handler: NpHookHandler<TConfig>;
+  priority?: number;
+  timeoutMs?: number;
+}
+
 export type NpHookRegistration<TConfig = Record<string, unknown>> = Partial<
-  Record<NpHookName, NpHookHandler<TConfig>>
+  Record<NpHookName, NpHookHandler<TConfig> | NpHookRegistrationDescriptor<TConfig>>
 >;
 
 export type NpRouteHandler<TConfig = Record<string, unknown>> = (
