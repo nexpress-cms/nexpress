@@ -735,7 +735,24 @@ function SortableBlockItem({
   };
 
   return (
-    <Card ref={setNodeRef} style={style} className="overflow-hidden border-border/60">
+    <Card
+      ref={setNodeRef}
+      style={style}
+      // Roving keyboard nav (#467) — every row is focusable as a
+      // single tab stop. ArrowUp/Down moves between rows in DOM
+      // order (the editor-level keydown handler does the work via
+      // `[data-np-block-row]` query). `focus-within` highlights the
+      // active subtree on container blocks so operators can tell
+      // which level they're navigating.
+      tabIndex={0}
+      data-np-block-row={block.id}
+      aria-label={`Block row: ${definition?.label ?? block.type}`}
+      className={cn(
+        "overflow-hidden border-border/60 outline-none",
+        "focus-visible:ring-2 focus-visible:ring-primary/40",
+        isContainer && "focus-within:ring-2 focus-within:ring-primary/30",
+      )}
+    >
       <Collapsible open={open} onOpenChange={setOpen}>
         <header className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2">
           <button
@@ -1704,6 +1721,251 @@ function collectUnknownTypes(
   return [...seen].sort();
 }
 
+interface CommandAction {
+  id: string;
+  label: string;
+  hint?: string;
+  // Group label for the section header — actions with the same
+  // group render together with the group as the header.
+  group: "Block" | "Page" | "Add";
+  run: () => void;
+}
+
+interface CommandMenuProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  availableBlocks: NpBlockMetadata[];
+  readFocusedBlockId: () => string | null;
+  blocks: NpBlockInstance[];
+  definitions: Map<string, NpBlockMetadata>;
+  dispatch: (action: EditorAction) => void;
+  onOpenPageJson: () => void;
+}
+
+// Cmd-K command palette for the page-builder. Built on the
+// existing Dialog primitive (no cmdk dep) — the action set is
+// small and the matching is just substring filter, so a custom
+// implementation keeps the bundle lean. Context-sensitive: when
+// a row is focused at the moment the menu opens, block-scoped
+// actions (move, duplicate, delete, edit-as-json) target it;
+// otherwise only page-level + add-block actions show.
+function CommandMenu({
+  open,
+  onOpenChange,
+  availableBlocks,
+  readFocusedBlockId,
+  blocks,
+  definitions,
+  dispatch,
+  onOpenPageJson,
+}: CommandMenuProps) {
+  const [query, setQuery] = useState("");
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Resolve the focused row exactly once per open — not on every
+  // keystroke. The DOM walk + closest() lookup is cheap, but
+  // freezing it gives a stable "context block" so the menu's
+  // labels don't flicker if focus shifts mid-typing.
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setFocusedBlockId(readFocusedBlockId());
+    }
+  }, [open, readFocusedBlockId]);
+
+  // Dialog content auto-focuses its first focusable child, which
+  // is the input — but on Radix the autofocus timing can lose to
+  // the open animation. A microtask kick keeps it reliable.
+  useEffect(() => {
+    if (open) {
+      const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [open]);
+
+  const focusedBlock = focusedBlockId
+    ? findBlockInTree(blocks, focusedBlockId)
+    : null;
+  const focusedDefinition = focusedBlock
+    ? definitions.get(focusedBlock.type)
+    : null;
+  const focusedLabel = focusedDefinition?.label ?? focusedBlock?.type ?? null;
+
+  const actions: CommandAction[] = [];
+
+  if (focusedBlock && focusedBlockId) {
+    const id = focusedBlockId;
+    actions.push(
+      {
+        id: "block.move-up",
+        label: `Move ${focusedLabel} up`,
+        group: "Block",
+        run: () => dispatch({ type: "MOVE_UP", id }),
+      },
+      {
+        id: "block.move-down",
+        label: `Move ${focusedLabel} down`,
+        group: "Block",
+        run: () => dispatch({ type: "MOVE_DOWN", id }),
+      },
+      {
+        id: "block.duplicate",
+        label: `Duplicate ${focusedLabel}`,
+        group: "Block",
+        run: () => dispatch({ type: "DUPLICATE", id }),
+      },
+      {
+        id: "block.delete",
+        label: `Delete ${focusedLabel}`,
+        hint: "destructive",
+        group: "Block",
+        run: () => dispatch({ type: "DELETE", id }),
+      },
+    );
+  }
+
+  for (const def of availableBlocks) {
+    actions.push({
+      id: `add.${def.type}`,
+      label: `Add block: ${def.label}`,
+      hint: def.type,
+      group: "Add",
+      run: () => dispatch({ type: "ADD", blockType: def.type }),
+    });
+  }
+
+  actions.push({
+    id: "page.edit-json",
+    label: "Edit page JSON",
+    group: "Page",
+    run: onOpenPageJson,
+  });
+
+  const filtered = filterCommandActions(actions, query);
+  const groups = groupCommandActions(filtered);
+
+  function runAction(action: CommandAction) {
+    action.run();
+    onOpenChange(false);
+  }
+
+  function handleInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter" && filtered.length > 0) {
+      event.preventDefault();
+      runAction(filtered[0]);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg gap-2 p-0">
+        <DialogHeader className="border-b border-border/60 px-3 py-2">
+          <DialogTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Page-builder commands
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Run a context-sensitive page-builder action by typing a name.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="px-3 pt-2">
+          <Input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={handleInputKeyDown}
+            placeholder={
+              focusedLabel
+                ? `Run a command for ${focusedLabel}…`
+                : "Type to filter commands…"
+            }
+            aria-label="Filter commands"
+          />
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto px-1 pb-2">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+              No matching commands.
+            </p>
+          ) : (
+            groups.map(({ group, items }) => (
+              <div key={group} className="px-2 pt-2">
+                <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {group}
+                </div>
+                <ul className="space-y-0.5">
+                  {items.map((action) => (
+                    <li key={action.id}>
+                      <button
+                        type="button"
+                        onClick={() => runAction(action)}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
+                          "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+                          action.hint === "destructive" && "text-destructive",
+                        )}
+                      >
+                        <span className="truncate">{action.label}</span>
+                        {action.hint && action.hint !== "destructive" ? (
+                          <span className="ml-2 truncate font-mono text-[10px] text-muted-foreground">
+                            {action.hint}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function findBlockInTree(
+  arr: NpBlockInstance[],
+  id: string,
+): NpBlockInstance | null {
+  for (const b of arr) {
+    if (b.id === id) return b;
+    if (b.children) {
+      const inChild = findBlockInTree(b.children, id);
+      if (inChild) return inChild;
+    }
+  }
+  return null;
+}
+
+function filterCommandActions(
+  actions: CommandAction[],
+  query: string,
+): CommandAction[] {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) return actions;
+  return actions.filter((a) => {
+    const haystack = `${a.label} ${a.hint ?? ""}`.toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
+function groupCommandActions(
+  actions: CommandAction[],
+): { group: CommandAction["group"]; items: CommandAction[] }[] {
+  const order: CommandAction["group"][] = ["Block", "Add", "Page"];
+  const buckets = new Map<CommandAction["group"], CommandAction[]>();
+  for (const a of actions) {
+    const list = buckets.get(a.group) ?? [];
+    list.push(a);
+    buckets.set(a.group, list);
+  }
+  return order
+    .filter((g) => (buckets.get(g)?.length ?? 0) > 0)
+    .map((g) => ({ group: g, items: buckets.get(g) ?? [] }));
+}
+
 interface BlockImagePickerProps {
   inputId: string;
   value: string;
@@ -2057,6 +2319,8 @@ export function BlockPageEditor({
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
   // Live preview toggle. Persisted in localStorage so an operator
   // who keeps it open across sessions doesn't need to flip it on
   // every page load. Defaults to off — preview costs an extra
@@ -2165,6 +2429,79 @@ export function BlockPageEditor({
   };
   const activeBlock = activeId ? findInTree(blocks, activeId) : undefined;
 
+  // Roving keyboard navigation (#467). Editor section captures
+  // ArrowUp / ArrowDown / Home / End and walks the
+  // `[data-np-block-row]` set in DOM order so nested-container
+  // children flow naturally between their parent and the next
+  // top-level row. We skip when focus is inside a typing surface
+  // (input / textarea / contenteditable) — operators editing prop
+  // text expect arrow keys to move the caret.
+  function handleKeyboardNav(event: React.KeyboardEvent<HTMLElement>) {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.matches("input, textarea") || target.isContentEditable)
+    ) {
+      return;
+    }
+
+    // Cmd-K / Ctrl-K opens the command menu — works from anywhere
+    // inside the editor, including from inside a focused row.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      setCommandOpen(true);
+      return;
+    }
+
+    const key = event.key;
+    if (
+      key !== "ArrowDown" &&
+      key !== "ArrowUp" &&
+      key !== "Home" &&
+      key !== "End"
+    ) {
+      return;
+    }
+    const root = sectionRef.current;
+    if (!root) return;
+    const rows = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-np-block-row]"),
+    );
+    if (rows.length === 0) return;
+    const activeRow = target?.closest<HTMLElement>("[data-np-block-row]");
+    const currentIndex = activeRow ? rows.indexOf(activeRow) : -1;
+    let next = currentIndex;
+    if (key === "ArrowDown") {
+      next = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, rows.length - 1);
+    } else if (key === "ArrowUp") {
+      next = currentIndex < 0 ? rows.length - 1 : Math.max(currentIndex - 1, 0);
+    } else if (key === "Home") {
+      next = 0;
+    } else if (key === "End") {
+      next = rows.length - 1;
+    }
+    if (next === currentIndex) {
+      // Already at the boundary — let arrow keys propagate so
+      // operators can scroll past the editor with the keyboard.
+      return;
+    }
+    event.preventDefault();
+    rows[next]?.focus();
+  }
+
+  // Currently-focused block id for the command menu's
+  // context-sensitive actions. We read it lazily from the DOM
+  // when the menu opens (focused row owns `:focus-visible`),
+  // rather than mirroring focus into React state on every move
+  // (which would re-render the editor on every Tab).
+  function readFocusedBlockId(): string | null {
+    if (typeof document === "undefined") return null;
+    const focusedRow = document.activeElement?.closest<HTMLElement>(
+      "[data-np-block-row]",
+    );
+    return focusedRow?.dataset.npBlockRow ?? null;
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
     if (!event.over) return;
@@ -2189,7 +2526,11 @@ export function BlockPageEditor({
   }
 
   return (
-    <section className={cn("np-block-page-editor flex flex-col gap-4")}>
+    <section
+      ref={sectionRef}
+      className={cn("np-block-page-editor flex flex-col gap-4")}
+      onKeyDown={handleKeyboardNav}
+    >
       <div className="flex items-center justify-end gap-1">
         <Button
           type="button"
@@ -2342,6 +2683,17 @@ export function BlockPageEditor({
           // here would be a regression vs. the per-block JSON dialog.
           dispatch({ type: "RESET", blocks: nextBlocks })
         }
+      />
+
+      <CommandMenu
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        availableBlocks={availableBlocks}
+        readFocusedBlockId={readFocusedBlockId}
+        blocks={blocks}
+        definitions={definitions}
+        dispatch={dispatch}
+        onOpenPageJson={() => setPageJsonOpen(true)}
       />
     </section>
   );
