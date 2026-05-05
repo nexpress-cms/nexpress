@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { NpFieldConfig } from "@nexpress/core";
-import { ExternalLink, Loader2, Settings2 } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  Loader2,
+  Package,
+  RefreshCw,
+  Search,
+  Settings2,
+} from "lucide-react";
 import { useForm } from "react-hook-form";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
@@ -20,6 +28,7 @@ import {
   DialogTitle,
 } from "../ui/dialog.js";
 import { Form } from "../ui/form.js";
+import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
@@ -79,6 +88,7 @@ export function PluginsManager() {
   const [configText, setConfigText] = useState("");
   const [configError, setConfigError] = useState<string | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [reloading, setReloading] = useState(false);
 
   const loadPlugins = useCallback(async () => {
     try {
@@ -184,12 +194,58 @@ export function PluginsManager() {
     }
   };
 
+  const reloadAllPlugins = async () => {
+    setReloading(true);
+    setToast(null);
+    try {
+      const response = await npFetch("/api/admin/plugins/reload", { method: "POST" });
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!response.ok) {
+        setToast({
+          type: "error",
+          message: getErrorMessage(payload, "Failed to reload plugins."),
+        });
+        return;
+      }
+      setToast({
+        type: "success",
+        message:
+          "Re-registered every plugin. Code edits to plugin handlers still need a dev-server restart to take effect.",
+      });
+      await loadPlugins();
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to reload plugins.",
+      });
+    } finally {
+      setReloading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Plugins"
-        description="Toggle and configure installed plugins. Enable / disable applies to the next request; new plugins still need a server restart to register hooks and routes."
-      />
+      <div className="flex items-start justify-between gap-3">
+        <PageHeader
+          title="Plugins"
+          description="Toggle and configure installed plugins. Enable / disable applies to the next request; new plugins still need a server restart to register hooks and routes."
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void reloadAllPlugins()}
+          disabled={reloading}
+          title="Reset the plugin registry and re-run setup() on every plugin"
+        >
+          {reloading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
+          Reload all
+        </Button>
+      </div>
 
       {toast ? (
         <div
@@ -334,6 +390,8 @@ export function PluginsManager() {
             </Card>
           ))
         : null}
+
+      <DiscoverPanel />
 
       <Dialog
         open={configPlugin !== null}
@@ -496,5 +554,188 @@ function PluginConfigForm({
         </DialogFooter>
       </form>
     </Form>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Discover panel — npm registry search keyed on `nexpress-plugin`.
+// Lazy: empty until the operator opens the panel + types a query (or
+// hits "Browse all"). The endpoint forwards the call to
+// `registry.npmjs.org/-/v1/search`; we only keep the curated subset of
+// fields needed for the cards.
+// ────────────────────────────────────────────────────────────────────────
+
+interface DiscoveredPlugin {
+  name: string;
+  version: string;
+  description: string;
+  keywords: string[];
+  npmUrl: string | null;
+  repositoryUrl: string | null;
+  homepageUrl: string | null;
+  publishedAt: string | null;
+  author: string | null;
+}
+
+function DiscoverPanel() {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<DiscoveredPlugin[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const search = useCallback(async (q: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      const response = await npFetch(`/api/admin/plugins/discover?${params.toString()}`);
+      const payload = (await response.json().catch(() => null)) as
+        | { items?: DiscoveredPlugin[]; error?: { message?: string } | string }
+        | null;
+      if (!response.ok) {
+        const message =
+          (payload && typeof payload.error === "object" && payload.error?.message) ||
+          (typeof payload?.error === "string" ? payload.error : null) ||
+          "Failed to query the npm registry.";
+        setError(message);
+        return;
+      }
+      setItems(payload?.items ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to query the npm registry.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const copy = async (packageName: string) => {
+    const command = `nexpress plugin add ${packageName}`;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(command);
+        setCopied(packageName);
+        setTimeout(() => setCopied(null), 2_000);
+      }
+    } catch {
+      // Clipboard may be blocked (HTTP, browser policy). Fall through —
+      // the install command is still visible inline on the card.
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="flex items-center gap-2">
+          <Package className="size-4" />
+          Discover plugins
+        </CardTitle>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const next = !open;
+            setOpen(next);
+            if (next && items === null && !loading) void search("");
+          }}
+        >
+          {open ? "Hide" : "Browse npm"}
+        </Button>
+      </CardHeader>
+      {open ? (
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Searches packages on the npm registry tagged with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+              keywords:nexpress-plugin
+            </code>
+            . Click <em>Copy install command</em> and run it from your project root.
+          </p>
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void search(query);
+            }}
+          >
+            <Input
+              placeholder="Filter by name or keyword (e.g. seo)"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <Button type="submit" variant="outline" size="sm" disabled={loading}>
+              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+              Search
+            </Button>
+          </form>
+          {error ? (
+            <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p>
+          ) : null}
+          {items && items.length === 0 && !loading && !error ? (
+            <p className="text-sm text-muted-foreground">No matching plugins on the registry.</p>
+          ) : null}
+          {items && items.length > 0 ? (
+            <div className="space-y-2">
+              {items.map((plugin) => (
+                <div
+                  key={plugin.name}
+                  className="rounded-xl border border-border/60 p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        {plugin.name}
+                        {plugin.version ? (
+                          <Badge variant="secondary" className="font-mono text-[10px]">
+                            v{plugin.version}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {plugin.description ? (
+                        <p className="text-xs text-muted-foreground">{plugin.description}</p>
+                      ) : null}
+                      <p className="font-mono text-[10px] text-muted-foreground">
+                        nexpress plugin add {plugin.name}
+                      </p>
+                      {plugin.author || plugin.publishedAt ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          {plugin.author ? `by ${plugin.author}` : ""}
+                          {plugin.author && plugin.publishedAt ? " · " : ""}
+                          {plugin.publishedAt
+                            ? `published ${new Date(plugin.publishedAt).toLocaleDateString()}`
+                            : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void copy(plugin.name)}
+                      >
+                        <Copy className="size-3.5" />
+                        {copied === plugin.name ? "Copied!" : "Copy install"}
+                      </Button>
+                      {plugin.npmUrl ? (
+                        <Button type="button" variant="outline" size="sm" asChild>
+                          <a href={plugin.npmUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink className="size-3.5" />
+                            npm
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </CardContent>
+      ) : null}
+    </Card>
   );
 }

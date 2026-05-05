@@ -179,9 +179,14 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
           local: { directory: "./public/media", baseUrl: "/media" },
         },`;
 
-  const pluginsHint = `  plugins: [\n    // Register sdk-built plugins here. Example:\n    //   import { readingTimePlugin } from "@nexpress/plugin-reading-time";\n    //   plugins: [readingTimePlugin],\n  ],`;
+  // Marker comments let `nexpress plugin add/remove <pkg>` from
+  // `@nexpress/cli` edit this file automatically. Keep them in
+  // place even when no plugins are installed — removing them
+  // forces the operator to do manual edits later.
+  const pluginsHint = `  plugins: [\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ],`;
+  const importsBlock = `// @nexpress:plugins-imports-start\n// @nexpress:plugins-imports-end\n\n`;
 
-  return `import { defineConfig } from "@nexpress/core";\n${imports}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  auth: {\n    secret: process.env.NP_SECRET!,\n  },\n${pluginsHint}\n});\n`;
+  return `import { defineConfig } from "@nexpress/core";\n${imports}${importsBlock}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  auth: {\n    secret: process.env.NP_SECRET!,\n  },\n${pluginsHint}\n});\n`;
 }
 
 function drizzleConfigTemplate(): string {
