@@ -124,6 +124,110 @@ const BUILT_IN_PATTERNS: NpPattern[] = [
       },
     ],
   },
+  {
+    id: "cta-section",
+    label: "CTA section",
+    description: "Bold call-to-action banner — primed for end-of-page conversions.",
+    source: "built-in",
+    blocks: [
+      {
+        id: "tpl-cta",
+        type: "cta",
+        props: {
+          heading: "Ready to ship faster?",
+          description:
+            "Stop wrangling block shapes and get back to writing content. Try NexPress for free.",
+          buttonText: "Start your free trial",
+          buttonUrl: "/signup",
+          variant: "primary",
+        },
+      },
+    ],
+  },
+  {
+    id: "feature-grid-section",
+    label: "Feature grid section",
+    description: "Heading + three-column feature grid showcasing key capabilities.",
+    source: "built-in",
+    blocks: [
+      {
+        id: "tpl-feature-grid",
+        type: "feature-grid",
+        props: {
+          heading: "Everything your team needs",
+          columns: 3,
+          features: [
+            {
+              icon: "⚡",
+              title: "Fast to launch",
+              description: "Compose sections quickly with reusable defaults.",
+            },
+            {
+              icon: "🧩",
+              title: "Modular",
+              description: "Mix content patterns without rebuilding the page shell.",
+            },
+            {
+              icon: "🖥️",
+              title: "Server-friendly",
+              description: "Render blocks into stable markup for production pages.",
+            },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: "image-gallery-section",
+    label: "Image gallery section",
+    description: "Three-image gallery showcase. Replace the placeholders with your own assets.",
+    source: "built-in",
+    blocks: [
+      {
+        id: "tpl-image-gallery",
+        type: "image-gallery",
+        props: {
+          heading: "Selected work",
+          columns: 3,
+          images: [
+            {
+              src: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=900&q=80",
+              alt: "Workspace setup",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
+              alt: "Team collaboration",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80",
+              alt: "Product planning board",
+            },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: "contact-section",
+    label: "Contact section",
+    description: "Heading + lead-capture form. Wire it to your email plugin to enable submissions.",
+    source: "built-in",
+    blocks: [
+      {
+        id: "tpl-contact",
+        type: "contact-form",
+        props: {
+          heading: "Talk to our team",
+          email: "hello@example.com",
+          fields: [
+            { label: "Name" },
+            { label: "Email" },
+            { label: "Company" },
+          ],
+        },
+      },
+    ],
+  },
 ];
 
 export function getBuiltInPatterns(): NpPattern[] {

@@ -2870,25 +2870,53 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
     setUploading(true);
     setError(null);
     try {
-      // Upload sequentially — the media endpoint is single-file
-      // and parallel uploads from one operator are unusual.
-      for (const file of Array.from(fileList)) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch("/api/media", {
-          method: "POST",
-          body: fd,
-          credentials: "same-origin",
-        });
-        if (!res.ok) {
-          throw new Error(`Upload failed (${res.status})`);
-        }
-        const doc = (await res.json()) as { doc?: MediaDoc };
-        if (doc.doc?.url) {
-          onChange(doc.doc.url);
-        }
+      // Upload in parallel via Promise.all (#467 follow-up). The
+      // media endpoint is single-file but the network is the
+      // bottleneck — running uploads concurrently makes a 5-image
+      // batch finish in roughly 1× the slowest upload instead of
+      // the sum. `allSettled` so a single corrupt file doesn't
+      // block the rest from completing.
+      const files = Array.from(fileList);
+      const results = await Promise.allSettled(
+        files.map(async (file) => {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/media", {
+            method: "POST",
+            body: fd,
+            credentials: "same-origin",
+          });
+          if (!res.ok) {
+            throw new Error(`Upload failed (${res.status})`);
+          }
+          const doc = (await res.json()) as { doc?: MediaDoc };
+          return doc.doc?.url ?? null;
+        }),
+      );
+      const failures = results.filter(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
+      // Pick the URL of the LAST successful upload to fill the
+      // field — operators that drop a single file get that file;
+      // batch uploads land the most-recent in the field, with the
+      // rest available via the library.
+      const successfulUrls = results
+        .filter(
+          (r): r is PromiseFulfilledResult<string | null> =>
+            r.status === "fulfilled",
+        )
+        .map((r) => r.value)
+        .filter((url): url is string => typeof url === "string");
+      const lastUrl = successfulUrls[successfulUrls.length - 1];
+      if (lastUrl) onChange(lastUrl);
+      if (failures.length > 0) {
+        setError(
+          failures.length === files.length
+            ? "All uploads failed."
+            : `${failures.length} of ${files.length} uploads failed.`,
+        );
       }
-      // Refresh listing so the new asset shows at the top.
+      // Refresh listing so the new assets show at the top.
       await loadMedia(1, debouncedQuery, "replace");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
