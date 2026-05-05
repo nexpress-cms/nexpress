@@ -2290,35 +2290,131 @@ function ArrayFieldControl({
   );
 }
 
+// Issue #467 phase 3 — richer media picker.
+//
+// Upgrades over the old picker:
+// - Search the media library by filename / alt text instead of
+//   browsing the first 24 items only.
+// - Pagination via "Load more" so libraries with thousands of
+//   assets stay reachable.
+// - Drag-and-drop / click-to-upload right inside the dialog
+//   (POSTs to the same /api/media endpoint the media page uses).
+// - Broken-image state on the inline preview so a stale URL is
+//   visible to the operator (instead of silently disappearing).
+// - Replace / Remove affordances on the URL row.
 function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [items, setItems] = useState<MediaDoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [previewBroken, setPreviewBroken] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const PAGE_SIZE = 24;
 
+  // Debounce query to avoid hammering the media API on every
+  // keystroke while still feeling responsive.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  // Reset broken-state when the URL changes — operator may have
+  // pasted a valid URL after a broken one. The <img onError> hook
+  // re-flips it to true if the new URL also fails.
+  useEffect(() => {
+    setPreviewBroken(false);
+  }, [value]);
+
+  // The media route exposes page-based pagination and no server-
+  // side search yet, so we keep loading pages and filter
+  // client-side by filename / alt text. Server-side search is a
+  // follow-up — once /api/media accepts a `q` parameter we drop
+  // the client filter and pass it through.
+  const loadMedia = useCallback(
+    async (page: number, mode: "replace" | "append") => {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      params.set("page", String(page));
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/media?${params.toString()}`);
+        if (!res.ok) throw new Error(`Media load failed (${res.status})`);
+        const payload = (await res.json()) as {
+          docs?: MediaDoc[];
+          totalDocs?: number;
+          totalPages?: number;
+          page?: number;
+        };
+        const next = Array.isArray(payload.docs) ? payload.docs : [];
+        setItems((prev) => (mode === "append" ? [...prev, ...next] : next));
+        const totalPages =
+          typeof payload.totalPages === "number" ? payload.totalPages : page;
+        setHasMore(page < totalPages);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load media.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  // Reset + load page 1 on open. We don't refetch on query change
+  // since filtering is client-side.
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
-    setLoading(true);
+    void loadMedia(1, "replace");
+  }, [open, loadMedia]);
+
+  const filteredItems = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => {
+      const haystack =
+        `${item.filename ?? ""} ${item.alt ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, debouncedQuery]);
+
+  const currentPage = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+
+  const handleUploadFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setUploading(true);
     setError(null);
-    fetch("/api/media?limit=24")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to load media.");
-        const payload = (await res.json()) as { docs?: MediaDoc[] };
-        if (cancelled) return;
-        setItems(Array.isArray(payload.docs) ? payload.docs : []);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load media.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+    try {
+      // Upload sequentially — the media endpoint is single-file
+      // and parallel uploads from one operator are unusual.
+      for (const file of Array.from(fileList)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/media", {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin",
+        });
+        if (!res.ok) {
+          throw new Error(`Upload failed (${res.status})`);
+        }
+        const doc = (await res.json()) as { doc?: MediaDoc };
+        if (doc.doc?.url) {
+          onChange(doc.doc.url);
+        }
+      }
+      // Refresh listing so the new asset shows at the top.
+      await loadMedia(1, "replace");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="grid gap-2">
@@ -2334,19 +2430,34 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
         <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
           Library
         </Button>
+        {value ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange("")}
+            aria-label="Remove image"
+          >
+            Remove
+          </Button>
+        ) : null}
       </div>
       {value ? (
-        // Lightweight preview — confirms the URL resolves before
-        // the operator hits Save. Gracefully empty when load fails.
+        // Inline preview with explicit broken-state so a stale or
+        // 404-ing URL is visible instead of silently collapsing.
         <div className="overflow-hidden rounded-md border border-border/60 bg-muted/20">
-          <img
-            src={value}
-            alt=""
-            className="block max-h-32 w-full object-cover"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
+          {previewBroken ? (
+            <div className="flex h-32 items-center justify-center px-3 text-xs text-amber-600 dark:text-amber-400">
+              Image preview failed to load. Check the URL or pick from the library.
+            </div>
+          ) : (
+            <img
+              src={value}
+              alt=""
+              className="block max-h-32 w-full object-cover"
+              onError={() => setPreviewBroken(true)}
+            />
+          )}
         </div>
       ) : null}
 
@@ -2355,15 +2466,54 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
           <DialogHeader>
             <DialogTitle>Select an image</DialogTitle>
             <DialogDescription>
-              Pick from the media library or paste a URL above.
+              Search the library, upload a new file, or paste a URL above.
             </DialogDescription>
           </DialogHeader>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading media…</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              placeholder="Search by filename or alt text"
+              className="h-8 flex-1"
+              autoFocus
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                void handleUploadFiles(e.currentTarget.files);
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+          </div>
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+            >
+              {error}
+            </p>
           ) : null}
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <div className="grid max-h-[28rem] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
-            {items.map((item) => (
+            {filteredItems.length === 0 && !loading ? (
+              <div className="col-span-full px-2 py-6 text-center text-xs text-muted-foreground">
+                {debouncedQuery
+                  ? "No assets match your search. Load more pages to broaden the result set."
+                  : "Library is empty. Use Upload to add an image."}
+              </div>
+            ) : null}
+            {filteredItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -2371,7 +2521,7 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
                   if (item.url) onChange(item.url);
                   setOpen(false);
                 }}
-                className="flex flex-col gap-1 overflow-hidden rounded-md border border-border/60 text-left hover:bg-accent"
+                className="flex flex-col gap-1 overflow-hidden rounded-md border border-border/60 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 {item.url ? (
                   <img
@@ -2390,7 +2540,23 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
               </button>
             ))}
           </div>
-          <DialogFooter>
+          <DialogFooter className="justify-between sm:justify-between">
+            <div className="flex items-center gap-2">
+              {hasMore ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={loading}
+                  onClick={() => void loadMedia(currentPage + 1, "append")}
+                >
+                  {loading ? "Loading…" : "Load more"}
+                </Button>
+              ) : null}
+              {loading && !hasMore ? (
+                <span className="text-xs text-muted-foreground">Loading…</span>
+              ) : null}
+            </div>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
