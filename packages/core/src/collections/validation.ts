@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import { type NxCollectionConfig, type NxFieldConfig } from "../config/types.js";
+import { type NpCollectionConfig, type NpFieldConfig } from "../config/types.js";
 
 export function buildZodSchema(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const shape: Record<string, z.ZodTypeAny> = {};
 
@@ -25,7 +25,7 @@ export function buildZodSchema(
   return z.object(shape);
 }
 
-export function getCollectionZodSchema(config: NxCollectionConfig): z.ZodSchema {
+export function getCollectionZodSchema(config: NpCollectionConfig): z.ZodSchema {
   const base = buildZodSchema(config.fields).extend({
     // Phase 21.17 — per-doc visibility flag. Optional on writes;
     // the pipeline lets the column default to "public" when the
@@ -38,7 +38,7 @@ export function getCollectionZodSchema(config: NxCollectionConfig): z.ZodSchema 
   // strip behavior would otherwise drop them before the
   // pipeline could read them. Validation of `locale` against
   // the configured locales list happens later in the pipeline
-  // (we don't have the parent NxConfig here).
+  // (we don't have the parent NpConfig here).
   if (config.i18n) {
     return base.extend({
       locale: z.string().min(1).optional(),
@@ -48,7 +48,7 @@ export function getCollectionZodSchema(config: NxCollectionConfig): z.ZodSchema 
   return base;
 }
 
-function buildFieldSchema(field: Exclude<NxFieldConfig, { type: "row" | "collapsible" | "group" }>): z.ZodTypeAny {
+function buildFieldSchema(field: Exclude<NpFieldConfig, { type: "row" | "collapsible" | "group" }>): z.ZodTypeAny {
   switch (field.type) {
     case "text": {
       let schema = z.string();

@@ -1,14 +1,14 @@
 import { sanitizeTokenValue } from "@nexpress/core";
 import type {
-  NxThemeColors,
-  NxThemeShape,
-  NxThemeTokens,
-  NxThemeTypography,
+  NpThemeColors,
+  NpThemeShape,
+  NpThemeTokens,
+  NpThemeTypography,
 } from "@nexpress/core";
 
-type ThemeColorKey = Extract<keyof NxThemeColors, string>;
-type ThemeTypographyKey = Extract<keyof NxThemeTypography, string>;
-type ThemeShapeKey = Extract<keyof NxThemeShape, string>;
+type ThemeColorKey = Extract<keyof NpThemeColors, string>;
+type ThemeTypographyKey = Extract<keyof NpThemeTypography, string>;
+type ThemeShapeKey = Extract<keyof NpThemeShape, string>;
 
 const COLOR_KEYS: ThemeColorKey[] = [
   "primary",
@@ -74,12 +74,12 @@ function formatDeclaration(name: string, value: string): string {
  * Color-scheme variants (light/dark) are intentionally not
  * generated here — the framework no longer prescribes a
  * dark-mode shape. Themes that opt into a color-mode toggle
- * mount `<NxColorSchemeScript />` inside their own shell and
+ * mount `<NpColorSchemeScript />` inside their own shell and
  * ship a `[data-theme="dark"] { … }` block in their own CSS
  * (`impl.css`), so each theme controls exactly which tokens
  * flip and how.
  */
-export function generateThemeCss(theme: NxThemeTokens): string {
+export function generateThemeCss(theme: NpThemeTokens): string {
   const rootDeclarations = [
     ...COLOR_KEYS.map((key) => formatDeclaration(`--nx-color-${camelToKebab(key)}`, theme.colors[key])),
     ...TYPOGRAPHY_KEYS.map((key) => formatDeclaration(getTypographyVarName(key), theme.typography[key])),

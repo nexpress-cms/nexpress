@@ -15,14 +15,14 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 
 import { ImageNode } from "./image-node.js";
-import { NxEditorOnChangePlugin } from "./on-change-plugin.js";
+import { NpEditorOnChangePlugin } from "./on-change-plugin.js";
 import { ToolbarPlugin } from "./toolbar-plugin.js";
-import type { NxEditorConfig, NxRichTextContent } from "./types.js";
+import type { NpEditorConfig, NpRichTextContent } from "./types.js";
 
-interface NxRichTextEditorProps {
-  value: NxRichTextContent | null;
-  onChange: (value: NxRichTextContent) => void;
-  config?: NxEditorConfig;
+interface NpRichTextEditorProps {
+  value: NpRichTextContent | null;
+  onChange: (value: NpRichTextContent) => void;
+  config?: NpEditorConfig;
 }
 
 const NODES = [
@@ -38,10 +38,10 @@ const NODES = [
   ImageNode,
 ];
 
-export function NxRichTextEditor({ value, onChange, config }: NxRichTextEditorProps) {
+export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorProps) {
   // Capture the value at first mount only. After that, Lexical's
   // internal editor state IS the source of truth — typing flows
-  // out via NxEditorOnChangePlugin → form → `value` prop, but we
+  // out via NpEditorOnChangePlugin → form → `value` prop, but we
   // deliberately do NOT feed `value` back into the composer on
   // every render. The previous implementation re-keyed the
   // <LexicalComposer> on the serialized value, which destroyed
@@ -108,7 +108,7 @@ export function NxRichTextEditor({ value, onChange, config }: NxRichTextEditorPr
         <ListPlugin />
         <LinkPlugin />
         <HorizontalRulePlugin />
-        <NxEditorOnChangePlugin onChange={onChange} />
+        <NpEditorOnChangePlugin onChange={onChange} />
       </div>
     </LexicalComposer>
   );

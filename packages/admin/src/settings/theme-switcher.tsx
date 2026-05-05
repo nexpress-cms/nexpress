@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, Sparkles } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -59,7 +59,7 @@ export function ThemeSwitcher({
   async function load() {
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/themes");
+      const res = await npFetch("/api/admin/themes");
       const payload = (await res.json().catch(() => null)) as {
         docs?: ThemeSummary[];
         error?: { message?: string };
@@ -79,7 +79,7 @@ export function ThemeSwitcher({
     setMessage(null);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/themes/active", {
+      const res = await npFetch("/api/admin/themes/active", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),

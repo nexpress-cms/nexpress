@@ -2,7 +2,7 @@ import { runHook } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { clearAuthCookies, optionalAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 /**
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const response = nxSuccessResponse({ success: true });
+    const response = npSuccessResponse({ success: true });
     clearAuthCookies(response);
 
     // Phase 15.7 — clear the multi-site picker cookie
@@ -47,6 +47,6 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

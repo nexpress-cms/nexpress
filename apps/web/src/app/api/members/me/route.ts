@@ -1,8 +1,8 @@
 import {
-  NxValidationError,
+  NpValidationError,
   hashPassword,
   invalidateAllMemberSessions,
-  nxMembers,
+  npMembers,
   verifyPassword,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 import { NextResponse } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { clearMemberAuthCookies, requireMember } from "@/lib/member-auth-helpers";
 import { ensureFor } from "@/lib/init-core";
@@ -25,25 +25,25 @@ export async function GET(request: NextRequest) {
     const db = getDb();
     const [row] = await db
       .select({
-        id: nxMembers.id,
-        handle: nxMembers.handle,
-        email: nxMembers.email,
-        emailVerified: nxMembers.emailVerified,
-        displayName: nxMembers.displayName,
-        avatar: nxMembers.avatar,
-        bio: nxMembers.bio,
-        status: nxMembers.status,
-        reputation: nxMembers.reputation,
-        createdAt: nxMembers.createdAt,
+        id: npMembers.id,
+        handle: npMembers.handle,
+        email: npMembers.email,
+        emailVerified: npMembers.emailVerified,
+        displayName: npMembers.displayName,
+        avatar: npMembers.avatar,
+        bio: npMembers.bio,
+        status: npMembers.status,
+        reputation: npMembers.reputation,
+        createdAt: npMembers.createdAt,
       })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, member.id))
+      .from(npMembers)
+      .where(eq(npMembers.id, member.id))
       .limit(1);
 
     if (!row) throw new Error("Member row vanished mid-request");
-    return nxSuccessResponse({ member: row });
+    return npSuccessResponse({ member: row });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -58,7 +58,7 @@ interface PatchBody {
 
 function validatePatch(raw: unknown): PatchBody {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Body must be a JSON object" },
     ]);
   }
@@ -66,7 +66,7 @@ function validatePatch(raw: unknown): PatchBody {
   const out: PatchBody = {};
   if (body.displayName !== undefined) {
     if (typeof body.displayName !== "string" || body.displayName.trim().length === 0) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "displayName", message: "Display name must be a non-empty string" },
       ]);
     }
@@ -80,7 +80,7 @@ function validatePatch(raw: unknown): PatchBody {
   }
   if (body.newPassword !== undefined) {
     if (typeof body.newPassword !== "string" || body.newPassword.length < MIN_PASSWORD_LENGTH) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "newPassword",
           message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
@@ -88,7 +88,7 @@ function validatePatch(raw: unknown): PatchBody {
       ]);
     }
     if (typeof body.currentPassword !== "string" || body.currentPassword.length === 0) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "currentPassword", message: "Current password required to change password" },
       ]);
     }
@@ -113,18 +113,18 @@ export async function PATCH(request: NextRequest) {
     let mustReauth = false;
     if (patch.newPassword) {
       const [row] = await db
-        .select({ password: nxMembers.password })
-        .from(nxMembers)
-        .where(eq(nxMembers.id, member.id))
+        .select({ password: npMembers.password })
+        .from(npMembers)
+        .where(eq(npMembers.id, member.id))
         .limit(1);
       if (!row?.password) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "currentPassword", message: "Account has no password set (SSO-only)" },
         ]);
       }
       const ok = await verifyPassword(row.password, patch.currentPassword!);
       if (!ok) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "currentPassword", message: "Current password is incorrect" },
         ]);
       }
@@ -134,10 +134,10 @@ export async function PATCH(request: NextRequest) {
 
     if (Object.keys(updates).length === 1) {
       // Only updatedAt — nothing to do.
-      return nxSuccessResponse({ ok: true });
+      return npSuccessResponse({ ok: true });
     }
 
-    await db.update(nxMembers).set(updates).where(eq(nxMembers.id, member.id));
+    await db.update(npMembers).set(updates).where(eq(npMembers.id, member.id));
 
     if (mustReauth) {
       // Bumps tokenVersion + drops sessions so existing JWTs are
@@ -148,9 +148,9 @@ export async function PATCH(request: NextRequest) {
       return response;
     }
 
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -166,7 +166,7 @@ export async function DELETE(request: NextRequest) {
     const db = getDb();
 
     await db
-      .update(nxMembers)
+      .update(npMembers)
       .set({
         status: "deleted",
         // Append the id to email + handle so the unique constraints free
@@ -185,7 +185,7 @@ export async function DELETE(request: NextRequest) {
         emailVerifyExpiresAt: null,
         updatedAt: new Date(),
       })
-      .where(eq(nxMembers.id, member.id));
+      .where(eq(npMembers.id, member.id));
 
     await invalidateAllMemberSessions(db as never, member.id);
 
@@ -193,6 +193,6 @@ export async function DELETE(request: NextRequest) {
     clearMemberAuthCookies(response);
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

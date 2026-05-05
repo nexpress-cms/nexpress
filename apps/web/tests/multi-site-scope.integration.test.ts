@@ -39,7 +39,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 17 — multi-tenant audit + plugin stor
   it("recordAuditEvent stamps site_id from the current resolver", async () => {
     const session = await seedUser({ role: "admin" });
     const { recordAuditEvent, withCurrentSite } = await import("@nexpress/core");
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
 
     await withCurrentSite("site-a", async () => {
       await recordAuditEvent({
@@ -51,7 +51,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 17 — multi-tenant audit + plugin stor
     });
 
     const db = await getTestDb();
-    const rows = (await db.select().from(nxAuditEvents)) as Array<{
+    const rows = (await db.select().from(npAuditEvents)) as Array<{
       siteId: string | null;
       action: string;
     }>;
@@ -202,8 +202,8 @@ describe.skipIf(skipIfNoTestDb())("Phase 17 — multi-tenant audit + plugin stor
     expect(v).toBe("v-global");
 
     const db = await getTestDb();
-    const { nxPluginStorage } = await import("@nexpress/core");
-    const rows = (await db.select().from(nxPluginStorage)) as Array<{
+    const { npPluginStorage } = await import("@nexpress/core");
+    const rows = (await db.select().from(npPluginStorage)) as Array<{
       siteId: string;
     }>;
     expect(rows).toHaveLength(1);

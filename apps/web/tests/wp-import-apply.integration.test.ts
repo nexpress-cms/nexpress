@@ -15,14 +15,14 @@ import {
 } from "./harness.js";
 
 import {
-  type NxAuthUser,
+  type NpAuthUser,
   findDocuments,
   listAuditEvents,
   listComments,
-  nxComments,
-  nxMedia,
-  nxMembers,
-  nxUsers,
+  npComments,
+  npMedia,
+  npMembers,
+  npUsers,
   recordAuditEvent,
   renderCommentMarkdown,
   uploadMedia,
@@ -35,14 +35,14 @@ const FIXTURE = path.resolve(
   "../../../packages/wp-import/tests/fixtures/minimal.wxr.xml",
 );
 
-async function asActor(session: { userId: string; email: string; role: NxAuthUser["role"] }) {
-  // saveDocument needs an NxAuthUser; reconstruct one from the seeded
+async function asActor(session: { userId: string; email: string; role: NpAuthUser["role"] }) {
+  // saveDocument needs an NpAuthUser; reconstruct one from the seeded
   // session (the harness only returns the JWT-facing slice).
   const db = await getTestDb();
   const rows = await db
-    .select({ name: nxUsers.name, tokenVersion: nxUsers.tokenVersion })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, session.userId));
+    .select({ name: npUsers.name, tokenVersion: npUsers.tokenVersion })
+    .from(npUsers)
+    .where(eq(npUsers.id, session.userId));
   const row = rows[0];
   if (!row) throw new Error("seed user missing");
   return {
@@ -51,7 +51,7 @@ async function asActor(session: { userId: string; email: string; role: NxAuthUse
     name: row.name,
     role: session.role,
     tokenVersion: row.tokenVersion,
-  } satisfies NxAuthUser;
+  } satisfies NpAuthUser;
 }
 
 describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration)", () => {
@@ -214,7 +214,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
 
     // Confirm the nx_media row exists and is owned by the importer.
     const db = await getTestDb();
-    const [row] = await db.select().from(nxMedia).where(eq(nxMedia.id, mediaId!)).limit(1);
+    const [row] = await db.select().from(npMedia).where(eq(npMedia.id, mediaId!)).limit(1);
     expect(row).toBeDefined();
   });
 
@@ -292,13 +292,13 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
       comments: {
         ensureImportedMember: async ({ handle, email, displayName }) => {
           const [existing] = await db
-            .select({ id: nxMembers.id })
-            .from(nxMembers)
-            .where(eq(nxMembers.handle, handle))
+            .select({ id: npMembers.id })
+            .from(npMembers)
+            .where(eq(npMembers.handle, handle))
             .limit(1);
           if (existing) return { id: existing.id };
           const [inserted] = await db
-            .insert(nxMembers)
+            .insert(npMembers)
             .values({
               handle,
               email: email ?? `${handle}@imported.invalid`,
@@ -306,12 +306,12 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
               status: "imported",
               emailVerified: false,
             })
-            .returning({ id: nxMembers.id });
+            .returning({ id: npMembers.id });
           return { id: inserted!.id };
         },
         insertComment: async (input) => {
           const [row] = await db
-            .insert(nxComments)
+            .insert(npComments)
             .values({
               targetType: input.targetType,
               targetId: input.targetId,
@@ -322,7 +322,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
               status: "visible",
               createdAt: input.createdAt,
             })
-            .returning({ id: nxComments.id });
+            .returning({ id: npComments.id });
           return { id: row!.id };
         },
         renderBody: (s) => renderCommentMarkdown(s),
@@ -335,7 +335,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(report.comments?.errors).toEqual([]);
 
     // Verify the rows landed and the parent map resolved.
-    const rows = (await db.select().from(nxComments)) as Array<{
+    const rows = (await db.select().from(npComments)) as Array<{
       bodyMd: string;
       parentId: string | null;
       id: string;
@@ -350,8 +350,8 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     // Two distinct authors → two imported member rows.
     const members = (await db
       .select()
-      .from(nxMembers)
-      .where(eq(nxMembers.status, "imported"))) as Array<{ handle: string }>;
+      .from(npMembers)
+      .where(eq(npMembers.status, "imported"))) as Array<{ handle: string }>;
     expect(members.map((m) => m.handle).sort()).toEqual(
       ["alice-example-com-wpimp", "bob-example-com-wpimp"].sort(),
     );
@@ -374,14 +374,14 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
           seenLogins.push(wpAuthorLogin);
           // Insert a real nx_users row so the post.author FK resolves.
           const [inserted] = await db
-            .insert(nxUsers)
+            .insert(npUsers)
             .values({
               email: `${wpAuthorLogin}-${nextId++}@wp-import.invalid`,
               password: "x",
               name: wpAuthorLogin,
               role: "viewer",
             })
-            .returning({ id: nxUsers.id });
+            .returning({ id: npUsers.id });
           return { id: inserted!.id };
         },
       },
@@ -490,13 +490,13 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
       comments: {
         ensureImportedMember: async ({ handle, email, displayName }) => {
           const [existing] = await db
-            .select({ id: nxMembers.id })
-            .from(nxMembers)
-            .where(eq(nxMembers.handle, handle))
+            .select({ id: npMembers.id })
+            .from(npMembers)
+            .where(eq(npMembers.handle, handle))
             .limit(1);
           if (existing) return { id: existing.id };
           const [inserted] = await db
-            .insert(nxMembers)
+            .insert(npMembers)
             .values({
               handle,
               email: email ?? `${handle}@imported.invalid`,
@@ -504,12 +504,12 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
               status: "imported",
               emailVerified: false,
             })
-            .returning({ id: nxMembers.id });
+            .returning({ id: npMembers.id });
           return { id: inserted!.id };
         },
         insertComment: async (input) => {
           const [row] = await db
-            .insert(nxComments)
+            .insert(npComments)
             .values({
               targetType: input.targetType,
               targetId: input.targetId,
@@ -520,7 +520,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
               status: "visible",
               createdAt: input.createdAt,
             })
-            .returning({ id: nxComments.id });
+            .returning({ id: npComments.id });
           return { id: row!.id };
         },
         renderBody: (s) => renderCommentMarkdown(s),

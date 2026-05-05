@@ -8,7 +8,7 @@
  *                 to mods; appears in the report queue indirectly via
  *                 the moderation surface)
  *   - `"reject"` → write is refused; the caller surfaces a 400
- *                  `NxValidationError`. Adapters may attach a `reason`
+ *                  `NpValidationError`. Adapters may attach a `reason`
  *                  string for the error message.
  *
  * Adapters are intentionally synchronous-friendly (they may also
@@ -19,13 +19,13 @@
  * The default adapter is "no-op pass" — every write proceeds as
  * before. Sites that want spam protection install one explicitly.
  */
-export type NxSpamVerdictKind = "pass" | "flag" | "reject";
+export type NpSpamVerdictKind = "pass" | "flag" | "reject";
 
-export interface NxSpamVerdict {
-  kind: NxSpamVerdictKind;
+export interface NpSpamVerdict {
+  kind: NpSpamVerdictKind;
   /**
    * Optional human-readable reason. Used as the
-   * `NxValidationError` message on `reject`, surfaced to the
+   * `NpValidationError` message on `reject`, surfaced to the
    * audit log on `flag`. Don't include PII or provider error text
    * verbatim — operators see this in logs.
    */
@@ -38,7 +38,7 @@ export interface NxSpamVerdict {
   metadata?: Record<string, unknown>;
 }
 
-export interface NxSpamCheckContext {
+export interface NpSpamCheckContext {
   /** Member id of the author. Adapters may use this to weight by
    *  reputation or recent infraction history. */
   memberId: string;
@@ -57,15 +57,15 @@ export interface NxSpamCheckContext {
   parentId?: string | null;
 }
 
-export interface NxSpamAdapter {
-  check(text: string, ctx: NxSpamCheckContext): NxSpamVerdict | Promise<NxSpamVerdict>;
+export interface NpSpamAdapter {
+  check(text: string, ctx: NpSpamCheckContext): NpSpamVerdict | Promise<NpSpamVerdict>;
 }
 
-const PASS_ADAPTER: NxSpamAdapter = {
+const PASS_ADAPTER: NpSpamAdapter = {
   check: () => ({ kind: "pass" }),
 };
 
-let currentAdapter: NxSpamAdapter = PASS_ADAPTER;
+let currentAdapter: NpSpamAdapter = PASS_ADAPTER;
 
 /**
  * Replace the global spam adapter. Call once at app boot, typically
@@ -74,14 +74,14 @@ let currentAdapter: NxSpamAdapter = PASS_ADAPTER;
  * the framework holds at most one adapter to keep the verdict
  * unambiguous.
  */
-export function setSpamAdapter(adapter: NxSpamAdapter): void {
+export function setSpamAdapter(adapter: NpSpamAdapter): void {
   if (typeof adapter?.check !== "function") {
     throw new Error("setSpamAdapter: adapter must implement check()");
   }
   currentAdapter = adapter;
 }
 
-export function getSpamAdapter(): NxSpamAdapter {
+export function getSpamAdapter(): NpSpamAdapter {
   return currentAdapter;
 }
 

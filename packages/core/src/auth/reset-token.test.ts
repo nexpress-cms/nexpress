@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { NxValidationError } from "../errors.js";
+import { NpValidationError } from "../errors.js";
 import { consumePasswordResetToken, requestPasswordReset } from "./reset-token.js";
 import { sha256 } from "./session.js";
 
@@ -29,10 +29,10 @@ describe("consumePasswordResetToken input validation", () => {
   // We never hit DB because these throws happen before the query.
   const noopDb = {} as never;
 
-  it("rejects a missing token with NxValidationError", async () => {
+  it("rejects a missing token with NpValidationError", async () => {
     await expect(
       consumePasswordResetToken(noopDb, { token: "", newPassword: "correcthorsebatterystaple" }),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("rejects a non-string token", async () => {
@@ -41,19 +41,19 @@ describe("consumePasswordResetToken input validation", () => {
         token: 42 as unknown as string,
         newPassword: "correcthorsebatterystaple",
       }),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("rejects a short password (< 8 chars)", async () => {
     await expect(
       consumePasswordResetToken(noopDb, { token: "abc", newPassword: "short" }),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 
   it("rejects an empty password", async () => {
     await expect(
       consumePasswordResetToken(noopDb, { token: "abc", newPassword: "" }),
-    ).rejects.toBeInstanceOf(NxValidationError);
+    ).rejects.toBeInstanceOf(NpValidationError);
   });
 });
 

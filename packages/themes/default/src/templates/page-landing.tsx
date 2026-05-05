@@ -1,7 +1,7 @@
 import { renderBlocks } from "@nexpress/blocks";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Landing-page template — full-bleed hero from the doc's first
@@ -14,8 +14,8 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
  * and a sticky table of contents, pick the "default" template
  * instead.
  */
-export function PageLandingTemplate({ doc }: NxTemplateRenderProps) {
-  const blocks = (doc as { blocks?: NxPageBlocks }).blocks;
+export function PageLandingTemplate({ doc }: NpTemplateRenderProps) {
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title ?? "Untitled";
   const intro = (doc as { seoDescription?: string }).seoDescription;
 

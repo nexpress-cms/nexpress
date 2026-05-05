@@ -6,7 +6,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
-import { nxWorkerHeartbeats } from "../db/schema/system.js";
+import { npWorkerHeartbeats } from "../db/schema/system.js";
 import { getLogger } from "../observability/logger.js";
 
 /**
@@ -43,7 +43,7 @@ export const WORKER_HEARTBEAT_INTERVAL_MS =
 export const WORKER_STALE_THRESHOLD_MS =
   readEnvPositiveInt("NX_WORKER_STALE_THRESHOLD_SECONDS", 90) * 1_000;
 
-export interface NxWorkerHeartbeat {
+export interface NpWorkerHeartbeat {
   id: string;
   status: string;
   startedAt: Date;
@@ -51,8 +51,8 @@ export interface NxWorkerHeartbeat {
   meta: Record<string, unknown>;
 }
 
-export interface NxWorkerHealthSummary {
-  workers: Array<NxWorkerHeartbeat & { alive: boolean; lastSeenAgoMs: number }>;
+export interface NpWorkerHealthSummary {
+  workers: Array<NpWorkerHeartbeat & { alive: boolean; lastSeenAgoMs: number }>;
   aliveCount: number;
   totalCount: number;
   /** ISO timestamp of the most recent heartbeat across all workers. */
@@ -87,7 +87,7 @@ export async function recordHeartbeat(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const now = new Date();
   await db
-    .insert(nxWorkerHeartbeats)
+    .insert(npWorkerHeartbeats)
     .values({
       id: workerId,
       status: "running",
@@ -96,7 +96,7 @@ export async function recordHeartbeat(
       meta,
     })
     .onConflictDoUpdate({
-      target: nxWorkerHeartbeats.id,
+      target: npWorkerHeartbeats.id,
       set: { lastSeenAt: now, status: "running", meta },
     });
 }
@@ -108,9 +108,9 @@ export async function recordHeartbeat(
 export async function markWorkerStopped(workerId: string): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
-    .update(nxWorkerHeartbeats)
+    .update(npWorkerHeartbeats)
     .set({ status: "stopped", lastSeenAt: new Date() })
-    .where(eq(nxWorkerHeartbeats.id, workerId));
+    .where(eq(npWorkerHeartbeats.id, workerId));
 }
 
 /**
@@ -118,12 +118,12 @@ export async function markWorkerStopped(workerId: string): Promise<void> {
  * relative to `now`. Sorted with the most recent heartbeat
  * first so the admin's first row is the freshest worker.
  */
-export async function listWorkerHealth(now: Date = new Date()): Promise<NxWorkerHealthSummary> {
+export async function listWorkerHealth(now: Date = new Date()): Promise<NpWorkerHealthSummary> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const rows = (await db
     .select()
-    .from(nxWorkerHeartbeats)
-    .orderBy(desc(nxWorkerHeartbeats.lastSeenAt))) as NxWorkerHeartbeat[];
+    .from(npWorkerHeartbeats)
+    .orderBy(desc(npWorkerHeartbeats.lastSeenAt))) as NpWorkerHeartbeat[];
 
   let aliveCount = 0;
   const decorated = rows.map((row) => {
@@ -208,9 +208,9 @@ export async function purgeStaleWorkers(
 ): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const deleted = (await db
-    .delete(nxWorkerHeartbeats)
-    .where(lt(nxWorkerHeartbeats.lastSeenAt, olderThan))
-    .returning({ id: nxWorkerHeartbeats.id })) as Array<{ id: string }>;
+    .delete(npWorkerHeartbeats)
+    .where(lt(npWorkerHeartbeats.lastSeenAt, olderThan))
+    .returning({ id: npWorkerHeartbeats.id })) as Array<{ id: string }>;
   return deleted.length;
 }
 
@@ -219,8 +219,8 @@ export async function countAliveWorkers(now: Date = new Date()): Promise<number>
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const cutoff = new Date(now.getTime() - WORKER_STALE_THRESHOLD_MS);
   const rows = (await db
-    .select({ id: nxWorkerHeartbeats.id })
-    .from(nxWorkerHeartbeats)
-    .where(gt(nxWorkerHeartbeats.lastSeenAt, cutoff))) as Array<{ id: string }>;
+    .select({ id: npWorkerHeartbeats.id })
+    .from(npWorkerHeartbeats)
+    .where(gt(npWorkerHeartbeats.lastSeenAt, cutoff))) as Array<{ id: string }>;
   return rows.length;
 }

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { generateDrizzleSchema } from "./generator.js";
-import type { NxCollectionConfig } from "../config/types.js";
+import type { NpCollectionConfig } from "../config/types.js";
 
-function collection(slug: string, fields: NxCollectionConfig["fields"] = []): NxCollectionConfig {
+function collection(slug: string, fields: NpCollectionConfig["fields"] = []): NpCollectionConfig {
   return {
     slug,
     labels: { singular: slug, plural: `${slug}s` },
@@ -53,7 +53,7 @@ describe("generateDrizzleSchema", () => {
     expect(out).toContain('_status: text("_status", { enum: ["draft", "published"] })');
   });
 
-  it("points upload fields at nxMedia and relationship fields at the target table", () => {
+  it("points upload fields at npMedia and relationship fields at the target table", () => {
     const out = generateDrizzleSchema([
       collection("posts", [
         { type: "upload", name: "cover", relationTo: "media" },
@@ -61,8 +61,8 @@ describe("generateDrizzleSchema", () => {
       ]),
     ]);
 
-    expect(out).toContain('cover: uuid("cover").references(() => nxMedia.id)');
-    expect(out).toContain('author: uuid("author").references(() => nxUsers.id)');
+    expect(out).toContain('cover: uuid("cover").references(() => npMedia.id)');
+    expect(out).toContain('author: uuid("author").references(() => npUsers.id)');
   });
 
   it("routes number fields to integer vs doublePrecision based on integerOnly", () => {
@@ -98,7 +98,7 @@ describe("generateDrizzleSchema", () => {
     });
 
     expect(out).toContain(
-      'import { nxMedia, nxUsers } from "../../some/relative/schema.js";',
+      'import { npMedia, npUsers } from "../../some/relative/schema.js";',
     );
   });
 });

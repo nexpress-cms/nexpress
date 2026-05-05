@@ -1,15 +1,15 @@
 import type { ZodType } from "zod";
-import type { NxBlockDefinition } from "@nexpress/blocks";
-import type { NxFieldConfig } from "@nexpress/core";
+import type { NpBlockDefinition } from "@nexpress/blocks";
+import type { NpFieldConfig } from "@nexpress/core";
 
-import type { NxPluginManifest } from "./manifest.js";
+import type { NpPluginManifest } from "./manifest.js";
 
-// Re-export NxBlockDefinition so plugin authors get a single
+// Re-export NpBlockDefinition so plugin authors get a single
 // import: definePlugin({ blocks: [...] }) typed via the same
 // package they reach for everything else.
-export type { NxBlockDefinition } from "@nexpress/blocks";
+export type { NpBlockDefinition } from "@nexpress/blocks";
 
-export const nxPluginCapabilities = [
+export const npPluginCapabilities = [
   "content:read",
   "content:write",
   "content:delete",
@@ -33,9 +33,9 @@ export const nxPluginCapabilities = [
   "hooks:scheduled",
 ] as const;
 
-export type NxPluginCapability = (typeof nxPluginCapabilities)[number];
+export type NpPluginCapability = (typeof npPluginCapabilities)[number];
 
-export const nxPluginAgentCategories = [
+export const npPluginAgentCategories = [
   "seo",
   "analytics",
   "ecommerce",
@@ -53,9 +53,9 @@ export const nxPluginAgentCategories = [
   "utility",
 ] as const;
 
-export type NxPluginAgentCategory = (typeof nxPluginAgentCategories)[number];
+export type NpPluginAgentCategory = (typeof npPluginAgentCategories)[number];
 
-export const nxHookNames = [
+export const npHookNames = [
   "content:beforeCreate",
   "content:afterCreate",
   "content:beforeUpdate",
@@ -74,13 +74,13 @@ export const nxHookNames = [
   "media:afterUpload",
 ] as const;
 
-export type NxHookName = (typeof nxHookNames)[number];
+export type NpHookName = (typeof npHookNames)[number];
 
-export const nxRouteMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+export const npRouteMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
-export type NxRouteMethod = (typeof nxRouteMethods)[number];
+export type NpRouteMethod = (typeof npRouteMethods)[number];
 
-export interface NxPluginUser {
+export interface NpPluginUser {
   id: string;
   email: string;
   role: string;
@@ -89,13 +89,13 @@ export interface NxPluginUser {
 /**
  * Legacy plugin-block declaration shape from a never-implemented
  * design (component-string indirection). Kept around as a type
- * export only — `NxPluginDefinition.blocks` now expects real
- * `NxBlockDefinition[]` from `@nexpress/blocks` so plugins can
+ * export only — `NpPluginDefinition.blocks` now expects real
+ * `NpBlockDefinition[]` from `@nexpress/blocks` so plugins can
  * pass actual render functions.
  *
- * @deprecated Will be removed before 1.0. Use `NxBlockDefinition`.
+ * @deprecated Will be removed before 1.0. Use `NpBlockDefinition`.
  */
-export interface NxBlockRegistration {
+export interface NpBlockRegistration {
   type: string;
   label: string;
   description?: string;
@@ -107,7 +107,7 @@ export interface NxBlockRegistration {
   styleSlots?: Record<string, string>;
 }
 
-export interface NxFieldRegistration {
+export interface NpFieldRegistration {
   type: string;
   label: string;
   component: string;
@@ -128,16 +128,16 @@ export interface NxFieldRegistration {
  */
 
 /**
- * Plugin settings form. Reuses the same `NxFieldConfig` shape the
+ * Plugin settings form. Reuses the same `NpFieldConfig` shape the
  * collection editor renders, so the admin primitives can be used directly
  * via FieldRenderer. Values round-trip through `GET /api/plugins/:id` and
  * `PATCH /api/plugins/:id`.
  */
-export interface NxAdminSettingsExtension {
+export interface NpAdminSettingsExtension {
   title?: string;
   description?: string;
   /** Reuses the collection field system — renders via FieldRenderer. */
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
 }
 
 /**
@@ -147,7 +147,7 @@ export interface NxAdminSettingsExtension {
  *  - `"metric"`: action returns `{ value: string | number, delta?: string }`.
  *  - `"status"`: action returns `{ level: "ok" | "warn" | "error", message: string }`.
  */
-export interface NxAdminWidgetExtension {
+export interface NpAdminWidgetExtension {
   id: string;
   label: string;
   kind: "metric" | "status";
@@ -161,7 +161,7 @@ export interface NxAdminWidgetExtension {
  * Button that triggers a plugin action. Optional confirm message; result is
  * surfaced as a toast.
  */
-export interface NxAdminActionExtension {
+export interface NpAdminActionExtension {
   id: string;
   label: string;
   actionId: string;
@@ -174,7 +174,7 @@ export interface NxAdminActionExtension {
  * Read-only data table. Admin calls the action to populate rows; the action
  * returns `{ rows, total }` where each row matches the column keys.
  */
-export interface NxAdminTableExtension {
+export interface NpAdminTableExtension {
   id: string;
   label: string;
   columns: Array<{ name: string; label: string }>;
@@ -192,12 +192,12 @@ export interface NxAdminTableExtension {
  *
  * `collections: "*"` shows the tab on every collection. Use sparingly.
  */
-export interface NxCollectionTabExtension {
+export interface NpCollectionTabExtension {
   id: string;
   label: string;
   collections: string[] | "*";
-  widgets?: NxAdminWidgetExtension[];
-  actions?: NxAdminActionExtension[];
+  widgets?: NpAdminWidgetExtension[];
+  actions?: NpAdminActionExtension[];
   description?: string;
 }
 
@@ -209,7 +209,7 @@ export interface NxCollectionTabExtension {
  *
  * Requires the `admin:dashboard` capability.
  */
-export interface NxAdminDashboardWidgetExtension extends NxAdminWidgetExtension {
+export interface NpAdminDashboardWidgetExtension extends NpAdminWidgetExtension {
   /**
    * Optional ordering hint when multiple plugins contribute widgets. Lower
    * numbers render first. Plugins without a priority fall to the end in
@@ -218,13 +218,13 @@ export interface NxAdminDashboardWidgetExtension extends NxAdminWidgetExtension 
   priority?: number;
 }
 
-export interface NxAdminExtension {
-  settings?: NxAdminSettingsExtension;
-  widgets?: NxAdminWidgetExtension[];
-  actions?: NxAdminActionExtension[];
-  tables?: NxAdminTableExtension[];
-  collectionTabs?: NxCollectionTabExtension[];
-  dashboardWidgets?: NxAdminDashboardWidgetExtension[];
+export interface NpAdminExtension {
+  settings?: NpAdminSettingsExtension;
+  widgets?: NpAdminWidgetExtension[];
+  actions?: NpAdminActionExtension[];
+  tables?: NpAdminTableExtension[];
+  collectionTabs?: NpCollectionTabExtension[];
+  dashboardWidgets?: NpAdminDashboardWidgetExtension[];
 }
 
 /**
@@ -243,20 +243,20 @@ export interface NxAdminExtension {
  * `children` is injected as an inline script body. Plugins are trusted
  * code in v1 — review them before installing.
  */
-export interface NxRenderContribution {
+export interface NpRenderContribution {
   /** Tags hoisted into `<head>` — meta, link, script, style. */
-  head?: NxHeadEntry[];
+  head?: NpHeadEntry[];
   /** Tags appended just before `</body>` — typically analytics scripts. */
-  bodyEnd?: NxBodyEntry[];
+  bodyEnd?: NpBodyEntry[];
 }
 
-export type NxHeadEntry =
+export type NpHeadEntry =
   | { tag: "meta"; attrs: Record<string, string> }
   | { tag: "link"; attrs: Record<string, string> }
   | { tag: "script"; attrs?: Record<string, string>; children?: string }
   | { tag: "style"; attrs?: Record<string, string>; children: string };
 
-export type NxBodyEntry =
+export type NpBodyEntry =
   | { tag: "script"; attrs?: Record<string, string>; children?: string }
   | { tag: "noscript"; children: string };
 
@@ -266,13 +266,13 @@ export type NxBodyEntry =
  * registered collection slug (e.g. `"pages"`, `"posts"`). `slug` is the
  * URL path slug the renderer resolved it from.
  */
-export interface NxRenderHookData {
+export interface NpRenderHookData {
   collection: string;
   slug: string;
   document: Record<string, unknown>;
 }
 
-export interface NxContentFilterOperator {
+export interface NpContentFilterOperator {
   equals?: unknown;
   notEquals?: unknown;
   in?: unknown[];
@@ -287,25 +287,25 @@ export interface NxContentFilterOperator {
   lte?: number | string | Date;
 }
 
-export interface NxContentWhere {
-  and?: NxContentWhere[];
-  or?: NxContentWhere[];
+export interface NpContentWhere {
+  and?: NpContentWhere[];
+  or?: NpContentWhere[];
   // Index signature is deliberately broad: plugins may pass direct values
   // (string, number, Date, etc.) alongside the structured operators.
   [field: string]: unknown;
 }
 
-export interface NxContentQuery {
+export interface NpContentQuery {
   page?: number;
   limit?: number;
   sort?: string;
   search?: string;
   select?: string[];
-  where?: NxContentWhere;
+  where?: NpContentWhere;
   draft?: boolean;
 }
 
-export interface NxContentItem {
+export interface NpContentItem {
   id: string;
   collection?: string;
   slug?: string;
@@ -314,8 +314,8 @@ export interface NxContentItem {
   [key: string]: unknown;
 }
 
-export interface NxContentResult {
-  docs: NxContentItem[];
+export interface NpContentResult {
+  docs: NpContentItem[];
   totalDocs: number;
   totalPages: number;
   page: number;
@@ -324,7 +324,7 @@ export interface NxContentResult {
   hasPrevPage: boolean;
 }
 
-export interface NxImageTransform {
+export interface NpImageTransform {
   width?: number;
   height?: number;
   fit?: "cover" | "contain" | "fill" | "inside" | "outside";
@@ -332,7 +332,7 @@ export interface NxImageTransform {
   format?: "webp" | "avif" | "jpeg" | "png";
 }
 
-export interface NxMediaQuery {
+export interface NpMediaQuery {
   page?: number;
   limit?: number;
   search?: string;
@@ -341,7 +341,7 @@ export interface NxMediaQuery {
   tags?: string[];
 }
 
-export interface NxMediaItem {
+export interface NpMediaItem {
   id: string;
   filename: string;
   mimeType: string;
@@ -355,8 +355,8 @@ export interface NxMediaItem {
   updatedAt?: string;
 }
 
-export interface NxMediaResult {
-  docs: NxMediaItem[];
+export interface NpMediaResult {
+  docs: NpMediaItem[];
   totalDocs: number;
   totalPages: number;
   page: number;
@@ -365,7 +365,7 @@ export interface NxMediaResult {
   hasPrevPage: boolean;
 }
 
-export interface NxMediaUpload {
+export interface NpMediaUpload {
   filename: string;
   mimeType: string;
   alt?: string;
@@ -374,13 +374,13 @@ export interface NxMediaUpload {
   metadata?: Record<string, unknown>;
 }
 
-export interface NxReadableStreamLike<T = Uint8Array> extends AsyncIterable<T> {
+export interface NpReadableStreamLike<T = Uint8Array> extends AsyncIterable<T> {
   cancel?(reason?: unknown): Promise<void>;
 }
 
-export type NxUploadInput = Uint8Array | ArrayBuffer | NxReadableStreamLike<Uint8Array>;
+export type NpUploadInput = Uint8Array | ArrayBuffer | NpReadableStreamLike<Uint8Array>;
 
-export type NxFetchBody =
+export type NpFetchBody =
   | string
   | Uint8Array
   | ArrayBuffer
@@ -388,68 +388,68 @@ export type NxFetchBody =
   | Record<string, unknown>
   | null;
 
-export interface NxFetchOptions {
+export interface NpFetchOptions {
   method?: string;
   headers?: Record<string, string>;
-  body?: NxFetchBody;
+  body?: NpFetchBody;
   timeoutMs?: number;
 }
 
-export interface NxFetchResponse {
+export interface NpFetchResponse {
   ok: boolean;
   status: number;
   headers: Record<string, string>;
   body?: unknown;
 }
 
-export type NxSiteSettings = Record<string, unknown>;
+export type NpSiteSettings = Record<string, unknown>;
 
-export type NxThemeTokens = Record<string, string | number>;
+export type NpThemeTokens = Record<string, string | number>;
 
-export interface NxRouteRequest {
+export interface NpRouteRequest {
   method: string;
   path: string;
   params: Record<string, string>;
   query: Record<string, string>;
   body: unknown;
   headers: Record<string, string>;
-  user?: NxPluginUser;
+  user?: NpPluginUser;
 }
 
-export interface NxRouteResponse {
+export interface NpRouteResponse {
   status: number;
   body?: unknown;
   headers?: Record<string, string>;
 }
 
-export type NxActionHandler<TConfig = Record<string, unknown>> = (
+export type NpActionHandler<TConfig = Record<string, unknown>> = (
   data: unknown,
-  ctx: NxPluginContext<TConfig>,
-) => Promise<NxActionResult>;
+  ctx: NpPluginContext<TConfig>,
+) => Promise<NpActionResult>;
 
-export interface NxActionResult {
+export interface NpActionResult {
   ok: boolean;
   data?: unknown;
   error?: string;
 }
 
-export interface NxPluginContext<TConfig = Record<string, unknown>> {
+export interface NpPluginContext<TConfig = Record<string, unknown>> {
   readonly pluginId: string;
   readonly config: Readonly<TConfig>;
-  readonly capabilities: readonly NxPluginCapability[];
+  readonly capabilities: readonly NpPluginCapability[];
   readonly content: {
-    find(collection: string, query?: NxContentQuery): Promise<NxContentResult>;
-    findOne(collection: string, id: string): Promise<NxContentItem | null>;
-    create(collection: string, data: Record<string, unknown>): Promise<NxContentItem>;
-    update(collection: string, id: string, data: Record<string, unknown>): Promise<NxContentItem>;
+    find(collection: string, query?: NpContentQuery): Promise<NpContentResult>;
+    findOne(collection: string, id: string): Promise<NpContentItem | null>;
+    create(collection: string, data: Record<string, unknown>): Promise<NpContentItem>;
+    update(collection: string, id: string, data: Record<string, unknown>): Promise<NpContentItem>;
     delete(collection: string, id: string): Promise<void>;
-    count(collection: string, where?: NxContentWhere): Promise<number>;
+    count(collection: string, where?: NpContentWhere): Promise<number>;
   };
   readonly media: {
-    list(query?: NxMediaQuery): Promise<NxMediaResult>;
-    getById(id: string): Promise<NxMediaItem | null>;
-    getUrl(id: string, transform?: NxImageTransform): Promise<string>;
-    upload(file: NxUploadInput, metadata: NxMediaUpload): Promise<NxMediaItem>;
+    list(query?: NpMediaQuery): Promise<NpMediaResult>;
+    getById(id: string): Promise<NpMediaItem | null>;
+    getUrl(id: string, transform?: NpImageTransform): Promise<string>;
+    upload(file: NpUploadInput, metadata: NpMediaUpload): Promise<NpMediaItem>;
     delete(id: string): Promise<void>;
   };
   readonly storage: {
@@ -460,16 +460,16 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
     has(key: string): Promise<boolean>;
   };
   readonly settings: {
-    getSite(): Promise<NxSiteSettings>;
+    getSite(): Promise<NpSiteSettings>;
     getPlugin(): Promise<TConfig>;
     setPlugin(data: Partial<TConfig>): Promise<void>;
   };
   readonly theme: {
-    getTokens(): Promise<NxThemeTokens>;
-    setTokens(tokens: Partial<NxThemeTokens>): Promise<void>;
+    getTokens(): Promise<NpThemeTokens>;
+    setTokens(tokens: Partial<NpThemeTokens>): Promise<void>;
   };
   readonly http: {
-    fetch(url: string, options?: NxFetchOptions): Promise<NxFetchResponse>;
+    fetch(url: string, options?: NpFetchOptions): Promise<NpFetchResponse>;
   };
   readonly log: {
     debug(message: string, data?: Record<string, unknown>): void;
@@ -488,49 +488,49 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
     revalidateTag(tag: string): Promise<void>;
   };
   readonly actions: {
-    register(actionName: string, handler: NxActionHandler<TConfig>): void;
-    dispatch(pluginId: string, actionName: string, data?: unknown): Promise<NxActionResult>;
+    register(actionName: string, handler: NpActionHandler<TConfig>): void;
+    dispatch(pluginId: string, actionName: string, data?: unknown): Promise<NpActionResult>;
   };
 }
 
-export interface NxHookContext<TConfig = Record<string, unknown>> {
+export interface NpHookContext<TConfig = Record<string, unknown>> {
   hook: string;
   data: Record<string, unknown>;
   collection?: string;
-  user?: NxPluginUser;
-  ctx: NxPluginContext<TConfig>;
+  user?: NpPluginUser;
+  ctx: NpPluginContext<TConfig>;
 }
 
-export type NxHookHandler<TConfig = Record<string, unknown>> =
-  | ((ctx: NxHookContext<TConfig>) => unknown)
+export type NpHookHandler<TConfig = Record<string, unknown>> =
+  | ((ctx: NpHookContext<TConfig>) => unknown)
   | string;
 
-export type NxHookRegistration<TConfig = Record<string, unknown>> = Partial<
-  Record<NxHookName, NxHookHandler<TConfig>>
+export type NpHookRegistration<TConfig = Record<string, unknown>> = Partial<
+  Record<NpHookName, NpHookHandler<TConfig>>
 >;
 
-export type NxRouteHandler<TConfig = Record<string, unknown>> = (
-  req: NxRouteRequest,
-  ctx: NxPluginContext<TConfig>,
-) => Promise<NxRouteResponse>;
+export type NpRouteHandler<TConfig = Record<string, unknown>> = (
+  req: NpRouteRequest,
+  ctx: NpPluginContext<TConfig>,
+) => Promise<NpRouteResponse>;
 
-export interface NxRouteRegistration<TConfig = Record<string, unknown>> {
+export interface NpRouteRegistration<TConfig = Record<string, unknown>> {
   path: string;
-  method: NxRouteMethod;
-  handler: NxRouteHandler<TConfig> | string;
+  method: NpRouteMethod;
+  handler: NpRouteHandler<TConfig> | string;
   description?: string;
   auth?: boolean;
 }
 
-export interface NxScheduledTask<TConfig = Record<string, unknown>> {
+export interface NpScheduledTask<TConfig = Record<string, unknown>> {
   id: string;
   cron: string;
-  handler: ((ctx: NxPluginContext<TConfig>) => void | Promise<void>) | string;
+  handler: ((ctx: NpPluginContext<TConfig>) => void | Promise<void>) | string;
   description?: string;
 }
 
-export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
-  manifest: NxPluginManifest;
+export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
+  manifest: NpPluginManifest;
   /**
    * Block definitions the plugin contributes. Registered into the
    * shared block registry by the bootstrap so they appear in the
@@ -538,14 +538,14 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
    * server render. Each block ships its real `render` function
    * (no string indirection). See `@nexpress/blocks` for the shape.
    */
-  blocks?: NxBlockDefinition[];
-  fields?: NxFieldRegistration[];
-  admin?: NxAdminExtension;
-  hooks?: NxHookRegistration<TConfig>;
-  routes?: NxRouteRegistration<TConfig>[];
-  scheduled?: NxScheduledTask<TConfig>[];
+  blocks?: NpBlockDefinition[];
+  fields?: NpFieldRegistration[];
+  admin?: NpAdminExtension;
+  hooks?: NpHookRegistration<TConfig>;
+  routes?: NpRouteRegistration<TConfig>[];
+  scheduled?: NpScheduledTask<TConfig>[];
   configSchema?: ZodType<TConfig>;
-  setup?: (ctx: NxPluginContext<TConfig>) => void | Promise<void>;
+  setup?: (ctx: NpPluginContext<TConfig>) => void | Promise<void>;
   teardown?: () => void | Promise<void>;
   /**
    * Phase 12.5 — UI string bundles per locale. Plugin
@@ -584,9 +584,9 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
   templates?: Record<string, Record<string, unknown>>;
 }
 
-export type NxResolvedPlugin<TConfig = Record<string, unknown>> = Omit<
-  NxPluginDefinition<TConfig>,
+export type NpResolvedPlugin<TConfig = Record<string, unknown>> = Omit<
+  NpPluginDefinition<TConfig>,
   "manifest"
 > & {
-  manifest: NxPluginManifest;
+  manifest: NpPluginManifest;
 };

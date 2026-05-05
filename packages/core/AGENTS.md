@@ -8,8 +8,8 @@ Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plu
 
 ```
 src/
-├── config/       # NxConfig types, defineConfig/defineCollection, validation schemas
-├── db/           # createDbConnection, Drizzle schema (nxUsers/nxMedia/nxRevisions/nxSettings), generators
+├── config/       # NpConfig types, defineConfig/defineCollection, validation schemas
+├── db/           # createDbConnection, Drizzle schema (npUsers/npMedia/npRevisions/npSettings), generators
 ├── auth/         # JWT (jose), Argon2 password, CSRF, session helpers, access control
 ├── collections/  # Registry, content pipeline (1043 lines), Zod validation, search vectors
 ├── content/      # Thin helpers: getTheme, getNavigation, getPageBySlug, findPosts
@@ -18,7 +18,7 @@ src/
 ├── jobs/         # pg-boss queue abstraction, handler registry, worker lifecycle, builtin handlers
 ├── plugins/      # Plugin host: registry, runHook, route dispatch, capability enforcement
 ├── theme/        # Token types, defaults, sanitizeTokenValue
-├── errors.ts     # NxError hierarchy (Forbidden/NotFound/Validation/Auth/Conflict)
+├── errors.ts     # NpError hierarchy (Forbidden/NotFound/Validation/Auth/Conflict)
 └── index.ts      # Barrel — 161 lines re-exporting the full public API
 ```
 
@@ -39,15 +39,15 @@ src/
 | Task                        | File(s)                                       | Notes                                                              |
 | --------------------------- | --------------------------------------------- | ------------------------------------------------------------------ |
 | Change content write path   | `collections/pipeline.ts`                     | ACL → validate → hooks → persist → revisions → media refs → search |
-| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`   | nxUsers, nxMedia, nxRevisions, nxSettings, nxNavigation            |
-| Modify collection codegen   | `db/generator.ts` (496 lines)                 | Produces Drizzle table definitions from NxCollectionConfig         |
+| Add/change system DB tables | `db/schema/system.ts`, `db/schema/media.ts`   | npUsers, npMedia, npRevisions, npSettings, npNavigation            |
+| Modify collection codegen   | `db/generator.ts` (496 lines)                 | Produces Drizzle table definitions from NpCollectionConfig         |
 | Modify TS type codegen      | `db/type-generator.ts`                        | Produces TypeScript interfaces from configs                        |
 | Change JWT/password logic   | `auth/token.ts`, `auth/password.ts`           | jose for JWT, @node-rs/argon2 for passwords                        |
 | Add session features        | `auth/session.ts`                             | `verifyTokenFull`, `invalidateAllSessions`, tokenVersion checks    |
 | Change media processing     | `media/processor.ts`                          | sharp-based, `DEFAULT_IMAGE_SIZES` for variants                    |
 | Add job handler             | `jobs/handlers.ts`                            | `registerJobHandler(name, fn)` — picked up by PgBossAdapter        |
 | Add plugin capabilities     | `plugins/host.ts` + `plugin-sdk/src/types.ts` | Hook capability = `hooks:<namespace>` prefix matching              |
-| Add error type              | `errors.ts`                                   | Extend `NxError` with code + statusCode                            |
+| Add error type              | `errors.ts`                                   | Extend `NpError` with code + statusCode                            |
 
 ## INTERNAL DEPENDENCY FLOW
 

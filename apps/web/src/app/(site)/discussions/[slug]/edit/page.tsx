@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { DiscussionForm } from "@/components/discussion-form";
 import { ensureFor } from "@/lib/init-core";
 import { getSiteMember } from "@/lib/site-member";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
 interface EditDiscussionPageProps {
   params: Promise<{ slug: string }>;
@@ -51,7 +51,7 @@ export default async function EditDiscussionPage({ params }: EditDiscussionPageP
           docId: doc.id as string,
           slug,
           title: doc.title as string,
-          body: (doc.body as NxRichTextContent | null) ?? null,
+          body: (doc.body as NpRichTextContent | null) ?? null,
         }}
       />
     </div>

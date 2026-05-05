@@ -1,10 +1,10 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   hashPassword,
-  nxUsers,
+  npUsers,
   runHook,
-  type NxUserRole,
+  type NpUserRole,
   can,
 } from "@nexpress/core";
 import { asc, count, ilike, or } from "drizzle-orm";
@@ -12,11 +12,11 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
-const VALID_ROLES: readonly NxUserRole[] = [
+const VALID_ROLES: readonly NpUserRole[] = [
   "admin",
   "editor",
   "moderator",
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("users", "read");
+      throw new NpForbiddenError("users", "read");
     }
 
     const params = request.nextUrl.searchParams;
@@ -47,27 +47,27 @@ export async function GET(request: NextRequest) {
 
     const db = getDb();
     const whereClause = search
-      ? or(ilike(nxUsers.name, `%${search}%`), ilike(nxUsers.email, `%${search}%`))
+      ? or(ilike(npUsers.name, `%${search}%`), ilike(npUsers.email, `%${search}%`))
       : undefined;
 
     const baseSelect = db
       .select({
-        id: nxUsers.id,
-        email: nxUsers.email,
-        name: nxUsers.name,
-        role: nxUsers.role,
-        avatar: nxUsers.avatar,
-        createdAt: nxUsers.createdAt,
-        updatedAt: nxUsers.updatedAt,
+        id: npUsers.id,
+        email: npUsers.email,
+        name: npUsers.name,
+        role: npUsers.role,
+        avatar: npUsers.avatar,
+        createdAt: npUsers.createdAt,
+        updatedAt: npUsers.updatedAt,
       })
-      .from(nxUsers)
+      .from(npUsers)
       .$dynamic();
 
     const rowsQuery = whereClause
-      ? baseSelect.where(whereClause).orderBy(asc(nxUsers.name)).limit(limit).offset(offset)
-      : baseSelect.orderBy(asc(nxUsers.name)).limit(limit).offset(offset);
+      ? baseSelect.where(whereClause).orderBy(asc(npUsers.name)).limit(limit).offset(offset)
+      : baseSelect.orderBy(asc(npUsers.name)).limit(limit).offset(offset);
 
-    const baseCount = db.select({ total: count() }).from(nxUsers).$dynamic();
+    const baseCount = db.select({ total: count() }).from(npUsers).$dynamic();
     const countQuery = whereClause ? baseCount.where(whereClause) : baseCount;
 
     const [docs, totalResult] = await Promise.all([rowsQuery, countQuery]);
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     const totalDocs = Number(totalResult[0]?.total ?? 0);
     const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       docs,
       totalDocs,
       totalPages,
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       hasPrevPage: page > 1 && totalDocs > 0,
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -94,14 +94,14 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("users", "create");
+      throw new NpForbiddenError("users", "create");
     }
 
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
-    const role = typeof body.role === "string" ? (body.role as NxUserRole) : "author";
+    const role = typeof body.role === "string" ? (body.role as NpUserRole) : "author";
 
     const errors: Array<{ field: string; message: string }> = [];
     if (!email || !email.includes("@")) {
@@ -117,14 +117,14 @@ export async function POST(request: NextRequest) {
       errors.push({ field: "role", message: `Role must be one of: ${VALID_ROLES.join(", ")}` });
     }
     if (errors.length > 0) {
-      throw new NxValidationError("Invalid input", errors);
+      throw new NpValidationError("Invalid input", errors);
     }
 
     const db = getDb();
     const hashed = await hashPassword(password);
 
     const [created] = await db
-      .insert(nxUsers)
+      .insert(npUsers)
       .values({
         email,
         name,
@@ -132,12 +132,12 @@ export async function POST(request: NextRequest) {
         role,
       })
       .returning({
-        id: nxUsers.id,
-        email: nxUsers.email,
-        name: nxUsers.name,
-        role: nxUsers.role,
-        createdAt: nxUsers.createdAt,
-        updatedAt: nxUsers.updatedAt,
+        id: npUsers.id,
+        email: npUsers.email,
+        name: npUsers.name,
+        role: npUsers.role,
+        createdAt: npUsers.createdAt,
+        updatedAt: npUsers.updatedAt,
       });
 
     if (created) {
@@ -152,20 +152,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return nxSuccessResponse(created, { status: 201 });
+    return npSuccessResponse(created, { status: 201 });
   } catch (error) {
     if (
       error instanceof Error &&
       "code" in error &&
       (error as { code?: string }).code === "23505"
     ) {
-      return nxErrorResponse(
-        new NxValidationError("Invalid input", [
+      return npErrorResponse(
+        new NpValidationError("Invalid input", [
           { field: "email", message: "A user with this email already exists" },
         ]),
       );
     }
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

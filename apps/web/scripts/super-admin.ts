@@ -6,7 +6,7 @@ import { stdin, stdout } from "node:process";
 import { config as loadEnv } from "dotenv";
 import { eq } from "drizzle-orm";
 
-import { createDbConnection, nxUsers } from "@nexpress/core";
+import { createDbConnection, npUsers } from "@nexpress/core";
 
 /**
  * Phase 15.7 — promote a user to super-admin by email.
@@ -82,13 +82,13 @@ async function main(): Promise<void> {
 
   const [user] = await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      isSuperAdmin: nxUsers.isSuperAdmin,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      isSuperAdmin: npUsers.isSuperAdmin,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.email, email))
+    .from(npUsers)
+    .where(eq(npUsers.email, email))
     .limit(1);
 
   if (!user) {
@@ -104,9 +104,9 @@ async function main(): Promise<void> {
   }
 
   await db
-    .update(nxUsers)
+    .update(npUsers)
     .set({ isSuperAdmin: targetState, updatedAt: new Date() })
-    .where(eq(nxUsers.id, user.id));
+    .where(eq(npUsers.id, user.id));
 
   console.log(`✓ ${action}d ${user.email} (${user.name})`);
   process.exit(0);

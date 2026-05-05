@@ -154,7 +154,7 @@ serving with no CDN; that's fine for development.
 
   Note: dark-mode initial paint no longer ties the framework to
   `cookies()` either — color-scheme handling is now an opt-in
-  theme-level concern (`<NxColorSchemeScript />` mounted by the
+  theme-level concern (`<NpColorSchemeScript />` mounted by the
   theme's shell) that runs entirely client-side, so themes can
   ship saved-choice dark mode without forcing the root layout
   dynamic.

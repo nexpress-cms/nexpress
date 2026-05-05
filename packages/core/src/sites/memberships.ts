@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
-import { nxSiteMemberships, nxUsers } from "../db/schema/system.js";
-import { NxValidationError } from "../errors.js";
-import type { NxAuthUser, NxUserRole } from "../config/types.js";
+import { npSiteMemberships, npUsers } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
+import type { NpAuthUser, NpUserRole } from "../config/types.js";
 
 import { getCurrentSiteId } from "./context.js";
 import { NX_DEFAULT_SITE_ID } from "./registry.js";
@@ -11,7 +11,7 @@ import { NX_DEFAULT_SITE_ID } from "./registry.js";
 /**
  * Phase 15.5 — per-site role memberships.
  *
- * `nxUsers.role` stays the "global default role" (used by
+ * `npUsers.role` stays the "global default role" (used by
  * existing single-tenant code and as a fallback when no
  * explicit membership exists for a given site). New
  * multi-tenant deployments grant explicit memberships via
@@ -28,7 +28,7 @@ import { NX_DEFAULT_SITE_ID } from "./registry.js";
 export interface SiteMembership {
   siteId: string;
   userId: string;
-  role: NxUserRole;
+  role: NpUserRole;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,12 +39,12 @@ export async function listSiteMemberships(
   const db = getDb();
   const rows = await db
     .select()
-    .from(nxSiteMemberships)
-    .where(eq(nxSiteMemberships.siteId, siteId));
+    .from(npSiteMemberships)
+    .where(eq(npSiteMemberships.siteId, siteId));
   return rows.map((row) => ({
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NxUserRole,
+    role: row.role as NpUserRole,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }));
@@ -56,12 +56,12 @@ export async function listMembershipsForUser(
   const db = getDb();
   const rows = await db
     .select()
-    .from(nxSiteMemberships)
-    .where(eq(nxSiteMemberships.userId, userId));
+    .from(npSiteMemberships)
+    .where(eq(npSiteMemberships.userId, userId));
   return rows.map((row) => ({
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NxUserRole,
+    role: row.role as NpUserRole,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }));
@@ -74,11 +74,11 @@ export async function getMembership(
   const db = getDb();
   const [row] = await db
     .select()
-    .from(nxSiteMemberships)
+    .from(npSiteMemberships)
     .where(
       and(
-        eq(nxSiteMemberships.siteId, siteId),
-        eq(nxSiteMemberships.userId, userId),
+        eq(npSiteMemberships.siteId, siteId),
+        eq(npSiteMemberships.userId, userId),
       ),
     )
     .limit(1);
@@ -86,7 +86,7 @@ export async function getMembership(
   return {
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NxUserRole,
+    role: row.role as NpUserRole,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -95,15 +95,15 @@ export async function getMembership(
 export async function grantSiteMembership(
   siteId: string,
   userId: string,
-  role: NxUserRole,
+  role: NpUserRole,
 ): Promise<SiteMembership> {
   const db = getDb();
   const now = new Date();
   const [row] = await db
-    .insert(nxSiteMemberships)
+    .insert(npSiteMemberships)
     .values({ siteId, userId, role, createdAt: now, updatedAt: now })
     .onConflictDoUpdate({
-      target: [nxSiteMemberships.siteId, nxSiteMemberships.userId],
+      target: [npSiteMemberships.siteId, npSiteMemberships.userId],
       set: { role, updatedAt: now },
     })
     .returning();
@@ -111,7 +111,7 @@ export async function grantSiteMembership(
   return {
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NxUserRole,
+    role: row.role as NpUserRole,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -123,11 +123,11 @@ export async function revokeSiteMembership(
 ): Promise<void> {
   const db = getDb();
   await db
-    .delete(nxSiteMemberships)
+    .delete(npSiteMemberships)
     .where(
       and(
-        eq(nxSiteMemberships.siteId, siteId),
-        eq(nxSiteMemberships.userId, userId),
+        eq(npSiteMemberships.siteId, siteId),
+        eq(npSiteMemberships.userId, userId),
       ),
     );
 }
@@ -144,18 +144,18 @@ export async function setSuperAdmin(
 ): Promise<void> {
   const db = getDb();
   const result = await db
-    .update(nxUsers)
+    .update(npUsers)
     .set({ isSuperAdmin, updatedAt: new Date() })
-    .where(eq(nxUsers.id, userId))
-    .returning({ id: nxUsers.id });
+    .where(eq(npUsers.id, userId))
+    .returning({ id: npUsers.id });
   if (result.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "userId", message: `User "${userId}" not found` },
     ]);
   }
 }
 
-const ROLE_RANK: Record<NxUserRole, number> = {
+const ROLE_RANK: Record<NpUserRole, number> = {
   viewer: 0,
   author: 1,
   moderator: 2,
@@ -167,23 +167,23 @@ const ROLE_RANK: Record<NxUserRole, number> = {
  * Resolve a user's effective role on a specific site:
  *   1. Super-admins always get `admin`.
  *   2. Explicit site membership wins over the global role.
- *   3. Fallback: the user's global `nxUsers.role` (preserves
+ *   3. Fallback: the user's global `npUsers.role` (preserves
  *      single-tenant behavior).
  *
  * Use this rather than `user.role` for any check that should
  * respect tenant boundaries.
  */
 export async function resolveUserRoleOnSite(
-  user: NxAuthUser,
+  user: NpAuthUser,
   siteId: string,
-): Promise<NxUserRole> {
-  // Super-admin shortcut — read from nxUsers (the JWT may
+): Promise<NpUserRole> {
+  // Super-admin shortcut — read from npUsers (the JWT may
   // not carry the flag).
   const db = getDb();
   const [row] = await db
-    .select({ isSuperAdmin: nxUsers.isSuperAdmin, role: nxUsers.role })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, user.id))
+    .select({ isSuperAdmin: npUsers.isSuperAdmin, role: npUsers.role })
+    .from(npUsers)
+    .where(eq(npUsers.id, user.id))
     .limit(1);
   if (!row) return user.role;
   if (row.isSuperAdmin) return "admin";
@@ -193,7 +193,7 @@ export async function resolveUserRoleOnSite(
   if (membership) return membership.role;
 
   // Fallback to global default role.
-  return row.role as NxUserRole;
+  return row.role as NpUserRole;
 }
 
 /**
@@ -208,8 +208,8 @@ export async function resolveUserRoleOnSite(
  * have to thread siteId everywhere.
  */
 export async function hasRoleOnSite(
-  user: NxAuthUser,
-  minRole: NxUserRole,
+  user: NpAuthUser,
+  minRole: NpUserRole,
   siteId?: string,
 ): Promise<boolean> {
   const targetSite =
@@ -223,12 +223,12 @@ export async function hasRoleOnSite(
  * `resolveUserRoleOnSite` when the caller only needs to know
  * "can this user manage the framework as a whole?".
  */
-export async function isSuperAdmin(user: NxAuthUser): Promise<boolean> {
+export async function isSuperAdmin(user: NpAuthUser): Promise<boolean> {
   const db = getDb();
   const [row] = await db
-    .select({ isSuperAdmin: nxUsers.isSuperAdmin })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, user.id))
+    .select({ isSuperAdmin: npUsers.isSuperAdmin })
+    .from(npUsers)
+    .where(eq(npUsers.id, user.id))
     .limit(1);
   return Boolean(row?.isSuperAdmin);
 }

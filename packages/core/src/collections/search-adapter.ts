@@ -26,7 +26,7 @@ import type { SearchResult } from "./search-api.js";
  * fail-closed wrap their adapter in try/catch and return
  * `null` on error.
  */
-export interface NxSearchAdapterContext {
+export interface NpSearchAdapterContext {
   /** Trimmed query string (already non-empty by the time this runs). */
   q: string;
   /** Subset of collection slugs the caller asked to search. */
@@ -48,18 +48,18 @@ export interface NxSearchAdapterContext {
   locale?: string;
 }
 
-export interface NxSearchAdapter {
+export interface NpSearchAdapter {
   /**
    * Implementation hook. Return a `SearchResult` to override the
    * default pg tsvector path, or `null` / `undefined` to fall
    * through. Throws are fail-open (logged + treated as null).
    */
   search(
-    ctx: NxSearchAdapterContext,
+    ctx: NpSearchAdapterContext,
   ): Promise<SearchResult | null | undefined> | SearchResult | null | undefined;
 }
 
-let currentAdapter: NxSearchAdapter | null = null;
+let currentAdapter: NpSearchAdapter | null = null;
 
 /**
  * Replace the global search adapter. Call once at app boot,
@@ -68,14 +68,14 @@ let currentAdapter: NxSearchAdapter | null = null;
  * (e.g. blog → Algolia, products → Meilisearch) compose them
  * inside a single adapter and dispatch on `ctx.collections`.
  */
-export function setSearchAdapter(adapter: NxSearchAdapter): void {
+export function setSearchAdapter(adapter: NpSearchAdapter): void {
   if (typeof adapter?.search !== "function") {
     throw new Error("setSearchAdapter: adapter must implement search()");
   }
   currentAdapter = adapter;
 }
 
-export function getSearchAdapter(): NxSearchAdapter | null {
+export function getSearchAdapter(): NpSearchAdapter | null {
   return currentAdapter;
 }
 

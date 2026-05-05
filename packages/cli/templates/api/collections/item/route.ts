@@ -1,8 +1,8 @@
-import { NxNotFoundError, NxValidationError } from "@nexpress/core";
+import { NpNotFoundError, NpValidationError } from "@nexpress/core";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import {
   deleteCollectionDocument,
   getCollectionDocument,
@@ -12,7 +12,7 @@ import { revalidateCollection } from "@/lib/revalidate";
 
 function parseBodyRecord(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be a JSON object" },
     ]);
   }
@@ -27,10 +27,10 @@ export async function GET(
     const { slug, id } = await params;
     const user = await optionalAuth(request);
     const document = await getCollectionDocument(slug, id, user);
-    if (!document) throw new NxNotFoundError(slug, id);
-    return nxSuccessResponse(document);
+    if (!document) throw new NpNotFoundError(slug, id);
+    return npSuccessResponse(document);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -49,9 +49,9 @@ export async function PATCH(
     if (previous && previous.slug !== result.doc.slug) {
       revalidateCollection(slug, previous);
     }
-    return nxSuccessResponse(result.doc);
+    return npSuccessResponse(result.doc);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -68,6 +68,6 @@ export async function DELETE(
     revalidateCollection(slug, previous);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -1,7 +1,7 @@
 import { renderBlocks } from "@nexpress/blocks";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Page template with a sticky sidebar on the right. Suited to
@@ -15,9 +15,9 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
  * always-rendered (with a fallback "On this page" placeholder) so
  * the layout doesn't reflow when an editor toggles the field.
  */
-export function PageSidebarTemplate({ doc }: NxTemplateRenderProps) {
-  const blocks = (doc as { blocks?: NxPageBlocks }).blocks;
-  const sidebar = (doc as { sidebar?: NxPageBlocks }).sidebar;
+export function PageSidebarTemplate({ doc }: NpTemplateRenderProps) {
+  const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
+  const sidebar = (doc as { sidebar?: NpPageBlocks }).sidebar;
   const title = (doc as { title?: string }).title ?? "Untitled";
 
   return (

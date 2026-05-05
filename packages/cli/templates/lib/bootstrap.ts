@@ -20,9 +20,9 @@ export const { getDb } = bootstrap;
  *   - `"write"`   — plugins + pg-boss producer. Use for any
  *                   mutating API route, server action, or import.
  */
-export type NxBootstrapIntent = "read" | "plugins" | "write";
+export type NpBootstrapIntent = "read" | "plugins" | "write";
 
-export async function ensureFor(intent: NxBootstrapIntent): Promise<void> {
+export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
   bootstrap.ensureCoreServices();
   if (intent === "read") return;
 
@@ -32,5 +32,5 @@ export async function ensureFor(intent: NxBootstrapIntent): Promise<void> {
   await bootstrap.ensureJobProducer();
 }
 
-export type { NxDb } from "@nexpress/next";
+export type { NpDb } from "@nexpress/next";
 export { nexpressConfig };

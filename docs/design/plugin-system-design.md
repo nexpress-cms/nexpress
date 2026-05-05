@@ -64,7 +64,7 @@
 │ What plugins CAN do at runtime (without rebuild):                   │
 │   ✓ hooks (beforeCreate, afterPublish, etc.)                        │
 │   ✓ actions (custom API handlers registered at setup)               │
-│   ✓ widgets (declarative UI via NxWidget — no custom React)         │
+│   ✓ widgets (declarative UI via NpWidget — no custom React)         │
 │   ✓ scheduled tasks (registered at startup, executed by worker)     │
 │                                                                     │
 │ What plugins CANNOT do at runtime:                                  │
@@ -92,7 +92,7 @@
  * Stage 2: Enforced at runtime by host service layer.
  * Stage 3: Enforced at isolation boundary (bridge).
  */
-export type NxPluginCapability =
+export type NpPluginCapability =
   // Content operations
   | "content:read" // Read content from collections
   | "content:write" // Create/update content
@@ -146,7 +146,7 @@ import { z } from "zod";
  * Static plugin manifest — shipped with the npm package.
  * JSON-serializable, validated at install time.
  */
-export const nxPluginManifestSchema = z.object({
+export const npPluginManifestSchema = z.object({
   /** Unique plugin ID. Convention: "@scope/plugin-name" or "plugin-name" */
   id: z.string().regex(/^(@[\w-]+\/)?[\w-]+$/),
 
@@ -264,7 +264,7 @@ export const nxPluginManifestSchema = z.object({
   styleSlots: z.record(z.string()).default({}),
 });
 
-export type NxPluginManifest = z.infer<typeof nxPluginManifestSchema>;
+export type NpPluginManifest = z.infer<typeof npPluginManifestSchema>;
 ```
 
 ### 1.4 definePlugin() API
@@ -280,15 +280,15 @@ export type NxPluginManifest = z.infer<typeof nxPluginManifestSchema>;
  *   export default definePlugin({ ... });
  */
 export function definePlugin<TConfig = Record<string, unknown>>(
-  definition: NxPluginDefinition<TConfig>,
-): NxResolvedPlugin<TConfig>;
+  definition: NpPluginDefinition<TConfig>,
+): NpResolvedPlugin<TConfig>;
 
 /**
  * Full plugin definition.
  */
-export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
+export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
   /** Plugin manifest (static metadata) */
-  manifest: NxPluginManifest;
+  manifest: NpPluginManifest;
 
   // ─── Render: React Components ──────────────────────────────
 
@@ -296,19 +296,19 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
    * Block components this plugin provides.
    * These render in the public site's React tree (RSC or Client).
    */
-  blocks?: NxBlockRegistration[];
+  blocks?: NpBlockRegistration[];
 
   /**
    * Custom field type components for the admin editor.
    */
-  fields?: NxFieldRegistration[];
+  fields?: NpFieldRegistration[];
 
   /**
    * Admin UI extensions (panels, tabs, dashboard widgets).
    * Components are referenced by path string (Payload pattern)
    * so they can be code-split and loaded on demand.
    */
-  admin?: NxAdminExtension;
+  admin?: NpAdminExtension;
 
   // ─── Effect: Server Logic ──────────────────────────────────
 
@@ -317,19 +317,19 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
    * In Stage 1-2: run in-process.
    * In Stage 3: can be isolated to worker/isolate.
    */
-  hooks?: NxHookRegistration;
+  hooks?: NpHookRegistration;
 
   /**
    * Plugin route handlers.
    * API routes mount at /api/plugins/{pluginId}/...
    * Site routes are validated and exposed through root-level rewrites.
    */
-  routes?: NxRouteRegistration[];
+  routes?: NpRouteRegistration[];
 
   /**
    * Scheduled tasks (cron).
    */
-  scheduled?: NxScheduledTask[];
+  scheduled?: NpScheduledTask[];
 
   /**
    * Plugin configuration schema (what site admin configures).
@@ -341,7 +341,7 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
    * Plugin lifecycle: called once when plugin is loaded.
    * Receives scoped context — the only way to access NexPress services.
    */
-  setup?: (ctx: NxPluginContext<TConfig>) => void | Promise<void>;
+  setup?: (ctx: NpPluginContext<TConfig>) => void | Promise<void>;
 
   /**
    * Plugin lifecycle: called when plugin is unloaded.
@@ -351,7 +351,7 @@ export interface NxPluginDefinition<TConfig = Record<string, unknown>> {
 
 // ─── Block Registration ────────────────────────────────────
 
-export interface NxBlockRegistration {
+export interface NpBlockRegistration {
   /** Block type ID. Namespaced: "pluginId:blockType" at runtime. */
   type: string;
   /** Human-readable label */
@@ -378,7 +378,7 @@ export interface NxBlockRegistration {
 
 // ─── Field Registration ────────────────────────────────────
 
-export interface NxFieldRegistration {
+export interface NpFieldRegistration {
   /** Field type ID */
   type: string;
   /** Human-readable label */
@@ -399,7 +399,7 @@ export interface NxFieldRegistration {
 
 // ─── Admin Extension ───────────────────────────────────────
 
-export interface NxAdminExtension {
+export interface NpAdminExtension {
   /** Sidebar panels */
   panels?: Array<{
     id: string;
@@ -439,7 +439,7 @@ export interface NxAdminExtension {
 
 // ─── Hook Registration ─────────────────────────────────────
 
-export interface NxHookRegistration {
+export interface NpHookRegistration {
   /**
    * Content lifecycle hooks.
    * Each key is a hook name, value is handler function or path string.
@@ -447,36 +447,36 @@ export interface NxHookRegistration {
    * In Stage 1 (in-process): direct function reference.
    * In Stage 3 (isolated): path string to handler file.
    */
-  "content:beforeCreate"?: NxHookHandler;
-  "content:afterCreate"?: NxHookHandler;
-  "content:beforeUpdate"?: NxHookHandler;
-  "content:afterUpdate"?: NxHookHandler;
-  "content:beforeDelete"?: NxHookHandler;
-  "content:afterDelete"?: NxHookHandler;
-  "content:beforePublish"?: NxHookHandler;
-  "content:afterPublish"?: NxHookHandler;
-  "content:beforeUnpublish"?: NxHookHandler;
+  "content:beforeCreate"?: NpHookHandler;
+  "content:afterCreate"?: NpHookHandler;
+  "content:beforeUpdate"?: NpHookHandler;
+  "content:afterUpdate"?: NpHookHandler;
+  "content:beforeDelete"?: NpHookHandler;
+  "content:afterDelete"?: NpHookHandler;
+  "content:beforePublish"?: NpHookHandler;
+  "content:afterPublish"?: NpHookHandler;
+  "content:beforeUnpublish"?: NpHookHandler;
 
   /** Auth hooks */
-  "auth:afterLogin"?: NxHookHandler;
-  "auth:beforeLogout"?: NxHookHandler;
-  "auth:afterRegister"?: NxHookHandler;
+  "auth:afterLogin"?: NpHookHandler;
+  "auth:beforeLogout"?: NpHookHandler;
+  "auth:afterRegister"?: NpHookHandler;
 
   /** Render hooks */
-  "render:beforePage"?: NxHookHandler;
-  "render:afterPage"?: NxHookHandler;
+  "render:beforePage"?: NpHookHandler;
+  "render:afterPage"?: NpHookHandler;
 
   /** Media hooks */
-  "media:beforeUpload"?: NxHookHandler;
-  "media:afterUpload"?: NxHookHandler;
+  "media:beforeUpload"?: NpHookHandler;
+  "media:afterUpload"?: NpHookHandler;
 }
 
 /**
  * Hook handler — function in Stage 1, path string in Stage 3.
  */
-export type NxHookHandler = ((ctx: NxHookContext) => void | Promise<void>) | string; // path to handler file (for isolation)
+export type NpHookHandler = ((ctx: NpHookContext) => void | Promise<void>) | string; // path to handler file (for isolation)
 
-export interface NxHookContext {
+export interface NpHookContext {
   /** Hook name */
   hook: string;
   /** The entity being operated on */
@@ -486,32 +486,32 @@ export interface NxHookContext {
   /** User performing the action */
   user?: { id: string; email: string; role: string };
   /** Plugin context for accessing services */
-  ctx: NxPluginContext;
+  ctx: NpPluginContext;
 }
 
 // ─── Route Registration ────────────────────────────────────
 
-export type NxRouteRegistration = NxApiRouteRegistration | NxSiteRouteRegistration;
+export type NpRouteRegistration = NpApiRouteRegistration | NpSiteRouteRegistration;
 
-export interface NxBaseRouteRegistration {
+export interface NpBaseRouteRegistration {
   /** Route path handled by the plugin API mount */
   path: string;
   /** HTTP method */
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Handler function or path string */
-  handler: NxRouteHandler | string;
+  handler: NpRouteHandler | string;
   /** Description for OpenAPI generation */
   description?: string;
   /** Whether this route requires authentication */
   auth?: boolean;
 }
 
-export interface NxApiRouteRegistration extends NxBaseRouteRegistration {
+export interface NpApiRouteRegistration extends NpBaseRouteRegistration {
   /** API routes are mounted at /api/plugins/{pluginId}/{path} */
   kind?: "api";
 }
 
-export interface NxSiteRouteRegistration extends NxBaseRouteRegistration {
+export interface NpSiteRouteRegistration extends NpBaseRouteRegistration {
   /** Site routes are exposed at the site root through generated rewrites */
   kind: "site";
   /** Absolute public path, for example /sitemap.xml */
@@ -523,12 +523,12 @@ export interface NxSiteRouteRegistration extends NxBaseRouteRegistration {
   overridesBuiltIn?: "sitemap.xml" | "robots.txt";
 }
 
-export type NxRouteHandler = (
-  req: NxRouteRequest,
-  ctx: NxPluginContext,
-) => Promise<NxRouteResponse>;
+export type NpRouteHandler = (
+  req: NpRouteRequest,
+  ctx: NpPluginContext,
+) => Promise<NpRouteResponse>;
 
-export interface NxRouteRequest {
+export interface NpRouteRequest {
   method: string;
   path: string;
   params: Record<string, string>;
@@ -538,7 +538,7 @@ export interface NxRouteRequest {
   user?: { id: string; email: string; role: string };
 }
 
-export interface NxRouteResponse {
+export interface NpRouteResponse {
   status: number;
   body?: unknown;
   headers?: Record<string, string>;
@@ -546,13 +546,13 @@ export interface NxRouteResponse {
 
 // ─── Scheduled Tasks ───────────────────────────────────────
 
-export interface NxScheduledTask {
+export interface NpScheduledTask {
   /** Task ID */
   id: string;
   /** Cron expression */
   cron: string;
   /** Handler */
-  handler: ((ctx: NxPluginContext) => void | Promise<void>) | string;
+  handler: ((ctx: NpPluginContext) => void | Promise<void>) | string;
   /** Description */
   description?: string;
 }
@@ -570,7 +570,7 @@ Replacing `sitemap.xml` or `robots.txt` is allowed only when the matching
 
 ```typescript
 /**
- * NxPluginContext — the scoped interface through which plugins access NexPress services.
+ * NpPluginContext — the scoped interface through which plugins access NexPress services.
  *
  * Stage 1: Thin wrapper, calls go directly to core services.
  * Stage 2: Capability checks before every call.
@@ -579,7 +579,7 @@ Replacing `sitemap.xml` or `robots.txt` is allowed only when the matching
  * Design: Every method is async (even if Stage 1 could be sync)
  * to maintain API compatibility across all stages.
  */
-export interface NxPluginContext<TConfig = Record<string, unknown>> {
+export interface NpPluginContext<TConfig = Record<string, unknown>> {
   /** Plugin ID */
   readonly pluginId: string;
 
@@ -587,28 +587,28 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
   readonly config: Readonly<TConfig>;
 
   /** Plugin's declared capabilities */
-  readonly capabilities: readonly NxPluginCapability[];
+  readonly capabilities: readonly NpPluginCapability[];
 
   // ─── Content Service ───────────────────────────────────
 
   /** Content operations (requires content:* capabilities) */
   readonly content: {
-    find(collection: string, query?: NxContentQuery): Promise<NxContentResult>;
-    findOne(collection: string, id: string): Promise<NxContentItem | null>;
-    create(collection: string, data: Record<string, unknown>): Promise<NxContentItem>;
-    update(collection: string, id: string, data: Record<string, unknown>): Promise<NxContentItem>;
+    find(collection: string, query?: NpContentQuery): Promise<NpContentResult>;
+    findOne(collection: string, id: string): Promise<NpContentItem | null>;
+    create(collection: string, data: Record<string, unknown>): Promise<NpContentItem>;
+    update(collection: string, id: string, data: Record<string, unknown>): Promise<NpContentItem>;
     delete(collection: string, id: string): Promise<void>;
-    count(collection: string, where?: NxContentWhere): Promise<number>;
+    count(collection: string, where?: NpContentWhere): Promise<number>;
   };
 
   // ─── Media Service ─────────────────────────────────────
 
   /** Media operations (requires media:* capabilities) */
   readonly media: {
-    list(query?: NxMediaQuery): Promise<NxMediaResult>;
-    getById(id: string): Promise<NxMediaItem | null>;
-    getUrl(id: string, transform?: NxImageTransform): Promise<string>;
-    upload(file: Buffer | ReadableStream, metadata: NxMediaUpload): Promise<NxMediaItem>;
+    list(query?: NpMediaQuery): Promise<NpMediaResult>;
+    getById(id: string): Promise<NpMediaItem | null>;
+    getUrl(id: string, transform?: NpImageTransform): Promise<string>;
+    upload(file: Buffer | ReadableStream, metadata: NpMediaUpload): Promise<NpMediaItem>;
     delete(id: string): Promise<void>;
   };
 
@@ -632,7 +632,7 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
   /** Site and plugin settings */
   readonly settings: {
     /** Get site-level settings (requires settings:read) */
-    getSite(): Promise<NxSiteSettings>;
+    getSite(): Promise<NpSiteSettings>;
     /** Get this plugin's settings */
     getPlugin(): Promise<TConfig>;
     /** Update this plugin's settings (requires settings:write) */
@@ -644,9 +644,9 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
   /** Theme token access (requires theme:* capabilities) */
   readonly theme: {
     /** Get current theme tokens */
-    getTokens(): Promise<NxThemeTokens>;
+    getTokens(): Promise<NpThemeTokens>;
     /** Update theme tokens (requires theme:write — use sparingly) */
-    setTokens(tokens: Partial<NxThemeTokens>): Promise<void>;
+    setTokens(tokens: Partial<NpThemeTokens>): Promise<void>;
   };
 
   // ─── HTTP Client ───────────────────────────────────────
@@ -656,7 +656,7 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
    * Requests are validated against manifest.allowedHosts.
    */
   readonly http: {
-    fetch(url: string, options?: NxFetchOptions): Promise<NxFetchResponse>;
+    fetch(url: string, options?: NpFetchOptions): Promise<NpFetchResponse>;
   };
 
   // ─── Logging ───────────────────────────────────────────
@@ -696,10 +696,10 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
    * Plugin action registration and dispatch.
    * Actions are named RPC endpoints callable from:
    * - Admin UI (via pluginAction() server action)
-   * - NxWidget button/form actions
+   * - NpWidget button/form actions
    * - Other plugins (if permitted)
    *
-   * Actions are the ONLY way for client-side UI (including NxWidgets)
+   * Actions are the ONLY way for client-side UI (including NpWidgets)
    * to trigger plugin server-side logic.
    */
   readonly actions: {
@@ -708,13 +708,13 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
      * Called during plugin setup() — handlers persist for plugin lifetime.
      * Action names are automatically namespaced: "{pluginId}:{actionName}"
      */
-    register(actionName: string, handler: NxActionHandler): void;
+    register(actionName: string, handler: NpActionHandler): void;
 
     /**
      * Dispatch an action to another plugin (requires explicit permission).
      * For cross-plugin communication.
      */
-    dispatch(pluginId: string, actionName: string, data?: unknown): Promise<NxActionResult>;
+    dispatch(pluginId: string, actionName: string, data?: unknown): Promise<NpActionResult>;
   };
 }
 
@@ -722,12 +722,12 @@ export interface NxPluginContext<TConfig = Record<string, unknown>> {
  * Action handler function.
  * Receives action data + plugin context, returns serializable result.
  */
-export type NxActionHandler = (data: unknown, ctx: NxPluginContext) => Promise<NxActionResult>;
+export type NpActionHandler = (data: unknown, ctx: NpPluginContext) => Promise<NpActionResult>;
 
 /**
  * Action result — must be JSON-serializable (crosses server/client boundary).
  */
-export interface NxActionResult {
+export interface NpActionResult {
   /** Whether the action succeeded */
   ok: boolean;
   /** Result data (on success) */
@@ -748,7 +748,7 @@ export interface NxActionResult {
 │     ↓                                                         │
 │  2. Add to nexpress.config.ts: plugins: [seoPlugin()]         │
 │     ↓                                                         │
-│  3. NexPress CLI validates manifest (nxPluginManifestSchema)   │
+│  3. NexPress CLI validates manifest (npPluginManifestSchema)   │
 │     ↓                                                         │
 │  4. If plugin declares collections/fields:                     │
 │     → pnpm db:generate (re-runs codegen with plugin schema)   │
@@ -928,7 +928,7 @@ export default definePlugin({
   async setup(ctx) {
     ctx.log.info("SEO plugin initialized", { siteTitle: ctx.config.siteTitle });
 
-    // Register actions callable from admin UI and NxWidgets
+    // Register actions callable from admin UI and NpWidgets
     ctx.actions.register("generate-sitemap", async (data, actCtx) => {
       const posts = await actCtx.content.find("posts", {
         where: { status: { equals: "published" } },
@@ -977,20 +977,20 @@ Mechanism: **Proxy-based capability enforcement on PluginContext**
 ```typescript
 // Stage 2 implementation sketch
 function createCapabilityProxy(
-  ctx: NxPluginContextInternal,
-  capabilities: NxPluginCapability[],
-): NxPluginContext {
+  ctx: NpPluginContextInternal,
+  capabilities: NpPluginCapability[],
+): NpPluginContext {
   return new Proxy(ctx, {
     get(target, prop) {
       // Check capability before returning service
       const requiredCap = CAPABILITY_MAP[prop as string];
       if (requiredCap && !capabilities.includes(requiredCap)) {
-        throw new NxCapabilityError(
+        throw new NpCapabilityError(
           `Plugin "${target.pluginId}" lacks capability "${requiredCap}" ` +
             `required to access "${String(prop)}"`,
         );
       }
-      return target[prop as keyof NxPluginContextInternal];
+      return target[prop as keyof NpPluginContextInternal];
     },
   });
 }
@@ -1043,13 +1043,13 @@ Key implementation decisions (from Oracle):
 // Stage 3: isolated-vm bridge implementation sketch
 import { Isolate, Context, Reference } from "isolated-vm";
 
-class NxIsolatedPluginRunner {
+class NpIsolatedPluginRunner {
   private isolate: Isolate;
   private context: Context;
 
   constructor(
     private pluginId: string,
-    private capabilities: Set<NxPluginCapability>,
+    private capabilities: Set<NpPluginCapability>,
   ) {
     this.isolate = new Isolate({ memoryLimit: 128 }); // MB
   }
@@ -1154,12 +1154,12 @@ function generateSdkShim(): string {
 
 ### 2.4 SES/Compartments — Future Watch
 
-Keep the `NxPluginContext` API shape compatible with SES-style Compartments, but do NOT put SES on the roadmap. Rationale:
+Keep the `NpPluginContext` API shape compatible with SES-style Compartments, but do NOT put SES on the roadmap. Rationale:
 
 - TC39 Stage 2 — not yet standardized
 - Node.js doesn't ship SES natively; requires Agoric shim (`ses` package)
 - LavaMoat (MetaMask) uses it, but for supply-chain defense, not plugin sandboxing
-- The abstraction point is `NxPluginContext` — if SES matures, swap the transport layer only
+- The abstraction point is `NpPluginContext` — if SES matures, swap the transport layer only
 
 ### 2.5 Unified Programming Model (Critical Design Principle)
 
@@ -1169,7 +1169,7 @@ Plugin authors write the same code regardless of stage:
 
 ```typescript
 // This code is identical in Stage 1, 2, and 3
-async function afterPublish(hookCtx: NxHookContext) {
+async function afterPublish(hookCtx: NpHookContext) {
   const { ctx, collection, data } = hookCtx;
   const score = calculateScore(data);
   await ctx.storage.set(`score:${data.id}`, score);
@@ -1224,7 +1224,7 @@ In NexPress (Node.js), the bridge must adapt to:
 │  │  │   ├── <CoreHeroBlock />         ← core block           │   │
 │  │  │   ├── <PluginSeoPreview />      ← plugin block (trust) │   │
 │  │  │   ├── <PluginContactForm />     ← plugin block (trust) │   │
-│  │  │   └── <NxWidgetRenderer desc={sandboxUI} />            │   │
+│  │  │   └── <NpWidgetRenderer desc={sandboxUI} />            │   │
 │  │  │       ↑ sandboxed plugin's declarative UI (Stage 3)    │   │
 │  │  └── <Footer />                                           │   │
 │  └──────────────────────────────────────────────────────────┘   │
@@ -1235,12 +1235,12 @@ In NexPress (Node.js), the bridge must adapt to:
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │            Effect Layer (Plugin Host Services)            │   │
 │  │                                                           │   │
-│  │  NxPluginHost                                             │   │
+│  │  NpPluginHost                                             │   │
 │  │  ├── PluginRegistry (manifest, state, config)             │   │
 │  │  ├── CapabilityEnforcer (Stage 2+)                        │   │
 │  │  ├── HookPipeline (ordered hook execution)                │   │
 │  │  ├── RouteRegistry (plugin API routes)                    │   │
-│  │  └── NxPluginBridge (Stage 3 only)                        │   │
+│  │  └── NpPluginBridge (Stage 3 only)                        │   │
 │  │      ├── Plugin A Effect → in-process (trusted)           │   │
 │  │      ├── Plugin B Effect → in-process (trusted)           │   │
 │  │      └── Plugin C Effect → isolated-vm/Worker (sandboxed) │   │
@@ -1343,7 +1343,7 @@ export async function pluginAction(pluginId: string, actionName: string, data: u
   // 1. Validate plugin exists and is active
   // 2. Look up registered action handler in plugin's action registry
   // 3. Check capability (plugin must have registered this action during setup)
-  // 4. Execute handler with scoped NxPluginContext
+  // 4. Execute handler with scoped NpPluginContext
   return host.executeAction(pluginId, actionName, data);
 }
 
@@ -1373,20 +1373,20 @@ export function SeoPanel() {
 
 ```typescript
 /**
- * NxPluginBridge — RPC gateway for sandboxed plugin effects.
+ * NpPluginBridge — RPC gateway for sandboxed plugin effects.
  * Only used in Stage 3 for plugins that require isolation.
  *
  * Communication:
  * - Worker Threads: MessagePort (structured clone)
  * - isolated-vm: Reference/callback + JSON serialization
  */
-export class NxPluginBridge {
+export class NpPluginBridge {
   private isolate: Isolate | Worker;
-  private capabilities: Set<NxPluginCapability>;
+  private capabilities: Set<NpPluginCapability>;
 
   constructor(
     pluginId: string,
-    capabilities: NxPluginCapability[],
+    capabilities: NpPluginCapability[],
     isolationType: "isolated-vm" | "worker-thread",
   ) {
     this.capabilities = new Set(capabilities);
@@ -1406,7 +1406,7 @@ export class NxPluginBridge {
     return this.rpc("hook", { name: hookName, payload });
   }
 
-  async callRoute(method: string, path: string, request: NxRouteRequest): Promise<NxRouteResponse> {
+  async callRoute(method: string, path: string, request: NpRouteRequest): Promise<NpRouteResponse> {
     this.assertCapability("api:route");
     return this.rpc("route", { method, path, request });
   }
@@ -1422,9 +1422,9 @@ export class NxPluginBridge {
     return this.hostServices[service][method](...args);
   }
 
-  private assertCapability(cap: NxPluginCapability): void {
+  private assertCapability(cap: NpPluginCapability): void {
     if (!this.capabilities.has(cap)) {
-      throw new NxCapabilityError(`Sandboxed plugin lacks capability: ${cap}`);
+      throw new NpCapabilityError(`Sandboxed plugin lacks capability: ${cap}`);
     }
   }
 
@@ -1451,101 +1451,101 @@ For trusted plugins (Stage 1-2), this is **optional** — they can use real Reac
 - Makes future sandbox migration painless
 - Consistent look & feel (always renders as shadcn/ui)
 
-### 4.2 NxWidget Type System
+### 4.2 NpWidget Type System
 
 ```typescript
 /**
- * NxWidget — declarative UI node.
+ * NpWidget — declarative UI node.
  * Host renders these using shadcn/ui components.
  * All widgets map 1:1 to a shadcn/ui component.
  */
-export type NxWidget =
+export type NpWidget =
   // ─── Layout ──────────────────────────────
-  | NxStackWidget
-  | NxGridWidget
-  | NxCardWidget
-  | NxTabsWidget
-  | NxDividerWidget
-  | NxAccordionWidget
+  | NpStackWidget
+  | NpGridWidget
+  | NpCardWidget
+  | NpTabsWidget
+  | NpDividerWidget
+  | NpAccordionWidget
 
   // ─── Typography ──────────────────────────
-  | NxHeadingWidget
-  | NxTextWidget
-  | NxCodeWidget
+  | NpHeadingWidget
+  | NpTextWidget
+  | NpCodeWidget
 
   // ─── Form Inputs ─────────────────────────
-  | NxInputWidget
-  | NxTextareaWidget
-  | NxSelectWidget
-  | NxCheckboxWidget
-  | NxSwitchWidget
-  | NxRadioGroupWidget
-  | NxDatePickerWidget
+  | NpInputWidget
+  | NpTextareaWidget
+  | NpSelectWidget
+  | NpCheckboxWidget
+  | NpSwitchWidget
+  | NpRadioGroupWidget
+  | NpDatePickerWidget
 
   // ─── Data Display ────────────────────────
-  | NxTableWidget
-  | NxStatWidget
-  | NxBadgeWidget
-  | NxAlertWidget
-  | NxProgressWidget
+  | NpTableWidget
+  | NpStatWidget
+  | NpBadgeWidget
+  | NpAlertWidget
+  | NpProgressWidget
 
   // ─── Actions ─────────────────────────────
-  | NxButtonWidget
-  | NxFormWidget
-  | NxLinkWidget
+  | NpButtonWidget
+  | NpFormWidget
+  | NpLinkWidget
 
   // ─── Media ───────────────────────────────
-  | NxImageWidget
-  | NxAvatarWidget;
+  | NpImageWidget
+  | NpAvatarWidget;
 
 // ─── Widget Definitions ──────────────────────
 
-interface NxStackWidget {
+interface NpStackWidget {
   type: "stack";
   direction: "horizontal" | "vertical";
   gap?: number; // in tailwind spacing units (1 = 0.25rem)
   align?: "start" | "center" | "end" | "stretch";
-  children: NxWidget[];
+  children: NpWidget[];
 }
 
-interface NxGridWidget {
+interface NpGridWidget {
   type: "grid";
   columns: number; // 1-4
   gap?: number;
-  children: NxWidget[];
+  children: NpWidget[];
 }
 
-interface NxCardWidget {
+interface NpCardWidget {
   type: "card";
   title?: string;
   description?: string;
-  children: NxWidget[];
-  footer?: NxWidget[];
+  children: NpWidget[];
+  footer?: NpWidget[];
 }
 
-interface NxTabsWidget {
+interface NpTabsWidget {
   type: "tabs";
   items: Array<{
     id: string;
     label: string;
-    children: NxWidget[];
+    children: NpWidget[];
   }>;
   defaultTab?: string;
 }
 
-interface NxHeadingWidget {
+interface NpHeadingWidget {
   type: "heading";
   level: 1 | 2 | 3 | 4;
   content: string;
 }
 
-interface NxTextWidget {
+interface NpTextWidget {
   type: "text";
   content: string;
   variant?: "default" | "muted" | "small";
 }
 
-interface NxInputWidget {
+interface NpInputWidget {
   type: "input";
   name: string;
   label: string;
@@ -1556,7 +1556,7 @@ interface NxInputWidget {
   description?: string;
 }
 
-interface NxSelectWidget {
+interface NpSelectWidget {
   type: "select";
   name: string;
   label: string;
@@ -1565,7 +1565,7 @@ interface NxSelectWidget {
   defaultValue?: string;
 }
 
-interface NxTableWidget {
+interface NpTableWidget {
   type: "table";
   columns: Array<{
     key: string;
@@ -1578,7 +1578,7 @@ interface NxTableWidget {
   pageSize?: number;
 }
 
-interface NxStatWidget {
+interface NpStatWidget {
   type: "stat";
   label: string;
   value: string;
@@ -1586,7 +1586,7 @@ interface NxStatWidget {
   trend?: { direction: "up" | "down" | "neutral"; value: string };
 }
 
-interface NxButtonWidget {
+interface NpButtonWidget {
   type: "button";
   label: string;
   /** Action ID — dispatched to plugin's registered action handler */
@@ -1599,30 +1599,30 @@ interface NxButtonWidget {
   loading?: boolean;
 }
 
-interface NxFormWidget {
+interface NpFormWidget {
   type: "form";
-  /** Form fields (NxWidget inputs) */
-  children: NxWidget[];
+  /** Form fields (NpWidget inputs) */
+  children: NpWidget[];
   /** Action to dispatch on submit */
   onSubmit: string;
   /** Submit button label */
   submitLabel?: string;
 }
 
-interface NxAlertWidget {
+interface NpAlertWidget {
   type: "alert";
   variant: "default" | "info" | "warning" | "error" | "success";
   title?: string;
   message: string;
 }
 
-interface NxBadgeWidget {
+interface NpBadgeWidget {
   type: "badge";
   label: string;
   variant?: "default" | "secondary" | "destructive" | "outline";
 }
 
-interface NxImageWidget {
+interface NpImageWidget {
   type: "image";
   src: string;
   alt: string;
@@ -1630,17 +1630,17 @@ interface NxImageWidget {
   height?: number;
 }
 
-interface NxDividerWidget {
+interface NpDividerWidget {
   type: "divider";
 }
 
-interface NxProgressWidget {
+interface NpProgressWidget {
   type: "progress";
   value: number; // 0-100
   label?: string;
 }
 
-interface NxCodeWidget {
+interface NpCodeWidget {
   type: "code";
   content: string;
   language?: string;
@@ -1652,7 +1652,7 @@ interface NxCodeWidget {
 ### 4.3 Host Widget Renderer
 
 ```typescript
-// packages/admin/src/components/NxWidgetRenderer.tsx
+// packages/admin/src/components/NpWidgetRenderer.tsx
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -1663,24 +1663,24 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { pluginAction } from "@nexpress/admin/actions";
-import type { NxWidget } from "@nexpress/plugin-sdk";
+import type { NpWidget } from "@nexpress/plugin-sdk";
 
 interface Props {
-  widgets: NxWidget[];
+  widgets: NpWidget[];
   pluginId: string;
 }
 
-export function NxWidgetRenderer({ widgets, pluginId }: Props) {
+export function NpWidgetRenderer({ widgets, pluginId }: Props) {
   return (
     <>
       {widgets.map((widget, i) => (
-        <NxWidgetNode key={i} widget={widget} pluginId={pluginId} />
+        <NpWidgetNode key={i} widget={widget} pluginId={pluginId} />
       ))}
     </>
   );
 }
 
-function NxWidgetNode({ widget, pluginId }: { widget: NxWidget; pluginId: string }) {
+function NpWidgetNode({ widget, pluginId }: { widget: NpWidget; pluginId: string }) {
   switch (widget.type) {
     case "card":
       return (
@@ -1692,11 +1692,11 @@ function NxWidgetNode({ widget, pluginId }: { widget: NxWidget; pluginId: string
             </CardHeader>
           )}
           <CardContent>
-            <NxWidgetRenderer widgets={widget.children} pluginId={pluginId} />
+            <NpWidgetRenderer widgets={widget.children} pluginId={pluginId} />
           </CardContent>
           {widget.footer && (
             <CardFooter>
-              <NxWidgetRenderer widgets={widget.footer} pluginId={pluginId} />
+              <NpWidgetRenderer widgets={widget.footer} pluginId={pluginId} />
             </CardFooter>
           )}
         </Card>
@@ -1732,7 +1732,7 @@ function NxWidgetNode({ widget, pluginId }: { widget: NxWidget; pluginId: string
 
 ```typescript
 // Sandboxed plugin returns widget description via bridge
-export function getSettingsPanel(): NxWidget {
+export function getSettingsPanel(): NpWidget {
   return {
     type: "stack",
     direction: "vertical",
@@ -1888,7 +1888,7 @@ Run by `npx nexpress-sdk build`:
 
 ```
 1. Schema Validation
-   ├── Validate manifest against nxPluginManifestSchema
+   ├── Validate manifest against npPluginManifestSchema
    ├── Validate configSchema (if present) is valid Zod schema
    └── Validate propsSchema for each block is valid JSON Schema
 
@@ -1933,7 +1933,7 @@ npx nexpress-sdk audit
 # Generate manifest from code analysis (helper)
 npx nexpress-sdk init-manifest
 
-# Test plugin in isolation (mock NxPluginContext)
+# Test plugin in isolation (mock NpPluginContext)
 npx nexpress-sdk test
 ```
 
@@ -1963,7 +1963,7 @@ module.exports = {
 | Plugin storage      | KV prefixed with `nx:plugin:{id}:`                                                                            | Namespace isolation at DB level                                                |
 | Plugin CSS          | `@layer nx-blocks` required                                                                                   | Cascade layer ensures theme > plugin precedence                                |
 | Server Actions      | Host dispatcher, not direct plugin actions                                                                    | Security: prevents arbitrary server-side execution                             |
-| Declarative UI      | Optional NxWidget system                                                                                      | Agent-friendly, sandbox-ready, but not required for trusted plugins            |
+| Declarative UI      | Optional NpWidget system                                                                                      | Agent-friendly, sandbox-ready, but not required for trusted plugins            |
 
 ## Appendix B: Migration Path (Stage 1 → 2 → 3)
 
@@ -1989,7 +1989,7 @@ Stage 3 (Full Isolation — sandboxed plugins only)
 ├── Sandboxed plugins:
 │   ├── Effect code → isolated-vm/Worker Thread
 │   ├── Plugin calls ctx.content.find() → serialized RPC → bridge → host service
-│   ├── React components → NxWidget declarative UI only
+│   ├── React components → NpWidget declarative UI only
 │   └── Strict resource limits (memory, CPU, network)
 └── Both types coexist — sandbox is opt-in per plugin
 ```
@@ -2011,7 +2011,7 @@ pnpm --filter @nexpress/plugin-sdk test -- --run manifest.test
 
 # Expected: All pass
 # Test cases:
-#   ✓ valid manifest passes nxPluginManifestSchema.parse()
+#   ✓ valid manifest passes npPluginManifestSchema.parse()
 #   ✓ missing `id` → ZodError with path ["id"]
 #   ✓ invalid semver version → ZodError
 #   ✓ unknown capability → ZodError
@@ -2030,8 +2030,8 @@ pnpm --filter @nexpress/plugin-sdk exec tsc --noEmit --project tsconfig.test.jso
 # Expected: Exit code 0
 # Verify:
 #   ✓ definePlugin({ manifest, blocks, hooks, setup }) compiles
-#   ✓ setup(ctx) — ctx.content.find() returns Promise<NxContentResult>
-#   ✓ ctx.actions.register("name", handler) — handler typed as NxActionHandler
+#   ✓ setup(ctx) — ctx.content.find() returns Promise<NpContentResult>
+#   ✓ ctx.actions.register("name", handler) — handler typed as NpActionHandler
 #   ✓ configSchema: z.object({...}) → TConfig inferred in ctx.config
 #   ✓ wrong hook name → type error
 #   ✓ wrong capability string → type error
@@ -2047,9 +2047,9 @@ pnpm --filter @nexpress/core test -- --run plugin-context.test
 # Expected: All pass
 # Test cases:
 #   ✓ plugin with ["content:read"] → ctx.content.find() succeeds
-#   ✓ plugin with ["content:read"] → ctx.content.create() throws NxCapabilityError
+#   ✓ plugin with ["content:read"] → ctx.content.create() throws NpCapabilityError
 #   ✓ plugin with ["storage:kv"] → ctx.storage.set() succeeds
-#   ✓ plugin with [] → ctx.http.fetch() throws NxCapabilityError
+#   ✓ plugin with [] → ctx.http.fetch() throws NpCapabilityError
 #   ✓ ctx.actions.register() → action callable via host.executeAction()
 #   ✓ ctx.actions.dispatch() to other plugin → works if target allows
 ```
@@ -2084,7 +2084,7 @@ pnpm --filter @nexpress/core test -- --run capability-proxy.test
 # Expected: All pass
 # Test cases:
 #   ✓ createCapabilityProxy(ctx, ["content:read"]).content.find() → resolves
-#   ✓ createCapabilityProxy(ctx, []).content.find() → throws NxCapabilityError
+#   ✓ createCapabilityProxy(ctx, []).content.find() → throws NpCapabilityError
 #   ✓ proxy overhead < 0.1ms per property access (performance benchmark)
 #   ✓ proxy does not leak internal ctx properties
 ```
@@ -2099,10 +2099,10 @@ pnpm --filter @nexpress/core test -- --run isolated-runner.test
 # Expected: All pass
 # Prereq: npm install isolated-vm, Node.js started with --no-node-snapshot
 # Test cases:
-#   ✓ NxIsolatedPluginRunner initializes with 128MB isolate
+#   ✓ NpIsolatedPluginRunner initializes with 128MB isolate
 #   ✓ callHook("content:afterPublish", payload) → returns result via bridge
 #   ✓ plugin calls ctx.content.find() inside isolate → bridge RPC → host service → result
-#   ✓ plugin without "content:read" calls ctx.content.find() → NxCapabilityError
+#   ✓ plugin without "content:read" calls ctx.content.find() → NpCapabilityError
 #   ✓ infinite loop → timeout after 500ms, isolate disposed
 #   ✓ memory exceed → isolate terminated, new isolate created
 #   ✓ host.call() only accepts JSON-serializable data
@@ -2169,9 +2169,9 @@ pnpm --filter @nexpress/core test -- --run action-dispatcher.test
 #   ✓ action result is JSON-serializable (no functions, no circular refs)
 ```
 
-### QA: Section 4 — Declarative UI (NxWidget)
+### QA: Section 4 — Declarative UI (NpWidget)
 
-**QA-4.1: NxWidgetRenderer renders all widget types (component test)**
+**QA-4.1: NpWidgetRenderer renders all widget types (component test)**
 
 ```bash
 # Tool: vitest + @testing-library/react
@@ -2199,7 +2199,7 @@ pnpm --filter web exec playwright test widget-actions.spec.ts
 
 # Expected: All pass
 # Steps:
-#   1. Load admin panel with a plugin using NxWidget settings panel
+#   1. Load admin panel with a plugin using NpWidget settings panel
 #   2. Fill form fields in the widget
 #   3. Click submit button
 #   4. Assert pluginAction is called with correct pluginId, actionName, form data

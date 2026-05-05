@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -112,7 +112,7 @@ export function MemberBansPanel({
     setLoading(true);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/community/bans?memberId=${encodeURIComponent(memberId)}`,
       );
       const raw = (await res.json().catch(() => null)) as Record<
@@ -157,7 +157,7 @@ export function MemberBansPanel({
         body.reason = form.reason.trim();
       }
 
-      const res = await nxFetch("/api/admin/community/bans", {
+      const res = await npFetch("/api/admin/community/bans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -185,7 +185,7 @@ export function MemberBansPanel({
     setRevokingId(banId);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/community/bans/${encodeURIComponent(banId)}`,
         { method: "DELETE" },
       );

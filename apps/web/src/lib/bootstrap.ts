@@ -9,5 +9,5 @@ export const { getDb, ensureCoreServices, ensurePluginsLoaded, ensureJobProducer
     generatedSchema: generatedSchema as unknown as Record<string, unknown>,
   });
 
-export type { NxDb } from "@nexpress/next";
+export type { NpDb } from "@nexpress/next";
 export { nexpressConfig };

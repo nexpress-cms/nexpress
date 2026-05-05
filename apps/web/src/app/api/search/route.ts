@@ -8,7 +8,7 @@ import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 const DEFAULT_LIMIT = 10;
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const q = params.get("q")?.trim() ?? "";
     if (q.length === 0) {
-      return nxSuccessResponse({ results: [], total: 0, perCollection: {} });
+      return npSuccessResponse({ results: [], total: 0, perCollection: {} });
     }
 
     const collectionsParam = params.get("collections");
@@ -128,9 +128,9 @@ export async function GET(request: NextRequest) {
         throw error;
       }
     }
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

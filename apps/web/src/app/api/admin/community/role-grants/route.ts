@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   grantMemberRole,
   listMemberRoleGrants,
   can,
@@ -8,7 +8,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -41,18 +41,18 @@ export async function GET(request: NextRequest) {
       // it accepts `author` thanks to parallel rank-1 in the
       // hierarchy (see 9.6h memory note). `isStaffMod` is the
       // staff-mod predicate that resolves admin / editor / moderator.
-      throw new NxForbiddenError("memberRoleGrants", "list");
+      throw new NpForbiddenError("memberRoleGrants", "list");
     }
     const memberId = request.nextUrl.searchParams.get("memberId");
     if (!memberId) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "memberId", message: "memberId query param required" },
       ]);
     }
     const rows = await listMemberRoleGrants(memberId);
-    return nxSuccessResponse({ docs: rows });
+    return npSuccessResponse({ docs: rows });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("memberRoleGrants", "create");
+      throw new NpForbiddenError("memberRoleGrants", "create");
     }
 
     const body = (await readJsonBody(request)) as GrantBody | null;
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       }
     }
     if (errors.length > 0) {
-      throw new NxValidationError("Invalid input", errors);
+      throw new NpValidationError("Invalid input", errors);
     }
 
     const row = await grantMemberRole({
@@ -107,9 +107,9 @@ export async function POST(request: NextRequest) {
       grantedByUserId: user.id,
     });
 
-    return nxSuccessResponse(row, { status: 201 });
+    return npSuccessResponse(row, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

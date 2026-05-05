@@ -1,12 +1,12 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getSiteById,
   getSiteUsageSummary,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 import { canManageSite } from "@/lib/site-authz";
@@ -35,18 +35,18 @@ export async function GET(
     // and learn private content shape. Use the same target-site
     // ladder as the sister site detail/update/delete routes.
     if (!(await canManageSite(user, id))) {
-      throw new NxForbiddenError("sites/usage", "read");
+      throw new NpForbiddenError("sites/usage", "read");
     }
     const site = await getSiteById(id);
     if (!site) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
     const usage = await getSiteUsageSummary(id);
-    return nxSuccessResponse({ site: { id: site.id, name: site.name }, usage });
+    return npSuccessResponse({ site: { id: site.id, name: site.name }, usage });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

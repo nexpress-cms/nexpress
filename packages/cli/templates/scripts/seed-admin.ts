@@ -6,7 +6,7 @@ import { stdin, stdout } from "node:process";
 import { config as loadEnv } from "dotenv";
 import { count, eq } from "drizzle-orm";
 
-import { createDbConnection, hashPassword, nxUsers } from "@nexpress/core";
+import { createDbConnection, hashPassword, npUsers } from "@nexpress/core";
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
@@ -38,8 +38,8 @@ async function main(): Promise<void> {
   // would then fail looking for an admin author.
   const existing = await db
     .select({ value: count() })
-    .from(nxUsers)
-    .where(eq(nxUsers.role, "admin"));
+    .from(npUsers)
+    .where(eq(npUsers.role, "admin"));
   const adminCount = existing[0]?.value ?? 0;
 
   if (adminCount > 0) {
@@ -64,9 +64,9 @@ async function main(): Promise<void> {
   const passwordHash = await hashPassword(password);
 
   const existingEmail = await db
-    .select({ id: nxUsers.id })
-    .from(nxUsers)
-    .where(eq(nxUsers.email, email))
+    .select({ id: npUsers.id })
+    .from(npUsers)
+    .where(eq(npUsers.email, email))
     .limit(1);
 
   if (existingEmail.length > 0) {
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  await db.insert(nxUsers).values({ email, password: passwordHash, name, role: "admin" });
+  await db.insert(npUsers).values({ email, password: passwordHash, name, role: "admin" });
   console.log(`✓ Admin created: ${email} (${name})`);
   console.log(`  Log in at http://localhost:3000/admin`);
   process.exit(0);

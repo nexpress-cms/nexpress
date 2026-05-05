@@ -1,6 +1,6 @@
 // Stub for tsc — the real `nexpress.config.ts` is rendered by
 // `nexpressConfigTemplate(config)` and is project-specific. We just
-// need the default-exported shape to be a valid `NxConfig` so that
+// need the default-exported shape to be a valid `NpConfig` so that
 // `templates/lib/bootstrap.ts` typechecks.
 import { defineConfig } from "@nexpress/core";
 

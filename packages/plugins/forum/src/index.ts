@@ -2,7 +2,7 @@ import {
   defineCollection,
   isEditorOrAbove,
   isOwnerOrAdmin,
-  type NxCollectionConfig,
+  type NpCollectionConfig,
 } from "@nexpress/core";
 import { definePlugin } from "@nexpress/plugin-sdk";
 
@@ -45,18 +45,18 @@ export interface DiscussionsCollectionOptions {
 const DEFAULT_LABELS = { singular: "Discussion", plural: "Discussions" } as const;
 
 /**
- * Returns a ready-to-spread `NxCollectionConfig` for the discussions
+ * Returns a ready-to-spread `NpCollectionConfig` for the discussions
  * table. Drop the result into `nexpress.config.ts`'s `collections`
  * array, then run `pnpm db:generate && pnpm db:migrate` to add the
  * underlying `nx_c_<slug>` table.
  */
 export function defineDiscussionsCollection(
   options: DiscussionsCollectionOptions = {},
-): NxCollectionConfig {
+): NpCollectionConfig {
   const slug = options.slug ?? "discussions";
   const labels = options.labels ?? DEFAULT_LABELS;
 
-  const fields: NxCollectionConfig["fields"] = [
+  const fields: NpCollectionConfig["fields"] = [
     {
       type: "text",
       name: "title",

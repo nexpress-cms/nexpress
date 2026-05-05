@@ -152,13 +152,13 @@ This means each site can:
 
 Three tiers, in priority order:
 
-1. **Super-admin** — `nxUsers.is_super_admin = true`. Can
+1. **Super-admin** — `npUsers.is_super_admin = true`. Can
    manage every site, including create/delete tenants.
    Bypasses every per-site membership check.
 2. **Per-site membership** — explicit row in
    `nx_site_memberships(site_id, user_id, role)`. The
    resolver returns this role for any check on that site.
-3. **Global default role** — `nxUsers.role`. Used as the
+3. **Global default role** — `npUsers.role`. Used as the
    fallback when no membership exists. Single-tenant sites
    (no memberships) operate entirely off this.
 

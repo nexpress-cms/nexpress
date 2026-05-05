@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxNotFoundError,
+  NpForbiddenError,
+  NpNotFoundError,
   getMediaById,
   deleteMedia,
   can,
@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 
 export async function GET(
@@ -24,19 +24,19 @@ export async function GET(
     // list endpoint (#73).
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("media", "read");
+      throw new NpForbiddenError("media", "read");
     }
     await ensureFor("read");
 
     const media = await getMediaById(id);
 
     if (!media) {
-      throw new NxNotFoundError("media", id);
+      throw new NpNotFoundError("media", id);
     }
 
-    return nxSuccessResponse(media);
+    return npSuccessResponse(media);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -49,7 +49,7 @@ export async function DELETE(
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("media", "delete");
+      throw new NpForbiddenError("media", "delete");
     }
 
     await ensureFor("read");
@@ -64,11 +64,11 @@ export async function DELETE(
     }
 
     if (!result.deleted) {
-      throw new NxNotFoundError("media", id);
+      throw new NpNotFoundError("media", id);
     }
 
-    return nxSuccessResponse({ id, deleted: true });
+    return npSuccessResponse({ id, deleted: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -1,7 +1,7 @@
 import { getDefaultBlocks } from "@nexpress/blocks";
 
 import { blockToManifest } from "@/lib/manifest";
-import { nxSuccessResponse, nxErrorResponse } from "@/lib/api-response";
+import { npSuccessResponse, npErrorResponse } from "@/lib/api-response";
 
 export function GET() {
   try {
@@ -9,8 +9,8 @@ export function GET() {
       .map(blockToManifest)
       .sort((a, b) => a.type.localeCompare(b.type));
 
-    return nxSuccessResponse({ items });
+    return npSuccessResponse({ items });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

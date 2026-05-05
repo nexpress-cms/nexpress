@@ -62,18 +62,18 @@ Both share the same storage format and are interoperable where appropriate.
  * NexPress Lexical editor configuration.
  * Provides CMS-specific features on top of base Lexical.
  */
-export interface NxEditorConfig {
+export interface NpEditorConfig {
   /** Enable/disable specific features */
-  features?: NxEditorFeature[];
+  features?: NpEditorFeature[];
   /** Custom blocks available inside the editor */
-  blocks?: NxEditorBlock[];
+  blocks?: NpEditorBlock[];
   /**
    * Image upload handler.
    * Returns a media identity immediately after the original is persisted. The
    * editor inserts a temporary image node and resolves the final URL/variants
    * when processing completes.
    */
-  onUploadImage?: (file: File) => Promise<NxEditorImageUploadResult>;
+  onUploadImage?: (file: File) => Promise<NpEditorImageUploadResult>;
   /** Link resolver (for internal content links) */
   onResolveLink?: (collection: string, id: string) => Promise<{ url: string; title: string }>;
   /** Placeholder text */
@@ -82,7 +82,7 @@ export interface NxEditorConfig {
   readOnly?: boolean;
 }
 
-export interface NxEditorImageUploadResult {
+export interface NpEditorImageUploadResult {
   /** Media item ID used for persistence and polling */
   id: string;
   /** Current media status from the upload API */
@@ -96,7 +96,7 @@ export interface NxEditorImageUploadResult {
 /**
  * Editor features — modular toolbar/behavior plugins.
  */
-export type NxEditorFeature =
+export type NpEditorFeature =
   | "heading" // H1-H4
   | "bold"
   | "italic"
@@ -120,7 +120,7 @@ export type NxEditorFeature =
 /**
  * Default feature set for blog/article editing.
  */
-export const DEFAULT_FEATURES: NxEditorFeature[] = [
+export const DEFAULT_FEATURES: NpEditorFeature[] = [
   "heading",
   "bold",
   "italic",
@@ -143,7 +143,7 @@ export const DEFAULT_FEATURES: NxEditorFeature[] = [
  * Stored rich text content (DB column type: jsonb).
  * This is Lexical's native JSON format.
  */
-export interface NxRichTextContent {
+export interface NpRichTextContent {
   root: {
     type: "root";
     children: LexicalNode[];
@@ -176,7 +176,7 @@ export interface NxRichTextContent {
  * Does NOT use Lexical runtime — pure JSON → React transformation.
  * This keeps the public site bundle free of Lexical's ~100KB.
  */
-export function renderRichText(content: NxRichTextContent): React.ReactElement;
+export function renderRichText(content: NpRichTextContent): React.ReactElement;
 
 // Implementation maps each Lexical node type to a React component:
 // "paragraph" → <p>
@@ -184,7 +184,7 @@ export function renderRichText(content: NxRichTextContent): React.ReactElement;
 // "list"      → <ul>/<ol>
 // "listitem"  → <li>
 // "link"      → <a>
-// "image"     → <NxImage> (Next.js Image optimization)
+// "image"     → <NpImage> (Next.js Image optimization)
 // "code"      → <pre><code>
 // "quote"     → <blockquote>
 // "block"     → <BlockResolver> (embedded block components)
@@ -199,11 +199,11 @@ For page-level editing (homepage, landing pages), NexPress uses a separate block
  * Block page editor state.
  * Stored as JSON array in the `blocks` column.
  */
-export interface NxPageBlocks {
-  blocks: NxBlockInstance[];
+export interface NpPageBlocks {
+  blocks: NpBlockInstance[];
 }
 
-export interface NxBlockInstance {
+export interface NpBlockInstance {
   /** Unique instance ID (for React keys and reordering) */
   id: string;
   /** Block type (maps to Block Registry) */
@@ -211,10 +211,10 @@ export interface NxBlockInstance {
   /** Block props (validated against block's propsSchema) */
   props: Record<string, unknown>;
   /** Data binding (dynamic content from collections) */
-  dataBinding?: Record<string, NxDataBinding>;
+  dataBinding?: Record<string, NpDataBinding>;
 }
 
-export interface NxDataBinding {
+export interface NpDataBinding {
   /** Source collection */
   collection: string;
   /** Query filter */
@@ -288,9 +288,9 @@ import {
 } from "@dnd-kit/sortable";
 
 interface BlockEditorProps {
-  blocks: NxBlockInstance[];
-  onChange: (blocks: NxBlockInstance[]) => void;
-  availableBlocks: NxBlockRegistration[];
+  blocks: NpBlockInstance[];
+  onChange: (blocks: NpBlockInstance[]) => void;
+  availableBlocks: NpBlockRegistration[];
 }
 
 export function BlockEditor({ blocks, onChange, availableBlocks }: BlockEditorProps) {
@@ -405,15 +405,15 @@ NexPress provides a unified media management system with:
  * Storage adapter — abstracts file storage behind a common interface.
  * NexPress ships with LocalAdapter and S3Adapter.
  */
-export interface NxStorageAdapter {
+export interface NpStorageAdapter {
   /** Upload a file */
-  upload(key: string, data: Buffer | ReadableStream, metadata: NxFileMetadata): Promise<void>;
+  upload(key: string, data: Buffer | ReadableStream, metadata: NpFileMetadata): Promise<void>;
 
   /** Get a readable stream for a file */
   getStream(key: string): Promise<ReadableStream>;
 
   /** Get a signed/public URL for a file */
-  getUrl(key: string, options?: NxUrlOptions): Promise<string>;
+  getUrl(key: string, options?: NpUrlOptions): Promise<string>;
 
   /** Delete a file */
   delete(key: string): Promise<void>;
@@ -422,23 +422,23 @@ export interface NxStorageAdapter {
   exists(key: string): Promise<boolean>;
 
   /** List files by prefix */
-  list(prefix: string, options?: NxListOptions): Promise<NxStorageEntry[]>;
+  list(prefix: string, options?: NpListOptions): Promise<NpStorageEntry[]>;
 }
 
-export interface NxFileMetadata {
+export interface NpFileMetadata {
   contentType: string;
   contentLength: number;
   originalFilename: string;
 }
 
-export interface NxUrlOptions {
+export interface NpUrlOptions {
   /** URL expiration time in seconds (for signed URLs) */
   expiresIn?: number;
   /** Image transformation (only for image files) */
-  transform?: NxImageTransform;
+  transform?: NpImageTransform;
 }
 
-export interface NxImageTransform {
+export interface NpImageTransform {
   width?: number;
   height?: number;
   fit?: "cover" | "contain" | "fill" | "inside" | "outside";
@@ -446,13 +446,13 @@ export interface NxImageTransform {
   format?: "webp" | "avif" | "jpeg" | "png";
 }
 
-export interface NxStorageEntry {
+export interface NpStorageEntry {
   key: string;
   size: number;
   lastModified: Date;
 }
 
-export interface NxListOptions {
+export interface NpListOptions {
   limit?: number;
   cursor?: string;
 }
@@ -462,7 +462,7 @@ export interface NxListOptions {
 
 ```typescript
 // Local filesystem adapter (development / simple self-hosted)
-export class LocalStorageAdapter implements NxStorageAdapter {
+export class LocalStorageAdapter implements NpStorageAdapter {
   constructor(
     private config: {
       /** Base directory for file storage */
@@ -476,7 +476,7 @@ export class LocalStorageAdapter implements NxStorageAdapter {
 }
 
 // S3-compatible adapter (production)
-export class S3StorageAdapter implements NxStorageAdapter {
+export class S3StorageAdapter implements NpStorageAdapter {
   constructor(
     private config: {
       /** S3 bucket name */
@@ -506,11 +506,11 @@ export class S3StorageAdapter implements NxStorageAdapter {
  * Image processing configuration.
  * Applied on upload — generates optimized variants.
  */
-export interface NxImageConfig {
+export interface NpImageConfig {
   /** Maximum upload dimensions (resize if larger) */
   maxDimensions?: { width: number; height: number };
   /** Image sizes to generate (for responsive images) */
-  sizes: NxImageSize[];
+  sizes: NpImageSize[];
   /** Default output format */
   format?: "webp" | "avif" | "original";
   /** Default quality (1-100) */
@@ -519,7 +519,7 @@ export interface NxImageConfig {
   focalPoint?: boolean;
 }
 
-export interface NxImageSize {
+export interface NpImageSize {
   /** Size name (used in URLs and srcset) */
   name: string;
   /** Target width */
@@ -533,7 +533,7 @@ export interface NxImageSize {
 /**
  * Default image sizes (matches Payload pattern).
  */
-export const DEFAULT_IMAGE_SIZES: NxImageSize[] = [
+export const DEFAULT_IMAGE_SIZES: NpImageSize[] = [
   { name: "thumbnail", width: 300 },
   { name: "small", width: 600 },
   { name: "medium", width: 900 },
@@ -586,7 +586,7 @@ export const media = pgTable(
     width: integer("width"),
     height: integer("height"),
     alt: text("alt"),
-    caption: jsonb("caption").$type<NxRichTextContent>(), // Lexical JSON
+    caption: jsonb("caption").$type<NpRichTextContent>(), // Lexical JSON
     focalPoint: jsonb("focal_point").$type<{ x: number; y: number }>(),
     sizes:
       jsonb("sizes").$type<Record<string, { width: number; height: number; filesize: number }>>(),
@@ -644,7 +644,7 @@ export async function DELETE(
 ) {
   const user = await requireAuth(request);
 
-  // 1. Check nxMediaRefs for active references (see Section O.3)
+  // 1. Check npMediaRefs for active references (see Section O.3)
   // 2. If references exist → 409 { error: { code: "MEDIA_IN_USE", references: [...] } }
   // 3. If no references → soft-delete: SET deleted_at = now()
   // 4. Return 200 { deleted: true }
@@ -673,7 +673,7 @@ Layer 1: Token Contract — --nx-color-*, --nx-font-*, --nx-radius-*
  * Complete NexPress design token set.
  * All plugin blocks MUST reference these variables only.
  */
-export interface NxThemeTokens {
+export interface NpThemeTokens {
   colors: {
     primary: string; // --nx-color-primary
     primaryForeground: string; // --nx-color-primary-foreground
@@ -721,7 +721,7 @@ export interface NxThemeTokens {
   };
   darkMode?: {
     enabled: boolean;
-    colors: Partial<NxThemeTokens["colors"]>;
+    colors: Partial<NpThemeTokens["colors"]>;
   };
 }
 ```
@@ -732,14 +732,14 @@ export interface NxThemeTokens {
 // packages/theme/src/ThemeProvider.tsx
 // This is a SERVER COMPONENT — zero client JS
 
-import type { NxThemeTokens } from "./types";
+import type { NpThemeTokens } from "./types";
 
-export function NxThemeStyle({ theme }: { theme: NxThemeTokens }) {
+export function NpThemeStyle({ theme }: { theme: NpThemeTokens }) {
   const css = generateThemeCss(theme);
   return <style dangerouslySetInnerHTML={{ __html: css }} />;
 }
 
-function generateThemeCss(theme: NxThemeTokens): string {
+function generateThemeCss(theme: NpThemeTokens): string {
   const lines: string[] = ["@layer nx-theme {", ":root {"];
 
   // Colors
@@ -833,7 +833,7 @@ function camelToKebab(str: string): string {
 ### H.5 Theme Admin UI
 
 ```typescript
-// Theme settings admin panel — saves to DB, applied via NxThemeStyle RSC
+// Theme settings admin panel — saves to DB, applied via NpThemeStyle RSC
 interface ThemeSettingsPanel {
   // Color pickers for each semantic color
   // Font family selectors (Google Fonts + system fonts)
@@ -847,7 +847,7 @@ interface ThemeSettingsPanel {
 // Admin route: /admin/settings/theme
 // Data flow:
 // 1. Admin edits theme → saves to settings table (JSON)
-// 2. Site layout RSC reads theme from DB → NxThemeStyle generates CSS
+// 2. Site layout RSC reads theme from DB → NpThemeStyle generates CSS
 // 3. All pages get updated CSS vars on next request
 // 4. For ISR pages: revalidateTag("nx:theme") triggers rebuild
 ```
@@ -855,7 +855,7 @@ interface ThemeSettingsPanel {
 ### H.6 Default Theme
 
 ```typescript
-export const DEFAULT_THEME: NxThemeTokens = {
+export const DEFAULT_THEME: NpThemeTokens = {
   colors: {
     primary: "oklch(0.55 0.20 250)",
     primaryForeground: "oklch(0.98 0.00 0)",
@@ -932,7 +932,7 @@ export const DEFAULT_THEME: NxThemeTokens = {
  * validators, admin conditions, and custom components; the site config format
  * is JSON-safe and may only contain serializable data.
  */
-export interface NxSiteConfig {
+export interface NpSiteConfig {
   /** Config format version */
   version: "1.0";
 
@@ -946,23 +946,23 @@ export interface NxSiteConfig {
   };
 
   /** Theme tokens */
-  theme: NxThemeTokens;
+  theme: NpThemeTokens;
 
   /** Collections (JSON-safe content model definitions) */
-  collections: NxCollectionSpec[];
+  collections: NpCollectionSpec[];
 
   /** Pages (block tree structures) */
   pages: Array<{
     slug: string;
     title: string;
-    blocks: NxBlockInstance[];
+    blocks: NpBlockInstance[];
     seo?: { title: string; description: string; ogImage?: string };
   }>;
 
   /** Navigation menus */
   navigation: {
-    header: NxNavItem[];
-    footer: NxNavItem[];
+    header: NpNavItem[];
+    footer: NpNavItem[];
   };
 
   /** Active plugins and their configs */
@@ -981,27 +981,27 @@ export interface NxSiteConfig {
   };
 }
 
-export interface NxNavItem {
+export interface NpNavItem {
   label: string;
   href: string;
-  children?: NxNavItem[];
+  children?: NpNavItem[];
 }
 
-export interface NxCollectionSpec {
+export interface NpCollectionSpec {
   slug: string;
   labels: { singular: string; plural: string };
   description?: string;
-  fields: NxFieldSchema[];
+  fields: NpFieldSchema[];
   timestamps?: boolean;
   drafts?: boolean;
-  upload?: NxUploadSpec;
+  upload?: NpUploadSpec;
   admin?: {
     group?: string;
     defaultColumns?: string[];
   };
 }
 
-export interface NxUploadSpec {
+export interface NpUploadSpec {
   mimeTypes?: string[];
   maxFileSize?: number;
   imageSizes?: Array<{
@@ -1012,8 +1012,8 @@ export interface NxUploadSpec {
   }>;
 }
 
-// Code-only behavior is omitted from NxSiteConfig exports. Importers can map
-// NxCollectionSpec to defineCollection() defaults, but executable policies must
+// Code-only behavior is omitted from NpSiteConfig exports. Importers can map
+// NpCollectionSpec to defineCollection() defaults, but executable policies must
 // be supplied by project code or plugin code.
 ```
 
@@ -1043,7 +1043,7 @@ export interface CollectionManifestResponse {
     slug: string;
     labels: { singular: string; plural: string };
     description: string;
-    fields: NxFieldSchema[]; // Full field descriptions
+    fields: NpFieldSchema[]; // Full field descriptions
     access: { create: boolean; read: boolean; update: boolean; delete: boolean };
     timestamps: boolean;
     drafts: boolean;
@@ -1105,7 +1105,7 @@ export interface PluginManifestResponse {
 ```typescript
 // ═══════════════════════════════════════════════════════
 // POST /api/import
-// Body: NxSiteConfig JSON
+// Body: NpSiteConfig JSON
 // Auth: Tier 2 (requireAuth), role: admin only
 // Rate limit: 5 requests / minute
 // ═══════════════════════════════════════════════════════
@@ -1114,7 +1114,7 @@ export interface PluginManifestResponse {
 // Before any writes, the import endpoint validates compatibility
 // with the running NexPress instance:
 //
-// 0a. Parse body against NxSiteConfig Zod schema → 400 if invalid
+// 0a. Parse body against NpSiteConfig Zod schema → 400 if invalid
 // 0b. Check all referenced collection slugs exist in nexpress.config.ts
 //     → Report unrecognized slugs in response.skipped[]
 // 0c. For each page: validate that referenced block types exist
@@ -1167,7 +1167,7 @@ export interface PluginManifestResponse {
 // 3. Navigation items → nx_navigation (delete + insert)
 // 4. Plugin configs → nx_plugins (upsert by pluginId)
 // 5. Pages with blocks → nx_c_pages (upsert by slug)
-//    - For each page, update nxMediaRefs tracking
+//    - For each page, update npMediaRefs tracking
 //
 // Returns: {
 //   success: boolean;
@@ -1185,7 +1185,7 @@ export interface PluginManifestResponse {
 
 // GET /api/export
 // Auth: Tier 2 (requireAuth), role: admin only
-// Returns: Complete NxSiteConfig JSON for the current site
+// Returns: Complete NpSiteConfig JSON for the current site
 // Includes: collection schemas (read-only reference), pages (with blocks),
 //           theme, navigation, plugin configs, settings
 // Excludes: User data, media binaries (references with hash only), secrets/API keys
@@ -1353,8 +1353,8 @@ export default defineConfig({
 
   /** Plugins */
   plugins: [
-    // nxSeoPlugin({ siteTitle: "My Site" }),
-    // nxAnalyticsPlugin({ trackingId: "G-XXX" }),
+    // npSeoPlugin({ siteTitle: "My Site" }),
+    // npAnalyticsPlugin({ trackingId: "G-XXX" }),
   ],
 
   /** Type generation output */
@@ -1419,7 +1419,7 @@ nexpress/                          # The open-source project repo
 │   │   │   ├── ThemeProvider.tsx   # RSC theme CSS generator
 │   │   │   ├── tokens.ts          # Default tokens
 │   │   │   ├── base.css           # Base layer CSS
-│   │   │   └── types.ts           # NxThemeTokens type
+│   │   │   └── types.ts           # NpThemeTokens type
 │   │   └── package.json
 │   │
 │   ├── plugin-sdk/                # @nexpress/plugin-sdk
@@ -1622,7 +1622,7 @@ import { uuid, timestamp, text, boolean, integer, pgTable } from "drizzle-orm/pg
  * Shared columns injected into every generated collection table.
  * User-defined fields are appended after these.
  */
-function nxBaseColumns() {
+function npBaseColumns() {
   return {
     id: uuid("id").primaryKey().defaultRandom(),
     status: text("status", { enum: ["draft", "published", "archived"] })
@@ -1630,8 +1630,8 @@ function nxBaseColumns() {
       .default("draft"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
   };
 }
 
@@ -1645,7 +1645,7 @@ function nxBaseColumns() {
 
 ```typescript
 // ─── Users ───────────────────────────────────────────────────────
-export const nxUsers = pgTable("nx_users", {
+export const npUsers = pgTable("nx_users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(), // argon2 hash
@@ -1653,7 +1653,7 @@ export const nxUsers = pgTable("nx_users", {
   role: text("role", { enum: ["admin", "editor", "author", "viewer"] })
     .notNull()
     .default("author"),
-  avatar: uuid("avatar").references(() => nxMedia.id),
+  avatar: uuid("avatar").references(() => npMedia.id),
   loginAttempts: integer("login_attempts").notNull().default(0),
   lockUntil: timestamp("lock_until", { withTimezone: true }),
   tokenVersion: integer("token_version").notNull().default(0), // bump to invalidate all sessions
@@ -1662,11 +1662,11 @@ export const nxUsers = pgTable("nx_users", {
 });
 
 // ─── Sessions ────────────────────────────────────────────────────
-export const nxSessions = pgTable("nx_sessions", {
+export const npSessions = pgTable("nx_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
-    .references(() => nxUsers.id, { onDelete: "cascade" }),
+    .references(() => npUsers.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(), // SHA-256 of the refresh token
   userAgent: text("user_agent"),
   ip: text("ip"),
@@ -1675,7 +1675,7 @@ export const nxSessions = pgTable("nx_sessions", {
 });
 
 // ─── Revisions (single table, JSONB snapshots) ──────────────────
-export const nxRevisions = pgTable(
+export const npRevisions = pgTable(
   "nx_revisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -1685,7 +1685,7 @@ export const nxRevisions = pgTable(
     status: text("status", { enum: ["draft", "published", "autosave"] }).notNull(),
     snapshot: jsonb("snapshot").notNull(), // full document JSON at this version
     changedFields: text("changed_fields").array(), // which fields changed from previous version
-    authorId: uuid("author_id").references(() => nxUsers.id),
+    authorId: uuid("author_id").references(() => npUsers.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -1696,24 +1696,24 @@ export const nxRevisions = pgTable(
 );
 
 // ─── Settings (key-value JSON store) ─────────────────────────────
-export const nxSettings = pgTable("nx_settings", {
+export const npSettings = pgTable("nx_settings", {
   key: text("key").primaryKey(), // e.g., "theme", "navigation", "site"
   value: jsonb("value").notNull(), // JSON blob
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedBy: uuid("updated_by").references(() => nxUsers.id),
+  updatedBy: uuid("updated_by").references(() => npUsers.id),
 });
 
 // ─── Navigation ──────────────────────────────────────────────────
-export const nxNavigation = pgTable("nx_navigation", {
+export const npNavigation = pgTable("nx_navigation", {
   id: uuid("id").primaryKey().defaultRandom(),
   location: text("location").notNull().unique(), // "header" | "footer" | custom
-  items: jsonb("items").notNull().$type<NxNavItem[]>(),
+  items: jsonb("items").notNull().$type<NpNavItem[]>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedBy: uuid("updated_by").references(() => nxUsers.id),
+  updatedBy: uuid("updated_by").references(() => npUsers.id),
 });
 
 // ─── Plugin State ────────────────────────────────────────────────
-export const nxPlugins = pgTable("nx_plugins", {
+export const npPlugins = pgTable("nx_plugins", {
   id: text("id").primaryKey(), // plugin manifest id
   enabled: boolean("enabled").notNull().default(true),
   config: jsonb("config").$type<Record<string, unknown>>(),
@@ -1762,7 +1762,7 @@ The generator produces:
 ```typescript
 // drizzle/schema.generated.ts (auto-generated — do not edit manually)
 
-export const nxCPosts = pgTable(
+export const npCPosts = pgTable(
   "nx_c_posts",
   {
     // ── Base columns ──
@@ -1772,8 +1772,8 @@ export const nxCPosts = pgTable(
       .default("draft"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    createdBy: uuid("created_by").references(() => nxUsers.id),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
     slug: text("slug").notNull().unique(),
     _status: text("_status", { enum: ["draft", "published"] })
       .notNull()
@@ -1782,16 +1782,16 @@ export const nxCPosts = pgTable(
     // ── User-defined scalar fields ──
     title: text("title").notNull(),
     excerpt: text("excerpt"),
-    content: jsonb("content").$type<NxRichTextContent>(), // opaque Lexical JSON
-    coverImage: uuid("cover_image").references(() => nxMedia.id),
-    author: uuid("author").references(() => nxUsers.id),
+    content: jsonb("content").$type<NpRichTextContent>(), // opaque Lexical JSON
+    coverImage: uuid("cover_image").references(() => npMedia.id),
+    author: uuid("author").references(() => npUsers.id),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     featured: boolean("featured").notNull().default(false),
 
     // ── Group fields (flattened with prefix) ──
     seoMetaTitle: text("seo_meta_title"),
     seoMetaDescription: text("seo_meta_description"),
-    seoOgImage: uuid("seo_og_image").references(() => nxMedia.id),
+    seoOgImage: uuid("seo_og_image").references(() => npMedia.id),
   },
   (table) => ({
     statusIdx: index("nx_c_posts_status").on(table.status),
@@ -1802,16 +1802,16 @@ export const nxCPosts = pgTable(
 );
 
 // ── Many-to-many: posts ↔ categories ──
-export const nxCPostsCategories = pgTable(
+export const npCPostsCategories = pgTable(
   "nx_c_posts__categories",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     postId: uuid("post_id")
       .notNull()
-      .references(() => nxCPosts.id, { onDelete: "cascade" }),
+      .references(() => npCPosts.id, { onDelete: "cascade" }),
     categoryId: uuid("category_id")
       .notNull()
-      .references(() => nxCCategories.id, { onDelete: "cascade" }),
+      .references(() => npCCategories.id, { onDelete: "cascade" }),
     order: integer("order").notNull().default(0),
   },
   (table) => ({
@@ -1821,13 +1821,13 @@ export const nxCPostsCategories = pgTable(
 );
 
 // ── Array field: posts.tags ──
-export const nxCPostsTags = pgTable(
+export const npCPostsTags = pgTable(
   "nx_c_posts__tags",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     parentId: uuid("parent_id")
       .notNull()
-      .references(() => nxCPosts.id, { onDelete: "cascade" }),
+      .references(() => npCPosts.id, { onDelete: "cascade" }),
     order: integer("order").notNull().default(0),
     tag: text("tag"),
   },
@@ -1837,11 +1837,11 @@ export const nxCPostsTags = pgTable(
 );
 
 // ── Drizzle relations ──
-export const nxCPostsRelations = relations(nxCPosts, ({ one, many }) => ({
-  coverImageRel: one(nxMedia, { fields: [nxCPosts.coverImage], references: [nxMedia.id] }),
-  authorRel: one(nxUsers, { fields: [nxCPosts.author], references: [nxUsers.id] }),
-  categories: many(nxCPostsCategories),
-  tags: many(nxCPostsTags),
+export const npCPostsRelations = relations(npCPosts, ({ one, many }) => ({
+  coverImageRel: one(npMedia, { fields: [npCPosts.coverImage], references: [npMedia.id] }),
+  authorRel: one(npUsers, { fields: [npCPosts.author], references: [npUsers.id] }),
+  categories: many(npCPostsCategories),
+  tags: many(npCPostsTags),
 }));
 ```
 
@@ -1852,11 +1852,11 @@ export const nxCPostsRelations = relations(nxCPosts, ({ one, many }) => ({
 | `text`                   | `text()`                              |                                |
 | `textarea`               | `text()`                              |                                |
 | `number`                 | `doublePrecision()` or `integer()`    | Based on `integerOnly` flag    |
-| `richText`               | `jsonb().$type<NxRichTextContent>()`  | Opaque Lexical JSON            |
-| `blocks`                 | `jsonb().$type<NxBlockInstance[]>()`  | Opaque block array             |
+| `richText`               | `jsonb().$type<NpRichTextContent>()`  | Opaque Lexical JSON            |
+| `blocks`                 | `jsonb().$type<NpBlockInstance[]>()`  | Opaque block array             |
 | `checkbox`               | `boolean()`                           |                                |
 | `date`                   | `timestamp({ withTimezone: true })`   |                                |
-| `upload`                 | `uuid().references(() => nxMedia.id)` | FK to media                    |
+| `upload`                 | `uuid().references(() => npMedia.id)` | FK to media                    |
 | `relationship` (hasOne)  | `uuid().references(() => target.id)`  | FK to target collection        |
 | `relationship` (hasMany) | join table `{slug}__{field}`          | Separate table                 |
 | `select`                 | `text({ enum: [...] })`               | Drizzle pgEnum for reuse       |
@@ -1891,7 +1891,7 @@ import { z } from "zod";
  * Core collection config — the primary authoring surface.
  * Everything else (DB, forms, API) is derived from this.
  */
-export interface NxCollectionConfig {
+export interface NpCollectionConfig {
   /** URL-safe identifier. Becomes table name: nx_c_{slug} */
   slug: string;
 
@@ -1909,26 +1909,26 @@ export interface NxCollectionConfig {
       };
 
   /** Field definitions */
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
 
   /** Access control */
   access?: {
-    create?: NxAccessFunction;
-    read?: NxAccessFunction;
-    update?: NxAccessFunction;
-    delete?: NxAccessFunction;
+    create?: NpAccessFunction;
+    read?: NpAccessFunction;
+    update?: NpAccessFunction;
+    delete?: NpAccessFunction;
   };
 
   /** Hooks */
   hooks?: {
-    beforeCreate?: NxCollectionHook[];
-    afterCreate?: NxCollectionHook[];
-    beforeUpdate?: NxCollectionHook[];
-    afterUpdate?: NxCollectionHook[];
-    beforeDelete?: NxCollectionHook[];
-    afterDelete?: NxCollectionHook[];
-    beforeRead?: NxCollectionHook[];
-    afterRead?: NxCollectionHook[];
+    beforeCreate?: NpCollectionHook[];
+    afterCreate?: NpCollectionHook[];
+    beforeUpdate?: NpCollectionHook[];
+    afterUpdate?: NpCollectionHook[];
+    beforeDelete?: NpCollectionHook[];
+    afterDelete?: NpCollectionHook[];
+    beforeRead?: NpCollectionHook[];
+    afterRead?: NpCollectionHook[];
   };
 
   /** Versioning / drafts */
@@ -1962,13 +1962,13 @@ export interface NxCollectionConfig {
   };
 
   /** Enable upload behavior (makes this a media collection) */
-  upload?: NxUploadConfig;
+  upload?: NpUploadConfig;
 }
 
 /**
  * Type-safe collection definition.
  */
-export function defineCollection(config: NxCollectionConfig): NxCollectionConfig {
+export function defineCollection(config: NpCollectionConfig): NpCollectionConfig {
   // Validate at build time via Zod (see B.4)
   return config;
 }
@@ -1980,29 +1980,29 @@ export function defineCollection(config: NxCollectionConfig): NxCollectionConfig
 /**
  * Field config — exhaustive union of all supported field types.
  */
-export type NxFieldConfig =
-  | NxTextField
-  | NxTextareaField
-  | NxNumberField
-  | NxRichTextField
-  | NxBlocksField
-  | NxCheckboxField
-  | NxDateField
-  | NxUploadField
-  | NxRelationshipField
-  | NxSelectField
-  | NxRadioField
-  | NxEmailField
-  | NxJsonField
-  | NxArrayField
-  | NxGroupField
-  | NxRowField
-  | NxCollapsibleField;
+export type NpFieldConfig =
+  | NpTextField
+  | NpTextareaField
+  | NpNumberField
+  | NpRichTextField
+  | NpBlocksField
+  | NpCheckboxField
+  | NpDateField
+  | NpUploadField
+  | NpRelationshipField
+  | NpSelectField
+  | NpRadioField
+  | NpEmailField
+  | NpJsonField
+  | NpArrayField
+  | NpGroupField
+  | NpRowField
+  | NpCollapsibleField;
 
 /**
  * Base properties shared by all field types.
  */
-interface NxFieldBase {
+interface NpFieldBase {
   name: string;
   label?: string; // defaults to titleCase(name)
   required?: boolean;
@@ -2012,27 +2012,27 @@ interface NxFieldBase {
     description?: string;
     placeholder?: string;
     readOnly?: boolean;
-    condition?: NxFieldCondition; // show/hide based on sibling values
+    condition?: NpFieldCondition; // show/hide based on sibling values
     width?: string; // CSS width in form grid
   };
-  validate?: NxFieldValidator;
+  validate?: NpFieldValidator;
 }
 
-interface NxTextField extends NxFieldBase {
+interface NpTextField extends NpFieldBase {
   type: "text";
   minLength?: number;
   maxLength?: number;
   unique?: boolean;
 }
 
-interface NxTextareaField extends NxFieldBase {
+interface NpTextareaField extends NpFieldBase {
   type: "textarea";
   minLength?: number;
   maxLength?: number;
   rows?: number;
 }
 
-interface NxNumberField extends NxFieldBase {
+interface NpNumberField extends NpFieldBase {
   type: "number";
   min?: number;
   max?: number;
@@ -2040,24 +2040,24 @@ interface NxNumberField extends NxFieldBase {
   integerOnly?: boolean;
 }
 
-interface NxRichTextField extends NxFieldBase {
+interface NpRichTextField extends NpFieldBase {
   type: "richText";
-  editor?: NxEditorConfig;
+  editor?: NpEditorConfig;
 }
 
-interface NxBlocksField extends NxFieldBase {
+interface NpBlocksField extends NpFieldBase {
   type: "blocks";
   allowedBlocks?: string[]; // block type names, or all if omitted
   minRows?: number;
   maxRows?: number;
 }
 
-interface NxCheckboxField extends NxFieldBase {
+interface NpCheckboxField extends NpFieldBase {
   type: "checkbox";
   defaultValue?: boolean;
 }
 
-interface NxDateField extends NxFieldBase {
+interface NpDateField extends NpFieldBase {
   type: "date";
   /** Admin UI date picker config */
   pickerOptions?: {
@@ -2066,12 +2066,12 @@ interface NxDateField extends NxFieldBase {
   };
 }
 
-interface NxUploadField extends NxFieldBase {
+interface NpUploadField extends NpFieldBase {
   type: "upload";
   relationTo: string; // slug of a collection with upload: true
 }
 
-interface NxRelationshipField extends NxFieldBase {
+interface NpRelationshipField extends NpFieldBase {
   type: "relationship";
   relationTo: string | string[]; // single or polymorphic
   hasMany?: boolean;
@@ -2079,46 +2079,46 @@ interface NxRelationshipField extends NxFieldBase {
   filterOptions?: Record<string, unknown>;
 }
 
-interface NxSelectField extends NxFieldBase {
+interface NpSelectField extends NpFieldBase {
   type: "select";
   options: Array<{ label: string; value: string }>;
   hasMany?: boolean;
 }
 
-interface NxRadioField extends NxFieldBase {
+interface NpRadioField extends NpFieldBase {
   type: "radio";
   options: Array<{ label: string; value: string }>;
 }
 
-interface NxEmailField extends NxFieldBase {
+interface NpEmailField extends NpFieldBase {
   type: "email";
 }
 
-interface NxJsonField extends NxFieldBase {
+interface NpJsonField extends NpFieldBase {
   type: "json";
 }
 
-interface NxArrayField extends NxFieldBase {
+interface NpArrayField extends NpFieldBase {
   type: "array";
-  fields: NxFieldConfig[]; // sub-fields for each row
+  fields: NpFieldConfig[]; // sub-fields for each row
   minRows?: number;
   maxRows?: number;
 }
 
-interface NxGroupField extends NxFieldBase {
+interface NpGroupField extends NpFieldBase {
   type: "group";
-  fields: NxFieldConfig[]; // flattened into parent table with prefix
+  fields: NpFieldConfig[]; // flattened into parent table with prefix
 }
 
-interface NxRowField {
+interface NpRowField {
   type: "row";
-  fields: NxFieldConfig[]; // layout-only: side-by-side fields
+  fields: NpFieldConfig[]; // layout-only: side-by-side fields
 }
 
-interface NxCollapsibleField {
+interface NpCollapsibleField {
   type: "collapsible";
   label: string;
-  fields: NxFieldConfig[]; // layout-only: collapsible section
+  fields: NpFieldConfig[]; // layout-only: collapsible section
 }
 ```
 
@@ -2160,7 +2160,7 @@ export const collectionConfigSchema = z.object({
  * Deterministic: same config always produces same output.
  * Pure function: no side effects, no DB access.
  */
-export function generateDrizzleSchema(collections: NxCollectionConfig[]): GeneratedSchema {
+export function generateDrizzleSchema(collections: NpCollectionConfig[]): GeneratedSchema {
   const tables: TableDefinition[] = [];
   const relations: RelationDefinition[] = [];
 
@@ -2217,7 +2217,7 @@ export interface Post {
   slug: string;
   title: string;
   excerpt: string | null;
-  content: NxRichTextContent | null;
+  content: NpRichTextContent | null;
   coverImage: string | null; // media ID
   author: string | null; // user ID
   categories: string[]; // category IDs
@@ -2290,11 +2290,11 @@ import * as jose from "jose";
  * JWT payload stored in the httpOnly cookie.
  * Short-lived (2h default). Refresh via session table.
  */
-export interface NxTokenPayload {
+export interface NpTokenPayload {
   /** User ID */
   sub: string;
   /** User role */
-  role: NxUserRole;
+  role: NpUserRole;
   /** Token version (for server-side invalidation) */
   ver: number;
   /** Issued at */
@@ -2303,13 +2303,13 @@ export interface NxTokenPayload {
   exp: number;
 }
 
-export type NxUserRole = "admin" | "editor" | "author" | "viewer";
+export type NpUserRole = "admin" | "editor" | "author" | "viewer";
 
 /**
  * Sign a new access token.
  */
 export async function signToken(
-  user: { id: string; role: NxUserRole; tokenVersion: number },
+  user: { id: string; role: NpUserRole; tokenVersion: number },
   secret: string,
   expirationSeconds: number = 7200,
 ): Promise<string> {
@@ -2318,7 +2318,7 @@ export async function signToken(
     sub: user.id,
     role: user.role,
     ver: user.tokenVersion,
-  } satisfies Omit<NxTokenPayload, "iat" | "exp">)
+  } satisfies Omit<NpTokenPayload, "iat" | "exp">)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${expirationSeconds}s`)
@@ -2328,10 +2328,10 @@ export async function signToken(
 /**
  * Verify and decode a token.
  */
-export async function verifyToken(token: string, secret: string): Promise<NxTokenPayload> {
+export async function verifyToken(token: string, secret: string): Promise<NpTokenPayload> {
   const secretKey = new TextEncoder().encode(secret);
   const { payload } = await jose.jwtVerify(token, secretKey);
-  return payload as unknown as NxTokenPayload;
+  return payload as unknown as NpTokenPayload;
 }
 ```
 
@@ -2367,7 +2367,7 @@ export async function POST(request: NextRequest) {
   const { email, password } = await request.json();
 
   // 1. Find user
-  const user = await db.query.nxUsers.findFirst({ where: eq(nxUsers.email, email) });
+  const user = await db.query.npUsers.findFirst({ where: eq(npUsers.email, email) });
   if (!user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
   // 2. Check lockout
@@ -2383,21 +2383,21 @@ export async function POST(request: NextRequest) {
     const lockUntil =
       attempts >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null;
     await db
-      .update(nxUsers)
+      .update(npUsers)
       .set({ loginAttempts: attempts, lockUntil })
-      .where(eq(nxUsers.id, user.id));
+      .where(eq(npUsers.id, user.id));
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
   // 4. Reset login attempts on success
   await db
-    .update(nxUsers)
+    .update(npUsers)
     .set({ loginAttempts: 0, lockUntil: null })
-    .where(eq(nxUsers.id, user.id));
+    .where(eq(npUsers.id, user.id));
 
   // 5. Create session record
   const refreshToken = crypto.randomUUID();
-  await db.insert(nxSessions).values({
+  await db.insert(npSessions).values({
     userId: user.id,
     tokenHash: await sha256(refreshToken),
     userAgent: request.headers.get("user-agent"),
@@ -2434,7 +2434,7 @@ export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get("nx-refresh")?.value;
   if (refreshToken) {
     // Delete session from DB
-    await db.delete(nxSessions).where(eq(nxSessions.tokenHash, await sha256(refreshToken)));
+    await db.delete(npSessions).where(eq(npSessions.tokenHash, await sha256(refreshToken)));
   }
 
   const response = NextResponse.json({ success: true });
@@ -2454,7 +2454,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Next.js middleware for auth-protected routes.
  * Runs on edge — lightweight JWT verification only.
  */
-export async function nxAuthMiddleware(request: NextRequest): Promise<NextResponse | null> {
+export async function npAuthMiddleware(request: NextRequest): Promise<NextResponse | null> {
   const token = request.cookies.get("nx-session")?.value;
   if (!token) return redirectToLogin(request);
 
@@ -2487,8 +2487,8 @@ function redirectToLogin(request: NextRequest): NextResponse {
  * Access control function signature.
  * Returns true to allow, false to deny.
  */
-export type NxAccessFunction = (args: {
-  user: NxAuthUser | null;
+export type NpAccessFunction = (args: {
+  user: NpAuthUser | null;
   /** The document being accessed (for update/delete) */
   doc?: Record<string, unknown>;
   /** The request data (for create) */
@@ -2500,17 +2500,17 @@ export type NxAccessFunction = (args: {
  */
 
 /** Only authenticated users */
-export const authenticated: NxAccessFunction = ({ user }) => !!user;
+export const authenticated: NpAccessFunction = ({ user }) => !!user;
 
 /** Only admins */
-export const isAdmin: NxAccessFunction = ({ user }) => user?.role === "admin";
+export const isAdmin: NpAccessFunction = ({ user }) => user?.role === "admin";
 
 /** Admins or editors */
-export const isEditorOrAbove: NxAccessFunction = ({ user }) =>
+export const isEditorOrAbove: NpAccessFunction = ({ user }) =>
   !!user && ["admin", "editor"].includes(user.role);
 
 /** Owner or admin */
-export const isOwnerOrAdmin: NxAccessFunction = ({ user, doc }) =>
+export const isOwnerOrAdmin: NpAccessFunction = ({ user, doc }) =>
   user?.role === "admin" || doc?.createdBy === user?.id;
 
 // Usage in collection config:
@@ -2530,7 +2530,7 @@ defineCollection({
 /**
  * Role hierarchy for permission checks.
  */
-export const ROLE_HIERARCHY: Record<NxUserRole, number> = {
+export const ROLE_HIERARCHY: Record<NpUserRole, number> = {
   viewer: 0,
   author: 1,
   editor: 2,
@@ -2538,7 +2538,7 @@ export const ROLE_HIERARCHY: Record<NxUserRole, number> = {
 };
 
 /** Check if user has at least the given role level */
-export function hasRole(user: NxAuthUser, minRole: NxUserRole): boolean {
+export function hasRole(user: NpAuthUser, minRole: NpUserRole): boolean {
   return ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY[minRole];
 }
 ```
@@ -2554,12 +2554,12 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
   await db.transaction(async (tx) => {
     // 1. Bump token version — makes all existing JWTs invalid
     await tx
-      .update(nxUsers)
-      .set({ tokenVersion: sql`${nxUsers.tokenVersion} + 1` })
-      .where(eq(nxUsers.id, userId));
+      .update(npUsers)
+      .set({ tokenVersion: sql`${npUsers.tokenVersion} + 1` })
+      .where(eq(npUsers.id, userId));
 
     // 2. Delete all session records
-    await tx.delete(nxSessions).where(eq(nxSessions.userId, userId));
+    await tx.delete(npSessions).where(eq(npSessions.userId, userId));
   });
 }
 
@@ -2567,11 +2567,11 @@ export async function invalidateAllSessions(userId: string): Promise<void> {
  * Full verification (used in API handlers, not middleware).
  * Checks tokenVersion against DB to catch invalidated tokens.
  */
-export async function verifyTokenFull(token: string): Promise<NxAuthUser | null> {
+export async function verifyTokenFull(token: string): Promise<NpAuthUser | null> {
   try {
     const payload = await verifyToken(token, process.env.NX_SECRET!);
-    const user = await db.query.nxUsers.findFirst({
-      where: eq(nxUsers.id, payload.sub),
+    const user = await db.query.npUsers.findFirst({
+      where: eq(npUsers.id, payload.sub),
       columns: { id: true, email: true, name: true, role: true, tokenVersion: true },
     });
     if (!user || user.tokenVersion !== payload.ver) return null;
@@ -2599,8 +2599,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   // 3. Verify current password
-  const fullUser = await db.query.nxUsers.findFirst({
-    where: eq(nxUsers.id, user.id),
+  const fullUser = await db.query.npUsers.findFirst({
+    where: eq(npUsers.id, user.id),
     columns: { id: true, password: true },
   });
   if (!fullUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -2610,19 +2610,19 @@ export async function PATCH(request: NextRequest) {
 
   // 4. Hash new password and save
   const hashed = await hashPassword(newPassword);
-  await db.update(nxUsers).set({ password: hashed }).where(eq(nxUsers.id, user.id));
+  await db.update(npUsers).set({ password: hashed }).where(eq(npUsers.id, user.id));
 
   // 5. Invalidate all sessions (force re-login everywhere)
   await invalidateAllSessions(user.id);
 
   // 6. Create new session + sign new token for current session
-  const updatedUser = await db.query.nxUsers.findFirst({
-    where: eq(nxUsers.id, user.id),
+  const updatedUser = await db.query.npUsers.findFirst({
+    where: eq(npUsers.id, user.id),
     columns: { id: true, email: true, name: true, role: true, tokenVersion: true },
   });
   const token = await signToken(updatedUser!, process.env.NX_SECRET!);
   const refreshToken = crypto.randomUUID();
-  await db.insert(nxSessions).values({
+  await db.insert(npSessions).values({
     userId: user.id,
     tokenHash: await sha256(refreshToken),
     userAgent: request.headers.get("user-agent"),
@@ -2667,13 +2667,13 @@ export async function POST(request: NextRequest) {
   const tokenHash = await sha256(refreshToken);
 
   // 1. Find and validate session
-  const session = await db.query.nxSessions.findFirst({
-    where: eq(nxSessions.tokenHash, tokenHash),
+  const session = await db.query.npSessions.findFirst({
+    where: eq(npSessions.tokenHash, tokenHash),
   });
   if (!session || session.expiresAt < new Date()) {
     // Invalid or expired — delete stale session if exists, clear cookies
     if (session) {
-      await db.delete(nxSessions).where(eq(nxSessions.id, session.id));
+      await db.delete(npSessions).where(eq(npSessions.id, session.id));
     }
     const response = NextResponse.json({ error: "Session expired" }, { status: 401 });
     response.cookies.delete("nx-session");
@@ -2682,20 +2682,20 @@ export async function POST(request: NextRequest) {
   }
 
   // 2. Load user and verify tokenVersion
-  const user = await db.query.nxUsers.findFirst({
-    where: eq(nxUsers.id, session.userId),
+  const user = await db.query.npUsers.findFirst({
+    where: eq(npUsers.id, session.userId),
     columns: { id: true, email: true, name: true, role: true, tokenVersion: true },
   });
   if (!user) {
-    await db.delete(nxSessions).where(eq(nxSessions.id, session.id));
+    await db.delete(npSessions).where(eq(npSessions.id, session.id));
     return NextResponse.json({ error: "User not found" }, { status: 401 });
   }
 
   // 3. Rotate refresh token (delete old, create new)
   const newRefreshToken = crypto.randomUUID();
   await db.transaction(async (tx) => {
-    await tx.delete(nxSessions).where(eq(nxSessions.id, session.id));
-    await tx.insert(nxSessions).values({
+    await tx.delete(npSessions).where(eq(npSessions.id, session.id));
+    await tx.insert(npSessions).values({
       userId: user.id,
       tokenHash: await sha256(newRefreshToken),
       userAgent: request.headers.get("user-agent"),
@@ -2763,7 +2763,7 @@ function verifyCsrf(request: NextRequest): boolean {
   return !!cookieToken && cookieToken === headerToken;
 }
 
-// In nxAuthMiddleware, add before continuing:
+// In npAuthMiddleware, add before continuing:
 // if (!verifyCsrf(request)) return NextResponse.json({ error: "CSRF validation failed" }, { status: 403 });
 ```
 
@@ -3002,7 +3002,7 @@ app/
 
 ```typescript
 // app/(site)/layout.tsx
-import { NxThemeStyle } from "@nexpress/theme";
+import { NpThemeStyle } from "@nexpress/theme";
 import { getTheme, getNavigation } from "@nexpress/core";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
@@ -3011,7 +3011,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
 
   return (
     <>
-      <NxThemeStyle theme={theme} />
+      <NpThemeStyle theme={theme} />
       <header>
         <SiteNav items={nav.header} />
       </header>
@@ -3098,7 +3098,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     <article>
       <h1>{post.title}</h1>
       <time dateTime={post.publishedAt?.toISOString()}>{formatDate(post.publishedAt)}</time>
-      {post.coverImage && <NxImage media={post.coverImage} size="large" />}
+      {post.coverImage && <NpImage media={post.coverImage} size="large" />}
       <div className="prose">{renderRichText(post.content)}</div>
     </article>
   );
@@ -3181,10 +3181,10 @@ import { unstable_cache } from "next/cache";
 
 export const getPostBySlug = unstable_cache(
   async (slug: string, options?: { draft?: boolean }) => {
-    return db.query.nxCPosts.findFirst({
+    return db.query.npCPosts.findFirst({
       where: options?.draft
-        ? eq(nxCPosts.slug, slug)
-        : and(eq(nxCPosts.slug, slug), eq(nxCPosts.status, "published")),
+        ? eq(npCPosts.slug, slug)
+        : and(eq(npCPosts.slug, slug), eq(npCPosts.status, "published")),
       with: { coverImageRel: true, authorRel: true, categories: true },
     });
   },
@@ -3207,15 +3207,15 @@ export async function onContentUpdate(collection: string, docId: string) {
 // PUT /api/navigation                    → revalidateTag("nx:navigation")
 ```
 
-### D.6 NxImage Component (Optimized Media Rendering)
+### D.6 NpImage Component (Optimized Media Rendering)
 
 ```typescript
-// packages/core/src/components/NxImage.tsx
+// packages/core/src/components/NpImage.tsx
 import Image from "next/image";
 
-interface NxImageProps {
+interface NpImageProps {
   /** Media record or ID */
-  media: NxMediaRecord | string;
+  media: NpMediaRecord | string;
   /** Which size to use (from image config) */
   size?: string;
   /** Image alt text (overrides media.alt) */
@@ -3226,7 +3226,7 @@ interface NxImageProps {
   priority?: boolean;
 }
 
-export async function NxImage({ media, size = "medium", alt, className, priority }: NxImageProps) {
+export async function NpImage({ media, size = "medium", alt, className, priority }: NpImageProps) {
   const record = typeof media === "string" ? await getMediaById(media) : media;
   if (!record) return null;
 
@@ -3322,8 +3322,8 @@ import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarMenu,
 import { LayoutDashboard, FileText, Image, Settings, Puzzle, LogOut } from "lucide-react";
 
 interface AdminShellProps {
-  user: NxAuthUser;
-  collections: NxCollectionConfig[];
+  user: NpAuthUser;
+  collections: NpCollectionConfig[];
   children: React.ReactNode;
 }
 
@@ -3448,7 +3448,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 
 interface CollectionListViewProps {
-  config: NxCollectionConfig;
+  config: NpCollectionConfig;
   docs: Record<string, unknown>[];
   totalDocs: number;
   totalPages: number;
@@ -3508,7 +3508,7 @@ import { Save, Eye, Trash2 } from "lucide-react";
 
 /**
  * Auto-generates a form from collection field config.
- * Maps NxFieldConfig types → shadcn/ui form components.
+ * Maps NpFieldConfig types → shadcn/ui form components.
  */
 export function CollectionEditView({
   config,
@@ -3516,7 +3516,7 @@ export function CollectionEditView({
   onSave,
   onDelete,
 }: {
-  config: NxCollectionConfig;
+  config: NpCollectionConfig;
   doc?: Record<string, unknown>;
   onSave: (data: Record<string, unknown>) => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -3581,7 +3581,7 @@ export function CollectionEditView({
 /**
  * Field type → component mapping.
  */
-function FieldRenderer({ field, form }: { field: NxFieldConfig; form: UseFormReturn }) {
+function FieldRenderer({ field, form }: { field: NpFieldConfig; form: UseFormReturn }) {
   switch (field.type) {
     case "text":
       return (
@@ -3609,7 +3609,7 @@ function FieldRenderer({ field, form }: { field: NxFieldConfig; form: UseFormRet
           <FormItem>
             <FormLabel>{field.label || titleCase(field.name)}</FormLabel>
             <FormControl>
-              <NxRichTextEditor value={f.value} onChange={f.onChange} config={field.editor} />
+              <NpRichTextEditor value={f.value} onChange={f.onChange} config={field.editor} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -3864,7 +3864,7 @@ export async function saveDocument(
   collection: string,
   docId: string | null, // null = create
   data: Record<string, unknown>,
-  user: NxAuthUser,
+  user: NpAuthUser,
 ): Promise<SaveResult> {
   const config = getCollectionConfig(collection);
 
@@ -3881,7 +3881,7 @@ export async function saveDocument(
       ? await db.query[getTableName(collection)].findFirst({ where: eq(table.id, docId) })
       : undefined;
     const allowed = await accessFn({ user, doc: existingDoc, data: validated });
-    if (!allowed) throw new NxForbiddenError(collection, operation);
+    if (!allowed) throw new NpForbiddenError(collection, operation);
   }
 
   // ── Phase 2: Hooks (sync, can abort) ───────────────
@@ -3951,8 +3951,8 @@ export async function POST(
     const result = await saveDocument(collection, null, data, user);
     return NextResponse.json(result.doc, { status: 201 });
   } catch (e) {
-    if (e instanceof NxForbiddenError) return nxErrorResponse(e, 403);
-    if (e instanceof z.ZodError) return nxErrorResponse(e, 400);
+    if (e instanceof NpForbiddenError) return npErrorResponse(e, 403);
+    if (e instanceof z.ZodError) return npErrorResponse(e, 400);
     throw e;
   }
 }
@@ -3969,7 +3969,7 @@ export async function GET(
   const readAccess = config.access?.read;
   if (readAccess) {
     const allowed = await readAccess({ user });
-    if (!allowed) return nxErrorResponse(new NxForbiddenError(collection, "read"), 403);
+    if (!allowed) return npErrorResponse(new NpForbiddenError(collection, "read"), 403);
   }
 
   const { searchParams } = request.nextUrl;
@@ -4019,7 +4019,7 @@ Escalation: Multi-node → separate worker process, shared pg-boss queue.
 /**
  * All async work goes through the job queue.
  */
-export type NxJobType =
+export type NpJobType =
   // Content lifecycle
   | "content:afterSave" // Post-save hooks, webhooks, cache invalidation, search indexing
   | "content:afterDelete" // Post-delete cleanup
@@ -4038,7 +4038,7 @@ export type NxJobType =
 /**
  * Job handler registry.
  */
-const jobHandlers: Record<NxJobType, (data: unknown) => Promise<void>> = {
+const jobHandlers: Record<NpJobType, (data: unknown) => Promise<void>> = {
   "content:afterSave": async (data) => {
     const { collection, documentId, operation, userId } = data as ContentJobData;
     // 1. Cache invalidation
@@ -4061,7 +4061,7 @@ const jobHandlers: Record<NxJobType, (data: unknown) => Promise<void>> = {
     const { mediaId, storagePath, config } = data as MediaJobData;
     // Sharp pipeline runs here, NOT in the upload request handler
     const sizes = await generateImageSizes(storagePath, config);
-    await db.update(nxMedia).set({ sizes, status: "ready" }).where(eq(nxMedia.id, mediaId));
+    await db.update(npMedia).set({ sizes, status: "ready" }).where(eq(npMedia.id, mediaId));
   },
 
   // ...other handlers
@@ -4115,7 +4115,7 @@ placeholder when variants are not ready.
  * All NexPress API endpoints return errors in this format.
  * No ad-hoc { error: "..." } responses.
  */
-export interface NxApiError {
+export interface NpApiError {
   error: {
     code: string; // Machine-readable: "VALIDATION_ERROR", "FORBIDDEN", "NOT_FOUND"
     message: string; // Human-readable message
@@ -4124,7 +4124,7 @@ export interface NxApiError {
   status: number;
 }
 
-export function nxErrorResponse(error: Error, status: number): NextResponse<NxApiError> {
+export function npErrorResponse(error: Error, status: number): NextResponse<NpApiError> {
   if (error instanceof z.ZodError) {
     return NextResponse.json(
       {
@@ -4134,7 +4134,7 @@ export function nxErrorResponse(error: Error, status: number): NextResponse<NxAp
       { status: 400 },
     );
   }
-  if (error instanceof NxForbiddenError) {
+  if (error instanceof NpForbiddenError) {
     return NextResponse.json(
       {
         error: { code: "FORBIDDEN", message: error.message },
@@ -4245,7 +4245,7 @@ This is NOT a v1 blocker — self-hosted CMS default = single Docker container.
 /**
  * Revision retention policy. Enforced by system:revisionPrune job.
  */
-export interface NxRevisionPolicy {
+export interface NpRevisionPolicy {
   /** Max published revisions per document (0 = unlimited) */
   maxPublished: number; // default: 20
   /** Max autosave revisions per document */
@@ -4269,7 +4269,7 @@ export interface NxRevisionPolicy {
 import { unstable_cache as nextCache } from "next/cache";
 import { revalidateTag as nextRevalidateTag } from "next/cache";
 
-export function nxCache<T>(
+export function npCache<T>(
   fn: (...args: unknown[]) => Promise<T>,
   keyParts: string[],
   options: { tags: string[]; revalidate?: number },
@@ -4277,11 +4277,11 @@ export function nxCache<T>(
   return nextCache(fn, keyParts, options);
 }
 
-export function nxRevalidateTag(tag: string): void {
+export function npRevalidateTag(tag: string): void {
   nextRevalidateTag(tag);
 }
 
-// All data access functions use nxCache/nxRevalidateTag, never import from next/cache directly.
+// All data access functions use npCache/npRevalidateTag, never import from next/cache directly.
 ```
 
 ### N.7 Draft Cache Isolation (MS-6)
@@ -4290,7 +4290,7 @@ export function nxRevalidateTag(tag: string): void {
 /**
  * Draft content MUST NOT pollute the public cache.
  * Rules:
- * 1. Data fetching with { draft: true } MUST bypass nxCache entirely
+ * 1. Data fetching with { draft: true } MUST bypass npCache entirely
  * 2. Draft mode pages set Cache-Control: no-store
  * 3. The __prerender_bypass cookie set by draftMode() prevents ISR caching
  */
@@ -4308,7 +4308,7 @@ export async function getContentBySlug(
   }
 
   // Public content — cached and tagged for revalidation
-  return nxCache(
+  return npCache(
     async () =>
       db.query[getTableName(collection)].findFirst({
         where: and(eq(table.slug, slug), eq(table.status, "published")),
@@ -4357,7 +4357,7 @@ export function getCollectionZodSchema(collection: string): z.ZodSchema {
   return buildZodSchema(config.fields);
 }
 
-function buildZodSchema(fields: NxFieldConfig[]): z.ZodObject<Record<string, z.ZodTypeAny>> {
+function buildZodSchema(fields: NpFieldConfig[]): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const shape: Record<string, z.ZodTypeAny> = {};
 
   for (const field of fields) {
@@ -4474,13 +4474,13 @@ All migrations are reviewable SQL files. Developer applies manually.
 // - block props (media references in block data)
 // These are stored in a lightweight reference table:
 
-export const nxMediaRefs = pgTable(
+export const npMediaRefs = pgTable(
   "nx_media_refs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     mediaId: uuid("media_id")
       .notNull()
-      .references(() => nxMedia.id, { onDelete: "cascade" }),
+      .references(() => npMedia.id, { onDelete: "cascade" }),
     collection: text("collection").notNull(),
     documentId: uuid("document_id").notNull(),
     field: text("field").notNull(),
@@ -4493,16 +4493,16 @@ export const nxMediaRefs = pgTable(
 
 // 2. Deletion policy:
 // DELETE /api/media/{id}:
-//   a. Check nxMediaRefs for active references
+//   a. Check npMediaRefs for active references
 //   b. If references exist: return 409 { error: "MEDIA_IN_USE", references: [...] }
 //   c. If no references: soft-delete (set deletedAt timestamp)
 //   d. After 30 days: "media:cleanup" job hard-deletes file from storage
 
 // 3. Upload constraints (configurable in nexpress.config.ts):
-export interface NxUploadConfig {
+export interface NpUploadConfig {
   maxFileSize: number; // bytes, default: 10 * 1024 * 1024 (10MB)
   allowedMimeTypes: string[]; // default: ["image/*", "application/pdf", "video/*"]
-  imageSizes?: NxImageSize[]; // custom size definitions
+  imageSizes?: NpImageSize[]; // custom size definitions
 }
 ```
 
@@ -4525,7 +4525,7 @@ export interface NxUploadConfig {
 
 // 2. The search vector is built from text/textarea/richText fields:
 export function buildSearchVector(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   data: Record<string, unknown>,
 ): string {
   const parts: string[] = [];
@@ -4537,7 +4537,7 @@ export function buildSearchVector(
     if (field.type === "richText") {
       // Extract plain text from Lexical JSON
       const value = data[field.name];
-      if (value) parts.push(extractPlainText(value as NxRichTextContent));
+      if (value) parts.push(extractPlainText(value as NpRichTextContent));
     }
   }
   return parts.join(" ");
@@ -4632,7 +4632,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | F3  | Playwright | Block page editor drag-and-drop | 1. Create a page 2. Add Hero and FeatureGrid blocks 3. Drag FeatureGrid above Hero 4. Save                                                         | `psql: SELECT blocks FROM nx_c_pages` returns JSON array with FeatureGrid at index 0, Hero at index 1.                        |
 | F4  | Playwright | Block props editor              | 1. Add Hero block to page 2. Click gear icon (⚙) on Hero 3. Edit title prop 4. Save                                                                | Block `props.title` updated in DB.                                                                                            |
 | F5  | Vitest     | renderRichText SSR correctness  | 1. Create Lexical JSON with paragraph, heading, link, image nodes 2. Call `renderRichText(content)` 3. Render to string via `renderToStaticMarkup` | Output HTML contains `<p>`, `<h2>`, `<a href="...">`, `<img>` elements. No Lexical runtime imports.                           |
-| F6  | Vitest     | Block data binding              | 1. Create NxBlockInstance with `dataBinding: { collection: "posts", limit: 3 }` 2. Render block server-side                                        | Block receives 3 posts from DB as props.                                                                                      |
+| F6  | Vitest     | Block data binding              | 1. Create NpBlockInstance with `dataBinding: { collection: "posts", limit: 3 }` 2. Render block server-side                                        | Block receives 3 posts from DB as props.                                                                                      |
 
 ### QA-G: Media System
 
@@ -4654,7 +4654,7 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | H2  | Vitest     | Dark mode CSS                    | 1. Call `generateThemeCss(DEFAULT_THEME)` with `darkMode.enabled: true`                                        | Output contains `[data-theme="dark"] { --nx-color-background: oklch(0.15 0.02 260); ... }`.                                   |
 | H3  | Playwright | Theme changes apply live         | 1. Login 2. Navigate to `/admin/settings/theme` 3. Change primary color 4. Save 5. Open public site in new tab | Public site `<style>` tag contains updated `--nx-color-primary` value.                                                        |
 | H4  | Playwright | Tailwind v4 uses NexPress tokens | 1. Add `className="bg-primary text-primary-foreground"` to a block 2. Visit public page                        | Element has background color matching `--nx-color-primary` and text color matching `--nx-color-primary-foreground`.           |
-| H5  | Vitest     | NxThemeStyle is server-only      | 1. Import `NxThemeStyle` 2. Render via `renderToStaticMarkup`                                                  | Returns a `<style>` tag with CSS. No `"use client"` directive in source. Zero client JS.                                      |
+| H5  | Vitest     | NpThemeStyle is server-only      | 1. Import `NpThemeStyle` 2. Render via `renderToStaticMarkup`                                                  | Returns a `<style>` tag with CSS. No `"use client"` directive in source. Zero client JS.                                      |
 
 ### QA-I: Agent Interface
 
@@ -4665,8 +4665,8 @@ export async function findDocuments(collection: string, options: FindOptions) {
 | I3  | `curl`          | OpenAPI spec generated                  | `curl http://localhost:3000/api/openapi.json`                                                                             | Valid OpenAPI 3.1 JSON. Contains CRUD paths for each collection (`/api/collections/{slug}`), auth endpoints, media endpoints, manifest endpoints.                                                                    |
 | I4  | `curl`          | Import preflight rejects unknown blocks | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d '{"pages":[{"slug":"test","blocks":[{"type":"nonexistent"}]}]}'` | 422 response. Body: `{ error: { code: "IMPORT_PREFLIGHT_FAILED", details: ["Unknown block type: nonexistent"] } }`. No data written.                                                                                 |
 | I5  | `curl`          | Import succeeds with valid payload      | `curl -X POST /api/import -H 'Cookie: nx-session=...' -d @site-export.json`                                               | 200 response. Body: `{ "success": true, "created": N, "updated": M, "skipped": [], "warnings": [] }`. Pages, navigation, theme, plugin configs applied.                                                              |
-| I6  | `curl`          | Export site config                      | `curl /api/export -H 'Cookie: nx-session=...'`                                                                            | 200 response. Body matches `NxSiteConfig` schema. Contains collection schemas, pages, theme, navigation, plugins, settings. Media refs include `{ id, filename, hash }`. Excludes passwords and API keys.            |
-| I7  | Vitest          | NxSiteConfig round-trip                 | 1. Export config 2. Reset DB 3. Import exported config 4. Export again                                                    | Second export matches first export (modulo timestamps, UUIDs). Slug-based upsert produces identical content.                                                                                                         |
+| I6  | `curl`          | Export site config                      | `curl /api/export -H 'Cookie: nx-session=...'`                                                                            | 200 response. Body matches `NpSiteConfig` schema. Contains collection schemas, pages, theme, navigation, plugins, settings. Media refs include `{ id, filename, hash }`. Excludes passwords and API keys.            |
+| I7  | Vitest          | NpSiteConfig round-trip                 | 1. Export config 2. Reset DB 3. Import exported config 4. Export again                                                    | Second export matches first export (modulo timestamps, UUIDs). Slug-based upsert produces identical content.                                                                                                         |
 | I8  | `curl` + `psql` | Import is transactional                 | 1. Send import with valid theme + page referencing nonexistent media 2. Check DB                                          | 200 response with `warnings` listing unresolved media ref. Theme AND page both written (media ref nullified). If payload has structural error mid-write, entire import rolls back — `psql` confirms no partial data. |
 | I9  | `curl`          | Import is idempotent                    | 1. POST same import payload twice                                                                                         | Both return 200. Second run: `created: 0, updated: N`. No duplicate pages or settings.                                                                                                                               |
 | I10 | `curl`          | Non-admin import rejected               | 1. Login as "author" role 2. POST `/api/import`                                                                           | 403 response. `{ error: { code: "FORBIDDEN" } }`.                                                                                                                                                                    |
@@ -4718,11 +4718,11 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool       | Scenario                            | Steps                                                                                              | Expected                                                                                                                                                                                           |
 | --- | ---------- | ----------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| N1  | `curl`     | API errors follow NxApiError format | 1. GET `/api/collections/nonexistent`                                                              | 404 response. Body matches `{ error: { code: "NOT_FOUND", message: "..." }, status: 404 }`. No ad-hoc error format.                                                                                |
+| N1  | `curl`     | API errors follow NpApiError format | 1. GET `/api/collections/nonexistent`                                                              | 404 response. Body matches `{ error: { code: "NOT_FOUND", message: "..." }, status: 404 }`. No ad-hoc error format.                                                                                |
 | N2  | `curl`     | Security headers present            | `curl -I http://localhost:3000/`                                                                   | Response headers include: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy` with `frame-ancestors 'none'`. |
 | N3  | `curl`     | Auth endpoint rate limited          | 1. Send 11 rapid POST requests to `/api/auth/login` from same IP                                   | First 10 return 401 (wrong password). 11th returns 429 `{ error: { code: "RATE_LIMITED" } }`.                                                                                                      |
 | N4  | Vitest     | CSS sanitization strips injection   | 1. Call `sanitizeTokenValue("red; } body { background: url(evil)")`                                | Returns `"red  body { background evil"` (semicolons stripped, url() stripped, block terminators stripped). Length ≤ 200 chars.                                                                     |
-| N5  | Vitest     | nxCache wraps unstable_cache        | 1. Mock `unstable_cache` 2. Call `nxCache(fn, ["key"], { tags: ["t1"] })` 3. Check mock was called | `unstable_cache` called with same arguments. Abstraction is pass-through.                                                                                                                          |
+| N5  | Vitest     | npCache wraps unstable_cache        | 1. Mock `unstable_cache` 2. Call `npCache(fn, ["key"], { tags: ["t1"] })` 3. Check mock was called | `unstable_cache` called with same arguments. Abstraction is pass-through.                                                                                                                          |
 | N6  | `curl`     | Draft content not cached            | 1. Enter draft mode (`/api/preview?path=/blog/draft`) 2. GET draft page 3. Check response headers  | `Cache-Control: no-store` header present. Draft content served fresh from DB, not from ISR cache.                                                                                                  |
 | N7  | `pnpm` CLI | Local storage multi-node warning    | 1. Set `NX_MULTI_NODE=true` in env 2. Set storage adapter to "local" 3. Start server               | Console output includes WARNING: "LocalStorageAdapter is not compatible with multi-node deployments. Use S3."                                                                                      |
 

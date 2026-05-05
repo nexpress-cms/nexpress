@@ -12,7 +12,7 @@
  * the page render down. Operators see the wrong direction
  * (which is fixable in config) instead of a 500.
  */
-export type NxLocaleDirection = "ltr" | "rtl";
+export type NpLocaleDirection = "ltr" | "rtl";
 
 interface LocaleWithTextInfo extends Intl.Locale {
   /**
@@ -23,7 +23,7 @@ interface LocaleWithTextInfo extends Intl.Locale {
   readonly textInfo?: { direction?: string };
 }
 
-export function getLocaleDirection(locale: string): NxLocaleDirection {
+export function getLocaleDirection(locale: string): NpLocaleDirection {
   if (typeof locale !== "string" || locale.length === 0) return "ltr";
   try {
     const parsed = new Intl.Locale(locale) as LocaleWithTextInfo;

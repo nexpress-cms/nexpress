@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { NxUserRole } from "@nexpress/core";
+import type { NpUserRole } from "@nexpress/core";
 import { MailPlus, Plus } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import {
@@ -36,10 +36,10 @@ type UserRow = {
   id: string;
   name: string;
   email: string;
-  role: NxUserRole;
+  role: NpUserRole;
 };
 
-const ROLE_OPTIONS: NxUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
+const ROLE_OPTIONS: NpUserRole[] = ["admin", "editor", "moderator", "author", "viewer"];
 
 export function UserManagement() {
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -52,7 +52,7 @@ export function UserManagement() {
     name: string;
     email: string;
     password: string;
-    role: NxUserRole;
+    role: NpUserRole;
   }>({ name: "", email: "", password: "", role: "author" });
 
   const [emailInviteOpen, setEmailInviteOpen] = useState(false);
@@ -62,7 +62,7 @@ export function UserManagement() {
   const [emailInviteForm, setEmailInviteForm] = useState<{
     name: string;
     email: string;
-    role: NxUserRole;
+    role: NpUserRole;
   }>({ name: "", email: "", role: "author" });
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function UserManagement() {
     setError(null);
 
     try {
-      const response = await nxFetch("/api/users?limit=100");
+      const response = await npFetch("/api/users?limit=100");
       const payload = (await response.json().catch(() => null)) as unknown;
 
       if (!response.ok) {
@@ -99,7 +99,7 @@ export function UserManagement() {
     setInviteError(null);
 
     try {
-      const response = await nxFetch("/api/users", {
+      const response = await npFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(inviteForm),
@@ -127,7 +127,7 @@ export function UserManagement() {
     setEmailInviteError(null);
 
     try {
-      const response = await nxFetch("/api/users/invite", {
+      const response = await npFetch("/api/users/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(emailInviteForm),
@@ -290,7 +290,7 @@ export function UserManagement() {
               <Select
                 value={inviteForm.role}
                 onValueChange={(value) =>
-                  setInviteForm((current) => ({ ...current, role: value as NxUserRole }))
+                  setInviteForm((current) => ({ ...current, role: value as NpUserRole }))
                 }
               >
                 <SelectTrigger>
@@ -367,7 +367,7 @@ export function UserManagement() {
               <Select
                 value={emailInviteForm.role}
                 onValueChange={(value) =>
-                  setEmailInviteForm((current) => ({ ...current, role: value as NxUserRole }))
+                  setEmailInviteForm((current) => ({ ...current, role: value as NpUserRole }))
                 }
               >
                 <SelectTrigger>

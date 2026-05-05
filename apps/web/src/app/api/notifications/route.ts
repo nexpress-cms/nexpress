@@ -1,7 +1,7 @@
 import { listNotifications, unreadNotificationCount } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     // probe used by header notification icons.
     if (url.searchParams.get("count") === "1") {
       const unread = await unreadNotificationCount(member.id);
-      return nxSuccessResponse({ unread });
+      return npSuccessResponse({ unread });
     }
 
     const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
       offset: Number.isFinite(offset) ? offset : undefined,
       unreadOnly,
     });
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

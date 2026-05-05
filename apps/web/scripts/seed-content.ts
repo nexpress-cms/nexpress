@@ -8,10 +8,10 @@ import { eq } from "drizzle-orm";
 import {
   createDbConnection,
   getSiteById,
-  nxUsers,
+  npUsers,
   withCurrentSite,
 } from "@nexpress/core";
-import type { NxAuthUser } from "@nexpress/core";
+import type { NpAuthUser } from "@nexpress/core";
 
 import { ensureFor } from "../src/lib/init-core";
 import {
@@ -43,18 +43,18 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
-async function findFirstAdmin(): Promise<NxAuthUser | null> {
+async function findFirstAdmin(): Promise<NpAuthUser | null> {
   const db = createDbConnection({ connectionString: databaseUrl as string });
   const rows = await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.role, "admin"))
+    .from(npUsers)
+    .where(eq(npUsers.role, "admin"))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -62,7 +62,7 @@ async function findFirstAdmin(): Promise<NxAuthUser | null> {
     id: row.id,
     email: row.email,
     name: row.name,
-    role: row.role as NxAuthUser["role"],
+    role: row.role as NpAuthUser["role"],
     tokenVersion: row.tokenVersion,
   };
 }

@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
-import { nxMembers } from "../db/schema/community.js";
+import { npMembers } from "../db/schema/community.js";
 import {
   getAllCollectionSlugs,
   getCollectionConfig,
@@ -28,7 +28,7 @@ import { getDb } from "../db/runtime.js";
  * an unattended collection accumulating thousands of pendings can't
  * blow heap by being read fully into memory.
  */
-export interface NxPendingDocSummary {
+export interface NpPendingDocSummary {
   id: string;
   collectionSlug: string;
   /** From the doc's `title` field, when it has one. Never empty. */
@@ -48,7 +48,7 @@ export interface NxPendingDocSummary {
   } | null;
 }
 
-export interface NxListPendingDocsOptions {
+export interface NpListPendingDocsOptions {
   /** Restrict to one collection. Useful for per-collection queue
    *  pages; omit for the global queue. */
   collectionSlug?: string;
@@ -56,8 +56,8 @@ export interface NxListPendingDocsOptions {
   offset?: number;
 }
 
-export interface NxListPendingDocsResult {
-  docs: NxPendingDocSummary[];
+export interface NpListPendingDocsResult {
+  docs: NpPendingDocSummary[];
   totalDocs: number;
 }
 
@@ -106,8 +106,8 @@ function buildPendingBranch(slug: string): SQL | null {
 }
 
 export async function listPendingMemberDocs(
-  options: NxListPendingDocsOptions = {},
-): Promise<NxListPendingDocsResult> {
+  options: NpListPendingDocsOptions = {},
+): Promise<NpListPendingDocsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 
@@ -150,7 +150,7 @@ export async function listPendingMemberDocs(
       m.handle AS member_handle,
       m.display_name AS member_display_name
     FROM (${union}) p
-    LEFT JOIN ${nxMembers} m ON m.id = p.member_author_id
+    LEFT JOIN ${npMembers} m ON m.id = p.member_author_id
     ORDER BY p.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `)) as unknown as {
@@ -166,7 +166,7 @@ export async function listPendingMemberDocs(
     }>;
   };
 
-  const docs: NxPendingDocSummary[] = result.rows.map((row) => ({
+  const docs: NpPendingDocSummary[] = result.rows.map((row) => ({
     id: row.id,
     collectionSlug: row.collection_slug,
     title:

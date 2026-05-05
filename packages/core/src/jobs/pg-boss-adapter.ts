@@ -1,18 +1,18 @@
 import { PgBoss, type ConstructorOptions, type Job } from "pg-boss";
-import { type NxJobType } from "../config/types.js";
+import { type NpJobType } from "../config/types.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { getAllJobHandlers } from "./handlers.js";
 import { recordJobLog, runInJobContext } from "./job-log.js";
 import {
-  type NxJobCountOptions,
-  type NxJobListOptions,
-  type NxJobListResult,
-  type NxJobQueue,
-  type NxJobState,
-  type NxJobStateCounts,
-  type NxJobSummary,
-  type NxScheduleSummary,
+  type NpJobCountOptions,
+  type NpJobListOptions,
+  type NpJobListResult,
+  type NpJobQueue,
+  type NpJobState,
+  type NpJobStateCounts,
+  type NpJobSummary,
+  type NpScheduleSummary,
 } from "./queue.js";
 
 /**
@@ -21,11 +21,11 @@ import {
  * the external API keeps its readable form while pg-boss sees an allowed
  * name.
  */
-function toQueueName(type: NxJobType): string {
+function toQueueName(type: NpJobType): string {
   return type.replace(/:/g, ".");
 }
 
-export class PgBossAdapter implements NxJobQueue {
+export class PgBossAdapter implements NpJobQueue {
   private readonly boss: PgBoss;
   /**
    * Phase 20.2 — every queue we've called `boss.work()` on, plus
@@ -45,7 +45,7 @@ export class PgBossAdapter implements NxJobQueue {
     this.boss = new PgBoss({ connectionString, ...options });
   }
 
-  async enqueue(type: NxJobType, data: unknown): Promise<string> {
+  async enqueue(type: NpJobType, data: unknown): Promise<string> {
     const jobId = await this.boss.send(toQueueName(type), asJobPayload(data));
 
     if (!jobId) {
@@ -279,7 +279,7 @@ export class PgBossAdapter implements NxJobQueue {
    * The COUNT runs against the same UNION; the per-page
    * SELECT still gets the row data.
    */
-  async listJobs(options: NxJobListOptions): Promise<NxJobListResult> {
+  async listJobs(options: NpJobListOptions): Promise<NpJobListResult> {
     const limit = Math.min(Math.max(1, options.limit ?? 50), 200);
     const offset = Math.max(0, options.offset ?? 0);
 
@@ -381,7 +381,7 @@ export class PgBossAdapter implements NxJobQueue {
    * pg-boss writes to on each `boss.schedule()` call. Sorted
    * by name for stable display.
    */
-  async listSchedules(): Promise<NxScheduleSummary[]> {
+  async listSchedules(): Promise<NpScheduleSummary[]> {
     const db = (
       this.boss as unknown as {
         db: {
@@ -406,7 +406,7 @@ export class PgBossAdapter implements NxJobQueue {
    * carry the same column, so the union pre-filter is a single
    * predicate.
    */
-  async countByState(options?: NxJobCountOptions): Promise<NxJobStateCounts> {
+  async countByState(options?: NpJobCountOptions): Promise<NpJobStateCounts> {
     const db = (
       this.boss as unknown as {
         db: {
@@ -434,7 +434,7 @@ export class PgBossAdapter implements NxJobQueue {
         GROUP BY state`,
       params,
     );
-    const counts: NxJobStateCounts = {
+    const counts: NpJobStateCounts = {
       created: 0,
       active: 0,
       completed: 0,
@@ -444,7 +444,7 @@ export class PgBossAdapter implements NxJobQueue {
       expired: 0,
     };
     for (const row of result.rows ?? []) {
-      const key = row.state as keyof NxJobStateCounts;
+      const key = row.state as keyof NpJobStateCounts;
       if (key in counts) {
         const value =
           typeof row.count === "number" ? row.count : Number.parseInt(row.count, 10);
@@ -530,7 +530,7 @@ interface PgBossScheduleRow {
   updated_on?: Date | string | null;
 }
 
-function scheduleRowToSummary(row: PgBossScheduleRow): NxScheduleSummary {
+function scheduleRowToSummary(row: PgBossScheduleRow): NpScheduleSummary {
   return {
     name: row.name,
     key: row.key ?? "",
@@ -542,11 +542,11 @@ function scheduleRowToSummary(row: PgBossScheduleRow): NxScheduleSummary {
   };
 }
 
-function rowToSummary(row: PgBossRow): NxJobSummary {
+function rowToSummary(row: PgBossRow): NpJobSummary {
   return {
     id: row.id,
     name: row.name,
-    state: row.state as NxJobState,
+    state: row.state as NpJobState,
     data: row.data,
     retryCount: typeof row.retry_count === "number" ? row.retry_count : undefined,
     output: row.output ?? null,

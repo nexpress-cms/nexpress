@@ -1,41 +1,41 @@
-export type NxUserRole = "admin" | "editor" | "moderator" | "author" | "viewer";
+export type NpUserRole = "admin" | "editor" | "moderator" | "author" | "viewer";
 
-export interface NxAuthUser {
+export interface NpAuthUser {
   id: string;
   email: string;
   name: string;
-  role: NxUserRole;
+  role: NpUserRole;
   tokenVersion: number;
 }
 
-export type NxAccessFunction = (args: {
-  user: NxAuthUser | null;
+export type NpAccessFunction = (args: {
+  user: NpAuthUser | null;
   doc?: Record<string, unknown>;
   data?: Record<string, unknown>;
 }) => boolean | Promise<boolean>;
 
-export type NxFieldCondition = (
+export type NpFieldCondition = (
   data: Record<string, unknown>,
   siblingData: Record<string, unknown>,
 ) => boolean;
 
-export type NxFieldValidator = (
+export type NpFieldValidator = (
   value: unknown,
   args: { data: Record<string, unknown>; siblingData: Record<string, unknown> },
 ) => string | true | Promise<string | true>;
 
-export type NxRichTextContent = Record<string, unknown>;
+export type NpRichTextContent = Record<string, unknown>;
 
-export interface NxEditorConfig {
+export interface NpEditorConfig {
   features?: string[];
   // Other knobs (e.g. `onUploadImage` for the Insert Image dialog
   // that landed in 9.7j) are typed in `@nexpress/editor`'s own
-  // `NxEditorConfig`. Keeping core's version minimal avoids
+  // `NpEditorConfig`. Keeping core's version minimal avoids
   // dragging the DOM lib (`File`, `Blob`) into the server-evaluated
   // collection config types.
 }
 
-interface NxFieldBase {
+interface NpFieldBase {
   name: string;
   label?: string;
   required?: boolean;
@@ -45,7 +45,7 @@ interface NxFieldBase {
     description?: string;
     placeholder?: string;
     readOnly?: boolean;
-    condition?: NxFieldCondition;
+    condition?: NpFieldCondition;
     width?: string;
     /**
      * Optional override for the admin field renderer. The default
@@ -57,24 +57,24 @@ interface NxFieldBase {
      */
     kind?: "templatePicker";
   };
-  validate?: NxFieldValidator;
+  validate?: NpFieldValidator;
 }
 
-export interface NxTextField extends NxFieldBase {
+export interface NpTextField extends NpFieldBase {
   type: "text";
   minLength?: number;
   maxLength?: number;
   unique?: boolean;
 }
 
-export interface NxTextareaField extends NxFieldBase {
+export interface NpTextareaField extends NpFieldBase {
   type: "textarea";
   minLength?: number;
   maxLength?: number;
   rows?: number;
 }
 
-export interface NxNumberField extends NxFieldBase {
+export interface NpNumberField extends NpFieldBase {
   type: "number";
   min?: number;
   max?: number;
@@ -82,24 +82,24 @@ export interface NxNumberField extends NxFieldBase {
   integerOnly?: boolean;
 }
 
-export interface NxRichTextField extends NxFieldBase {
+export interface NpRichTextField extends NpFieldBase {
   type: "richText";
-  editor?: NxEditorConfig;
+  editor?: NpEditorConfig;
 }
 
-export interface NxBlocksField extends NxFieldBase {
+export interface NpBlocksField extends NpFieldBase {
   type: "blocks";
   allowedBlocks?: string[];
   minRows?: number;
   maxRows?: number;
 }
 
-export interface NxCheckboxField extends NxFieldBase {
+export interface NpCheckboxField extends NpFieldBase {
   type: "checkbox";
   defaultValue?: boolean;
 }
 
-export interface NxDateField extends NxFieldBase {
+export interface NpDateField extends NpFieldBase {
   type: "date";
   pickerOptions?: {
     format?: string;
@@ -107,78 +107,78 @@ export interface NxDateField extends NxFieldBase {
   };
 }
 
-export interface NxUploadField extends NxFieldBase {
+export interface NpUploadField extends NpFieldBase {
   type: "upload";
   relationTo: string;
 }
 
-export interface NxRelationshipField extends NxFieldBase {
+export interface NpRelationshipField extends NpFieldBase {
   type: "relationship";
   relationTo: string | string[];
   hasMany?: boolean;
   filterOptions?: Record<string, unknown>;
 }
 
-export interface NxSelectField extends NxFieldBase {
+export interface NpSelectField extends NpFieldBase {
   type: "select";
   options: Array<{ label: string; value: string }>;
   hasMany?: boolean;
 }
 
-export interface NxRadioField extends NxFieldBase {
+export interface NpRadioField extends NpFieldBase {
   type: "radio";
   options: Array<{ label: string; value: string }>;
 }
 
-export interface NxEmailField extends NxFieldBase {
+export interface NpEmailField extends NpFieldBase {
   type: "email";
 }
 
-export interface NxJsonField extends NxFieldBase {
+export interface NpJsonField extends NpFieldBase {
   type: "json";
 }
 
-export interface NxArrayField extends NxFieldBase {
+export interface NpArrayField extends NpFieldBase {
   type: "array";
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
   minRows?: number;
   maxRows?: number;
 }
 
-export interface NxGroupField extends NxFieldBase {
+export interface NpGroupField extends NpFieldBase {
   type: "group";
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
 }
 
-export interface NxRowField {
+export interface NpRowField {
   type: "row";
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
 }
 
-export interface NxCollapsibleField {
+export interface NpCollapsibleField {
   type: "collapsible";
   label: string;
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
 }
 
-export type NxFieldConfig =
-  | NxTextField
-  | NxTextareaField
-  | NxNumberField
-  | NxRichTextField
-  | NxBlocksField
-  | NxCheckboxField
-  | NxDateField
-  | NxUploadField
-  | NxRelationshipField
-  | NxSelectField
-  | NxRadioField
-  | NxEmailField
-  | NxJsonField
-  | NxArrayField
-  | NxGroupField
-  | NxRowField
-  | NxCollapsibleField;
+export type NpFieldConfig =
+  | NpTextField
+  | NpTextareaField
+  | NpNumberField
+  | NpRichTextField
+  | NpBlocksField
+  | NpCheckboxField
+  | NpDateField
+  | NpUploadField
+  | NpRelationshipField
+  | NpSelectField
+  | NpRadioField
+  | NpEmailField
+  | NpJsonField
+  | NpArrayField
+  | NpGroupField
+  | NpRowField
+  | NpCollapsibleField;
 
 /**
  * Polymorphic actor reference for collection hooks. Phase 9.7o
@@ -197,14 +197,14 @@ export type NxFieldConfig =
  * actors) so existing hooks that destructure `{ user }` keep
  * compiling — they just need to handle the null case now.
  */
-// `NxHookPrincipal` is the historical name plugin authors see in
-// hook payloads. It's the same union as `NxPrincipal`; kept as an
+// `NpHookPrincipal` is the historical name plugin authors see in
+// hook payloads. It's the same union as `NpPrincipal`; kept as an
 // alias so existing plugin code keeps compiling (#319).
-import type { NxPrincipal } from "../auth/principal.js";
-export type { NxPrincipal, NxPrincipal as NxHookPrincipal };
-type NxHookPrincipal = NxPrincipal;
+import type { NpPrincipal } from "../auth/principal.js";
+export type { NpPrincipal, NpPrincipal as NpHookPrincipal };
+type NpHookPrincipal = NpPrincipal;
 
-export type NxCollectionHook = (args: {
+export type NpCollectionHook = (args: {
   data: Record<string, unknown>;
   /**
    * Resolved staff session, or `null` when the actor is a member.
@@ -212,27 +212,27 @@ export type NxCollectionHook = (args: {
    * skipped collection hooks entirely. Hooks that key off staff
    * identity should now switch on `principal.kind` instead.
    */
-  user: NxAuthUser | null;
-  /** Polymorphic actor — see `NxHookPrincipal`. */
-  principal: NxHookPrincipal;
+  user: NpAuthUser | null;
+  /** Polymorphic actor — see `NpHookPrincipal`. */
+  principal: NpHookPrincipal;
   collection: string;
   originalDoc?: Record<string, unknown> | null;
 }) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
-export interface NxUploadConfig {
+export interface NpUploadConfig {
   maxFileSize?: number;
   allowedMimeTypes?: string[];
-  imageSizes?: NxImageSize[];
+  imageSizes?: NpImageSize[];
 }
 
-export interface NxImageSize {
+export interface NpImageSize {
   name: string;
   width: number;
   height?: number;
   crop?: "center" | "top" | "bottom" | "left" | "right";
 }
 
-export interface NxCollectionConfig {
+export interface NpCollectionConfig {
   slug: string;
   labels: { singular: string; plural: string };
   slugField?:
@@ -249,7 +249,7 @@ export interface NxCollectionConfig {
    * same slug can appear in two locales. Fetching helpers
    * (`findDocuments`, `getDoc`) accept a `locale` option;
    * writes require a `locale` field (the pipeline rejects
-   * missing-locale writes with NxValidationError).
+   * missing-locale writes with NpValidationError).
    *
    * Requires the top-level `i18n` config to also be set.
    * Without it, `i18n: true` here errors at config validation
@@ -257,22 +257,22 @@ export interface NxCollectionConfig {
    * validate writes.
    */
   i18n?: boolean;
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
   access?: {
-    create?: NxAccessFunction;
-    read?: NxAccessFunction;
-    update?: NxAccessFunction;
-    delete?: NxAccessFunction;
+    create?: NpAccessFunction;
+    read?: NpAccessFunction;
+    update?: NpAccessFunction;
+    delete?: NpAccessFunction;
   };
   hooks?: {
-    beforeCreate?: NxCollectionHook[];
-    afterCreate?: NxCollectionHook[];
-    beforeUpdate?: NxCollectionHook[];
-    afterUpdate?: NxCollectionHook[];
-    beforeDelete?: NxCollectionHook[];
-    afterDelete?: NxCollectionHook[];
-    beforeRead?: NxCollectionHook[];
-    afterRead?: NxCollectionHook[];
+    beforeCreate?: NpCollectionHook[];
+    afterCreate?: NpCollectionHook[];
+    beforeUpdate?: NpCollectionHook[];
+    afterUpdate?: NpCollectionHook[];
+    beforeDelete?: NpCollectionHook[];
+    afterDelete?: NpCollectionHook[];
+    beforeRead?: NpCollectionHook[];
+    afterRead?: NpCollectionHook[];
   };
   versions?: {
     drafts?: boolean | { autosave?: boolean; autosaveInterval?: number };
@@ -375,25 +375,25 @@ export interface NxCollectionConfig {
      */
     navMembership?: boolean;
   };
-  upload?: NxUploadConfig;
+  upload?: NpUploadConfig;
 }
 
-export interface NxBlockConfig {
+export interface NpBlockConfig {
   slug: string;
   labels: { singular: string; plural: string };
-  fields: NxFieldConfig[];
+  fields: NpFieldConfig[];
   imageUrl?: string;
 }
 
-export type NxBlockInstance = {
+export type NpBlockInstance = {
   blockType: string;
   [key: string]: unknown;
 };
 
-export interface NxPluginConfig {
+export interface NpPluginConfig {
   id: string;
   name: string;
-  init?: (ctx: NxPluginContext) => void | Promise<void>;
+  init?: (ctx: NpPluginContext) => void | Promise<void>;
 }
 
 /**
@@ -401,7 +401,7 @@ export interface NxPluginConfig {
  * Declared here rather than imported from `@nexpress/plugin-sdk` to avoid a
  * dependency cycle (plugin-sdk already depends on core).
  */
-export interface NxResolvedPluginLike {
+export interface NpResolvedPluginLike {
   manifest: {
     id: string;
     name: string;
@@ -446,13 +446,13 @@ export interface NxResolvedPluginLike {
   templates?: Record<string, Record<string, unknown>>;
 }
 
-export interface NxPluginContext {
-  addCollection: (config: NxCollectionConfig) => void;
-  addBlock: (config: NxBlockConfig) => void;
-  addHook: (collection: string, event: string, hook: NxCollectionHook) => void;
+export interface NpPluginContext {
+  addCollection: (config: NpCollectionConfig) => void;
+  addBlock: (config: NpBlockConfig) => void;
+  addHook: (collection: string, event: string, hook: NpCollectionHook) => void;
 }
 
-export interface NxNavItem {
+export interface NpNavItem {
   id: string;
   label: string;
   type: "link" | "collection" | "page";
@@ -471,7 +471,7 @@ export interface NxNavItem {
    */
   collectionSlug?: string;
   pageId?: string;
-  children?: NxNavItem[];
+  children?: NpNavItem[];
 }
 
 /**
@@ -480,10 +480,10 @@ export interface NxNavItem {
  * intentionally has no React peer). The full theme — shell,
  * slots, templates with React component types — lives in
  * `@nexpress/theme` via `defineTheme()`. The registry stores
- * `NxRegisteredTheme` instances; `impl` is opaque to core but
+ * `NpRegisteredTheme` instances; `impl` is opaque to core but
  * typed for consumers downstream.
  */
-export interface NxThemeManifest {
+export interface NpThemeManifest {
   id: string;
   name: string;
   version: string;
@@ -493,8 +493,8 @@ export interface NxThemeManifest {
   nexpress?: { minVersion?: string };
 }
 
-export interface NxRegisteredTheme {
-  manifest: NxThemeManifest;
+export interface NpRegisteredTheme {
+  manifest: NpThemeManifest;
   /**
    * The theme's runtime implementation — shell component,
    * slot components, page templates, default tokens.
@@ -504,7 +504,7 @@ export interface NxRegisteredTheme {
   impl: unknown;
 }
 
-export interface NxI18nConfig {
+export interface NpI18nConfig {
   /**
    * Locales this site supports. Order matters only insofar as
    * the first locale becomes the default when `defaultLocale`
@@ -521,7 +521,7 @@ export interface NxI18nConfig {
   defaultLocale: string;
 }
 
-export interface NxConfig {
+export interface NpConfig {
   site: {
     name: string;
     url: string;
@@ -535,9 +535,9 @@ export interface NxConfig {
     local?: { directory: string; baseUrl: string };
     s3?: { bucket: string; region: string; endpoint?: string };
   };
-  collections: NxCollectionConfig[];
-  blocks?: NxBlockConfig[];
-  editor?: NxEditorConfig;
+  collections: NpCollectionConfig[];
+  blocks?: NpBlockConfig[];
+  editor?: NpEditorConfig;
   /**
    * Phase 11.1 — multi-theme registry. Sites declare every
    * theme they want available; admins switch between them
@@ -545,7 +545,7 @@ export interface NxConfig {
    * in the array is the default-active until an admin sets
    * a different one (`nx_settings.activeTheme`).
    */
-  themes?: NxRegisteredTheme[];
+  themes?: NpRegisteredTheme[];
   /**
    * Phase 12.1 — i18n config. Sites that want multi-language
    * content declare every locale they intend to support here.
@@ -564,9 +564,9 @@ export interface NxConfig {
    * locale (the public site renders a 404 only when the doc
    * doesn't exist in any locale).
    */
-  i18n?: NxI18nConfig;
+  i18n?: NpI18nConfig;
   images?: {
-    sizes?: NxImageSize[];
+    sizes?: NpImageSize[];
     format?: "webp" | "avif" | "jpeg" | "png";
     quality?: number;
   };
@@ -577,7 +577,7 @@ export interface NxConfig {
     maxLoginAttempts?: number;
     lockoutDuration?: number;
   };
-  plugins?: Array<NxPluginConfig | NxResolvedPluginLike>;
+  plugins?: Array<NpPluginConfig | NpResolvedPluginLike>;
   typescript?: {
     outputFile?: string;
   };
@@ -602,7 +602,7 @@ export interface NxConfig {
   };
 }
 
-export type NxJobType =
+export type NpJobType =
   | "content:afterSave"
   | "content:afterDelete"
   | "content:publishScheduled"
@@ -617,7 +617,7 @@ export type NxJobType =
   | "members:sendPasswordReset"
   | "notifications:sendDigest";
 
-export interface NxFindOptions {
+export interface NpFindOptions {
   page?: number;
   limit?: number;
   sort?: string;
@@ -633,7 +633,7 @@ export interface NxFindOptions {
   locale?: string;
 }
 
-export interface NxFindResult<T = Record<string, unknown>> {
+export interface NpFindResult<T = Record<string, unknown>> {
   docs: T[];
   totalDocs: number;
   totalPages: number;
@@ -652,13 +652,13 @@ export interface NxFindResult<T = Record<string, unknown>> {
  * invisible to anonymous and non-staff members until a mod
  * promotes them.
  */
-export type NxDocumentStatus = "draft" | "scheduled" | "published" | "archived" | "pending";
+export type NpDocumentStatus = "draft" | "scheduled" | "published" | "archived" | "pending";
 
-export interface NxSaveOptions {
-  status?: NxDocumentStatus;
+export interface NpSaveOptions {
+  status?: NpDocumentStatus;
 }
 
-export interface NxSaveResult {
+export interface NpSaveResult {
   doc: Record<string, unknown>;
   operation: "create" | "update";
 }
@@ -676,7 +676,7 @@ export interface NxSaveResult {
  * `auth/capabilities.ts` (#273) — this hierarchy is no longer the
  * primary check.
  */
-export const ROLE_HIERARCHY: Record<NxUserRole, number> = {
+export const ROLE_HIERARCHY: Record<NpUserRole, number> = {
   viewer: 0,
   author: 1,
   moderator: 1,

@@ -1,8 +1,8 @@
-import { NxValidationError, follow, listFollowing, unfollow } from "@nexpress/core";
+import { NpValidationError, follow, listFollowing, unfollow } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -11,7 +11,7 @@ type FollowTarget = (typeof SUPPORTED)[number];
 
 function readTarget(raw: unknown): { targetType: FollowTarget; targetId: string } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Body must be a JSON object" },
     ]);
   }
@@ -22,7 +22,7 @@ function readTarget(raw: unknown): { targetType: FollowTarget; targetId: string 
       : null;
   const targetId = typeof body.targetId === "string" ? body.targetId : "";
   if (!targetType || !targetId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "target", message: `targetType (${SUPPORTED.join("|")}) and targetId required` },
     ]);
   }
@@ -45,9 +45,9 @@ export async function GET(request: NextRequest) {
       limit: Number.isFinite(limit) ? limit : undefined,
       offset: Number.isFinite(offset) ? offset : undefined,
     });
-    return nxSuccessResponse({ follows: rows });
+    return npSuccessResponse({ follows: rows });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -57,9 +57,9 @@ export async function POST(request: NextRequest) {
     const member = await requireMember(request);
     const { targetType, targetId } = readTarget(await readJsonBody(request));
     const row = await follow({ followerId: member.id, targetType, targetId });
-    return nxSuccessResponse(row, { status: 201 });
+    return npSuccessResponse(row, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -71,7 +71,7 @@ export async function DELETE(request: NextRequest) {
     const targetType = url.searchParams.get("targetType");
     const targetId = url.searchParams.get("targetId");
     if (!targetType || !targetId || !(SUPPORTED as readonly string[]).includes(targetType)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "target", message: "targetType and targetId query params required" },
       ]);
     }
@@ -80,8 +80,8 @@ export async function DELETE(request: NextRequest) {
       targetType: targetType as FollowTarget,
       targetId,
     });
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

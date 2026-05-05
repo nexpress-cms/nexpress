@@ -1,4 +1,4 @@
-import type { NxAuthUser } from "../config/types.js";
+import type { NpAuthUser } from "../config/types.js";
 
 /**
  * Capability-based authorization (#273).
@@ -26,15 +26,15 @@ import type { NxAuthUser } from "../config/types.js";
  * Add new capabilities by extending the union AND the exhaustive
  * switch below — TypeScript will surface the missing branch.
  */
-export type NxCapability =
+export type NpCapability =
   | "content.publish"
   | "content.author"
   | "community.moderate"
   | "admin.manage";
 
 export function can(
-  user: NxAuthUser | null | undefined,
-  capability: NxCapability,
+  user: NpAuthUser | null | undefined,
+  capability: NpCapability,
 ): boolean {
   if (!user) return false;
   switch (capability) {

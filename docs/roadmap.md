@@ -125,10 +125,10 @@ implementation.
 Items currently listed as Experimental in `AGENTS.md` that we'd like to
 promote before 1.0. Each promotion is a contract decision.
 
-- `NxRichTextContent` — can we hide the Lexical JSON shape behind a
+- `NpRichTextContent` — can we hide the Lexical JSON shape behind a
   versioned wrapper so a Lexical major bump isn't a breaking change for
   consumers?
-- `NxBlockDefinition` props schema — current shape is the v1, but block
+- `NpBlockDefinition` props schema — current shape is the v1, but block
   types added since launch have stretched it. Reconcile or version.
 - Theme token names — pick a token system (Style Dictionary? open-ui?) and
   commit to its key shapes.

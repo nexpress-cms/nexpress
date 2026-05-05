@@ -19,13 +19,13 @@
  * before. Sites that want profanity protection install one
  * explicitly, typically from a plugin's `setup()`.
  */
-export type NxProfanityVerdictKind = "pass" | "flag" | "reject";
+export type NpProfanityVerdictKind = "pass" | "flag" | "reject";
 
-export interface NxProfanityVerdict {
-  kind: NxProfanityVerdictKind;
+export interface NpProfanityVerdict {
+  kind: NpProfanityVerdictKind;
   /**
    * Optional human-readable reason. Used as the
-   * `NxValidationError` message on `reject`, surfaced to the
+   * `NpValidationError` message on `reject`, surfaced to the
    * audit log on `flag`. Don't include the matched word verbatim
    * if you don't want it echoed to the end user on reject.
    */
@@ -38,7 +38,7 @@ export interface NxProfanityVerdict {
   metadata?: Record<string, unknown>;
 }
 
-export interface NxProfanityCheckContext {
+export interface NpProfanityCheckContext {
   /** Member id of the author. Adapters may use this to weight
    *  by reputation or recent infraction history. */
   memberId: string;
@@ -46,7 +46,7 @@ export interface NxProfanityCheckContext {
    * Surface the content lives on. For comments this is the
    * collection slug of the parent doc (`"posts"`, `"discussions"`,
    * etc.); for member-authored docs, this is the same collection
-   * slug. Mirrors `NxSpamCheckContext.targetType`.
+   * slug. Mirrors `NpSpamCheckContext.targetType`.
    */
   targetType: string;
   /** Document id the content belongs to. Empty string for a
@@ -58,18 +58,18 @@ export interface NxProfanityCheckContext {
   parentId?: string | null;
 }
 
-export interface NxProfanityAdapter {
+export interface NpProfanityAdapter {
   check(
     text: string,
-    ctx: NxProfanityCheckContext,
-  ): NxProfanityVerdict | Promise<NxProfanityVerdict>;
+    ctx: NpProfanityCheckContext,
+  ): NpProfanityVerdict | Promise<NpProfanityVerdict>;
 }
 
-const PASS_ADAPTER: NxProfanityAdapter = {
+const PASS_ADAPTER: NpProfanityAdapter = {
   check: () => ({ kind: "pass" }),
 };
 
-let currentAdapter: NxProfanityAdapter = PASS_ADAPTER;
+let currentAdapter: NpProfanityAdapter = PASS_ADAPTER;
 
 /**
  * Replace the global profanity adapter. Call once at app boot,
@@ -78,14 +78,14 @@ let currentAdapter: NxProfanityAdapter = PASS_ADAPTER;
  * them inside a single adapter (the same convention as the spam
  * adapter).
  */
-export function setProfanityAdapter(adapter: NxProfanityAdapter): void {
+export function setProfanityAdapter(adapter: NpProfanityAdapter): void {
   if (typeof adapter?.check !== "function") {
     throw new Error("setProfanityAdapter: adapter must implement check()");
   }
   currentAdapter = adapter;
 }
 
-export function getProfanityAdapter(): NxProfanityAdapter {
+export function getProfanityAdapter(): NpProfanityAdapter {
   return currentAdapter;
 }
 

@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 
-import type { NxDigestCadence, NxNotificationKindMeta, NxNotificationPrefs } from "@nexpress/core";
+import type { NpDigestCadence, NpNotificationKindMeta, NpNotificationPrefs } from "@nexpress/core";
 
 interface NotificationPrefsFormProps {
-  initialPrefs: NxNotificationPrefs;
-  kinds: NxNotificationKindMeta[];
+  initialPrefs: NpNotificationPrefs;
+  kinds: NpNotificationKindMeta[];
 }
 
 /**
@@ -18,7 +18,7 @@ interface NotificationPrefsFormProps {
  */
 export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefsFormProps) {
   const [disabled, setDisabled] = useState<Set<string>>(() => new Set(initialPrefs.disabled));
-  const [digest, setDigest] = useState<NxDigestCadence>(initialPrefs.digest);
+  const [digest, setDigest] = useState<NpDigestCadence>(initialPrefs.digest);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -121,7 +121,7 @@ export function NotificationPrefsForm({ initialPrefs, kinds }: NotificationPrefs
           <select
             value={digest}
             onChange={(event) => {
-              setDigest(event.target.value as NxDigestCadence);
+              setDigest(event.target.value as NpDigestCadence);
               setSavedAt(null);
             }}
             style={{

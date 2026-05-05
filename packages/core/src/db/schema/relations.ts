@@ -1,76 +1,76 @@
 import { relations } from "drizzle-orm";
 
-import { nxMedia, nxMediaFolders, nxMediaRefs } from "./media.js";
-import { nxNavigation, nxRevisions, nxSessions, nxSettings, nxUsers } from "./system.js";
+import { npMedia, npMediaFolders, npMediaRefs } from "./media.js";
+import { npNavigation, npRevisions, npSessions, npSettings, npUsers } from "./system.js";
 
-export const nxUsersRelations = relations(nxUsers, ({ many, one }) => ({
-  avatarMedia: one(nxMedia, {
-    fields: [nxUsers.avatar],
-    references: [nxMedia.id],
+export const npUsersRelations = relations(npUsers, ({ many, one }) => ({
+  avatarMedia: one(npMedia, {
+    fields: [npUsers.avatar],
+    references: [npMedia.id],
     relationName: "userAvatar",
   }),
-  sessions: many(nxSessions),
-  revisions: many(nxRevisions),
-  updatedSettings: many(nxSettings),
-  updatedNavigation: many(nxNavigation),
-  uploadedMedia: many(nxMedia, { relationName: "uploadedMedia" }),
+  sessions: many(npSessions),
+  revisions: many(npRevisions),
+  updatedSettings: many(npSettings),
+  updatedNavigation: many(npNavigation),
+  uploadedMedia: many(npMedia, { relationName: "uploadedMedia" }),
 }));
 
-export const nxSessionsRelations = relations(nxSessions, ({ one }) => ({
-  user: one(nxUsers, {
-    fields: [nxSessions.userId],
-    references: [nxUsers.id],
+export const npSessionsRelations = relations(npSessions, ({ one }) => ({
+  user: one(npUsers, {
+    fields: [npSessions.userId],
+    references: [npUsers.id],
   }),
 }));
 
-export const nxRevisionsRelations = relations(nxRevisions, ({ one }) => ({
-  author: one(nxUsers, {
-    fields: [nxRevisions.authorId],
-    references: [nxUsers.id],
+export const npRevisionsRelations = relations(npRevisions, ({ one }) => ({
+  author: one(npUsers, {
+    fields: [npRevisions.authorId],
+    references: [npUsers.id],
   }),
 }));
 
-export const nxSettingsRelations = relations(nxSettings, ({ one }) => ({
-  updater: one(nxUsers, {
-    fields: [nxSettings.updatedBy],
-    references: [nxUsers.id],
+export const npSettingsRelations = relations(npSettings, ({ one }) => ({
+  updater: one(npUsers, {
+    fields: [npSettings.updatedBy],
+    references: [npUsers.id],
   }),
 }));
 
-export const nxNavigationRelations = relations(nxNavigation, ({ one }) => ({
-  updater: one(nxUsers, {
-    fields: [nxNavigation.updatedBy],
-    references: [nxUsers.id],
+export const npNavigationRelations = relations(npNavigation, ({ one }) => ({
+  updater: one(npUsers, {
+    fields: [npNavigation.updatedBy],
+    references: [npUsers.id],
   }),
 }));
 
-export const nxMediaFoldersRelations = relations(nxMediaFolders, ({ many, one }) => ({
-  parent: one(nxMediaFolders, {
-    fields: [nxMediaFolders.parentId],
-    references: [nxMediaFolders.id],
+export const npMediaFoldersRelations = relations(npMediaFolders, ({ many, one }) => ({
+  parent: one(npMediaFolders, {
+    fields: [npMediaFolders.parentId],
+    references: [npMediaFolders.id],
     relationName: "mediaFolderHierarchy",
   }),
-  children: many(nxMediaFolders, { relationName: "mediaFolderHierarchy" }),
-  media: many(nxMedia),
+  children: many(npMediaFolders, { relationName: "mediaFolderHierarchy" }),
+  media: many(npMedia),
 }));
 
-export const nxMediaRelations = relations(nxMedia, ({ many, one }) => ({
-  folder: one(nxMediaFolders, {
-    fields: [nxMedia.folderId],
-    references: [nxMediaFolders.id],
+export const npMediaRelations = relations(npMedia, ({ many, one }) => ({
+  folder: one(npMediaFolders, {
+    fields: [npMedia.folderId],
+    references: [npMediaFolders.id],
   }),
-  uploader: one(nxUsers, {
-    fields: [nxMedia.uploadedBy],
-    references: [nxUsers.id],
+  uploader: one(npUsers, {
+    fields: [npMedia.uploadedBy],
+    references: [npUsers.id],
     relationName: "uploadedMedia",
   }),
-  avatarUsers: many(nxUsers, { relationName: "userAvatar" }),
-  refs: many(nxMediaRefs),
+  avatarUsers: many(npUsers, { relationName: "userAvatar" }),
+  refs: many(npMediaRefs),
 }));
 
-export const nxMediaRefsRelations = relations(nxMediaRefs, ({ one }) => ({
-  media: one(nxMedia, {
-    fields: [nxMediaRefs.mediaId],
-    references: [nxMedia.id],
+export const npMediaRefsRelations = relations(npMediaRefs, ({ one }) => ({
+  media: one(npMedia, {
+    fields: [npMediaRefs.mediaId],
+    references: [npMedia.id],
   }),
 }));

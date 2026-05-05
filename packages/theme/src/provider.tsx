@@ -1,12 +1,12 @@
-import type { NxThemeTokens } from "@nexpress/core";
+import type { NpThemeTokens } from "@nexpress/core";
 
 import { generateThemeCss } from "./generate-css.js";
 
-interface NxThemeStyleProps {
-  theme: NxThemeTokens;
+interface NpThemeStyleProps {
+  theme: NpThemeTokens;
 }
 
-export function NxThemeStyle({ theme }: NxThemeStyleProps) {
+export function NpThemeStyle({ theme }: NpThemeStyleProps) {
   const css = generateThemeCss(theme);
 
   return <style dangerouslySetInnerHTML={{ __html: css }} />;

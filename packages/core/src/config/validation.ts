@@ -148,12 +148,12 @@ const storageSchema = z.discriminatedUnion("adapter", [
   }),
 ]);
 
-// Plugins are a mix of legacy NxPluginConfig (object with optional init fn)
-// and SDK-built NxResolvedPluginLike (object with manifest). Parse with
+// Plugins are a mix of legacy NpPluginConfig (object with optional init fn)
+// and SDK-built NpResolvedPluginLike (object with manifest). Parse with
 // `z.unknown()` — deeper validation happens when loadPlugins() runs.
 const pluginEntrySchema = z.unknown();
 
-export const nxConfigSchema = z.object({
+export const npConfigSchema = z.object({
   site: z.object({
     name: z.string().min(1),
     url: z.string().url(),

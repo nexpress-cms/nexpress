@@ -2,7 +2,7 @@ import { deleteComment, updateComment } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -18,9 +18,9 @@ export async function PATCH(
     const bodyMd = typeof body?.bodyMd === "string" ? body.bodyMd : "";
 
     const updated = await updateComment({ commentId: id, memberId: member.id, bodyMd });
-    return nxSuccessResponse(updated);
+    return npSuccessResponse(updated);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -33,8 +33,8 @@ export async function DELETE(
     const member = await requireMember(request);
     const { id } = await params;
     await deleteComment({ commentId: id, memberId: member.id });
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

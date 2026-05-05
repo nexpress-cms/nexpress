@@ -1,15 +1,15 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxValidationError,
+  NpValidationError,
   getCurrentSiteId,
-  nxNavigation,
+  npNavigation,
 } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { optionalAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 interface MembershipRow {
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     const pageId = request.nextUrl.searchParams.get("pageId");
     if (!pageId) {
-      throw new NxValidationError("Invalid query parameters", [
+      throw new NpValidationError("Invalid query parameters", [
         { field: "pageId", message: "pageId is required" },
       ]);
     }
@@ -51,21 +51,21 @@ export async function GET(request: NextRequest) {
 
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
-    const rows = await db.select().from(nxNavigation).where(eq(nxNavigation.siteId, siteId));
+    const rows = await db.select().from(npNavigation).where(eq(npNavigation.siteId, siteId));
 
     const memberships: MembershipRow[] = [];
     for (const row of rows) {
       walk(row.items, row.location, pageId, collection, memberships);
     }
 
-    return nxSuccessResponse({ memberships });
+    return npSuccessResponse({ memberships });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
 function walk(
-  items: NxNavItem[] | null | undefined,
+  items: NpNavItem[] | null | undefined,
   location: string,
   pageId: string,
   collection: string,

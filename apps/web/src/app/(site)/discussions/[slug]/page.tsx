@@ -3,7 +3,7 @@ import {
   buildPageMetadata,
   findDocuments,
   getSiteSeoSettings,
-  nxMembers,
+  npMembers,
 } from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import { eq } from "drizzle-orm";
@@ -17,7 +17,7 @@ import { JsonLd } from "@/components/json-ld";
 import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
 import { getSiteMember } from "@/lib/site-member";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
 interface DiscussionDetailPageProps {
   params: Promise<{ slug: string }>;
@@ -91,17 +91,17 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
   if (memberAuthorId) {
     const [row] = (await getDb()
       .select({
-        id: nxMembers.id,
-        handle: nxMembers.handle,
-        displayName: nxMembers.displayName,
+        id: npMembers.id,
+        handle: npMembers.handle,
+        displayName: npMembers.displayName,
       })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, memberAuthorId))
+      .from(npMembers)
+      .where(eq(npMembers.id, memberAuthorId))
       .limit(1)) as Array<{ id: string; handle: string; displayName: string }>;
     if (row) author = row;
   }
 
-  const body = (doc.body as NxRichTextContent | undefined) ?? null;
+  const body = (doc.body as NpRichTextContent | undefined) ?? null;
 
   // DiscussionForumPosting JSON-LD — only for published rows so
   // pending / draft submissions don't surface in search before

@@ -49,17 +49,17 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(): Promise<string> {
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({ email: "staff@example.com", password, name: "Staff", role: "editor" })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
@@ -367,15 +367,15 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
 
     // Only one row in `nx_follows` despite three POSTs.
     const db = await getTestDb();
-    const { nxFollows } = await import("@nexpress/core");
+    const { npFollows } = await import("@nexpress/core");
     const { and, eq } = await import("drizzle-orm");
     const rows = (await db
       .select()
-      .from(nxFollows)
+      .from(npFollows)
       .where(
         and(
-          eq(nxFollows.followerId, a.memberId),
-          eq(nxFollows.targetId, b.memberId),
+          eq(npFollows.followerId, a.memberId),
+          eq(npFollows.targetId, b.memberId),
         ),
       )) as Array<unknown>;
     expect(rows).toHaveLength(1);

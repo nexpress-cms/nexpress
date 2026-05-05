@@ -11,33 +11,33 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { nxMembers } from "./community.js";
-import { nxUsers } from "./system.js";
-import { type NxRichTextContent } from "../../config/types.js";
+import { npMembers } from "./community.js";
+import { npUsers } from "./system.js";
+import { type NpRichTextContent } from "../../config/types.js";
 
-export const nxMediaStatusEnum = pgEnum("nx_media_status", [
+export const npMediaStatusEnum = pgEnum("nx_media_status", [
   "processing",
   "ready",
   "error",
 ]);
 
-type NxMediaFocalPoint = {
+type NpMediaFocalPoint = {
   x: number;
   y: number;
 };
 
-type NxMediaSizes = Record<string, Record<string, unknown>>;
+type NpMediaSizes = Record<string, Record<string, unknown>>;
 
-export const nxMediaFolders = pgTable("nx_media_folders", {
+export const npMediaFolders = pgTable("nx_media_folders", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
-  parentId: uuid("parent_id").references((): AnyPgColumn => nxMediaFolders.id),
+  parentId: uuid("parent_id").references((): AnyPgColumn => npMediaFolders.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .defaultNow()
     .notNull(),
 });
 
-export const nxMedia = pgTable(
+export const npMedia = pgTable(
   "nx_media",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -48,14 +48,14 @@ export const nxMedia = pgTable(
     width: integer("width"),
     height: integer("height"),
     alt: text("alt"),
-    caption: jsonb("caption").$type<NxRichTextContent>(),
-    focalPoint: jsonb("focal_point").$type<NxMediaFocalPoint>(),
-    sizes: jsonb("sizes").$type<NxMediaSizes>(),
+    caption: jsonb("caption").$type<NpRichTextContent>(),
+    focalPoint: jsonb("focal_point").$type<NpMediaFocalPoint>(),
+    sizes: jsonb("sizes").$type<NpMediaSizes>(),
     storageKey: text("storage_key").notNull(),
     hash: text("hash").notNull(),
-    status: nxMediaStatusEnum("status").notNull(),
-    folderId: uuid("folder_id").references(() => nxMediaFolders.id),
-    uploadedBy: uuid("uploaded_by").references((): AnyPgColumn => nxUsers.id),
+    status: npMediaStatusEnum("status").notNull(),
+    folderId: uuid("folder_id").references(() => npMediaFolders.id),
+    uploadedBy: uuid("uploaded_by").references((): AnyPgColumn => npUsers.id),
     /**
      * Set when a member uploaded the row instead of a staff user
      * (Phase 9.7j). Mutually exclusive with `uploadedBy`: a row
@@ -67,7 +67,7 @@ export const nxMedia = pgTable(
      * collection tables).
      */
     uploadedByMemberId: uuid("uploaded_by_member_id").references(
-      (): AnyPgColumn => nxMembers.id,
+      (): AnyPgColumn => npMembers.id,
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
@@ -87,13 +87,13 @@ export const nxMedia = pgTable(
   }),
 );
 
-export const nxMediaRefs = pgTable(
+export const npMediaRefs = pgTable(
   "nx_media_refs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     mediaId: uuid("media_id")
       .notNull()
-      .references(() => nxMedia.id, { onDelete: "cascade" }),
+      .references(() => npMedia.id, { onDelete: "cascade" }),
     collection: text("collection").notNull(),
     documentId: text("document_id").notNull(),
     field: text("field").notNull(),

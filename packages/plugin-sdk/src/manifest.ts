@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import { nxPluginAgentCategories, nxPluginCapabilities } from "./types.js";
+import { npPluginAgentCategories, npPluginCapabilities } from "./types.js";
 
-const nxPluginVersionSchema = z
+const npPluginVersionSchema = z
   .string()
   .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$/);
 
@@ -15,10 +15,10 @@ const nxPluginVersionSchema = z
  */
 export const NX_PLUGIN_MANIFEST_API_VERSION = "1" as const;
 
-export const nxPluginManifestSchema = z.object({
+export const npPluginManifestSchema = z.object({
   apiVersion: z.literal("1").default("1"),
   id: z.string().regex(/^(@[\w-]+\/)?[\w-]+$/),
-  version: nxPluginVersionSchema,
+  version: npPluginVersionSchema,
   name: z.string().min(1).max(100),
   description: z.string().min(1).max(500),
   author: z.object({
@@ -28,10 +28,10 @@ export const nxPluginManifestSchema = z.object({
   }),
   license: z.string(),
   nexpress: z.object({
-    minVersion: nxPluginVersionSchema,
-    maxVersion: nxPluginVersionSchema.optional(),
+    minVersion: npPluginVersionSchema,
+    maxVersion: npPluginVersionSchema.optional(),
   }),
-  capabilities: z.array(z.enum(nxPluginCapabilities)),
+  capabilities: z.array(z.enum(npPluginCapabilities)),
   allowedHosts: z.array(z.string()).default([]),
   provides: z
     .object({
@@ -52,7 +52,7 @@ export const nxPluginManifestSchema = z.object({
     }),
   agent: z.object({
     description: z.string(),
-    category: z.enum(nxPluginAgentCategories),
+    category: z.enum(npPluginAgentCategories),
     tags: z.array(z.string()).default([]),
     configSchema: z.record(z.string(), z.unknown()).optional(),
   }),
@@ -65,28 +65,28 @@ export const nxPluginManifestSchema = z.object({
  * fields with schema defaults may be omitted. The parsed (runtime) manifest
  * always has them populated.
  */
-export type NxPluginManifest = z.input<typeof nxPluginManifestSchema>;
+export type NpPluginManifest = z.input<typeof npPluginManifestSchema>;
 
 /** Parsed manifest with all defaults resolved. Use in host/registry code. */
-export type NxPluginManifestResolved = z.output<typeof nxPluginManifestSchema>;
+export type NpPluginManifestResolved = z.output<typeof npPluginManifestSchema>;
 
 // ────────────────────────────────────────────────────────────────────────
 // Admin extension schema — validated by definePlugin.
-// Fields inside NxAdminSettingsExtension reuse the collection field shape
-// (NxFieldConfig from @nexpress/core), but plugin-sdk can't import core
+// Fields inside NpAdminSettingsExtension reuse the collection field shape
+// (NpFieldConfig from @nexpress/core), but plugin-sdk can't import core
 // without a cycle, so accept them as opaque objects here. The admin
 // renderer does the structural validation at render time.
 // ────────────────────────────────────────────────────────────────────────
 
 const adminFieldOpaqueSchema = z.record(z.string(), z.unknown());
 
-export const nxAdminSettingsSchema = z.object({
+export const npAdminSettingsSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   fields: z.array(adminFieldOpaqueSchema).min(1),
 });
 
-export const nxAdminWidgetSchema = z.object({
+export const npAdminWidgetSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   kind: z.enum(["metric", "status"]),
@@ -94,7 +94,7 @@ export const nxAdminWidgetSchema = z.object({
   description: z.string().optional(),
 });
 
-export const nxAdminActionSchema = z.object({
+export const npAdminActionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   actionId: z.string().min(1),
@@ -102,7 +102,7 @@ export const nxAdminActionSchema = z.object({
   description: z.string().optional(),
 });
 
-export const nxAdminTableSchema = z.object({
+export const npAdminTableSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   columns: z
@@ -112,13 +112,13 @@ export const nxAdminTableSchema = z.object({
   emptyMessage: z.string().optional(),
 });
 
-export const nxCollectionTabSchema = z
+export const npCollectionTabSchema = z
   .object({
     id: z.string().min(1),
     label: z.string().min(1),
     collections: z.union([z.array(z.string().min(1)).min(1), z.literal("*")]),
-    widgets: z.array(nxAdminWidgetSchema).optional(),
-    actions: z.array(nxAdminActionSchema).optional(),
+    widgets: z.array(npAdminWidgetSchema).optional(),
+    actions: z.array(npAdminActionSchema).optional(),
     description: z.string().optional(),
   })
   .superRefine((value, ctx) => {
@@ -135,15 +135,15 @@ export const nxCollectionTabSchema = z
     }
   });
 
-export const nxAdminDashboardWidgetSchema = nxAdminWidgetSchema.extend({
+export const npAdminDashboardWidgetSchema = npAdminWidgetSchema.extend({
   priority: z.number().int().optional(),
 });
 
-export const nxAdminExtensionSchema = z.object({
-  settings: nxAdminSettingsSchema.optional(),
-  widgets: z.array(nxAdminWidgetSchema).optional(),
-  actions: z.array(nxAdminActionSchema).optional(),
-  tables: z.array(nxAdminTableSchema).optional(),
-  collectionTabs: z.array(nxCollectionTabSchema).optional(),
-  dashboardWidgets: z.array(nxAdminDashboardWidgetSchema).optional(),
+export const npAdminExtensionSchema = z.object({
+  settings: npAdminSettingsSchema.optional(),
+  widgets: z.array(npAdminWidgetSchema).optional(),
+  actions: z.array(npAdminActionSchema).optional(),
+  tables: z.array(npAdminTableSchema).optional(),
+  collectionTabs: z.array(npCollectionTabSchema).optional(),
+  dashboardWidgets: z.array(npAdminDashboardWidgetSchema).optional(),
 });

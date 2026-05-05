@@ -8,25 +8,25 @@ import {
 } from "../collections/registry.js";
 import { getDb } from "../db/runtime.js";
 import {
-  nxAuditEvents,
-  nxBans,
-  nxComments,
-  nxFollows,
-  nxMemberMutes,
-  nxMemberRoles,
-  nxNotifications,
-  nxReactions,
-  nxReports,
+  npAuditEvents,
+  npBans,
+  npComments,
+  npFollows,
+  npMemberMutes,
+  npMemberRoles,
+  npNotifications,
+  npReactions,
+  npReports,
 } from "../db/schema/community.js";
 import {
-  nxNavigation,
-  nxPluginStorage,
-  nxSettings,
-  nxSiteMemberships,
-  nxSites,
-  nxStringOverrides,
+  npNavigation,
+  npPluginStorage,
+  npSettings,
+  npSiteMemberships,
+  npSites,
+  npStringOverrides,
 } from "../db/schema/system.js";
-import { NxValidationError } from "../errors.js";
+import { NpValidationError } from "../errors.js";
 
 /**
  * Phase 15.1 — multi-site registry. The framework treats
@@ -43,7 +43,7 @@ import { NxValidationError } from "../errors.js";
  * exist and the default site backfills.
  */
 
-export interface NxSite {
+export interface NpSite {
   id: string;
   name: string;
   hostname: string | null;
@@ -56,7 +56,7 @@ export interface NxSite {
 
 const DEFAULT_SITE_ID = "default";
 
-function rowToSite(row: typeof nxSites.$inferSelect): NxSite {
+function rowToSite(row: typeof npSites.$inferSelect): NpSite {
   return {
     id: row.id,
     name: row.name,
@@ -74,18 +74,18 @@ function rowToSite(row: typeof nxSites.$inferSelect): NxSite {
  * Bootstrap calls this once during framework init; tests
  * that truncate `nx_sites` between cases re-trigger it.
  */
-export async function ensureDefaultSite(): Promise<NxSite> {
+export async function ensureDefaultSite(): Promise<NpSite> {
   const db = getDb();
   const existingDefault = await db
     .select()
-    .from(nxSites)
-    .where(eq(nxSites.id, DEFAULT_SITE_ID))
+    .from(npSites)
+    .where(eq(npSites.id, DEFAULT_SITE_ID))
     .limit(1);
   if (existingDefault[0]) return rowToSite(existingDefault[0]);
 
   const now = new Date();
   const [created] = await db
-    .insert(nxSites)
+    .insert(npSites)
     .values({
       id: DEFAULT_SITE_ID,
       name: "Default site",
@@ -102,8 +102,8 @@ export async function ensureDefaultSite(): Promise<NxSite> {
   // Conflict path: another worker raced us. Re-read.
   const [row] = await db
     .select()
-    .from(nxSites)
-    .where(eq(nxSites.id, DEFAULT_SITE_ID))
+    .from(npSites)
+    .where(eq(npSites.id, DEFAULT_SITE_ID))
     .limit(1);
   if (!row) {
     throw new Error("Failed to create or read the default site");
@@ -111,18 +111,18 @@ export async function ensureDefaultSite(): Promise<NxSite> {
   return rowToSite(row);
 }
 
-export async function listSites(): Promise<NxSite[]> {
+export async function listSites(): Promise<NpSite[]> {
   const db = getDb();
-  const rows = await db.select().from(nxSites).orderBy(asc(nxSites.createdAt));
+  const rows = await db.select().from(npSites).orderBy(asc(npSites.createdAt));
   return rows.map(rowToSite);
 }
 
-export async function getSiteById(id: string): Promise<NxSite | null> {
+export async function getSiteById(id: string): Promise<NpSite | null> {
   const db = getDb();
   const [row] = await db
     .select()
-    .from(nxSites)
-    .where(eq(nxSites.id, id))
+    .from(npSites)
+    .where(eq(npSites.id, id))
     .limit(1);
   return row ? rowToSite(row) : null;
 }
@@ -136,23 +136,23 @@ export async function getSiteById(id: string): Promise<NxSite | null> {
  */
 export async function getSiteByHostname(
   hostname: string,
-): Promise<NxSite | null> {
+): Promise<NpSite | null> {
   const db = getDb();
   const lower = hostname.toLowerCase();
   const [row] = await db
     .select()
-    .from(nxSites)
-    .where(eq(nxSites.hostname, lower))
+    .from(npSites)
+    .where(eq(npSites.hostname, lower))
     .limit(1);
   return row ? rowToSite(row) : null;
 }
 
-export async function getDefaultSite(): Promise<NxSite | null> {
+export async function getDefaultSite(): Promise<NpSite | null> {
   const db = getDb();
   const [row] = await db
     .select()
-    .from(nxSites)
-    .where(eq(nxSites.isDefault, true))
+    .from(npSites)
+    .where(eq(npSites.isDefault, true))
     .limit(1);
   return row ? rowToSite(row) : null;
 }
@@ -165,7 +165,7 @@ export async function getDefaultSite(): Promise<NxSite | null> {
  */
 export async function resolveSiteForHostname(
   hostname: string | null | undefined,
-): Promise<NxSite | null> {
+): Promise<NpSite | null> {
   if (hostname) {
     const matched = await getSiteByHostname(hostname);
     if (matched) return matched;
@@ -181,9 +181,9 @@ export interface CreateSiteInput {
   settings?: Record<string, unknown>;
 }
 
-export async function createSite(input: CreateSiteInput): Promise<NxSite> {
+export async function createSite(input: CreateSiteInput): Promise<NpSite> {
   if (!/^[a-z][a-z0-9-]*$/.test(input.id)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "id",
         message:
@@ -194,7 +194,7 @@ export async function createSite(input: CreateSiteInput): Promise<NxSite> {
   const db = getDb();
   const now = new Date();
   const [row] = await db
-    .insert(nxSites)
+    .insert(npSites)
     .values({
       id: input.id,
       name: input.name,
@@ -214,8 +214,8 @@ export async function createSite(input: CreateSiteInput): Promise<NxSite> {
 
 export async function updateSite(
   id: string,
-  patch: Partial<Pick<NxSite, "name" | "hostname" | "description" | "settings">>,
-): Promise<NxSite> {
+  patch: Partial<Pick<NpSite, "name" | "hostname" | "description" | "settings">>,
+): Promise<NpSite> {
   const db = getDb();
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.name !== undefined) updates.name = patch.name;
@@ -225,12 +225,12 @@ export async function updateSite(
   if (patch.description !== undefined) updates.description = patch.description;
   if (patch.settings !== undefined) updates.settings = patch.settings;
   const [row] = await db
-    .update(nxSites)
+    .update(npSites)
     .set(updates)
-    .where(eq(nxSites.id, id))
+    .where(eq(npSites.id, id))
     .returning();
   if (!row) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "id", message: `Site "${id}" not found` },
     ]);
   }
@@ -262,7 +262,7 @@ export async function updateSite(
  *     intentional super-admin / background-job events that
  *     don't belong to any tenant.
  */
-export interface NxSiteUsage {
+export interface NpSiteUsage {
   collections: Record<string, number>;
   settings: number;
   navigation: number;
@@ -283,7 +283,7 @@ export interface NxSiteUsage {
   total: number;
 }
 
-export async function getSiteUsageSummary(id: string): Promise<NxSiteUsage> {
+export async function getSiteUsageSummary(id: string): Promise<NpSiteUsage> {
   const db = getDb();
   const collections: Record<string, number> = {};
   for (const slug of getAllCollectionSlugs()) {
@@ -314,41 +314,41 @@ export async function getSiteUsageSummary(id: string): Promise<NxSiteUsage> {
     return row?.count ?? 0;
   };
 
-  const settings = await countWhere(nxSettings, eq(nxSettings.siteId, id));
-  const navigation = await countWhere(nxNavigation, eq(nxNavigation.siteId, id));
+  const settings = await countWhere(npSettings, eq(npSettings.siteId, id));
+  const navigation = await countWhere(npNavigation, eq(npNavigation.siteId, id));
   const memberships = await countWhere(
-    nxSiteMemberships,
-    eq(nxSiteMemberships.siteId, id),
+    npSiteMemberships,
+    eq(npSiteMemberships.siteId, id),
   );
   const stringOverrides = await countWhere(
-    nxStringOverrides,
-    eq(nxStringOverrides.siteId, id),
+    npStringOverrides,
+    eq(npStringOverrides.siteId, id),
   );
   // Issue #220 — include the tables that landed after Phase 15.9
   // shipped. Without them a site looks "empty" in the admin
   // even though it owns thousands of community rows; deleting
   // it would silently leave them orphaned.
   const pluginStorage = await countWhere(
-    nxPluginStorage,
-    eq(nxPluginStorage.siteId, id),
+    npPluginStorage,
+    eq(npPluginStorage.siteId, id),
   );
-  const comments = await countWhere(nxComments, eq(nxComments.siteId, id));
-  const reactions = await countWhere(nxReactions, eq(nxReactions.siteId, id));
-  const follows = await countWhere(nxFollows, eq(nxFollows.siteId, id));
-  const mutes = await countWhere(nxMemberMutes, eq(nxMemberMutes.siteId, id));
+  const comments = await countWhere(npComments, eq(npComments.siteId, id));
+  const reactions = await countWhere(npReactions, eq(npReactions.siteId, id));
+  const follows = await countWhere(npFollows, eq(npFollows.siteId, id));
+  const mutes = await countWhere(npMemberMutes, eq(npMemberMutes.siteId, id));
   const notifications = await countWhere(
-    nxNotifications,
-    eq(nxNotifications.siteId, id),
+    npNotifications,
+    eq(npNotifications.siteId, id),
   );
-  const reports = await countWhere(nxReports, eq(nxReports.siteId, id));
+  const reports = await countWhere(npReports, eq(npReports.siteId, id));
   // Audit events with `site_id IS NULL` are the cross-tenant /
   // background-job rows; we deliberately don't count them here.
   const auditEvents = await countWhere(
-    nxAuditEvents,
-    eq(nxAuditEvents.siteId, id),
+    npAuditEvents,
+    eq(npAuditEvents.siteId, id),
   );
-  const bans = await countWhere(nxBans, eq(nxBans.siteId, id));
-  const memberRoles = await countWhere(nxMemberRoles, eq(nxMemberRoles.siteId, id));
+  const bans = await countWhere(npBans, eq(npBans.siteId, id));
+  const memberRoles = await countWhere(npMemberRoles, eq(npMemberRoles.siteId, id));
 
   const collectionsTotal = Object.values(collections).reduce(
     (sum, n) => sum + n,
@@ -390,7 +390,7 @@ export async function getSiteUsageSummary(id: string): Promise<NxSiteUsage> {
   };
 }
 
-export interface NxDeleteSiteOptions {
+export interface NpDeleteSiteOptions {
   /**
    * Phase 15.9 — when `true`, cascade-delete every site-scoped
    * row (collection content, settings, navigation, memberships,
@@ -417,21 +417,21 @@ export interface NxDeleteSiteOptions {
  */
 export async function deleteSite(
   id: string,
-  options?: NxDeleteSiteOptions,
+  options?: NpDeleteSiteOptions,
 ): Promise<void> {
   const db = getDb();
   const [target] = await db
     .select()
-    .from(nxSites)
-    .where(eq(nxSites.id, id))
+    .from(npSites)
+    .where(eq(npSites.id, id))
     .limit(1);
   if (!target) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "id", message: `Site "${id}" not found` },
     ]);
   }
   if (target.isDefault) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "id",
         message:
@@ -442,7 +442,7 @@ export async function deleteSite(
 
   const usage = await getSiteUsageSummary(id);
   if (usage.total > 0 && !options?.cascade) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "cascade",
         message: `Site "${id}" has ${usage.total} attached row(s). Pass cascade=true to delete them, or clear them manually first.`,
@@ -476,24 +476,24 @@ export async function deleteSite(
     // Reactions reference comment ids polymorphically, so they
     // go before comments to keep the DB clean even though there's
     // no FK to enforce ordering.
-    await db.delete(nxReactions).where(eq(nxReactions.siteId, id));
-    await db.delete(nxFollows).where(eq(nxFollows.siteId, id));
-    await db.delete(nxMemberMutes).where(eq(nxMemberMutes.siteId, id));
-    await db.delete(nxNotifications).where(eq(nxNotifications.siteId, id));
-    await db.delete(nxReports).where(eq(nxReports.siteId, id));
-    await db.delete(nxAuditEvents).where(eq(nxAuditEvents.siteId, id));
-    await db.delete(nxBans).where(eq(nxBans.siteId, id));
-    await db.delete(nxMemberRoles).where(eq(nxMemberRoles.siteId, id));
-    await db.delete(nxComments).where(eq(nxComments.siteId, id));
+    await db.delete(npReactions).where(eq(npReactions.siteId, id));
+    await db.delete(npFollows).where(eq(npFollows.siteId, id));
+    await db.delete(npMemberMutes).where(eq(npMemberMutes.siteId, id));
+    await db.delete(npNotifications).where(eq(npNotifications.siteId, id));
+    await db.delete(npReports).where(eq(npReports.siteId, id));
+    await db.delete(npAuditEvents).where(eq(npAuditEvents.siteId, id));
+    await db.delete(npBans).where(eq(npBans.siteId, id));
+    await db.delete(npMemberRoles).where(eq(npMemberRoles.siteId, id));
+    await db.delete(npComments).where(eq(npComments.siteId, id));
 
-    await db.delete(nxStringOverrides).where(eq(nxStringOverrides.siteId, id));
-    await db.delete(nxNavigation).where(eq(nxNavigation.siteId, id));
-    await db.delete(nxSettings).where(eq(nxSettings.siteId, id));
-    await db.delete(nxPluginStorage).where(eq(nxPluginStorage.siteId, id));
-    await db.delete(nxSiteMemberships).where(eq(nxSiteMemberships.siteId, id));
+    await db.delete(npStringOverrides).where(eq(npStringOverrides.siteId, id));
+    await db.delete(npNavigation).where(eq(npNavigation.siteId, id));
+    await db.delete(npSettings).where(eq(npSettings.siteId, id));
+    await db.delete(npPluginStorage).where(eq(npPluginStorage.siteId, id));
+    await db.delete(npSiteMemberships).where(eq(npSiteMemberships.siteId, id));
   }
 
-  await db.delete(nxSites).where(eq(nxSites.id, id));
+  await db.delete(npSites).where(eq(npSites.id, id));
 }
 
 export const NX_DEFAULT_SITE_ID = DEFAULT_SITE_ID;

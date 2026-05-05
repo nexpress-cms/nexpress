@@ -2,10 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 
 import {
-  NxForbiddenError,
-  NxValidationError,
-  nxMedia,
-  nxMediaFolders,
+  NpForbiddenError,
+  NpValidationError,
+  npMedia,
+  npMediaFolders,
   runHook,
   uploadMedia,
   getStorageAdapter,
@@ -15,7 +15,7 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
@@ -34,26 +34,26 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("media", "upload");
+      throw new NpForbiddenError("media", "upload");
     }
 
     const formData = await request.formData();
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "file", message: "A file upload is required" },
       ]);
     }
 
     if (!isAllowedMimeType(file.type)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "file", message: "Unsupported file type" },
       ]);
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "file", message: `File exceeds max size of ${MAX_FILE_SIZE} bytes` },
       ]);
     }
@@ -69,13 +69,13 @@ export async function POST(request: NextRequest) {
 
     if (folderId) {
       const [folder] = await db
-        .select({ id: nxMediaFolders.id })
-        .from(nxMediaFolders)
-        .where(eq(nxMediaFolders.id, folderId))
+        .select({ id: npMediaFolders.id })
+        .from(npMediaFolders)
+        .where(eq(npMediaFolders.id, folderId))
         .limit(1);
 
       if (!folder) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "folderId", message: "Folder not found" },
         ]);
       }
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         media: result,
       });
 
-      return nxSuccessResponse(result, { status: 202 });
+      return npSuccessResponse(result, { status: 202 });
     }
 
     const id = randomUUID();
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       originalFilename: file.name,
     });
 
-    await db.insert(nxMedia).values({
+    await db.insert(npMedia).values({
       id,
       filename: file.name,
       originalFilename: file.name,
@@ -145,8 +145,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return nxSuccessResponse({ id, status: "ready" }, { status: 201 });
+    return npSuccessResponse({ id, status: "ready" }, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

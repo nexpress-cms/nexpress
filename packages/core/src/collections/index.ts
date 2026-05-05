@@ -29,16 +29,16 @@ export {
 export type { PublishScheduledResult } from "./scheduled.js";
 export { listPendingMemberDocs } from "./pending-queue.js";
 export type {
-  NxPendingDocSummary,
-  NxListPendingDocsOptions,
-  NxListPendingDocsResult,
+  NpPendingDocSummary,
+  NpListPendingDocsOptions,
+  NpListPendingDocsResult,
 } from "./pending-queue.js";
 export type {
-  NxRevision,
-  NxRevisionSummary,
-  NxRevisionStatus,
-  NxRevisionListOptions,
-  NxRevisionListResult,
+  NpRevision,
+  NpRevisionSummary,
+  NpRevisionStatus,
+  NpRevisionListOptions,
+  NpRevisionListResult,
 } from "./revisions.js";
 export {
   searchCollections,
@@ -56,8 +56,8 @@ export {
   setSearchAdapter,
 } from "./search-adapter.js";
 export type {
-  NxSearchAdapter,
-  NxSearchAdapterContext,
+  NpSearchAdapter,
+  NpSearchAdapterContext,
 } from "./search-adapter.js";
 export { buildZodSchema, getCollectionZodSchema } from "./validation.js";
 export { slugify, applySlugField } from "./slug.js";

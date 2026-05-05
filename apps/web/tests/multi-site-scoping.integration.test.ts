@@ -160,7 +160,7 @@ describe.skipIf(skipIfNoTestDb())(
     });
 
     it("the same slug COLLIDES within one site (single-tenant uniqueness preserved)", async () => {
-      const { saveDocument, withCurrentSite, NxValidationError } = await import(
+      const { saveDocument, withCurrentSite, NpValidationError } = await import(
         "@nexpress/core"
       );
       await withCurrentSite("default", async () => {
@@ -185,7 +185,7 @@ describe.skipIf(skipIfNoTestDb())(
       });
       // Suppress unused-import lint; the import exists for the
       // type assertion below.
-      void NxValidationError;
+      void NpValidationError;
     });
 
     it("updates can't reassign a row to a different site (siteId is sticky)", async () => {

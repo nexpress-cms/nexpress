@@ -1,8 +1,8 @@
 import Image from "next/image";
 import { getMediaById, getStorageAdapter } from "@nexpress/core";
 
-interface NxImageProps {
-  media: NxMediaRecord | string;
+interface NpImageProps {
+  media: NpMediaRecord | string;
   size?: string;
   alt?: string;
   className?: string;
@@ -11,7 +11,7 @@ interface NxImageProps {
   height?: number;
 }
 
-interface NxMediaRecord {
+interface NpMediaRecord {
   id: string;
   storageKey: string;
   width?: number | null;
@@ -24,7 +24,7 @@ interface NxMediaRecord {
   > | null;
 }
 
-function toMediaRecord(doc: Record<string, unknown>): NxMediaRecord {
+function toMediaRecord(doc: Record<string, unknown>): NpMediaRecord {
   return {
     id: doc.id as string,
     storageKey: doc.storageKey as string,
@@ -32,7 +32,7 @@ function toMediaRecord(doc: Record<string, unknown>): NxMediaRecord {
     height: (doc.height as number) ?? null,
     alt: (doc.alt as string) ?? null,
     originalFilename: doc.originalFilename as string,
-    sizes: doc.sizes as NxMediaRecord["sizes"],
+    sizes: doc.sizes as NpMediaRecord["sizes"],
   };
 }
 
@@ -48,7 +48,7 @@ export async function getMediaUrl(
   return adapter.getUrl(sizeKey);
 }
 
-export async function NxImage({
+export async function NpImage({
   media,
   size = "medium",
   alt,
@@ -56,8 +56,8 @@ export async function NxImage({
   priority,
   width,
   height,
-}: NxImageProps) {
-  const record: NxMediaRecord | null =
+}: NpImageProps) {
+  const record: NpMediaRecord | null =
     typeof media === "string"
       ? await getMediaById(media).then((doc) =>
           doc ? toMediaRecord(doc) : null,

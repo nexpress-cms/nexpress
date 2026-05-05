@@ -235,7 +235,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
    */
   it("GET /api/admin/sites/[id]/usage returns row counts per site-scoped table", async () => {
     const admin = await seedSuperAdmin();
-    const { createSite, getDb, nxSettings } = await import("@nexpress/core");
+    const { createSite, getDb, npSettings } = await import("@nexpress/core");
     const created = await createSite({
       id: "usage-target",
       name: "Usage target",
@@ -243,7 +243,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     });
 
     const db = getDb();
-    await db.insert(nxSettings).values({
+    await db.insert(npSettings).values({
       siteId: created.id,
       key: "site",
       value: { name: "Usage target" },
@@ -281,12 +281,12 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const {
       createSite,
       getDb,
-      nxSettings,
-      nxNotifications,
-      nxAuditEvents,
-      nxPluginStorage,
+      npSettings,
+      npNotifications,
+      npAuditEvents,
+      npPluginStorage,
       hashPassword,
-      nxMembers,
+      npMembers,
     } = await import("@nexpress/core");
     const created = await createSite({
       id: "usage-220",
@@ -298,7 +298,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     // one plugin storage row, all on the new site.
     const password = await hashPassword("password-12345");
     const [member] = (await db
-      .insert(nxMembers)
+      .insert(npMembers)
       .values({
         email: "u220@example.com",
         password,
@@ -307,26 +307,26 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
         emailVerified: true,
         status: "active",
       })
-      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
-    await db.insert(nxSettings).values({
+      .returning({ id: npMembers.id })) as Array<{ id: string }>;
+    await db.insert(npSettings).values({
       siteId: created.id,
       key: "site",
       value: { name: "Usage 220" },
       updatedAt: new Date(),
     });
-    await db.insert(nxNotifications).values({
+    await db.insert(npNotifications).values({
       memberId: member!.id,
       kind: "system",
       payload: {},
       siteId: created.id,
     });
-    await db.insert(nxAuditEvents).values({
+    await db.insert(npAuditEvents).values({
       actorKind: "system",
       action: "test.usage",
       payload: {},
       siteId: created.id,
     });
-    await db.insert(nxPluginStorage).values({
+    await db.insert(npPluginStorage).values({
       pluginId: "phase220-test",
       key: "k",
       value: {},
@@ -362,12 +362,12 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const {
       createSite,
       getDb,
-      nxSettings,
-      nxNotifications,
-      nxAuditEvents,
-      nxPluginStorage,
+      npSettings,
+      npNotifications,
+      npAuditEvents,
+      npPluginStorage,
       hashPassword,
-      nxMembers,
+      npMembers,
       getSiteById,
     } = await import("@nexpress/core");
     const created = await createSite({
@@ -378,7 +378,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const db = getDb();
     const password = await hashPassword("password-12345");
     const [member] = (await db
-      .insert(nxMembers)
+      .insert(npMembers)
       .values({
         email: "c220@example.com",
         password,
@@ -387,26 +387,26 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
         emailVerified: true,
         status: "active",
       })
-      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
-    await db.insert(nxSettings).values({
+      .returning({ id: npMembers.id })) as Array<{ id: string }>;
+    await db.insert(npSettings).values({
       siteId: created.id,
       key: "site",
       value: {},
       updatedAt: new Date(),
     });
-    await db.insert(nxNotifications).values({
+    await db.insert(npNotifications).values({
       memberId: member!.id,
       kind: "system",
       payload: {},
       siteId: created.id,
     });
-    await db.insert(nxAuditEvents).values({
+    await db.insert(npAuditEvents).values({
       actorKind: "system",
       action: "test.cascade",
       payload: {},
       siteId: created.id,
     });
-    await db.insert(nxPluginStorage).values({
+    await db.insert(npPluginStorage).values({
       pluginId: "phase220-cascade",
       key: "k",
       value: {},
@@ -430,16 +430,16 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     void sql;
     const [{ value: notifLeft }] = (await db
       .select({ value: count() })
-      .from(nxNotifications)
-      .where(eq(nxNotifications.siteId, created.id))) as Array<{ value: number }>;
+      .from(npNotifications)
+      .where(eq(npNotifications.siteId, created.id))) as Array<{ value: number }>;
     const [{ value: auditLeft }] = (await db
       .select({ value: count() })
-      .from(nxAuditEvents)
-      .where(eq(nxAuditEvents.siteId, created.id))) as Array<{ value: number }>;
+      .from(npAuditEvents)
+      .where(eq(npAuditEvents.siteId, created.id))) as Array<{ value: number }>;
     const [{ value: pluginLeft }] = (await db
       .select({ value: count() })
-      .from(nxPluginStorage)
-      .where(eq(nxPluginStorage.siteId, created.id))) as Array<{ value: number }>;
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.siteId, created.id))) as Array<{ value: number }>;
     expect(notifLeft).toBe(0);
     expect(auditLeft).toBe(0);
     expect(pluginLeft).toBe(0);
@@ -447,13 +447,13 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
 
   it("DELETE refuses when site has attached rows and no cascade flag", async () => {
     const admin = await seedSuperAdmin();
-    const { createSite, getDb, nxSettings } = await import("@nexpress/core");
+    const { createSite, getDb, npSettings } = await import("@nexpress/core");
     const created = await createSite({
       id: "no-cascade",
       name: "No cascade",
       hostname: "no-cascade.example.com",
     });
-    await getDb().insert(nxSettings).values({
+    await getDb().insert(npSettings).values({
       siteId: created.id,
       key: "site",
       value: {},
@@ -477,7 +477,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(status).toBe(400);
     // The cascade hint lives in `details[0].message`; the
     // top-level `message` is the generic "Invalid input"
-    // because `NxValidationError`'s contract is one-line
+    // because `NpValidationError`'s contract is one-line
     // top-level + per-field detail rows.
     const cascadeDetail = body.error?.details?.find(
       (d) => d.field === "cascade",
@@ -493,8 +493,8 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     const {
       createSite,
       getDb,
-      nxSettings,
-      nxNavigation,
+      npSettings,
+      npNavigation,
       getSiteById,
     } = await import("@nexpress/core");
     const created = await createSite({
@@ -503,13 +503,13 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       hostname: "cascade.example.com",
     });
     const db = getDb();
-    await db.insert(nxSettings).values({
+    await db.insert(npSettings).values({
       siteId: created.id,
       key: "site",
       value: {},
       updatedAt: new Date(),
     });
-    await db.insert(nxNavigation).values({
+    await db.insert(npNavigation).values({
       siteId: created.id,
       location: "header",
       items: [],

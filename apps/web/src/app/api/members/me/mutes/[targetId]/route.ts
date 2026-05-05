@@ -1,7 +1,7 @@
 import { unmuteMember } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireMember } from "@/lib/member-auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -20,9 +20,9 @@ export async function DELETE(
     const member = await requireMember(request);
     const { targetId } = await context.params;
     const removed = await unmuteMember({ memberId: member.id, targetId });
-    return nxSuccessResponse({ ok: true, removed });
+    return npSuccessResponse({ ok: true, removed });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

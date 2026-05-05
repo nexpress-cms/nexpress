@@ -1,6 +1,6 @@
 # @nexpress/rate-limiter-redis
 
-Redis-backed `NxRateLimiterAdapter` for multi-node
+Redis-backed `NpRateLimiterAdapter` for multi-node
 [NexPress](https://github.com/hahabsw/nexpress) deployments.
 
 The default `InMemoryRateLimiter` shipped in `@nexpress/core` keeps

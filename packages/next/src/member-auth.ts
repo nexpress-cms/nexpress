@@ -1,11 +1,11 @@
 import {
-  NxAuthError,
+  NpAuthError,
   getLogger,
   getMemberFromTokenPayload,
   isTokenVerificationError,
   verifyCsrf,
   verifyMemberToken,
-  type NxMemberAuthRow,
+  type NpMemberAuthRow,
 } from "@nexpress/core";
 import type { NextRequest, NextResponse } from "next/server";
 
@@ -51,8 +51,8 @@ function readNumber(value: string | undefined, fallback: number): number {
 
 export type MemberAuthHelpers = {
   readonly getMemberAuthRuntimeConfig: (this: void) => MemberAuthRuntimeConfig;
-  readonly requireMember: (this: void, request: NextRequest) => Promise<NxMemberAuthRow>;
-  readonly optionalMember: (this: void, request: NextRequest) => Promise<NxMemberAuthRow | null>;
+  readonly requireMember: (this: void, request: NextRequest) => Promise<NpMemberAuthRow>;
+  readonly optionalMember: (this: void, request: NextRequest) => Promise<NpMemberAuthRow | null>;
   readonly requireMemberCsrf: (this: void, request: NextRequest) => void;
   readonly setMemberAuthCookies: (
     this: void,
@@ -67,7 +67,7 @@ export function createMemberAuthHelpers<DB>(
 ): MemberAuthHelpers {
   const readSecret = options.getSecret ?? defaultGetSecret;
 
-  async function getSessionMember(request: NextRequest): Promise<NxMemberAuthRow | null> {
+  async function getSessionMember(request: NextRequest): Promise<NpMemberAuthRow | null> {
     const token = request.cookies.get("nx-mb-session")?.value;
     if (!token) return null;
     try {
@@ -118,13 +118,13 @@ export function createMemberAuthHelpers<DB>(
     secureCookies: process.env.NODE_ENV === "production",
   });
 
-  const requireMember = async (request: NextRequest): Promise<NxMemberAuthRow> => {
+  const requireMember = async (request: NextRequest): Promise<NpMemberAuthRow> => {
     const member = await getSessionMember(request);
-    if (!member) throw new NxAuthError();
+    if (!member) throw new NpAuthError();
     return member;
   };
 
-  const optionalMember = (request: NextRequest): Promise<NxMemberAuthRow | null> =>
+  const optionalMember = (request: NextRequest): Promise<NpMemberAuthRow | null> =>
     getSessionMember(request);
 
   const requireMemberCsrf = (request: NextRequest): void => {
@@ -133,7 +133,7 @@ export function createMemberAuthHelpers<DB>(
       request.cookies.get("nx-mb-csrf")?.value,
       request.headers.get("x-csrf-token") ?? undefined,
     );
-    if (!ok) throw new NxAuthError("Invalid CSRF token");
+    if (!ok) throw new NpAuthError("Invalid CSRF token");
   };
 
   const setMemberAuthCookies = (

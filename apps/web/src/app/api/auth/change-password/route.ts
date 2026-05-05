@@ -1,15 +1,15 @@
 import {
   hashPassword,
   invalidateAllSessions,
-  NxAuthError,
-  NxValidationError,
+  NpAuthError,
+  NpValidationError,
   verifyPassword,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { clearAuthCookies, requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 
 interface PasswordRow extends Record<string, unknown> {
@@ -20,7 +20,7 @@ function validateChangePasswordBody(
   body: unknown,
 ): { currentPassword: string; newPassword: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be an object" },
     ]);
   }
@@ -31,13 +31,13 @@ function validateChangePasswordBody(
   };
 
   if (typeof currentPassword !== "string" || currentPassword.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "currentPassword", message: "Current password is required" },
     ]);
   }
 
   if (typeof newPassword !== "string" || newPassword.length < 8) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "newPassword", message: "New password must be at least 8 characters" },
     ]);
   }
@@ -59,13 +59,13 @@ export async function PATCH(request: NextRequest) {
     const storedUser = result.rows[0];
 
     if (!storedUser) {
-      throw new NxAuthError();
+      throw new NpAuthError();
     }
 
     const validPassword = await verifyPassword(storedUser.password, currentPassword);
 
     if (!validPassword) {
-      throw new NxAuthError("Current password is incorrect");
+      throw new NpAuthError("Current password is incorrect");
     }
 
     await db.$client.query(
@@ -75,11 +75,11 @@ export async function PATCH(request: NextRequest) {
 
     await invalidateAllSessions(user.id, db);
 
-    const response = nxSuccessResponse({ success: true });
+    const response = npSuccessResponse({ success: true });
     clearAuthCookies(response);
 
     return response;
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

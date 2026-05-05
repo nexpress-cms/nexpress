@@ -4,18 +4,18 @@ import { asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import {
-  type NxCollectionConfig,
-  type NxDocumentStatus,
-  type NxFindOptions,
-  type NxFindResult,
-  type NxSaveOptions,
-  type NxSaveResult,
-  type NxAuthUser,
-  type NxCollectionHook,
-  type NxFieldConfig,
-  type NxHookPrincipal,
+  type NpCollectionConfig,
+  type NpDocumentStatus,
+  type NpFindOptions,
+  type NpFindResult,
+  type NpSaveOptions,
+  type NpSaveResult,
+  type NpAuthUser,
+  type NpCollectionHook,
+  type NpFieldConfig,
+  type NpHookPrincipal,
 } from "../config/types.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { applySlugField } from "./slug.js";
 import { getI18nConfig } from "../i18n/registry.js";
 import { getCurrentSiteId } from "../sites/context.js";
@@ -25,9 +25,9 @@ import { getCollectionConfig, getCollectionTable, getCollectionRegistration } fr
 import { buildSearchVector, buildWeightedSearchVectorSql } from "./search.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
-import { nxRevisions, nxSlugHistory } from "../db/schema/system.js";
-import { nxComments, nxReactions, nxReports } from "../db/schema/community.js";
-import { nxMediaRefs } from "../db/schema/media.js";
+import { npRevisions, npSlugHistory } from "../db/schema/system.js";
+import { npComments, npReactions, npReports } from "../db/schema/community.js";
+import { npMediaRefs } from "../db/schema/media.js";
 import { getDb } from "../db/runtime.js";
 
 interface PreparedDocumentData {
@@ -73,7 +73,7 @@ interface DrizzleDatabaseLike extends DrizzleTransactionLike {
 }
 
 /**
- * Internal actor type. The pipeline accepts either a staff `NxAuthUser`
+ * Internal actor type. The pipeline accepts either a staff `NpAuthUser`
  * (the original behavior) or a `{ kind: "member", memberId }` shape
  * (Phase 9.7a — `community.memberWrite.create` collections). Member
  * writes bypass the staff `access.create` access function: gating is
@@ -82,9 +82,9 @@ interface DrizzleDatabaseLike extends DrizzleTransactionLike {
  * (revisions) are stored as null when the actor is a member; the
  * audit log captures the actual member id.
  */
-type SaveActor = { kind: "staff"; user: NxAuthUser } | { kind: "member"; memberId: string };
+type SaveActor = { kind: "staff"; user: NpAuthUser } | { kind: "member"; memberId: string };
 
-function actorUserOrNull(actor: SaveActor): NxAuthUser | null {
+function actorUserOrNull(actor: SaveActor): NpAuthUser | null {
   return actor.kind === "staff" ? actor.user : null;
 }
 
@@ -98,7 +98,7 @@ function actorUserId(actor: SaveActor): string | null {
  * Mirrors `SaveActor` — kept structurally identical so hook
  * authors can switch on `kind` without importing a separate type.
  */
-function actorPrincipal(actor: SaveActor): NxHookPrincipal {
+function actorPrincipal(actor: SaveActor): NpHookPrincipal {
   switch (actor.kind) {
     case "staff":
       return { kind: "staff", user: actor.user };
@@ -155,9 +155,9 @@ export async function saveDocument(
   collection: string,
   docId: string | null,
   data: Record<string, unknown>,
-  user: NxAuthUser,
-  options?: NxSaveOptions,
-): Promise<NxSaveResult> {
+  user: NpAuthUser,
+  options?: NpSaveOptions,
+): Promise<NpSaveResult> {
   return saveDocumentImpl(collection, docId, data, { kind: "staff", user }, options);
 }
 
@@ -188,9 +188,9 @@ export async function updateMemberDocument(
   docId: string,
   data: Record<string, unknown>,
   memberId: string,
-  options?: NxSaveOptions,
-): Promise<NxSaveResult> {
-  const memberOptions: NxSaveOptions = { ...(options ?? {}) };
+  options?: NpSaveOptions,
+): Promise<NpSaveResult> {
+  const memberOptions: NpSaveOptions = { ...(options ?? {}) };
   delete memberOptions.status;
 
   // Cheap authorization checks BEFORE moderation (#139). Without
@@ -207,17 +207,17 @@ export async function updateMemberDocument(
   // of these throw, the moderation never runs.
   const config = getCollectionConfig(collection);
   if (!config.community?.memberWrite?.update) {
-    throw new NxForbiddenError(collection, "update");
+    throw new NpForbiddenError(collection, "update");
   }
   const table = getCollectionTable(collection) as PgTable;
   const dbForGate = getDb() as unknown as DrizzleDatabaseLike;
   const originalDoc = await getDocumentByIdInternal(dbForGate, table, collection, docId);
   if (!originalDoc) {
-    throw new NxNotFoundError(collection, docId);
+    throw new NpNotFoundError(collection, docId);
   }
   const authorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
   if (authorId !== memberId) {
-    throw new NxForbiddenError(collection, "update");
+    throw new NpForbiddenError(collection, "update");
   }
   const { assertNotBanned } = await import("../community/can.js");
   await assertNotBanned(memberId);
@@ -290,8 +290,8 @@ export async function createMemberDocument(
   collection: string,
   data: Record<string, unknown>,
   memberId: string,
-  options?: NxSaveOptions,
-): Promise<NxSaveResult> {
+  options?: NpSaveOptions,
+): Promise<NpSaveResult> {
   // Members can't author drafts / archive / schedule — those status
   // transitions are admin-side affordances. The status that
   // member-authored creates land in is governed by:
@@ -311,12 +311,12 @@ export async function createMemberDocument(
   // `saveDocumentImpl`, but doing them here saves the
   // moderation round-trip on doomed requests.
   if (!config.community?.memberWrite?.create) {
-    throw new NxForbiddenError(collection, "create");
+    throw new NpForbiddenError(collection, "create");
   }
   const { assertNotBanned } = await import("../community/can.js");
   await assertNotBanned(memberId);
 
-  const defaultStatus: NxDocumentStatus =
+  const defaultStatus: NpDocumentStatus =
     config.community?.memberWrite?.defaultStatus === "pending" ? "pending" : "published";
 
   const moderation = await runMemberDocModeration({
@@ -326,9 +326,9 @@ export async function createMemberDocument(
     targetId: "",
   });
   const flaggedBy = moderation.flaggedBy;
-  const spamStatus: NxDocumentStatus = flaggedBy.length > 0 ? "pending" : defaultStatus;
+  const spamStatus: NpDocumentStatus = flaggedBy.length > 0 ? "pending" : defaultStatus;
 
-  const memberOptions: NxSaveOptions = { ...(options ?? {}), status: spamStatus };
+  const memberOptions: NpSaveOptions = { ...(options ?? {}), status: spamStatus };
   const result = await saveDocumentImpl(
     collection,
     null,
@@ -419,7 +419,7 @@ interface RunMemberDocModerationInput {
  * the adapters would never see them (#119).
  *
  * Verdict semantics match the comment write path:
- *   - reject  → throws `NxValidationError`
+ *   - reject  → throws `NpValidationError`
  *   - flag    → returned with the source recorded in `flaggedBy`
  *   - pass    → returned with empty `flaggedBy`
  *
@@ -452,7 +452,7 @@ async function runMemberDocModeration(
   try {
     const verdict = await getProfanityAdapter().check(moderationText, ctx);
     if (verdict.kind === "reject") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "body",
           message: verdict.reason ?? "Submission contains prohibited language",
@@ -466,7 +466,7 @@ async function runMemberDocModeration(
       };
     }
   } catch (err) {
-    if (err instanceof NxValidationError) throw err;
+    if (err instanceof NpValidationError) throw err;
     getLogger().warn("profanity adapter threw on doc write — treating as pass", {
       error: err instanceof Error ? err.message : String(err),
       collection,
@@ -478,7 +478,7 @@ async function runMemberDocModeration(
   try {
     const verdict = await getSpamAdapter().check(moderationText, ctx);
     if (verdict.kind === "reject") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "body",
           message: verdict.reason ?? "Submission rejected",
@@ -492,7 +492,7 @@ async function runMemberDocModeration(
       };
     }
   } catch (err) {
-    if (err instanceof NxValidationError) throw err;
+    if (err instanceof NpValidationError) throw err;
     getLogger().warn("spam adapter threw on doc write — treating as pass", {
       error: err instanceof Error ? err.message : String(err),
       collection,
@@ -525,15 +525,15 @@ interface SaveContext {
   docId: string | null;
   validatedData: Record<string, unknown>;
   actor: SaveActor;
-  options: NxSaveOptions | undefined;
+  options: NpSaveOptions | undefined;
   config: ReturnType<typeof getCollectionConfig>;
   registration: ReturnType<typeof getCollectionRegistration>;
   table: PgTable;
   db: DrizzleDatabaseLike;
   operation: "create" | "update";
   originalDoc: Record<string, unknown> | null;
-  userForHooks: NxAuthUser | null;
-  principal: NxHookPrincipal;
+  userForHooks: NpAuthUser | null;
+  principal: NpHookPrincipal;
   // === Populated by prepareDocumentForWrite. ===
   hookData: Record<string, unknown>;
   prepared: PreparedDocumentData;
@@ -548,7 +548,7 @@ async function initSaveContext(
   docId: string | null,
   data: Record<string, unknown>,
   actor: SaveActor,
-  options: NxSaveOptions | undefined,
+  options: NpSaveOptions | undefined,
 ): Promise<Omit<SaveContext, "hookData" | "prepared" | "searchVector" | "publishTransition" | "unpublishTransition" | "now">> {
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
@@ -580,7 +580,7 @@ async function initSaveContext(
  * per-collection `community.memberWrite.create / update` opt-in
  * plus a ban check, plus an ownership check on update.
  *
- * Throws `NxForbiddenError` / `NxNotFoundError` on rejection.
+ * Throws `NpForbiddenError` / `NpNotFoundError` on rejection.
  */
 async function validateActorAccess(ctx: SaveContext): Promise<void> {
   if (ctx.actor.kind === "staff") {
@@ -602,7 +602,7 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
   const { assertNotBanned } = await import("../community/can.js");
   if (ctx.operation === "create") {
     if (!ctx.config.community?.memberWrite?.create) {
-      throw new NxForbiddenError(ctx.collection, "create");
+      throw new NpForbiddenError(ctx.collection, "create");
     }
     await assertNotBanned(ctx.actor.memberId);
     return;
@@ -612,14 +612,14 @@ async function validateActorAccess(ctx: SaveContext): Promise<void> {
   // 404 when there's no row at all, 403 when the row belongs to
   // someone else (or to staff with `member_author_id = null`).
   if (!ctx.originalDoc) {
-    throw new NxNotFoundError(ctx.collection, ctx.docId ?? "unknown");
+    throw new NpNotFoundError(ctx.collection, ctx.docId ?? "unknown");
   }
   if (!ctx.config.community?.memberWrite?.update) {
-    throw new NxForbiddenError(ctx.collection, "update");
+    throw new NpForbiddenError(ctx.collection, "update");
   }
   const authorId = (ctx.originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
   if (authorId !== ctx.actor.memberId) {
-    throw new NxForbiddenError(ctx.collection, "update");
+    throw new NpForbiddenError(ctx.collection, "update");
   }
   await assertNotBanned(ctx.actor.memberId);
 }
@@ -670,7 +670,7 @@ async function prepareDocumentForWrite(c: SaveContext): Promise<void> {
           ? requestedLocale
           : i18n.defaultLocale;
       if (!i18n.locales.includes(locale)) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           {
             field: "locale",
             message: `Locale "${locale}" is not configured. Allowed: ${i18n.locales.join(", ")}.`,
@@ -843,7 +843,7 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       ctx.originalDoc.slug !== persistedDoc.slug
     ) {
       const siteId = (persistedDoc.siteId as string | undefined) ?? NX_DEFAULT_SITE_ID;
-      await tx.insert(nxSlugHistory).values({
+      await tx.insert(npSlugHistory).values({
         siteId,
         collection: ctx.collection,
         documentId: String(persistedDocId),
@@ -933,8 +933,8 @@ async function saveDocumentImpl(
   docId: string | null,
   data: Record<string, unknown>,
   actor: SaveActor,
-  options?: NxSaveOptions,
-): Promise<NxSaveResult> {
+  options?: NpSaveOptions,
+): Promise<NpSaveResult> {
   const ctxBase = await initSaveContext(collection, docId, data, actor, options);
   await validateActorAccess(ctxBase as SaveContext);
   const ctx = ctxBase as SaveContext;
@@ -952,7 +952,7 @@ async function saveDocumentImpl(
  *
  *  - Requires `versions.drafts` to be enabled on the collection.
  *  - Optionally gated by `versions.drafts.autosave === true` (when
- *    `versions` is the object form). Throws `NxValidationError` otherwise
+ *    `versions` is the object form). Throws `NpValidationError` otherwise
  *    so the API can return a tidy 4xx instead of silently writing.
  *  - Skips the full zod validation that `saveDocument` runs — autosave
  *    payloads may be temporarily incomplete (the user is still typing).
@@ -967,7 +967,7 @@ export async function autosaveRevision(
   collection: string,
   documentId: string,
   data: Record<string, unknown>,
-  user: NxAuthUser,
+  user: NpAuthUser,
 ): Promise<{
   id: string;
   version: number;
@@ -982,7 +982,7 @@ export async function autosaveRevision(
 
   const drafts = config.versions?.drafts;
   if (!drafts) {
-    throw new NxValidationError("Autosave not available", [
+    throw new NpValidationError("Autosave not available", [
       {
         field: "collection",
         message: `Collection "${collection}" has versions.drafts disabled — autosave is unavailable.`,
@@ -994,7 +994,7 @@ export async function autosaveRevision(
   // collections with extra DB writes per keystroke.
   const autosaveEnabled = typeof drafts === "object" && drafts.autosave === true;
   if (!autosaveEnabled) {
-    throw new NxValidationError("Autosave disabled", [
+    throw new NpValidationError("Autosave disabled", [
       {
         field: "collection",
         message: `Autosave is not enabled for "${collection}" — set versions.drafts.autosave = true.`,
@@ -1004,7 +1004,7 @@ export async function autosaveRevision(
 
   const originalDoc = await getDocumentByIdInternal(db, table, collection, documentId);
   if (!originalDoc) {
-    throw new NxNotFoundError(collection, documentId);
+    throw new NpNotFoundError(collection, documentId);
   }
 
   // Reuse the same access gate `saveDocument` runs for an update — autosave
@@ -1014,16 +1014,16 @@ export async function autosaveRevision(
   // Dedup against the latest autosave for this doc.
   const [latestAutosave] = (await db
     .select({
-      id: nxRevisions.id,
-      version: nxRevisions.version,
-      snapshot: nxRevisions.snapshot,
-      createdAt: nxRevisions.createdAt,
+      id: npRevisions.id,
+      version: npRevisions.version,
+      snapshot: npRevisions.snapshot,
+      createdAt: npRevisions.createdAt,
     })
-    .from(nxRevisions)
+    .from(npRevisions)
     .where(
-      sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)} and ${eq(nxRevisions.status, "autosave")}`,
+      sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)} and ${eq(npRevisions.status, "autosave")}`,
     )
-    .orderBy(desc(nxRevisions.version))
+    .orderBy(desc(npRevisions.version))
     .limit(1)) as Array<{
     id: string;
     version: number;
@@ -1048,14 +1048,14 @@ export async function autosaveRevision(
   const inserted = await db.transaction(async (tx) => {
     const [revisionCount] = (await tx
       .select({ total: count() })
-      .from(nxRevisions)
+      .from(npRevisions)
       .where(
-        sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`,
+        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`,
       )) as Array<{ total: number | string }>;
     const nextVersion = Number(revisionCount?.total ?? 0) + 1;
     const createdAt = new Date();
 
-    await tx.insert(nxRevisions).values({
+    await tx.insert(npRevisions).values({
       collection,
       documentId,
       version: nextVersion,
@@ -1069,16 +1069,16 @@ export async function autosaveRevision(
     if (maxRevisions !== undefined && maxRevisions > 0 && nextVersion > maxRevisions) {
       const overflow = nextVersion - maxRevisions;
       const toDelete = (await tx
-        .select({ id: nxRevisions.id })
-        .from(nxRevisions)
+        .select({ id: npRevisions.id })
+        .from(npRevisions)
         .where(
-          sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`,
+          sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`,
         )
-        .orderBy(asc(nxRevisions.version))
+        .orderBy(asc(npRevisions.version))
         .limit(overflow)) as Array<{ id: string }>;
       if (toDelete.length > 0) {
         const ids = toDelete.map((r) => r.id);
-        await tx.delete(nxRevisions).where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
+        await tx.delete(npRevisions).where(sql`${npRevisions.id} = any(${ids}::uuid[])`);
       }
     }
 
@@ -1086,10 +1086,10 @@ export async function autosaveRevision(
     // `tx.insert(...).returning(...)` isn't part of our Drizzle adapter
     // interface, so a follow-up SELECT is the simplest portable path.
     const [row] = (await tx
-      .select({ id: nxRevisions.id })
-      .from(nxRevisions)
+      .select({ id: npRevisions.id })
+      .from(npRevisions)
       .where(
-        sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)} and ${eq(nxRevisions.version, nextVersion)}`,
+        sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)} and ${eq(npRevisions.version, nextVersion)}`,
       )
       .limit(1)) as Array<{ id: string }>;
 
@@ -1120,7 +1120,7 @@ function stableJson(value: unknown): string {
 export async function deleteDocument(
   collection: string,
   docId: string,
-  user: NxAuthUser,
+  user: NpAuthUser,
 ): Promise<void> {
   return deleteDocumentImpl(collection, docId, { kind: "staff", user });
 }
@@ -1214,16 +1214,16 @@ export async function promoteMemberDocument(
   collection: string,
   docId: string,
   staffUserId: string,
-): Promise<NxSaveResult> {
+): Promise<NpSaveResult> {
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const originalDoc = await getDocumentByIdInternal(db, table, collection, docId);
   if (!originalDoc) {
-    throw new NxNotFoundError(collection, docId);
+    throw new NpNotFoundError(collection, docId);
   }
   const status = (originalDoc as { status?: string }).status;
   if (status !== "pending") {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "status",
         message: `Cannot promote: document is ${status ?? "unknown"}, expected pending`,
@@ -1232,7 +1232,7 @@ export async function promoteMemberDocument(
   }
   const memberAuthorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
   if (!memberAuthorId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "memberAuthorId",
         message: "Cannot promote: document is not member-authored",
@@ -1266,7 +1266,7 @@ export async function promoteMemberDocument(
     // staff edited it out of `pending` between our read and our
     // write. Surface as a validation error — the caller should
     // re-fetch and retry only if they still want to act.
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "status",
         message: "Cannot promote: row is no longer pending (concurrent change)",
@@ -1318,24 +1318,24 @@ async function deleteDocumentImpl(
   // and the route returns 204. Bulk delete then records phantom ids as
   // succeeded. (#59)
   if (!originalDoc) {
-    throw new NxNotFoundError(collection, docId);
+    throw new NpNotFoundError(collection, docId);
   }
 
   if (actor.kind === "staff") {
     if (config.access?.delete) {
       const allowed = await config.access.delete({ user: actor.user, doc: originalDoc });
       if (!allowed) {
-        throw new NxForbiddenError(collection, "delete");
+        throw new NpForbiddenError(collection, "delete");
       }
     }
   } else {
     // Member delete: opt-in flag plus owner check plus ban check.
     if (!config.community?.memberWrite?.delete) {
-      throw new NxForbiddenError(collection, "delete");
+      throw new NpForbiddenError(collection, "delete");
     }
     const authorId = (originalDoc as { memberAuthorId?: string | null }).memberAuthorId ?? null;
     if (authorId !== actor.memberId) {
-      throw new NxForbiddenError(collection, "delete");
+      throw new NpForbiddenError(collection, "delete");
     }
     const { assertNotBanned } = await import("../community/can.js");
     await assertNotBanned(actor.memberId);
@@ -1362,9 +1362,9 @@ async function deleteDocumentImpl(
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
     await tx
-      .delete(nxMediaRefs as unknown as PgTable)
+      .delete(npMediaRefs as unknown as PgTable)
       .where(
-        sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), docId)}`,
+        sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), docId)}`,
       );
     // Phase 9.7m: cascade comments + reactions on the deleted doc.
     // The polymorphic `(target_type, target_id)` shape on
@@ -1378,18 +1378,18 @@ async function deleteDocumentImpl(
     // both carry `target_id=$docId`, so a single SELECT covers both.
     const commentIdRows = (await tx
       .select({
-        id: getTableColumn(nxComments as unknown as PgTable, "id"),
+        id: getTableColumn(npComments as unknown as PgTable, "id"),
       })
-      .from(nxComments as unknown as PgTable)
+      .from(npComments as unknown as PgTable)
       .where(
-        sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
+        sql`${eq(getTableColumn(npComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npComments as unknown as PgTable, "targetId"), docId)}`,
       )) as Array<{ id: string }>;
     if (commentIdRows.length > 0) {
       const commentIds = commentIdRows.map((row) => row.id);
       await tx
-        .delete(nxReactions as unknown as PgTable)
+        .delete(npReactions as unknown as PgTable)
         .where(
-          sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReactions as unknown as PgTable, "targetId"), commentIds)}`,
+          sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(npReactions as unknown as PgTable, "targetId"), commentIds)}`,
         );
       // Phase 9.7q: same orphan story for `nx_reports` — a member
       // who reported one of these comments would otherwise be left
@@ -1397,20 +1397,20 @@ async function deleteDocumentImpl(
       // existing audit row carries enough context for after-the-
       // fact tracing, so the report itself can go.
       await tx
-        .delete(nxReports as unknown as PgTable)
+        .delete(npReports as unknown as PgTable)
         .where(
-          sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(nxReports as unknown as PgTable, "targetId"), commentIds)}`,
+          sql`${eq(getTableColumn(npReports as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(npReports as unknown as PgTable, "targetId"), commentIds)}`,
         );
     }
     await tx
-      .delete(nxComments as unknown as PgTable)
+      .delete(npComments as unknown as PgTable)
       .where(
-        sql`${eq(getTableColumn(nxComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxComments as unknown as PgTable, "targetId"), docId)}`,
+        sql`${eq(getTableColumn(npComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npComments as unknown as PgTable, "targetId"), docId)}`,
       );
     await tx
-      .delete(nxReactions as unknown as PgTable)
+      .delete(npReactions as unknown as PgTable)
       .where(
-        sql`${eq(getTableColumn(nxReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReactions as unknown as PgTable, "targetId"), docId)}`,
+        sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReactions as unknown as PgTable, "targetId"), docId)}`,
       );
     // Doc-level reports (sites that file `target_type=$collection`
     // reports against a post / discussion). The shipped report API
@@ -1418,9 +1418,9 @@ async function deleteDocumentImpl(
     // is polymorphic — a future surface could add doc-level reports
     // and this cascade keeps that case correct from day one.
     await tx
-      .delete(nxReports as unknown as PgTable)
+      .delete(npReports as unknown as PgTable)
       .where(
-        sql`${eq(getTableColumn(nxReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(nxReports as unknown as PgTable, "targetId"), docId)}`,
+        sql`${eq(getTableColumn(npReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReports as unknown as PgTable, "targetId"), docId)}`,
       );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
   });
@@ -1446,9 +1446,9 @@ async function deleteDocumentImpl(
 
 export async function findDocuments(
   collection: string,
-  options: NxFindOptions,
-  user?: NxAuthUser,
-): Promise<NxFindResult> {
+  options: NpFindOptions,
+  user?: NpAuthUser,
+): Promise<NpFindResult> {
   const config = getCollectionConfig(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
@@ -1507,7 +1507,7 @@ export async function findDocuments(
     effectiveWhere = rest;
   }
 
-  const effectiveOptions: NxFindOptions = {
+  const effectiveOptions: NpFindOptions = {
     ...options,
     where: effectiveWhere,
   };
@@ -1535,7 +1535,7 @@ export async function findDocuments(
 export async function getDocumentById(
   collection: string,
   id: string,
-  user?: NxAuthUser,
+  user?: NpAuthUser,
 ): Promise<Record<string, unknown> | null> {
   const config = getCollectionConfig(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -1558,13 +1558,13 @@ export async function getDocumentById(
       ? doc.siteId
       : NX_DEFAULT_SITE_ID;
   if (docSiteId !== requestSiteId) {
-    throw new NxForbiddenError(collection, "cross-site");
+    throw new NpForbiddenError(collection, "cross-site");
   }
 
   if (config.access?.read) {
     const allowed = await config.access.read({ user: user ?? null, doc });
     if (!allowed) {
-      throw new NxForbiddenError(collection, "read");
+      throw new NpForbiddenError(collection, "read");
     }
   }
 
@@ -1572,10 +1572,10 @@ export async function getDocumentById(
 }
 
 async function assertWriteAccess(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   collection: string,
-  operation: NxSaveResult["operation"],
-  user: NxAuthUser,
+  operation: NpSaveResult["operation"],
+  user: NpAuthUser,
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
 ): Promise<void> {
@@ -1588,14 +1588,14 @@ async function assertWriteAccess(
   const allowed = await access({ user, doc: originalDoc ?? undefined, data });
 
   if (!allowed) {
-    throw new NxForbiddenError(collection, operation);
+    throw new NpForbiddenError(collection, operation);
   }
 }
 
 async function assertReadAccess(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   collection: string,
-  user: NxAuthUser | null,
+  user: NpAuthUser | null,
 ): Promise<void> {
   if (!config.access?.read) {
     return;
@@ -1604,13 +1604,13 @@ async function assertReadAccess(
   const allowed = await config.access.read({ user });
 
   if (!allowed) {
-    throw new NxForbiddenError(collection, "read");
+    throw new NpForbiddenError(collection, "read");
   }
 }
 
 async function runHooks(
-  hooks: NxCollectionHook[] | undefined,
-  args: Parameters<NxCollectionHook>[0],
+  hooks: NpCollectionHook[] | undefined,
+  args: Parameters<NpCollectionHook>[0],
 ): Promise<Record<string, unknown>> {
   let nextData = args.data;
 
@@ -1629,8 +1629,8 @@ async function createMainDocument(
   table: PgTable,
   mainData: Record<string, unknown>,
   searchVectorSql: SQL,
-  config: NxCollectionConfig,
-  user: NxAuthUser | null,
+  config: NpCollectionConfig,
+  user: NpAuthUser | null,
   now: Date,
 ): Promise<Record<string, unknown>> {
   // Member writes (`user === null`) leave `createdBy` / `updatedBy`
@@ -1670,12 +1670,12 @@ async function updateMainDocument(
   docId: string | null,
   mainData: Record<string, unknown>,
   searchVectorSql: SQL,
-  config: NxCollectionConfig,
-  user: NxAuthUser | null,
+  config: NpCollectionConfig,
+  user: NpAuthUser | null,
   now: Date,
 ): Promise<Record<string, unknown>> {
   if (!docId) {
-    throw new NxNotFoundError(collection, "unknown");
+    throw new NpNotFoundError(collection, "unknown");
   }
 
   const values: Record<string, unknown> = {
@@ -1698,7 +1698,7 @@ async function updateMainDocument(
     .returning();
 
   if (!updated) {
-    throw new NxNotFoundError(collection, docId);
+    throw new NpNotFoundError(collection, docId);
   }
 
   return toRecord(updated);
@@ -1796,20 +1796,20 @@ async function insertRevision(
   tx: DrizzleTransactionLike,
   collection: string,
   documentId: string,
-  operation: NxSaveResult["operation"],
+  operation: NpSaveResult["operation"],
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
-  user: NxAuthUser | null,
+  user: NpAuthUser | null,
   status: string,
   maxRevisions?: number,
 ): Promise<void> {
-  const revisionConditions = sql`${eq(nxRevisions.collection, collection)} and ${eq(nxRevisions.documentId, documentId)}`;
+  const revisionConditions = sql`${eq(npRevisions.collection, collection)} and ${eq(npRevisions.documentId, documentId)}`;
   const [revisionCount] = (await tx
     .select({ total: count() })
-    .from(nxRevisions)
+    .from(npRevisions)
     .where(revisionConditions)) as Array<{ total: number | string }>;
 
-  await tx.insert(nxRevisions).values({
+  await tx.insert(npRevisions).values({
     collection,
     documentId,
     version: Number(revisionCount?.total ?? 0) + 1,
@@ -1833,21 +1833,21 @@ async function insertRevision(
       // doesn't support DELETE with LIMIT directly but `id IN (subquery)`
       // works fine.
       const toDelete = (await tx
-        .select({ id: nxRevisions.id })
-        .from(nxRevisions)
+        .select({ id: npRevisions.id })
+        .from(npRevisions)
         .where(revisionConditions)
-        .orderBy(asc(nxRevisions.version))
+        .orderBy(asc(npRevisions.version))
         .limit(overflow)) as Array<{ id: string }>;
 
       if (toDelete.length > 0) {
         const ids = toDelete.map((r) => r.id);
-        await tx.delete(nxRevisions).where(sql`${nxRevisions.id} = any(${ids}::uuid[])`);
+        await tx.delete(npRevisions).where(sql`${npRevisions.id} = any(${ids}::uuid[])`);
       }
     }
   }
 }
 
-function buildQueryConditions(table: PgTable, options: NxFindOptions): QueryCondition[] {
+function buildQueryConditions(table: PgTable, options: NpFindOptions): QueryCondition[] {
   const conditions: QueryCondition[] = [];
 
   if (options.where) {
@@ -1872,7 +1872,7 @@ function buildQueryConditions(table: PgTable, options: NxFindOptions): QueryCond
 async function executeFindQuery(
   db: DrizzleDatabaseLike,
   table: PgTable,
-  options: NxFindOptions,
+  options: NpFindOptions,
   whereClause: ReturnType<typeof sql> | undefined,
   limit: number,
   offset: number,
@@ -1957,7 +1957,7 @@ function getSortOrderClause(
  * `deleteDocument`, `promoteMemberDocument`, or
  * `createTranslation` outside their tenant. By default this loader
  * now compares the loaded row's `siteId` to the request's resolved
- * site and throws `NxForbiddenError(collection, "cross-site")` on
+ * site and throws `NpForbiddenError(collection, "cross-site")` on
  * divergence.
  *
  * Cross-site is opt-in via `{ allowCrossSite: true }`. The legitimate
@@ -1975,7 +1975,7 @@ async function getDocumentByIdInternal(
   const doc = await getDocumentByIdOptional(db, table, id);
 
   if (!doc) {
-    throw new NxNotFoundError(collection, id);
+    throw new NpNotFoundError(collection, id);
   }
 
   if (!options?.allowCrossSite) {
@@ -1985,7 +1985,7 @@ async function getDocumentByIdInternal(
         ? doc.siteId
         : NX_DEFAULT_SITE_ID;
     if (docSiteId !== requestSiteId) {
-      throw new NxForbiddenError(collection, "cross-site");
+      throw new NpForbiddenError(collection, "cross-site");
     }
   }
 
@@ -2006,7 +2006,7 @@ async function getDocumentByIdOptional(
 }
 
 function prepareDocumentData(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   data: Record<string, unknown>,
 ): PreparedDocumentData {
   const prepared: PreparedDocumentData = {
@@ -2047,7 +2047,7 @@ function prepareDocumentData(
 }
 
 function collectPreparedDocumentData(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   data: Record<string, unknown>,
   prepared: PreparedDocumentData,
   prefix: string[],
@@ -2084,7 +2084,7 @@ function collectPreparedDocumentData(
   }
 }
 
-function normalizeChildRows(fields: NxFieldConfig[], value: unknown): Record<string, unknown>[] {
+function normalizeChildRows(fields: NpFieldConfig[], value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -2114,24 +2114,24 @@ async function syncMediaRefsForDocument(
   tx: DrizzleTransactionLike,
   collection: string,
   documentId: string,
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   data: Record<string, unknown>,
 ): Promise<void> {
   const refs = extractMediaIdsFromFields(fields, data, []);
 
   if (refs.length === 0) {
     await tx
-      .delete(nxMediaRefs as unknown as PgTable)
+      .delete(npMediaRefs as unknown as PgTable)
       .where(
-        sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+        sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
       );
     return;
   }
 
   await tx
-    .delete(nxMediaRefs as unknown as PgTable)
+    .delete(npMediaRefs as unknown as PgTable)
     .where(
-      sql`${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(nxMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
+      sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
     );
 
   const values = refs.map((ref) => ({
@@ -2142,11 +2142,11 @@ async function syncMediaRefsForDocument(
     field: ref.field,
   }));
 
-  await tx.insert(nxMediaRefs as unknown as PgTable).values(values);
+  await tx.insert(npMediaRefs as unknown as PgTable).values(values);
 }
 
 function extractMediaIdsFromFields(
-  fields: NxFieldConfig[],
+  fields: NpFieldConfig[],
   data: Record<string, unknown>,
   prefix: string[],
 ): Array<{ mediaId: string; field: string }> {
@@ -2268,7 +2268,7 @@ function isUuid(value: string): boolean {
 function getChangedFields(
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
-  operation: NxSaveResult["operation"],
+  operation: NpSaveResult["operation"],
 ): string[] {
   if (operation === "create" || !originalDoc) {
     return Object.keys(data);

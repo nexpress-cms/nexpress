@@ -13,8 +13,8 @@
 export const COLOR_SCHEME_COOKIE = "nx-color-scheme";
 export const COLOR_SCHEME_STORAGE_KEY = "nx-color-scheme";
 
-export type NxColorScheme = "dark" | "light";
+export type NpColorScheme = "dark" | "light";
 
-export function isColorScheme(value: unknown): value is NxColorScheme {
+export function isColorScheme(value: unknown): value is NpColorScheme {
   return value === "dark" || value === "light";
 }

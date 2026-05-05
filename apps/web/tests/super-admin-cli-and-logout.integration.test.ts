@@ -41,23 +41,23 @@ describe.skipIf(skipIfNoTestDb())(
       //   1. SELECT user by email
       //   2. If isSuperAdmin already matches target → no-op
       //   3. UPDATE is_super_admin = true
-      const { getDb, isSuperAdmin, nxUsers } = await import("@nexpress/core");
+      const { getDb, isSuperAdmin, npUsers } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const db = getDb();
       const [row] = await db
         .select({
-          id: nxUsers.id,
-          isSuperAdmin: nxUsers.isSuperAdmin,
+          id: npUsers.id,
+          isSuperAdmin: npUsers.isSuperAdmin,
         })
-        .from(nxUsers)
-        .where(eq(nxUsers.email, user.email))
+        .from(npUsers)
+        .where(eq(npUsers.email, user.email))
         .limit(1);
       expect(row?.isSuperAdmin).toBe(false);
 
       await db
-        .update(nxUsers)
+        .update(npUsers)
         .set({ isSuperAdmin: true, updatedAt: new Date() })
-        .where(eq(nxUsers.id, row!.id));
+        .where(eq(npUsers.id, row!.id));
 
       expect(
         await isSuperAdmin({
@@ -72,16 +72,16 @@ describe.skipIf(skipIfNoTestDb())(
 
     it("CLI-equivalent demote: flips is_super_admin back to false", async () => {
       const user = await seedUser({ role: "viewer" });
-      const { getDb, setSuperAdmin, isSuperAdmin, nxUsers } = await import(
+      const { getDb, setSuperAdmin, isSuperAdmin, npUsers } = await import(
         "@nexpress/core"
       );
       await setSuperAdmin(user.userId, true);
       // CLI demote path: UPDATE is_super_admin = false
       const { eq } = await import("drizzle-orm");
       await getDb()
-        .update(nxUsers)
+        .update(npUsers)
         .set({ isSuperAdmin: false, updatedAt: new Date() })
-        .where(eq(nxUsers.id, user.userId));
+        .where(eq(npUsers.id, user.userId));
       expect(
         await isSuperAdmin({
           id: user.userId,

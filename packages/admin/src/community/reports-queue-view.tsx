@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -66,7 +66,7 @@ export function ReportsQueueView() {
     setError(null);
     try {
       const params = new URLSearchParams({ status, limit: "50" });
-      const res = await nxFetch(`/api/admin/community/reports?${params.toString()}`);
+      const res = await npFetch(`/api/admin/community/reports?${params.toString()}`);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         const message = extractErrorMessage(raw) ?? `HTTP ${res.status}`;
@@ -223,7 +223,7 @@ function ResolveDialog({ report, onClose, onResolved }: ResolveDialogProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/community/reports/${report.id}/resolve`,
         {
           method: "POST",

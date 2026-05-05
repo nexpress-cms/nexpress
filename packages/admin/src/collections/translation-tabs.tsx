@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Globe, Loader2, Plus, Check } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 
 /**
@@ -60,8 +60,8 @@ export function TranslationTabs({
     setError(null);
     try {
       const [configRes, translationsRes] = await Promise.all([
-        nxFetch("/api/admin/i18n"),
-        nxFetch(
+        npFetch("/api/admin/i18n"),
+        npFetch(
           `/api/admin/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/translations`,
         ),
       ]);
@@ -92,7 +92,7 @@ export function TranslationTabs({
     setCreatingFor(locale);
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/translations`,
         {
           method: "POST",

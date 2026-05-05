@@ -21,7 +21,7 @@ import { POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 
 import { NextRequest } from "next/server";
 
-import type { NxReputationEvent } from "@nexpress/core";
+import type { NpReputationEvent } from "@nexpress/core";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -250,15 +250,15 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       );
 
       const db = await getTestDb();
-      const { nxAuditEvents } = await import("@nexpress/core");
+      const { npAuditEvents } = await import("@nexpress/core");
       const { and, eq } = await import("drizzle-orm");
       const audits = (await db
         .select()
-        .from(nxAuditEvents)
+        .from(npAuditEvents)
         .where(
           and(
-            eq(nxAuditEvents.action, "document.update"),
-            eq(nxAuditEvents.targetId, docId),
+            eq(npAuditEvents.action, "document.update"),
+            eq(npAuditEvents.targetId, docId),
           ),
         )) as Array<{ actorMemberId: string | null; targetType: string | null }>;
       expect(audits).toHaveLength(1);
@@ -403,7 +403,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
 
     it("fires `document.deleted` reputation event on owner delete", async () => {
       const core = await import("@nexpress/core");
-      const events: NxReputationEvent[] = [];
+      const events: NpReputationEvent[] = [];
       core.setReputationAdapter({
         apply: (event) => {
           events.push(event);
@@ -426,12 +426,12 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       expect(kinds).toEqual(["document.created", "document.deleted"]);
       // Net zero — adapter credited +5 on create, debited -5 on delete.
       const db = await getTestDb();
-      const { nxMembers } = await import("@nexpress/core");
+      const { npMembers } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const [row] = (await db
-        .select({ reputation: nxMembers.reputation })
-        .from(nxMembers)
-        .where(eq(nxMembers.id, member.memberId))
+        .select({ reputation: npMembers.reputation })
+        .from(npMembers)
+        .where(eq(npMembers.id, member.memberId))
         .limit(1)) as Array<{ reputation: number }>;
       expect(row.reputation).toBe(0);
     });
@@ -445,7 +445,7 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
     // not-yet-visible content.
     it("pending doc delete does NOT debit reputation (#126)", async () => {
       const core = await import("@nexpress/core");
-      const events: NxReputationEvent[] = [];
+      const events: NpReputationEvent[] = [];
       core.setReputationAdapter({
         apply: (event) => {
           events.push(event);
@@ -478,12 +478,12 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       expect(kinds).not.toContain("document.deleted");
 
       const db = await getTestDb();
-      const { nxMembers } = await import("@nexpress/core");
+      const { npMembers } = await import("@nexpress/core");
       const { eq } = await import("drizzle-orm");
       const [row] = (await db
-        .select({ reputation: nxMembers.reputation })
-        .from(nxMembers)
-        .where(eq(nxMembers.id, member.memberId))
+        .select({ reputation: npMembers.reputation })
+        .from(npMembers)
+        .where(eq(npMembers.id, member.memberId))
         .limit(1)) as Array<{ reputation: number }>;
       // No credit, no debit — net zero from the create+delete pair.
       expect(row.reputation).toBe(0);
@@ -501,15 +501,15 @@ describe.skipIf(skipIfNoTestDb())("member-write update + delete (Phase 9.7b)", (
       );
 
       const db = await getTestDb();
-      const { nxAuditEvents } = await import("@nexpress/core");
+      const { npAuditEvents } = await import("@nexpress/core");
       const { and, eq } = await import("drizzle-orm");
       const audits = (await db
         .select()
-        .from(nxAuditEvents)
+        .from(npAuditEvents)
         .where(
           and(
-            eq(nxAuditEvents.action, "document.delete"),
-            eq(nxAuditEvents.targetId, docId),
+            eq(npAuditEvents.action, "document.delete"),
+            eq(npAuditEvents.targetId, docId),
           ),
         )) as Array<{ actorMemberId: string | null }>;
       expect(audits).toHaveLength(1);

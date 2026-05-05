@@ -26,7 +26,7 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     await ensureFor("read");
   });
 
-  // Helper: hydrate the test session into an NxAuthUser so core
+  // Helper: hydrate the test session into an NpAuthUser so core
   // predicates that take `user` (canActorUseSite, etc.) can run.
   // Reads `name` + `tokenVersion` from the row the harness wrote
   // since `seedUser` only returns the JWT-facing slice.
@@ -36,13 +36,13 @@ describe.skipIf(skipIfNoTestDb())("site picker + memberships (Phase 15.6)", () =
     role: TestUserSession["role"];
   }) {
     const { getTestDb } = await import("./harness.js");
-    const { nxUsers } = await import("@nexpress/core");
+    const { npUsers } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const db = await getTestDb();
     const [row] = await db
-      .select({ name: nxUsers.name, tokenVersion: nxUsers.tokenVersion })
-      .from(nxUsers)
-      .where(eq(nxUsers.id, session.userId));
+      .select({ name: npUsers.name, tokenVersion: npUsers.tokenVersion })
+      .from(npUsers)
+      .where(eq(npUsers.id, session.userId));
     if (!row) throw new Error("seed user missing");
     return {
       id: session.userId,

@@ -1,8 +1,8 @@
 import sharp from "sharp";
 
-import type { NxImageSize } from "../config/types.js";
+import type { NpImageSize } from "../config/types.js";
 
-export interface NxProcessedImageVariant {
+export interface NpProcessedImageVariant {
   name: string;
   buffer: Buffer;
   width: number;
@@ -10,18 +10,18 @@ export interface NxProcessedImageVariant {
   size: number;
 }
 
-export interface NxProcessedImageSourceMetadata {
+export interface NpProcessedImageSourceMetadata {
   width: number | null;
   height: number | null;
   format: string | null;
 }
 
-export interface NxProcessedImageResult {
-  source: NxProcessedImageSourceMetadata;
-  variants: NxProcessedImageVariant[];
+export interface NpProcessedImageResult {
+  source: NpProcessedImageSourceMetadata;
+  variants: NpProcessedImageVariant[];
 }
 
-export const DEFAULT_IMAGE_SIZES: NxImageSize[] = [
+export const DEFAULT_IMAGE_SIZES: NpImageSize[] = [
   { name: "thumbnail", width: 300 },
   { name: "small", width: 600 },
   { name: "medium", width: 900 },
@@ -32,9 +32,9 @@ export const DEFAULT_IMAGE_SIZES: NxImageSize[] = [
 
 export async function processImage(
   inputBuffer: Buffer,
-  sizes: NxImageSize[],
+  sizes: NpImageSize[],
   options: { format?: string; quality?: number } = {},
-): Promise<NxProcessedImageResult> {
+): Promise<NpProcessedImageResult> {
   const format = options.format ?? "webp";
   const quality = options.quality ?? 80;
   const sourceImage = sharp(inputBuffer).autoOrient();
@@ -96,7 +96,7 @@ function applyFormat(
   }
 }
 
-function resolveCropPosition(crop?: NxImageSize["crop"]): sharp.Gravity | number {
+function resolveCropPosition(crop?: NpImageSize["crop"]): sharp.Gravity | number {
   switch (crop) {
     case "top":
       return "top";

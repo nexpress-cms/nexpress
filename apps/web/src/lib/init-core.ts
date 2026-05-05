@@ -76,9 +76,9 @@ function configureEmailOnce(): void {
  *                   through the pipeline or `uploadMedia` silently
  *                   drop their follow-up jobs and emails.
  */
-export type NxBootstrapIntent = "read" | "plugins" | "write";
+export type NpBootstrapIntent = "read" | "plugins" | "write";
 
-export async function ensureFor(intent: NxBootstrapIntent): Promise<void> {
+export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
   bootstrapEnsureCoreServices();
   if (intent === "read") return;
 

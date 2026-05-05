@@ -1,7 +1,7 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getActiveThemeId,
   getCurrentSiteId,
   getThemeById,
@@ -11,7 +11,7 @@ import {
 import { readJsonBody, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -36,12 +36,12 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("themes/active", "read");
+      throw new NpForbiddenError("themes/active", "read");
     }
     const activeId = await getActiveThemeId();
-    return nxSuccessResponse({ activeId });
+    return npSuccessResponse({ activeId });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -50,7 +50,7 @@ export async function PUT(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("themes/active", "update");
+      throw new NpForbiddenError("themes/active", "update");
     }
 
     const body = await readJsonBody(request);
@@ -59,12 +59,12 @@ export async function PUT(request: NextRequest) {
         ? (body as { id?: unknown }).id
         : undefined;
     if (typeof id !== "string" || id.length === 0) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: "Theme id is required" },
       ]);
     }
     if (!getThemeById(id)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "id",
           message: `Unknown theme '${id}'. Register it in nexpress.config.ts first.`,
@@ -94,9 +94,9 @@ export async function PUT(request: NextRequest) {
       // ignore — see comment above
     }
 
-    return nxSuccessResponse({ activeId: id });
+    return npSuccessResponse({ activeId: id });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

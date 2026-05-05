@@ -1,12 +1,12 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   getActiveThemeId,
   getRegisteredThemes,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "content.publish")) {
-      throw new NxForbiddenError("themes", "list");
+      throw new NpForbiddenError("themes", "list");
     }
     const themes = getRegisteredThemes();
     const activeId = await getActiveThemeId();
@@ -48,9 +48,9 @@ export async function GET(request: NextRequest) {
       author: theme.manifest.author,
       isActive: theme.manifest.id === effectiveActiveId,
     }));
-    return nxSuccessResponse({ docs });
+    return npSuccessResponse({ docs });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

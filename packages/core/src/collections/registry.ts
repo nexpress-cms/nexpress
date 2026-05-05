@@ -1,9 +1,9 @@
-import type { NxCollectionConfig } from "../config/types.js";
+import type { NpCollectionConfig } from "../config/types.js";
 
-import { NxNotFoundError } from "../errors.js";
+import { NpNotFoundError } from "../errors.js";
 
 export interface CollectionRegistration {
-  config: NxCollectionConfig;
+  config: NpCollectionConfig;
   table: unknown;
   childTables?: Record<string, unknown>;
   joinTables?: Record<string, unknown>;
@@ -14,7 +14,7 @@ const registry = new Map<string, CollectionRegistration>();
 export function registerCollection(
   slug: string,
   table: unknown,
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   opts?: { childTables?: Record<string, unknown>; joinTables?: Record<string, unknown> },
 ): void {
   registry.set(slug, {
@@ -25,7 +25,7 @@ export function registerCollection(
   });
 }
 
-export function getCollectionConfig(slug: string): NxCollectionConfig {
+export function getCollectionConfig(slug: string): NpCollectionConfig {
   return getCollectionRegistration(slug).config;
 }
 
@@ -37,7 +37,7 @@ export function getCollectionRegistration(slug: string): CollectionRegistration 
   const registration = registry.get(slug);
 
   if (!registration) {
-    throw new NxNotFoundError("collection", slug);
+    throw new NpNotFoundError("collection", slug);
   }
 
   return registration;

@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxSettings } from "../db/schema/system.js";
-import { NxValidationError } from "../errors.js";
+import { npSettings } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
 
 /**
  * Site-wide community settings, persisted in the generic `nx_settings`
@@ -25,14 +25,14 @@ import { NxValidationError } from "../errors.js";
  * member self-deleting their content would. Staff uploads are
  * never gated.
  */
-export interface NxMemberUploadQuota {
+export interface NpMemberUploadQuota {
   /** Max uploads in the trailing 24h window. `null` = unlimited. */
   perDay: number | null;
   /** Lifetime cap on non-deleted member uploads. `null` = unlimited. */
   total: number | null;
 }
 
-export interface NxCommunitySettings {
+export interface NpCommunitySettings {
   /**
    * Allow-list of reaction `kind` strings. Members can only add
    * reactions whose kind is in this list; values that pass the
@@ -47,11 +47,11 @@ export interface NxCommunitySettings {
    * invite-only flows turn this off and provision via admin tooling.
    */
   registrationEnabled: boolean;
-  /** Per-member upload limits. See `NxMemberUploadQuota`. */
-  memberUploadQuota: NxMemberUploadQuota;
+  /** Per-member upload limits. See `NpMemberUploadQuota`. */
+  memberUploadQuota: NpMemberUploadQuota;
 }
 
-export const DEFAULT_COMMUNITY_SETTINGS: NxCommunitySettings = {
+export const DEFAULT_COMMUNITY_SETTINGS: NpCommunitySettings = {
   reactionKinds: ["like"],
   registrationEnabled: true,
   memberUploadQuota: { perDay: null, total: null },
@@ -62,7 +62,7 @@ const KIND_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 const MAX_REACTION_KINDS = 32;
 const MAX_QUOTA_VALUE = 1_000_000;
 
-function mergeWithDefaults(stored: unknown): NxCommunitySettings {
+function mergeWithDefaults(stored: unknown): NpCommunitySettings {
   if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
     return { ...DEFAULT_COMMUNITY_SETTINGS };
   }
@@ -79,7 +79,7 @@ function mergeWithDefaults(stored: unknown): NxCommunitySettings {
   return { reactionKinds, registrationEnabled, memberUploadQuota };
 }
 
-function readQuota(raw: unknown): NxMemberUploadQuota {
+function readQuota(raw: unknown): NpMemberUploadQuota {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { ...DEFAULT_COMMUNITY_SETTINGS.memberUploadQuota };
   }
@@ -95,15 +95,15 @@ function readQuota(raw: unknown): NxMemberUploadQuota {
   return { perDay, total };
 }
 
-export async function getCommunitySettings(): Promise<NxCommunitySettings> {
+export async function getCommunitySettings(): Promise<NpCommunitySettings> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const { getCurrentSiteId } = await import("../sites/context.js");
   const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select()
-    .from(nxSettings)
-    .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, SETTINGS_KEY)))
+    .from(npSettings)
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, SETTINGS_KEY)))
     .limit(1)) as Array<{ value: unknown }>;
   return mergeWithDefaults(row?.value);
 }
@@ -111,20 +111,20 @@ export async function getCommunitySettings(): Promise<NxCommunitySettings> {
 /**
  * Validates an incoming partial patch from the admin UI. Returns the
  * fully-merged settings object that should be persisted. Throws
- * `NxValidationError` with field-level errors on any malformed input.
+ * `NpValidationError` with field-level errors on any malformed input.
  */
 export function validateCommunitySettingsPatch(
-  current: NxCommunitySettings,
+  current: NpCommunitySettings,
   patch: unknown,
-): NxCommunitySettings {
+): NpCommunitySettings {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Body must be a JSON object" },
     ]);
   }
   const raw = patch as Record<string, unknown>;
   const errors: Array<{ field: string; message: string }> = [];
-  let next: NxCommunitySettings = { ...current };
+  let next: NpCommunitySettings = { ...current };
 
   if ("reactionKinds" in raw) {
     if (!Array.isArray(raw.reactionKinds)) {
@@ -214,14 +214,14 @@ export function validateCommunitySettingsPatch(
     }
   }
 
-  if (errors.length > 0) throw new NxValidationError("Invalid input", errors);
+  if (errors.length > 0) throw new NpValidationError("Invalid input", errors);
   return next;
 }
 
 export async function updateCommunitySettings(
   patch: unknown,
   updatedBy: string | null,
-): Promise<NxCommunitySettings> {
+): Promise<NpCommunitySettings> {
   const current = await getCommunitySettings();
   const next = validateCommunitySettingsPatch(current, patch);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
@@ -232,7 +232,7 @@ export async function updateCommunitySettings(
   const { requireSiteId } = await import("../sites/context.js");
   const siteId = await requireSiteId();
   await db
-    .insert(nxSettings)
+    .insert(npSettings)
     .values({
       siteId,
       key: SETTINGS_KEY,
@@ -241,7 +241,7 @@ export async function updateCommunitySettings(
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: [nxSettings.siteId, nxSettings.key],
+      target: [npSettings.siteId, npSettings.key],
       set: {
         value: next,
         updatedBy: updatedBy ?? null,

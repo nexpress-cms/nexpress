@@ -2,7 +2,7 @@ import { fileReport } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
       targetId,
       reason,
     });
-    return nxSuccessResponse(row, { status: 201 });
+    return npSuccessResponse(row, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

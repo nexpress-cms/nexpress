@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 
 export interface DashboardPluginWidget {
@@ -23,7 +23,7 @@ interface DashboardPluginWidgetsProps {
 type ActionResult = { ok: boolean; data?: unknown; error?: string };
 
 async function dispatch(pluginId: string, actionId: string): Promise<ActionResult> {
-  const response = await nxFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
+  const response = await npFetch(`/api/plugins/${pluginId}/actions/${actionId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "",

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { nxPlugins } from "../db/schema/system.js";
+import { npPlugins } from "../db/schema/system.js";
 import {
   getPluginState,
   listPluginStates,
@@ -72,7 +72,7 @@ describe.skipIf(skipIfNoTestDb())("plugin persistence (integration)", () => {
 
   it("getPluginState reads back the persisted row shape", async () => {
     const db = await getTestDb();
-    await db.insert(nxPlugins).values({
+    await db.insert(npPlugins).values({
       id: "delta",
       enabled: false,
       config: { theme: "dark" },
@@ -87,7 +87,7 @@ describe.skipIf(skipIfNoTestDb())("plugin persistence (integration)", () => {
     expect(state?.installedAt).toBeInstanceOf(Date);
 
     // Sanity: direct SELECT yields the same row
-    const [raw] = await db.select().from(nxPlugins).where(eq(nxPlugins.id, "delta"));
+    const [raw] = await db.select().from(npPlugins).where(eq(npPlugins.id, "delta"));
     expect(raw?.id).toBe("delta");
   });
 });

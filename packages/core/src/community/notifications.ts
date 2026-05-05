@@ -2,8 +2,8 @@ import { and, count, desc, eq, isNull, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxNotifications } from "../db/schema/community.js";
-import { NxForbiddenError, NxValidationError } from "../errors.js";
+import { npNotifications } from "../db/schema/community.js";
+import { NpForbiddenError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -21,7 +21,7 @@ import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
  * to whichever rendering it knows.
  */
 
-export interface NxNotificationRow {
+export interface NpNotificationRow {
   id: string;
   memberId: string;
   kind: string;
@@ -51,7 +51,7 @@ export interface CreateNotificationInput {
 
 export async function createNotification(
   input: CreateNotificationInput,
-): Promise<NxNotificationRow | null> {
+): Promise<NpNotificationRow | null> {
   // Mute check — defer the import to avoid a notifications →
   // mutes circular at module load. Mutes module imports
   // nothing back from here, but TypeScript sometimes flags
@@ -85,14 +85,14 @@ export async function createNotification(
   // default tenant.
   const siteId = await requireSiteId();
   const [row] = (await db
-    .insert(nxNotifications)
+    .insert(npNotifications)
     .values({
       memberId: input.memberId,
       kind: input.kind,
       payload: input.payload ?? {},
       siteId,
     })
-    .returning()) as NxNotificationRow[];
+    .returning()) as NpNotificationRow[];
   if (!row) throw new Error("Notification insert returned no row");
   return row;
 }
@@ -106,8 +106,8 @@ export interface ListNotificationsOptions {
   unreadOnly?: boolean;
 }
 
-export interface NxNotificationListResult {
-  notifications: NxNotificationRow[];
+export interface NpNotificationListResult {
+  notifications: NpNotificationRow[];
   totalDocs: number;
   unread: number;
 }
@@ -115,7 +115,7 @@ export interface NxNotificationListResult {
 export async function listNotifications(
   memberId: string,
   options: ListNotificationsOptions = {},
-): Promise<NxNotificationListResult> {
+): Promise<NpNotificationListResult> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
@@ -123,26 +123,26 @@ export async function listNotifications(
   // Phase 18 — inbox is per-site. A member who's active on
   // multiple tenants sees a separate notification list on each.
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
-  const baseWhere = and(eq(nxNotifications.memberId, memberId), eq(nxNotifications.siteId, siteId));
-  const where = options.unreadOnly ? and(baseWhere, isNull(nxNotifications.readAt)) : baseWhere;
+  const baseWhere = and(eq(npNotifications.memberId, memberId), eq(npNotifications.siteId, siteId));
+  const where = options.unreadOnly ? and(baseWhere, isNull(npNotifications.readAt)) : baseWhere;
 
   const rows = (await db
     .select()
-    .from(nxNotifications)
+    .from(npNotifications)
     .where(where)
-    .orderBy(desc(nxNotifications.createdAt))
+    .orderBy(desc(npNotifications.createdAt))
     .limit(limit)
-    .offset(offset)) as NxNotificationRow[];
+    .offset(offset)) as NpNotificationRow[];
 
   const [totalRow] = (await db
     .select({ total: count() })
-    .from(nxNotifications)
+    .from(npNotifications)
     .where(where)) as Array<{ total: number | string }>;
 
   const [unreadRow] = (await db
     .select({ total: count() })
-    .from(nxNotifications)
-    .where(and(baseWhere, isNull(nxNotifications.readAt)))) as Array<{
+    .from(npNotifications)
+    .where(and(baseWhere, isNull(npNotifications.readAt)))) as Array<{
     total: number | string;
   }>;
 
@@ -159,12 +159,12 @@ export async function unreadNotificationCount(memberId: string): Promise<number>
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })
-    .from(nxNotifications)
+    .from(npNotifications)
     .where(
       and(
-        eq(nxNotifications.memberId, memberId),
-        eq(nxNotifications.siteId, siteId),
-        isNull(nxNotifications.readAt),
+        eq(npNotifications.memberId, memberId),
+        eq(npNotifications.siteId, siteId),
+        isNull(npNotifications.readAt),
       ),
     )) as Array<{ total: number | string }>;
   return Number(row?.total ?? 0);
@@ -178,7 +178,7 @@ export interface MarkReadInput {
 export async function markNotificationsRead(input: MarkReadInput): Promise<number> {
   if (input.notificationIds.length === 0) return 0;
   if (input.notificationIds.length > 200) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "notificationIds", message: "Up to 200 ids per request" },
     ]);
   }
@@ -194,17 +194,17 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
   // #272 — write: must NOT silently fall through.
   const siteId = await requireSiteId();
   const updated = (await db
-    .update(nxNotifications)
+    .update(npNotifications)
     .set({ readAt: new Date() })
     .where(
       and(
-        eq(nxNotifications.memberId, input.memberId),
-        eq(nxNotifications.siteId, siteId),
-        inArray(nxNotifications.id, input.notificationIds),
-        isNull(nxNotifications.readAt),
+        eq(npNotifications.memberId, input.memberId),
+        eq(npNotifications.siteId, siteId),
+        inArray(npNotifications.id, input.notificationIds),
+        isNull(npNotifications.readAt),
       ),
     )
-    .returning({ id: nxNotifications.id })) as Array<{ id: string }>;
+    .returning({ id: npNotifications.id })) as Array<{ id: string }>;
   return updated.length;
 }
 
@@ -217,13 +217,13 @@ export async function markAllNotificationsRead(memberId: string): Promise<number
   const siteId = await requireSiteId();
   const before = await unreadNotificationCount(memberId);
   await db
-    .update(nxNotifications)
+    .update(npNotifications)
     .set({ readAt: new Date() })
     .where(
       and(
-        eq(nxNotifications.memberId, memberId),
-        eq(nxNotifications.siteId, siteId),
-        isNull(nxNotifications.readAt),
+        eq(npNotifications.memberId, memberId),
+        eq(npNotifications.siteId, siteId),
+        isNull(npNotifications.readAt),
       ),
     );
   return before;
@@ -240,11 +240,11 @@ export async function assertOwnsNotification(
 ): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
-    .select({ memberId: nxNotifications.memberId })
-    .from(nxNotifications)
-    .where(eq(nxNotifications.id, notificationId))
+    .select({ memberId: npNotifications.memberId })
+    .from(npNotifications)
+    .where(eq(npNotifications.id, notificationId))
     .limit(1)) as Array<{ memberId: string }>;
   if (!row || row.memberId !== memberId) {
-    throw new NxForbiddenError("notification", "read");
+    throw new NpForbiddenError("notification", "read");
   }
 }

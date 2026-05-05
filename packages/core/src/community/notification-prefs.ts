@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxMembers } from "../db/schema/community.js";
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { npMembers } from "../db/schema/community.js";
+import { NpNotFoundError, NpValidationError } from "../errors.js";
 
 /**
  * Phase 16.3 — per-member notification preferences.
@@ -22,7 +22,7 @@ import { NxNotFoundError, NxValidationError } from "../errors.js";
  * forged client can't disable arbitrary strings to bloat the JSONB).
  */
 
-export interface NxNotificationKindMeta {
+export interface NpNotificationKindMeta {
   kind: string;
   /** Short human label. */
   label: string;
@@ -35,7 +35,7 @@ export interface NxNotificationKindMeta {
  * land here when they ship; plugins that want their own
  * preferences register entries via `registerNotificationKind`.
  */
-const builtinKinds: NxNotificationKindMeta[] = [
+const builtinKinds: NpNotificationKindMeta[] = [
   {
     kind: "comment.reply",
     label: "Replies",
@@ -63,10 +63,10 @@ const builtinKinds: NxNotificationKindMeta[] = [
   },
 ];
 
-const dynamicKinds: NxNotificationKindMeta[] = [];
+const dynamicKinds: NpNotificationKindMeta[] = [];
 
 /** Plugin-extensible registration. Idempotent on `kind`. */
-export function registerNotificationKind(meta: NxNotificationKindMeta): void {
+export function registerNotificationKind(meta: NpNotificationKindMeta): void {
   if (builtinKinds.some((k) => k.kind === meta.kind)) return;
   const idx = dynamicKinds.findIndex((k) => k.kind === meta.kind);
   if (idx >= 0) {
@@ -77,15 +77,15 @@ export function registerNotificationKind(meta: NxNotificationKindMeta): void {
 }
 
 /** Returns the union of builtin + plugin-registered kinds. */
-export function listNotificationKinds(): NxNotificationKindMeta[] {
+export function listNotificationKinds(): NpNotificationKindMeta[] {
   return [...builtinKinds, ...dynamicKinds];
 }
 
-export type NxDigestCadence = "off" | "daily" | "weekly";
+export type NpDigestCadence = "off" | "daily" | "weekly";
 
-const DIGEST_CADENCES: readonly NxDigestCadence[] = ["off", "daily", "weekly"] as const;
+const DIGEST_CADENCES: readonly NpDigestCadence[] = ["off", "daily", "weekly"] as const;
 
-export interface NxNotificationPrefs {
+export interface NpNotificationPrefs {
   /** Kinds the member opted out of. Empty / missing = all kinds enabled. */
   disabled: string[];
   /**
@@ -94,7 +94,7 @@ export interface NxNotificationPrefs {
    * batched email of unread notifications, scheduled by the
    * `notifications:sendDigest` recurring job.
    */
-  digest: NxDigestCadence;
+  digest: NpDigestCadence;
   /**
    * Set when the digest sweep last sent an email to this member.
    * Used to scope each digest to "unread since the last send" so
@@ -115,18 +115,18 @@ export interface NxNotificationPrefs {
    * the member has never received a digest under the site-scoped
    * sweep.
    */
-  lastDigestAtBySite: Record<string, Partial<Record<NxDigestCadence, string>>>;
+  lastDigestAtBySite: Record<string, Partial<Record<NpDigestCadence, string>>>;
 }
 
-const EMPTY_PREFS: NxNotificationPrefs = {
+const EMPTY_PREFS: NpNotificationPrefs = {
   disabled: [],
   digest: "off",
   lastDigestAt: null,
   lastDigestAtBySite: {},
 };
 
-function normalizeDigest(raw: unknown): NxDigestCadence {
-  return DIGEST_CADENCES.includes(raw as NxDigestCadence) ? (raw as NxDigestCadence) : "off";
+function normalizeDigest(raw: unknown): NpDigestCadence {
+  return DIGEST_CADENCES.includes(raw as NpDigestCadence) ? (raw as NpDigestCadence) : "off";
 }
 
 function normalizeLastDigestAt(raw: unknown): string | null {
@@ -135,16 +135,16 @@ function normalizeLastDigestAt(raw: unknown): string | null {
 
 function normalizeLastDigestBySite(
   raw: unknown,
-): Record<string, Partial<Record<NxDigestCadence, string>>> {
+): Record<string, Partial<Record<NpDigestCadence, string>>> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, Partial<Record<NxDigestCadence, string>>> = {};
+  const out: Record<string, Partial<Record<NpDigestCadence, string>>> = {};
   for (const [siteId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-    const inner: Partial<Record<NxDigestCadence, string>> = {};
+    const inner: Partial<Record<NpDigestCadence, string>> = {};
     for (const [cadence, ts] of Object.entries(value as Record<string, unknown>)) {
-      if (!DIGEST_CADENCES.includes(cadence as NxDigestCadence)) continue;
+      if (!DIGEST_CADENCES.includes(cadence as NpDigestCadence)) continue;
       if (typeof ts === "string" && ts.length > 0) {
-        inner[cadence as NxDigestCadence] = ts;
+        inner[cadence as NpDigestCadence] = ts;
       }
     }
     if (Object.keys(inner).length > 0) out[siteId] = inner;
@@ -152,7 +152,7 @@ function normalizeLastDigestBySite(
   return out;
 }
 
-function normalizePrefs(raw: unknown): NxNotificationPrefs {
+function normalizePrefs(raw: unknown): NpNotificationPrefs {
   if (!raw || typeof raw !== "object") return { ...EMPTY_PREFS, lastDigestAtBySite: {} };
   const obj = raw as Record<string, unknown>;
   const disabled = Array.isArray(obj.disabled)
@@ -166,14 +166,14 @@ function normalizePrefs(raw: unknown): NxNotificationPrefs {
   };
 }
 
-export async function getMemberNotificationPrefs(memberId: string): Promise<NxNotificationPrefs> {
+export async function getMemberNotificationPrefs(memberId: string): Promise<NpNotificationPrefs> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
-    .select({ prefs: nxMembers.notificationPrefs })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, memberId))
+    .select({ prefs: npMembers.notificationPrefs })
+    .from(npMembers)
+    .where(eq(npMembers.id, memberId))
     .limit(1)) as Array<{ prefs: Record<string, unknown> }>;
-  if (!row) throw new NxNotFoundError("member", memberId);
+  if (!row) throw new NpNotFoundError("member", memberId);
   return normalizePrefs(row.prefs);
 }
 
@@ -182,7 +182,7 @@ export interface SetMemberNotificationPrefsInput {
   /**
    * Replacement deny-list. Only kinds listed in
    * `listNotificationKinds()` are accepted; unknown strings
-   * raise NxValidationError so a forged client can't bloat the
+   * raise NpValidationError so a forged client can't bloat the
    * JSONB or hide future framework kinds via a stale list.
    * Optional — when omitted the existing list is preserved.
    */
@@ -192,12 +192,12 @@ export interface SetMemberNotificationPrefsInput {
    * the existing setting is preserved. `off` clears the
    * member's enrollment.
    */
-  digest?: NxDigestCadence;
+  digest?: NpDigestCadence;
 }
 
 export async function setMemberNotificationPrefs(
   input: SetMemberNotificationPrefsInput,
-): Promise<NxNotificationPrefs> {
+): Promise<NpNotificationPrefs> {
   const known = new Set(listNotificationKinds().map((k) => k.kind));
   let cleanedDisabled: string[] | undefined;
   if (input.disabled !== undefined) {
@@ -205,12 +205,12 @@ export async function setMemberNotificationPrefs(
     const seen = new Set<string>();
     for (const raw of input.disabled) {
       if (typeof raw !== "string") {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "disabled", message: "Each entry must be a string" },
         ]);
       }
       if (!known.has(raw)) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "disabled", message: `Unknown notification kind: ${raw}` },
         ]);
       }
@@ -220,7 +220,7 @@ export async function setMemberNotificationPrefs(
     }
   }
   if (input.digest !== undefined && !DIGEST_CADENCES.includes(input.digest)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "digest",
         message: `digest must be one of: ${DIGEST_CADENCES.join(", ")}`,
@@ -232,20 +232,20 @@ export async function setMemberNotificationPrefs(
   // Read-then-merge so we don't clobber other JSONB keys
   // (lastDigestAt, future channel toggles, etc.).
   const [existing] = (await db
-    .select({ prefs: nxMembers.notificationPrefs })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, input.memberId))
+    .select({ prefs: npMembers.notificationPrefs })
+    .from(npMembers)
+    .where(eq(npMembers.id, input.memberId))
     .limit(1)) as Array<{ prefs: Record<string, unknown> }>;
-  if (!existing) throw new NxNotFoundError("member", input.memberId);
+  if (!existing) throw new NpNotFoundError("member", input.memberId);
 
   const merged: Record<string, unknown> = { ...(existing.prefs ?? {}) };
   if (cleanedDisabled !== undefined) merged.disabled = cleanedDisabled;
   if (input.digest !== undefined) merged.digest = input.digest;
 
   await db
-    .update(nxMembers)
+    .update(npMembers)
     .set({ notificationPrefs: merged, updatedAt: new Date() })
-    .where(eq(nxMembers.id, input.memberId));
+    .where(eq(npMembers.id, input.memberId));
 
   return normalizePrefs(merged);
 }
@@ -266,13 +266,13 @@ export async function setMemberNotificationPrefs(
 export async function recordDigestSent(
   memberId: string,
   sentAt: Date,
-  scope?: { siteId: string; cadence: NxDigestCadence },
+  scope?: { siteId: string; cadence: NpDigestCadence },
 ): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
-    .select({ prefs: nxMembers.notificationPrefs })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, memberId))
+    .select({ prefs: npMembers.notificationPrefs })
+    .from(npMembers)
+    .where(eq(npMembers.id, memberId))
     .limit(1)) as Array<{ prefs: Record<string, unknown> }>;
   if (!existing) return;
   const prior = existing.prefs ?? {};
@@ -289,9 +289,9 @@ export async function recordDigestSent(
     merged.lastDigestAtBySite = { ...priorBySite, [scope.siteId]: siteSlot };
   }
   await db
-    .update(nxMembers)
+    .update(npMembers)
     .set({ notificationPrefs: merged, updatedAt: new Date() })
-    .where(eq(nxMembers.id, memberId));
+    .where(eq(npMembers.id, memberId));
 }
 
 /**

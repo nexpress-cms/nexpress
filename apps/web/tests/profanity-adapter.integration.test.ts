@@ -38,11 +38,11 @@ async function seedActiveMember(
 }
 
 async function seedStaffPost(): Promise<string> {
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({
       email: "prof-staff@example.com",
       password,
@@ -50,10 +50,10 @@ async function seedStaffPost(): Promise<string> {
       role: "editor",
     })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{
     id: string;
     email: string;
@@ -152,12 +152,12 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     expect(body.body.status).toBe("pending");
 
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
-      .where(eq(nxAuditEvents.action, "comment.flag"))) as Array<{
+      .from(npAuditEvents)
+      .where(eq(npAuditEvents.action, "comment.flag"))) as Array<{
       payload: Record<string, unknown>;
     }>;
     expect(audits).toHaveLength(1);
@@ -299,12 +299,12 @@ describe.skipIf(skipIfNoTestDb())("profanity adapter (integration)", () => {
     expect(created.status).toBe(201);
 
     const db = await getTestDb();
-    const { nxAuditEvents } = await import("@nexpress/core");
+    const { npAuditEvents } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const audits = (await db
       .select()
-      .from(nxAuditEvents)
-      .where(eq(nxAuditEvents.action, "comment.flag"))) as Array<{
+      .from(npAuditEvents)
+      .where(eq(npAuditEvents.action, "comment.flag"))) as Array<{
       payload: Record<string, unknown>;
     }>;
     expect(audits).toHaveLength(1);

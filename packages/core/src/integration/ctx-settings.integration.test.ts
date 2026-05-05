@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { nxPlugins, nxSettings } from "../db/schema/system.js";
+import { npPlugins, npSettings } from "../db/schema/system.js";
 import { createPluginRuntimeContext } from "../plugins/context.js";
 import {
   closeTestDb,
@@ -49,14 +49,14 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     };
   }
 
-  it("settings.getSite returns {} when nxSettings has no site row", async () => {
+  it("settings.getSite returns {} when npSettings has no site row", async () => {
     const ctx = makeCtx();
     expect(await ctx.settings.getSite()).toEqual({});
   });
 
   it("settings.getSite returns the stored value when a site row exists", async () => {
     const db = await getTestDb();
-    await db.insert(nxSettings).values({
+    await db.insert(npSettings).values({
       key: "site",
       value: { name: "Acme", description: "A site" },
     });
@@ -64,10 +64,10 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     expect(await ctx.settings.getSite()).toEqual({ name: "Acme", description: "A site" });
   });
 
-  it("settings.getPlugin/setPlugin round-trip the nxPlugins config", async () => {
+  it("settings.getPlugin/setPlugin round-trip the npPlugins config", async () => {
     const db = await getTestDb();
     // seed the plugin row because setPlugin updates, not insert
-    await db.insert(nxPlugins).values({
+    await db.insert(npPlugins).values({
       id: "test-plugin",
       enabled: true,
       config: {},
@@ -100,7 +100,7 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     await ctx.theme.setTokens({ c: 3 });
 
     const db = await getTestDb();
-    const rows = await db.select().from(nxSettings);
+    const rows = await db.select().from(npSettings);
     expect(rows.filter((r) => r.key === "theme")).toHaveLength(1);
   });
 

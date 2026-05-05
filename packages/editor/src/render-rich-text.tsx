@@ -1,6 +1,6 @@
 import React from "react";
 
-import type { NxRichTextContent } from "./types.js";
+import type { NpRichTextContent } from "./types.js";
 
 const IS_BOLD = 1;
 const IS_ITALIC = 2;
@@ -182,8 +182,8 @@ function renderNode(node: RichTextNode, key: string): React.ReactNode | null {
   }
 }
 
-export function renderRichText(content: NxRichTextContent): React.ReactElement | null;
-export function renderRichText(content: NxRichTextContent | null | undefined): React.ReactElement | null {
+export function renderRichText(content: NpRichTextContent): React.ReactElement | null;
+export function renderRichText(content: NpRichTextContent | null | undefined): React.ReactElement | null {
   if (!content) {
     return null;
   }

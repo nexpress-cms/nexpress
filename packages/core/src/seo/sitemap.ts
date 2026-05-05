@@ -10,7 +10,7 @@ import { getI18nConfig } from "../i18n/registry.js";
  * news-sitemap or video-sitemap variant can reuse the same
  * collection walk.
  */
-export interface NxSitemapEntry {
+export interface NpSitemapEntry {
   /** Path-only — host is prepended by the consumer. Always starts with `/`. */
   loc: string;
   /** ISO timestamp for `<lastmod>`. Falls back to `updatedAt` then `createdAt`. */
@@ -63,7 +63,7 @@ export interface BuildSitemapOptions {
  * (typically a per-locale sitemap). The `loc` is path-only; the
  * renderer prepends the absolute origin.
  */
-export interface NxSitemapIndexEntry {
+export interface NpSitemapIndexEntry {
   loc: string;
   /** Optional ISO timestamp for `<lastmod>` on the child sitemap. */
   lastmod?: string;
@@ -74,7 +74,7 @@ const DEFAULT_LIMIT_PER_COLLECTION = 5_000;
 /**
  * Walks every registered collection that opts into the sitemap
  * via `seo.urlPath`, queries published documents, and emits a
- * flat list of `NxSitemapEntry` rows. Anonymous read access is
+ * flat list of `NpSitemapEntry` rows. Anonymous read access is
  * required — `findDocuments(slug, opts, undefined)` runs the
  * collection's `access.read` callback with no user. Collections
  * that gate reads (admin-only, member-only) won't surface in the
@@ -87,10 +87,10 @@ const DEFAULT_LIMIT_PER_COLLECTION = 5_000;
  */
 export async function buildSitemap(
   options: BuildSitemapOptions = {},
-): Promise<NxSitemapEntry[]> {
+): Promise<NpSitemapEntry[]> {
   const limit = options.perCollectionLimit ?? DEFAULT_LIMIT_PER_COLLECTION;
   const slugs = options.collections ?? getAllCollectionSlugs();
-  const entries: NxSitemapEntry[] = [];
+  const entries: NpSitemapEntry[] = [];
   const i18n = getI18nConfig();
   const localeFilter = options.locale;
 
@@ -237,7 +237,7 @@ function pickLastmod(doc: Record<string, unknown>): string | undefined {
 }
 
 /**
- * Renders an `NxSitemapEntry[]` plus the absolute host into an
+ * Renders an `NpSitemapEntry[]` plus the absolute host into an
  * XML body suitable for `Content-Type: application/xml`. The
  * loc path is URL-joined with the host without double-slashes;
  * the host should NOT have a trailing slash. The output is
@@ -245,7 +245,7 @@ function pickLastmod(doc: Record<string, unknown>): string | undefined {
  */
 export function renderSitemapXml(
   origin: string,
-  entries: NxSitemapEntry[],
+  entries: NpSitemapEntry[],
 ): string {
   const trimmed = origin.replace(/\/+$/, "");
   const usesAlternates = entries.some(
@@ -295,7 +295,7 @@ export function renderSitemapXml(
  */
 export function renderSitemapIndexXml(
   origin: string,
-  entries: NxSitemapIndexEntry[],
+  entries: NpSitemapIndexEntry[],
 ): string {
   const trimmed = origin.replace(/\/+$/, "");
   const lines: string[] = [

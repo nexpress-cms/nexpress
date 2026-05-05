@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
-import { nxUsers } from "@nexpress/core";
+import { npUsers } from "@nexpress/core";
 
 import { getDb } from "@/lib/bootstrap";
 
@@ -21,8 +21,8 @@ export default async function SetupPage() {
   const db = getDb();
   const rows = await db
     .select({ value: count() })
-    .from(nxUsers)
-    .where(eq(nxUsers.role, "admin"));
+    .from(npUsers)
+    .where(eq(npUsers.role, "admin"));
   const adminCount = rows[0]?.value ?? 0;
   if (adminCount > 0) redirect("/admin/login");
 

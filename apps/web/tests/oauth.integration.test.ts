@@ -136,19 +136,19 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     expect(bookkeeping.exchangeCalls).toBe(1);
 
     const db = await getTestDb();
-    const { nxUsers, nxUserOAuthIdentities } = await import("@nexpress/core");
+    const { npUsers, npUserOAuthIdentities } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [user] = (await db
-      .select({ id: nxUsers.id, role: nxUsers.role })
-      .from(nxUsers)
-      .where(eq(nxUsers.email, "fresh@example.com"))
+      .select({ id: npUsers.id, role: npUsers.role })
+      .from(npUsers)
+      .where(eq(npUsers.email, "fresh@example.com"))
       .limit(1)) as Array<{ id: string; role: string }>;
     expect(user).toBeDefined();
     expect(user.role).toBe("viewer");
     const links = (await db
       .select()
-      .from(nxUserOAuthIdentities)
-      .where(eq(nxUserOAuthIdentities.userId, user.id))) as Array<unknown>;
+      .from(npUserOAuthIdentities)
+      .where(eq(npUserOAuthIdentities.userId, user.id))) as Array<unknown>;
     expect(links).toHaveLength(1);
   });
 
@@ -157,8 +157,8 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     const id = await registerStub(bookkeeping, { profileEmail: "existing@example.com" });
 
     const db = await getTestDb();
-    const { hashPassword, nxUsers } = await import("@nexpress/core");
-    await db.insert(nxUsers).values({
+    const { hashPassword, npUsers } = await import("@nexpress/core");
+    await db.insert(npUsers).values({
       email: "existing@example.com",
       password: await hashPassword("password-12"),
       name: "Existing",
@@ -179,7 +179,7 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     expect(callback.status).toBe(307);
 
     const { eq } = await import("drizzle-orm");
-    const all = (await db.select().from(nxUsers).where(eq(nxUsers.email, "existing@example.com"))) as Array<unknown>;
+    const all = (await db.select().from(npUsers).where(eq(npUsers.email, "existing@example.com"))) as Array<unknown>;
     expect(all).toHaveLength(1); // no duplicate user created
   });
 
@@ -246,12 +246,12 @@ describe.skipIf(skipIfNoTestDb())("oauth (integration)", () => {
     await runOnce();
 
     const db = await getTestDb();
-    const { nxUserOAuthIdentities } = await import("@nexpress/core");
+    const { npUserOAuthIdentities } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const links = (await db
       .select()
-      .from(nxUserOAuthIdentities)
-      .where(eq(nxUserOAuthIdentities.provider, id))) as Array<unknown>;
+      .from(npUserOAuthIdentities)
+      .where(eq(npUserOAuthIdentities.provider, id))) as Array<unknown>;
     expect(links).toHaveLength(1);
   });
 });

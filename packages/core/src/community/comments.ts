@@ -4,8 +4,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDocumentById } from "../collections/pipeline.js";
 import { getDb } from "../db/runtime.js";
-import { nxComments, nxMembers, nxReactions } from "../db/schema/community.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { npComments, npMembers, npReactions } from "../db/schema/community.js";
+import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 
 import { getLogger } from "../observability/logger.js";
 
@@ -36,7 +36,7 @@ const MAX_BODY_LENGTH = 5000;
 
 export type CommentStatus = "visible" | "pending" | "hidden" | "deleted";
 
-export interface NxCommentRow {
+export interface NpCommentRow {
   id: string;
   targetType: string;
   targetId: string;
@@ -61,7 +61,7 @@ export interface NxCommentRow {
   authorStatus?: string | null;
 }
 
-export interface NxCommentCreateInput {
+export interface NpCommentCreateInput {
   targetType: string;
   targetId: string;
   parentId?: string | null;
@@ -72,7 +72,7 @@ export interface NxCommentCreateInput {
 function assertCollectionAcceptsComments(slug: string): void {
   const config = getCollectionConfig(slug);
   if (!config.community?.comments) {
-    throw new NxValidationError("Comments disabled", [
+    throw new NpValidationError("Comments disabled", [
       {
         field: "collection",
         message: `Collection "${slug}" does not accept comments. Set community.comments=true on the collection config.`,
@@ -84,12 +84,12 @@ function assertCollectionAcceptsComments(slug: string): void {
 function validateBody(bodyMd: string): void {
   const trimmed = bodyMd.trim();
   if (trimmed.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "bodyMd", message: "Comment body required" },
     ]);
   }
   if (trimmed.length > MAX_BODY_LENGTH) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "bodyMd", message: `Comment body must be ≤ ${MAX_BODY_LENGTH} characters` },
     ]);
   }
@@ -103,7 +103,7 @@ function commentScopes(row: { targetType: string }): Array<{ type: "collection";
   return [{ type: "collection", id: row.targetType }];
 }
 
-export async function createComment(input: NxCommentCreateInput): Promise<NxCommentRow> {
+export async function createComment(input: NpCommentCreateInput): Promise<NpCommentRow> {
   validateBody(input.bodyMd);
   assertCollectionAcceptsComments(input.targetType);
 
@@ -119,7 +119,7 @@ export async function createComment(input: NxCommentCreateInput): Promise<NxComm
   );
 }
 
-async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRow> {
+async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRow> {
   // Target document must actually exist. Without this guard, members
   // could insert orphan comment rows under random UUIDs for any
   // comment-enabled collection (#49). We use the public read path
@@ -128,7 +128,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
   // be filtered out of the rendered site anyway.
   const targetDoc = await getDocumentById(input.targetType, input.targetId);
   if (!targetDoc) {
-    throw new NxNotFoundError(input.targetType, input.targetId);
+    throw new NpNotFoundError(input.targetType, input.targetId);
   }
 
   // Issue #215 — reject cross-tenant writes. A member on site A
@@ -143,7 +143,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
     typeof targetDoc.siteId === "string" &&
     targetDoc.siteId !== requestSiteId
   ) {
-    throw new NxForbiddenError("comment", "cross-site");
+    throw new NpForbiddenError("comment", "cross-site");
   }
 
   // Forum-style "locked" guard: collections that opted into a `locked`
@@ -152,7 +152,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
   // level, not the collection level — different threads in the same
   // collection can be locked independently. (#47)
   if (targetDoc.locked === true) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "This thread is locked and does not accept new comments." },
     ]);
   }
@@ -175,14 +175,14 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
   if (input.parentId) {
     const [parent] = (await db
       .select({
-        id: nxComments.id,
-        targetType: nxComments.targetType,
-        targetId: nxComments.targetId,
-        memberId: nxComments.memberId,
-        status: nxComments.status,
+        id: npComments.id,
+        targetType: npComments.targetType,
+        targetId: npComments.targetId,
+        memberId: npComments.memberId,
+        status: npComments.status,
       })
-      .from(nxComments)
-      .where(eq(nxComments.id, input.parentId))
+      .from(npComments)
+      .where(eq(npComments.id, input.parentId))
       .limit(1)) as Array<{
       id: string;
       targetType: string;
@@ -191,15 +191,15 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
       status: CommentStatus;
     }>;
     if (!parent) {
-      throw new NxNotFoundError("comment", input.parentId);
+      throw new NpNotFoundError("comment", input.parentId);
     }
     if (parent.targetType !== input.targetType || parent.targetId !== input.targetId) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "parentId", message: "Parent comment belongs to a different document" },
       ]);
     }
     if (parent.status !== "visible") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "parentId",
           message: `Cannot reply to a comment with status '${parent.status}'`,
@@ -237,7 +237,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
     profanityVerdict = { kind: "pass" as const };
   }
   if (profanityVerdict.kind === "reject") {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "bodyMd",
         message: profanityVerdict.reason ?? "Comment contains prohibited language",
@@ -256,7 +256,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
     spamVerdict = { kind: "pass" as const };
   }
   if (spamVerdict.kind === "reject") {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "bodyMd",
         message: spamVerdict.reason ?? "Comment was rejected by the site's spam filter",
@@ -280,7 +280,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
       ? targetDoc.siteId
       : ((await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID);
   const [row] = (await db
-    .insert(nxComments)
+    .insert(npComments)
     .values({
       targetType: input.targetType,
       targetId: input.targetId,
@@ -291,7 +291,7 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
       status: initialStatus,
       siteId: targetSiteId,
     })
-    .returning()) as Array<NxCommentRow>;
+    .returning()) as Array<NpCommentRow>;
   if (!row) throw new Error("Comment insert returned no row");
 
   if (flaggedBy.length > 0) {
@@ -394,15 +394,15 @@ async function doCreateComment(input: NxCommentCreateInput): Promise<NxCommentRo
  *     "best" comment should bubble up regardless of when
  *     it was posted.
  */
-export type NxCommentSort = "newest" | "oldest" | "top";
+export type NpCommentSort = "newest" | "oldest" | "top";
 
-export interface NxCommentListOptions {
+export interface NpCommentListOptions {
   /** Default 50, max 200. */
   limit?: number;
   /** Default 0. */
   offset?: number;
   /** Newest first by default. */
-  order?: NxCommentSort;
+  order?: NpCommentSort;
   /** Override visibility — staff/mods may want to see hidden rows. */
   includeHidden?: boolean;
   /**
@@ -414,16 +414,16 @@ export interface NxCommentListOptions {
   viewerMemberId?: string;
 }
 
-export interface NxCommentListResult {
-  comments: NxCommentRow[];
+export interface NpCommentListResult {
+  comments: NpCommentRow[];
   totalDocs: number;
 }
 
 export async function listComments(
   targetType: string,
   targetId: string,
-  options: NxCommentListOptions = {},
-): Promise<NxCommentListResult> {
+  options: NpCommentListOptions = {},
+): Promise<NpCommentListResult> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
@@ -439,11 +439,11 @@ export async function listComments(
     ? Array.from(await getMutedTargetIds(options.viewerMemberId))
     : [];
   const muteFilter: SQL | undefined =
-    mutedAuthorIds.length > 0 ? notInArray(nxComments.memberId, mutedAuthorIds) : undefined;
+    mutedAuthorIds.length > 0 ? notInArray(npComments.memberId, mutedAuthorIds) : undefined;
 
   const baseWhere = options.includeHidden
-    ? and(eq(nxComments.targetType, targetType), eq(nxComments.targetId, targetId))
-    : sql`${eq(nxComments.targetType, targetType)} and ${eq(nxComments.targetId, targetId)} and ${eq(nxComments.status, "visible")}`;
+    ? and(eq(npComments.targetType, targetType), eq(npComments.targetId, targetId))
+    : sql`${eq(npComments.targetType, targetType)} and ${eq(npComments.targetId, targetId)} and ${eq(npComments.status, "visible")}`;
 
   const where = muteFilter ? and(baseWhere, muteFilter) : baseWhere;
 
@@ -454,10 +454,10 @@ export async function listComments(
   // reactions across the table.
   const orderBy: SQL =
     order === "top"
-      ? sql`(SELECT COUNT(*) FROM ${nxReactions} WHERE ${nxReactions.targetType} = 'comment' AND ${nxReactions.targetId} = ${nxComments.id}) DESC, ${nxComments.createdAt} DESC`
+      ? sql`(SELECT COUNT(*) FROM ${npReactions} WHERE ${npReactions.targetType} = 'comment' AND ${npReactions.targetId} = ${npComments.id}) DESC, ${npComments.createdAt} DESC`
       : order === "oldest"
-        ? asc(nxComments.createdAt)
-        : desc(nxComments.createdAt);
+        ? asc(npComments.createdAt)
+        : desc(npComments.createdAt);
 
   // Phase 21.11 — LEFT JOIN against `nx_members` so the response
   // carries the author's status (most callers want to render an
@@ -466,52 +466,52 @@ export async function listComments(
   // rather than a table scan.
   const joinedRows = (await db
     .select({
-      comment: nxComments,
-      authorStatus: nxMembers.status,
+      comment: npComments,
+      authorStatus: npMembers.status,
     })
-    .from(nxComments)
-    .leftJoin(nxMembers, eq(nxComments.memberId, nxMembers.id))
+    .from(npComments)
+    .leftJoin(npMembers, eq(npComments.memberId, npMembers.id))
     .where(where)
     .orderBy(orderBy)
     .limit(limit)
     .offset(offset)) as Array<{
-    comment: NxCommentRow;
+    comment: NpCommentRow;
     authorStatus: string | null;
   }>;
-  const rows: NxCommentRow[] = joinedRows.map(({ comment, authorStatus }) => ({
+  const rows: NpCommentRow[] = joinedRows.map(({ comment, authorStatus }) => ({
     ...comment,
     authorStatus,
   }));
 
-  const [totalRow] = (await db.select({ total: count() }).from(nxComments).where(where)) as Array<{
+  const [totalRow] = (await db.select({ total: count() }).from(npComments).where(where)) as Array<{
     total: number | string;
   }>;
 
   return { comments: rows, totalDocs: Number(totalRow?.total ?? 0) };
 }
 
-export interface NxCommentUpdateInput {
+export interface NpCommentUpdateInput {
   commentId: string;
   memberId: string;
   bodyMd: string;
 }
 
-export async function updateComment(input: NxCommentUpdateInput): Promise<NxCommentRow> {
+export async function updateComment(input: NpCommentUpdateInput): Promise<NpCommentRow> {
   validateBody(input.bodyMd);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
-    .from(nxComments)
-    .where(eq(nxComments.id, input.commentId))
-    .limit(1)) as NxCommentRow[];
-  if (!existing) throw new NxNotFoundError("comment", input.commentId);
+    .from(npComments)
+    .where(eq(npComments.id, input.commentId))
+    .limit(1)) as NpCommentRow[];
+  if (!existing) throw new NpNotFoundError("comment", input.commentId);
 
   // Reject edits to soft-deleted comments. `deleteComment` clears
   // `bodyMd`/`bodyHtml` to honor erasure expectations; allowing the
   // owner to edit-back content would defeat that and let moderation
   // views surface text the user expected to disappear. (#50)
   if (existing.status === "deleted") {
-    throw new NxValidationError("Invalid state", [
+    throw new NpValidationError("Invalid state", [
       { field: "comment", message: "Cannot edit a deleted comment" },
     ]);
   }
@@ -532,7 +532,7 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
         scopes: commentScopes(existing),
       });
   if (!ownerCan && !modCan) {
-    throw new NxForbiddenError("comment", "update");
+    throw new NpForbiddenError("comment", "update");
   }
 
   // Re-run profanity → spam on the new body. Pre-fix `updateComment`
@@ -556,7 +556,7 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
   try {
     const verdict = await getProfanityAdapter().check(input.bodyMd, ctx);
     if (verdict.kind === "reject") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "bodyMd",
           message: verdict.reason ?? "Comment contains prohibited language",
@@ -570,7 +570,7 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
       };
     }
   } catch (err) {
-    if (err instanceof NxValidationError) throw err;
+    if (err instanceof NpValidationError) throw err;
     getLogger().warn("profanity adapter threw on comment edit — treating as pass", {
       error: err instanceof Error ? err.message : String(err),
       commentId: input.commentId,
@@ -580,7 +580,7 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
   try {
     const verdict = await getSpamAdapter().check(input.bodyMd, ctx);
     if (verdict.kind === "reject") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "bodyMd",
           message: verdict.reason ?? "Comment was rejected by the site's spam filter",
@@ -594,7 +594,7 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
       };
     }
   } catch (err) {
-    if (err instanceof NxValidationError) throw err;
+    if (err instanceof NpValidationError) throw err;
     getLogger().warn("spam adapter threw on comment edit — treating as pass", {
       error: err instanceof Error ? err.message : String(err),
       commentId: input.commentId,
@@ -614,10 +614,10 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
     updateValues.status = "pending";
   }
   const [updated] = (await db
-    .update(nxComments)
+    .update(npComments)
     .set(updateValues)
-    .where(eq(nxComments.id, input.commentId))
-    .returning()) as NxCommentRow[];
+    .where(eq(npComments.id, input.commentId))
+    .returning()) as NpCommentRow[];
   if (!updated) throw new Error("Comment update returned no row");
 
   if (editFlaggedBy.length > 0) {
@@ -658,19 +658,19 @@ export async function updateComment(input: NxCommentUpdateInput): Promise<NxComm
   return updated;
 }
 
-export interface NxCommentDeleteInput {
+export interface NpCommentDeleteInput {
   commentId: string;
   memberId: string;
 }
 
-export async function deleteComment(input: NxCommentDeleteInput): Promise<void> {
+export async function deleteComment(input: NpCommentDeleteInput): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
-    .from(nxComments)
-    .where(eq(nxComments.id, input.commentId))
-    .limit(1)) as NxCommentRow[];
-  if (!existing) throw new NxNotFoundError("comment", input.commentId);
+    .from(npComments)
+    .where(eq(npComments.id, input.commentId))
+    .limit(1)) as NpCommentRow[];
+  if (!existing) throw new NpNotFoundError("comment", input.commentId);
 
   const ownerCan = await memberCan(input.memberId, "delete-own", {
     type: "comment",
@@ -687,32 +687,32 @@ export async function deleteComment(input: NxCommentDeleteInput): Promise<void> 
         scopes: commentScopes(existing),
       });
   if (!ownerCan && !modCan) {
-    throw new NxForbiddenError("comment", "delete");
+    throw new NpForbiddenError("comment", "delete");
   }
 
   // Soft-delete: keep the row so reply chains stay intact and audit
   // can resolve "who said what" later. Body fields are blanked so the
   // text is actually gone from the read path.
   await db
-    .update(nxComments)
+    .update(npComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "", editedAt: new Date() })
-    .where(eq(nxComments.id, input.commentId));
+    .where(eq(npComments.id, input.commentId));
 }
 
-export interface NxCommentHideInput {
+export interface NpCommentHideInput {
   commentId: string;
   memberId: string;
   reason?: string | null;
 }
 
-export async function hideComment(input: NxCommentHideInput): Promise<void> {
+export async function hideComment(input: NpCommentHideInput): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
-    .from(nxComments)
-    .where(eq(nxComments.id, input.commentId))
-    .limit(1)) as NxCommentRow[];
-  if (!existing) throw new NxNotFoundError("comment", input.commentId);
+    .from(npComments)
+    .where(eq(npComments.id, input.commentId))
+    .limit(1)) as NpCommentRow[];
+  if (!existing) throw new NpNotFoundError("comment", input.commentId);
 
   const ok = await memberCan(input.memberId, "hide-comment", {
     type: "comment",
@@ -720,16 +720,16 @@ export async function hideComment(input: NxCommentHideInput): Promise<void> {
     ownerId: existing.memberId,
     scopes: commentScopes(existing),
   });
-  if (!ok) throw new NxForbiddenError("comment", "hide");
+  if (!ok) throw new NpForbiddenError("comment", "hide");
 
   await db
-    .update(nxComments)
+    .update(npComments)
     .set({
       status: "hidden",
       hiddenByMemberId: input.memberId,
       hiddenReason: input.reason ?? null,
     })
-    .where(eq(nxComments.id, input.commentId));
+    .where(eq(npComments.id, input.commentId));
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.memberId },
@@ -740,21 +740,21 @@ export async function hideComment(input: NxCommentHideInput): Promise<void> {
   });
 }
 
-export interface NxCommentRestoreInput {
+export interface NpCommentRestoreInput {
   commentId: string;
   memberId: string;
 }
 
-export async function restoreComment(input: NxCommentRestoreInput): Promise<void> {
+export async function restoreComment(input: NpCommentRestoreInput): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
-    .from(nxComments)
-    .where(eq(nxComments.id, input.commentId))
-    .limit(1)) as NxCommentRow[];
-  if (!existing) throw new NxNotFoundError("comment", input.commentId);
+    .from(npComments)
+    .where(eq(npComments.id, input.commentId))
+    .limit(1)) as NpCommentRow[];
+  if (!existing) throw new NpNotFoundError("comment", input.commentId);
   if (existing.status !== "hidden") {
-    throw new NxValidationError("Invalid state", [
+    throw new NpValidationError("Invalid state", [
       { field: "status", message: `Comment is "${existing.status}", not "hidden"` },
     ]);
   }
@@ -765,17 +765,17 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
     ownerId: existing.memberId,
     scopes: commentScopes(existing),
   });
-  if (!ok) throw new NxForbiddenError("comment", "restore");
+  if (!ok) throw new NpForbiddenError("comment", "restore");
 
   await db
-    .update(nxComments)
+    .update(npComments)
     .set({
       status: "visible",
       hiddenByUserId: null,
       hiddenByMemberId: null,
       hiddenReason: null,
     })
-    .where(eq(nxComments.id, input.commentId));
+    .where(eq(npComments.id, input.commentId));
 
   await recordAuditEvent({
     actor: { kind: "member", memberId: input.memberId },
@@ -802,19 +802,19 @@ export async function restoreComment(input: NxCommentRestoreInput): Promise<void
  * the write cannot drift apart.
  */
 async function loadCommentForStaffOp(commentId: string): Promise<{
-  row: NxCommentRow;
+  row: NpCommentRow;
   siteId: string;
 }> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
-    .from(nxComments)
-    .where(eq(nxComments.id, commentId))
-    .limit(1)) as NxCommentRow[];
-  if (!existing) throw new NxNotFoundError("comment", commentId);
+    .from(npComments)
+    .where(eq(npComments.id, commentId))
+    .limit(1)) as NpCommentRow[];
+  if (!existing) throw new NpNotFoundError("comment", commentId);
   const requestSiteId = await requireSiteId();
   if (existing.siteId !== requestSiteId) {
-    throw new NxForbiddenError("comment", "cross-site");
+    throw new NpForbiddenError("comment", "cross-site");
   }
   return { row: existing, siteId: requestSiteId };
 }
@@ -827,14 +827,14 @@ export async function staffHideComment(
   const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
-    .update(nxComments)
+    .update(npComments)
     .set({
       status: "hidden",
       hiddenByUserId: staffUserId,
       hiddenByMemberId: null,
       hiddenReason: reason ?? null,
     })
-    .where(and(eq(nxComments.id, commentId), eq(nxComments.siteId, siteId)));
+    .where(and(eq(npComments.id, commentId), eq(npComments.siteId, siteId)));
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.hide",
@@ -861,7 +861,7 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
   // Only `hidden` is reversible; member-side `restoreComment` enforces
   // the same invariant.
   if (existing.status !== "hidden") {
-    throw new NxValidationError("Invalid state", [
+    throw new NpValidationError("Invalid state", [
       {
         field: "status",
         message: `Comment is "${existing.status}", not "hidden"`,
@@ -870,14 +870,14 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
   }
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
-    .update(nxComments)
+    .update(npComments)
     .set({
       status: "visible",
       hiddenByUserId: null,
       hiddenByMemberId: null,
       hiddenReason: null,
     })
-    .where(and(eq(nxComments.id, commentId), eq(nxComments.siteId, siteId)));
+    .where(and(eq(npComments.id, commentId), eq(npComments.siteId, siteId)));
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.restore",
@@ -891,9 +891,9 @@ export async function staffDeleteComment(commentId: string, staffUserId: string)
   const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   await db
-    .update(nxComments)
+    .update(npComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "" })
-    .where(and(eq(nxComments.id, commentId), eq(nxComments.siteId, siteId)));
+    .where(and(eq(npComments.id, commentId), eq(npComments.siteId, siteId)));
   await recordAuditEvent({
     actor: { kind: "staff", userId: staffUserId },
     action: "comment.delete",

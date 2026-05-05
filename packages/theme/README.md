@@ -56,14 +56,14 @@ export default defineConfig({
 
 ```tsx
 // app/layout.tsx
-import { NxThemeStyle } from "@nexpress/theme/client";
+import { NpThemeStyle } from "@nexpress/theme/client";
 import { getTheme } from "@nexpress/core";
 
 export default async function RootLayout({ children }) {
   const theme = await getTheme();
   return (
     <html>
-      <head><NxThemeStyle theme={theme} /></head>
+      <head><NpThemeStyle theme={theme} /></head>
       <body>{children}</body>
     </html>
   );

@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getMembership,
   getSiteById,
   isSuperAdmin,
@@ -8,7 +8,7 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -27,7 +27,7 @@ export async function DELETE(
 
     const target = await getSiteById(id);
     if (!target) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
@@ -38,14 +38,14 @@ export async function DELETE(
       const callerMembership = await getMembership(id, user.id);
       const isDefaultGlobalAdmin = id === "default" && user.role === "admin";
       if (callerMembership?.role !== "admin" && !isDefaultGlobalAdmin) {
-        throw new NxForbiddenError("memberships", "delete");
+        throw new NpForbiddenError("memberships", "delete");
       }
     }
 
     await revokeSiteMembership(id, userId);
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

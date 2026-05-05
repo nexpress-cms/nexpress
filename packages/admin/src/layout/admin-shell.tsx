@@ -18,10 +18,10 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-import type { NxAuthUser } from "@nexpress/core";
+import type { NpAuthUser } from "@nexpress/core";
 
 import { AdminTopbar } from "./admin-topbar.js";
-import { NxMark } from "./nx-mark.js";
+import { NpMark } from "./nx-mark.js";
 import { Button } from "../ui/button.js";
 import { ScrollArea } from "../ui/scroll-area.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
@@ -49,7 +49,7 @@ export interface AdminShellCollection {
 }
 
 export interface AdminShellProps {
-  user: NxAuthUser;
+  user: NpAuthUser;
   collections: AdminShellCollection[];
   caps: AdminShellCapabilities;
   children: React.ReactNode;
@@ -243,7 +243,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
               )}
               aria-label="NexPress"
             >
-              <NxMark size={22} />
+              <NpMark size={22} />
               {!collapsed ? <span>NexPress</span> : null}
             </Link>
             {!collapsed ? (

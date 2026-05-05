@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -70,7 +70,7 @@ export function LinkedIdentitiesPanel({
     setLoading(true);
     setError(null);
     try {
-      const res = await nxFetch(basePath);
+      const res = await npFetch(basePath);
       const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
@@ -105,7 +105,7 @@ export function LinkedIdentitiesPanel({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await nxFetch(`${basePath}/${revoking.id}`, { method: "DELETE" });
+      const res = await npFetch(`${basePath}/${revoking.id}`, { method: "DELETE" });
       if (!res.ok) {
         const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);

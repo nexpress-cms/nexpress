@@ -1,16 +1,16 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   enqueueJob,
   getAllJobHandlers,
   getOptionalJobQueue,
-  type NxJobType,
+  type NpJobType,
   can,
 } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("jobs", "enqueue");
+      throw new NpForbiddenError("jobs", "enqueue");
     }
     const queue = getOptionalJobQueue();
     if (!queue) {
@@ -45,15 +45,15 @@ export async function POST(request: NextRequest) {
     const body = (await readJsonBody(request)) as Record<string, unknown>;
     const typeRaw = body.type;
     if (typeof typeRaw !== "string" || typeRaw.length === 0) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "type", message: "Job type is required (e.g. 'media:cleanup')" },
       ]);
     }
 
     const handlers = getAllJobHandlers();
-    if (!handlers.has(typeRaw as NxJobType)) {
+    if (!handlers.has(typeRaw as NpJobType)) {
       const available = Array.from(handlers.keys()).sort();
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "type",
           message: `No handler registered for "${typeRaw}". Registered: ${available.join(", ") || "(none)"}`,
@@ -63,10 +63,10 @@ export async function POST(request: NextRequest) {
 
     const data =
       typeof body.data === "object" && body.data !== null ? body.data : {};
-    const id = await enqueueJob(typeRaw as NxJobType, data);
-    return nxSuccessResponse({ id, type: typeRaw, data });
+    const id = await enqueueJob(typeRaw as NpJobType, data);
+    return npSuccessResponse({ id, type: typeRaw, data });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

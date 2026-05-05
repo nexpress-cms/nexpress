@@ -39,10 +39,10 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
 
   async function seedMember(handle: string): Promise<string> {
     const db = await getTestDb();
-    const { hashPassword, nxMembers } = await import("@nexpress/core");
+    const { hashPassword, npMembers } = await import("@nexpress/core");
     const password = await hashPassword("password-12345");
     const [row] = (await db
-      .insert(nxMembers)
+      .insert(npMembers)
       .values({
         email: `${handle}@example.com`,
         password,
@@ -51,7 +51,7 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
         emailVerified: true,
         status: "active",
       })
-      .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+      .returning({ id: npMembers.id })) as Array<{ id: string }>;
     return row.id;
   }
 
@@ -256,12 +256,12 @@ describe.skipIf(skipIfNoTestDb())("Phase 18 — community site scope", () => {
     );
 
     const db = await getTestDb();
-    const { nxComments } = await import("@nexpress/core");
+    const { npComments } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [row] = (await db
       .select()
-      .from(nxComments)
-      .where(eq(nxComments.id, comment.id))) as Array<{ siteId: string }>;
+      .from(npComments)
+      .where(eq(npComments.id, comment.id))) as Array<{ siteId: string }>;
     expect(row.siteId).toBe("tenant-a");
   });
 

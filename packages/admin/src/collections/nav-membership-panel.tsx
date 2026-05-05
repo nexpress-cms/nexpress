@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, ExternalLink, Loader2, Plus, X } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
@@ -201,7 +201,7 @@ export function NavMembershipPanel({
     items: NavItem[],
     expectedUpdatedAt: string | null,
   ) {
-    const response = await nxFetch("/api/navigation", {
+    const response = await npFetch("/api/navigation", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

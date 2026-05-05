@@ -308,7 +308,7 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   so multiple nodes can run `NX_ENABLE_JOBS=1` simultaneously. Only one
   picks up each job.
 - **Rate limiting is pluggable.** As of Phase 23.7, `apps/web/src/proxy.ts`
-  reads its limiter from the `NxRateLimiterAdapter` registered via
+  reads its limiter from the `NpRateLimiterAdapter` registered via
   `setRateLimiter` at boot. The default adapter is `InMemoryRateLimiter`
   from `@nexpress/core/rate-limit` — same fixed-window behavior as
   before, identical for single-node deploys. Multi-node deploys swap

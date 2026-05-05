@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
@@ -8,7 +8,7 @@ const readString = (value: unknown, fallback: string): string =>
 const readVariant = (value: unknown): "primary" | "secondary" =>
   value === "secondary" ? "secondary" : "primary";
 
-export const ctaBlock: NxBlockDefinition = {
+export const ctaBlock: NpBlockDefinition = {
   type: "cta",
   label: "Call to Action",
   description: "Focused conversion block with a single message and button.",

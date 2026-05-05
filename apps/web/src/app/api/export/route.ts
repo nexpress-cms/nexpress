@@ -1,11 +1,11 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
-  nxMedia,
-  nxMediaRefs,
-  nxPlugins,
-  nxSettings,
-  nxNavigation,
+  NpForbiddenError,
+  NpValidationError,
+  npMedia,
+  npMediaRefs,
+  npPlugins,
+  npSettings,
+  npNavigation,
   getAllCollectionSlugs,
   getPluginRegistration,
   findDocuments,
@@ -19,7 +19,7 @@ import type { NextRequest } from "next/server";
 const EXPORT_VERSION = "1" as const;
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
@@ -40,7 +40,7 @@ function parseCollectionsFilter(request: NextRequest): string[] | null {
   const registered = new Set(getAllCollectionSlugs());
   const unknown = slugs.filter((slug) => !registered.has(slug));
   if (unknown.length > 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "collections", message: `Unknown collection(s): ${unknown.join(", ")}` },
     ]);
   }
@@ -52,15 +52,15 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("export", "read");
+      throw new NpForbiddenError("export", "read");
     }
     await ensureFor("plugins");
     const db = getDb();
     const collectionsFilter = parseCollectionsFilter(request);
     const partial = collectionsFilter !== null;
 
-    const settingsRows = partial ? [] : await db.select().from(nxSettings);
-    const navRows = partial ? [] : await db.select().from(nxNavigation);
+    const settingsRows = partial ? [] : await db.select().from(npSettings);
+    const navRows = partial ? [] : await db.select().from(npNavigation);
 
     const theme = settingsRows.find((r) => r.key === "theme")?.value;
     const settings = Object.fromEntries(
@@ -82,28 +82,28 @@ export async function GET(request: NextRequest) {
     }
 
     const refRows = await db
-      .selectDistinct({ mediaId: nxMediaRefs.mediaId })
-      .from(nxMediaRefs);
+      .selectDistinct({ mediaId: npMediaRefs.mediaId })
+      .from(npMediaRefs);
     const mediaIds = refRows.map((r) => r.mediaId);
 
     const media =
       mediaIds.length > 0
         ? await db
             .select({
-              id: nxMedia.id,
-              filename: nxMedia.filename,
-              hash: nxMedia.hash,
-              mimeType: nxMedia.mimeType,
+              id: npMedia.id,
+              filename: npMedia.filename,
+              hash: npMedia.hash,
+              mimeType: npMedia.mimeType,
             })
-            .from(nxMedia)
-            .where(and(inArray(nxMedia.id, mediaIds), isNull(nxMedia.deletedAt)))
+            .from(npMedia)
+            .where(and(inArray(npMedia.id, mediaIds), isNull(npMedia.deletedAt)))
         : [];
 
     // Plugin registrations + per-plugin config/enabled flags so a re-import
     // lands in the same state. We export what's in the DB — plugin code
     // itself is managed via nexpress.config.ts. Skipped entirely when a
     // collection filter is active (partial export = content only).
-    const pluginRows = partial ? [] : await db.select().from(nxPlugins);
+    const pluginRows = partial ? [] : await db.select().from(npPlugins);
     const plugins = pluginRows.map((row) => {
       const registration = getPluginRegistration(row.id);
       return {
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       version: EXPORT_VERSION,
       exportedAt: new Date().toISOString(),
       siteUrl: process.env.SITE_URL ?? null,
@@ -126,6 +126,6 @@ export async function GET(request: NextRequest) {
       ...(partial ? {} : { plugins }),
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

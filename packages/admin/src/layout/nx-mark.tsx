@@ -1,6 +1,6 @@
 import * as React from "react";
 
-interface NxMarkProps {
+interface NpMarkProps {
   size?: number;
   className?: string;
   beamColor?: string;
@@ -12,7 +12,7 @@ interface NxMarkProps {
  * and a black foot on the lower-left. `currentColor` carries the foot +
  * beam so the mark flips correctly on dark surfaces.
  */
-export function NxMark({ size = 22, className, beamColor }: NxMarkProps) {
+export function NpMark({ size = 22, className, beamColor }: NpMarkProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

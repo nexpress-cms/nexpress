@@ -428,9 +428,9 @@ describe.skipIf(skipIfNoTestDb())("members auth (integration)", () => {
 
 async function getMemberId(handle: string): Promise<string> {
   const db = await getTestDb();
-  const { nxMembers } = await import("@nexpress/core");
+  const { npMembers } = await import("@nexpress/core");
   const { eq } = await import("drizzle-orm");
-  const rows = (await db.select({ id: nxMembers.id }).from(nxMembers).where(eq(nxMembers.handle, handle)).limit(1)) as Array<{ id: string }>;
+  const rows = (await db.select({ id: npMembers.id }).from(npMembers).where(eq(npMembers.handle, handle)).limit(1)) as Array<{ id: string }>;
   if (!rows[0]) throw new Error(`Member with handle "${handle}" not found in test DB`);
   return rows[0].id;
 }

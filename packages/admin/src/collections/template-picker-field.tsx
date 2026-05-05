@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Control } from "react-hook-form";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import {
   FormControl,
   FormField,
@@ -60,7 +60,7 @@ export function TemplatePickerField({
     let cancelled = false;
     void (async () => {
       try {
-        const res = await nxFetch(
+        const res = await npFetch(
           `/api/admin/themes/active/templates?collection=${encodeURIComponent(collection)}`,
         );
         if (!res.ok) {

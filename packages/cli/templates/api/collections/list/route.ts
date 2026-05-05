@@ -1,8 +1,8 @@
-import { NxValidationError } from "@nexpress/core";
+import { NpValidationError } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
 import { optionalAuth, requireAuth, requireCsrf } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import {
   findCollectionDocuments,
   parseFindOptions,
@@ -12,7 +12,7 @@ import { revalidateCollection } from "@/lib/revalidate";
 
 function parseBodyRecord(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Request body must be a JSON object" },
     ]);
   }
@@ -31,9 +31,9 @@ export async function GET(
       parseFindOptions(request.nextUrl.searchParams),
       user,
     );
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -48,8 +48,8 @@ export async function POST(
     const data = parseBodyRecord(await request.json());
     const result = await saveCollectionDocument(slug, null, data, user);
     revalidateCollection(slug, result.doc);
-    return nxSuccessResponse(result.doc, { status: 201 });
+    return npSuccessResponse(result.doc, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

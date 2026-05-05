@@ -1,7 +1,7 @@
 export { AdminShell } from "./layout/admin-shell.js";
 export { AdminTopbar } from "./layout/admin-topbar.js";
 export { ThemeToggle, ThemeInit } from "./layout/theme-toggle.js";
-export { NxMark } from "./layout/nx-mark.js";
+export { NpMark } from "./layout/nx-mark.js";
 export { PageHeader } from "./layout/page-header.js";
 export {
   AuthLayout,
@@ -89,4 +89,4 @@ export { DataTable } from "./ui/data-table.js";
 export { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "./ui/form.js";
 export { cn } from "./ui/utils.js";
 
-export { nxFetch } from "./lib/api-client.js";
+export { npFetch } from "./lib/api-client.js";

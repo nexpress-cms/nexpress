@@ -1,12 +1,12 @@
-import { NxColorSchemeScript } from "@nexpress/theme";
+import { NpColorSchemeScript } from "@nexpress/theme";
 import type { ReactNode } from "react";
 
-import type { NxThemeShellProps } from "@nexpress/theme";
+import type { NpThemeShellProps } from "@nexpress/theme";
 
 /**
  * Default theme shell — wraps every (site) route. The shell
  * also owns this theme's color-mode policy: it mounts
- * `<NxColorSchemeScript />` so the saved `nx-color-scheme`
+ * `<NpColorSchemeScript />` so the saved `nx-color-scheme`
  * cookie / `prefers-color-scheme` choice is applied to
  * `<html data-theme="…">` before first paint, and the dark
  * variants ride on the rules in `defaultThemeCss`.
@@ -18,10 +18,10 @@ import type { NxThemeShellProps } from "@nexpress/theme";
  * seasonal palette, …) simply omit this script and the
  * dark CSS overrides.
  */
-export function DefaultShell({ children }: NxThemeShellProps): ReactNode {
+export function DefaultShell({ children }: NpThemeShellProps): ReactNode {
   return (
     <>
-      <NxColorSchemeScript />
+      <NpColorSchemeScript />
       {children}
     </>
   );

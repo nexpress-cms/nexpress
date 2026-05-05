@@ -1,4 +1,4 @@
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 import {
   PortfolioProjectCard,
@@ -18,7 +18,7 @@ interface IndexDoc {
   intro?: string;
 }
 
-export function ProjectIndexTemplate({ doc }: NxTemplateRenderProps) {
+export function ProjectIndexTemplate({ doc }: NpTemplateRenderProps) {
   const data = doc as IndexDoc;
   const heading = data.heading ?? "Selected work";
   const intro = data.intro;

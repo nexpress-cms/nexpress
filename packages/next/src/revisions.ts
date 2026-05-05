@@ -1,10 +1,10 @@
 import {
-  NxValidationError,
-  type NxAuthUser,
-  type NxRevision,
-  type NxRevisionListOptions,
-  type NxRevisionListResult,
-  type NxSaveResult,
+  NpValidationError,
+  type NpAuthUser,
+  type NpRevision,
+  type NpRevisionListOptions,
+  type NpRevisionListResult,
+  type NpSaveResult,
   listRevisions as coreListRevisions,
   getRevision as coreGetRevision,
   restoreRevision as coreRestoreRevision,
@@ -19,28 +19,28 @@ export type RevisionHelpers = {
   readonly parseRevisionListOptions: (
     this: void,
     searchParams: URLSearchParams,
-  ) => NxRevisionListOptions;
+  ) => NpRevisionListOptions;
   readonly listDocumentRevisions: (
     this: void,
     collection: string,
     documentId: string,
-    options: NxRevisionListOptions,
-    user: NxAuthUser | null,
-  ) => Promise<NxRevisionListResult>;
+    options: NpRevisionListOptions,
+    user: NpAuthUser | null,
+  ) => Promise<NpRevisionListResult>;
   readonly getDocumentRevision: (
     this: void,
     collection: string,
     documentId: string,
     revisionId: string,
-    user: NxAuthUser | null,
-  ) => Promise<NxRevision>;
+    user: NpAuthUser | null,
+  ) => Promise<NpRevision>;
   readonly restoreDocumentRevision: (
     this: void,
     collection: string,
     documentId: string,
     revisionId: string,
-    user: NxAuthUser,
-  ) => Promise<NxSaveResult>;
+    user: NpAuthUser,
+  ) => Promise<NpSaveResult>;
 };
 
 function parsePositiveInt(
@@ -52,7 +52,7 @@ function parsePositiveInt(
 
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || (max !== undefined && parsed > max)) {
-    throw new NxValidationError("Invalid query parameters", [
+    throw new NpValidationError("Invalid query parameters", [
       {
         field,
         message:
@@ -71,7 +71,7 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
     await options.ensureReady();
   }
 
-  const parseRevisionListOptions = (searchParams: URLSearchParams): NxRevisionListOptions => {
+  const parseRevisionListOptions = (searchParams: URLSearchParams): NpRevisionListOptions => {
     return {
       limit: parsePositiveInt(searchParams.get("limit"), "limit", 100),
       offset: parsePositiveInt(searchParams.get("offset"), "offset"),
@@ -81,9 +81,9 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
   const listDocumentRevisions = async (
     collection: string,
     documentId: string,
-    opts: NxRevisionListOptions,
-    user: NxAuthUser | null,
-  ): Promise<NxRevisionListResult> => {
+    opts: NpRevisionListOptions,
+    user: NpAuthUser | null,
+  ): Promise<NpRevisionListResult> => {
     await ready();
     return coreListRevisions(collection, documentId, opts, user);
   };
@@ -92,8 +92,8 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
     collection: string,
     documentId: string,
     revisionId: string,
-    user: NxAuthUser | null,
-  ): Promise<NxRevision> => {
+    user: NpAuthUser | null,
+  ): Promise<NpRevision> => {
     await ready();
     return coreGetRevision(collection, documentId, revisionId, user);
   };
@@ -102,8 +102,8 @@ export function createRevisionHelpers(options: RevisionHelpersOptions): Revision
     collection: string,
     documentId: string,
     revisionId: string,
-    user: NxAuthUser,
-  ): Promise<NxSaveResult> => {
+    user: NpAuthUser,
+  ): Promise<NpSaveResult> => {
     await ready();
     return coreRestoreRevision(collection, documentId, revisionId, user);
   };

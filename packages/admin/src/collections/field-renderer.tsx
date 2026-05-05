@@ -1,11 +1,11 @@
 "use client";
 
 import { lazy, Suspense, type ComponentType } from "react";
-import type { NxFieldConfig } from "@nexpress/core";
-import type { NxBlockInstance, NxBlockMetadata } from "@nexpress/blocks";
+import type { NpFieldConfig } from "@nexpress/core";
+import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import { useBlocksRegistry } from "../blocks/registry-context.js";
-import type { NxEditorConfig, NxRichTextContent } from "@nexpress/editor";
+import type { NpEditorConfig, NpRichTextContent } from "@nexpress/editor";
 import { ChevronDown } from "lucide-react";
 import type { Control } from "react-hook-form";
 
@@ -13,7 +13,7 @@ import { ArrayFieldEditor } from "./fields/array-field-editor.js";
 import { MediaPickerField } from "./fields/media-picker-field.js";
 import { RelationshipField } from "./fields/relationship-field.js";
 import { TemplatePickerField } from "./template-picker-field.js";
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../ui/form.js";
 import { Input } from "../ui/input.js";
@@ -22,7 +22,7 @@ import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
 
 /**
- * Default staff-side image uploader for `NxRichTextEditor`'s
+ * Default staff-side image uploader for `NpRichTextEditor`'s
  * Insert Image dialog (Phase 9.7j). Posts to the framework's
  * convention endpoint `/api/media/upload`. Field configs may
  * override via `editor.onUploadImage` for sites with custom
@@ -33,7 +33,7 @@ async function defaultStaffImageUpload(
 ): Promise<{ url: string }> {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await nxFetch("/api/media/upload", {
+  const res = await npFetch("/api/media/upload", {
     method: "POST",
     body: formData,
   });
@@ -54,7 +54,7 @@ async function defaultStaffImageUpload(
 }
 
 interface FieldRendererProps {
-  field: NxFieldConfig;
+  field: NpFieldConfig;
   control: Control<Record<string, unknown>>;
   namePrefix?: string;
   /**
@@ -69,8 +69,8 @@ interface FieldRendererProps {
 const LazyRichTextEditor = lazy(async () => {
   const module = await import("@nexpress/editor/client");
   return {
-    default: module.NxRichTextEditor as ComponentType<{
-      value: NxRichTextContent | null;
+    default: module.NpRichTextEditor as ComponentType<{
+      value: NpRichTextContent | null;
       onChange: (value: unknown) => void;
       config?: unknown;
     }>,
@@ -85,16 +85,16 @@ const LazyBlockPageEditor = lazy(async () => {
   const module = await import("../blocks/block-page-editor.js");
   return {
     default: module.BlockPageEditor as ComponentType<{
-      blocks: NxBlockInstance[];
-      onChange: (blocks: NxBlockInstance[]) => void;
-      availableBlocks: NxBlockMetadata[];
+      blocks: NpBlockInstance[];
+      onChange: (blocks: NpBlockInstance[]) => void;
+      availableBlocks: NpBlockMetadata[];
     }>,
   };
 });
 
 const buildFieldName = (fieldName: string, namePrefix?: string): string => (namePrefix ? `${namePrefix}.${fieldName}` : fieldName);
 
-const isRichTextContent = (value: unknown): value is NxRichTextContent => {
+const isRichTextContent = (value: unknown): value is NpRichTextContent => {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -103,7 +103,7 @@ const isRichTextContent = (value: unknown): value is NxRichTextContent => {
   return typeof root === "object" && root !== null;
 };
 
-const toBlockInstances = (value: unknown): NxBlockInstance[] => {
+const toBlockInstances = (value: unknown): NpBlockInstance[] => {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -113,7 +113,7 @@ const toBlockInstances = (value: unknown): NxBlockInstance[] => {
       return [];
     }
 
-    const candidate = item as Partial<NxBlockInstance>;
+    const candidate = item as Partial<NpBlockInstance>;
     if (typeof candidate.id !== "string" || typeof candidate.type !== "string") {
       return [];
     }
@@ -162,7 +162,7 @@ function BlocksFieldRender({ control, name, label, allowedTypes }: BlocksFieldRe
   // instance — defaults only, never the plugin blocks registered
   // during the Node-side bootstrap.
   const allDefinitions = useBlocksRegistry();
-  const availableBlocks: NxBlockMetadata[] =
+  const availableBlocks: NpBlockMetadata[] =
     allowedTypes && allowedTypes.length > 0
       ? allDefinitions.filter((definition) => allowedTypes.includes(definition.type))
       : allDefinitions;
@@ -204,7 +204,7 @@ function BlocksFieldRender({ control, name, label, allowedTypes }: BlocksFieldRe
 }
 
 const renderNamedField = (
-  field: Extract<NxFieldConfig, { name: string }>,
+  field: Extract<NpFieldConfig, { name: string }>,
   control: Control<Record<string, unknown>>,
   namePrefix?: string,
 ) => {
@@ -312,12 +312,12 @@ const renderNamedField = (
                       // Default to the framework `/api/media/upload`
                       // staff endpoint when the field config doesn't
                       // already override the uploader. `field.editor`
-                      // is `NxEditorConfig` from core (intentionally
+                      // is `NpEditorConfig` from core (intentionally
                       // minimal — no `File` types); cast through
-                      // editor's full `NxEditorConfig` to read the
+                      // editor's full `NpEditorConfig` to read the
                       // optional uploader.
                       onUploadImage:
-                        (field.editor as NxEditorConfig | undefined)?.onUploadImage ??
+                        (field.editor as NpEditorConfig | undefined)?.onUploadImage ??
                         defaultStaffImageUpload,
                     }}
                   />

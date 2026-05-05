@@ -1,5 +1,5 @@
 import { t } from "@nexpress/core";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 import { headers } from "next/headers";
 
@@ -46,12 +46,12 @@ export async function MagazineHeader() {
         <>
           <nav aria-label="Sections" className="nx-magazine-sections">
             <ul>
-              {items.map((item: NxNavItem, index: number) => (
+              {items.map((item: NpNavItem, index: number) => (
                 <li key={`magazine-nav-${index.toString()}`} className="nx-magazine-nav-item">
                   <a href={item.url}>{item.label}</a>
                   {item.children && item.children.length > 0 ? (
                     <ul className="nx-magazine-subnav">
-                      {item.children.map((child: NxNavItem, childIndex: number) => (
+                      {item.children.map((child: NpNavItem, childIndex: number) => (
                         <li key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}>
                           <a href={child.url}>{child.label}</a>
                         </li>

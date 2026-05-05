@@ -5,7 +5,7 @@ export {
   resetLogger,
   setLogger,
 } from "./logger.js";
-export type { NxLogLevel, NxLogger } from "./logger.js";
+export type { NpLogLevel, NpLogger } from "./logger.js";
 
 export {
   getErrorReporter,
@@ -14,7 +14,7 @@ export {
   resetErrorReporter,
   setErrorReporter,
 } from "./error-reporter.js";
-export type { NxErrorReporter, NxErrorReportContext } from "./error-reporter.js";
+export type { NpErrorReporter, NpErrorReportContext } from "./error-reporter.js";
 
 export { verifyStartupSafety } from "./safety-check.js";
-export type { NxStartupSafetyInput } from "./safety-check.js";
+export type { NpStartupSafetyInput } from "./safety-check.js";

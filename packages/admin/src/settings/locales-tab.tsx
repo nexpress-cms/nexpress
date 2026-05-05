@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Globe, Star } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import {
   Card,
   CardContent,
@@ -54,8 +54,8 @@ export function LocalesTab() {
   async function load() {
     try {
       const [configRes, progressRes] = await Promise.all([
-        nxFetch("/api/admin/i18n"),
-        nxFetch("/api/admin/i18n/progress"),
+        npFetch("/api/admin/i18n"),
+        npFetch("/api/admin/i18n/progress"),
       ]);
       const body = (await configRes.json().catch(() => null)) as I18nConfig | null;
       if (!configRes.ok || !body) {

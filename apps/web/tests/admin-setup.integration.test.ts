@@ -52,15 +52,15 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
     expect(setCookie).toMatch(/nx-csrf=/);
 
     const { getDb } = await import("@/lib/db");
-    const { nxUsers, getSiteById, NX_DEFAULT_SITE_ID } = await import(
+    const { npUsers, getSiteById, NX_DEFAULT_SITE_ID } = await import(
       "@nexpress/core"
     );
     const { eq } = await import("drizzle-orm");
     const db = getDb();
     const rows = await db
-      .select({ email: nxUsers.email, role: nxUsers.role })
-      .from(nxUsers)
-      .where(eq(nxUsers.email, "founder@example.com"));
+      .select({ email: npUsers.email, role: npUsers.role })
+      .from(npUsers)
+      .where(eq(npUsers.email, "founder@example.com"));
     expect(rows[0]?.role).toBe("admin");
     const site = await getSiteById(NX_DEFAULT_SITE_ID);
     expect(site?.name).toBe("Acme");

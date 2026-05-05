@@ -1,5 +1,5 @@
 import { can } from "../auth/capabilities.js";
-import { type NxPrincipal } from "../auth/principal.js";
+import { type NpPrincipal } from "../auth/principal.js";
 
 import { memberCan } from "./can.js";
 import type { MemberAction, MemberCanTarget } from "./can.js";
@@ -17,7 +17,7 @@ import type { MemberAction, MemberCanTarget } from "./can.js";
  * staff — the API layer should already check ownership for self-only
  * routes, but the ownership rule here is belt-and-braces.
  */
-export type Principal = NxPrincipal;
+export type Principal = NpPrincipal;
 
 export async function principalCan(
   principal: Principal,

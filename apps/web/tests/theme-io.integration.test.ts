@@ -7,7 +7,7 @@ import {
   serializeTheme,
 } from "../../../packages/admin/src/settings/theme-io.js";
 import { DEFAULT_THEME } from "@nexpress/core";
-import type { NxThemeTokens } from "@nexpress/core";
+import type { NpThemeTokens } from "@nexpress/core";
 
 /**
  * Phase 11.6 — theme JSON export/import helpers. The admin
@@ -113,6 +113,6 @@ describe("parseImportedTheme", () => {
   });
 });
 
-function identityNormalize(raw: unknown): NxThemeTokens {
-  return raw as NxThemeTokens;
+function identityNormalize(raw: unknown): NpThemeTokens {
+  return raw as NpThemeTokens;
 }

@@ -1,13 +1,13 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   countJobLogs,
   listJobLogs,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -29,11 +29,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     await ensureFor("read");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("job-logs", "read");
+      throw new NpForbiddenError("job-logs", "read");
     }
     const { id } = await context.params;
     if (!id) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: "Job id is required" },
       ]);
     }
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       countJobLogs(id),
     ]);
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       jobId: id,
       total,
       entries: entries.map((e) => ({
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       })),
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getRateLimiter, type NxRateLimiterAdapter } from "@nexpress/core/rate-limit";
+import { getRateLimiter, type NpRateLimiterAdapter } from "@nexpress/core/rate-limit";
 
 import { i18nConfig, isLocale } from "@/i18n.config";
 
@@ -10,8 +10,8 @@ import { i18nConfig, isLocale } from "@/i18n.config";
 // for nothing. A custom adapter registered later via
 // `setRateLimiter` won't be picked up by this binding, but the
 // proxy only swaps adapters at boot.
-let limiterRef: NxRateLimiterAdapter | null = null;
-function limiter(): NxRateLimiterAdapter {
+let limiterRef: NpRateLimiterAdapter | null = null;
+function limiter(): NpRateLimiterAdapter {
   if (!limiterRef) limiterRef = getRateLimiter();
   return limiterRef;
 }

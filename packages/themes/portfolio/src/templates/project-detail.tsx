@@ -1,7 +1,7 @@
 import { renderBlocks } from "@nexpress/blocks";
-import type { NxPageBlocks } from "@nexpress/blocks";
+import type { NpPageBlocks } from "@nexpress/blocks";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Project detail template. Big hero image, large title, optional
@@ -17,7 +17,7 @@ interface ProjectDoc {
   role?: string;
   year?: string | number;
   client?: string;
-  blocks?: NxPageBlocks;
+  blocks?: NpPageBlocks;
 }
 
 function coverUrl(value: ProjectDoc["cover"]): string | null {
@@ -31,7 +31,7 @@ function coverAlt(value: ProjectDoc["cover"], fallback: string): string {
   return fallback;
 }
 
-export function ProjectDetailTemplate({ doc }: NxTemplateRenderProps) {
+export function ProjectDetailTemplate({ doc }: NpTemplateRenderProps) {
   const project = doc as ProjectDoc;
   const title = project.title ?? "Untitled";
   const cover = coverUrl(project.cover);

@@ -5,8 +5,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
-import { nxJobLogs } from "../db/schema/system.js";
-import { type NxLogLevel, getLogger } from "../observability/logger.js";
+import { npJobLogs } from "../db/schema/system.js";
+import { type NpLogLevel, getLogger } from "../observability/logger.js";
 
 /**
  * Phase 20.3 — per-job log capture.
@@ -50,7 +50,7 @@ export function getCurrentJobId(): string | null {
  * job failure or shutdown loop.
  */
 export async function recordJobLog(
-  level: NxLogLevel,
+  level: NpLogLevel,
   message: string,
   context?: Record<string, unknown>,
 ): Promise<void> {
@@ -59,7 +59,7 @@ export async function recordJobLog(
 
   try {
     const db = getDb();
-    await db.insert(nxJobLogs).values({
+    await db.insert(npJobLogs).values({
       jobId,
       level,
       message,
@@ -77,10 +77,10 @@ export async function recordJobLog(
   }
 }
 
-export interface NxJobLogEntry {
+export interface NpJobLogEntry {
   id: string;
   jobId: string;
-  level: NxLogLevel;
+  level: NpLogLevel;
   message: string;
   context: Record<string, unknown> | null;
   createdAt: Date;
@@ -100,16 +100,16 @@ export interface ListJobLogsOptions {
 export async function listJobLogs(
   jobId: string,
   options: ListJobLogsOptions = {},
-): Promise<NxJobLogEntry[]> {
+): Promise<NpJobLogEntry[]> {
   const limit = Math.min(Math.max(1, options.limit ?? 200), 1000);
   const offset = Math.max(0, options.offset ?? 0);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
   const rows = (await db
     .select()
-    .from(nxJobLogs)
-    .where(eq(nxJobLogs.jobId, jobId))
-    .orderBy(asc(nxJobLogs.createdAt))
+    .from(npJobLogs)
+    .where(eq(npJobLogs.jobId, jobId))
+    .orderBy(asc(npJobLogs.createdAt))
     .limit(limit)
     .offset(offset)) as Array<{
     id: string;
@@ -123,7 +123,7 @@ export async function listJobLogs(
   return rows.map((row) => ({
     id: row.id,
     jobId: row.jobId,
-    level: row.level as NxLogLevel,
+    level: row.level as NpLogLevel,
     message: row.message,
     context: row.context,
     createdAt: row.createdAt,
@@ -149,9 +149,9 @@ export const DEFAULT_JOB_LOG_RETENTION_MS =
 export async function pruneJobLogsOlderThan(cutoff: Date): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const deleted = (await db
-    .delete(nxJobLogs)
-    .where(lt(nxJobLogs.createdAt, cutoff))
-    .returning({ id: nxJobLogs.id })) as Array<{ id: string }>;
+    .delete(npJobLogs)
+    .where(lt(npJobLogs.createdAt, cutoff))
+    .returning({ id: npJobLogs.id })) as Array<{ id: string }>;
   return deleted.length;
 }
 
@@ -162,9 +162,9 @@ export async function pruneJobLogsOlderThan(cutoff: Date): Promise<number> {
 export async function countJobLogs(jobId: string, sinceCreatedAt?: Date): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const where = sinceCreatedAt
-    ? and(eq(nxJobLogs.jobId, jobId), gte(nxJobLogs.createdAt, sinceCreatedAt))
-    : eq(nxJobLogs.jobId, jobId);
-  const rows = (await db.select({ id: nxJobLogs.id }).from(nxJobLogs).where(where)) as Array<{
+    ? and(eq(npJobLogs.jobId, jobId), gte(npJobLogs.createdAt, sinceCreatedAt))
+    : eq(npJobLogs.jobId, jobId);
+  const rows = (await db.select({ id: npJobLogs.id }).from(npJobLogs).where(where)) as Array<{
     id: string;
   }>;
   return rows.length;

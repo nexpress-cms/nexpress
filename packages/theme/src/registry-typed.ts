@@ -4,15 +4,15 @@ import {
   getThemeById as coreGetThemeById,
 } from "@nexpress/core";
 
-import type { NxTheme } from "./define-theme.js";
+import type { NpTheme } from "./define-theme.js";
 
 /**
  * Typed re-exports of `@nexpress/core`'s registry lookups.
  *
  * Core keeps its React peer dep at zero by typing
- * `NxRegisteredTheme.impl` as `unknown`. Theme-aware callers
+ * `NpRegisteredTheme.impl` as `unknown`. Theme-aware callers
  * (the site layout, the catch-all page, theme docs) all want
- * `impl` typed as `NxThemeImpl` so they can read
+ * `impl` typed as `NpThemeImpl` so they can read
  * `active.impl.shell` / `active.impl.slots.header` /
  * `active.impl.templates` without a cast every time.
  *
@@ -21,14 +21,14 @@ import type { NxTheme } from "./define-theme.js";
  * semantics — just with the strongly-typed shape sites
  * actually want to read.
  */
-export async function getActiveTheme(): Promise<NxTheme | null> {
-  return (await coreGetActiveTheme()) as NxTheme | null;
+export async function getActiveTheme(): Promise<NpTheme | null> {
+  return (await coreGetActiveTheme()) as NpTheme | null;
 }
 
-export function getThemeById(id: string): NxTheme | undefined {
-  return coreGetThemeById(id) as NxTheme | undefined;
+export function getThemeById(id: string): NpTheme | undefined {
+  return coreGetThemeById(id) as NpTheme | undefined;
 }
 
-export function getRegisteredThemes(): NxTheme[] {
-  return coreGetRegisteredThemes() as unknown as NxTheme[];
+export function getRegisteredThemes(): NpTheme[] {
+  return coreGetRegisteredThemes() as unknown as NpTheme[];
 }

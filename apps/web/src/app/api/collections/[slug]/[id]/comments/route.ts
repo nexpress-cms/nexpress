@@ -2,7 +2,7 @@ import { createComment, listComments, memberCan } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { optionalMember, requireMember } from "@/lib/member-auth-helpers";
 
@@ -52,9 +52,9 @@ export async function GET(
       // need to see everything.
       ...(member && !includeHidden ? { viewerMemberId: member.id } : {}),
     });
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -79,8 +79,8 @@ export async function POST(
       parentId,
       bodyMd,
     });
-    return nxSuccessResponse(created, { status: 201 });
+    return npSuccessResponse(created, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

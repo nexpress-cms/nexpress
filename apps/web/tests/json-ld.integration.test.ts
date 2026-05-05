@@ -123,13 +123,13 @@ describe.skipIf(skipIfNoTestDb())("JSON-LD structured data (Phase 10.5)", () => 
   });
 
   it("settings updates propagate to JSON-LD (siteName, origin)", async () => {
-    const { updateCommunitySettings, buildWebSiteJsonLd, nxSettings } =
+    const { updateCommunitySettings, buildWebSiteJsonLd, npSettings } =
       await import("@nexpress/core");
     void updateCommunitySettings;
     // Persist a site setting so siteName/url change at the next read.
     const { getTestDb } = await import("./harness.js");
     const db = await getTestDb();
-    await db.insert(nxSettings).values({
+    await db.insert(npSettings).values({
       key: "site",
       value: { name: "Acme Inc.", url: "https://acme.example/" },
       updatedAt: new Date(),

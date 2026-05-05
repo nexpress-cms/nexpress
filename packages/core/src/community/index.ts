@@ -10,10 +10,10 @@ export { memberCan, assertNotBanned, withMemberWrite } from "./can.js";
 
 export { setSpamAdapter, getSpamAdapter, resetSpamAdapter } from "./spam-adapter.js";
 export type {
-  NxSpamAdapter,
-  NxSpamCheckContext,
-  NxSpamVerdict,
-  NxSpamVerdictKind,
+  NpSpamAdapter,
+  NpSpamCheckContext,
+  NpSpamVerdict,
+  NpSpamVerdictKind,
 } from "./spam-adapter.js";
 
 export {
@@ -22,10 +22,10 @@ export {
   resetProfanityAdapter,
 } from "./profanity-adapter.js";
 export type {
-  NxProfanityAdapter,
-  NxProfanityCheckContext,
-  NxProfanityVerdict,
-  NxProfanityVerdictKind,
+  NpProfanityAdapter,
+  NpProfanityCheckContext,
+  NpProfanityVerdict,
+  NpProfanityVerdictKind,
 } from "./profanity-adapter.js";
 
 export {
@@ -33,7 +33,7 @@ export {
   getReputationAdapter,
   resetReputationAdapter,
 } from "./reputation-adapter.js";
-export type { NxReputationAdapter, NxReputationEvent } from "./reputation-adapter.js";
+export type { NpReputationAdapter, NpReputationEvent } from "./reputation-adapter.js";
 export { applyReputation } from "./reputation.js";
 
 export {
@@ -42,7 +42,7 @@ export {
   updateCommunitySettings,
   validateCommunitySettingsPatch,
 } from "./settings.js";
-export type { NxCommunitySettings, NxMemberUploadQuota } from "./settings.js";
+export type { NpCommunitySettings, NpMemberUploadQuota } from "./settings.js";
 
 export type { MemberAction, MemberCanTarget } from "./can.js";
 
@@ -61,15 +61,15 @@ export {
 } from "./comments.js";
 export type {
   CommentStatus,
-  NxCommentRow,
-  NxCommentCreateInput,
-  NxCommentListOptions,
-  NxCommentListResult,
-  NxCommentSort,
-  NxCommentUpdateInput,
-  NxCommentDeleteInput,
-  NxCommentHideInput,
-  NxCommentRestoreInput,
+  NpCommentRow,
+  NpCommentCreateInput,
+  NpCommentListOptions,
+  NpCommentListResult,
+  NpCommentSort,
+  NpCommentUpdateInput,
+  NpCommentDeleteInput,
+  NpCommentHideInput,
+  NpCommentRestoreInput,
 } from "./comments.js";
 
 export {
@@ -80,10 +80,10 @@ export {
   listMemberReactions,
   assertReactableExists,
 } from "./reactions.js";
-export type { NxReactionRow, NxReactToInput } from "./reactions.js";
+export type { NpReactionRow, NpReactToInput } from "./reactions.js";
 
 export { follow, unfollow, isFollowing, listFollowing } from "./follows.js";
-export type { NxFollowRow, NxFollowInput } from "./follows.js";
+export type { NpFollowRow, NpFollowInput } from "./follows.js";
 
 export {
   createNotification,
@@ -94,10 +94,10 @@ export {
   assertOwnsNotification,
 } from "./notifications.js";
 export type {
-  NxNotificationRow,
+  NpNotificationRow,
   CreateNotificationInput,
   ListNotificationsOptions,
-  NxNotificationListResult,
+  NpNotificationListResult,
   MarkReadInput,
 } from "./notifications.js";
 
@@ -115,7 +115,7 @@ export type {
 
 export { fileReport, listReports, resolveReport, unresolvedReportCount } from "./reports.js";
 export type {
-  NxReportRow,
+  NpReportRow,
   FileReportInput,
   ListReportsOptions,
   ListReportsResult,
@@ -126,19 +126,19 @@ export { issueBan, listBansForMember, revokeBan } from "./bans.js";
 
 export { grantMemberRole, listMemberRoleGrants, revokeMemberRole } from "./grants.js";
 export type {
-  NxMemberRoleGrantRow,
+  NpMemberRoleGrantRow,
   GrantMemberRoleInput,
   RevokeMemberRoleInput,
 } from "./grants.js";
-export type { NxBanRow, BanScope, BanKind, IssueBanInput, RevokeBanInput } from "./bans.js";
+export type { NpBanRow, BanScope, BanKind, IssueBanInput, RevokeBanInput } from "./bans.js";
 
 export { purgeMemberContent } from "./member-admin.js";
-export type { NxMemberPurgeResult } from "./member-admin.js";
+export type { NpMemberPurgeResult } from "./member-admin.js";
 
 export { muteMember, unmuteMember, isMuted, getMutedTargetIds, listMutes } from "./mutes.js";
 export type {
-  NxMemberMuteRow,
-  NxMemberMuteSummary,
+  NpMemberMuteRow,
+  NpMemberMuteSummary,
   MuteMemberInput,
   ListMutesOptions,
 } from "./mutes.js";
@@ -151,7 +151,7 @@ export {
   resolveMentionedMembers,
   fanOutMentionNotifications,
 } from "./mentions.js";
-export type { NxMentionTarget, FanOutMentionsInput } from "./mentions.js";
+export type { NpMentionTarget, FanOutMentionsInput } from "./mentions.js";
 
 export {
   registerNotificationKind,
@@ -162,16 +162,16 @@ export {
   recordDigestSent,
 } from "./notification-prefs.js";
 export type {
-  NxNotificationKindMeta,
-  NxNotificationPrefs,
-  NxDigestCadence,
+  NpNotificationKindMeta,
+  NpNotificationPrefs,
+  NpDigestCadence,
   SetMemberNotificationPrefsInput,
 } from "./notification-prefs.js";
 
 export { buildDigestEmail, runDigestSweep } from "./digest.js";
 export type {
-  NxDigestEmailContent,
-  NxDigestNotificationSummary,
+  NpDigestEmailContent,
+  NpDigestNotificationSummary,
   BuildDigestEmailInput,
   RunDigestSweepInput,
   RunDigestSweepResult,

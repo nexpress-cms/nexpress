@@ -79,12 +79,12 @@ describe.skipIf(skipIfNoTestDb())("Phase 19 — worker heartbeat", () => {
     await recordHeartbeat("worker-old");
     // Force `worker-old` to look ancient.
     const db = (await import("@nexpress/core")).getDb();
-    const { nxWorkerHeartbeats } = await import("@nexpress/core");
+    const { npWorkerHeartbeats } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     await db
-      .update(nxWorkerHeartbeats)
+      .update(npWorkerHeartbeats)
       .set({ lastSeenAt: new Date(Date.now() - 60 * 60 * 1000) })
-      .where(eq(nxWorkerHeartbeats.id, "worker-old"));
+      .where(eq(npWorkerHeartbeats.id, "worker-old"));
 
     const purged = await purgeStaleWorkers(new Date(Date.now() - 60_000));
     expect(purged).toBe(1);

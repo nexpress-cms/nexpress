@@ -1,9 +1,9 @@
 import {
-  type NxAuthUser,
-  type NxCollectionConfig,
-  type NxCollectionHook,
-  type NxHookPrincipal,
-  type NxJobType,
+  type NpAuthUser,
+  type NpCollectionConfig,
+  type NpCollectionHook,
+  type NpHookPrincipal,
+  type NpJobType,
 } from "../config/types.js";
 import { getEmailAdapter } from "../email/service.js";
 import { buildInviteEmail, buildMemberVerifyEmail, buildResetEmail } from "../email/templates.js";
@@ -23,29 +23,29 @@ interface ContentDeleteJobData {
 }
 
 interface ResolvedHookContext {
-  collectionConfig: NxCollectionConfig;
+  collectionConfig: NpCollectionConfig;
   data: Record<string, unknown>;
   /**
    * Resolved staff session, or `null` when the originating actor
    * was a member (Phase 9.7o widened the hook surface so member
    * writes also fire `afterCreate` / `afterUpdate`).
    */
-  user: NxAuthUser | null;
+  user: NpAuthUser | null;
   /**
    * Polymorphic actor reference. Resolvers should derive this
    * from whatever actor metadata they recorded with the job —
    * e.g. by checking whether the saved `userId` is null
    * (member-authored) and looking up the member id separately.
    */
-  principal: NxHookPrincipal;
+  principal: NpHookPrincipal;
   originalDoc?: Record<string, unknown> | null;
 }
 
 interface ResolvedDeleteHookContext {
-  collectionConfig: NxCollectionConfig;
+  collectionConfig: NpCollectionConfig;
   data: Record<string, unknown>;
-  user: NxAuthUser | null;
-  principal: NxHookPrincipal;
+  user: NpAuthUser | null;
+  principal: NpHookPrincipal;
 }
 
 interface BuiltinJobContext {
@@ -262,8 +262,8 @@ function asResetPurpose(value: unknown): "invite" | "reset" {
 }
 
 async function runCollectionHooks(
-  hooks: NxCollectionHook[] | undefined,
-  args: Parameters<NxCollectionHook>[0],
+  hooks: NpCollectionHook[] | undefined,
+  args: Parameters<NpCollectionHook>[0],
 ): Promise<void> {
   if (!hooks || hooks.length === 0) {
     return;
@@ -456,4 +456,4 @@ async function handleNotificationsSendDigest(data: unknown): Promise<void> {
   );
 }
 
-export type { BuiltinJobContext, ContentDeleteJobData, ContentJobData, NxJobType };
+export type { BuiltinJobContext, ContentDeleteJobData, ContentJobData, NpJobType };

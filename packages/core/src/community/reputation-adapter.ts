@@ -18,7 +18,7 @@
  * community write (fail-soft via observability hook, same pattern
  * as the spam adapter).
  */
-export type NxReputationEvent =
+export type NpReputationEvent =
   /** A new visible comment was inserted. Flagged / hidden / deleted
    *  comments do NOT emit this event. */
   | {
@@ -92,25 +92,25 @@ export type NxReputationEvent =
       memberId: string;
     };
 
-export interface NxReputationAdapter {
+export interface NpReputationAdapter {
   /** Returns the integer delta to apply to the affected member's
    *  reputation. Sign matters: positive credits, negative debits.
    *  Non-integer values are truncated; non-finite (NaN/Infinity)
    *  values are skipped. Returning 0 is the no-op path. */
-  apply(event: NxReputationEvent): number | Promise<number>;
+  apply(event: NpReputationEvent): number | Promise<number>;
 }
 
-const NOOP_ADAPTER: NxReputationAdapter = { apply: () => 0 };
-let currentAdapter: NxReputationAdapter = NOOP_ADAPTER;
+const NOOP_ADAPTER: NpReputationAdapter = { apply: () => 0 };
+let currentAdapter: NpReputationAdapter = NOOP_ADAPTER;
 
-export function setReputationAdapter(adapter: NxReputationAdapter): void {
+export function setReputationAdapter(adapter: NpReputationAdapter): void {
   if (typeof adapter?.apply !== "function") {
     throw new Error("setReputationAdapter: adapter must implement apply()");
   }
   currentAdapter = adapter;
 }
 
-export function getReputationAdapter(): NxReputationAdapter {
+export function getReputationAdapter(): NpReputationAdapter {
   return currentAdapter;
 }
 

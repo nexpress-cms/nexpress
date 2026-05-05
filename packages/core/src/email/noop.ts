@@ -1,4 +1,4 @@
-import type { NxEmailAdapter, NxEmailMessage } from "./types.js";
+import type { NpEmailAdapter, NpEmailMessage } from "./types.js";
 
 /**
  * Default adapter used when no mailer is wired. Logs the message shape so a
@@ -8,10 +8,10 @@ import type { NxEmailAdapter, NxEmailMessage } from "./types.js";
  * Swap via `setEmailAdapter(new SmtpEmailAdapter(...))` or a custom
  * implementation in production.
  */
-export class NoopEmailAdapter implements NxEmailAdapter {
+export class NoopEmailAdapter implements NpEmailAdapter {
   readonly kind = "noop";
 
-  send(message: NxEmailMessage): Promise<void> {
+  send(message: NpEmailMessage): Promise<void> {
     console.warn(
       `[nexpress] email (noop adapter) — not actually delivered.\n` +
         `  to:      ${message.to}\n` +

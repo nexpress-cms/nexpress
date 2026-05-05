@@ -12,7 +12,7 @@
  * The framework keeps `impl: unknown` on the public
  * registered-theme shape (no React peer dep in core), so
  * plugin template values stay typed as `unknown` here too.
- * The caller casts to the typed `NxThemeTemplate` shape
+ * The caller casts to the typed `NpThemeTemplate` shape
  * from `@nexpress/theme` at the render boundary.
  */
 

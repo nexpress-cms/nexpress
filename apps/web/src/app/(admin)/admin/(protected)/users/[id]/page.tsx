@@ -1,7 +1,7 @@
 import {
-  NxForbiddenError,
-  NxNotFoundError,
-  nxUsers,
+  NpForbiddenError,
+  NpNotFoundError,
+  npUsers,
   verifyTokenFull,
   can,
 } from "@nexpress/core";
@@ -34,20 +34,20 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   // to pivot back to provider accounts, so the read surface is gated
   // tighter than the member side.
   if (!can(user, "admin.manage")) {
-    throw new NxForbiddenError("user", "read");
+    throw new NpForbiddenError("user", "read");
   }
 
   const { id } = await params;
   const [row] = (await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      role: nxUsers.role,
-      createdAt: nxUsers.createdAt,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      createdAt: npUsers.createdAt,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, id))
+    .from(npUsers)
+    .where(eq(npUsers.id, id))
     .limit(1)) as Array<{
     id: string;
     email: string;
@@ -55,7 +55,7 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     role: string;
     createdAt: Date;
   }>;
-  if (!row) throw new NxNotFoundError("user", id);
+  if (!row) throw new NpNotFoundError("user", id);
 
   return (
     <div className="flex flex-col gap-6">

@@ -1,7 +1,7 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { nxMemberSessions, nxMembers } from "../db/schema/community.js";
+import { npMemberSessions, npMembers } from "../db/schema/community.js";
 import { sha256 } from "./session.js";
 
 /**
@@ -10,7 +10,7 @@ import { sha256 } from "./session.js";
  * reused (sessions store hashed tokens regardless of the principal kind).
  */
 
-export interface NxMemberAuthRow {
+export interface NpMemberAuthRow {
   id: string;
   email: string;
   handle: string;
@@ -34,18 +34,18 @@ export async function getMemberFromTokenPayload(
   db: NodePgDatabase<Record<string, unknown>>,
   payload: { sub: string; ver: number },
   accessToken?: string,
-): Promise<NxMemberAuthRow | null> {
+): Promise<NpMemberAuthRow | null> {
   const [row] = await db
     .select({
-      id: nxMembers.id,
-      email: nxMembers.email,
-      handle: nxMembers.handle,
-      displayName: nxMembers.displayName,
-      status: nxMembers.status,
-      tokenVersion: nxMembers.tokenVersion,
+      id: npMembers.id,
+      email: npMembers.email,
+      handle: npMembers.handle,
+      displayName: npMembers.displayName,
+      status: npMembers.status,
+      tokenVersion: npMembers.tokenVersion,
     })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, payload.sub))
+    .from(npMembers)
+    .where(eq(npMembers.id, payload.sub))
     .limit(1);
 
   if (!row) return null;
@@ -55,20 +55,20 @@ export async function getMemberFromTokenPayload(
     const tokenHash = await sha256(accessToken);
     const now = new Date();
     const [session] = (await db
-      .select({ id: nxMemberSessions.id })
-      .from(nxMemberSessions)
+      .select({ id: npMemberSessions.id })
+      .from(npMemberSessions)
       .where(
         and(
-          eq(nxMemberSessions.memberId, row.id),
-          eq(nxMemberSessions.tokenHash, tokenHash),
-          gt(nxMemberSessions.expiresAt, now),
+          eq(npMemberSessions.memberId, row.id),
+          eq(npMemberSessions.tokenHash, tokenHash),
+          gt(npMemberSessions.expiresAt, now),
         ),
       )
       .limit(1)) as Array<{ id: string }>;
     if (!session) return null;
   }
 
-  return row as NxMemberAuthRow;
+  return row as NpMemberAuthRow;
 }
 
 /**
@@ -82,12 +82,12 @@ export async function invalidateAllMemberSessions(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
-      .update(nxMembers)
+      .update(npMembers)
       .set({
-        tokenVersion: sql`${nxMembers.tokenVersion} + 1`,
+        tokenVersion: sql`${npMembers.tokenVersion} + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(nxMembers.id, memberId));
-    await tx.delete(nxMemberSessions).where(eq(nxMemberSessions.memberId, memberId));
+      .where(eq(npMembers.id, memberId));
+    await tx.delete(npMemberSessions).where(eq(npMemberSessions.memberId, memberId));
   });
 }

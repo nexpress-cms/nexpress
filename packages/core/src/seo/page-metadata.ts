@@ -1,5 +1,5 @@
 import { getDb } from "../db/runtime.js";
-import { nxSettings } from "../db/schema/system.js";
+import { npSettings } from "../db/schema/system.js";
 
 /**
  * Phase 10.3 — site-wide SEO defaults read from `nx_settings`.
@@ -12,7 +12,7 @@ import { nxSettings } from "../db/schema/system.js";
  * The shape is a flat merge so callers don't have to hop across
  * keys to pre-fill metadata.
  */
-export interface NxSiteSeoSettings {
+export interface NpSiteSeoSettings {
   /** Site name shown in the title bar suffix and `og:site_name`. */
   siteName: string;
   /** Absolute origin used as the base for canonical URLs. */
@@ -32,7 +32,7 @@ export interface NxSiteSeoSettings {
   defaultLocale: string;
 }
 
-export const DEFAULT_SITE_SEO_SETTINGS: NxSiteSeoSettings = {
+export const DEFAULT_SITE_SEO_SETTINGS: NpSiteSeoSettings = {
   siteName: "NexPress",
   siteUrl: "http://localhost:3000",
   defaultDescription: "",
@@ -48,11 +48,11 @@ export const DEFAULT_SITE_SEO_SETTINGS: NxSiteSeoSettings = {
  * permission gate; the values are surfaced in public HTML
  * `<head>` tags.
  */
-export async function getSiteSeoSettings(): Promise<NxSiteSeoSettings> {
+export async function getSiteSeoSettings(): Promise<NpSiteSeoSettings> {
   const db = getDb();
   const rows = (await db
     .select()
-    .from(nxSettings)) as Array<{ key: string; value: unknown }>;
+    .from(npSettings)) as Array<{ key: string; value: unknown }>;
 
   const map = new Map<string, unknown>();
   for (const row of rows) map.set(row.key, row.value);
@@ -98,7 +98,7 @@ function readString(v: unknown): string | null {
  * optional — anything missing falls back to the site-wide
  * defaults from `getSiteSeoSettings()`.
  */
-export interface NxPageMetadataInput {
+export interface NpPageMetadataInput {
   /** Page title (without site-name suffix; that's appended below). */
   title?: string | null;
   /** Page-specific description. Falls back to site default. */
@@ -137,7 +137,7 @@ export interface NxPageMetadataInput {
  * a hard dependency on the framework from core. The reference app
  * casts the return to Next's `Metadata` (the field names match).
  */
-export interface NxPageMetadata {
+export interface NpPageMetadata {
   title: string;
   description: string;
   alternates?: { canonical: string };
@@ -169,8 +169,8 @@ export interface NxPageMetadata {
  * mirrored so both crawler families see consistent values.
  */
 export async function buildPageMetadata(
-  input: NxPageMetadataInput = {},
-): Promise<NxPageMetadata> {
+  input: NpPageMetadataInput = {},
+): Promise<NpPageMetadata> {
   const settings = await getSiteSeoSettings();
   const path = normalizePath(input.path);
 
@@ -183,7 +183,7 @@ export async function buildPageMetadata(
   const ogImage = resolveOgImage(input.ogImage, settings);
   const ogType = input.ogType ?? "website";
 
-  const metadata: NxPageMetadata = {
+  const metadata: NpPageMetadata = {
     title: titleText,
     description: descriptionText,
     alternates: { canonical: canonicalUrl },
@@ -226,7 +226,7 @@ function normalizePath(raw: string | undefined): string {
 
 function resolveOgImage(
   pageImage: string | null | undefined,
-  settings: NxSiteSeoSettings,
+  settings: NpSiteSeoSettings,
 ): string | null {
   const candidate = pageImage?.trim() || settings.defaultOgImage;
   if (!candidate) return null;
@@ -243,7 +243,7 @@ function resolveOgImage(
  * the admin endpoint should persist. Mirrors
  * `validateCommunitySettingsPatch` in the community module.
  */
-export interface NxSeoSettingsPatch {
+export interface NpSeoSettingsPatch {
   defaultOgImage?: string | null;
   twitterHandle?: string | null;
   defaultLocale?: string | null;
@@ -251,12 +251,12 @@ export interface NxSeoSettingsPatch {
 
 export function validateSeoSettingsPatch(
   patch: unknown,
-): NxSeoSettingsPatch {
+): NpSeoSettingsPatch {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
     throw new Error("Body must be a JSON object");
   }
   const raw = patch as Record<string, unknown>;
-  const out: NxSeoSettingsPatch = {};
+  const out: NpSeoSettingsPatch = {};
 
   if ("defaultOgImage" in raw) {
     const v = raw.defaultOgImage;

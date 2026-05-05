@@ -1,6 +1,6 @@
 import {
-  NxAuthError,
-  NxForbiddenError,
+  NpAuthError,
+  NpForbiddenError,
   createMemberDocument,
   getCollectionConfig,
 } from "@nexpress/core";
@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { optionalAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import {
   extractSaveOptions,
   findCollectionDocuments,
@@ -46,9 +46,9 @@ export async function GET(
 
     const result = await findCollectionDocuments(slug, findOptions, user);
 
-    return nxSuccessResponse(result);
+    return npSuccessResponse(result);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -74,18 +74,18 @@ export async function POST(
       const saveOptions = extractSaveOptions(data);
       const result = await saveCollectionDocument(slug, null, data, staffUser, saveOptions);
       revalidateCollection(slug, result.doc);
-      return nxSuccessResponse(result.doc, { status: 201 });
+      return npSuccessResponse(result.doc, { status: 201 });
     }
 
     const member = await optionalMember(request);
-    if (!member) throw new NxAuthError();
+    if (!member) throw new NpAuthError();
 
     await ensureFor("read");
     const config = getCollectionConfig(slug);
     if (!config.community?.memberWrite?.create) {
       // Surface as 403 not 401 — the member is authenticated; the
       // collection just hasn't opted in to member writes.
-      throw new NxForbiddenError(slug, "create");
+      throw new NpForbiddenError(slug, "create");
     }
 
     await ensureFor("write");
@@ -93,8 +93,8 @@ export async function POST(
     const saveOptions = extractSaveOptions(data);
     const result = await createMemberDocument(slug, data, member.id, saveOptions);
     revalidateCollection(slug, result.doc);
-    return nxSuccessResponse(result.doc, { status: 201 });
+    return npSuccessResponse(result.doc, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -1,17 +1,17 @@
-import { type NxJobType } from "../config/types.js";
+import { type NpJobType } from "../config/types.js";
 
-export type NxJobHandler = (data: unknown) => Promise<void>;
+export type NpJobHandler = (data: unknown) => Promise<void>;
 
-const handlers = new Map<NxJobType, NxJobHandler>();
+const handlers = new Map<NpJobType, NpJobHandler>();
 
-export function registerJobHandler(type: NxJobType, handler: NxJobHandler): void {
+export function registerJobHandler(type: NpJobType, handler: NpJobHandler): void {
   handlers.set(type, handler);
 }
 
-export function getJobHandler(type: NxJobType): NxJobHandler | undefined {
+export function getJobHandler(type: NpJobType): NpJobHandler | undefined {
   return handlers.get(type);
 }
 
-export function getAllJobHandlers(): ReadonlyMap<NxJobType, NxJobHandler> {
+export function getAllJobHandlers(): ReadonlyMap<NpJobType, NpJobHandler> {
   return handlers;
 }

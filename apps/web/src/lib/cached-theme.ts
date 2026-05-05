@@ -1,6 +1,6 @@
 import { getCachedActiveThemeId } from "@nexpress/next";
 import { getRegisteredThemes, getThemeById } from "@nexpress/theme";
-import type { NxTheme } from "@nexpress/theme";
+import type { NpTheme } from "@nexpress/theme";
 
 /**
  * Phase 14.3 — typed-active-theme accessor that hits the
@@ -14,7 +14,7 @@ import type { NxTheme } from "@nexpress/theme";
  * otherwise fall back to the first registered theme; otherwise
  * `null`.
  */
-export async function getCachedActiveTheme(): Promise<NxTheme | null> {
+export async function getCachedActiveTheme(): Promise<NpTheme | null> {
   const id = await getCachedActiveThemeId();
   if (id) {
     const typed = getThemeById(id);

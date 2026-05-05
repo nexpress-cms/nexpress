@@ -24,9 +24,9 @@ import { registerTestCollections } from "../../../packages/core/src/integration/
 
 import {
   hashPassword,
-  nxMemberSessions,
-  nxMembers,
-  nxUsers,
+  npMemberSessions,
+  npMembers,
+  npUsers,
   signMemberToken,
   signToken,
 } from "@nexpress/core";
@@ -94,7 +94,7 @@ export async function seedUser(
     ? await hashPassword(overrides.password)
     : await getDefaultPasswordHash();
   const [row] = await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({
       email: overrides.email ?? `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
       password: hash,
@@ -102,10 +102,10 @@ export async function seedUser(
       role: overrides.role ?? "admin",
     })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     });
 
   if (!row) throw new Error("Failed to seed user");
@@ -170,7 +170,7 @@ export async function seedActiveMember(
   const hash = await getDefaultPasswordHash();
 
   const [memberRow] = (await db
-    .insert(nxMembers)
+    .insert(npMembers)
     .values({
       email,
       password: hash,
@@ -180,10 +180,10 @@ export async function seedActiveMember(
       status: "active",
     })
     .returning({
-      id: nxMembers.id,
-      handle: nxMembers.handle,
-      email: nxMembers.email,
-      tokenVersion: nxMembers.tokenVersion,
+      id: npMembers.id,
+      handle: npMembers.handle,
+      email: npMembers.email,
+      tokenVersion: npMembers.tokenVersion,
     })) as Array<{ id: string; handle: string; email: string; tokenVersion: number }>;
 
   if (!memberRow) throw new Error("Failed to seed member");
@@ -198,7 +198,7 @@ export async function seedActiveMember(
   // hash in the DB) is rejected at refresh time.
   const tokenHash = createHash("sha256").update(accessToken).digest("hex");
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  await db.insert(nxMemberSessions).values({
+  await db.insert(npMemberSessions).values({
     memberId: memberRow.id,
     tokenHash,
     expiresAt,

@@ -1,8 +1,8 @@
-import { NxNotFoundError, nxMembers } from "@nexpress/core";
+import { NpNotFoundError, npMembers } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
@@ -22,24 +22,24 @@ export async function GET(
     const db = getDb();
     const [member] = await db
       .select({
-        id: nxMembers.id,
-        handle: nxMembers.handle,
-        displayName: nxMembers.displayName,
-        avatar: nxMembers.avatar,
-        bio: nxMembers.bio,
-        status: nxMembers.status,
-        reputation: nxMembers.reputation,
-        createdAt: nxMembers.createdAt,
+        id: npMembers.id,
+        handle: npMembers.handle,
+        displayName: npMembers.displayName,
+        avatar: npMembers.avatar,
+        bio: npMembers.bio,
+        status: npMembers.status,
+        reputation: npMembers.reputation,
+        createdAt: npMembers.createdAt,
       })
-      .from(nxMembers)
-      .where(eq(nxMembers.handle, handle.toLowerCase()))
+      .from(npMembers)
+      .where(eq(npMembers.handle, handle.toLowerCase()))
       .limit(1);
 
     if (!member || member.status !== "active") {
-      throw new NxNotFoundError("member", handle);
+      throw new NpNotFoundError("member", handle);
     }
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       member: {
         handle: member.handle,
         displayName: member.displayName,
@@ -50,6 +50,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

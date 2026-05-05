@@ -10,9 +10,9 @@
  */
 import type * as JobLogModule from "../jobs/job-log.js";
 
-export type NxLogLevel = "debug" | "info" | "warn" | "error";
+export type NpLogLevel = "debug" | "info" | "warn" | "error";
 
-export interface NxLogger {
+export interface NpLogger {
   debug(message: string, context?: Record<string, unknown>): void;
   info(message: string, context?: Record<string, unknown>): void;
   warn(message: string, context?: Record<string, unknown>): void;
@@ -22,10 +22,10 @@ export interface NxLogger {
    * log call's context. Optional — host code falls back to merging
    * inline when `child` is missing.
    */
-  child?(bindings: Record<string, unknown>): NxLogger;
+  child?(bindings: Record<string, unknown>): NpLogger;
 }
 
-function emitConsole(level: NxLogLevel, message: string, context?: Record<string, unknown>): void {
+function emitConsole(level: NpLogLevel, message: string, context?: Record<string, unknown>): void {
   const fn =
     level === "error"
       ? console.error
@@ -51,7 +51,7 @@ function emitConsole(level: NxLogLevel, message: string, context?: Record<string
 
 let teeImportPromise: Promise<typeof JobLogModule> | null = null;
 async function teeToJobLog(
-  level: NxLogLevel,
+  level: NpLogLevel,
   message: string,
   context?: Record<string, unknown>,
 ): Promise<void> {
@@ -72,7 +72,7 @@ async function teeToJobLog(
 }
 
 /** Default logger — emits to `console`. Replaceable via `setLogger`. */
-export const consoleLogger: NxLogger = {
+export const consoleLogger: NpLogger = {
   debug: (msg, ctx) => emitConsole("debug", msg, ctx),
   info: (msg, ctx) => emitConsole("info", msg, ctx),
   warn: (msg, ctx) => emitConsole("warn", msg, ctx),
@@ -87,15 +87,15 @@ export const consoleLogger: NxLogger = {
   },
 };
 
-let currentLogger: NxLogger = consoleLogger;
+let currentLogger: NpLogger = consoleLogger;
 
 /** Replace the global logger. Call once at app boot, before any route runs. */
-export function setLogger(logger: NxLogger): void {
+export function setLogger(logger: NpLogger): void {
   currentLogger = logger;
 }
 
 /** Returns the currently-installed logger. Defaults to `consoleLogger`. */
-export function getLogger(): NxLogger {
+export function getLogger(): NpLogger {
   return currentLogger;
 }
 
@@ -104,7 +104,7 @@ export function getLogger(): NxLogger {
  * a plugin id, a job handler name) regardless of whether the installed
  * logger natively supports `child()`.
  */
-export function getScopedLogger(bindings: Record<string, unknown>): NxLogger {
+export function getScopedLogger(bindings: Record<string, unknown>): NpLogger {
   const logger = getLogger();
   if (typeof logger.child === "function") {
     return logger.child(bindings);

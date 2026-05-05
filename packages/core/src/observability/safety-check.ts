@@ -7,7 +7,7 @@ import { getScopedLogger } from "./logger.js";
  * function of its input means it stays trivially testable and never
  * accidentally reads `process.env` from a deeper code path.
  */
-export interface NxStartupSafetyInput {
+export interface NpStartupSafetyInput {
   /** Storage adapter id chosen by `createStorageAdapter` (`local` or `s3`). */
   storageAdapter: "local" | "s3";
   /** Resolved auth secret. `null` when unset. */
@@ -60,7 +60,7 @@ const MIN_PROD_SECRET_LENGTH = 32;
  * of emitted warning ids so callers can assert on them in tests; in
  * production nothing inspects the return value.
  */
-export function verifyStartupSafety(input: NxStartupSafetyInput): readonly string[] {
+export function verifyStartupSafety(input: NpStartupSafetyInput): readonly string[] {
   const log = getScopedLogger({ subsystem: "boot" });
   const emitted: string[] = [];
 

@@ -2,12 +2,12 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxMembers, nxNotifications } from "../db/schema/community.js";
+import { npMembers, npNotifications } from "../db/schema/community.js";
 import { getEmailAdapter } from "../email/service.js";
 import { getLogger } from "../observability/logger.js";
 import { listSites, NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
-import { type NxDigestCadence, recordDigestSent } from "./notification-prefs.js";
+import { type NpDigestCadence, recordDigestSent } from "./notification-prefs.js";
 
 /**
  * Phase 16.4 — email digest fan-out. The `notifications:sendDigest`
@@ -16,7 +16,7 @@ import { type NxDigestCadence, recordDigestSent } from "./notification-prefs.js"
  * opted into that cadence, builds an inbox summary scoped to "since
  * last digest" (falling back to the cadence window when the member
  * has never received one), renders an email through the configured
- * `NxEmailAdapter`, and stamps `lastDigestAt` on success.
+ * `NpEmailAdapter`, and stamps `lastDigestAt` on success.
  *
  * The job is idempotent enough for production use: a sweep that
  * runs twice for the same window won't re-email members because
@@ -25,14 +25,14 @@ import { type NxDigestCadence, recordDigestSent } from "./notification-prefs.js"
  * the rest of the sweep.
  */
 
-export interface NxDigestNotificationSummary {
+export interface NpDigestNotificationSummary {
   id: string;
   kind: string;
   payload: Record<string, unknown>;
   createdAt: Date;
 }
 
-export interface NxDigestEmailContent {
+export interface NpDigestEmailContent {
   subject: string;
   text: string;
   html: string;
@@ -40,8 +40,8 @@ export interface NxDigestEmailContent {
 
 export interface BuildDigestEmailInput {
   member: { displayName: string; handle: string };
-  notifications: NxDigestNotificationSummary[];
-  cadence: NxDigestCadence;
+  notifications: NpDigestNotificationSummary[];
+  cadence: NpDigestCadence;
   /** Site display name; defaults to "your site" so the noop adapter is still readable. */
   siteName?: string;
 }
@@ -70,7 +70,7 @@ function escapeHtml(value: string): string {
  * Pure renderer; exposed so plugins / tests can call it without
  * the DB read path.
  */
-export function buildDigestEmail(input: BuildDigestEmailInput): NxDigestEmailContent {
+export function buildDigestEmail(input: BuildDigestEmailInput): NpDigestEmailContent {
   const site = input.siteName ?? "your site";
   const cadenceWord = input.cadence === "weekly" ? "weekly" : "daily";
   const total = input.notifications.length;
@@ -122,7 +122,7 @@ interface MemberDigestRow {
   prefs: Record<string, unknown>;
 }
 
-function fallbackWindow(cadence: NxDigestCadence, now: Date): Date {
+function fallbackWindow(cadence: NpDigestCadence, now: Date): Date {
   const ms = cadence === "weekly" ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
   return new Date(now.getTime() - ms);
 }
@@ -135,22 +135,22 @@ function fallbackWindow(cadence: NxDigestCadence, now: Date): Date {
  */
 async function listMembersForCadence(
   db: NodePgDatabase<Record<string, unknown>>,
-  cadence: Exclude<NxDigestCadence, "off">,
+  cadence: Exclude<NpDigestCadence, "off">,
 ): Promise<MemberDigestRow[]> {
   const rows = (await db
     .select({
-      id: nxMembers.id,
-      email: nxMembers.email,
-      handle: nxMembers.handle,
-      displayName: nxMembers.displayName,
-      prefs: nxMembers.notificationPrefs,
-      status: nxMembers.status,
+      id: npMembers.id,
+      email: npMembers.email,
+      handle: npMembers.handle,
+      displayName: npMembers.displayName,
+      prefs: npMembers.notificationPrefs,
+      status: npMembers.status,
     })
-    .from(nxMembers)
+    .from(npMembers)
     .where(
       and(
-        eq(nxMembers.status, "active"),
-        sql`${nxMembers.notificationPrefs} ->> 'digest' = ${cadence}`,
+        eq(npMembers.status, "active"),
+        sql`${npMembers.notificationPrefs} ->> 'digest' = ${cadence}`,
       ),
     )) as Array<MemberDigestRow & { status: string }>;
   return rows.map((r) => ({
@@ -167,33 +167,33 @@ async function fetchUnreadSince(
   memberId: string,
   siteId: string,
   since: Date,
-): Promise<NxDigestNotificationSummary[]> {
+): Promise<NpDigestNotificationSummary[]> {
   const rows = (await db
     .select({
-      id: nxNotifications.id,
-      kind: nxNotifications.kind,
-      payload: nxNotifications.payload,
-      createdAt: nxNotifications.createdAt,
+      id: npNotifications.id,
+      kind: npNotifications.kind,
+      payload: npNotifications.payload,
+      createdAt: npNotifications.createdAt,
     })
-    .from(nxNotifications)
+    .from(npNotifications)
     .where(
       and(
-        eq(nxNotifications.memberId, memberId),
+        eq(npNotifications.memberId, memberId),
         // Issue #218 — scope to the site we're sweeping. Without
         // this the digest mixed inboxes across tenants and the
         // recipient saw notifications from sites they don't even
         // know exist.
-        eq(nxNotifications.siteId, siteId),
+        eq(npNotifications.siteId, siteId),
         // Unread + within the window. If the member already read
         // everything in the inbox the digest would be noise, so we
         // skip silently (caller increments `skipped` when the list
         // comes back empty).
-        gt(nxNotifications.createdAt, since),
-        isNull(nxNotifications.readAt),
+        gt(npNotifications.createdAt, since),
+        isNull(npNotifications.readAt),
       ),
     )
-    .orderBy(desc(nxNotifications.createdAt))
-    .limit(50)) as NxDigestNotificationSummary[];
+    .orderBy(desc(npNotifications.createdAt))
+    .limit(50)) as NpDigestNotificationSummary[];
   return rows;
 }
 
@@ -299,7 +299,7 @@ export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDig
 function lastDigestSinceFor(
   member: MemberDigestRow,
   siteId: string,
-  cadence: NxDigestCadence,
+  cadence: NpDigestCadence,
   now: Date,
 ): Date {
   const prefs = (member.prefs ?? {});

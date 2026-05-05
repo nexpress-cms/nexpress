@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NxForbiddenError } from "../errors.js";
+import { NpForbiddenError } from "../errors.js";
 import { createPluginRuntimeContext } from "./context.js";
 
 // The context module pulls in `getDb`, media, and storage adapter singletons
@@ -133,7 +133,7 @@ describe("ctx.http.fetch allowedHosts", () => {
   it("requires the network:fetch capability", async () => {
     const ctx = buildCtx({ capabilities: [], allowedHosts: ["example.com"] });
     await expect(ctx.http.fetch("https://example.com/x")).rejects.toBeInstanceOf(
-      NxForbiddenError,
+      NpForbiddenError,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -188,7 +188,7 @@ describe("ctx.storage capability gating", () => {
   it("refuses storage.get without storage:kv", async () => {
     const ctx = buildCtx({ capabilities: [] });
     await expect(ctx.storage.get("any-key")).rejects.toBeInstanceOf(
-      NxForbiddenError,
+      NpForbiddenError,
     );
   });
 });

@@ -1,4 +1,4 @@
-export interface NxEmailMessage {
+export interface NpEmailMessage {
   /** RFC-822 recipient address. Single recipient per message. */
   to: string;
   /** Plain-text subject line. */
@@ -16,7 +16,7 @@ export interface NxEmailMessage {
  * Adapters throw on failure so the pg-boss worker can retry per its
  * configured policy. Success is a void resolve.
  */
-export interface NxEmailAdapter {
+export interface NpEmailAdapter {
   readonly kind: string;
-  send(message: NxEmailMessage): Promise<void>;
+  send(message: NpEmailMessage): Promise<void>;
 }

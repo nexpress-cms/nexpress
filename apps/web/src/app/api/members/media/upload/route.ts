@@ -1,15 +1,15 @@
 import {
-  NxValidationError,
+  NpValidationError,
   assertNotBanned,
   getStorageAdapter,
-  nxMedia,
+  npMedia,
   runHook,
   uploadMedia,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
@@ -115,13 +115,13 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "file", message: "A file upload is required" },
       ]);
     }
 
     if (!isAllowedMimeType(file.type)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "file",
           message: `Only image uploads are accepted (${ALLOWED_MIME_TYPES.join(", ")})`,
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "file",
           message: `File exceeds max size of ${MAX_FILE_SIZE} bytes`,
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
     // discussion. Reject the upload before storage.
     const sniffedMime = sniffImageMime(buffer);
     if (!sniffedMime || sniffedMime !== file.type) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "file",
           message:
@@ -171,9 +171,9 @@ export async function POST(request: NextRequest) {
     // works in both deployment modes.
     const db = getDb();
     const [row] = (await db
-      .select({ storageKey: nxMedia.storageKey })
-      .from(nxMedia)
-      .where(eq(nxMedia.id, result.id))
+      .select({ storageKey: npMedia.storageKey })
+      .from(npMedia)
+      .where(eq(npMedia.id, result.id))
       .limit(1)) as Array<{ storageKey: string }>;
     const url = row ? await getStorageAdapter().getUrl(row.storageKey) : null;
 
@@ -189,8 +189,8 @@ export async function POST(request: NextRequest) {
       media: result,
     });
 
-    return nxSuccessResponse({ ...result, url }, { status: 202 });
+    return npSuccessResponse({ ...result, url }, { status: 202 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

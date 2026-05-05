@@ -7,24 +7,24 @@ import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
-import type { NxFindResult, NxImageSize } from "../config/types.js";
+import type { NpFindResult, NpImageSize } from "../config/types.js";
 import { readEnvPositiveInt } from "../config/env.js";
-import { nxMembers } from "../db/schema/community.js";
-import { nxMedia, nxMediaRefs } from "../db/schema/media.js";
-import { nxUsers } from "../db/schema/system.js";
+import { npMembers } from "../db/schema/community.js";
+import { npMedia, npMediaRefs } from "../db/schema/media.js";
+import { npUsers } from "../db/schema/system.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { getLogger } from "../observability/logger.js";
 import { getDb } from "../db/runtime.js";
 import {
   DEFAULT_IMAGE_SIZES,
   processImage,
-  type NxProcessedImageResult,
+  type NpProcessedImageResult,
 } from "./processor.js";
-import type { NxStorageAdapter } from "../storage/types.js";
+import type { NpStorageAdapter } from "../storage/types.js";
 
 /**
  * Trailing-window for member upload quotas (`perDay` in
- * `nxMemberUploadQuota`). Default 24h matches the historical
+ * `npMemberUploadQuota`). Default 24h matches the historical
  * "daily quota" semantics; override via
  * `NX_MEMBER_QUOTA_WINDOW_HOURS` to shift to weekly or hourly
  * caps without touching code.
@@ -81,13 +81,13 @@ interface MediaRecord {
   deletedAt: Date | null;
 }
 
-let storageAdapter: NxStorageAdapter | null = null;
+let storageAdapter: NpStorageAdapter | null = null;
 
-export function setStorageAdapter(adapter: NxStorageAdapter): void {
+export function setStorageAdapter(adapter: NpStorageAdapter): void {
   storageAdapter = adapter;
 }
 
-export function getStorageAdapter(): NxStorageAdapter {
+export function getStorageAdapter(): NpStorageAdapter {
   if (!storageAdapter) {
     throw new Error("Storage adapter not initialized. Call setStorageAdapter() first.");
   }
@@ -103,14 +103,14 @@ export function getStorageAdapter(): NxStorageAdapter {
  * system uploads with no human owner — both columns stay null and
  * the audit log carries the actor.
  */
-export type NxMediaUploader =
+export type NpMediaUploader =
   | { kind: "staff"; userId: string }
   | { kind: "member"; memberId: string }
   | null;
 
 export async function uploadMedia(
   file: { buffer: Buffer; originalFilename: string; mimeType: string },
-  uploader: NxMediaUploader | string,
+  uploader: NpMediaUploader | string,
   folderId?: string,
 ): Promise<{ id: string; status: string }> {
   // Backwards-compat: the original signature was
@@ -118,7 +118,7 @@ export async function uploadMedia(
   // callers (plugin context, admin bulk uploads, etc.) pass a bare
   // string. Coerce that into the staff variant of the polymorphic
   // shape so the rest of this function only deals with the union.
-  const resolvedUploader: NxMediaUploader =
+  const resolvedUploader: NpMediaUploader =
     typeof uploader === "string"
       ? { kind: "staff", userId: uploader }
       : uploader;
@@ -180,11 +180,11 @@ export async function uploadMedia(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${memberId}, 0))`,
       );
       await assertMemberUploadQuota(memberId, tx);
-      await tx.insert(nxMedia).values(insertValues);
+      await tx.insert(npMedia).values(insertValues);
     });
   } else {
     const db = getDb() as unknown as DrizzleDatabaseLike;
-    await db.insert(nxMedia).values(insertValues);
+    await db.insert(npMedia).values(insertValues);
   }
 
   const adapter = getStorageAdapter();
@@ -204,7 +204,7 @@ export async function uploadMedia(
     // what they need to act on.
     try {
       const cleanupDb = getDb() as unknown as DrizzleDatabaseLike;
-      await cleanupDb.delete(nxMedia).where(eq(nxMedia.id, id));
+      await cleanupDb.delete(npMedia).where(eq(npMedia.id, id));
     } catch (cleanupErr) {
       // Swallow so the original storage error reaches the
       // caller — that's what they need to act on. But don't go
@@ -227,7 +227,7 @@ export async function uploadMedia(
 }
 
 /**
- * Throws `NxRateLimitError` (429) if the member is at or over
+ * Throws `NpRateLimitError` (429) if the member is at or over
  * their per-day or lifetime upload cap. Both bounds count
  * non-deleted rows, so admin / member deletes free up quota the
  * same way (mirrors the 9.7l purge semantic). When both bounds
@@ -247,7 +247,7 @@ async function assertMemberUploadQuota(
   const { getCommunitySettings } = await import(
     "../community/settings.js"
   );
-  const { NxRateLimitError } = await import("../errors.js");
+  const { NpRateLimitError } = await import("../errors.js");
   const settings = await getCommunitySettings();
   const { perDay, total } = settings.memberUploadQuota;
   if (perDay === null && total === null) return;
@@ -264,16 +264,16 @@ async function assertMemberUploadQuota(
   if (total !== null) {
     const [row] = (await db
       .select({ value: count() })
-      .from(nxMedia)
+      .from(npMedia)
       .where(
         and(
-          eq(nxMedia.uploadedByMemberId, memberId),
-          isNull(nxMedia.deletedAt),
+          eq(npMedia.uploadedByMemberId, memberId),
+          isNull(npMedia.deletedAt),
         ),
       )) as Array<{ value: number }>;
     const used = row?.value ?? 0;
     if (used >= total) {
-      throw new NxRateLimitError(
+      throw new NpRateLimitError(
         `Upload quota exceeded — this account has reached its lifetime cap of ${total} uploads.`,
       );
     }
@@ -283,17 +283,17 @@ async function assertMemberUploadQuota(
     const since = new Date(Date.now() - MEMBER_QUOTA_WINDOW_MS);
     const [row] = (await db
       .select({ value: count() })
-      .from(nxMedia)
+      .from(npMedia)
       .where(
         and(
-          eq(nxMedia.uploadedByMemberId, memberId),
-          isNull(nxMedia.deletedAt),
-          gte(nxMedia.createdAt, since),
+          eq(npMedia.uploadedByMemberId, memberId),
+          isNull(npMedia.deletedAt),
+          gte(npMedia.createdAt, since),
         ),
       )) as Array<{ value: number }>;
     const recent = row?.value ?? 0;
     if (recent >= perDay) {
-      throw new NxRateLimitError(
+      throw new NpRateLimitError(
         `Upload rate limit exceeded — try again later (max ${perDay} uploads per 24 hours).`,
       );
     }
@@ -302,7 +302,7 @@ async function assertMemberUploadQuota(
 
 export async function processMediaImage(
   mediaId: string,
-  config: { sizes?: NxImageSize[]; format?: string; quality?: number },
+  config: { sizes?: NpImageSize[]; format?: string; quality?: number },
 ): Promise<void> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
@@ -325,7 +325,7 @@ export async function processMediaImage(
     const sizes = await uploadImageVariants(adapter, media.id, processed, format, mimeType);
 
     await db
-      .update(nxMedia)
+      .update(npMedia)
       .set({
         sizes,
         width: processed.source.width,
@@ -333,16 +333,16 @@ export async function processMediaImage(
         status: "ready",
         updatedAt: new Date(),
       })
-      .where(eq(nxMedia.id, media.id))
+      .where(eq(npMedia.id, media.id))
       .returning();
   } catch (error) {
     await db
-      .update(nxMedia)
+      .update(npMedia)
       .set({
         status: "error",
         updatedAt: new Date(),
       })
-      .where(eq(nxMedia.id, media.id))
+      .where(eq(npMedia.id, media.id))
       .returning();
 
     throw error;
@@ -353,8 +353,8 @@ export async function getMediaById(id: string): Promise<Record<string, unknown> 
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
-    .from(nxMedia)
-    .where(and(eq(nxMedia.id, id), isNull(nxMedia.deletedAt)))
+    .from(npMedia)
+    .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
     .limit(1);
 
   return media ? toRecord(media) : null;
@@ -364,7 +364,7 @@ export async function deleteMedia(
   id: string,
 ): Promise<{ deleted: boolean; references?: unknown[] }> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const references = await db.select().from(nxMediaRefs).where(eq(nxMediaRefs.mediaId, id));
+  const references = await db.select().from(npMediaRefs).where(eq(npMediaRefs.mediaId, id));
 
   if (references.length > 0) {
     return { deleted: false, references };
@@ -372,8 +372,8 @@ export async function deleteMedia(
 
   const [media] = await db
     .select()
-    .from(nxMedia)
-    .where(and(eq(nxMedia.id, id), isNull(nxMedia.deletedAt)))
+    .from(npMedia)
+    .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
     .limit(1);
 
   if (!media) {
@@ -381,12 +381,12 @@ export async function deleteMedia(
   }
 
   await db
-    .update(nxMedia)
+    .update(npMedia)
     .set({
       deletedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(nxMedia.id, id))
+    .where(eq(npMedia.id, id))
     .returning();
 
   return { deleted: true };
@@ -401,38 +401,38 @@ export async function deleteMedia(
  * for "show me everything @handle uploaded" investigations after a
  * spam wave.
  */
-export type NxMediaUploaderKindFilter = "staff" | "member";
+export type NpMediaUploaderKindFilter = "staff" | "member";
 
 export async function listMedia(options: {
   page?: number;
   limit?: number;
   folderId?: string;
   mimeType?: string;
-  uploaderKind?: NxMediaUploaderKindFilter;
+  uploaderKind?: NpMediaUploaderKindFilter;
   uploadedByMemberId?: string;
-}): Promise<NxFindResult> {
+}): Promise<NpFindResult> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
   const limit = normalizeLimit(options.limit);
   const offset = (page - 1) * limit;
-  const conditions = [isNull(nxMedia.deletedAt)];
+  const conditions = [isNull(npMedia.deletedAt)];
 
   if (options.folderId) {
-    conditions.push(eq(nxMedia.folderId, options.folderId));
+    conditions.push(eq(npMedia.folderId, options.folderId));
   }
 
   if (options.mimeType) {
-    conditions.push(eq(nxMedia.mimeType, options.mimeType));
+    conditions.push(eq(npMedia.mimeType, options.mimeType));
   }
 
   if (options.uploaderKind === "staff") {
-    conditions.push(isNotNull(nxMedia.uploadedBy));
+    conditions.push(isNotNull(npMedia.uploadedBy));
   } else if (options.uploaderKind === "member") {
-    conditions.push(isNotNull(nxMedia.uploadedByMemberId));
+    conditions.push(isNotNull(npMedia.uploadedByMemberId));
   }
 
   if (options.uploadedByMemberId) {
-    conditions.push(eq(nxMedia.uploadedByMemberId, options.uploadedByMemberId));
+    conditions.push(eq(npMedia.uploadedByMemberId, options.uploadedByMemberId));
   }
 
   const whereClause = combineConditions(conditions);
@@ -460,17 +460,17 @@ export async function listMedia(options: {
     };
   })
     .select({
-      media: nxMedia,
-      userName: nxUsers.name,
-      userEmail: nxUsers.email,
-      memberHandle: nxMembers.handle,
-      memberDisplayName: nxMembers.displayName,
+      media: npMedia,
+      userName: npUsers.name,
+      userEmail: npUsers.email,
+      memberHandle: npMembers.handle,
+      memberDisplayName: npMembers.displayName,
     })
-    .from(nxMedia)
-    .leftJoin(nxUsers, eq(nxMedia.uploadedBy, nxUsers.id))
-    .leftJoin(nxMembers, eq(nxMedia.uploadedByMemberId, nxMembers.id))
+    .from(npMedia)
+    .leftJoin(npUsers, eq(npMedia.uploadedBy, npUsers.id))
+    .leftJoin(npMembers, eq(npMedia.uploadedByMemberId, npMembers.id))
     .where(whereClause)
-    .orderBy(desc(nxMedia.createdAt))
+    .orderBy(desc(npMedia.createdAt))
     .limit(limit)
     .offset(offset);
 
@@ -482,8 +482,8 @@ export async function listMedia(options: {
     memberDisplayName: string | null;
   }>;
   const [{ total }] = (whereClause
-    ? await db.select({ total: count() }).from(nxMedia).where(whereClause)
-    : await db.select({ total: count() }).from(nxMedia)) as Array<{ total: number | string }>;
+    ? await db.select({ total: count() }).from(npMedia).where(whereClause)
+    : await db.select({ total: count() }).from(npMedia)) as Array<{ total: number | string }>;
   const totalDocs = Number(total ?? 0);
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
@@ -525,8 +525,8 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
   const threshold = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .select()
-    .from(nxMedia)
-    .where(and(isNotNull(nxMedia.deletedAt), lt(nxMedia.deletedAt, threshold)));
+    .from(npMedia)
+    .where(and(isNotNull(npMedia.deletedAt), lt(npMedia.deletedAt, threshold)));
   const mediaRows = rows.map(toMediaRecord);
 
   if (mediaRows.length === 0) {
@@ -548,7 +548,7 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
     }
   }
 
-  await db.delete(nxMedia).where(inArray(nxMedia.id, mediaRows.map((media) => media.id)));
+  await db.delete(npMedia).where(inArray(npMedia.id, mediaRows.map((media) => media.id)));
 
   return mediaRows.length;
 }
@@ -557,17 +557,17 @@ async function getMediaRecordById(id: string): Promise<MediaRecord | null> {
   const db = getDb() as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
-    .from(nxMedia)
-    .where(and(eq(nxMedia.id, id), isNull(nxMedia.deletedAt)))
+    .from(npMedia)
+    .where(and(eq(npMedia.id, id), isNull(npMedia.deletedAt)))
     .limit(1);
 
   return media ? toMediaRecord(media) : null;
 }
 
 async function uploadImageVariants(
-  adapter: NxStorageAdapter,
+  adapter: NpStorageAdapter,
   mediaId: string,
-  processed: NxProcessedImageResult,
+  processed: NpProcessedImageResult,
   format: string,
   mimeType: string,
 ): Promise<Record<string, Record<string, unknown>>> {

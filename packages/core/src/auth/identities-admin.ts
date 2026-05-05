@@ -4,11 +4,11 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "../db/runtime.js";
 import { recordAuditEvent } from "../community/audit.js";
 import {
-  nxMemberIdentities,
-  nxMembers,
+  npMemberIdentities,
+  npMembers,
 } from "../db/schema/community.js";
-import { nxUserOAuthIdentities, nxUsers } from "../db/schema/system.js";
-import { NxNotFoundError } from "../errors.js";
+import { npUserOAuthIdentities, npUsers } from "../db/schema/system.js";
+import { NpNotFoundError } from "../errors.js";
 
 /**
  * Admin-side helpers for listing and revoking OAuth identity links.
@@ -25,7 +25,7 @@ import { NxNotFoundError } from "../errors.js";
  * the underlying account remains.
  */
 
-export interface NxUserIdentityRow {
+export interface NpUserIdentityRow {
   id: string;
   userId: string;
   provider: string;
@@ -35,7 +35,7 @@ export interface NxUserIdentityRow {
   updatedAt: Date;
 }
 
-export interface NxMemberIdentityRow {
+export interface NpMemberIdentityRow {
   id: string;
   memberId: string;
   provider: string;
@@ -49,42 +49,42 @@ export interface NxMemberIdentityRow {
 async function assertUserExists(userId: string): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
-    .select({ id: nxUsers.id })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, userId))
+    .select({ id: npUsers.id })
+    .from(npUsers)
+    .where(eq(npUsers.id, userId))
     .limit(1)) as Array<{ id: string }>;
-  if (!row) throw new NxNotFoundError("user", userId);
+  if (!row) throw new NpNotFoundError("user", userId);
 }
 
 async function assertMemberExists(memberId: string): Promise<void> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [row] = (await db
-    .select({ id: nxMembers.id })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, memberId))
+    .select({ id: npMembers.id })
+    .from(npMembers)
+    .where(eq(npMembers.id, memberId))
     .limit(1)) as Array<{ id: string }>;
-  if (!row) throw new NxNotFoundError("member", memberId);
+  if (!row) throw new NpNotFoundError("member", memberId);
 }
 
-export async function listUserIdentities(userId: string): Promise<NxUserIdentityRow[]> {
+export async function listUserIdentities(userId: string): Promise<NpUserIdentityRow[]> {
   await assertUserExists(userId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const rows = (await db
     .select()
-    .from(nxUserOAuthIdentities)
-    .where(eq(nxUserOAuthIdentities.userId, userId))
-    .orderBy(desc(nxUserOAuthIdentities.createdAt))) as NxUserIdentityRow[];
+    .from(npUserOAuthIdentities)
+    .where(eq(npUserOAuthIdentities.userId, userId))
+    .orderBy(desc(npUserOAuthIdentities.createdAt))) as NpUserIdentityRow[];
   return rows;
 }
 
-export async function listMemberIdentities(memberId: string): Promise<NxMemberIdentityRow[]> {
+export async function listMemberIdentities(memberId: string): Promise<NpMemberIdentityRow[]> {
   await assertMemberExists(memberId);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const rows = (await db
     .select()
-    .from(nxMemberIdentities)
-    .where(eq(nxMemberIdentities.memberId, memberId))
-    .orderBy(desc(nxMemberIdentities.createdAt))) as NxMemberIdentityRow[];
+    .from(npMemberIdentities)
+    .where(eq(npMemberIdentities.memberId, memberId))
+    .orderBy(desc(npMemberIdentities.createdAt))) as NpMemberIdentityRow[];
   return rows;
 }
 
@@ -103,19 +103,19 @@ export async function revokeUserIdentity(
   // subject — once deleted we'd lose the forensic context.
   const [existing] = (await db
     .select()
-    .from(nxUserOAuthIdentities)
+    .from(npUserOAuthIdentities)
     .where(
       and(
-        eq(nxUserOAuthIdentities.id, identityId),
-        eq(nxUserOAuthIdentities.userId, userId),
+        eq(npUserOAuthIdentities.id, identityId),
+        eq(npUserOAuthIdentities.userId, userId),
       ),
     )
-    .limit(1)) as NxUserIdentityRow[];
+    .limit(1)) as NpUserIdentityRow[];
   if (!existing) {
     // Either the identity doesn't exist or it belongs to a different
     // user — both surface as 404 to avoid leaking cross-user
     // existence to staff who don't have the right grants.
-    throw new NxNotFoundError("identity", identityId);
+    throw new NpNotFoundError("identity", identityId);
   }
   // Use `.returning()` so we can tell whether OUR call did the
   // delete. Two concurrent revokes both pass the select check
@@ -123,9 +123,9 @@ export async function revokeUserIdentity(
   // double-log the revocation. The second caller's delete returns
   // zero rows — we skip the audit there.
   const deleted = (await db
-    .delete(nxUserOAuthIdentities)
-    .where(eq(nxUserOAuthIdentities.id, identityId))
-    .returning({ id: nxUserOAuthIdentities.id })) as Array<{ id: string }>;
+    .delete(npUserOAuthIdentities)
+    .where(eq(npUserOAuthIdentities.id, identityId))
+    .returning({ id: npUserOAuthIdentities.id })) as Array<{ id: string }>;
   if (deleted.length === 0) return;
   await recordAuditEvent({
     actor: { kind: "staff", userId: actor.staffUserId },
@@ -148,19 +148,19 @@ export async function revokeMemberIdentity(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const [existing] = (await db
     .select()
-    .from(nxMemberIdentities)
+    .from(npMemberIdentities)
     .where(
       and(
-        eq(nxMemberIdentities.id, identityId),
-        eq(nxMemberIdentities.memberId, memberId),
+        eq(npMemberIdentities.id, identityId),
+        eq(npMemberIdentities.memberId, memberId),
       ),
     )
-    .limit(1)) as NxMemberIdentityRow[];
-  if (!existing) throw new NxNotFoundError("identity", identityId);
+    .limit(1)) as NpMemberIdentityRow[];
+  if (!existing) throw new NpNotFoundError("identity", identityId);
   const deleted = (await db
-    .delete(nxMemberIdentities)
-    .where(eq(nxMemberIdentities.id, identityId))
-    .returning({ id: nxMemberIdentities.id })) as Array<{ id: string }>;
+    .delete(npMemberIdentities)
+    .where(eq(npMemberIdentities.id, identityId))
+    .returning({ id: npMemberIdentities.id })) as Array<{ id: string }>;
   if (deleted.length === 0) return;
   await recordAuditEvent({
     actor: { kind: "staff", userId: actor.staffUserId },

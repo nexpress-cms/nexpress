@@ -1,4 +1,4 @@
-import { buildPageMetadata, findDocuments, nxMembers } from "@nexpress/core";
+import { buildPageMetadata, findDocuments, npMembers } from "@nexpress/core";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -66,12 +66,12 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
   const authors = authorIds.length
     ? ((await getDb()
         .select({
-          id: nxMembers.id,
-          handle: nxMembers.handle,
-          displayName: nxMembers.displayName,
+          id: npMembers.id,
+          handle: npMembers.handle,
+          displayName: npMembers.displayName,
         })
-        .from(nxMembers)
-        .where(inArray(nxMembers.id, authorIds))) as Array<{
+        .from(npMembers)
+        .where(inArray(npMembers.id, authorIds))) as Array<{
         id: string;
         handle: string;
         displayName: string;

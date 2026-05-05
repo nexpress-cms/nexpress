@@ -1,8 +1,8 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { and, eq, gt, isNull, like, or } from "drizzle-orm";
 
-import type { NxAuthUser, NxFindOptions } from "../config/types.js";
-import { NxError, NxForbiddenError } from "../errors.js";
+import type { NpAuthUser, NpFindOptions } from "../config/types.js";
+import { NpError, NpForbiddenError } from "../errors.js";
 import {
   deleteDocument as coreDeleteDocument,
   findDocuments as coreFindDocuments,
@@ -19,9 +19,9 @@ import {
 import { getDb } from "../db/runtime.js";
 import {
   NX_GLOBAL_PLUGIN_SITE_ID,
-  nxPluginStorage,
-  nxPlugins,
-  nxSettings,
+  npPluginStorage,
+  npPlugins,
+  npSettings,
 } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
 import { getCurrentSiteId } from "../sites/context.js";
@@ -55,12 +55,12 @@ async function resolveSettingsSiteId(): Promise<string> {
 }
 
 /**
- * Plugin principal used when plugin-initiated operations need an NxAuthUser.
+ * Plugin principal used when plugin-initiated operations need an NpAuthUser.
  * Plugin ops bypass per-doc ACL; authorisation is enforced via the plugin's
  * declared `capabilities` instead. This matches the Phase 3 design: plugins
  * are trusted in-process code, capability flags gate coarse permissions.
  */
-const pluginPrincipal = (pluginId: string): NxAuthUser => ({
+const pluginPrincipal = (pluginId: string): NpAuthUser => ({
   id: `plugin:${pluginId}`,
   email: `${pluginId}@plugins.local`,
   name: `plugin/${pluginId}`,
@@ -94,7 +94,7 @@ function cacheKey(pluginId: string, key: string): string {
 
 function assertCap(pluginId: string, capabilities: readonly string[], required: string): void {
   if (!capabilities.includes(required)) {
-    throw new NxForbiddenError(
+    throw new NpForbiddenError(
       `plugin:${pluginId}`,
       `capability "${required}" not declared in manifest`,
     );
@@ -124,9 +124,9 @@ async function loadOptionalNextCache(): Promise<{
 
 /**
  * Produces the runtime ctx passed to plugin hook / route / setup handlers.
- * Matches the `NxPluginContext` shape declared in `@nexpress/plugin-sdk`.
+ * Matches the `NpPluginContext` shape declared in `@nexpress/plugin-sdk`.
  *
- * Every namespace declared on `NxPluginContext` is implemented:
+ * Every namespace declared on `NpPluginContext` is implemented:
  *   - `pluginId`, `config`, `capabilities`
  *   - `content.*` (find / findOne / save / delete)
  *   - `media.*` (list / getById / getUrl / upload / delete)
@@ -160,7 +160,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     capabilities,
 
     content: {
-      async find(collection: string, query?: Partial<NxFindOptions>) {
+      async find(collection: string, query?: Partial<NpFindOptions>) {
         assertCap(pluginId, capabilities, "content:read");
         return coreFindDocuments(collection, query ?? {}, principal);
       },
@@ -237,7 +237,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         assertCap(pluginId, capabilities, "media:delete");
         const result = await coreDeleteMedia(id);
         if (!result.deleted && result.references && result.references.length > 0) {
-          throw new NxError(
+          throw new NpError(
             `[plugin:${pluginId}] media.delete: ${id} is referenced by ${result.references.length} document(s).`,
             "CONFLICT",
             409,
@@ -259,13 +259,13 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const now = new Date();
         const rows = await db()
           .select()
-          .from(nxPluginStorage)
+          .from(npPluginStorage)
           .where(
             and(
-              eq(nxPluginStorage.pluginId, pluginId),
-              eq(nxPluginStorage.siteId, siteId),
-              eq(nxPluginStorage.key, key),
-              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+              eq(npPluginStorage.pluginId, pluginId),
+              eq(npPluginStorage.siteId, siteId),
+              eq(npPluginStorage.key, key),
+              or(isNull(npPluginStorage.expiresAt), gt(npPluginStorage.expiresAt, now)),
             ),
           )
           .limit(1);
@@ -277,7 +277,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const siteId = await resolveStorageSiteId();
         const expiresAt = opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
         await db()
-          .insert(nxPluginStorage)
+          .insert(npPluginStorage)
           .values({
             pluginId,
             siteId,
@@ -287,7 +287,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
-            target: [nxPluginStorage.pluginId, nxPluginStorage.siteId, nxPluginStorage.key],
+            target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
             set: { value, expiresAt, updatedAt: new Date() },
           });
       },
@@ -295,12 +295,12 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         assertCap(pluginId, capabilities, "storage:kv");
         const siteId = await resolveStorageSiteId();
         await db()
-          .delete(nxPluginStorage)
+          .delete(npPluginStorage)
           .where(
             and(
-              eq(nxPluginStorage.pluginId, pluginId),
-              eq(nxPluginStorage.siteId, siteId),
-              eq(nxPluginStorage.key, key),
+              eq(npPluginStorage.pluginId, pluginId),
+              eq(npPluginStorage.siteId, siteId),
+              eq(npPluginStorage.key, key),
             ),
           );
       },
@@ -310,19 +310,19 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const now = new Date();
         const where = prefix
           ? and(
-              eq(nxPluginStorage.pluginId, pluginId),
-              eq(nxPluginStorage.siteId, siteId),
-              like(nxPluginStorage.key, `${prefix}%`),
-              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+              eq(npPluginStorage.pluginId, pluginId),
+              eq(npPluginStorage.siteId, siteId),
+              like(npPluginStorage.key, `${prefix}%`),
+              or(isNull(npPluginStorage.expiresAt), gt(npPluginStorage.expiresAt, now)),
             )
           : and(
-              eq(nxPluginStorage.pluginId, pluginId),
-              eq(nxPluginStorage.siteId, siteId),
-              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+              eq(npPluginStorage.pluginId, pluginId),
+              eq(npPluginStorage.siteId, siteId),
+              or(isNull(npPluginStorage.expiresAt), gt(npPluginStorage.expiresAt, now)),
             );
         const rows = (await db()
-          .select({ key: nxPluginStorage.key })
-          .from(nxPluginStorage)
+          .select({ key: npPluginStorage.key })
+          .from(npPluginStorage)
           .where(where)) as Array<{ key: string }>;
         return rows.map((row) => row.key);
       },
@@ -331,14 +331,14 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const siteId = await resolveStorageSiteId();
         const now = new Date();
         const rows = await db()
-          .select({ key: nxPluginStorage.key })
-          .from(nxPluginStorage)
+          .select({ key: npPluginStorage.key })
+          .from(npPluginStorage)
           .where(
             and(
-              eq(nxPluginStorage.pluginId, pluginId),
-              eq(nxPluginStorage.siteId, siteId),
-              eq(nxPluginStorage.key, key),
-              or(isNull(nxPluginStorage.expiresAt), gt(nxPluginStorage.expiresAt, now)),
+              eq(npPluginStorage.pluginId, pluginId),
+              eq(npPluginStorage.siteId, siteId),
+              eq(npPluginStorage.key, key),
+              or(isNull(npPluginStorage.expiresAt), gt(npPluginStorage.expiresAt, now)),
             ),
           )
           .limit(1);
@@ -388,8 +388,8 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
-          .from(nxSettings)
-          .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "site")));
+          .from(npSettings)
+          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "site")));
         const row = rows[0] as { value?: unknown } | undefined;
         if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
           return {};
@@ -397,7 +397,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return row.value as Record<string, unknown>;
       },
       async getPlugin(): Promise<Record<string, unknown>> {
-        const rows = await db().select().from(nxPlugins).where(eq(nxPlugins.id, pluginId));
+        const rows = await db().select().from(npPlugins).where(eq(npPlugins.id, pluginId));
         const row = rows[0] as { config?: unknown } | undefined;
         if (!row || !row.config || typeof row.config !== "object" || Array.isArray(row.config)) {
           return {};
@@ -406,9 +406,9 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
       async setPlugin(data: Record<string, unknown>): Promise<void> {
         await db()
-          .update(nxPlugins)
+          .update(npPlugins)
           .set({ config: data, updatedAt: new Date() })
-          .where(eq(nxPlugins.id, pluginId));
+          .where(eq(npPlugins.id, pluginId));
       },
     },
 
@@ -418,8 +418,8 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
-          .from(nxSettings)
-          .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")));
+          .from(npSettings)
+          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")));
         const row = rows[0] as { value?: unknown } | undefined;
         if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
           return {};
@@ -431,8 +431,8 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         const siteId = await resolveSettingsSiteId();
         const rows = await db()
           .select()
-          .from(nxSettings)
-          .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")));
+          .from(npSettings)
+          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")));
         const existing =
           rows[0] &&
           (rows[0] as { value?: unknown }).value &&
@@ -442,10 +442,10 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             : {};
         const merged = { ...existing, ...partial };
         await db()
-          .insert(nxSettings)
+          .insert(npSettings)
           .values({ siteId, key: "theme", value: merged, updatedAt: new Date() })
           .onConflictDoUpdate({
-            target: [nxSettings.siteId, nxSettings.key],
+            target: [npSettings.siteId, npSettings.key],
             set: { value: merged, updatedAt: new Date() },
           });
       },
@@ -469,7 +469,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         try {
           target = new URL(url);
         } catch {
-          throw new NxError(
+          throw new NpError(
             `[plugin:${pluginId}] http.fetch: invalid URL "${url}"`,
             "INVALID_URL",
             400,
@@ -481,7 +481,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           return false;
         });
         if (!hostMatches) {
-          throw new NxForbiddenError(
+          throw new NpForbiddenError(
             `plugin:${pluginId}`,
             `http.fetch to "${target.hostname}" blocked; add it to manifest.allowedHosts`,
           );

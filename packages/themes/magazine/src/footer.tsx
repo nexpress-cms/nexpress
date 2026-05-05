@@ -1,4 +1,4 @@
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { MagazineNewsletterForm } from "./components/newsletter-form.js";
@@ -32,12 +32,12 @@ export async function MagazineFooter() {
           <h2 className="nx-magazine-footer-heading">Sections</h2>
           {items.length > 0 ? (
             <ul className="nx-magazine-footer-nav">
-              {items.map((item: NxNavItem, index: number) => (
+              {items.map((item: NpNavItem, index: number) => (
                 <li key={`magazine-footer-${index.toString()}`}>
                   <a href={item.url}>{item.label}</a>
                   {item.children && item.children.length > 0 ? (
                     <ul className="nx-magazine-footer-subnav">
-                      {item.children.map((child: NxNavItem, childIndex: number) => (
+                      {item.children.map((child: NpNavItem, childIndex: number) => (
                         <li key={`magazine-footer-${index.toString()}-${childIndex.toString()}`}>
                           <a href={child.url}>{child.label}</a>
                         </li>

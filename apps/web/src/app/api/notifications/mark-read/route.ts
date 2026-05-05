@@ -1,12 +1,12 @@
 import {
-  NxValidationError,
+  NpValidationError,
   markAllNotificationsRead,
   markNotificationsRead,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -27,18 +27,18 @@ export async function POST(request: NextRequest) {
 
     if (body?.all === true) {
       const count = await markAllNotificationsRead(member.id);
-      return nxSuccessResponse({ marked: count, all: true });
+      return npSuccessResponse({ marked: count, all: true });
     }
 
     const idsRaw = body?.ids;
     if (!Array.isArray(idsRaw) || !idsRaw.every((id) => typeof id === "string")) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "ids", message: "ids must be a string[] (or pass `all: true`)" },
       ]);
     }
     const count = await markNotificationsRead({ memberId: member.id, notificationIds: idsRaw });
-    return nxSuccessResponse({ marked: count });
+    return npSuccessResponse({ marked: count });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

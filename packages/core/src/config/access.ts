@@ -1,11 +1,11 @@
-import { type NxAccessFunction } from "./types.js";
+import { type NpAccessFunction } from "./types.js";
 
-export const authenticated: NxAccessFunction = ({ user }) => !!user;
+export const authenticated: NpAccessFunction = ({ user }) => !!user;
 
-export const isAdmin: NxAccessFunction = ({ user }) => user?.role === "admin";
+export const isAdmin: NpAccessFunction = ({ user }) => user?.role === "admin";
 
-export const isEditorOrAbove: NxAccessFunction = ({ user }) =>
+export const isEditorOrAbove: NpAccessFunction = ({ user }) =>
   !!user && (user.role === "admin" || user.role === "editor");
 
-export const isOwnerOrAdmin: NxAccessFunction = ({ user, doc }) =>
+export const isOwnerOrAdmin: NpAccessFunction = ({ user, doc }) =>
   user?.role === "admin" || doc?.createdBy === user?.id;

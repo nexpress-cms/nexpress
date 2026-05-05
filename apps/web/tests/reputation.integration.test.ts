@@ -24,7 +24,7 @@ import { DELETE as staffDeleteDELETE } from "@/app/api/admin/community/comments/
 
 import { NextRequest } from "next/server";
 
-import type { NxReputationEvent } from "@nexpress/core";
+import type { NpReputationEvent } from "@nexpress/core";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -90,12 +90,12 @@ async function seedStaffPost(staff: TestUserSession): Promise<string> {
 
 async function readReputation(memberId: string): Promise<number> {
   const db = await getTestDb();
-  const { nxMembers } = await import("@nexpress/core");
+  const { npMembers } = await import("@nexpress/core");
   const { eq } = await import("drizzle-orm");
   const [row] = (await db
-    .select({ reputation: nxMembers.reputation })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, memberId))
+    .select({ reputation: npMembers.reputation })
+    .from(npMembers)
+    .where(eq(npMembers.id, memberId))
     .limit(1)) as Array<{ reputation: number }>;
   if (!row) throw new Error(`member ${memberId} not found`);
   return row.reputation;
@@ -138,7 +138,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
   it("`comment.created` event credits the author with the adapter delta", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -165,7 +165,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
   it("flagged (pending) comments do NOT fire `comment.created`", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -194,7 +194,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
   it("staff hide fires `comment.hidden` (debit author)", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -234,7 +234,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
   it("staff delete fires `comment.deleted`", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -269,7 +269,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
   it("`reaction.received` credits the recipient; self-reactions do not fire", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -319,7 +319,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
 
   it("`reaction.removed` is symmetric to `reaction.received`", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);
@@ -372,7 +372,7 @@ describe.skipIf(skipIfNoTestDb())("reputation adapter (integration)", () => {
   // recipient's reputation without ever having reacted.
   it("no-op `removeReaction` (no row to delete) does NOT fire `reaction.removed`", async () => {
     const core = await import("@nexpress/core");
-    const events: NxReputationEvent[] = [];
+    const events: NpReputationEvent[] = [];
     core.setReputationAdapter({
       apply: (event) => {
         events.push(event);

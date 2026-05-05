@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, ChevronDown, ExternalLink, LogOut, User } from "lucide-react";
-import type { NxAuthUser } from "@nexpress/core";
+import type { NpAuthUser } from "@nexpress/core";
 
 import { SitePicker } from "../sites/site-picker.js";
 import {
@@ -19,7 +19,7 @@ import { Button } from "../ui/button.js";
 import { ThemeToggle } from "./theme-toggle.js";
 
 export interface AdminTopbarProps {
-  user: NxAuthUser;
+  user: NpAuthUser;
 }
 
 const SECTION_LABELS: Record<string, string> = {

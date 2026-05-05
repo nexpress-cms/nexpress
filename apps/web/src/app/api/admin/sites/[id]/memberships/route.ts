@@ -1,6 +1,6 @@
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getMembership,
   getSiteById,
   grantSiteMembership,
@@ -10,7 +10,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -56,20 +56,20 @@ export async function GET(
 
     const target = await getSiteById(id);
     if (!target) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
 
     const superAdmin = await isSuperAdmin(user);
     if (!superAdmin && !(await assertCanManage(id, user.id, user.role))) {
-      throw new NxForbiddenError("memberships", "list");
+      throw new NpForbiddenError("memberships", "list");
     }
 
     const memberships = await listSiteMemberships(id);
-    return nxSuccessResponse({ docs: memberships });
+    return npSuccessResponse({ docs: memberships });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -86,14 +86,14 @@ export async function POST(
 
     const target = await getSiteById(id);
     if (!target) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
 
     const superAdmin = await isSuperAdmin(user);
     if (!superAdmin && !(await assertCanManage(id, user.id, user.role))) {
-      throw new NxForbiddenError("memberships", "create");
+      throw new NpForbiddenError("memberships", "create");
     }
 
     const body = (await readJsonBody(request)) as {
@@ -103,12 +103,12 @@ export async function POST(
     const userId = typeof body.userId === "string" ? body.userId : null;
     const role = typeof body.role === "string" ? body.role : null;
     if (!userId) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "userId", message: "userId is required" },
       ]);
     }
     if (!role || !(VALID_ROLES as readonly string[]).includes(role)) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "role",
           message: `role must be one of ${VALID_ROLES.join(", ")}`,
@@ -126,9 +126,9 @@ export async function POST(
       userId,
       role as (typeof VALID_ROLES)[number],
     );
-    return nxSuccessResponse(membership);
+    return npSuccessResponse(membership);
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

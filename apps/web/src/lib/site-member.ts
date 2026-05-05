@@ -1,7 +1,7 @@
 import {
   getMemberFromTokenPayload,
   verifyMemberToken,
-  type NxMemberAuthRow,
+  type NpMemberAuthRow,
 } from "@nexpress/core";
 import { cookies } from "next/headers";
 
@@ -23,7 +23,7 @@ import { getDb } from "@/lib/db";
  * non-active accounts, so a non-null return implies a usable
  * member identity for site interaction.
  */
-export async function getSiteMember(): Promise<NxMemberAuthRow | null> {
+export async function getSiteMember(): Promise<NpMemberAuthRow | null> {
   await ensureFor("read");
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-mb-session")?.value;

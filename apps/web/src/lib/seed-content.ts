@@ -5,10 +5,10 @@ import {
   getCurrentSiteId,
   getDb,
   NX_DEFAULT_SITE_ID,
-  nxNavigation,
+  npNavigation,
   saveDocument,
-  type NxAuthUser,
-  type NxNavItem,
+  type NpAuthUser,
+  type NpNavItem,
 } from "@nexpress/core";
 
 /**
@@ -114,7 +114,7 @@ const PAGE_SAMPLES: PageSample[] = [
   },
 ];
 
-export async function seedPages(actor: NxAuthUser): Promise<SeedPagesResult> {
+export async function seedPages(actor: NpAuthUser): Promise<SeedPagesResult> {
   const existing = await findDocuments("pages", { limit: 1 });
   if (existing.docs.length > 0) {
     return { created: 0, skipped: true };
@@ -138,7 +138,7 @@ export async function seedPages(actor: NxAuthUser): Promise<SeedPagesResult> {
   return { created: PAGE_SAMPLES.length, skipped: false };
 }
 
-export async function seedPosts(actor: NxAuthUser): Promise<SeedPostsResult> {
+export async function seedPosts(actor: NpAuthUser): Promise<SeedPostsResult> {
   const existing = await findDocuments("posts", { limit: 1 });
   if (existing.docs.length > 0) {
     return { created: 0, skipped: true };
@@ -184,33 +184,33 @@ export async function seedPosts(actor: NxAuthUser): Promise<SeedPostsResult> {
 }
 
 export async function seedNavigation(
-  actor: NxAuthUser,
+  actor: NpAuthUser,
 ): Promise<SeedNavigationResult> {
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const db = getDb();
 
   const headerExisting = await db
-    .select({ id: nxNavigation.id })
-    .from(nxNavigation)
+    .select({ id: npNavigation.id })
+    .from(npNavigation)
     .where(
-      and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, "header")),
+      and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "header")),
     )
     .limit(1);
 
   const footerExisting = await db
-    .select({ id: nxNavigation.id })
-    .from(nxNavigation)
+    .select({ id: npNavigation.id })
+    .from(npNavigation)
     .where(
-      and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, "footer")),
+      and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "footer")),
     )
     .limit(1);
 
-  const headerItems: NxNavItem[] = [
+  const headerItems: NpNavItem[] = [
     { id: navId("posts"), label: "Posts", type: "link", url: "/blog" },
     { id: navId("about"), label: "About", type: "link", url: "/about" },
     { id: navId("discussions"), label: "Discussions", type: "link", url: "/discussions" },
   ];
-  const footerItems: NxNavItem[] = [
+  const footerItems: NpNavItem[] = [
     { id: navId("about-f"), label: "About", type: "link", url: "/about" },
     { id: navId("contact-f"), label: "Contact", type: "link", url: "/contact" },
     { id: navId("github"), label: "GitHub", type: "link", url: "https://github.com/hahabsw/nexpress" },
@@ -222,7 +222,7 @@ export async function seedNavigation(
   const footerSkipped = footerExisting.length > 0;
 
   if (!headerSkipped) {
-    await db.insert(nxNavigation).values({
+    await db.insert(npNavigation).values({
       siteId,
       location: "header",
       items: headerItems,
@@ -233,7 +233,7 @@ export async function seedNavigation(
   }
 
   if (!footerSkipped) {
-    await db.insert(nxNavigation).values({
+    await db.insert(npNavigation).values({
       siteId,
       location: "footer",
       items: footerItems,
@@ -251,7 +251,7 @@ export async function seedNavigation(
   };
 }
 
-export async function seedAll(actor: NxAuthUser): Promise<SeedAllResult> {
+export async function seedAll(actor: NpAuthUser): Promise<SeedAllResult> {
   const pages = await seedPages(actor);
   const posts = await seedPosts(actor);
   const navigation = await seedNavigation(actor);

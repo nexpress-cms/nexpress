@@ -4,7 +4,7 @@ import {
   getDocumentById,
   getI18nConfig,
   saveDocument,
-  type NxAuthUser,
+  type NpAuthUser,
 } from "@nexpress/core";
 
 import { parseXliff } from "./format.js";
@@ -22,7 +22,7 @@ export interface XliffImportOptions {
   /** XLIFF 1.2 XML body to apply. */
   xml: string;
   /** Actor recorded on writes (createdBy / updatedBy / audit). */
-  user: NxAuthUser;
+  user: NpAuthUser;
   /**
    * When true, parses + resolves siblings + reports what would
    * happen, but writes nothing. Useful for previewing a
@@ -323,7 +323,7 @@ async function findSibling(
   collection: string,
   groupId: string,
   locale: string,
-  user: NxAuthUser | undefined,
+  user: NpAuthUser | undefined,
 ): Promise<Record<string, unknown> | null> {
   const result = await findDocuments(
     collection,

@@ -43,9 +43,9 @@ import {
  */
 
 /** A flat key → translated string map for a single locale. */
-export type NxTranslationBundle = Record<string, string>;
+export type NpTranslationBundle = Record<string, string>;
 
-const registry = new Map<string, NxTranslationBundle>();
+const registry = new Map<string, NpTranslationBundle>();
 
 /**
  * Merge a translation bundle into the registry for the given
@@ -57,7 +57,7 @@ const registry = new Map<string, NxTranslationBundle>();
  */
 export function addStrings(
   locale: string,
-  bundle: NxTranslationBundle,
+  bundle: NpTranslationBundle,
 ): void {
   const existing = registry.get(locale) ?? {};
   registry.set(locale, { ...existing, ...bundle });
@@ -66,7 +66,7 @@ export function addStrings(
 /** Replace (not merge) a locale's bundle. Tests use this between cases. */
 export function setStrings(
   locale: string,
-  bundle: NxTranslationBundle,
+  bundle: NpTranslationBundle,
 ): void {
   registry.set(locale, { ...bundle });
 }
@@ -77,13 +77,13 @@ export function resetStrings(): void {
 }
 
 /** Read a single locale's merged bundle (frozen view). */
-export function getStrings(locale: string): NxTranslationBundle {
+export function getStrings(locale: string): NpTranslationBundle {
   return { ...(registry.get(locale) ?? {}) };
 }
 
 /** Read the full registry, keyed by locale. Useful for export / admin tooling. */
-export function getAllStrings(): Record<string, NxTranslationBundle> {
-  const out: Record<string, NxTranslationBundle> = {};
+export function getAllStrings(): Record<string, NpTranslationBundle> {
+  const out: Record<string, NpTranslationBundle> = {};
   for (const [locale, bundle] of registry.entries()) {
     out[locale] = { ...bundle };
   }
@@ -98,7 +98,7 @@ export function getAllStrings(): Record<string, NxTranslationBundle> {
  * pattern is occasionally useful even though `select` keys are
  * stringified in matching.
  */
-export type NxTranslationParams = Record<
+export type NpTranslationParams = Record<
   string,
   string | number | boolean | Date | null | undefined
 >;
@@ -142,7 +142,7 @@ export type NxTranslationParams = Record<
 export async function t(
   key: string,
   locale?: string,
-  params?: NxTranslationParams,
+  params?: NpTranslationParams,
 ): Promise<string> {
   const config = getI18nConfig();
   const requested = locale ?? config?.defaultLocale ?? null;
@@ -190,7 +190,7 @@ export async function t(
 export function tSync(
   key: string,
   locale?: string,
-  params?: NxTranslationParams,
+  params?: NpTranslationParams,
 ): string {
   const config = getI18nConfig();
   const requested = locale ?? config?.defaultLocale ?? null;
@@ -255,7 +255,7 @@ export function resetTranslationCache(): void {
 
 function interpolate(
   template: string,
-  params: NxTranslationParams | undefined,
+  params: NpTranslationParams | undefined,
   locale: string,
 ): string {
   // Plain string fast path: no params + no ICU syntax.

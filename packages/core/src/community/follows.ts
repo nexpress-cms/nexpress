@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxFollows, nxMembers } from "../db/schema/community.js";
-import { NxNotFoundError, NxValidationError } from "../errors.js";
+import { npFollows, npMembers } from "../db/schema/community.js";
+import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -20,7 +20,7 @@ import { createNotification } from "./notifications.js";
 const SUPPORTED_TARGETS = ["member", "thread", "tag"] as const;
 type FollowTarget = (typeof SUPPORTED_TARGETS)[number];
 
-export interface NxFollowRow {
+export interface NpFollowRow {
   id: string;
   followerId: string;
   targetType: string;
@@ -28,7 +28,7 @@ export interface NxFollowRow {
   createdAt: Date;
 }
 
-export interface NxFollowInput {
+export interface NpFollowInput {
   followerId: string;
   targetType: FollowTarget;
   targetId: string;
@@ -36,7 +36,7 @@ export interface NxFollowInput {
 
 function assertSupportedTarget(targetType: string): asserts targetType is FollowTarget {
   if (!SUPPORTED_TARGETS.includes(targetType as FollowTarget)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetType",
         message: `targetType must be one of: ${SUPPORTED_TARGETS.join(", ")}`,
@@ -45,10 +45,10 @@ function assertSupportedTarget(targetType: string): asserts targetType is Follow
   }
 }
 
-export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
+export async function follow(input: NpFollowInput): Promise<NpFollowRow> {
   assertSupportedTarget(input.targetType);
   if (input.targetType === "member" && input.targetId === input.followerId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "targetId", message: "Members can't follow themselves." },
     ]);
   }
@@ -62,7 +62,7 @@ export async function follow(input: NxFollowInput): Promise<NxFollowRow> {
   });
 }
 
-async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
+async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
 
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
 
@@ -73,18 +73,18 @@ async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
   // those surfaces ship, refuse follows for them.
   if (input.targetType === "member") {
     const [target] = (await db
-      .select({ id: nxMembers.id, status: nxMembers.status })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, input.targetId))
+      .select({ id: npMembers.id, status: npMembers.status })
+      .from(npMembers)
+      .where(eq(npMembers.id, input.targetId))
       .limit(1)) as Array<{ id: string; status: string }>;
-    if (!target) throw new NxNotFoundError("member", input.targetId);
+    if (!target) throw new NpNotFoundError("member", input.targetId);
     if (target.status !== "active") {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "targetId", message: "Cannot follow a non-active member." },
       ]);
     }
   } else {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "targetType",
         message: `Following ${input.targetType} targets is not supported yet`,
@@ -106,7 +106,7 @@ async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
   // site for callers without a resolved site (scripts, jobs).
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [inserted] = (await db
-    .insert(nxFollows)
+    .insert(npFollows)
     .values({
       followerId: input.followerId,
       targetType: input.targetType,
@@ -114,7 +114,7 @@ async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
       siteId,
     })
     .onConflictDoNothing()
-    .returning()) as NxFollowRow[];
+    .returning()) as NpFollowRow[];
 
   if (inserted) {
     // Fresh insert — notify the followed member.
@@ -134,16 +134,16 @@ async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
   // notification — the original insertion already did that.
   const [existing] = (await db
     .select()
-    .from(nxFollows)
+    .from(npFollows)
     .where(
       and(
-        eq(nxFollows.followerId, input.followerId),
-        eq(nxFollows.targetType, input.targetType),
-        eq(nxFollows.targetId, input.targetId),
-        eq(nxFollows.siteId, siteId),
+        eq(npFollows.followerId, input.followerId),
+        eq(npFollows.targetType, input.targetType),
+        eq(npFollows.targetId, input.targetId),
+        eq(npFollows.siteId, siteId),
       ),
     )
-    .limit(1)) as NxFollowRow[];
+    .limit(1)) as NpFollowRow[];
   if (!existing) {
     // Unreachable in practice — the conflict means a row exists.
     // If we genuinely don't see it, something is racing us with a
@@ -153,35 +153,35 @@ async function doFollow(input: NxFollowInput): Promise<NxFollowRow> {
   return existing;
 }
 
-export async function unfollow(input: NxFollowInput): Promise<void> {
+export async function unfollow(input: NpFollowInput): Promise<void> {
   assertSupportedTarget(input.targetType);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   await db
-    .delete(nxFollows)
+    .delete(npFollows)
     .where(
       and(
-        eq(nxFollows.followerId, input.followerId),
-        eq(nxFollows.targetType, input.targetType),
-        eq(nxFollows.targetId, input.targetId),
-        eq(nxFollows.siteId, siteId),
+        eq(npFollows.followerId, input.followerId),
+        eq(npFollows.targetType, input.targetType),
+        eq(npFollows.targetId, input.targetId),
+        eq(npFollows.siteId, siteId),
       ),
     );
 }
 
-export async function isFollowing(input: NxFollowInput): Promise<boolean> {
+export async function isFollowing(input: NpFollowInput): Promise<boolean> {
   assertSupportedTarget(input.targetType);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const [row] = (await db
-    .select({ id: nxFollows.id })
-    .from(nxFollows)
+    .select({ id: npFollows.id })
+    .from(npFollows)
     .where(
       and(
-        eq(nxFollows.followerId, input.followerId),
-        eq(nxFollows.targetType, input.targetType),
-        eq(nxFollows.targetId, input.targetId),
-        eq(nxFollows.siteId, siteId),
+        eq(npFollows.followerId, input.followerId),
+        eq(npFollows.targetType, input.targetType),
+        eq(npFollows.targetId, input.targetId),
+        eq(npFollows.siteId, siteId),
       ),
     )
     .limit(1)) as Array<{ id: string }>;
@@ -195,7 +195,7 @@ export async function isFollowing(input: NxFollowInput): Promise<boolean> {
 export async function listFollowing(
   followerId: string,
   options: { targetType?: FollowTarget; limit?: number; offset?: number } = {},
-): Promise<NxFollowRow[]> {
+): Promise<NpFollowRow[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
@@ -206,16 +206,16 @@ export async function listFollowing(
   const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
   const where = options.targetType
     ? and(
-        eq(nxFollows.followerId, followerId),
-        eq(nxFollows.targetType, options.targetType),
-        eq(nxFollows.siteId, siteId),
+        eq(npFollows.followerId, followerId),
+        eq(npFollows.targetType, options.targetType),
+        eq(npFollows.siteId, siteId),
       )
-    : and(eq(nxFollows.followerId, followerId), eq(nxFollows.siteId, siteId));
+    : and(eq(npFollows.followerId, followerId), eq(npFollows.siteId, siteId));
   const rows = (await db
     .select()
-    .from(nxFollows)
+    .from(npFollows)
     .where(where)
     .limit(limit)
-    .offset(offset)) as NxFollowRow[];
+    .offset(offset)) as NpFollowRow[];
   return rows;
 }

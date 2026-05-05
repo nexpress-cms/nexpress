@@ -17,7 +17,7 @@ import { POST as commentsPOST } from "@/app/api/collections/[slug]/[id]/comments
 import { POST as followsPOST } from "@/app/api/follows/route";
 import { PUT as prefsPUT } from "@/app/api/members/me/notification-prefs/route";
 
-import type { NxEmailAdapter, NxEmailMessage } from "@nexpress/core";
+import type { NpEmailAdapter, NpEmailMessage } from "@nexpress/core";
 
 function jsonRequest(path: string, init: RequestInit & { cookies?: string[] } = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -46,17 +46,17 @@ async function seedActiveMember(
 }
 
 async function seedStaffPostId(slug: string): Promise<string> {
-  const { hashPassword, nxUsers, signToken } = await import("@nexpress/core");
+  const { hashPassword, npUsers, signToken } = await import("@nexpress/core");
   const db = await getTestDb();
   const password = await hashPassword("password12345");
   const [user] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({ email: `staff-${slug}@example.com`, password, name: "Staff", role: "editor" })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
@@ -101,17 +101,17 @@ async function postComment(
   return id;
 }
 
-class CapturingEmailAdapter implements NxEmailAdapter {
+class CapturingEmailAdapter implements NpEmailAdapter {
   readonly kind = "capturing";
-  readonly sent: NxEmailMessage[] = [];
-  send(message: NxEmailMessage): Promise<void> {
+  readonly sent: NpEmailMessage[] = [];
+  send(message: NpEmailMessage): Promise<void> {
     this.sent.push(message);
     return Promise.resolve();
   }
 }
 
 describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
-  let originalAdapter: NxEmailAdapter | null = null;
+  let originalAdapter: NpEmailAdapter | null = null;
   let capture: CapturingEmailAdapter;
 
   beforeAll(async () => {
@@ -258,12 +258,12 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
 
     // Verify lastDigestAt was written.
     const db = await getTestDb();
-    const { nxMembers } = await import("@nexpress/core");
+    const { npMembers } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [row] = (await db
-      .select({ prefs: nxMembers.notificationPrefs })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, author.memberId))) as Array<{ prefs: Record<string, unknown> }>;
+      .select({ prefs: npMembers.notificationPrefs })
+      .from(npMembers)
+      .where(eq(npMembers.id, author.memberId))) as Array<{ prefs: Record<string, unknown> }>;
     expect(typeof row.prefs.lastDigestAt).toBe("string");
 
     // Second sweep with the same data → no new send (notification was unread but
@@ -316,12 +316,12 @@ describe.skipIf(skipIfNoTestDb())("16.4 email digest (integration)", () => {
 
     // Confirm the per-site stamp landed.
     const db = await getTestDb();
-    const { nxMembers } = await import("@nexpress/core");
+    const { npMembers } = await import("@nexpress/core");
     const { eq } = await import("drizzle-orm");
     const [row] = (await db
-      .select({ prefs: nxMembers.notificationPrefs })
-      .from(nxMembers)
-      .where(eq(nxMembers.id, subscriber.memberId))) as Array<{ prefs: Record<string, unknown> }>;
+      .select({ prefs: npMembers.notificationPrefs })
+      .from(npMembers)
+      .where(eq(npMembers.id, subscriber.memberId))) as Array<{ prefs: Record<string, unknown> }>;
     const bySite = row.prefs.lastDigestAtBySite as Record<string, Record<string, string>>;
     expect(typeof bySite["site-218-a"]?.daily).toBe("string");
     expect(typeof bySite["site-218-b"]?.daily).toBe("string");

@@ -1,7 +1,7 @@
 import { renderRichText } from "@nexpress/editor/server";
-import type { NxRichTextContent } from "@nexpress/editor";
+import type { NpRichTextContent } from "@nexpress/editor";
 
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 /**
  * Post detail template. Produces a centered article column with
@@ -19,7 +19,7 @@ import type { NxTemplateRenderProps } from "@nexpress/theme";
 interface PostDoc {
   title?: string;
   excerpt?: string;
-  content?: NxRichTextContent;
+  content?: NpRichTextContent;
   publishedAt?: string | Date;
   author?: { name?: string; slug?: string } | string;
   readingTime?: number | string;
@@ -73,7 +73,7 @@ function readingTimeLabel(value: PostDoc["readingTime"]): string | null {
   return value;
 }
 
-export function PostDefaultTemplate({ doc }: NxTemplateRenderProps) {
+export function PostDefaultTemplate({ doc }: NpTemplateRenderProps) {
   const post = doc as PostDoc;
   const title = post.title ?? "Untitled";
   const cover = coverUrl(post.cover);

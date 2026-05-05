@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { nxFetch } from "../lib/api-client.js";
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
   Card,
@@ -89,7 +89,7 @@ export function SitesView() {
   async function load() {
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/sites");
+      const res = await npFetch("/api/admin/sites");
       const body = (await res.json().catch(() => null)) as
         | { docs?: Site[]; error?: { message?: string } }
         | null;
@@ -117,7 +117,7 @@ export function SitesView() {
     });
     setError(null);
     try {
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/sites/${encodeURIComponent(site.id)}/usage`,
       );
       const body = (await res.json().catch(() => null)) as
@@ -149,7 +149,7 @@ export function SitesView() {
     try {
       const cascadeParam =
         usage.total > 0 && cascade ? "?cascade=true" : "";
-      const res = await nxFetch(
+      const res = await npFetch(
         `/api/admin/sites/${encodeURIComponent(site.id)}${cascadeParam}`,
         {
           method: "DELETE",
@@ -473,7 +473,7 @@ function CreateSiteDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await nxFetch("/api/admin/sites", {
+      const res = await npFetch("/api/admin/sites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

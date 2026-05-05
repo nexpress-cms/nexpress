@@ -100,7 +100,7 @@ section.
 ## 3. The `defineTheme` Contract
 
 `defineTheme()` is an identity function: it accepts an
-`NxTheme` and returns it. Its job is to give TypeScript the
+`NpTheme` and returns it. Its job is to give TypeScript the
 hook to infer the full shape so editor IntelliSense works.
 
 ```ts
@@ -159,9 +159,9 @@ provider tree, or a CSS class on `<body>`-equivalent.
 
 ```tsx
 // src/shell.tsx
-import type { NxThemeShellProps } from "@nexpress/theme";
+import type { NpThemeShellProps } from "@nexpress/theme";
 
-export function Shell({ children }: NxThemeShellProps) {
+export function Shell({ children }: NpThemeShellProps) {
   return <div className="nx-mybrand-shell">{children}</div>;
 }
 ```
@@ -251,7 +251,7 @@ templates: {
 
 The component receives `{ doc }` typed as `Record<string, unknown>`
 by default. Cast in the body to your collection's shape (or pass
-a generic to `NxTemplateRenderProps<MyDocShape>`).
+a generic to `NpTemplateRenderProps<MyDocShape>`).
 
 Pages opt into the picker by adding a `template` field with
 `admin.kind: "templatePicker"`:
@@ -273,7 +273,7 @@ so the dropdown stays in sync with whichever theme is active.
 ## 7. Color Scheme (Light / Dark)
 
 Color-mode handling is opt-in per theme. The framework no
-longer prescribes a dark-mode shape on `NxThemeTokens`, no
+longer prescribes a dark-mode shape on `NpThemeTokens`, no
 longer auto-emits a `[data-theme="dark"]` block, and no
 longer mounts a global init script — every theme picks its
 own policy (saved choice, time-of-day, seasonal palette,
@@ -285,20 +285,20 @@ the wheel:
 
 | Export                        | From                       | Purpose                                                   |
 | ----------------------------- | -------------------------- | --------------------------------------------------------- |
-| `<NxColorSchemeScript />`     | `@nexpress/theme`          | Inline pre-paint script that flips `<html data-theme>` based on cookie / localStorage / `prefers-color-scheme`. |
+| `<NpColorSchemeScript />`     | `@nexpress/theme`          | Inline pre-paint script that flips `<html data-theme>` based on cookie / localStorage / `prefers-color-scheme`. |
 | `COLOR_SCHEME_COOKIE` / `COLOR_SCHEME_STORAGE_KEY` | `@nexpress/theme/client` | Shared key names so the toggle, server reads, and script all agree. |
-| `isColorScheme` / `NxColorScheme` | `@nexpress/theme/client` | Type guard + union for `"dark" \| "light"`.            |
+| `isColorScheme` / `NpColorScheme` | `@nexpress/theme/client` | Type guard + union for `"dark" \| "light"`.            |
 
 A typical opt-in shell looks like this:
 
 ```tsx
 // theme/src/shell.tsx
-import { NxColorSchemeScript } from "@nexpress/theme";
+import { NpColorSchemeScript } from "@nexpress/theme";
 
-export function MyShell({ children }: NxThemeShellProps) {
+export function MyShell({ children }: NpThemeShellProps) {
   return (
     <>
-      <NxColorSchemeScript />
+      <NpColorSchemeScript />
       {children}
     </>
   );

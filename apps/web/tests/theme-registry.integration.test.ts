@@ -78,12 +78,12 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
   });
 
   it("setActiveThemeId rejects unknown ids before they hit the DB", async () => {
-    const { setActiveThemeId, NxValidationError } = await import("@nexpress/core");
+    const { setActiveThemeId, NpValidationError } = await import("@nexpress/core");
     try {
       await setActiveThemeId("nonexistent-theme");
       throw new Error("expected validation to throw");
     } catch (err) {
-      expect(err).toBeInstanceOf(NxValidationError);
+      expect(err).toBeInstanceOf(NpValidationError);
     }
   });
 
@@ -93,8 +93,8 @@ describe.skipIf(skipIfNoTestDb())("theme registry (Phase 11.1)", () => {
     // resolver should NOT throw — it should return the first
     // registered theme so the site keeps rendering.
     const db = await getTestDb();
-    const { nxSettings, getActiveTheme } = await import("@nexpress/core");
-    await db.insert(nxSettings).values({
+    const { npSettings, getActiveTheme } = await import("@nexpress/core");
+    await db.insert(npSettings).values({
       key: "activeTheme",
       value: "ghost-theme",
       updatedAt: new Date(),

@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
@@ -24,7 +24,7 @@ const parseFields = (value: unknown): string[] => {
   return fields.length > 0 ? fields : fallback;
 };
 
-export const contactFormBlock: NxBlockDefinition = {
+export const contactFormBlock: NpBlockDefinition = {
   type: "contact-form",
   label: "Contact Form",
   description: "Lead capture placeholder with configurable fields and contact destination.",

@@ -16,7 +16,7 @@ import { getSiteSeoSettings } from "./page-metadata.js";
  * rows never leak — same trust model as `/sitemap.xml`.
  */
 
-export interface NxFeedEntry {
+export interface NpFeedEntry {
   /** Stable id (we use the absolute canonical URL). */
   id: string;
   title: string;
@@ -58,7 +58,7 @@ const DEFAULT_FEED_COLLECTION = "posts";
  */
 export async function buildAtomFeed(
   options: BuildAtomFeedOptions = {},
-): Promise<{ entries: NxFeedEntry[]; collection: string } | null> {
+): Promise<{ entries: NpFeedEntry[]; collection: string } | null> {
   const collection = options.collection ?? DEFAULT_FEED_COLLECTION;
   const limit = options.limit ?? DEFAULT_FEED_LIMIT;
 
@@ -97,7 +97,7 @@ export async function buildAtomFeed(
     return null;
   }
 
-  const entries: NxFeedEntry[] = [];
+  const entries: NpFeedEntry[] = [];
   for (const doc of result.docs) {
     const path = urlPath(doc);
     if (!path) continue;

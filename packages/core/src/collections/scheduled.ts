@@ -1,7 +1,7 @@
 import { and, eq, lt } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
-import type { NxFieldConfig } from "../config/types.js";
+import type { NpFieldConfig } from "../config/types.js";
 import { enqueueJob } from "../jobs/queue.js";
 import { runHook } from "../plugins/host.js";
 import {
@@ -11,7 +11,7 @@ import {
 } from "./registry.js";
 import { getDb } from "../db/runtime.js";
 
-function hasPublishedAtField(fields: NxFieldConfig[]): boolean {
+function hasPublishedAtField(fields: NpFieldConfig[]): boolean {
   for (const field of fields) {
     if (field.type === "row" || field.type === "collapsible") {
       if (hasPublishedAtField(field.fields)) return true;

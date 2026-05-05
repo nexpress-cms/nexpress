@@ -1,27 +1,27 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   createPasswordResetToken,
   enqueueJob,
   hashPassword,
-  nxUsers,
+  npUsers,
   runHook,
-  type NxUserRole,
+  type NpUserRole,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { parseBodyRecord } from "@/lib/collection-helpers";
 import { getDb } from "@/lib/db";
 import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import { inviteTtlMs } from "@/lib/token-ttl";
 
-const VALID_ROLES: readonly NxUserRole[] = [
+const VALID_ROLES: readonly NpUserRole[] = [
   "admin",
   "editor",
   "moderator",
@@ -54,14 +54,14 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("users", "create");
+      throw new NpForbiddenError("users", "create");
     }
 
     await ensureFor("write");
     const body = parseBodyRecord(await readJsonBody(request));
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
-    const role = typeof body.role === "string" ? (body.role as NxUserRole) : "author";
+    const role = typeof body.role === "string" ? (body.role as NpUserRole) : "author";
 
     const errors: Array<{ field: string; message: string }> = [];
     if (!email || !email.includes("@")) {
@@ -74,16 +74,16 @@ export async function POST(request: NextRequest) {
       errors.push({ field: "role", message: `Role must be one of: ${VALID_ROLES.join(", ")}` });
     }
     if (errors.length > 0) {
-      throw new NxValidationError("Invalid input", errors);
+      throw new NpValidationError("Invalid input", errors);
     }
 
     const db = getDb();
     const hashed = await getInvitePlaceholderHash();
 
-    let created: { id: string; email: string; name: string; role: NxUserRole };
+    let created: { id: string; email: string; name: string; role: NpUserRole };
     try {
       const [row] = await db
-        .insert(nxUsers)
+        .insert(npUsers)
         .values({
           email,
           name,
@@ -91,10 +91,10 @@ export async function POST(request: NextRequest) {
           role,
         })
         .returning({
-          id: nxUsers.id,
-          email: nxUsers.email,
-          name: nxUsers.name,
-          role: nxUsers.role,
+          id: npUsers.id,
+          email: npUsers.email,
+          name: npUsers.name,
+          role: npUsers.role,
         });
 
       if (!row) {
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
         "code" in error &&
         (error as { code?: string }).code === "23505"
       ) {
-        throw new NxValidationError("Invalid input", [
+        throw new NpValidationError("Invalid input", [
           { field: "email", message: "A user with this email already exists" },
         ]);
       }
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       origin: "invite",
     });
 
-    return nxSuccessResponse(
+    return npSuccessResponse(
       {
         id: created.id,
         email: created.email,
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

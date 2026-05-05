@@ -40,9 +40,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type {
-  NxBlockInstance,
-  NxBlockMetadata,
-  NxBlockPropField,
+  NpBlockInstance,
+  NpBlockMetadata,
+  NpBlockPropField,
 } from "@nexpress/blocks";
 
 import { Button } from "../ui/button.js";
@@ -84,7 +84,7 @@ declare const crypto: { randomUUID(): string };
 const LazyRichTextEditor = lazy(async () => {
   const module = await import("@nexpress/editor/client");
   return {
-    default: module.NxRichTextEditor as ComponentType<{
+    default: module.NpRichTextEditor as ComponentType<{
       value: unknown;
       onChange: (value: unknown) => void;
       config?: unknown;
@@ -99,13 +99,13 @@ const isRichTextContent = (value: unknown): boolean => {
 };
 
 interface BlockPageEditorProps {
-  blocks: NxBlockInstance[];
-  onChange: (blocks: NxBlockInstance[]) => void;
-  availableBlocks: NxBlockMetadata[];
+  blocks: NpBlockInstance[];
+  onChange: (blocks: NpBlockInstance[]) => void;
+  availableBlocks: NpBlockMetadata[];
 }
 
 type EditorAction =
-  | { type: "RESET"; blocks: NxBlockInstance[] }
+  | { type: "RESET"; blocks: NpBlockInstance[] }
   | { type: "ADD"; blockType: string; parentId?: string }
   | { type: "DELETE"; id: string }
   | { type: "DUPLICATE"; id: string }
@@ -120,7 +120,7 @@ const createBlockId = (): string => crypto.randomUUID();
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const getFieldValue = (field: NxBlockPropField, value: unknown): unknown => {
+const getFieldValue = (field: NpBlockPropField, value: unknown): unknown => {
   if (value !== undefined) return value;
   if (field.defaultValue !== undefined) return field.defaultValue;
   if (field.type === "boolean") return false;
@@ -128,7 +128,7 @@ const getFieldValue = (field: NxBlockPropField, value: unknown): unknown => {
   return "";
 };
 
-const createBlockInstance = (definition: NxBlockMetadata): NxBlockInstance => ({
+const createBlockInstance = (definition: NpBlockMetadata): NpBlockInstance => ({
   id: createBlockId(),
   type: definition.type,
   props: { ...definition.defaultProps },
@@ -143,9 +143,9 @@ const createBlockInstance = (definition: NxBlockMetadata): NxBlockInstance => ({
 // through every action.
 
 function mapTree(
-  blocks: NxBlockInstance[],
-  fn: (block: NxBlockInstance) => NxBlockInstance,
-): NxBlockInstance[] {
+  blocks: NpBlockInstance[],
+  fn: (block: NpBlockInstance) => NpBlockInstance,
+): NpBlockInstance[] {
   return blocks.map((block) => {
     const next = fn(block);
     if (next.children) {
@@ -157,9 +157,9 @@ function mapTree(
 }
 
 function filterTree(
-  blocks: NxBlockInstance[],
-  predicate: (block: NxBlockInstance) => boolean,
-): NxBlockInstance[] {
+  blocks: NpBlockInstance[],
+  predicate: (block: NpBlockInstance) => boolean,
+): NpBlockInstance[] {
   return blocks
     .filter(predicate)
     .map((block) =>
@@ -171,7 +171,7 @@ function filterTree(
 
 // Find the parent id (or null for top-level) and index of a target.
 function locateBlock(
-  blocks: NxBlockInstance[],
+  blocks: NpBlockInstance[],
   id: string,
   parentId: string | null = null,
 ): { parentId: string | null; index: number } | null {
@@ -188,10 +188,10 @@ function locateBlock(
 // Update the children of a target container (or top-level when
 // parentId is null) with `mutate`. Returns the new tree.
 function updateContainerChildren(
-  blocks: NxBlockInstance[],
+  blocks: NpBlockInstance[],
   parentId: string | null,
-  mutate: (children: NxBlockInstance[]) => NxBlockInstance[],
-): NxBlockInstance[] {
+  mutate: (children: NpBlockInstance[]) => NpBlockInstance[],
+): NpBlockInstance[] {
   if (parentId === null) return mutate(blocks);
   return blocks.map((block) => {
     if (block.id === parentId) {
@@ -205,17 +205,17 @@ function updateContainerChildren(
   });
 }
 
-const cloneBlockDeep = (block: NxBlockInstance): NxBlockInstance => ({
+const cloneBlockDeep = (block: NpBlockInstance): NpBlockInstance => ({
   id: createBlockId(),
   type: block.type,
   props: { ...block.props },
   ...(block.children ? { children: block.children.map(cloneBlockDeep) } : {}),
 });
 
-const createEditorReducer = (availableBlocks: NxBlockMetadata[]) => {
+const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
   const definitions = new Map(availableBlocks.map((block) => [block.type, block]));
 
-  return (state: NxBlockInstance[], action: EditorAction): NxBlockInstance[] => {
+  return (state: NpBlockInstance[], action: EditorAction): NpBlockInstance[] => {
     switch (action.type) {
       case "RESET":
         return action.blocks;
@@ -286,7 +286,7 @@ const createEditorReducer = (availableBlocks: NxBlockMetadata[]) => {
 };
 
 const parseFieldInput = (
-  field: NxBlockPropField,
+  field: NpBlockPropField,
   rawValue: string | boolean,
 ): unknown => {
   if (field.type === "boolean") return Boolean(rawValue);
@@ -310,7 +310,7 @@ const parseFieldInput = (
 };
 
 interface FieldControlProps {
-  field: NxBlockPropField;
+  field: NpBlockPropField;
   value: unknown;
   onChange: (next: unknown) => void;
   inputId: string;
@@ -410,12 +410,12 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
 }
 
 interface SortableBlockItemProps {
-  block: NxBlockInstance;
-  definition?: NxBlockMetadata;
-  parentBlock?: NxBlockInstance;
-  parentDefinition?: NxBlockMetadata;
-  availableBlocks: NxBlockMetadata[];
-  definitions: Map<string, NxBlockMetadata>;
+  block: NpBlockInstance;
+  definition?: NpBlockMetadata;
+  parentBlock?: NpBlockInstance;
+  parentDefinition?: NpBlockMetadata;
+  availableBlocks: NpBlockMetadata[];
+  definitions: Map<string, NpBlockMetadata>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -633,7 +633,7 @@ function getLayout(props: Record<string, unknown>): Record<string, unknown> | nu
 }
 
 interface GridChildLayoutControlProps {
-  block: NxBlockInstance;
+  block: NpBlockInstance;
   inputId: string;
   onChange: (colSpan: number) => void;
 }
@@ -676,9 +676,9 @@ function GridChildLayoutControl({
 }
 
 interface ChildrenAreaProps {
-  container: NxBlockInstance;
-  availableBlocks: NxBlockMetadata[];
-  definitions: Map<string, NxBlockMetadata>;
+  container: NpBlockInstance;
+  availableBlocks: NpBlockMetadata[];
+  definitions: Map<string, NpBlockMetadata>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -755,8 +755,8 @@ function ChildrenArea({
 }
 
 interface DragPreviewProps {
-  block?: NxBlockInstance;
-  definition?: NxBlockMetadata;
+  block?: NpBlockInstance;
+  definition?: NpBlockMetadata;
 }
 
 interface BlockJsonDialogProps {
@@ -855,9 +855,9 @@ function BlockJsonDialog({
 interface PageJsonDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  blocks: NxBlockInstance[];
+  blocks: NpBlockInstance[];
   knownTypes: string[];
-  onApply: (nextBlocks: NxBlockInstance[]) => void;
+  onApply: (nextBlocks: NpBlockInstance[]) => void;
 }
 
 // Page-level JSON editor. Shows the entire blocks tree, lets the
@@ -889,7 +889,7 @@ function PageJsonDialog({
     }
   }, [open, blocks]);
 
-  function validateBlock(value: unknown, path: string): NxBlockInstance | string {
+  function validateBlock(value: unknown, path: string): NpBlockInstance | string {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       return `${path}: expected a JSON object`;
     }
@@ -900,9 +900,9 @@ function PageJsonDialog({
       obj.props !== undefined && typeof obj.props === "object" && obj.props !== null
         ? (obj.props as Record<string, unknown>)
         : {};
-    let children: NxBlockInstance[] | undefined;
+    let children: NpBlockInstance[] | undefined;
     if (Array.isArray(obj.children)) {
-      const validated: NxBlockInstance[] = [];
+      const validated: NpBlockInstance[] = [];
       for (let i = 0; i < obj.children.length; i++) {
         const childResult = validateBlock(obj.children[i], `${path}.children[${i}]`);
         if (typeof childResult === "string") return childResult;
@@ -930,7 +930,7 @@ function PageJsonDialog({
       setError("Expected a top-level array of block instances.");
       return;
     }
-    const validated: NxBlockInstance[] = [];
+    const validated: NpBlockInstance[] = [];
     for (let i = 0; i < parsed.length; i++) {
       const result = validateBlock(parsed[i], `[${i}]`);
       if (typeof result === "string") {
@@ -1006,11 +1006,11 @@ function PageJsonDialog({
 }
 
 function collectUnknownTypes(
-  blocks: NxBlockInstance[],
+  blocks: NpBlockInstance[],
   known: Set<string>,
 ): string[] {
   const seen = new Set<string>();
-  const walk = (arr: NxBlockInstance[]): void => {
+  const walk = (arr: NpBlockInstance[]): void => {
     for (const b of arr) {
       if (!known.has(b.type)) seen.add(b.type);
       if (b.children) walk(b.children);
@@ -1204,7 +1204,7 @@ export function BlockPageEditor({
   // Locate the active block anywhere in the tree (it may be a
   // top-level block or nested inside a container). The drag
   // overlay just needs the label, so a flat search is enough.
-  const findInTree = (arr: NxBlockInstance[], id: string): NxBlockInstance | undefined => {
+  const findInTree = (arr: NpBlockInstance[], id: string): NpBlockInstance | undefined => {
     for (const b of arr) {
       if (b.id === id) return b;
       const inChild = b.children ? findInTree(b.children, id) : undefined;

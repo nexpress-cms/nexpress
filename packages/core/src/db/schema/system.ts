@@ -13,14 +13,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { nxMedia } from "./media.js";
+import { npMedia } from "./media.js";
 import {
-  type NxBlockInstance,
-  type NxNavItem,
-  type NxRichTextContent,
+  type NpBlockInstance,
+  type NpNavItem,
+  type NpRichTextContent,
 } from "../../config/types.js";
 
-export const nxUserRoleEnum = pgEnum("nx_user_role", [
+export const npUserRoleEnum = pgEnum("nx_user_role", [
   "admin",
   "editor",
   // 9.5: community moderator. Sits OUTSIDE the linear content-edit
@@ -34,25 +34,25 @@ export const nxUserRoleEnum = pgEnum("nx_user_role", [
   "viewer",
 ]);
 
-export const nxRevisionStatusEnum = pgEnum("nx_revision_status", [
+export const npRevisionStatusEnum = pgEnum("nx_revision_status", [
   "draft",
   "published",
   "autosave",
 ]);
 
-type NxRevisionSnapshot = Record<string, unknown> & {
-  blocks?: NxBlockInstance[];
-  content?: NxRichTextContent;
+type NpRevisionSnapshot = Record<string, unknown> & {
+  blocks?: NpBlockInstance[];
+  content?: NpRichTextContent;
 };
 
-export const nxPasswordResetPurposeEnum = pgEnum("nx_password_reset_purpose", ["invite", "reset"]);
+export const npPasswordResetPurposeEnum = pgEnum("nx_password_reset_purpose", ["invite", "reset"]);
 
-export const nxUsers = pgTable("nx_users", {
+export const npUsers = pgTable("nx_users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   name: text("name").notNull(),
-  role: nxUserRoleEnum("role").notNull(),
+  role: npUserRoleEnum("role").notNull(),
   /**
    * Phase 15.5 — super-admin flag. Bypasses per-site membership
    * checks; the super-admin can manage every site including
@@ -62,7 +62,7 @@ export const nxUsers = pgTable("nx_users", {
    * permissions check `is_super_admin OR site_membership`).
    */
   isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
-  avatar: uuid("avatar").references((): AnyPgColumn => nxMedia.id),
+  avatar: uuid("avatar").references((): AnyPgColumn => npMedia.id),
   loginAttempts: integer("login_attempts").default(0).notNull(),
   lockUntil: timestamp("lock_until", { withTimezone: true, mode: "date" }),
   tokenVersion: integer("token_version").default(0).notNull(),
@@ -71,7 +71,7 @@ export const nxUsers = pgTable("nx_users", {
     withTimezone: true,
     mode: "date",
   }),
-  passwordResetPurpose: nxPasswordResetPurposeEnum("password_reset_purpose"),
+  passwordResetPurpose: npPasswordResetPurposeEnum("password_reset_purpose"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
@@ -84,21 +84,21 @@ export const nxUsers = pgTable("nx_users", {
  * the role enum reuses the existing `nx_user_role` so the
  * concept stays consistent across the framework.
  *
- * `nxUsers.role` becomes the "global default role" — used in
+ * `npUsers.role` becomes the "global default role" — used in
  * single-tenant contexts and as the fallback when a user has
  * no explicit membership on the current site. Most operators
  * will give cross-site users an explicit membership per
  * site they should access; the `is_super_admin` flag
  * separately bypasses the membership check entirely.
  */
-export const nxSiteMemberships = pgTable(
+export const npSiteMemberships = pgTable(
   "nx_site_memberships",
   {
     siteId: text("site_id").notNull(),
     userId: uuid("user_id")
       .notNull()
-      .references((): AnyPgColumn => nxUsers.id, { onDelete: "cascade" }),
-    role: nxUserRoleEnum("role").notNull(),
+      .references((): AnyPgColumn => npUsers.id, { onDelete: "cascade" }),
+    role: npUserRoleEnum("role").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
@@ -113,13 +113,13 @@ export const nxSiteMemberships = pgTable(
  * new user is auto-created from the OAuth profile (default role
  * `viewer`).
  */
-export const nxUserOAuthIdentities = pgTable(
+export const npUserOAuthIdentities = pgTable(
   "nx_user_oauth_identities",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => nxUsers.id, { onDelete: "cascade" }),
+      .references(() => npUsers.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     providerUserId: text("provider_user_id").notNull(),
     /** Free-form per-provider metadata (avatar URL, scopes granted, etc.). */
@@ -140,11 +140,11 @@ export const nxUserOAuthIdentities = pgTable(
   }),
 );
 
-export const nxSessions = pgTable("nx_sessions", {
+export const npSessions = pgTable("nx_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
-    .references(() => nxUsers.id, { onDelete: "cascade" }),
+    .references(() => npUsers.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(),
   userAgent: text("user_agent"),
   ip: text("ip"),
@@ -152,17 +152,17 @@ export const nxSessions = pgTable("nx_sessions", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
 
-export const nxRevisions = pgTable(
+export const npRevisions = pgTable(
   "nx_revisions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     collection: text("collection").notNull(),
     documentId: text("document_id").notNull(),
     version: integer("version").notNull(),
-    status: nxRevisionStatusEnum("status").notNull(),
-    snapshot: jsonb("snapshot").$type<NxRevisionSnapshot>().notNull(),
+    status: npRevisionStatusEnum("status").notNull(),
+    snapshot: jsonb("snapshot").$type<NpRevisionSnapshot>().notNull(),
     changedFields: text("changed_fields").array().notNull(),
-    authorId: uuid("author_id").references(() => nxUsers.id),
+    authorId: uuid("author_id").references(() => npUsers.id),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => ({
@@ -184,14 +184,14 @@ export const nxRevisions = pgTable(
  * the same key (e.g. `activeTheme`) can take different
  * values per tenant.
  */
-export const nxSettings = pgTable(
+export const npSettings = pgTable(
   "nx_settings",
   {
     siteId: text("site_id").default("default").notNull(),
     key: text("key").notNull(),
     value: jsonb("value").$type<unknown>().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
   },
   (table) => [primaryKey({ columns: [table.siteId, table.key] })],
 );
@@ -210,7 +210,7 @@ export const nxSettings = pgTable(
  * renamed repeatedly; the catch-all walks the chain `oldSlug →
  * newSlug` to resolve to the current target.
  */
-export const nxSlugHistory = pgTable(
+export const npSlugHistory = pgTable(
   "nx_slug_history",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -234,15 +234,15 @@ export const nxSlugHistory = pgTable(
  * as settings: composite uniqueness on (site_id, location)
  * lets each tenant own its own header / footer menus.
  */
-export const nxNavigation = pgTable(
+export const npNavigation = pgTable(
   "nx_navigation",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     siteId: text("site_id").default("default").notNull(),
     location: text("location").notNull(),
-    items: jsonb("items").$type<NxNavItem[]>().notNull(),
+    items: jsonb("items").$type<NpNavItem[]>().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
   },
   (table) => [unique("nx_navigation_site_location_idx").on(table.siteId, table.location)],
 );
@@ -262,7 +262,7 @@ export const nxNavigation = pgTable(
  * but the operator reverted it"). The runtime treats null
  * the same as no row for resolution purposes.
  */
-export const nxStringOverrides = pgTable(
+export const npStringOverrides = pgTable(
   "nx_string_overrides",
   {
     siteId: text("site_id").default("default").notNull(),
@@ -270,7 +270,7 @@ export const nxStringOverrides = pgTable(
     key: text("key").notNull(),
     value: text("value"),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-    updatedBy: uuid("updated_by").references(() => nxUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
   },
   (table) => [primaryKey({ columns: [table.siteId, table.locale, table.key] })],
 );
@@ -293,7 +293,7 @@ export const nxStringOverrides = pgTable(
  * pointing at the same `id` — that's a 15.x follow-up;
  * v15.1 is one-hostname-per-site.
  */
-export const nxSites = pgTable(
+export const npSites = pgTable(
   "nx_sites",
   {
     id: text("id").primaryKey(),
@@ -308,7 +308,7 @@ export const nxSites = pgTable(
   (table) => [unique("nx_sites_hostname_idx").on(table.hostname)],
 );
 
-export const nxPlugins = pgTable("nx_plugins", {
+export const npPlugins = pgTable("nx_plugins", {
   id: text("id").primaryKey(),
   enabled: boolean("enabled").default(true).notNull(),
   config: jsonb("config").$type<unknown>().notNull(),
@@ -332,7 +332,7 @@ export const nxPlugins = pgTable("nx_plugins", {
  */
 export const NX_GLOBAL_PLUGIN_SITE_ID = "_global_";
 
-export const nxPluginStorage = pgTable(
+export const npPluginStorage = pgTable(
   "nx_plugin_storage",
   {
     pluginId: text("plugin_id").notNull(),
@@ -362,7 +362,7 @@ export const nxPluginStorage = pgTable(
  * `unhealthy`; they survive in the table for forensic review
  * until an operator GCs them or a fresh worker reuses the id.
  */
-export const nxWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
+export const npWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
   id: text("id").primaryKey(),
   status: text("status").default("running").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -389,7 +389,7 @@ export const nxWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
  *   - "logs for this job" → (job_id, created_at)
  *   - "prune logs older than X" → (created_at)
  */
-export const nxJobLogs = pgTable(
+export const npJobLogs = pgTable(
   "nx_job_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),

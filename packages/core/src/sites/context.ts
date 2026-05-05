@@ -50,10 +50,10 @@ export async function getCurrentSiteId(): Promise<string | null> {
  * onto the job payload at enqueue time and wrap the handler in
  * `withCurrentSite(siteId, fn)` so this helper resolves correctly.
  *
- * Throws `NxSiteContextMissingError` (code `SITE_CONTEXT_MISSING`,
+ * Throws `NpSiteContextMissingError` (code `SITE_CONTEXT_MISSING`,
  * status 500). The 500 is deliberate — this is a server-side
  * wiring bug, not user input fault, and the API layer surfaces
- * it through the standard NxError envelope.
+ * it through the standard NpError envelope.
  */
 export async function requireSiteId(): Promise<string> {
   const id = await getCurrentSiteId();
@@ -62,8 +62,8 @@ export async function requireSiteId(): Promise<string> {
     // `errors.js` doesn't currently reach back into sites/, but
     // the dynamic specifier costs nothing on the happy path
     // (resolver hit) and avoids a future cycle.
-    const { NxSiteContextMissingError } = await import("../errors.js");
-    throw new NxSiteContextMissingError(
+    const { NpSiteContextMissingError } = await import("../errors.js");
+    throw new NpSiteContextMissingError(
       "site context required for this write but none is set — " +
         "wrap the call in withCurrentSite() or stamp siteId on the job payload",
     );

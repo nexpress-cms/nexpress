@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 
 /**
  * Magazine theme mobile drawer. Renders a hamburger that opens
@@ -10,7 +10,7 @@ import type { NxNavItem } from "@nexpress/core";
  * stays the desktop face.
  */
 export interface MagazineMobileNavProps {
-  items: NxNavItem[];
+  items: NpNavItem[];
 }
 
 export function MagazineMobileNav({ items }: MagazineMobileNavProps) {

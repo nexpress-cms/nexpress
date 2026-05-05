@@ -1,10 +1,10 @@
 import { ZodError } from "zod";
 
-import { type NxConfig } from "./types.js";
-import { nxConfigSchema } from "./validation.js";
+import { type NpConfig } from "./types.js";
+import { npConfigSchema } from "./validation.js";
 
 /**
- * Validates the project's NxConfig against the declarative schema and returns
+ * Validates the project's NpConfig against the declarative schema and returns
  * it unchanged on success. Catches common mistakes (bad collection slug,
  * missing auth.secret, malformed storage adapter, etc.) at module-eval time
  * with a clear message instead of a cryptic runtime failure once the app
@@ -19,9 +19,9 @@ import { nxConfigSchema } from "./validation.js";
  * Unknown plugin entries are accepted here — the plugin loader does the
  * deeper validation of manifests against @nexpress/plugin-sdk.
  */
-export function defineConfig(config: NxConfig): NxConfig {
+export function defineConfig(config: NpConfig): NpConfig {
   try {
-    nxConfigSchema.parse(config);
+    npConfigSchema.parse(config);
   } catch (err) {
     if (err instanceof ZodError) {
       throw new Error(formatConfigError(err), { cause: err });

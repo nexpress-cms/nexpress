@@ -1,7 +1,7 @@
-import { NxValidationError, isFollowing } from "@nexpress/core";
+import { NpValidationError, isFollowing } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { requireMember } from "@/lib/member-auth-helpers";
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const targetType = url.searchParams.get("targetType") ?? "";
     const targetId = url.searchParams.get("targetId") ?? "";
     if (!(SUPPORTED as readonly string[]).includes(targetType) || !targetId) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         {
           field: "target",
           message: `targetType (${SUPPORTED.join("|")}) and targetId required`,
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
       targetType: targetType as FollowTarget,
       targetId,
     });
-    return nxSuccessResponse({ following });
+    return npSuccessResponse({ following });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Lock } from "lucide-react";
 
-import { NxMark } from "../layout/nx-mark.js";
+import { NpMark } from "../layout/nx-mark.js";
 import { cn } from "../ui/utils.js";
 
 interface AuthLayoutProps {
@@ -39,7 +39,7 @@ interface AuthCardProps {
 }
 
 /**
- * The card itself: NxMark + wordmark, title, description, body, and an
+ * The card itself: NpMark + wordmark, title, description, body, and an
  * optional footer. Intentionally narrow (max-w-sm) — wider forms read
  * as marketing pages, not as auth.
  */
@@ -58,7 +58,7 @@ export function AuthCard({
       )}
     >
       <div className="mb-5 flex items-center gap-3">
-        <NxMark size={28} />
+        <NpMark size={28} />
         <span className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">
           NexPress
         </span>

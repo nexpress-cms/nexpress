@@ -1,5 +1,5 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   getPluginRegistration,
   listPluginStates,
   can,
@@ -7,7 +7,7 @@ import {
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import { ensureFor } from "@/lib/init-core";
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request);
 
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("plugins", "read");
+      throw new NpForbiddenError("plugins", "read");
     }
 
     await ensureFor("plugins");
@@ -48,9 +48,9 @@ export async function GET(request: NextRequest) {
       })
       .sort((a, b) => a.id.localeCompare(b.id));
 
-    return nxSuccessResponse({ items });
+    return npSuccessResponse({ items });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

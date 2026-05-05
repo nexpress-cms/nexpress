@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 interface GalleryImage {
   src: string;
@@ -68,7 +68,7 @@ const parseImages = (value: unknown): GalleryImage[] => {
   return images.length > 0 ? images : fallback;
 };
 
-export const imageGalleryBlock: NxBlockDefinition = {
+export const imageGalleryBlock: NpBlockDefinition = {
   type: "image-gallery",
   label: "Image Gallery",
   description: "Responsive gallery block for portfolios, campaigns, or product storytelling.",

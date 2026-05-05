@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDocumentRevision } from "@/lib/revision-helpers";
 
 export async function GET(
@@ -13,8 +13,8 @@ export async function GET(
     const user = await requireAuth(request);
     const revision = await getDocumentRevision(slug, id, revisionId, user);
 
-    return nxSuccessResponse(revision);
+    return npSuccessResponse(revision);
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

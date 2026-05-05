@@ -1,12 +1,12 @@
 import {
-  NxForbiddenError,
+  NpForbiddenError,
   getOptionalJobQueue,
-  type NxJobState,
+  type NpJobState,
   can,
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -25,7 +25,7 @@ import { ensureFor } from "@/lib/init-core";
  * Admin-only + CSRF; same gate as the per-job retry endpoint.
  */
 const BULK_LIMIT = 200;
-const RETRYABLE_STATES: ReadonlyArray<NxJobState> = [
+const RETRYABLE_STATES: ReadonlyArray<NpJobState> = [
   "failed",
   "cancelled",
   "expired",
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     await ensureFor("write");
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("jobs", "retry-all");
+      throw new NpForbiddenError("jobs", "retry-all");
     }
     const queue = getOptionalJobQueue();
     if (
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const stateRaw = params.get("state");
     const state =
       stateRaw && (RETRYABLE_STATES as readonly string[]).includes(stateRaw)
-        ? (stateRaw as NxJobState)
+        ? (stateRaw as NpJobState)
         : "failed";
     const name = params.get("name") ?? undefined;
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     const retried = results.filter((r) => r.ok).length;
     const failed = results.length - retried;
 
-    return nxSuccessResponse({
+    return npSuccessResponse({
       retried,
       failed,
       // Total is `list.total` not `list.jobs.length` — surfaces
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       results,
     });
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

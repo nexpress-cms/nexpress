@@ -1,5 +1,5 @@
 import {
-  NxValidationError,
+  NpValidationError,
   deleteDocument,
   getDocumentById,
   saveDocument,
@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import { revalidateCollection } from "@/lib/revalidate";
 
@@ -23,28 +23,28 @@ interface BulkBody {
 
 function validateBody(raw: unknown): BulkBody {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Body must be a JSON object" },
     ]);
   }
   const body = raw as { action?: unknown; ids?: unknown };
   if (typeof body.action !== "string" || !ACTIONS.includes(body.action as BulkAction)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "action", message: `action must be one of: ${ACTIONS.join(", ")}` },
     ]);
   }
   if (!Array.isArray(body.ids) || body.ids.length === 0) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "ids", message: "ids must be a non-empty array" },
     ]);
   }
   if (body.ids.length > MAX_IDS) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "ids", message: `ids may not exceed ${MAX_IDS} entries per request` },
     ]);
   }
   if (!body.ids.every((id) => typeof id === "string" && id.length > 0)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "ids", message: "Every id must be a non-empty string" },
     ]);
   }
@@ -110,8 +110,8 @@ export async function POST(
       revalidateCollection(slug);
     }
 
-    return nxSuccessResponse({ action, succeeded, failed });
+    return npSuccessResponse({ action, succeeded, failed });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

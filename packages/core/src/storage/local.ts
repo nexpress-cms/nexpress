@@ -5,20 +5,20 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream } from "node:stream/web";
 
-import type { NxFileMetadata, NxStorageAdapter } from "./types.js";
+import type { NpFileMetadata, NpStorageAdapter } from "./types.js";
 
 export interface LocalStorageAdapterConfig {
   directory: string;
   baseUrl: string;
 }
 
-export class LocalStorageAdapter implements NxStorageAdapter {
+export class LocalStorageAdapter implements NpStorageAdapter {
   constructor(private readonly config: LocalStorageAdapterConfig) {}
 
   async upload(
     key: string,
     data: Buffer | ReadableStream,
-    _: NxFileMetadata,
+    _: NpFileMetadata,
   ): Promise<void> {
     const filePath = this.resolvePath(key);
 

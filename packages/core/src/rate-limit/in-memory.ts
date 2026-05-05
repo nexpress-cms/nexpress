@@ -1,4 +1,4 @@
-import type { NxRateLimitDecision, NxRateLimiterAdapter } from "./types.js";
+import type { NpRateLimitDecision, NpRateLimiterAdapter } from "./types.js";
 
 /**
  * Default rate-limiter adapter. Same fixed-window behaviour the
@@ -54,12 +54,12 @@ function ensureJanitor(): void {
   globalThis.__nx_rate_limit_cleanup_handle = handle;
 }
 
-export class InMemoryRateLimiter implements NxRateLimiterAdapter {
+export class InMemoryRateLimiter implements NpRateLimiterAdapter {
   constructor() {
     ensureJanitor();
   }
 
-  check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision> {
+  check(key: string, limit: number, windowMs: number): Promise<NpRateLimitDecision> {
     const store = getStore();
     const now = Date.now();
     const bucket = store.get(key);

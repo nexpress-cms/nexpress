@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { nxPlugins } from "../db/schema/system.js";
+import { npPlugins } from "../db/schema/system.js";
 
-export interface NxPluginState {
+export interface NpPluginState {
   id: string;
   enabled: boolean;
   config: Record<string, unknown>;
@@ -11,7 +11,7 @@ export interface NxPluginState {
   updatedAt: Date;
 }
 
-export interface NxPluginStateUpdate {
+export interface NpPluginStateUpdate {
   enabled?: boolean;
   config?: Record<string, unknown>;
 }
@@ -35,7 +35,7 @@ function toState(row: {
   config: unknown;
   installedAt: Date;
   updatedAt: Date;
-}): NxPluginState {
+}): NpPluginState {
   return {
     id: row.id,
     enabled: row.enabled,
@@ -47,8 +47,8 @@ function toState(row: {
 
 export async function listPluginStates(
   db: NodePgDatabase<Record<string, unknown>>,
-): Promise<NxPluginState[]> {
-  const rows = (await (db as unknown as DrizzleDb).select().from(nxPlugins)) as Array<{
+): Promise<NpPluginState[]> {
+  const rows = (await (db as unknown as DrizzleDb).select().from(npPlugins)) as Array<{
     id: string;
     enabled: boolean;
     config: unknown;
@@ -62,11 +62,11 @@ export async function listPluginStates(
 export async function getPluginState(
   db: NodePgDatabase<Record<string, unknown>>,
   id: string,
-): Promise<NxPluginState | null> {
+): Promise<NpPluginState | null> {
   const rows = (await (db as unknown as DrizzleDb)
     .select()
-    .from(nxPlugins)
-    .where(eq(nxPlugins.id, id))
+    .from(npPlugins)
+    .where(eq(npPlugins.id, id))
     .limit(1)) as Array<{
     id: string;
     enabled: boolean;
@@ -94,7 +94,7 @@ export async function syncPluginRegistrations(
 
   const now = new Date();
   await db
-    .insert(nxPlugins)
+    .insert(npPlugins)
     .values(
       pluginIds.map((id) => ({
         id,
@@ -104,14 +104,14 @@ export async function syncPluginRegistrations(
         updatedAt: now,
       })),
     )
-    .onConflictDoNothing({ target: nxPlugins.id });
+    .onConflictDoNothing({ target: npPlugins.id });
 }
 
 export async function updatePluginState(
   db: NodePgDatabase<Record<string, unknown>>,
   id: string,
-  patch: NxPluginStateUpdate,
-): Promise<NxPluginState | null> {
+  patch: NpPluginStateUpdate,
+): Promise<NpPluginState | null> {
   const values: Record<string, unknown> = {
     updatedAt: new Date(),
   };
@@ -124,9 +124,9 @@ export async function updatePluginState(
   }
 
   const rows = (await (db as unknown as DrizzleDb)
-    .update(nxPlugins)
+    .update(npPlugins)
     .set(values)
-    .where(eq(nxPlugins.id, id))
+    .where(eq(npPlugins.id, id))
     .returning()) as Array<{
     id: string;
     enabled: boolean;

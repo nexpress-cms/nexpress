@@ -1,11 +1,11 @@
 import type { CSSProperties } from "react";
 
-import type { NxBlockDefinition } from "../types.js";
+import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim().length > 0 ? value : fallback;
 
-export const heroBlock: NxBlockDefinition = {
+export const heroBlock: NpBlockDefinition = {
   type: "hero",
   label: "Hero",
   description: "Large introductory section with headline, supporting copy, and a call to action.",

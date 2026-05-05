@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 
 /**
  * Mobile-first nav drawer. The desktop header keeps its inline
@@ -16,7 +16,7 @@ import type { NxNavItem } from "@nexpress/core";
  * the drawer is closed.
  */
 export interface MobileNavProps {
-  items: NxNavItem[];
+  items: NpNavItem[];
   /** Optional brand label for the drawer header. Defaults to "Menu". */
   label?: string;
 }

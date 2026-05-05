@@ -2,8 +2,8 @@ import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxBans } from "../db/schema/community.js";
-import { NxForbiddenError, NxNotFoundError, NxValidationError } from "../errors.js";
+import { npBans } from "../db/schema/community.js";
+import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
 
@@ -26,7 +26,7 @@ import type { Principal } from "./principal.js";
 export type BanScope = "site" | "category" | "collection";
 export type BanKind = "temporary" | "permanent";
 
-export interface NxBanRow {
+export interface NpBanRow {
   id: string;
   memberId: string;
   scopeType: BanScope;
@@ -52,14 +52,14 @@ export interface IssueBanInput {
   actor: Principal;
 }
 
-export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
+export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
   if (input.kind === "temporary" && !(input.expiresAt instanceof Date)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "expiresAt", message: "Temporary bans require an expiresAt timestamp" },
     ]);
   }
   if (input.scopeType !== "site" && !input.scopeId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "scopeId", message: "Scoped bans require a scopeId" },
     ]);
   }
@@ -77,7 +77,7 @@ export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
   // on tenant A's records when the staff member intended tenant B.
   const siteId = await requireSiteId();
   const [row] = (await db
-    .insert(nxBans)
+    .insert(npBans)
     .values({
       memberId: input.memberId,
       scopeType: input.scopeType,
@@ -89,7 +89,7 @@ export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
       byMemberId,
       siteId,
     })
-    .returning()) as NxBanRow[];
+    .returning()) as NpBanRow[];
   if (!row) throw new Error("Ban insert returned no row");
 
   await recordAuditEvent({
@@ -113,7 +113,7 @@ export async function issueBan(input: IssueBanInput): Promise<NxBanRow> {
   return row;
 }
 
-export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
+export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Active bans only — expired/revoked rows aren't shown by default.
   // Staff who want to see history can hit the audit log.
@@ -130,15 +130,15 @@ export async function listBansForMember(memberId: string): Promise<NxBanRow[]> {
   const now = new Date();
   return (await db
     .select()
-    .from(nxBans)
+    .from(npBans)
     .where(
       and(
-        eq(nxBans.memberId, memberId),
-        eq(nxBans.siteId, siteId),
-        or(isNull(nxBans.expiresAt), gt(nxBans.expiresAt, now)),
+        eq(npBans.memberId, memberId),
+        eq(npBans.siteId, siteId),
+        or(isNull(npBans.expiresAt), gt(npBans.expiresAt, now)),
       ),
     )
-    .orderBy(desc(nxBans.createdAt))) as NxBanRow[];
+    .orderBy(desc(npBans.createdAt))) as NpBanRow[];
 }
 
 export interface RevokeBanInput {
@@ -160,17 +160,17 @@ export async function revokeBan(input: RevokeBanInput): Promise<void> {
   const requestSiteId = await requireSiteId();
   const [existing] = (await db
     .select()
-    .from(nxBans)
-    .where(eq(nxBans.id, input.banId))
-    .limit(1)) as NxBanRow[];
-  if (!existing) throw new NxNotFoundError("ban", input.banId);
+    .from(npBans)
+    .where(eq(npBans.id, input.banId))
+    .limit(1)) as NpBanRow[];
+  if (!existing) throw new NpNotFoundError("ban", input.banId);
   if (existing.siteId !== requestSiteId) {
-    throw new NxForbiddenError("ban", "cross-site");
+    throw new NpForbiddenError("ban", "cross-site");
   }
 
   await db
-    .delete(nxBans)
-    .where(and(eq(nxBans.id, input.banId), eq(nxBans.siteId, requestSiteId)));
+    .delete(npBans)
+    .where(and(eq(npBans.id, input.banId), eq(npBans.siteId, requestSiteId)));
 
   await recordAuditEvent({
     actor:

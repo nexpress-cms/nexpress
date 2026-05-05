@@ -1,9 +1,9 @@
 import { Redis, type RedisOptions } from "ioredis";
 
-import type { NxRateLimitDecision, NxRateLimiterAdapter } from "@nexpress/core/rate-limit";
+import type { NpRateLimitDecision, NpRateLimiterAdapter } from "@nexpress/core/rate-limit";
 
 /**
- * Phase 23.7.1 — Redis-backed `NxRateLimiterAdapter`.
+ * Phase 23.7.1 — Redis-backed `NpRateLimiterAdapter`.
  *
  * Drop-in replacement for `InMemoryRateLimiter` in multi-node
  * deployments. The contract is identical (`check(key, limit,
@@ -43,7 +43,7 @@ export type RedisRateLimiterOptions =
   | { client: Redis; keyPrefix?: string }
   | (RedisOptions & { url?: string; keyPrefix?: string });
 
-export class RedisRateLimiter implements NxRateLimiterAdapter {
+export class RedisRateLimiter implements NpRateLimiterAdapter {
   private readonly client: Redis;
   private readonly ownsClient: boolean;
   private readonly keyPrefix: string;
@@ -67,7 +67,7 @@ export class RedisRateLimiter implements NxRateLimiterAdapter {
     this.ownsClient = true;
   }
 
-  async check(key: string, limit: number, windowMs: number): Promise<NxRateLimitDecision> {
+  async check(key: string, limit: number, windowMs: number): Promise<NpRateLimitDecision> {
     const fullKey = `${this.keyPrefix}${key}`;
     const result = (await this.client.eval(CHECK_SCRIPT, 1, fullKey, String(windowMs))) as [
       number | string,

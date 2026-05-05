@@ -1,7 +1,7 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxForbiddenError,
-  NxValidationError,
+  NpForbiddenError,
+  NpValidationError,
   getSiteById,
   isSuperAdmin,
   listMembershipsForUser,
@@ -10,7 +10,7 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth-helpers";
 import { ensureFor } from "@/lib/init-core";
 
@@ -41,14 +41,14 @@ export async function POST(request: NextRequest) {
     const body = (await readJsonBody(request)) as { id?: unknown };
     const id = typeof body.id === "string" ? body.id : null;
     if (!id) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: "Site id is required" },
       ]);
     }
 
     const target = await getSiteById(id);
     if (!target) {
-      throw new NxValidationError("Invalid input", [
+      throw new NpValidationError("Invalid input", [
         { field: "id", message: `Site "${id}" not found` },
       ]);
     }
@@ -64,12 +64,12 @@ export async function POST(request: NextRequest) {
       const isDefaultGlobalAdmin =
         id === NX_DEFAULT_SITE_ID && can(user, "admin.manage");
       if (!hasMembership && !isDefaultGlobalAdmin) {
-        throw new NxForbiddenError("sites/active", "switch");
+        throw new NpForbiddenError("sites/active", "switch");
       }
     }
 
     const isProduction = process.env.NODE_ENV === "production";
-    const response = nxSuccessResponse({ id });
+    const response = npSuccessResponse({ id });
     response.cookies.set({
       name: "nx-admin-site",
       value: id,
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     });
     return response;
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }
@@ -95,11 +95,11 @@ export async function DELETE(request: NextRequest) {
     await ensureFor("write");
     await requireAuth(request);
 
-    const response = nxSuccessResponse({ ok: true });
+    const response = npSuccessResponse({ ok: true });
     response.cookies.delete("nx-admin-site");
     return response;
   } catch (error) {
-    return nxErrorResponse(
+    return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown error"),
     );
   }

@@ -2,9 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import {
-  nxBans,
-  nxMemberRoles,
-  nxMembers,
+  npBans,
+  npMemberRoles,
+  npMembers,
 } from "../db/schema/community.js";
 import { memberCan } from "../community/can.js";
 import {
@@ -21,7 +21,7 @@ async function seedMember(
 ): Promise<string> {
   const handle = overrides.handle ?? `m_${Math.random().toString(36).slice(2, 9)}`;
   const [row] = (await db
-    .insert(nxMembers)
+    .insert(npMembers)
     .values({
       handle,
       email: overrides.email ?? `${handle}@example.com`,
@@ -30,7 +30,7 @@ async function seedMember(
       // care about pending/email-verified state at all.
       status: "active",
     })
-    .returning({ id: nxMembers.id })) as Array<{ id: string }>;
+    .returning({ id: npMembers.id })) as Array<{ id: string }>;
   if (!row) throw new Error("Failed to seed member");
   return row.id;
 }
@@ -43,7 +43,7 @@ async function grant(
   scopeId: string | null,
   expiresAt: Date | null = null,
 ): Promise<void> {
-  await db.insert(nxMemberRoles).values({ memberId, role, scopeType, scopeId, expiresAt });
+  await db.insert(npMemberRoles).values({ memberId, role, scopeType, scopeId, expiresAt });
 }
 
 async function ban(
@@ -53,7 +53,7 @@ async function ban(
   scopeId: string | null,
   expiresAt: Date | null = null,
 ): Promise<void> {
-  await db.insert(nxBans).values({
+  await db.insert(npBans).values({
     memberId,
     scopeType,
     scopeId,

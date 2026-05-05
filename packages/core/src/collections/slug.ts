@@ -1,5 +1,5 @@
-import { NxValidationError } from "../errors.js";
-import type { NxCollectionConfig } from "../config/types.js";
+import { NpValidationError } from "../errors.js";
+import type { NpCollectionConfig } from "../config/types.js";
 
 /**
  * Stable URL-slug derivation. Lowercases, strips Latin diacritics
@@ -32,12 +32,12 @@ export function slugify(value: string): string {
  * - If updating an existing doc, the previous slug is preserved when the
  *   caller didn't provide one (so titles can change without breaking URLs).
  * - Otherwise the slug is derived from the configured `useField` (default
- *   "title"). Throws `NxValidationError` if no candidate source exists.
+ *   "title"). Throws `NpValidationError` if no candidate source exists.
  *
  * Mutates `data` in place.
  */
 export function applySlugField(
-  config: NxCollectionConfig,
+  config: NpCollectionConfig,
   data: Record<string, unknown>,
   originalDoc: Record<string, unknown> | null,
 ): void {
@@ -63,7 +63,7 @@ export function applySlugField(
   const candidate = typeof source === "string" ? slugify(source) : "";
 
   if (candidate.length === 0) {
-    throw new NxValidationError("Slug generation failed", [
+    throw new NpValidationError("Slug generation failed", [
       {
         field: "slug",
         message: `Cannot derive a slug — provide "slug" or a non-empty "${useField}".`,

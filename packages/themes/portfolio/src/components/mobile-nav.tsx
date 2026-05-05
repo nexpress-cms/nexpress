@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { NxNavItem } from "@nexpress/core";
+import type { NpNavItem } from "@nexpress/core";
 
 /**
  * Portfolio theme mobile drawer. Inherits the dark surface; the
@@ -9,7 +9,7 @@ import type { NxNavItem } from "@nexpress/core";
  * a full-screen panel with large links centered.
  */
 export interface PortfolioMobileNavProps {
-  items: NxNavItem[];
+  items: NpNavItem[];
 }
 
 export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {

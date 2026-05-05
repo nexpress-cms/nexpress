@@ -2,8 +2,8 @@ import { eq, and, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
-import { nxUserOAuthIdentities, nxUsers } from "../db/schema/system.js";
-import type { NxUserRole } from "../config/types.js";
+import { npUserOAuthIdentities, npUsers } from "../db/schema/system.js";
+import type { NpUserRole } from "../config/types.js";
 
 import { hashPassword } from "./password.js";
 import type { OAuthProfile } from "./oauth-providers.js";
@@ -39,7 +39,7 @@ export interface ResolvedOAuthUser {
   id: string;
   email: string;
   name: string;
-  role: NxUserRole;
+  role: NpUserRole;
   tokenVersion: number;
 }
 
@@ -47,7 +47,7 @@ export interface ResolveOAuthLoginInput {
   provider: string;
   profile: OAuthProfile;
   /** Default role for auto-created users. Defaults to `"viewer"`. */
-  defaultRole?: NxUserRole;
+  defaultRole?: NpUserRole;
 }
 
 const SYNTHETIC_EMAIL_SUFFIX = ".oauth.local";
@@ -69,19 +69,19 @@ export async function resolveOAuthLogin(
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const provider = input.provider;
   const profile = input.profile;
-  const role: NxUserRole = input.defaultRole ?? "viewer";
+  const role: NpUserRole = input.defaultRole ?? "viewer";
 
   // Step 1: lookup by durable provider link.
   const [existingLink] = (await db
     .select({
-      userId: nxUserOAuthIdentities.userId,
-      identityId: nxUserOAuthIdentities.id,
+      userId: npUserOAuthIdentities.userId,
+      identityId: npUserOAuthIdentities.id,
     })
-    .from(nxUserOAuthIdentities)
+    .from(npUserOAuthIdentities)
     .where(
       and(
-        eq(nxUserOAuthIdentities.provider, provider),
-        eq(nxUserOAuthIdentities.providerUserId, profile.providerUserId),
+        eq(npUserOAuthIdentities.provider, provider),
+        eq(npUserOAuthIdentities.providerUserId, profile.providerUserId),
       ),
     )
     .limit(1)) as Array<{ userId: string; identityId: string }>;
@@ -90,9 +90,9 @@ export async function resolveOAuthLogin(
     // Refresh metadata so the most recent provider info is captured.
     const metadata = mergeMetadata(profile);
     await db
-      .update(nxUserOAuthIdentities)
+      .update(npUserOAuthIdentities)
       .set({ metadata, updatedAt: new Date() })
-      .where(eq(nxUserOAuthIdentities.id, existingLink.identityId));
+      .where(eq(npUserOAuthIdentities.id, existingLink.identityId));
 
     const user = await loadUser(db, existingLink.userId);
     return { user, created: false, linked: false };
@@ -104,18 +104,18 @@ export async function resolveOAuthLogin(
     const normalizedEmail = profile.email.trim().toLowerCase();
     const [existingUser] = (await db
       .select({
-        id: nxUsers.id,
-        email: nxUsers.email,
-        name: nxUsers.name,
-        role: nxUsers.role,
-        tokenVersion: nxUsers.tokenVersion,
+        id: npUsers.id,
+        email: npUsers.email,
+        name: npUsers.name,
+        role: npUsers.role,
+        tokenVersion: npUsers.tokenVersion,
       })
-      .from(nxUsers)
-      .where(eq(sql`lower(${nxUsers.email})`, normalizedEmail))
+      .from(npUsers)
+      .where(eq(sql`lower(${npUsers.email})`, normalizedEmail))
       .limit(1)) as ResolvedOAuthUser[];
 
     if (existingUser) {
-      await db.insert(nxUserOAuthIdentities).values({
+      await db.insert(npUserOAuthIdentities).values({
         userId: existingUser.id,
         provider,
         providerUserId: profile.providerUserId,
@@ -136,7 +136,7 @@ export async function resolveOAuthLogin(
   );
 
   const [created] = (await db
-    .insert(nxUsers)
+    .insert(npUsers)
     .values({
       email,
       name,
@@ -144,14 +144,14 @@ export async function resolveOAuthLogin(
       role,
     })
     .returning({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })) as ResolvedOAuthUser[];
 
-  await db.insert(nxUserOAuthIdentities).values({
+  await db.insert(npUserOAuthIdentities).values({
     userId: created.id,
     provider,
     providerUserId: profile.providerUserId,
@@ -176,14 +176,14 @@ async function loadUser(
 ): Promise<ResolvedOAuthUser> {
   const [row] = (await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
-      role: nxUsers.role,
-      tokenVersion: nxUsers.tokenVersion,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.id, userId))
+    .from(npUsers)
+    .where(eq(npUsers.id, userId))
     .limit(1)) as ResolvedOAuthUser[];
   if (!row) {
     throw new Error(`User ${userId} referenced by oauth identity is missing`);

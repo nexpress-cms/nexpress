@@ -1,7 +1,7 @@
 import {
-  NxForbiddenError,
-  NxNotFoundError,
-  nxMembers,
+  NpForbiddenError,
+  NpNotFoundError,
+  npMembers,
   verifyTokenFull,
   can,
 } from "@nexpress/core";
@@ -36,22 +36,22 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const user = await verifyTokenFull(token, secret, db);
   if (!user) redirect("/admin/login");
   if (!can(user, "content.publish")) {
-    throw new NxForbiddenError("member", "read");
+    throw new NpForbiddenError("member", "read");
   }
 
   const { id } = await params;
   const [row] = (await db
     .select({
-      id: nxMembers.id,
-      handle: nxMembers.handle,
-      email: nxMembers.email,
-      displayName: nxMembers.displayName,
-      status: nxMembers.status,
-      reputation: nxMembers.reputation,
-      createdAt: nxMembers.createdAt,
+      id: npMembers.id,
+      handle: npMembers.handle,
+      email: npMembers.email,
+      displayName: npMembers.displayName,
+      status: npMembers.status,
+      reputation: npMembers.reputation,
+      createdAt: npMembers.createdAt,
     })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, id))
+    .from(npMembers)
+    .where(eq(npMembers.id, id))
     .limit(1)) as Array<{
     id: string;
     handle: string;
@@ -61,7 +61,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
     reputation: number;
     createdAt: Date;
   }>;
-  if (!row) throw new NxNotFoundError("member", id);
+  if (!row) throw new NpNotFoundError("member", id);
 
   return (
     <div className="flex flex-col gap-6">

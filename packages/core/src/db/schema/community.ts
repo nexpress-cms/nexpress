@@ -13,8 +13,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { nxMedia } from "./media.js";
-import { nxUsers } from "./system.js";
+import { npMedia } from "./media.js";
+import { npUsers } from "./system.js";
 
 /**
  * Member-side schema: public site visitors who can register, log in,
@@ -32,7 +32,7 @@ import { nxUsers } from "./system.js";
  * member's handle with an `(imported)` suffix so visitors can tell
  * archived discussion apart from live activity.
  */
-export const nxMemberStatusEnum = pgEnum("nx_member_status", [
+export const npMemberStatusEnum = pgEnum("nx_member_status", [
   "active",
   "pending",
   "suspended",
@@ -40,8 +40,8 @@ export const nxMemberStatusEnum = pgEnum("nx_member_status", [
   "imported",
 ]);
 
-export const nxBanScopeEnum = pgEnum("nx_ban_scope", ["site", "category", "collection"]);
-export const nxBanKindEnum = pgEnum("nx_ban_kind", ["temporary", "permanent"]);
+export const npBanScopeEnum = pgEnum("nx_ban_scope", ["site", "category", "collection"]);
+export const npBanKindEnum = pgEnum("nx_ban_kind", ["temporary", "permanent"]);
 
 /**
  * Comment lifecycle status.
@@ -51,7 +51,7 @@ export const nxBanKindEnum = pgEnum("nx_ban_kind", ["temporary", "permanent"]);
  *  - `hidden` — taken down by a mod; row stays for restore + audit.
  *  - `deleted` — soft-delete by the author or post-cascade.
  */
-export const nxCommentStatusEnum = pgEnum("nx_comment_status", [
+export const npCommentStatusEnum = pgEnum("nx_comment_status", [
   "visible",
   "pending",
   "hidden",
@@ -63,14 +63,14 @@ export const nxCommentStatusEnum = pgEnum("nx_comment_status", [
  * community surface so the same grants table covers site-wide,
  * per-category, per-collection, and per-thread roles.
  */
-export const nxMemberRoleScopeEnum = pgEnum("nx_member_role_scope", [
+export const npMemberRoleScopeEnum = pgEnum("nx_member_role_scope", [
   "site",
   "category",
   "collection",
   "thread",
 ]);
 
-export const nxMembers = pgTable(
+export const npMembers = pgTable(
   "nx_members",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -80,9 +80,9 @@ export const nxMembers = pgTable(
     /** Argon2 hash. Nullable so SSO-only members can exist without a password. */
     password: text("password"),
     displayName: text("display_name").notNull(),
-    avatar: uuid("avatar").references((): AnyPgColumn => nxMedia.id),
+    avatar: uuid("avatar").references((): AnyPgColumn => npMedia.id),
     bio: text("bio"),
-    status: nxMemberStatusEnum("status").default("pending").notNull(),
+    status: npMemberStatusEnum("status").default("pending").notNull(),
     reputation: integer("reputation").default(0).notNull(),
     loginAttempts: integer("login_attempts").default(0).notNull(),
     lockUntil: timestamp("lock_until", { withTimezone: true, mode: "date" }),
@@ -116,11 +116,11 @@ export const nxMembers = pgTable(
   (table) => [index("nx_members_status_idx").on(table.status)],
 );
 
-export const nxMemberSessions = pgTable("nx_member_sessions", {
+export const npMemberSessions = pgTable("nx_member_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
   memberId: uuid("member_id")
     .notNull()
-    .references(() => nxMembers.id, { onDelete: "cascade" }),
+    .references(() => npMembers.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(),
   userAgent: text("user_agent"),
   ip: text("ip"),
@@ -141,13 +141,13 @@ export const nxMemberSessions = pgTable("nx_member_sessions", {
  * backward compat. The staff equivalent calls the same column
  * `provider_user_id`; both serve the same role.
  */
-export const nxMemberIdentities = pgTable(
+export const npMemberIdentities = pgTable(
   "nx_member_identities",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     subject: text("subject").notNull(),
     email: text("email"),
@@ -170,15 +170,15 @@ export const nxMemberIdentities = pgTable(
  * uniqueness keeps grants idempotent; `expires_at` is honored by
  * `memberCan()` so time-boxed promotions are possible.
  */
-export const nxMemberRoles = pgTable(
+export const npMemberRoles = pgTable(
   "nx_member_roles",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
-    scopeType: nxMemberRoleScopeEnum("scope_type").notNull(),
+    scopeType: npMemberRoleScopeEnum("scope_type").notNull(),
     /** Nullable for `scope_type='site'`. Otherwise an opaque string id. */
     scopeId: text("scope_id"),
     /**
@@ -190,7 +190,7 @@ export const nxMemberRoles = pgTable(
      * targets — the same slug exists on every site.
      */
     siteId: text("site_id").default("default").notNull(),
-    grantedBy: uuid("granted_by").references(() => nxUsers.id),
+    grantedBy: uuid("granted_by").references(() => npUsers.id),
     grantedAt: timestamp("granted_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
   },
@@ -233,23 +233,23 @@ export const nxMemberRoles = pgTable(
  * to be HTML-safe based on incoming requests — see
  * `community/markdown.ts` for the renderer.
  */
-export const nxComments = pgTable(
+export const npComments = pgTable(
   "nx_comments",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     targetType: text("target_type").notNull(),
     targetId: uuid("target_id").notNull(),
-    parentId: uuid("parent_id").references((): AnyPgColumn => nxComments.id, {
+    parentId: uuid("parent_id").references((): AnyPgColumn => npComments.id, {
       onDelete: "cascade",
     }),
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     bodyMd: text("body_md").notNull(),
     bodyHtml: text("body_html").notNull(),
-    status: nxCommentStatusEnum("status").default("visible").notNull(),
-    hiddenByUserId: uuid("hidden_by_user_id").references(() => nxUsers.id),
-    hiddenByMemberId: uuid("hidden_by_member_id").references((): AnyPgColumn => nxMembers.id),
+    status: npCommentStatusEnum("status").default("visible").notNull(),
+    hiddenByUserId: uuid("hidden_by_user_id").references(() => npUsers.id),
+    hiddenByMemberId: uuid("hidden_by_member_id").references((): AnyPgColumn => npMembers.id),
     hiddenReason: text("hidden_reason"),
     editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
     /**
@@ -279,7 +279,7 @@ export const nxComments = pgTable(
  * kind per member per target," so toggling a like is an upsert /
  * delete.
  */
-export const nxReactions = pgTable(
+export const npReactions = pgTable(
   "nx_reactions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -287,7 +287,7 @@ export const nxReactions = pgTable(
     targetId: uuid("target_id").notNull(),
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     /** Phase 18 — site this reaction belongs to (derived from target). */
     siteId: text("site_id").default("default").notNull(),
@@ -312,13 +312,13 @@ export const nxReactions = pgTable(
  * SQL; the soft-delete pattern on `nx_members` keeps follows pointing
  * at a still-valid (if anonymised) row.
  */
-export const nxFollows = pgTable(
+export const npFollows = pgTable(
   "nx_follows",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     followerId: uuid("follower_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     targetType: text("target_type").notNull(),
     targetId: text("target_id").notNull(),
     /**
@@ -359,15 +359,15 @@ export const nxFollows = pgTable(
  * (block writes). Mutes are member-issued and personal (hide
  * reads).
  */
-export const nxMemberMutes = pgTable(
+export const npMemberMutes = pgTable(
   "nx_member_mutes",
   {
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     targetId: uuid("target_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     /**
      * Phase 18 — site the mute applies to. A muter can choose
      * to silence someone on one tenant without affecting their
@@ -393,13 +393,13 @@ export const nxMemberMutes = pgTable(
  * Indexed on `(member_id, read_at, created_at)` to cover both the
  * unread-count probe and the recent-list paging that an inbox UI uses.
  */
-export const nxNotifications = pgTable(
+export const npNotifications = pgTable(
   "nx_notifications",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
     readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
@@ -428,19 +428,19 @@ export const nxNotifications = pgTable(
  * exclusive — staff resolutions populate the user, member-mod
  * resolutions populate the member.
  */
-export const nxReports = pgTable(
+export const npReports = pgTable(
   "nx_reports",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     reporterId: uuid("reporter_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
     targetType: text("target_type").notNull(),
     targetId: text("target_id").notNull(),
     reason: text("reason").notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
-    resolvedByUserId: uuid("resolved_by_user_id").references(() => nxUsers.id),
-    resolvedByMemberId: uuid("resolved_by_member_id").references((): AnyPgColumn => nxMembers.id),
+    resolvedByUserId: uuid("resolved_by_user_id").references(() => npUsers.id),
+    resolvedByMemberId: uuid("resolved_by_member_id").references((): AnyPgColumn => npMembers.id),
     resolution: text("resolution"),
     /**
      * Phase 18 — site this report belongs to. The mod queue
@@ -467,13 +467,13 @@ export const nxReports = pgTable(
  * account). `target_id` is `text` because some actions target string
  * ids — like `"posts"` for a `collection-mod` grant scope.
  */
-export const nxAuditEvents = pgTable(
+export const npAuditEvents = pgTable(
   "nx_audit_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     actorKind: text("actor_kind").notNull(),
-    actorUserId: uuid("actor_user_id").references(() => nxUsers.id),
-    actorMemberId: uuid("actor_member_id").references((): AnyPgColumn => nxMembers.id),
+    actorUserId: uuid("actor_user_id").references(() => npUsers.id),
+    actorMemberId: uuid("actor_member_id").references((): AnyPgColumn => npMembers.id),
     action: text("action").notNull(),
     targetType: text("target_type"),
     targetId: text("target_id"),
@@ -495,20 +495,20 @@ export const nxAuditEvents = pgTable(
   ],
 );
 
-export const nxBans = pgTable(
+export const npBans = pgTable(
   "nx_bans",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     memberId: uuid("member_id")
       .notNull()
-      .references(() => nxMembers.id, { onDelete: "cascade" }),
-    scopeType: nxBanScopeEnum("scope_type").notNull(),
+      .references(() => npMembers.id, { onDelete: "cascade" }),
+    scopeType: npBanScopeEnum("scope_type").notNull(),
     scopeId: text("scope_id"),
-    kind: nxBanKindEnum("kind").notNull(),
+    kind: npBanKindEnum("kind").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
     reason: text("reason"),
-    byUserId: uuid("by_user_id").references(() => nxUsers.id),
-    byMemberId: uuid("by_member_id").references((): AnyPgColumn => nxMembers.id),
+    byUserId: uuid("by_user_id").references(() => npUsers.id),
+    byMemberId: uuid("by_member_id").references((): AnyPgColumn => npMembers.id),
     /**
      * Phase 18 — the tenant this ban applies to. Pre-Phase 18
      * `scope_type='site'` rows had `scope_id=null` because

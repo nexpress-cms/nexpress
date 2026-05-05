@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { readGridChildLayout } from "./blocks/grid.js";
 import { getSharedRegistry } from "./registry.js";
-import type { NxBlockInstance, NxBlockRegistry, NxPageBlocks } from "./types.js";
+import type { NpBlockInstance, NpBlockRegistry, NpPageBlocks } from "./types.js";
 
 /**
  * Walk a tree of block instances and render the React tree.
@@ -18,8 +18,8 @@ import type { NxBlockInstance, NxBlockRegistry, NxPageBlocks } from "./types.js"
  * scope renders to a strict subset (tests, sandboxed previews).
  */
 export const renderBlocks = (
-  pageBlocks: NxPageBlocks,
-  registry: NxBlockRegistry = getSharedRegistry(),
+  pageBlocks: NpPageBlocks,
+  registry: NpBlockRegistry = getSharedRegistry(),
 ): React.ReactElement | null => {
   if (pageBlocks.length === 0) {
     return null;
@@ -29,8 +29,8 @@ export const renderBlocks = (
 };
 
 function renderBlock(
-  instance: NxBlockInstance,
-  registry: NxBlockRegistry,
+  instance: NpBlockInstance,
+  registry: NpBlockRegistry,
   parentType?: string,
 ): React.ReactElement {
   const definition = registry.get(instance.type);

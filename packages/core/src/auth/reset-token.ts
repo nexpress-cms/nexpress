@@ -3,24 +3,24 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { NxValidationError } from "../errors.js";
-import { nxSessions, nxUsers } from "../db/schema/system.js";
+import { NpValidationError } from "../errors.js";
+import { npSessions, npUsers } from "../db/schema/system.js";
 import { hashPassword } from "./password.js";
 import { sha256 } from "./session.js";
 
-export type NxPasswordResetPurpose = "invite" | "reset";
+export type NpPasswordResetPurpose = "invite" | "reset";
 
-export interface NxIssuedResetToken {
+export interface NpIssuedResetToken {
   /** The raw token — deliver to the user, never persist. */
   token: string;
   /** Matches `nx_users.password_reset_expires_at`. */
   expiresAt: Date;
-  purpose: NxPasswordResetPurpose;
+  purpose: NpPasswordResetPurpose;
 }
 
-export interface NxCreateResetTokenOptions {
+export interface NpCreateResetTokenOptions {
   userId: string;
-  purpose: NxPasswordResetPurpose;
+  purpose: NpPasswordResetPurpose;
   ttlMs: number;
 }
 
@@ -40,30 +40,30 @@ function generateRawToken(): string {
  */
 export async function createPasswordResetToken(
   db: NodePgDatabase<Record<string, unknown>>,
-  options: NxCreateResetTokenOptions,
-): Promise<NxIssuedResetToken> {
+  options: NpCreateResetTokenOptions,
+): Promise<NpIssuedResetToken> {
   const token = generateRawToken();
   const tokenHash = await sha256(token);
   const expiresAt = new Date(Date.now() + options.ttlMs);
 
   await db
-    .update(nxUsers)
+    .update(npUsers)
     .set({
       passwordResetTokenHash: tokenHash,
       passwordResetExpiresAt: expiresAt,
       passwordResetPurpose: options.purpose,
       updatedAt: new Date(),
     })
-    .where(eq(nxUsers.id, options.userId));
+    .where(eq(npUsers.id, options.userId));
 
   return { token, expiresAt, purpose: options.purpose };
 }
 
-export interface NxResetRequestResult {
+export interface NpResetRequestResult {
   userId: string | null;
   name: string | null;
   email: string | null;
-  issued: NxIssuedResetToken | null;
+  issued: NpIssuedResetToken | null;
 }
 
 /**
@@ -76,16 +76,16 @@ export async function requestPasswordReset(
   db: NodePgDatabase<Record<string, unknown>>,
   email: string,
   ttlMs: number,
-): Promise<NxResetRequestResult> {
+): Promise<NpResetRequestResult> {
   const normalizedEmail = email.trim().toLowerCase();
   const [user] = await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      name: nxUsers.name,
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
     })
-    .from(nxUsers)
-    .where(eq(nxUsers.email, normalizedEmail))
+    .from(npUsers)
+    .where(eq(npUsers.email, normalizedEmail))
     .limit(1);
 
   if (!user) {
@@ -101,15 +101,15 @@ export async function requestPasswordReset(
   return { userId: user.id, name: user.name, email: user.email, issued };
 }
 
-export interface NxConsumeResetTokenOptions {
+export interface NpConsumeResetTokenOptions {
   token: string;
   newPassword: string;
 }
 
-export interface NxConsumeResetTokenResult {
+export interface NpConsumeResetTokenResult {
   userId: string;
   email: string;
-  purpose: NxPasswordResetPurpose;
+  purpose: NpPasswordResetPurpose;
 }
 
 /**
@@ -118,21 +118,21 @@ export interface NxConsumeResetTokenResult {
  * - bumps `tokenVersion` and deletes all sessions (force logout everywhere)
  * - clears the reset columns on the user row
  *
- * Throws `NxValidationError` when the token is unknown, expired, or the
+ * Throws `NpValidationError` when the token is unknown, expired, or the
  * password is too short. Uses a single DB transaction for atomicity.
  */
 export async function consumePasswordResetToken(
   db: NodePgDatabase<Record<string, unknown>>,
-  options: NxConsumeResetTokenOptions,
-): Promise<NxConsumeResetTokenResult> {
+  options: NpConsumeResetTokenOptions,
+): Promise<NpConsumeResetTokenResult> {
   if (!options.token || typeof options.token !== "string") {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "token", message: "Reset token is required." },
     ]);
   }
 
   if (!options.newPassword || options.newPassword.length < MIN_PASSWORD_LENGTH) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       {
         field: "password",
         message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
@@ -145,22 +145,22 @@ export async function consumePasswordResetToken(
 
   const [user] = await db
     .select({
-      id: nxUsers.id,
-      email: nxUsers.email,
-      purpose: nxUsers.passwordResetPurpose,
+      id: npUsers.id,
+      email: npUsers.email,
+      purpose: npUsers.passwordResetPurpose,
     })
-    .from(nxUsers)
+    .from(npUsers)
     .where(
       and(
-        eq(nxUsers.passwordResetTokenHash, tokenHash),
-        isNotNull(nxUsers.passwordResetExpiresAt),
-        gt(nxUsers.passwordResetExpiresAt, now),
+        eq(npUsers.passwordResetTokenHash, tokenHash),
+        isNotNull(npUsers.passwordResetExpiresAt),
+        gt(npUsers.passwordResetExpiresAt, now),
       ),
     )
     .limit(1);
 
   if (!user) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "token", message: "Reset link is invalid or has expired." },
     ]);
   }
@@ -174,7 +174,7 @@ export async function consumePasswordResetToken(
   // valid old JWTs if the second call failed.
   await db.transaction(async (tx) => {
     await tx
-      .update(nxUsers)
+      .update(npUsers)
       .set({
         password: newPasswordHash,
         passwordResetTokenHash: null,
@@ -182,17 +182,17 @@ export async function consumePasswordResetToken(
         passwordResetPurpose: null,
         loginAttempts: 0,
         lockUntil: null,
-        tokenVersion: sql`${nxUsers.tokenVersion} + 1`,
+        tokenVersion: sql`${npUsers.tokenVersion} + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(nxUsers.id, user.id));
+      .where(eq(npUsers.id, user.id));
 
-    await tx.delete(nxSessions).where(eq(nxSessions.userId, user.id));
+    await tx.delete(npSessions).where(eq(npSessions.userId, user.id));
   });
 
   return {
     userId: user.id,
     email: user.email,
-    purpose: (user.purpose ?? "reset") as NxPasswordResetPurpose,
+    purpose: (user.purpose ?? "reset") as NpPasswordResetPurpose,
   };
 }

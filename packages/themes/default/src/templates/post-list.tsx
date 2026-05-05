@@ -1,4 +1,4 @@
-import type { NxTemplateRenderProps } from "@nexpress/theme";
+import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 import { PostCard, type PostCardDoc } from "../components/post-card.js";
 
@@ -21,7 +21,7 @@ interface PostListDoc {
   intro?: string;
 }
 
-export function PostListTemplate({ doc }: NxTemplateRenderProps) {
+export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const data = doc as PostListDoc;
   const heading = data.heading ?? "Posts";
   const intro = data.intro;

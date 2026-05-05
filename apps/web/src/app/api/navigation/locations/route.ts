@@ -1,14 +1,14 @@
 import {
   NX_DEFAULT_SITE_ID,
-  NxForbiddenError,
+  NpForbiddenError,
   can,
   getCurrentSiteId,
-  nxNavigation,
+  npNavigation,
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 
 import { requireAuth } from "@/lib/auth-helpers";
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
@@ -50,15 +50,15 @@ export async function GET(request: NextRequest) {
     // knows), so anonymous traffic has no reason to enumerate.
     const user = await requireAuth(request);
     if (!can(user, "admin.manage")) {
-      throw new NxForbiddenError("navigation", "list-locations");
+      throw new NpForbiddenError("navigation", "list-locations");
     }
 
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
     const rows = await db
-      .select({ location: nxNavigation.location })
-      .from(nxNavigation)
-      .where(eq(nxNavigation.siteId, siteId));
+      .select({ location: npNavigation.location })
+      .from(npNavigation)
+      .where(eq(npNavigation.siteId, siteId));
 
     const seen = new Set(DEFAULT_LOCATIONS.map((l) => l.value));
     const locations: LocationOption[] = [...DEFAULT_LOCATIONS];
@@ -68,9 +68,9 @@ export async function GET(request: NextRequest) {
       locations.push({ value: row.location, label: titleCase(row.location) });
     }
 
-    return nxSuccessResponse({ locations });
+    return npSuccessResponse({ locations });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 

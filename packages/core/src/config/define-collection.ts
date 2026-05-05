@@ -1,5 +1,5 @@
-import { type NxCollectionConfig } from "./types.js";
+import { type NpCollectionConfig } from "./types.js";
 
-export function defineCollection(config: NxCollectionConfig): NxCollectionConfig {
+export function defineCollection(config: NpCollectionConfig): NpCollectionConfig {
   return config;
 }

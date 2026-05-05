@@ -1,9 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 
-import { nxSettings } from "../db/schema/system.js";
-import { nxNavigation, nxSlugHistory } from "../db/schema/system.js";
-import type { NxThemeTokens } from "../theme/types.js";
-import type { NxNavItem, NxFindOptions, NxFindResult, NxAuthUser } from "../config/types.js";
+import { npSettings } from "../db/schema/system.js";
+import { npNavigation, npSlugHistory } from "../db/schema/system.js";
+import type { NpThemeTokens } from "../theme/types.js";
+import type { NpNavItem, NpFindOptions, NpFindResult, NpAuthUser } from "../config/types.js";
 import { DEFAULT_THEME } from "../theme/defaults.js";
 import { findDocuments, getCollectionConfig, getDb } from "../collections/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
@@ -22,32 +22,32 @@ async function resolveSiteId(): Promise<string> {
   return (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
 }
 
-export async function getTheme(): Promise<NxThemeTokens> {
+export async function getTheme(): Promise<NpThemeTokens> {
   const db = getDb();
   const siteId = await resolveSiteId();
   const rows = await db
     .select()
-    .from(nxSettings)
-    .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, "theme")))
+    .from(npSettings)
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")))
     .limit(1);
 
   if (rows.length === 0 || !rows[0]) {
     return DEFAULT_THEME;
   }
 
-  return rows[0].value as NxThemeTokens;
+  return rows[0].value as NpThemeTokens;
 }
 
 export async function getNavigation(
   location: string = "header",
-): Promise<NxNavItem[]> {
+): Promise<NpNavItem[]> {
   const db = getDb();
   const siteId = await resolveSiteId();
   const rows = await db
     .select()
-    .from(nxNavigation)
+    .from(npNavigation)
     .where(
-      and(eq(nxNavigation.siteId, siteId), eq(nxNavigation.location, location)),
+      and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)),
     )
     .limit(1);
 
@@ -81,7 +81,7 @@ export async function getNavigation(
  * stable across status flips — dropping the item would invalidate
  * the cache shape every time.
  */
-async function resolveNavItemUrls(items: NxNavItem[]): Promise<NxNavItem[]> {
+async function resolveNavItemUrls(items: NpNavItem[]): Promise<NpNavItem[]> {
   // Group page-typed refs by source collection so we issue one
   // batch of lookups per collection. Items missing `collectionSlug`
   // default to `"pages"` so existing nav rows keep resolving
@@ -117,9 +117,9 @@ async function resolveNavItemUrls(items: NxNavItem[]): Promise<NxNavItem[]> {
   return items.map((item) => mapNavItem(item, docByKey));
 }
 
-function collectPageRefs(items: NxNavItem[]): Map<string, string[]> {
+function collectPageRefs(items: NpNavItem[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
-  const walk = (arr: NxNavItem[]): void => {
+  const walk = (arr: NpNavItem[]): void => {
     for (const item of arr) {
       if (item.type === "page" && item.pageId) {
         const slug = item.collectionSlug ?? "pages";
@@ -135,9 +135,9 @@ function collectPageRefs(items: NxNavItem[]): Map<string, string[]> {
 }
 
 function mapNavItem(
-  item: NxNavItem,
+  item: NpNavItem,
   docByKey: Map<string, Record<string, unknown>>,
-): NxNavItem {
+): NpNavItem {
   const children = item.children
     ? item.children.map((child) => mapNavItem(child, docByKey))
     : undefined;
@@ -206,9 +206,9 @@ export async function getPostBySlug(
 }
 
 export async function findPosts(
-  options: NxFindOptions,
-  user?: NxAuthUser,
-): Promise<NxFindResult> {
+  options: NpFindOptions,
+  user?: NpAuthUser,
+): Promise<NpFindResult> {
   return findDocuments("posts", options, user);
 }
 
@@ -255,15 +255,15 @@ export async function findSlugRedirect(
     // renamed again). The newest record is the operator's intent.
     const [latest] = await db
       .select()
-      .from(nxSlugHistory)
+      .from(npSlugHistory)
       .where(
         and(
-          eq(nxSlugHistory.siteId, siteId),
-          eq(nxSlugHistory.collection, collection),
-          eq(nxSlugHistory.oldSlug, currentOld),
+          eq(npSlugHistory.siteId, siteId),
+          eq(npSlugHistory.collection, collection),
+          eq(npSlugHistory.oldSlug, currentOld),
         ),
       )
-      .orderBy(desc(nxSlugHistory.createdAt))
+      .orderBy(desc(npSlugHistory.createdAt))
       .limit(1);
     if (!latest) break;
     const next = latest.newSlug;
@@ -285,8 +285,8 @@ export async function getSetting<T = unknown>(key: string): Promise<T | null> {
   const siteId = await resolveSiteId();
   const rows = await db
     .select()
-    .from(nxSettings)
-    .where(and(eq(nxSettings.siteId, siteId), eq(nxSettings.key, key)))
+    .from(npSettings)
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, key)))
     .limit(1);
 
   if (rows.length === 0 || !rows[0]) {

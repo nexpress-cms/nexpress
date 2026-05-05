@@ -1,5 +1,5 @@
 import {
-  NxValidationError,
+  NpValidationError,
   addReaction,
   assertReactableExists,
   countReactions,
@@ -9,7 +9,7 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { nxErrorResponse, nxSuccessResponse } from "@/lib/api-response";
+import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { ensureFor } from "@/lib/init-core";
 import {
   optionalMember,
@@ -31,7 +31,7 @@ interface ReactionTarget {
 
 function readTargetFromBody(raw: unknown): ReactionTarget {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "body", message: "Body must be a JSON object" },
     ]);
   }
@@ -40,7 +40,7 @@ function readTargetFromBody(raw: unknown): ReactionTarget {
   const targetId = typeof body.targetId === "string" ? body.targetId : "";
   const kind = typeof body.kind === "string" ? body.kind : "like";
   if (!targetType || !targetId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "target", message: "targetType and targetId required" },
     ]);
   }
@@ -53,7 +53,7 @@ function readTargetFromQuery(request: NextRequest): ReactionTarget {
   const targetId = url.searchParams.get("targetId") ?? "";
   const kind = url.searchParams.get("kind") ?? "like";
   if (!targetType || !targetId) {
-    throw new NxValidationError("Invalid input", [
+    throw new NpValidationError("Invalid input", [
       { field: "target", message: "targetType and targetId query params required" },
     ]);
   }
@@ -74,9 +74,9 @@ export async function GET(request: NextRequest) {
     const mine = member
       ? await listMemberReactions(target.targetType, target.targetId, member.id)
       : [];
-    return nxSuccessResponse({ counts, mine });
+    return npSuccessResponse({ counts, mine });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
       memberId: member.id,
       kind: target.kind,
     });
-    return nxSuccessResponse(row, { status: 201 });
+    return npSuccessResponse(row, { status: 201 });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }
 
@@ -109,8 +109,8 @@ export async function DELETE(request: NextRequest) {
       memberId: member.id,
       kind: target.kind,
     });
-    return nxSuccessResponse({ ok: true });
+    return npSuccessResponse({ ok: true });
   } catch (error) {
-    return nxErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
+    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }
 }

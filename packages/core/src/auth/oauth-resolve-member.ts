@@ -3,8 +3,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { getCommunitySettings } from "../community/settings.js";
-import { nxMemberIdentities, nxMembers } from "../db/schema/community.js";
-import { NxForbiddenError } from "../errors.js";
+import { npMemberIdentities, npMembers } from "../db/schema/community.js";
+import { NpForbiddenError } from "../errors.js";
 
 import { hashPassword } from "./password.js";
 import type { OAuthProfile } from "./oauth-providers.js";
@@ -107,15 +107,15 @@ async function loadMember(
 ): Promise<ResolvedOAuthMember> {
   const [row] = (await db
     .select({
-      id: nxMembers.id,
-      email: nxMembers.email,
-      handle: nxMembers.handle,
-      displayName: nxMembers.displayName,
-      status: nxMembers.status,
-      tokenVersion: nxMembers.tokenVersion,
+      id: npMembers.id,
+      email: npMembers.email,
+      handle: npMembers.handle,
+      displayName: npMembers.displayName,
+      status: npMembers.status,
+      tokenVersion: npMembers.tokenVersion,
     })
-    .from(nxMembers)
-    .where(eq(nxMembers.id, memberId))
+    .from(npMembers)
+    .where(eq(npMembers.id, memberId))
     .limit(1)) as ResolvedOAuthMember[];
   if (!row) {
     throw new Error(`Member ${memberId} referenced by oauth identity is missing`);
@@ -131,21 +131,21 @@ export async function resolveMemberOAuthLogin(
 
   // Step 1: durable lookup.
   const [existingLink] = (await db
-    .select({ memberId: nxMemberIdentities.memberId, identityId: nxMemberIdentities.id })
-    .from(nxMemberIdentities)
+    .select({ memberId: npMemberIdentities.memberId, identityId: npMemberIdentities.id })
+    .from(npMemberIdentities)
     .where(
       and(
-        eq(nxMemberIdentities.provider, provider),
-        eq(nxMemberIdentities.subject, profile.providerUserId),
+        eq(npMemberIdentities.provider, provider),
+        eq(npMemberIdentities.subject, profile.providerUserId),
       ),
     )
     .limit(1)) as Array<{ memberId: string; identityId: string }>;
 
   if (existingLink) {
     await db
-      .update(nxMemberIdentities)
+      .update(npMemberIdentities)
       .set({ metadata: mergeMetadata(profile), updatedAt: new Date() })
-      .where(eq(nxMemberIdentities.id, existingLink.identityId));
+      .where(eq(npMemberIdentities.id, existingLink.identityId));
     const member = await loadMember(db, existingLink.memberId);
     return { member, created: false, linked: false };
   }
@@ -155,15 +155,15 @@ export async function resolveMemberOAuthLogin(
     const normalizedEmail = profile.email.trim().toLowerCase();
     const [existingMember] = (await db
       .select({
-        id: nxMembers.id,
-        email: nxMembers.email,
-        handle: nxMembers.handle,
-        displayName: nxMembers.displayName,
-        status: nxMembers.status,
-        tokenVersion: nxMembers.tokenVersion,
+        id: npMembers.id,
+        email: npMembers.email,
+        handle: npMembers.handle,
+        displayName: npMembers.displayName,
+        status: npMembers.status,
+        tokenVersion: npMembers.tokenVersion,
       })
-      .from(nxMembers)
-      .where(eq(sql`lower(${nxMembers.email})`, normalizedEmail))
+      .from(npMembers)
+      .where(eq(sql`lower(${npMembers.email})`, normalizedEmail))
       .limit(1)) as ResolvedOAuthMember[];
 
     if (existingMember) {
@@ -182,7 +182,7 @@ export async function resolveMemberOAuthLogin(
       if (existingMember.status !== "active") {
         return { member: existingMember, created: false, linked: false };
       }
-      await db.insert(nxMemberIdentities).values({
+      await db.insert(npMemberIdentities).values({
         memberId: existingMember.id,
         provider,
         subject: profile.providerUserId,
@@ -208,7 +208,7 @@ export async function resolveMemberOAuthLogin(
   // should be refused.
   const settings = await getCommunitySettings();
   if (!settings.registrationEnabled) {
-    throw new NxForbiddenError("members", "register");
+    throw new NpForbiddenError("members", "register");
   }
 
   const email =
@@ -222,7 +222,7 @@ export async function resolveMemberOAuthLogin(
   );
 
   const [created] = (await db
-    .insert(nxMembers)
+    .insert(npMembers)
     .values({
       email,
       handle,
@@ -235,15 +235,15 @@ export async function resolveMemberOAuthLogin(
       status: "active",
     })
     .returning({
-      id: nxMembers.id,
-      email: nxMembers.email,
-      handle: nxMembers.handle,
-      displayName: nxMembers.displayName,
-      status: nxMembers.status,
-      tokenVersion: nxMembers.tokenVersion,
+      id: npMembers.id,
+      email: npMembers.email,
+      handle: npMembers.handle,
+      displayName: npMembers.displayName,
+      status: npMembers.status,
+      tokenVersion: npMembers.tokenVersion,
     })) as ResolvedOAuthMember[];
 
-  await db.insert(nxMemberIdentities).values({
+  await db.insert(npMemberIdentities).values({
     memberId: created.id,
     provider,
     subject: profile.providerUserId,
