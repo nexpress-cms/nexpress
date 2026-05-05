@@ -20,22 +20,22 @@ export function PortfolioFooter() {
   ].filter((s): s is { href: string; label: string } => Boolean(s.href));
 
   return (
-    <footer className="nx-site-footer nx-portfolio-footer">
-      <div className="nx-portfolio-footer-inner">
-        <div className="nx-portfolio-footer-contact">
+    <footer className="np-site-footer np-portfolio-footer">
+      <div className="np-portfolio-footer-inner">
+        <div className="np-portfolio-footer-contact">
           {email ? (
             <a
               href={email.startsWith("mailto:") ? email : `mailto:${email}`}
-              className="nx-portfolio-footer-email"
+              className="np-portfolio-footer-email"
             >
               {email.replace(/^mailto:/, "")}
             </a>
           ) : (
-            <span className="nx-portfolio-footer-email">Available for select work</span>
+            <span className="np-portfolio-footer-email">Available for select work</span>
           )}
         </div>
         {social.length > 0 ? (
-          <ul className="nx-portfolio-footer-social">
+          <ul className="np-portfolio-footer-social">
             {social.map((s) => (
               <li key={s.href}>
                 <a href={s.href} target="_blank" rel="noopener noreferrer">
@@ -45,7 +45,7 @@ export function PortfolioFooter() {
             ))}
           </ul>
         ) : null}
-        <p className="nx-portfolio-footer-mark">
+        <p className="np-portfolio-footer-mark">
           © {year.toString()} · Built with NexPress
         </p>
       </div>

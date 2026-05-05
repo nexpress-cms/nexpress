@@ -107,7 +107,7 @@ export function SitePicker() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200/80 bg-white px-2.5 text-[12.5px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200/80 bg-white px-2.5 text-[12.5px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900"
           title="Switch site"
         >
           <Globe2 className="size-3.5 text-neutral-400" />
@@ -142,7 +142,7 @@ export function SitePicker() {
                   </p>
                 </div>
                 {active ? (
-                  <Check className="size-3.5 text-[var(--nx-color-brand)]" />
+                  <Check className="size-3.5 text-[var(--np-color-brand)]" />
                 ) : busyId === site.id ? (
                   <Loader2 className="size-3.5 animate-spin text-neutral-400" />
                 ) : null}

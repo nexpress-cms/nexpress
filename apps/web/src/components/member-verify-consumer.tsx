@@ -77,7 +77,7 @@ export function VerifyTokenConsumer({ token }: VerifyTokenConsumerProps) {
   }
   if (state === "error") {
     return (
-      <div className="nx-form-error" role="alert">
+      <div className="np-form-error" role="alert">
         <p>
           <strong>Verification failed.</strong>
         </p>

@@ -59,7 +59,7 @@ export const gridBlock: NpBlockDefinition = {
       gap,
     };
     return (
-      <div className="nx-block-grid" style={style}>
+      <div className="np-block-grid" style={style}>
         {children}
       </div>
     );

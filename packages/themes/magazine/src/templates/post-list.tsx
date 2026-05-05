@@ -26,7 +26,7 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const all = data.docs ?? [];
   if (all.length === 0) {
     return (
-      <section className="nx-magazine-index nx-magazine-index-empty">
+      <section className="np-magazine-index np-magazine-index-empty">
         <header>
           <h1>{heading}</h1>
           <p>No stories yet.</p>
@@ -39,18 +39,18 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const archive = rest.slice(2);
 
   return (
-    <section className="nx-magazine-index">
-      <header className="nx-magazine-index-header">
+    <section className="np-magazine-index">
+      <header className="np-magazine-index-header">
         <h1>{heading}</h1>
-        {intro ? <p className="nx-magazine-index-intro">{intro}</p> : null}
+        {intro ? <p className="np-magazine-index-intro">{intro}</p> : null}
       </header>
       {lead ? (
-        <div className="nx-magazine-index-lead">
+        <div className="np-magazine-index-lead">
           <MagazinePostCard doc={lead} variant="feature" />
         </div>
       ) : null}
       {secondary.length > 0 ? (
-        <div className="nx-magazine-index-row">
+        <div className="np-magazine-index-row">
           {secondary.map((post) => (
             <MagazinePostCard
               key={post.id ?? post.slug ?? post.title}
@@ -62,8 +62,8 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
       ) : null}
       {archive.length > 0 ? (
         <>
-          <h2 className="nx-magazine-index-archive-heading">Archive</h2>
-          <div className="nx-magazine-index-archive">
+          <h2 className="np-magazine-index-archive-heading">Archive</h2>
+          <div className="np-magazine-index-archive">
             {archive.map((post) => (
               <MagazinePostCard
                 key={post.id ?? post.slug ?? post.title}

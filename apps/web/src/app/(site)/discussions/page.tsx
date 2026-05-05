@@ -80,32 +80,32 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
   const authorById = new Map(authors.map((a) => [a.id, a]));
 
   return (
-    <div className="nx-discussions">
-      <header className="nx-discussions-header">
+    <div className="np-discussions">
+      <header className="np-discussions-header">
         <h1>Discussions</h1>
-        <div className="nx-discussions-toolbar">
+        <div className="np-discussions-toolbar">
           {member ? (
             <>
               <Link
                 href="/discussions"
-                className={!showMine ? "nx-tab-active" : "nx-tab"}
+                className={!showMine ? "np-tab-active" : "np-tab"}
               >
                 All
               </Link>
               <Link
                 href="/discussions?author=me"
-                className={showMine ? "nx-tab-active" : "nx-tab"}
+                className={showMine ? "np-tab-active" : "np-tab"}
               >
                 My threads
               </Link>
-              <Link href="/discussions/new" className="nx-button-primary">
+              <Link href="/discussions/new" className="np-button-primary">
                 New discussion
               </Link>
             </>
           ) : (
             <Link
               href="/members/login?next=/discussions/new"
-              className="nx-button-primary"
+              className="np-button-primary"
             >
               Sign in to post
             </Link>
@@ -114,30 +114,30 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
       </header>
 
       {result.docs.length === 0 ? (
-        <p className="nx-discussions-empty">
+        <p className="np-discussions-empty">
           {showMine
             ? "You haven't posted any discussions yet."
             : "No discussions yet. Be the first to start one!"}
         </p>
       ) : (
-        <ul className="nx-discussions-list">
+        <ul className="np-discussions-list">
           {result.docs.map((doc) => {
             const authorId = (doc.memberAuthorId as string | null) ?? null;
             const author = authorId ? authorById.get(authorId) : null;
             const slug = doc.slug as string;
             const status = doc.status as string;
             return (
-              <li key={doc.id as string} className="nx-discussions-card">
+              <li key={doc.id as string} className="np-discussions-card">
                 <h2>
                   <Link href={`/discussions/${slug}`}>{doc.title as string}</Link>
                 </h2>
-                <div className="nx-discussions-meta">
+                <div className="np-discussions-meta">
                   {author ? (
-                    <Link href={`/u/${author.handle}`} className="nx-discussions-author">
+                    <Link href={`/u/${author.handle}`} className="np-discussions-author">
                       @{author.handle}
                     </Link>
                   ) : (
-                    <span className="nx-discussions-author">staff</span>
+                    <span className="np-discussions-author">staff</span>
                   )}
                   <span aria-hidden="true">·</span>
                   <time dateTime={(doc.createdAt as Date).toISOString()}>
@@ -146,7 +146,7 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
                   {status !== "published" ? (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="nx-discussions-status-badge">
+                      <span className="np-discussions-status-badge">
                         {STATUS_LABELS[status] ?? status}
                       </span>
                     </>
@@ -159,7 +159,7 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
       )}
 
       {result.totalPages > 1 ? (
-        <nav className="nx-discussions-pagination" aria-label="Pagination">
+        <nav className="np-discussions-pagination" aria-label="Pagination">
           {result.hasPrevPage ? (
             <Link
               href={`/discussions?${new URLSearchParams({

@@ -53,7 +53,7 @@ export const contactFormBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="nx-block-contact-form" style={{ padding: "4rem 1.5rem", background: "#f1f5f9" }}>
+      <section className="np-block-contact-form" style={{ padding: "4rem 1.5rem", background: "#f1f5f9" }}>
         <div style={{ maxWidth: "40rem", margin: "0 auto", display: "grid", gap: "1.2rem" }}>
           <header style={{ display: "grid", gap: "0.5rem" }}>
             <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#0f172a" }}>{heading}</h2>

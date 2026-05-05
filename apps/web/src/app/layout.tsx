@@ -7,7 +7,7 @@ import { i18nConfig } from "@/i18n.config";
 
 /**
  * Root layout. Phase 12.2 reads the locale the proxy resolved
- * from the URL (`x-nx-locale` request header) so the
+ * from the URL (`x-np-locale` request header) so the
  * `<html lang>` attribute matches what the page is actually
  * rendering. Falls back to the default locale on any path the
  * proxy skipped (admin / API / static).
@@ -39,7 +39,7 @@ import { i18nConfig } from "@/i18n.config";
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headerList = await headers();
-  const lang = headerList.get("x-nx-locale") ?? i18nConfig.defaultLocale;
+  const lang = headerList.get("x-np-locale") ?? i18nConfig.defaultLocale;
   const dir = getLocaleDirection(lang);
   return (
     <html lang={lang} dir={dir} suppressHydrationWarning>

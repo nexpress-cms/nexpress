@@ -72,7 +72,7 @@ export function SetPasswordForm() {
         </div>
         <Link
           href="/admin/forgot-password"
-          className="text-center text-[13px] text-[var(--nx-color-brand)] hover:underline underline-offset-[3px]"
+          className="text-center text-[13px] text-[var(--np-color-brand)] hover:underline underline-offset-[3px]"
         >
           Request a new reset link
         </Link>

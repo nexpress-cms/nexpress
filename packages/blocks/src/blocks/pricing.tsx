@@ -180,14 +180,14 @@ export const pricingBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="nx-block-pricing" style={{ padding: "4rem 1.5rem", background: "#0f172a" }}>
+      <section className="np-block-pricing" style={{ padding: "4rem 1.5rem", background: "#0f172a" }}>
         <div style={{ maxWidth: "72rem", margin: "0 auto", display: "grid", gap: "1.75rem" }}>
           <h2 style={{ margin: 0, color: "#f8fafc", fontSize: "clamp(2rem, 4vw, 3rem)" }}>{heading}</h2>
           <div style={gridStyle}>
             {plans.map((plan) => (
               <article
                 key={plan.name}
-                className="nx-block-pricing__card"
+                className="np-block-pricing__card"
                 style={{
                   padding: "1.6rem",
                   borderRadius: "1.4rem",
@@ -207,7 +207,7 @@ export const pricingBlock: NpBlockDefinition = {
                   ))}
                 </ul>
                 <a
-                  className="nx-block-pricing__cta"
+                  className="np-block-pricing__cta"
                   href={plan.ctaUrl}
                   style={{
                     display: "inline-flex",

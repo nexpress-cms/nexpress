@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
         footer={
           <Link
             href="/admin/login"
-            className="text-[var(--nx-color-brand)] hover:underline underline-offset-[3px]"
+            className="text-[var(--np-color-brand)] hover:underline underline-offset-[3px]"
           >
             ← Back to sign in
           </Link>

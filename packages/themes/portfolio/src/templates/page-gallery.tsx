@@ -17,9 +17,9 @@ export function PageGalleryTemplate({ doc }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
-    <section className="nx-portfolio-gallery">
+    <section className="np-portfolio-gallery">
       {title ? <h1>{title}</h1> : null}
-      <div className="nx-portfolio-gallery-grid">
+      <div className="np-portfolio-gallery-grid">
         {blocks ? renderBlocks(blocks) : null}
       </div>
     </section>

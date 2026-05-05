@@ -12,7 +12,7 @@ Two bugs fixed together:
 - **`slugify` dropped non-Latin characters.** The old regex
   `[^a-z0-9]+` stripped Korean / Japanese / Chinese / Cyrillic /
   Greek / etc. titles down to an empty string, then the
-  pipeline threw `NxValidationError("Slug generation failed")`.
+  pipeline threw `NpValidationError("Slug generation failed")`.
   The regex now uses `[^\p{L}\p{N}]+/u` to keep any Unicode
   letter or number. Latin diacritic-stripping (Crème → creme)
   still works via an `NFKD → strip combining marks → NFC`

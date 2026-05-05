@@ -60,7 +60,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const collectionKey = collection ?? "posts";
   const renderAtomFeedCached = unstable_cache(
     () => renderAtomFeedDirect(collection, locale),
-    ["nx-feed", siteId, collectionKey, locale ?? ""],
+    ["np-feed", siteId, collectionKey, locale ?? ""],
     {
       revalidate: 600,
       tags: [

@@ -15,9 +15,9 @@ export default async function MemberResetPasswordPage({
 
   if (!token) {
     return (
-      <div className="nx-members-auth">
+      <div className="np-members-auth">
         <h1>Reset your password</h1>
-        <p className="nx-form-error">
+        <p className="np-form-error">
           Missing reset token. Open the link from the email we sent you, or{" "}
           <Link href="/members/forgot-password">request a new one</Link>.
         </p>
@@ -26,7 +26,7 @@ export default async function MemberResetPasswordPage({
   }
 
   return (
-    <div className="nx-members-auth">
+    <div className="np-members-auth">
       <h1>Choose a new password</h1>
       {/* Token validity is checked server-side when the form posts
           — we don't pre-validate here because that would burn one

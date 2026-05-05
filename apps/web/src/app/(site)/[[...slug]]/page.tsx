@@ -212,14 +212,14 @@ export default async function CatchAllPage({ params }: PageProps) {
       ) : null}
       <RenderHead entries={head} />
       {isDraft ? (
-        <div className="nx-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
+        <div className="np-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
           Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
         </div>
       ) : null}
       {Template ? (
         <Template doc={page} />
       ) : (
-        <div className="nx-page">
+        <div className="np-page">
           {pageBlocks ? (
             renderBlocks(pageBlocks)
           ) : (

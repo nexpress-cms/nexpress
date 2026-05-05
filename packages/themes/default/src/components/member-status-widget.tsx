@@ -66,7 +66,7 @@ export function MemberStatusWidget() {
   if (member === "loading") {
     return (
       <span
-        className="nx-member-status nx-member-status-loading"
+        className="np-member-status np-member-status-loading"
         aria-hidden="true"
       />
     );
@@ -74,13 +74,13 @@ export function MemberStatusWidget() {
 
   if (member) {
     return (
-      <div className="nx-member-status">
-        <Link href={`/u/${member.handle}`} className="nx-member-status-handle">
+      <div className="np-member-status">
+        <Link href={`/u/${member.handle}`} className="np-member-status-handle">
           @{member.handle}
         </Link>
         <button
           type="button"
-          className="nx-text-button"
+          className="np-text-button"
           onClick={() => void onSignOut()}
           disabled={signingOut}
         >
@@ -91,9 +91,9 @@ export function MemberStatusWidget() {
   }
 
   return (
-    <div className="nx-member-status">
+    <div className="np-member-status">
       <Link href="/members/login">Sign in</Link>
-      <Link href="/members/register" className="nx-button-primary">
+      <Link href="/members/register" className="np-button-primary">
         Register
       </Link>
     </div>

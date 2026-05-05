@@ -81,20 +81,20 @@ export function PostCard({ doc, variant = "grid" }: PostCardProps) {
   const title = doc.title ?? "Untitled";
   return (
     <article
-      className={`nx-post-card${variant === "feature" ? " nx-post-card-feature" : ""}`}
+      className={`np-post-card${variant === "feature" ? " np-post-card-feature" : ""}`}
     >
-      <a href={href} className="nx-post-card-link">
+      <a href={href} className="np-post-card-link">
         {cover ? (
-          <div className="nx-post-card-cover">
+          <div className="np-post-card-cover">
             <img src={cover} alt={coverAlt(doc.cover, title)} loading="lazy" />
           </div>
         ) : null}
-        <div className="nx-post-card-body">
-          <h3 className="nx-post-card-title">{title}</h3>
+        <div className="np-post-card-body">
+          <h3 className="np-post-card-title">{title}</h3>
           {doc.excerpt ? (
-            <p className="nx-post-card-excerpt">{doc.excerpt}</p>
+            <p className="np-post-card-excerpt">{doc.excerpt}</p>
           ) : null}
-          <div className="nx-post-card-meta">
+          <div className="np-post-card-meta">
             {author ? <span>{author}</span> : null}
             {date ? <time dateTime={String(doc.publishedAt)}>{date}</time> : null}
             {reading ? <span>{reading}</span> : null}

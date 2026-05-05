@@ -11,7 +11,7 @@ export default async function NewDiscussionPage() {
 
   if (!member) {
     return (
-      <div className="nx-discussions">
+      <div className="np-discussions">
         <h1>Start a discussion</h1>
         <p>
           You need to be signed in to post.{" "}
@@ -24,10 +24,10 @@ export default async function NewDiscussionPage() {
   }
 
   return (
-    <div className="nx-discussions">
-      <header className="nx-discussions-header">
+    <div className="np-discussions">
+      <header className="np-discussions-header">
         <h1>Start a discussion</h1>
-        <Link href="/discussions" className="nx-tab">
+        <Link href="/discussions" className="np-tab">
           ← Back to discussions
         </Link>
       </header>

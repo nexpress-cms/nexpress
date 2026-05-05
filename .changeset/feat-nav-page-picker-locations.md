@@ -17,7 +17,7 @@ Navigation editor wires up two missing pieces:
    the UI was hardcoded to `"main"`). Each location's items load and
    save against its own `(siteId, location)` row.
 
-`NxNavItem`'s shape is unchanged — `pageId` and `url` were already
+`NpNavItem`'s shape is unchanged — `pageId` and `url` were already
 declared on the type. Editor migration: existing items with
 `type: "page" + url` keep working because the page-typed branch falls
 back to `#` only when `pageId` is absent and `url` is empty.

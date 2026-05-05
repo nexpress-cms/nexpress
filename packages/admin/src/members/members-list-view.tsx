@@ -59,11 +59,11 @@ export function MembersListView({
         className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-4 dark:border-neutral-800/80 dark:bg-neutral-900/40"
       >
         <div className="flex-1 min-w-[200px] space-y-1.5">
-          <Label htmlFor="nx-members-q">Search</Label>
+          <Label htmlFor="np-members-q">Search</Label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
             <Input
-              id="nx-members-q"
+              id="np-members-q"
               type="search"
               name="q"
               defaultValue={filterQuery}
@@ -73,12 +73,12 @@ export function MembersListView({
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="nx-members-status">Status</Label>
+          <Label htmlFor="np-members-status">Status</Label>
           <select
-            id="nx-members-status"
+            id="np-members-status"
             name="status"
             defaultValue={filterStatus}
-            className="flex h-8 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
+            className="flex h-8 rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] text-neutral-950 outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-50"
           >
             <option value="">All</option>
             <option value="active">Active</option>

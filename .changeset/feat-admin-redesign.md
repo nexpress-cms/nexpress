@@ -10,9 +10,9 @@ Adopts the redesigned NexPress design-system kit
 `Tabs`, `Switch`, `Badge` — same exports, same props), but the
 rendered surface changes:
 
-- **Brand accent.** `--nx-color-brand` (`#0066FF`, sourced from the
+- **Brand accent.** `--np-color-brand` (`#0066FF`, sourced from the
   wordmark's blue notch) is wired through `apps/web/src/app/globals.css`
-  with `--nx-color-brand-soft` and `--nx-color-brand-ring`. Used as a
+  with `--np-color-brand-soft` and `--np-color-brand-ring`. Used as a
   quiet indicator (active sidebar rail, focus rings, links, progress
   bars) — never as a fill. Adds a `brand` button variant for the rare
   case a CTA wants the wordmark blue.
@@ -20,7 +20,7 @@ rendered surface changes:
   paper background (`#fbfbfa`), hairline border, group eyebrows
   (Workspace / Content / {collection groups} / Multi-site / Community /
   System), brand-blue 2px left rail on the active item, and the new
-  `NxMark` SVG wordmark replaces the "NexPress / Editorial control
+  `NpMark` SVG wordmark replaces the "NexPress / Editorial control
   center" eyebrow header.
 - **Topbar (`AdminTopbar`)** swaps the "Admin / Welcome back, {name}"
   eyebrow + h1 for breadcrumbs derived from `usePathname()` (e.g.
@@ -29,7 +29,7 @@ rendered surface changes:
 - **Primitives tightened to a 32px-control register:** `Button` default
   is `h-8` (was `h-10`), `Input` / `Select` are `h-8`, `Tabs` list is
   `h-9`, `Switch` is 32×18. All focus rings switched to a 3px halo at
-  `--nx-color-brand-ring`. `Card` is `rounded-xl` (12px, was 24px) on
+  `--np-color-brand-ring`. `Card` is `rounded-xl` (12px, was 24px) on
   a hairline border with no backdrop blur; `CardHeader` and `CardFooter`
   add their own divider.
 - **Dashboard** drops the "Admin overview" tracked eyebrow for a single
@@ -40,7 +40,7 @@ rendered surface changes:
   `/admin/set-password`, `/admin/setup`) move from raw-Tailwind cards
   to the new exports `AuthLayout` + `AuthCard` (soft brand-blue
   radial-vignette background, hairline-bordered card with the
-  `NxMark` wordmark, version + Argon2/JWT footer pill). Login lists
+  `NpMark` wordmark, version + Argon2/JWT footer pill). Login lists
   registered OAuth providers (`listOAuthProviders()`) above the
   email/password form with provider-icon SVGs (GitHub, Google, fall-
   back globe).
@@ -88,12 +88,12 @@ the same names; the brand tokens are additive and don't conflict.
   of truth.
 - **Browser favicon.** New `apps/web/src/app/icon.svg` — Next.js
   picks it up automatically and serves the geometric-N mark as the
-  tab icon (matches the sidebar `NxMark`).
+  tab icon (matches the sidebar `NpMark`).
 - **CardTitle defaults.** `text-lg` overrides removed across every
   admin view that used them; the new `CardTitle` default
   (`text-[13px] font-semibold`) reads correctly without override.
 
 New public exports on `@nexpress/admin/client`:
-`NxMark`, `PageHeader`, `AuthLayout`, `AuthCard`,
+`NpMark`, `PageHeader`, `AuthLayout`, `AuthCard`,
 `AuthCardDefaultFooter`, `AuthDivider`,
 `StatusBadge`, `StatusDot`, `StatusTone`.

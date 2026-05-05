@@ -46,7 +46,7 @@ export function MagazineNewsletterForm() {
 
   if (state.kind === "ok") {
     return (
-      <p className="nx-magazine-subscribe-success" role="status">
+      <p className="np-magazine-subscribe-success" role="status">
         Subscribed. We'll be in touch.
       </p>
     );
@@ -54,16 +54,16 @@ export function MagazineNewsletterForm() {
 
   return (
     <form
-      className="nx-magazine-subscribe-form"
+      className="np-magazine-subscribe-form"
       onSubmit={(e) => {
         void onSubmit(e);
       }}
     >
-      <label className="sr-only" htmlFor="nx-magazine-newsletter">
+      <label className="sr-only" htmlFor="np-magazine-newsletter">
         Email address
       </label>
       <input
-        id="nx-magazine-newsletter"
+        id="np-magazine-newsletter"
         type="email"
         required
         autoComplete="email"
@@ -75,7 +75,7 @@ export function MagazineNewsletterForm() {
         {state.kind === "submitting" ? "Sending…" : "Subscribe"}
       </button>
       {state.kind === "error" ? (
-        <p className="nx-magazine-subscribe-error" role="alert">
+        <p className="np-magazine-subscribe-error" role="alert">
           {state.message}
         </p>
       ) : null}

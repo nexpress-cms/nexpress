@@ -19,10 +19,10 @@ export default async function MemberRegisterPage({ searchParams }: RegisterPageP
   }
 
   return (
-    <div className="nx-members-auth">
+    <div className="np-members-auth">
       <h1>Create an account</h1>
       <RegisterForm />
-      <p className="nx-members-auth-alt">
+      <p className="np-members-auth-alt">
         Already have an account?{" "}
         <Link href={`/members/login${nextQuery(next)}`}>Sign in</Link>
       </p>

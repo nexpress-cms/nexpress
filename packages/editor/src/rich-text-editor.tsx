@@ -72,7 +72,7 @@ export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorPr
         // client bundle without a logger dep; production sites
         // can pipe `window.onerror` into their tracker. Re-throw
         // so React's error boundary still applies.
-        console.error("[nx-editor] Lexical error:", error);
+        console.error("[np-editor] Lexical error:", error);
         throw error;
       },
     }),
@@ -85,7 +85,7 @@ export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorPr
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="nx-rich-text-editor overflow-hidden rounded-md border border-border/60 bg-background focus-within:ring-2 focus-within:ring-primary/30">
+      <div className="np-rich-text-editor overflow-hidden rounded-md border border-border/60 bg-background focus-within:ring-2 focus-within:ring-primary/30">
         <ToolbarPlugin onUploadImage={config?.onUploadImage} />
         {/* `relative` wraps the contentEditable so the placeholder
             (positioned absolutely by Lexical's RichTextPlugin) sits
@@ -94,10 +94,10 @@ export function NpRichTextEditor({ value, onChange, config }: NpRichTextEditorPr
         <div className="relative">
           <RichTextPlugin
             contentEditable={
-              <ContentEditable className="nx-editor-content min-h-[200px] px-4 py-3 text-sm leading-relaxed outline-none [&_p]:my-2 [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:text-lg [&_h3]:font-semibold [&_blockquote]:my-2 [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground [&_ul]:my-2 [&_ul]:ml-6 [&_ul]:list-disc [&_ol]:my-2 [&_ol]:ml-6 [&_ol]:list-decimal [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] [&_hr]:my-4 [&_hr]:border-border/60" />
+              <ContentEditable className="np-editor-content min-h-[200px] px-4 py-3 text-sm leading-relaxed outline-none [&_p]:my-2 [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:text-lg [&_h3]:font-semibold [&_blockquote]:my-2 [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground [&_ul]:my-2 [&_ul]:ml-6 [&_ul]:list-disc [&_ol]:my-2 [&_ol]:ml-6 [&_ol]:list-decimal [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] [&_hr]:my-4 [&_hr]:border-border/60" />
             }
             placeholder={
-              <div className="nx-editor-placeholder pointer-events-none absolute top-3 left-4 select-none text-sm text-muted-foreground">
+              <div className="np-editor-placeholder pointer-events-none absolute top-3 left-4 select-none text-sm text-muted-foreground">
                 {config?.placeholder ?? "Start writing..."}
               </div>
             }

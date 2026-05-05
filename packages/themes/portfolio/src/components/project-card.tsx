@@ -40,17 +40,17 @@ export function PortfolioProjectCard({ doc }: PortfolioProjectCardProps) {
   const cover = coverUrl(doc.cover);
   const title = doc.title ?? "Untitled";
   return (
-    <a href={href} className="nx-portfolio-project-card">
-      <figure className="nx-portfolio-project-cover">
+    <a href={href} className="np-portfolio-project-card">
+      <figure className="np-portfolio-project-cover">
         {cover ? (
           <img src={cover} alt={coverAlt(doc.cover, title)} loading="lazy" />
         ) : (
-          <span className="nx-portfolio-project-placeholder" aria-hidden="true" />
+          <span className="np-portfolio-project-placeholder" aria-hidden="true" />
         )}
-        <figcaption className="nx-portfolio-project-caption">
-          <span className="nx-portfolio-project-title">{title}</span>
+        <figcaption className="np-portfolio-project-caption">
+          <span className="np-portfolio-project-title">{title}</span>
           {doc.category ? (
-            <span className="nx-portfolio-project-category">{doc.category}</span>
+            <span className="np-portfolio-project-category">{doc.category}</span>
           ) : null}
         </figcaption>
       </figure>

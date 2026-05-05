@@ -59,7 +59,7 @@ export function NewsletterForm() {
 
   if (state.kind === "ok") {
     return (
-      <p className="nx-site-footer-subscribe-success" role="status">
+      <p className="np-site-footer-subscribe-success" role="status">
         Thanks — you're subscribed.
       </p>
     );
@@ -67,16 +67,16 @@ export function NewsletterForm() {
 
   return (
     <form
-      className="nx-site-footer-subscribe-form"
+      className="np-site-footer-subscribe-form"
       onSubmit={(e) => {
         void onSubmit(e);
       }}
     >
-      <label className="sr-only" htmlFor="nx-newsletter-email">
+      <label className="sr-only" htmlFor="np-newsletter-email">
         Email address
       </label>
       <input
-        id="nx-newsletter-email"
+        id="np-newsletter-email"
         type="email"
         required
         autoComplete="email"
@@ -88,7 +88,7 @@ export function NewsletterForm() {
         {state.kind === "submitting" ? "Subscribing…" : "Subscribe"}
       </button>
       {state.kind === "error" ? (
-        <p className="nx-site-footer-subscribe-error" role="alert">
+        <p className="np-site-footer-subscribe-error" role="alert">
           {state.message}
         </p>
       ) : null}

@@ -69,19 +69,19 @@ export function MagazinePostCard({ doc, variant = "grid" }: MagazinePostCardProp
   const title = doc.title ?? "Untitled";
 
   return (
-    <article className={`nx-magazine-card nx-magazine-card-${variant}`}>
-      <a href={href} className="nx-magazine-card-link">
+    <article className={`np-magazine-card np-magazine-card-${variant}`}>
+      <a href={href} className="np-magazine-card-link">
         {cover ? (
-          <figure className="nx-magazine-card-cover">
+          <figure className="np-magazine-card-cover">
             <img src={cover} alt={coverAlt(doc.cover, title)} loading="lazy" />
           </figure>
         ) : null}
-        <div className="nx-magazine-card-body">
-          {doc.kicker ? <p className="nx-magazine-card-kicker">{doc.kicker}</p> : null}
-          <h3 className="nx-magazine-card-title">{title}</h3>
-          {doc.excerpt ? <p className="nx-magazine-card-excerpt">{doc.excerpt}</p> : null}
+        <div className="np-magazine-card-body">
+          {doc.kicker ? <p className="np-magazine-card-kicker">{doc.kicker}</p> : null}
+          <h3 className="np-magazine-card-title">{title}</h3>
+          {doc.excerpt ? <p className="np-magazine-card-excerpt">{doc.excerpt}</p> : null}
           {(author || date) ? (
-            <p className="nx-magazine-card-meta">
+            <p className="np-magazine-card-meta">
               {author ? <span>{author}</span> : null}
               {author && date ? <span aria-hidden="true"> · </span> : null}
               {date ? <time dateTime={String(doc.publishedAt)}>{date}</time> : null}

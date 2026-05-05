@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
 
 export function PortfolioShell({ children }: { children: ReactNode }) {
-  return <div className="nx-portfolio">{children}</div>;
+  return <div className="np-portfolio">{children}</div>;
 }

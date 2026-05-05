@@ -47,7 +47,7 @@ export default async function SiteLayout({
   const inner = (
     <>
       {Header ? <Header /> : null}
-      <main className="nx-site-main">{children}</main>
+      <main className="np-site-main">{children}</main>
       {Footer ? <Footer /> : null}
     </>
   );

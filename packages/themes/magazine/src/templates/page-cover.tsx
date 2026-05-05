@@ -27,16 +27,16 @@ export function PageCoverTemplate({ doc }: NpTemplateRenderProps) {
         : null;
 
   return (
-    <article className="nx-magazine-cover">
+    <article className="np-magazine-cover">
       <div
-        className="nx-magazine-cover-hero"
+        className="np-magazine-cover-hero"
         style={
           coverUrl ? { backgroundImage: `url(${JSON.stringify(coverUrl)})` } : undefined
         }
       >
-        <h1 className="nx-magazine-cover-title">{title || "Untitled"}</h1>
+        <h1 className="np-magazine-cover-title">{title || "Untitled"}</h1>
       </div>
-      <div className="nx-magazine-cover-body">
+      <div className="np-magazine-cover-body">
         {blocks ? renderBlocks(blocks) : null}
       </div>
     </article>

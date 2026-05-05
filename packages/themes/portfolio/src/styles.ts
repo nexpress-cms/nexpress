@@ -1,18 +1,18 @@
 /**
  * Theme-owned CSS for `@nexpress/theme-portfolio`. Dark surface,
- * visual-first layouts, scoped under `.nx-portfolio-*` so swapping
+ * visual-first layouts, scoped under `.np-portfolio-*` so swapping
  * themes never leaves residue. The framework injects this string
  * as a `<style data-nx-theme="portfolio">` tag at SSR time.
  */
 export const portfolioCss = `
-.nx-portfolio {
+.np-portfolio {
   background: #0b0b0c;
   color: #e7e7e7;
   min-height: 100vh;
-  font-family: var(--nx-font-body, "Inter", system-ui, sans-serif);
+  font-family: var(--np-font-body, "Inter", system-ui, sans-serif);
 }
-.nx-portfolio a { color: inherit; }
-.nx-portfolio ::selection {
+.np-portfolio a { color: inherit; }
+.np-portfolio ::selection {
   background: #fff;
   color: #0b0b0c;
 }
@@ -20,7 +20,7 @@ export const portfolioCss = `
 /* ----------------------------------------------------------------
  * Header
  * --------------------------------------------------------------- */
-.nx-portfolio-header {
+.np-portfolio-header {
   background: rgba(11, 11, 12, 0.85);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -34,13 +34,13 @@ export const portfolioCss = `
   z-index: 30;
   gap: 1rem;
 }
-.nx-portfolio-logo {
+.np-portfolio-logo {
   font-weight: 600;
   letter-spacing: 0.02em;
   text-decoration: none;
   font-size: 0.95rem;
 }
-.nx-portfolio-nav {
+.np-portfolio-nav {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -48,16 +48,16 @@ export const portfolioCss = `
   gap: 1.5rem;
   font-size: 0.875rem;
 }
-.nx-portfolio-nav a {
+.np-portfolio-nav a {
   text-decoration: none;
   opacity: 0.75;
   transition: opacity 0.15s ease;
 }
-.nx-portfolio-nav a:hover { opacity: 1; }
-.nx-portfolio-nav-item {
+.np-portfolio-nav a:hover { opacity: 1; }
+.np-portfolio-nav-item {
   position: relative;
 }
-.nx-portfolio-subnav {
+.np-portfolio-subnav {
   position: absolute;
   top: 100%;
   left: 0;
@@ -66,29 +66,29 @@ export const portfolioCss = `
   padding: 0.5rem 0;
   margin: 0;
   list-style: none;
-  background: var(--nx-color-card, #fff);
-  border: 1px solid var(--nx-color-border, #e5e7eb);
-  border-radius: var(--nx-radius-md, 0.5rem);
+  background: var(--np-color-card, #fff);
+  border: 1px solid var(--np-color-border, #e5e7eb);
+  border-radius: var(--np-radius-md, 0.5rem);
   box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.08);
   z-index: 10;
 }
-.nx-portfolio-nav-item:hover > .nx-portfolio-subnav,
-.nx-portfolio-nav-item:focus-within > .nx-portfolio-subnav {
+.np-portfolio-nav-item:hover > .np-portfolio-subnav,
+.np-portfolio-nav-item:focus-within > .np-portfolio-subnav {
   display: block;
 }
-.nx-portfolio-subnav a {
+.np-portfolio-subnav a {
   display: block;
   padding: 0.4rem 1rem;
   font-size: 0.875rem;
 }
-.nx-portfolio-mobile-subnav {
+.np-portfolio-mobile-subnav {
   list-style: none;
   margin: 0;
   padding-left: 1.25rem;
 }
 
 /* Mobile drawer */
-.nx-portfolio-nav-toggle {
+.np-portfolio-nav-toggle {
   display: none;
   align-items: center;
   justify-content: center;
@@ -102,10 +102,10 @@ export const portfolioCss = `
   letter-spacing: 0.06em;
   cursor: pointer;
 }
-.nx-portfolio-nav-toggle:hover {
+.np-portfolio-nav-toggle:hover {
   border-color: rgba(255, 255, 255, 0.5);
 }
-.nx-portfolio-nav-drawer {
+.np-portfolio-nav-drawer {
   position: fixed;
   inset: 0;
   background: rgba(11, 11, 12, 0.95);
@@ -119,11 +119,11 @@ export const portfolioCss = `
   visibility: hidden;
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
-.nx-portfolio-nav-drawer[data-open="true"] {
+.np-portfolio-nav-drawer[data-open="true"] {
   opacity: 1;
   visibility: visible;
 }
-.nx-portfolio-nav-drawer-list {
+.np-portfolio-nav-drawer-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -135,32 +135,32 @@ export const portfolioCss = `
   font-weight: 500;
   letter-spacing: -0.01em;
 }
-.nx-portfolio-nav-drawer-list a {
+.np-portfolio-nav-drawer-list a {
   color: inherit;
   text-decoration: none;
   opacity: 0.85;
   transition: opacity 0.15s ease;
 }
-.nx-portfolio-nav-drawer-list a:hover { opacity: 1; }
+.np-portfolio-nav-drawer-list a:hover { opacity: 1; }
 
 @media (max-width: 720px) {
-  .nx-portfolio-nav-desktop { display: none; }
-  .nx-portfolio-nav-toggle { display: inline-flex; }
+  .np-portfolio-nav-desktop { display: none; }
+  .np-portfolio-nav-toggle { display: inline-flex; }
 }
 @media (min-width: 721px) {
-  .nx-portfolio-nav-drawer { display: none; }
+  .np-portfolio-nav-drawer { display: none; }
 }
 
 /* ----------------------------------------------------------------
  * Footer
  * --------------------------------------------------------------- */
-.nx-portfolio-footer {
+.np-portfolio-footer {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin-top: 6rem;
   background: transparent;
   text-align: center;
 }
-.nx-portfolio-footer-inner {
+.np-portfolio-footer-inner {
   max-width: 960px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem;
@@ -169,17 +169,17 @@ export const portfolioCss = `
   gap: 1rem;
   align-items: center;
 }
-.nx-portfolio-footer-contact { font-size: 1.05rem; }
-.nx-portfolio-footer-email {
+.np-portfolio-footer-contact { font-size: 1.05rem; }
+.np-portfolio-footer-email {
   text-decoration: none;
   letter-spacing: 0.02em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.4);
   padding-bottom: 0.15rem;
 }
-.nx-portfolio-footer-email:hover {
+.np-portfolio-footer-email:hover {
   border-bottom-color: rgba(255, 255, 255, 0.85);
 }
-.nx-portfolio-footer-social {
+.np-portfolio-footer-social {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -191,13 +191,13 @@ export const portfolioCss = `
   text-transform: uppercase;
   letter-spacing: 0.16em;
 }
-.nx-portfolio-footer-social a {
+.np-portfolio-footer-social a {
   text-decoration: none;
   opacity: 0.65;
   transition: opacity 0.15s ease;
 }
-.nx-portfolio-footer-social a:hover { opacity: 1; }
-.nx-portfolio-footer-mark {
+.np-portfolio-footer-social a:hover { opacity: 1; }
+.np-portfolio-footer-mark {
   margin: 0;
   font-size: 0.78rem;
   opacity: 0.5;
@@ -207,36 +207,36 @@ export const portfolioCss = `
 /* ----------------------------------------------------------------
  * Page templates
  * --------------------------------------------------------------- */
-.nx-portfolio-page {
+.np-portfolio-page {
   max-width: 720px;
   margin: 0 auto;
   padding: 4rem 1.5rem;
   line-height: 1.7;
 }
-.nx-portfolio-page h1,
-.nx-portfolio-page h2,
-.nx-portfolio-page h3 { letter-spacing: -0.01em; }
+.np-portfolio-page h1,
+.np-portfolio-page h2,
+.np-portfolio-page h3 { letter-spacing: -0.01em; }
 
-.nx-portfolio-gallery {
+.np-portfolio-gallery {
   max-width: 1280px;
   margin: 0 auto;
   padding: 3rem 1.5rem 4rem;
 }
-.nx-portfolio-gallery > h1 {
+.np-portfolio-gallery > h1 {
   text-align: center;
   font-size: clamp(2rem, 4vw, 3.5rem);
   margin: 0 0 2.5rem;
   letter-spacing: -0.02em;
 }
-.nx-portfolio-gallery-grid {
+.np-portfolio-gallery-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
 }
 @media (min-width: 720px) {
-  .nx-portfolio-gallery-grid { grid-template-columns: 1fr 1fr; }
+  .np-portfolio-gallery-grid { grid-template-columns: 1fr 1fr; }
 }
-.nx-portfolio-gallery-grid img {
+.np-portfolio-gallery-grid img {
   width: 100%;
   height: auto;
   display: block;
@@ -246,48 +246,48 @@ export const portfolioCss = `
 /* ----------------------------------------------------------------
  * Project index (grid of cards)
  * --------------------------------------------------------------- */
-.nx-portfolio-index {
+.np-portfolio-index {
   max-width: 1320px;
   margin: 0 auto;
   padding: 3.5rem 1.5rem 4rem;
 }
-.nx-portfolio-index-header {
+.np-portfolio-index-header {
   text-align: center;
   margin-bottom: 3rem;
 }
-.nx-portfolio-index-header h1 {
+.np-portfolio-index-header h1 {
   font-size: clamp(2.25rem, 4vw, 3rem);
   letter-spacing: -0.02em;
   margin: 0 0 0.65rem;
   font-weight: 600;
 }
-.nx-portfolio-index-header p {
+.np-portfolio-index-header p {
   margin: 0 auto;
   max-width: 38rem;
   opacity: 0.75;
   line-height: 1.6;
 }
-.nx-portfolio-index-empty {
+.np-portfolio-index-empty {
   text-align: center;
   padding: 4rem 1.5rem;
   opacity: 0.6;
 }
-.nx-portfolio-index-grid {
+.np-portfolio-index-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
 }
 @media (min-width: 640px) {
-  .nx-portfolio-index-grid { grid-template-columns: repeat(2, 1fr); }
+  .np-portfolio-index-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (min-width: 1024px) {
-  .nx-portfolio-index-grid { grid-template-columns: repeat(3, 1fr); }
+  .np-portfolio-index-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 /* ----------------------------------------------------------------
  * Project card
  * --------------------------------------------------------------- */
-.nx-portfolio-project-card {
+.np-portfolio-project-card {
   display: block;
   text-decoration: none;
   color: inherit;
@@ -296,29 +296,29 @@ export const portfolioCss = `
   border-radius: 4px;
   background: #181818;
 }
-.nx-portfolio-project-cover {
+.np-portfolio-project-cover {
   margin: 0;
   position: relative;
   aspect-ratio: 4 / 3;
   overflow: hidden;
 }
-.nx-portfolio-project-cover img {
+.np-portfolio-project-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   transition: transform 0.5s ease;
 }
-.nx-portfolio-project-card:hover .nx-portfolio-project-cover img {
+.np-portfolio-project-card:hover .np-portfolio-project-cover img {
   transform: scale(1.04);
 }
-.nx-portfolio-project-placeholder {
+.np-portfolio-project-placeholder {
   display: block;
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, #1f1f22 0%, #2a2a2d 100%);
 }
-.nx-portfolio-project-caption {
+.np-portfolio-project-caption {
   position: absolute;
   inset: auto 0 0 0;
   padding: 1rem 1.25rem;
@@ -330,16 +330,16 @@ export const portfolioCss = `
   transform: translateY(8px);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
-.nx-portfolio-project-card:hover .nx-portfolio-project-caption {
+.np-portfolio-project-card:hover .np-portfolio-project-caption {
   opacity: 1;
   transform: translateY(0);
 }
-.nx-portfolio-project-title {
+.np-portfolio-project-title {
   font-weight: 600;
   letter-spacing: 0.01em;
   font-size: 1rem;
 }
-.nx-portfolio-project-category {
+.np-portfolio-project-category {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -349,43 +349,43 @@ export const portfolioCss = `
 /* ----------------------------------------------------------------
  * Project detail
  * --------------------------------------------------------------- */
-.nx-portfolio-project-detail {
+.np-portfolio-project-detail {
   margin: 0;
   padding: 0 0 4rem;
 }
-.nx-portfolio-project-hero {
+.np-portfolio-project-hero {
   margin: 0;
   width: 100%;
   aspect-ratio: 21 / 9;
   overflow: hidden;
   background: #1a1a1c;
 }
-.nx-portfolio-project-hero img {
+.np-portfolio-project-hero img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
-.nx-portfolio-project-header {
+.np-portfolio-project-header {
   max-width: 760px;
   margin: 0 auto;
   padding: 3rem 1.5rem 2rem;
   text-align: center;
 }
-.nx-portfolio-project-header h1 {
+.np-portfolio-project-header h1 {
   font-size: clamp(2rem, 4vw, 3rem);
   letter-spacing: -0.02em;
   margin: 0 0 0.85rem;
   font-weight: 600;
 }
-.nx-portfolio-project-excerpt {
+.np-portfolio-project-excerpt {
   margin: 0 auto;
   max-width: 38rem;
   opacity: 0.75;
   font-size: 1.075rem;
   line-height: 1.55;
 }
-.nx-portfolio-project-meta {
+.np-portfolio-project-meta {
   margin: 2rem auto 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
@@ -394,18 +394,18 @@ export const portfolioCss = `
   font-size: 0.85rem;
   text-align: start;
 }
-.nx-portfolio-project-meta dt {
+.np-portfolio-project-meta dt {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.7rem;
   opacity: 0.55;
   margin-bottom: 0.2rem;
 }
-.nx-portfolio-project-meta dd {
+.np-portfolio-project-meta dd {
   margin: 0 0 0.75rem;
   font-weight: 500;
 }
-.nx-portfolio-project-body {
+.np-portfolio-project-body {
   max-width: 720px;
   margin: 0 auto;
   padding: 0 1.5rem;
@@ -413,17 +413,17 @@ export const portfolioCss = `
   line-height: 1.7;
   opacity: 0.92;
 }
-.nx-portfolio-project-body img {
+.np-portfolio-project-body img {
   max-width: 100%;
   height: auto;
   border-radius: 6px;
   margin: 1.5rem 0;
 }
 
-/* Re-cast the .nx-page baseline so its dark variant carries
+/* Re-cast the .np-page baseline so its dark variant carries
    the right link / muted colors without having to touch
    admin-edited tokens. */
-.nx-portfolio .nx-page a {
+.np-portfolio .np-page a {
   color: #93c5fd;
 }
 `.trim();

@@ -56,7 +56,7 @@ export function LanguagePicker({
   const availableSet = availableLocales ? new Set(availableLocales) : null;
 
   return (
-    <nav className="nx-language-picker" aria-label="Language">
+    <nav className="np-language-picker" aria-label="Language">
       {locales.map((locale) => {
         const href = remainder.length > 0 ? `/${locale}/${remainder}` : `/${locale}`;
         const isActive = locale === currentLocale;
@@ -65,7 +65,7 @@ export function LanguagePicker({
           return (
             <span
               key={locale}
-              className="nx-language-picker-link"
+              className="np-language-picker-link"
               aria-disabled="true"
               data-disabled="true"
               title="No translation available for this page"
@@ -78,7 +78,7 @@ export function LanguagePicker({
           <Link
             key={locale}
             href={href}
-            className="nx-language-picker-link"
+            className="np-language-picker-link"
             hrefLang={locale}
             aria-current={isActive ? "true" : undefined}
             data-active={isActive ? "true" : undefined}

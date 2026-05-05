@@ -17,13 +17,13 @@ describe("highlightMatches (Phase 10.7)", () => {
 
   it("wraps each occurrence of the query in <mark>", () => {
     const html = render(highlightMatches("Hello world hello", "hello"));
-    expect(html).toContain('<mark class="nx-search-highlight">Hello</mark>');
-    expect(html).toContain('<mark class="nx-search-highlight">hello</mark>');
+    expect(html).toContain('<mark class="np-search-highlight">Hello</mark>');
+    expect(html).toContain('<mark class="np-search-highlight">hello</mark>');
   });
 
   it("is case-insensitive (uppercase query matches lowercase text)", () => {
     const html = render(highlightMatches("Tortoise", "TORTOISE"));
-    expect(html).toContain('<mark class="nx-search-highlight">Tortoise</mark>');
+    expect(html).toContain('<mark class="np-search-highlight">Tortoise</mark>');
   });
 
   it("returns the text unchanged when query is empty", () => {
@@ -50,12 +50,12 @@ describe("highlightMatches (Phase 10.7)", () => {
       highlightMatches("Visit example.com or example_com", "example.com"),
     );
     expect(html).toContain(
-      '<mark class="nx-search-highlight">example.com</mark>',
+      '<mark class="np-search-highlight">example.com</mark>',
     );
     // The underscore variant should NOT be marked (proves
     // escaping worked — without escape, `.` would catch `_`).
     expect(html).not.toContain(
-      '<mark class="nx-search-highlight">example_com</mark>',
+      '<mark class="np-search-highlight">example_com</mark>',
     );
   });
 
@@ -63,8 +63,8 @@ describe("highlightMatches (Phase 10.7)", () => {
     const html = render(
       highlightMatches("the quick brown fox", "quick brown"),
     );
-    expect(html).toContain('<mark class="nx-search-highlight">quick</mark>');
-    expect(html).toContain('<mark class="nx-search-highlight">brown</mark>');
+    expect(html).toContain('<mark class="np-search-highlight">quick</mark>');
+    expect(html).toContain('<mark class="np-search-highlight">brown</mark>');
   });
 
   it("does not produce empty marks when the query has no matches", () => {
@@ -74,6 +74,6 @@ describe("highlightMatches (Phase 10.7)", () => {
 
   it("preserves the original casing of matched text", () => {
     const html = render(highlightMatches("Hello WORLD hello", "world"));
-    expect(html).toContain('<mark class="nx-search-highlight">WORLD</mark>');
+    expect(html).toContain('<mark class="np-search-highlight">WORLD</mark>');
   });
 });

@@ -24,7 +24,7 @@ import { ProjectIndexTemplate } from "./templates/project-index.js";
  * template renders the project archive as a 2- / 3-column grid
  * of square cards with hover-fade captions.
  *
- * Flips the surface palette: dark `--nx-color-background` is
+ * Flips the surface palette: dark `--np-color-background` is
  * driven entirely from the theme's CSS (no admin override
  * required). Sites that want a light variant fork or override
  * tokens via the admin.

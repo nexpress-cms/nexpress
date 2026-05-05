@@ -83,15 +83,15 @@ export function PostDefaultTemplate({ doc }: NpTemplateRenderProps) {
   const tags = tagItems(post.tags);
 
   return (
-    <article className="nx-post nx-post-default">
+    <article className="np-post np-post-default">
       {cover ? (
-        <figure className="nx-post-cover">
+        <figure className="np-post-cover">
           <img src={cover} alt={coverAlt(post.cover, title)} />
         </figure>
       ) : null}
-      <header className="nx-post-header">
+      <header className="np-post-header">
         {tags.length > 0 ? (
-          <ul className="nx-post-tags">
+          <ul className="np-post-tags">
             {tags.map((tag) => (
               <li key={tag.slug ?? tag.label}>
                 {tag.slug ? (
@@ -103,26 +103,26 @@ export function PostDefaultTemplate({ doc }: NpTemplateRenderProps) {
             ))}
           </ul>
         ) : null}
-        <h1 className="nx-post-title">{title}</h1>
-        {post.excerpt ? <p className="nx-post-excerpt">{post.excerpt}</p> : null}
-        <div className="nx-post-meta">
+        <h1 className="np-post-title">{title}</h1>
+        {post.excerpt ? <p className="np-post-excerpt">{post.excerpt}</p> : null}
+        <div className="np-post-meta">
           {author ? (
-            <span className="nx-post-meta-author">By {author}</span>
+            <span className="np-post-meta-author">By {author}</span>
           ) : null}
           {date ? (
             <time
-              className="nx-post-meta-date"
+              className="np-post-meta-date"
               dateTime={String(post.publishedAt)}
             >
               {date}
             </time>
           ) : null}
           {reading ? (
-            <span className="nx-post-meta-reading">{reading}</span>
+            <span className="np-post-meta-reading">{reading}</span>
           ) : null}
         </div>
       </header>
-      <div className="nx-post-body">
+      <div className="np-post-body">
         {post.content ? renderRichText(post.content) : null}
       </div>
     </article>

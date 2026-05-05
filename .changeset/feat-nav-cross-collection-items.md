@@ -15,7 +15,7 @@ silently returning `#` when the panel was opted into elsewhere.
 
 How it works:
 
-- `NxNavItem` gains an optional `collectionSlug` field. When
+- `NpNavItem` gains an optional `collectionSlug` field. When
   set on a `type: "page"` item, the URL resolver looks the doc
   up in that collection instead of `pages`.
 - The resolver now drives URLs through each collection's

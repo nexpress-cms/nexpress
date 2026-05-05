@@ -8,7 +8,7 @@ Two block-prop field types upgrade from raw text inputs to the
 proper interactive editors the rest of the admin already ships.
 
 - **`richtext` → Lexical editor.** The block-prop form now uses
-  the same `NxRichTextEditor` (lazy-loaded from
+  the same `NpRichTextEditor` (lazy-loaded from
   `@nexpress/editor/client`) that the collection field-renderer
   uses for `richText` fields. Replaces the legacy "monospace JSON
   in a textarea" fallback. Block render functions still receive

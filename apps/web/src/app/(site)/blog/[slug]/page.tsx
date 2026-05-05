@@ -2,7 +2,7 @@ import { buildArticleJsonLd, getPostBySlug, getSiteSeoSettings } from "@nexpress
 import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
-import { NpImage, getMediaUrl } from "@/components/nx-image";
+import { NpImage, getMediaUrl } from "@/components/np-image";
 import { ensureFor } from "@/lib/init-core";
 import {
   RenderBodyEnd,
@@ -58,15 +58,15 @@ export default async function PostPage({ params }: PostPageProps) {
   });
 
   return (
-    <article className="nx-post">
+    <article className="np-post">
       <JsonLd data={articleJsonLd as unknown as Record<string, unknown>} />
       <RenderHead entries={head} />
       {isDraft ? (
-        <div className="nx-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
+        <div className="np-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
           Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
         </div>
       ) : null}
-      <header className="nx-post-header">
+      <header className="np-post-header">
         <h1>{post.title as string}</h1>
         {post.publishedAt ? (
           <time dateTime={(post.publishedAt as Date).toISOString()}>
@@ -75,12 +75,12 @@ export default async function PostPage({ params }: PostPageProps) {
         ) : null}
       </header>
       {post.coverImage ? (
-        <div className="nx-post-cover">
+        <div className="np-post-cover">
           <NpImage media={post.coverImage as string} size="large" priority />
         </div>
       ) : null}
       {content && (
-        <div className="nx-post-content prose">
+        <div className="np-post-content prose">
           {renderRichText(content)}
         </div>
       )}

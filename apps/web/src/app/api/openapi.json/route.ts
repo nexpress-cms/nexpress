@@ -460,7 +460,7 @@ function buildSpec(): OpenApiSchema {
     "/api/members/logout": {
       post: {
         summary: "Member logout",
-        description: "Revokes the matching session row and clears `nx-mb-*` cookies.",
+        description: "Revokes the matching session row and clears `np-mb-*` cookies.",
         responses: { "200": { description: "Logged out" } },
       },
     },

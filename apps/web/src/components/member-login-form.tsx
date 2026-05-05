@@ -63,15 +63,15 @@ export function LoginForm({ next }: LoginFormProps) {
       onSubmit={(e) => {
         void onSubmit(e);
       }}
-      className="nx-members-form"
+      className="np-members-form"
     >
       {error ? (
-        <div role="alert" className="nx-form-error">
+        <div role="alert" className="np-form-error">
           {error}
         </div>
       ) : null}
-      <label className="nx-form-field">
-        <span className="nx-form-label">Email</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Email</span>
         <input
           type="email"
           required
@@ -79,11 +79,11 @@ export function LoginForm({ next }: LoginFormProps) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
-      <label className="nx-form-field">
-        <span className="nx-form-label">Password</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Password</span>
         <input
           type="password"
           required
@@ -91,13 +91,13 @@ export function LoginForm({ next }: LoginFormProps) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
-      <div className="nx-form-actions">
+      <div className="np-form-actions">
         <button
           type="submit"
-          className="nx-button-primary"
+          className="np-button-primary"
           disabled={submitting || !email.trim() || password.length === 0}
         >
           {submitting ? "Signing in…" : "Sign in"}

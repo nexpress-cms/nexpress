@@ -85,12 +85,12 @@ export const heroBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="nx-block-hero" style={sectionStyle}>
+      <section className="np-block-hero" style={sectionStyle}>
         <div style={innerStyle}>
           <p style={{ letterSpacing: "0.22em", textTransform: "uppercase", opacity: 0.72, margin: 0 }}>Featured Block</p>
           <h1 style={{ fontSize: "clamp(2.8rem, 6vw, 4.8rem)", lineHeight: 1.02, margin: 0 }}>{title}</h1>
           <p style={{ fontSize: "1.1rem", lineHeight: 1.7, margin: 0, opacity: 0.86 }}>{subtitle}</p>
-          <a className="nx-block-hero__cta" href={ctaUrl} style={buttonStyle}>
+          <a className="np-block-hero__cta" href={ctaUrl} style={buttonStyle}>
             {ctaText}
           </a>
         </div>

@@ -126,22 +126,22 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
       : null;
 
   return (
-    <article className="nx-discussion">
+    <article className="np-discussion">
       {jsonLd ? (
         <JsonLd data={jsonLd as unknown as Record<string, unknown>} />
       ) : null}
-      <header className="nx-discussion-header">
-        <Link href="/discussions" className="nx-tab">
+      <header className="np-discussion-header">
+        <Link href="/discussions" className="np-tab">
           ← Back to discussions
         </Link>
         <h1>{doc.title as string}</h1>
-        <div className="nx-discussion-meta">
+        <div className="np-discussion-meta">
           {author ? (
-            <Link href={`/u/${author.handle}`} className="nx-discussion-author">
+            <Link href={`/u/${author.handle}`} className="np-discussion-author">
               @{author.handle}
             </Link>
           ) : (
-            <span className="nx-discussion-author">staff</span>
+            <span className="np-discussion-author">staff</span>
           )}
           <span aria-hidden="true">·</span>
           <time dateTime={(doc.createdAt as Date).toISOString()}>
@@ -150,7 +150,7 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
           {status !== "published" ? (
             <>
               <span aria-hidden="true">·</span>
-              <span className="nx-discussions-status-badge">
+              <span className="np-discussions-status-badge">
                 {STATUS_LABELS[status] ?? status}
               </span>
             </>
@@ -162,9 +162,9 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
       </header>
 
       {body ? (
-        <div className="nx-discussion-body prose">{renderRichText(body)}</div>
+        <div className="np-discussion-body prose">{renderRichText(body)}</div>
       ) : (
-        <p className="nx-discussion-body-empty">(no body)</p>
+        <p className="np-discussion-body-empty">(no body)</p>
       )}
 
       {/* Comments work against any collection that has
@@ -172,7 +172,7 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
           forum plugin. Pending discussions skip comments because
           they aren't public yet (the comment form would 404). */}
       {status === "published" ? (
-        <section className="nx-discussion-comments">
+        <section className="np-discussion-comments">
           <h2>Comments</h2>
           <Comments collectionSlug="discussions" documentId={doc.id as string} />
         </section>

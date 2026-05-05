@@ -213,7 +213,7 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
                   </div>
                   <div className="h-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-900">
                     <div
-                      className="h-full rounded-full bg-[var(--nx-color-brand)] transition-[width] duration-300"
+                      className="h-full rounded-full bg-[var(--np-color-brand)] transition-[width] duration-300"
                       style={{ width: `${fill}%` }}
                     />
                   </div>

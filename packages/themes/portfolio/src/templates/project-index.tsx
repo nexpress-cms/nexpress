@@ -24,17 +24,17 @@ export function ProjectIndexTemplate({ doc }: NpTemplateRenderProps) {
   const intro = data.intro;
   const docs = data.docs ?? [];
   return (
-    <section className="nx-portfolio-index">
-      <header className="nx-portfolio-index-header">
+    <section className="np-portfolio-index">
+      <header className="np-portfolio-index-header">
         <h1>{heading}</h1>
         {intro ? <p>{intro}</p> : null}
       </header>
       {docs.length === 0 ? (
-        <p className="nx-portfolio-index-empty">
+        <p className="np-portfolio-index-empty">
           Nothing on display yet. Add projects from the admin to fill the grid.
         </p>
       ) : (
-        <div className="nx-portfolio-index-grid">
+        <div className="np-portfolio-index-grid">
           {docs.map((project) => (
             <PortfolioProjectCard
               key={project.id ?? project.slug ?? project.title}

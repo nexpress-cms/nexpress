@@ -61,8 +61,8 @@ export function RegisterForm() {
 
   if (submitted) {
     return (
-      <div className="nx-members-form">
-        <div className="nx-form-success" role="status">
+      <div className="np-members-form">
+        <div className="np-form-success" role="status">
           <p>
             <strong>Check your email.</strong>
           </p>
@@ -70,11 +70,11 @@ export function RegisterForm() {
             We sent a verification link to <code>{email}</code>. Click it to
             activate your account; the link expires in 24 hours.
           </p>
-          <p className="nx-form-help">
+          <p className="np-form-help">
             Didn&apos;t get the email? Check your spam folder, or{" "}
             <button
               type="button"
-              className="nx-text-button"
+              className="np-text-button"
               onClick={() => {
                 setSubmitted(false);
                 setError(null);
@@ -96,15 +96,15 @@ export function RegisterForm() {
       onSubmit={(e) => {
         void onSubmit(e);
       }}
-      className="nx-members-form"
+      className="np-members-form"
     >
       {error ? (
-        <div role="alert" className="nx-form-error">
+        <div role="alert" className="np-form-error">
           {error}
         </div>
       ) : null}
-      <label className="nx-form-field">
-        <span className="nx-form-label">Email</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Email</span>
         <input
           type="email"
           required
@@ -112,11 +112,11 @@ export function RegisterForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
-      <label className="nx-form-field">
-        <span className="nx-form-label">Display name</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Display name</span>
         <input
           type="text"
           required
@@ -125,11 +125,11 @@ export function RegisterForm() {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
-      <label className="nx-form-field">
-        <span className="nx-form-label">Handle</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Handle</span>
         <input
           type="text"
           required
@@ -140,16 +140,16 @@ export function RegisterForm() {
           value={handle}
           onChange={(e) => setHandle(e.target.value.toLowerCase())}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
-        <small className="nx-form-help">
+        <small className="np-form-help">
           {handleValid
             ? "3–30 chars: lowercase letters, digits, underscore, dash. Must start with a letter or digit."
             : "Invalid format — see rules below."}
         </small>
       </label>
-      <label className="nx-form-field">
-        <span className="nx-form-label">Password</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Password</span>
         <input
           type="password"
           required
@@ -158,14 +158,14 @@ export function RegisterForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
-        <small className="nx-form-help">At least 8 characters.</small>
+        <small className="np-form-help">At least 8 characters.</small>
       </label>
-      <div className="nx-form-actions">
+      <div className="np-form-actions">
         <button
           type="submit"
-          className="nx-button-primary"
+          className="np-button-primary"
           disabled={
             submitting ||
             !email.trim() ||
