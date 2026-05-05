@@ -114,11 +114,12 @@ export const newsletterPlugin = definePlugin({
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    // capability auto-derivation only fills `provides.*` from the surface.
-    // capabilities themselves still have to be declared explicitly because
-    // the host's gate enforces them at registration time — silently adding
-    // a capability the author didn't ask for would be a privilege footgun.
-    capabilities: ["api:route", "storage:kv"],
+    // `api:route` is auto-derived from the `routes` array below by
+    // `definePlugin`. We still have to spell out `storage:kv` because the
+    // host can't tell from the definition top-level whether a route
+    // handler will eventually call `ctx.storage.*` — auto-deriving that
+    // would silently grant privilege the author didn't ask for.
+    capabilities: ["storage:kv"],
   },
   blocks: [newsletterBlock],
   routes: [

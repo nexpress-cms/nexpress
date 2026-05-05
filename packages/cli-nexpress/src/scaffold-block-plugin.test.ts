@@ -70,4 +70,54 @@ describe("scaffoldBlockPlugin", () => {
       scaffoldBlockPlugin({ slug: "duplicate", outDir: workdir }),
     ).rejects.toThrow(/Refusing to overwrite/);
   });
+
+  it("emits an extra client entry + boundary wiring when interactive", async () => {
+    const result = await scaffoldBlockPlugin({
+      slug: "mixer",
+      outDir: workdir,
+      interactive: true,
+    });
+
+    expect(result.interactive).toBe(true);
+    expect(result.files).toContain("src/client.tsx");
+
+    // package.json gains a `./client` export so the index file can self-
+    // import through the package's own subpath.
+    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+      exports: Record<string, unknown>;
+    };
+    expect(pkg.exports["./client"]).toBeDefined();
+
+    // tsconfig must include DOM libs for `useState` / event handler types.
+    const tsconfig = JSON.parse(
+      await readFile(join(result.pluginDir, "tsconfig.json"), "utf-8"),
+    ) as { compilerOptions: { lib?: string[] } };
+    expect(tsconfig.compilerOptions.lib).toEqual(["ES2022", "DOM", "DOM.Iterable"]);
+
+    // tsup config carries `splitting: false` + the self-import external —
+    // both are required to keep the "use client" boundary intact after
+    // bundling. Hard-coding the strings here so a future refactor doesn't
+    // silently strip the wiring.
+    const tsup = await readFile(join(result.pluginDir, "tsup.config.ts"), "utf-8");
+    expect(tsup).toContain("splitting: false");
+    expect(tsup).toContain("mixer/client");
+
+    // Source: index re-imports the form via the package's own subpath
+    // (not a relative path) and `client.tsx` starts with the directive.
+    const indexSrc = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
+    expect(indexSrc).toMatch(/from "mixer\/client"/);
+    const clientSrc = await readFile(join(result.pluginDir, "src/client.tsx"), "utf-8");
+    expect(clientSrc.split("\n")[0]).toBe(`"use client";`);
+  });
+
+  it("static (default) mode omits the client entry", async () => {
+    const result = await scaffoldBlockPlugin({ slug: "static-only", outDir: workdir });
+    expect(result.interactive).toBe(false);
+    expect(result.files).not.toContain("src/client.tsx");
+
+    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+      exports: Record<string, unknown>;
+    };
+    expect(pkg.exports["./client"]).toBeUndefined();
+  });
 });
