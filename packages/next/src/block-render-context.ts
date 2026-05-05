@@ -5,8 +5,7 @@ import {
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
-
-import type { NpBlockRenderContext } from "./types.js";
+import type { NpBlockRenderContext } from "@nexpress/blocks";
 
 /**
  * Synthetic principal used by the default block render ctx so
@@ -16,11 +15,9 @@ import type { NpBlockRenderContext } from "./types.js";
  * decides what's visible (most published content is `authenticated:
  * false` or fronted by an access fn that allows anonymous reads).
  *
- * Naming the principal explicitly (`role: "system"` would require a
- * core change) keeps the synthesis at the call site instead of inside
- * core's auth model. A future improvement: an in-core "anonymous"
- * principal that the pipeline recognizes natively, so callers don't
- * have to fabricate this shape. Tracked in the dogfood follow-up.
+ * Naming the principal explicitly keeps the synthesis at the call
+ * site instead of inside core's auth model. A future improvement: an
+ * in-core "anonymous" principal that the pipeline recognizes natively.
  */
 const BLOCK_RENDER_PRINCIPAL: NpAuthUser = {
   id: "block-render",
@@ -30,6 +27,19 @@ const BLOCK_RENDER_PRINCIPAL: NpAuthUser = {
   tokenVersion: 0,
 };
 
+/**
+ * Server-only default builder for `NpBlockRenderContext`. Lives in
+ * `@nexpress/next` (server boundary) instead of `@nexpress/blocks`
+ * because blocks is in the host's `transpilePackages` list — adding
+ * a `@nexpress/core` dependency to blocks (even via dynamic import)
+ * would drag `pg` / `@node-rs/argon2` / `node:timers/promises` into
+ * the client bundle graph and break the build.
+ *
+ * Site / theme template authors call this once per page render and
+ * pass the result into `renderBlocks(blocks, { ctx })`. Static-only
+ * pages (no data-bound blocks) can omit the ctx — `renderBlocks`
+ * passes `undefined` through to each block's render.
+ */
 export function createDefaultBlockRenderContext(): NpBlockRenderContext {
   return {
     content: {

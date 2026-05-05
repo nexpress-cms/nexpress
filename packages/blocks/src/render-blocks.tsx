@@ -2,7 +2,6 @@ import * as React from "react";
 
 import { readGridChildLayout } from "./blocks/grid.js";
 import { getSharedRegistry } from "./registry.js";
-import { createDefaultBlockRenderContext } from "./render-context.js";
 import type {
   NpBlockInstance,
   NpBlockRegistry,
@@ -21,10 +20,19 @@ export interface NpRenderBlocksOptions {
   registry?: NpBlockRegistry;
   /**
    * Read-only data ctx forwarded as the third arg to each block's
-   * `render(props, children, ctx)`. The default ctx uses an internal
-   * "block-render" principal against `findDocuments` so static blocks
-   * stay unaware of auth — pass your own when a page render needs to
-   * scope content reads to a specific viewer / site.
+   * `render(props, children, ctx)`. Optional — leaf blocks (text,
+   * image, hero, callout, embed) don't need it and the renderer
+   * passes `undefined` through unchanged. Data-bound blocks
+   * (`stats.counter`, custom feeds) handle the missing ctx by
+   * rendering a placeholder.
+   *
+   * The default builder lives in `@nexpress/next`'s server entry
+   * (`createDefaultBlockRenderContext`) — kept out of this package
+   * so importing `@nexpress/blocks` from a client bundle never drags
+   * `@nexpress/core` along the graph. See `next.config.ts`'s
+   * `transpilePackages: ["@nexpress/blocks", ...]` — that puts blocks
+   * on the client side of the boundary, so it must not reach into
+   * server-only modules even via dynamic import.
    */
   ctx?: NpBlockRenderContext;
 }
@@ -54,7 +62,7 @@ export function renderBlocks(
     ? { registry: optionsOrRegistry }
     : (optionsOrRegistry ?? {});
   const registry = options.registry ?? getSharedRegistry();
-  const ctx = options.ctx ?? createDefaultBlockRenderContext();
+  const ctx = options.ctx;
 
   return (
     <div className="np-blocks">
@@ -76,7 +84,7 @@ function isRegistry(
 function renderBlock(
   instance: NpBlockInstance,
   registry: NpBlockRegistry,
-  ctx: NpBlockRenderContext,
+  ctx: NpBlockRenderContext | undefined,
   parentType?: string,
 ): React.ReactElement {
   const definition = registry.get(instance.type);
