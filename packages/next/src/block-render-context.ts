@@ -1,6 +1,5 @@
 import {
   findDocuments,
-  getDocumentById,
   type NpFindOptions,
   type NpFindResult,
 } from "@nexpress/core";
@@ -61,13 +60,25 @@ export function createDefaultBlockRenderContext(): NpBlockRenderContext {
         return findDocuments(collection, applyPublishedDefault(options));
       },
       async findOne(collection: string, id: string): Promise<Record<string, unknown> | null> {
-        // `getDocumentById` doesn't take a `where`, so the
-        // published-only default doesn't apply here. The collection's
-        // own access function is the safety net — anonymous callers
-        // hitting it should already be filtered to public-readable
-        // rows by the project's auth model.
-        const doc = await getDocumentById(collection, id);
-        return doc ?? null;
+        // Issue #475 — route through `findDocuments` so the
+        // anonymous-visitor visibility filter (`visibility = "public"`,
+        // applied by the pipeline when no `user` is passed) and the
+        // `applyPublishedDefault` status guard both fire. The earlier
+        // implementation called `getDocumentById` directly, which only
+        // checks tenant + `access.read({ user, doc })`. For collections
+        // whose `access.read` returns `true` for anonymous users
+        // (e.g. the reference `posts` collection), a draft or private
+        // doc id reaching a block plugin would render the unfiltered
+        // doc to a public page. Going through `findDocuments` closes
+        // that hole without changing the per-collection access surface.
+        const result = await findDocuments(
+          collection,
+          applyPublishedDefault({
+            where: { id },
+            limit: 1,
+          }) as NpFindOptions,
+        );
+        return result.docs[0] ?? null;
       },
       async count(collection: string): Promise<number> {
         const result = await findDocuments(collection, applyPublishedDefault({ limit: 1 }));
