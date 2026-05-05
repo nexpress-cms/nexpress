@@ -608,6 +608,51 @@ describe("plugin host", () => {
     });
   });
 
+  describe("loadResolvedPlugin re-registration", () => {
+    it("scrubs old hooks + routes when the same id is re-loaded", async () => {
+      // The documented reload path (`reloadPlugins()`) always calls
+      // `resetPlugins()` first, but a stray double-load — e.g. a custom
+      // bootstrap that re-runs a subset of plugins — would otherwise leave
+      // both registrations dispatching. Defense in depth: the host strips
+      // the previous entry's handlers from the global maps before
+      // overwriting.
+      const firstHandler = vi.fn();
+      const secondHandler = vi.fn();
+
+      await loadPlugins([
+        {
+          manifest: {
+            id: "double",
+            name: "Double",
+            version: "1.0.0",
+            capabilities: ["hooks:content"],
+          },
+          hooks: { "content:afterCreate": firstHandler },
+        },
+      ]);
+
+      // Re-register with the same id, different handler. Without dedupe
+      // both handlers would be in `globalHooks` after this.
+      await loadPlugins([
+        {
+          manifest: {
+            id: "double",
+            name: "Double",
+            version: "1.0.0",
+            capabilities: ["hooks:content"],
+          },
+          hooks: { "content:afterCreate": secondHandler },
+        },
+      ]);
+
+      await runHook("content:afterCreate", { collection: "posts" });
+      expect(firstHandler).not.toHaveBeenCalled();
+      expect(secondHandler).toHaveBeenCalledOnce();
+      // Only one route registered, not two.
+      expect(getPluginRoutes().filter((r) => r.pluginId === "double")).toHaveLength(0);
+    });
+  });
+
   describe("enabled gate", () => {
     it("skips hook handlers belonging to a disabled plugin", async () => {
       const enabledHandler = vi.fn();

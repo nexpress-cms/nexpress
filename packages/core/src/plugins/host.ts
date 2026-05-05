@@ -395,6 +395,28 @@ function createPluginContext(pluginId: string, registration: PluginRegistration)
 
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   const { manifest } = plugin;
+
+  // Defense in depth: if this id was already registered, scrub the old
+  // entry's hooks + routes from the global maps before overwriting. The
+  // documented reload flow (`reloadPlugins()`) always calls `resetPlugins()`
+  // first, so we shouldn't normally hit this — but a stray double-load
+  // would otherwise leave both registrations dispatching, which is much
+  // harder to diagnose than a clean re-register.
+  const previous = pluginRegistry.get(manifest.id);
+  if (previous) {
+    for (const [hookName, list] of previous.hooks) {
+      const global = globalHooks.get(hookName);
+      if (!global) continue;
+      const filtered = global.filter((h) => !list.includes(h));
+      if (filtered.length === 0) globalHooks.delete(hookName);
+      else globalHooks.set(hookName, filtered);
+    }
+    for (const route of previous.routes) {
+      const idx = globalRoutes.indexOf(route);
+      if (idx !== -1) globalRoutes.splice(idx, 1);
+    }
+  }
+
   const registration: PluginRegistration = {
     id: manifest.id,
     name: manifest.name,

@@ -434,21 +434,28 @@ export class PgBossAdapter implements NpJobQueue {
       }
     ).db;
 
-    // Filter on `data->>'pluginId'` once at the union, then group by
-    // taskId. Both job and archive carry the same shape so the union
-    // is a straight UNION ALL — duplicates can't happen because a
-    // single job lives in exactly one of the two tables.
+    // Plugin schedule jobs land in pg-boss under two name shapes:
+    //   - `plugin.scheduledTask`                       — `schedulePluginTask()` enqueues
+    //     here for one-shot "Run now" invocations (handlePluginScheduledTask
+    //     dispatches by `(pluginId, taskId)` from the payload).
+    //   - `plugin.scheduledTask.<pluginId>.<taskId>`   — cron schedules. Each entry
+    //     declared via `definePlugin({ scheduled: [...] })` gets its own queue +
+    //     row in `pgboss.schedule` (Phase 19).
+    // Both share the `(pluginId, taskId)` payload shape, so we filter by name
+    // prefix and join on `data->>'pluginId'` to collect either source. The
+    // earlier `name = 'plugin.scheduledTask'` filter only matched the first
+    // shape, leaving cron-scheduled stats permanently at zero.
     const result = await db.executeSql(
       `WITH plugin_jobs AS (
          SELECT state, completed_on, data
            FROM pgboss.job
-          WHERE name = 'plugin.scheduledTask'
+          WHERE (name = 'plugin.scheduledTask' OR name LIKE 'plugin.scheduledTask.%')
             AND data->>'pluginId' = $1
             AND completed_on > NOW() - ($2 || ' days')::interval
          UNION ALL
          SELECT state, completed_on, data
            FROM pgboss.archive
-          WHERE name = 'plugin.scheduledTask'
+          WHERE (name = 'plugin.scheduledTask' OR name LIKE 'plugin.scheduledTask.%')
             AND data->>'pluginId' = $1
             AND completed_on > NOW() - ($2 || ' days')::interval
        )
