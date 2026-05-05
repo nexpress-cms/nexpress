@@ -15,12 +15,12 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
  * the rule is theme-owned (a different theme's wide variant
  * could use a different breakpoint).
  */
-export function PageWideTemplate({ doc }: NpTemplateRenderProps) {
+export function PageWideTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
     <div className="np-page np-page-wide">
-      {blocks ? renderBlocks(blocks) : <h1>{title ?? "Untitled"}</h1>}
+      {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : <h1>{title ?? "Untitled"}</h1>}
     </div>
   );
 }

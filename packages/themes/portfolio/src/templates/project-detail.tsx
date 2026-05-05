@@ -31,7 +31,7 @@ function coverAlt(value: ProjectDoc["cover"], fallback: string): string {
   return fallback;
 }
 
-export function ProjectDetailTemplate({ doc }: NpTemplateRenderProps) {
+export function ProjectDetailTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const project = doc as ProjectDoc;
   const title = project.title ?? "Untitled";
   const cover = coverUrl(project.cover);
@@ -72,7 +72,7 @@ export function ProjectDetailTemplate({ doc }: NpTemplateRenderProps) {
       </header>
       {project.blocks && project.blocks.length > 0 ? (
         <div className="np-portfolio-project-body">
-          {renderBlocks(project.blocks)}
+          {renderBlocks(project.blocks, { ctx: blockCtx })}
         </div>
       ) : null}
     </article>

@@ -14,7 +14,7 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
  * and a sticky table of contents, pick the "default" template
  * instead.
  */
-export function PageLandingTemplate({ doc }: NpTemplateRenderProps) {
+export function PageLandingTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title ?? "Untitled";
   const intro = (doc as { seoDescription?: string }).seoDescription;
@@ -22,7 +22,7 @@ export function PageLandingTemplate({ doc }: NpTemplateRenderProps) {
   return (
     <div className="np-page np-page-landing">
       {blocks && blocks.length > 0 ? (
-        <div className="np-page-landing-blocks">{renderBlocks(blocks)}</div>
+        <div className="np-page-landing-blocks">{renderBlocks(blocks, { ctx: blockCtx })}</div>
       ) : (
         <section className="np-page-landing-hero">
           <h1>{title}</h1>

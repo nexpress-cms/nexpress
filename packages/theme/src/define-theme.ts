@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
+import type { NpBlockRenderContext } from "@nexpress/blocks";
 import type {
   NpRegisteredTheme,
   NpThemeManifest,
@@ -44,6 +45,20 @@ export interface NpThemeSlots {
 export interface NpTemplateRenderProps<T = Record<string, unknown>> {
   /** The doc being rendered, in whatever shape the collection produces. */
   doc: T;
+  /**
+   * Server-built block render ctx (issue #476). The site renderer
+   * builds one per page render and threads it through so theme
+   * templates that call `renderBlocks(blocks)` can pass it on:
+   *
+   *   renderBlocks(blocks, { ctx: blockCtx })
+   *
+   * Without it, data-bound blocks (`latest-posts`, `stats.counter`,
+   * etc.) render the "ctx unavailable" placeholder instead of
+   * querying content. Theme packages that don't ship data-bound
+   * blocks can ignore the field entirely; static themes keep the
+   * pre-#476 call shape unchanged.
+   */
+  blockCtx?: NpBlockRenderContext;
 }
 
 /**

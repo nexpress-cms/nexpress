@@ -42,6 +42,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*"
   },
   "devDependencies": {

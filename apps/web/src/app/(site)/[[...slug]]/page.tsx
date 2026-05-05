@@ -7,8 +7,10 @@ import {
   getPluginTemplatesForCollection,
   resolveTemplateComponent,
 } from "@nexpress/core";
+import { createDefaultBlockRenderContext } from "@nexpress/next";
 import { getCachedActiveTheme } from "@/lib/cached-theme";
 import { renderBlocks } from "@nexpress/blocks";
+import type { NpBlockRenderContext } from "@nexpress/blocks";
 import type { ComponentType } from "react";
 import type { Metadata } from "next";
 import { draftMode } from "next/headers";
@@ -205,6 +207,15 @@ export default async function CatchAllPage({ params }: PageProps) {
     typeof page.template === "string" ? page.template : null,
   );
 
+  // Issue #476 — build a server-side block render ctx and thread
+  // it into both the theme template path and the historical
+  // fallback renderer. Without this, data-bound blocks
+  // (`latest-posts`, `stats.counter`, plugin-contributed dynamic
+  // blocks) render the "ctx unavailable" placeholder instead of
+  // querying content. Theme packages no longer have to import
+  // `@nexpress/next` themselves — the ctx arrives as a prop.
+  const blockCtx = createDefaultBlockRenderContext();
+
   return (
     <>
       {websiteJsonLd ? (
@@ -217,11 +228,11 @@ export default async function CatchAllPage({ params }: PageProps) {
         </div>
       ) : null}
       {Template ? (
-        <Template doc={page} />
+        <Template doc={page} blockCtx={blockCtx} />
       ) : (
         <div className="np-page">
           {pageBlocks ? (
-            renderBlocks(pageBlocks)
+            renderBlocks(pageBlocks, { ctx: blockCtx })
           ) : (
             <h1>{(page.title as string) ?? "Untitled"}</h1>
           )}
@@ -241,14 +252,14 @@ export default async function CatchAllPage({ params }: PageProps) {
  */
 async function resolvePageTemplate(
   templateId: string | null,
-): Promise<ComponentType<{ doc: Record<string, unknown> }> | null> {
+): Promise<ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> | null> {
   // Phase 14.5 — lookup walks theme → plugin so theme templates
   // take precedence on id collision (active theme is the site's
   // design authority). The historical theme.default fallback
   // still applies when the doc didn't pick anything specific.
   if (templateId) {
     const explicit = (await resolveTemplateComponent("pages", templateId)) as
-      | { component?: ComponentType<{ doc: Record<string, unknown> }> }
+      | { component?: ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> }
       | null;
     if (explicit?.component) return explicit.component;
   }
@@ -256,13 +267,13 @@ async function resolvePageTemplate(
   // Default fallback: prefer theme's `default` over plugin's.
   const active = await getCachedActiveTheme();
   const themeDefault = active?.impl.templates?.pages?.default?.component as
-    | ComponentType<{ doc: Record<string, unknown> }>
+    | ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }>
     | undefined;
   if (themeDefault) return themeDefault;
 
   const pluginDefault = (
     getPluginTemplatesForCollection("pages").get("default") as
-      | { component?: ComponentType<{ doc: Record<string, unknown> }> }
+      | { component?: ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> }
       | undefined
   )?.component;
   return pluginDefault ?? null;
