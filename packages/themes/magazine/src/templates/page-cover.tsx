@@ -13,7 +13,7 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
  * image, so the template still renders meaningfully on a fresh
  * draft.
  */
-export function PageCoverTemplate({ doc }: NpTemplateRenderProps) {
+export function PageCoverTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title ?? "";
   const cover = (doc as { coverImage?: unknown }).coverImage;
@@ -37,7 +37,7 @@ export function PageCoverTemplate({ doc }: NpTemplateRenderProps) {
         <h1 className="np-magazine-cover-title">{title || "Untitled"}</h1>
       </div>
       <div className="np-magazine-cover-body">
-        {blocks ? renderBlocks(blocks) : null}
+        {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : null}
       </div>
     </article>
   );

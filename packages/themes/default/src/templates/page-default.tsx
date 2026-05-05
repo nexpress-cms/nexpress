@@ -10,12 +10,12 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
  * doesn't pick a specific template, or as the fallback when
  * the chosen template id doesn't resolve.
  */
-export function PageDefaultTemplate({ doc }: NpTemplateRenderProps) {
+export function PageDefaultTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
     <div className="np-page np-page-default">
-      {blocks ? renderBlocks(blocks) : <h1>{title ?? "Untitled"}</h1>}
+      {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : <h1>{title ?? "Untitled"}</h1>}
     </div>
   );
 }

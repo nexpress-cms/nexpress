@@ -9,13 +9,13 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
  * cross-theme content primitives (links, images, headings)
  * inherit correctly.
  */
-export function PageDefaultTemplate({ doc }: NpTemplateRenderProps) {
+export function PageDefaultTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
     <article className="np-page np-magazine-default">
       {title ? <h1>{title}</h1> : null}
-      {blocks ? renderBlocks(blocks) : null}
+      {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : null}
     </article>
   );
 }

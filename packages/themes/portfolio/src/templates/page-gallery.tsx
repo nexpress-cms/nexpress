@@ -13,14 +13,14 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
  * the block type — but the simplest case is "drop blocks in,
  * grid takes care of it".
  */
-export function PageGalleryTemplate({ doc }: NpTemplateRenderProps) {
+export function PageGalleryTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
   const blocks = (doc as { blocks?: NpPageBlocks }).blocks;
   const title = (doc as { title?: string }).title;
   return (
     <section className="np-portfolio-gallery">
       {title ? <h1>{title}</h1> : null}
       <div className="np-portfolio-gallery-grid">
-        {blocks ? renderBlocks(blocks) : null}
+        {blocks ? renderBlocks(blocks, { ctx: blockCtx }) : null}
       </div>
     </section>
   );

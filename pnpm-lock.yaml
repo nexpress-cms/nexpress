@@ -784,6 +784,9 @@ importers:
 
   packages/theme:
     dependencies:
+      '@nexpress/blocks':
+        specifier: workspace:*
+        version: link:../blocks
       '@nexpress/core':
         specifier: workspace:*
         version: link:../core
