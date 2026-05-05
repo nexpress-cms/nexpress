@@ -24,7 +24,10 @@ behavior they describe changes.
 | [observability.md](observability.md) | Logging, heartbeats, job logs |
 | [operations.md](operations.md) | Operations runbook — incident recipes, boot warnings, recovery |
 | [plugin-admin.md](plugin-admin.md) | Plugin admin UI surface |
+| [plugin-capabilities.md](plugin-capabilities.md) | Capability ↔ `ctx.*` mapping reference |
+| [plugin-manifest.md](plugin-manifest.md) | Manifest field reference (required vs auto-defaulted) |
 | [plugin-quickstart.md](plugin-quickstart.md) | Author your first plugin in ~30 minutes |
+| [plugin-reload.md](plugin-reload.md) | What `/admin/plugins` "Reload all" picks up (and what needs a restart) |
 | [plugin-render.md](plugin-render.md) | Plugin render hooks |
 | [releasing.md](releasing.md) | Changesets release and npm publish checklist |
 | [scheduled-publishing.md](scheduled-publishing.md) | Scheduled publish flow |
