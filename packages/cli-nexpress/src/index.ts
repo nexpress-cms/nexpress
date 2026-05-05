@@ -11,6 +11,13 @@ import {
   type PluginEntry,
 } from "./config-editor.js";
 import { scaffoldBlockPlugin } from "./scaffold-block-plugin.js";
+import {
+  scaffoldAdminPlugin,
+  scaffoldHookPlugin,
+  scaffoldRoutePlugin,
+  scaffoldScheduledPlugin,
+} from "./scaffold-plugin-types.js";
+import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
@@ -19,14 +26,18 @@ Usage:
   nexpress plugin remove <package>                    Uninstall a plugin and unregister it
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
+  nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
+  nexpress create route-plugin <slug>                 Scaffold an API-route plugin
+  nexpress create admin-plugin <slug>                 Scaffold an admin-extension plugin
+  nexpress create scheduled-plugin <slug>             Scaffold a scheduled-task plugin
 
 Notes:
   - "plugin add/remove" runs from the project root (where nexpress.config.ts lives).
-  - "create block-plugin" writes a starter package to the current directory; you
+  - "create *-plugin" writes a starter package to the current directory; you
     then add it to your workspace (e.g. into packages/plugins/<slug>/) and run
     pnpm install + pnpm --filter <packageName> build before importing.
-  - --interactive emits a second client entry with the boundary wiring (splitting
-    off, self-import external, DOM lib) pre-configured.
+  - --interactive (block kind only) emits a second client entry with the boundary
+    wiring (splitting off, self-import external, DOM lib) pre-configured.
   - The config file must include marker comments for automated plugin add/remove:
       // @nexpress:plugins-imports-start
       // @nexpress:plugins-imports-end
@@ -220,18 +231,72 @@ async function main(argv: string[]): Promise<number> {
     const positional = args.slice(2).filter((a) => !a.startsWith("--"));
     const flags = new Set(args.slice(2).filter((a) => a.startsWith("--")));
     const slug = positional[0];
-    if (sub !== "block-plugin" || !slug) {
+
+    // sub-command → kind + label. Adding a new plugin kind = one row here
+    // and one new generator function in `scaffold-plugin-types.ts`.
+    const kindMap: Record<
+      string,
+      { kind: ScaffoldKind; label: string; supportsInteractive: boolean }
+    > = {
+      "block-plugin": { kind: "block", label: "block", supportsInteractive: true },
+      "hook-plugin": { kind: "hook", label: "content-hook", supportsInteractive: false },
+      "route-plugin": { kind: "route", label: "API-route", supportsInteractive: false },
+      "admin-plugin": { kind: "admin", label: "admin-extension", supportsInteractive: false },
+      "scheduled-plugin": {
+        kind: "scheduled",
+        label: "scheduled-task",
+        supportsInteractive: false,
+      },
+    };
+
+    const meta = sub ? kindMap[sub] : undefined;
+    if (!meta || !slug) {
       process.stderr.write(
-        `Missing arguments. Usage: nexpress create block-plugin <slug> [--interactive]\n`,
+        `Missing or unknown subcommand. Usage: nexpress create <${Object.keys(kindMap).join("|")}> <slug> [--interactive]\n`,
       );
       return 2;
     }
+
     const interactive = flags.has("--interactive");
+    if (interactive && !meta.supportsInteractive) {
+      process.stderr.write(
+        `--interactive isn't supported for ${meta.label} plugins (it only applies to block-plugin).\n`,
+      );
+      return 2;
+    }
+
     const cwd = process.cwd();
     try {
-      const result = await scaffoldBlockPlugin({ slug, outDir: cwd, interactive });
+      let result: ScaffoldResult;
+      switch (meta.kind) {
+        case "block":
+          result = await scaffoldBlockPlugin({ slug, outDir: cwd, interactive });
+          break;
+        case "hook":
+          result = await scaffoldHookPlugin({ slug, outDir: cwd });
+          break;
+        case "route":
+          result = await scaffoldRoutePlugin({ slug, outDir: cwd });
+          break;
+        case "admin":
+          result = await scaffoldAdminPlugin({ slug, outDir: cwd });
+          break;
+        case "scheduled":
+          result = await scaffoldScheduledPlugin({ slug, outDir: cwd });
+          break;
+        default: {
+          // Exhaustiveness check — adding a kind without updating the
+          // switch makes the type system complain here.
+          const _exhaustive: never = meta.kind;
+          void _exhaustive;
+          throw new Error(`unreachable: unhandled scaffold kind ${meta.kind as string}`);
+        }
+      }
+
+      const labelPrefix =
+        meta.kind === "block" && interactive ? "interactive block" : meta.label;
       process.stdout.write(
-        `\n✓ Scaffolded ${interactive ? "interactive " : ""}block plugin in ${result.pluginDir}\n` +
+        `\n✓ Scaffolded ${labelPrefix} plugin in ${result.pluginDir}\n` +
           `  Files written:\n` +
           result.files.map((f) => `    - ${f}\n`).join("") +
           `\n  Next:\n` +

@@ -59,14 +59,11 @@ export interface ScaffoldOptions {
   interactive?: boolean;
 }
 
-export interface ScaffoldResult {
-  /** Files written, relative to `outDir`. Used by the CLI for the success message. */
-  files: string[];
-  /** Path to the new plugin directory. */
-  pluginDir: string;
-  /** Whether the interactive variant was emitted. */
-  interactive: boolean;
-}
+// `ScaffoldResult` is shared with the other plugin-kind generators —
+// re-exporting from utils keeps the existing `import { ScaffoldResult }
+// from "./scaffold-block-plugin.js"` callers compiling.
+export type { ScaffoldResult } from "./scaffold-utils.js";
+import type { ScaffoldResult } from "./scaffold-utils.js";
 
 export async function scaffoldBlockPlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
   const { slug, outDir, interactive = false } = options;
@@ -461,6 +458,7 @@ export function ${blockComponentName}Form({ placeholder }: ${blockComponentName}
   return {
     files: Object.keys(files),
     pluginDir,
+    kind: "block",
     interactive,
   };
 }

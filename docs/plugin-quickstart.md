@@ -55,7 +55,60 @@ covers the npm-publish variant.
 
 ## Step 1 — Scaffold
 
-Copy the smallest existing plugin (`reading-time`) as a starter.
+The fastest path is the `nexpress create *-plugin` generator. It picks
+the right starter for what you're building:
+
+| Command | Starter shape |
+|---|---|
+| `nexpress create block-plugin <slug>` | One static page-builder block. |
+| `nexpress create block-plugin <slug> --interactive` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured. |
+| `nexpress create hook-plugin <slug>` | One `content:afterCreate` hook handler. |
+| `nexpress create route-plugin <slug>` | One public `GET /health` route. |
+| `nexpress create admin-plugin <slug>` | Settings form + status widget + manual action, all wired through `ctx.actions.register`. |
+| `nexpress create scheduled-plugin <slug>` | One nightly cron task at 02:00. |
+
+```bash
+cd packages/plugins
+pnpm exec nexpress create hook-plugin my-plugin
+cd my-plugin
+```
+
+Each generator writes the same baseline:
+`package.json`, `tsconfig.json`, `tsup.config.ts`, `README.md`, and
+`src/index.tsx` with a heavily commented `definePlugin()` body that
+explains *why* each field is there. Edit the body, build, register in
+`nexpress.config.ts` — that's it.
+
+> **Without the CLI?** You can copy `packages/plugins/reading-time` by
+> hand and edit `package.json` + `src/index.ts`. The CLI just removes
+> the busywork; the underlying plugin shape is identical.
+
+When the generator finishes, build it once so dependent packages can
+type-check against the new dist:
+
+```bash
+pnpm install
+pnpm --filter <packageName> build
+```
+
+Then add it to `nexpress.config.ts`:
+
+```ts
+import { myPluginPlugin } from "@nexpress/plugin-my-plugin";
+
+export default defineConfig({
+  // ...
+  plugins: [myPluginPlugin],
+});
+```
+
+Restart the dev server (or click "Reload all" in `/admin/plugins` for
+config / state changes — see [`plugin-reload.md`](plugin-reload.md) for
+the limits) and your plugin runs.
+
+## Step 1b — From-scratch scaffold (manual)
+
+If you'd rather skip the generator:
 
 ```bash
 cd packages/plugins
@@ -278,3 +331,19 @@ Treat the manifest's `nexpress.minVersion` as a contract — bump it
 when you start using a hook or capability that didn't exist in older
 NexPress. The plugin host refuses to load plugins whose
 `minVersion` exceeds the running core.
+
+## Where to go next
+
+- [`plugin-manifest.md`](plugin-manifest.md) — every manifest field,
+  what it defaults to, and how `definePlugin` auto-derives `provides`
+  + `capabilities` from your declared surface.
+- [`plugin-capabilities.md`](plugin-capabilities.md) — capability ↔
+  `ctx.*` method mapping table, runtime error messages, authoring
+  tips for `network:fetch` / `storage:kv` / `media:write`.
+- [`plugin-reload.md`](plugin-reload.md) — what `/admin/plugins`
+  "Reload all" picks up, what needs a worker / dev-server restart,
+  and why pg-boss work loops can't reconcile across processes.
+- [`plugin-render.md`](plugin-render.md) — render-extension hook
+  semantics, head-tag and script contributions.
+- [`plugin-admin.md`](plugin-admin.md) — declarative admin extensions
+  (settings, widgets, actions, tables, dashboard, collection tabs).
