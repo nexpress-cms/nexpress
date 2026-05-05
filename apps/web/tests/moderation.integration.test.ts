@@ -510,7 +510,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
   /**
    * Phase 9.9 — `reply` and `thread` report targets are
    * activated. `reply` resolves to a comment row (replies are
-   * stored in nx_comments alongside top-level comments).
+   * stored in np_comments alongside top-level comments).
    * `thread` resolves to a row in the registered `discussions`
    * collection (forum plugin's default slug).
    */
@@ -527,7 +527,7 @@ describe.skipIf(skipIfNoTestDb())("moderation API (integration)", () => {
       "password-12",
     );
 
-    // Replies are stored in `nx_comments` (Phase 9.2 decision:
+    // Replies are stored in `np_comments` (Phase 9.2 decision:
     // forum replies reuse the comments table). Insert directly
     // so we don't need a real `posts` row to anchor the
     // synthetic reply against.

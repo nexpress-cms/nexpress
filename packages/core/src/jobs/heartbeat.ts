@@ -29,19 +29,19 @@ import { getLogger } from "../observability/logger.js";
 /**
  * How often a running worker pings its row. Tightening lets
  * `lastSeenAt` track wall-clock more closely; loosening cuts
- * write traffic on idle workers. `NX_WORKER_HEARTBEAT_SECONDS`.
+ * write traffic on idle workers. `NP_WORKER_HEARTBEAT_SECONDS`.
  */
 export const WORKER_HEARTBEAT_INTERVAL_MS =
-  readEnvPositiveInt("NX_WORKER_HEARTBEAT_SECONDS", 30) * 1_000;
+  readEnvPositiveInt("NP_WORKER_HEARTBEAT_SECONDS", 30) * 1_000;
 
 /**
  * After how long with no heartbeat a worker is treated as
  * unhealthy in the admin UI / health check. Default 90s is
  * `3 × HEARTBEAT_INTERVAL` so a single missed beat doesn't trip
- * the alarm. `NX_WORKER_STALE_THRESHOLD_SECONDS`.
+ * the alarm. `NP_WORKER_STALE_THRESHOLD_SECONDS`.
  */
 export const WORKER_STALE_THRESHOLD_MS =
-  readEnvPositiveInt("NX_WORKER_STALE_THRESHOLD_SECONDS", 90) * 1_000;
+  readEnvPositiveInt("NP_WORKER_STALE_THRESHOLD_SECONDS", 90) * 1_000;
 
 export interface NpWorkerHeartbeat {
   id: string;

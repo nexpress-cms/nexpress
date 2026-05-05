@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const queue = getOptionalJobQueue();
     if (!queue) {
       throw new Error(
-        "Job queue is not wired (NX_ENABLE_JOBS=0?). Cannot enqueue.",
+        "Job queue is not wired (NP_ENABLE_JOBS=0?). Cannot enqueue.",
       );
     }
 

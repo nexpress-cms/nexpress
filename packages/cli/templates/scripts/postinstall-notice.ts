@@ -30,7 +30,7 @@ const lines = [
   "",
   `  ${BOLD}NexPress${RESET} — env not configured yet.`,
   "",
-  `    ${CYAN}pnpm run setup${RESET}      ${DIM}# browser env wizard (DB / NX_SECRET / storage / migrations)${RESET}`,
+  `    ${CYAN}pnpm run setup${RESET}      ${DIM}# browser env wizard (DB / NP_SECRET / storage / migrations)${RESET}`,
   `    ${CYAN}pnpm run doctor${RESET}     ${DIM}# diagnose env / runtime if anything stalls${RESET}`,
   `    ${CYAN}pnpm dev${RESET}            ${DIM}# start once .env is in place; first /admin visit launches the in-app wizard${RESET}`,
   "",

@@ -28,7 +28,7 @@ export async function getSiteMember(): Promise<NpMemberAuthRow | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("nx-mb-session")?.value;
   if (!token) return null;
-  const secret = process.env.NX_SECRET;
+  const secret = process.env.NP_SECRET;
   if (!secret) return null;
   try {
     const payload = await verifyMemberToken(token, secret, "access");

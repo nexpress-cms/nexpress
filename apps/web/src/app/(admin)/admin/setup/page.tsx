@@ -13,7 +13,7 @@ import { SetupWizard } from "./setup-client";
  * so the page can't be replayed by a stale tab. The matching API
  * route enforces the same gate server-side.
  *
- * Pre-fill from `NX_ADMIN_*` env vars (the same ones `pnpm seed:admin`
+ * Pre-fill from `NP_ADMIN_*` env vars (the same ones `pnpm seed:admin`
  * already reads) so an automated boot — Docker compose, secrets
  * manager, fly.io secrets, etc. — can hand the operator a half-filled
  * form instead of asking them to retype values they already wired up.
@@ -31,8 +31,8 @@ export default async function SetupPage() {
   if (adminCount > 0) redirect("/admin/login");
 
   const prefill = {
-    email: process.env.NX_ADMIN_EMAIL ?? "",
-    name: process.env.NX_ADMIN_NAME ?? "",
+    email: process.env.NP_ADMIN_EMAIL ?? "",
+    name: process.env.NP_ADMIN_NAME ?? "",
   };
 
   return <SetupWizard prefill={prefill} />;

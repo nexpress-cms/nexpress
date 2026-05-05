@@ -29,10 +29,10 @@ RUN mkdir -p public
 RUN pnpm install --frozen-lockfile --config.confirmModulesPurge=false
 # Inline placeholders for the build only — Next page-data collection
 # imports every route, which transitively triggers nexpress.config.ts's
-# zod validation (NX_SECRET non-empty, DATABASE_URL set). These env
+# zod validation (NP_SECRET non-empty, DATABASE_URL set). These env
 # vars do NOT propagate into the runner stage; supply real values at
 # `docker run` time.
-RUN NX_SECRET=placeholder-build-time-secret-replaced-at-runtime \
+RUN NP_SECRET=placeholder-build-time-secret-replaced-at-runtime \
     DATABASE_URL=postgres://placeholder:placeholder@placeholder:5432/placeholder \
     pnpm build
 
@@ -46,8 +46,8 @@ ENV NODE_ENV=production \
 
 # Run as a non-root user. The standalone server needs read access to
 # /app and write access to /app/public/media when using the default
-# LocalStorageAdapter (override the storage path via NX_STORAGE_DIR
-# or switch to S3 with NX_STORAGE_ADAPTER=s3).
+# LocalStorageAdapter (override the storage path via NP_STORAGE_DIR
+# or switch to S3 with NP_STORAGE_ADAPTER=s3).
 RUN addgroup -S nexpress && adduser -S nexpress -G nexpress \
     && mkdir -p /app/public/media \
     && chown -R nexpress:nexpress /app

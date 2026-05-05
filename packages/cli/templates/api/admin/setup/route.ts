@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpValidationError,
   hashPassword,
@@ -15,7 +15,7 @@ import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
 import { getDb } from "@/lib/bootstrap";
 
 /**
- * First-boot Admin Setup endpoint. Allowed only when `nx_users` has
+ * First-boot Admin Setup endpoint. Allowed only when `np_users` has
  * zero rows with `role = 'admin'`; once a real admin exists this
  * route returns 409 so a stale tab can't replay the install.
  *
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     if (body.siteName) {
-      await updateSite(NX_DEFAULT_SITE_ID, { name: body.siteName });
+      await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
     }
 
     const config = getAuthRuntimeConfig();

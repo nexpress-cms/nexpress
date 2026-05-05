@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
   getCurrentSiteId,
@@ -29,7 +29,7 @@ function isValidTheme(value: unknown): value is NpThemeTokens {
 export async function GET(_request: NextRequest) {
   try {
     const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const [row] = await db
       .select()
       .from(npSettings)
@@ -60,7 +60,7 @@ export async function PUT(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     await db
       .insert(npSettings)

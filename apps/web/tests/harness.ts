@@ -35,7 +35,7 @@ import { NextRequest } from "next/server";
 
 import { ensureFor } from "@/lib/init-core";
 
-const TEST_JWT_SECRET = process.env.NX_SECRET as string;
+const TEST_JWT_SECRET = process.env.NP_SECRET as string;
 
 export {
   closeTestDb,
@@ -139,11 +139,11 @@ export interface TestMemberSession {
  * across most member-touching test files (~6 DB writes + 2
  * Argon2 ops + 3 route invocations). This helper:
  *
- *   1. Inserts the `nx_members` row directly with the cached
+ *   1. Inserts the `np_members` row directly with the cached
  *      default-password hash and `status='active' / emailVerified=true`.
  *   2. Mints an access JWT via `signMemberToken` (the same
  *      helper the login route uses).
- *   3. Inserts an `nx_member_sessions` row hashing the access
+ *   3. Inserts an `np_member_sessions` row hashing the access
  *      token, mirroring what `setMemberAuthCookies` does at
  *      login time.
  *

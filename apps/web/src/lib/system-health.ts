@@ -43,10 +43,10 @@ export interface HealthSummary {
 }
 
 const FRAMEWORK_TABLES = [
-  "nx_users",
-  "nx_settings",
-  "nx_navigation",
-  "nx_sites",
+  "np_users",
+  "np_settings",
+  "np_navigation",
+  "np_sites",
 ] as const;
 
 async function checkDatabase(): Promise<Check> {
@@ -153,9 +153,9 @@ async function checkStorage(): Promise<Check> {
     // The adapter interface doesn't expose its kind, so we infer
     // from env: that's the same source `init-core` uses to pick
     // local vs s3, so the answers stay aligned.
-    const kind = (process.env.NX_STORAGE_ADAPTER ?? "local").toLowerCase();
+    const kind = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
     if (kind === "local") {
-      const dir = process.env.NX_STORAGE_DIR ?? "./public/media";
+      const dir = process.env.NP_STORAGE_DIR ?? "./public/media";
       if (dir !== "./public/media" && dir !== "public/media") {
         return {
           id: "storage",
@@ -173,7 +173,7 @@ async function checkStorage(): Promise<Check> {
             label: "Storage adapter",
             state: "error",
             detail: `${dir} exists but is not a directory`,
-            hint: "Move the file aside or pick a different NX_STORAGE_DIR.",
+            hint: "Move the file aside or pick a different NP_STORAGE_DIR.",
           };
         }
         return { id: "storage", label: "Storage adapter", state: "ok", detail: `local · ${dir}` };
@@ -190,8 +190,8 @@ async function checkStorage(): Promise<Check> {
       // We don't HEAD the bucket here — that would hit AWS on every
       // /admin/health load. Just assert the env vars are set.
       const missing: string[] = [];
-      if (!process.env.NX_S3_BUCKET) missing.push("NX_S3_BUCKET");
-      if (!process.env.NX_S3_REGION) missing.push("NX_S3_REGION");
+      if (!process.env.NP_S3_BUCKET) missing.push("NP_S3_BUCKET");
+      if (!process.env.NP_S3_REGION) missing.push("NP_S3_REGION");
       if (missing.length > 0) {
         return {
           id: "storage",
@@ -205,7 +205,7 @@ async function checkStorage(): Promise<Check> {
         id: "storage",
         label: "Storage adapter",
         state: "ok",
-        detail: `s3 · ${process.env.NX_S3_BUCKET ?? ""} (${process.env.NX_S3_REGION ?? ""})`,
+        detail: `s3 · ${process.env.NP_S3_BUCKET ?? ""} (${process.env.NP_S3_REGION ?? ""})`,
       };
     }
     return {
@@ -233,7 +233,7 @@ async function checkQueue(): Promise<Check> {
         label: "Job queue",
         state: "warn",
         detail: "not configured (background jobs disabled)",
-        hint: "Set NX_ENABLE_JOBS=1 if you want background work to run.",
+        hint: "Set NP_ENABLE_JOBS=1 if you want background work to run.",
       };
     }
     const [workers, pause] = await Promise.all([listWorkerHealth(), getJobsPauseState()]);

@@ -1,7 +1,7 @@
 /**
  * Studio footer — three rows on a thin top rule:
- *   1. Contact line  (NX_SOCIAL_EMAIL → mailto, or generic blurb)
- *   2. Social mini-strip (NX_SOCIAL_GITHUB / TWITTER / LINKEDIN /
+ *   1. Contact line  (NP_SOCIAL_EMAIL → mailto, or generic blurb)
+ *   2. Social mini-strip (NP_SOCIAL_GITHUB / TWITTER / LINKEDIN /
  *      MASTODON, all optional, hidden when none are configured)
  *   3. Colophon (year + framework credit)
  *
@@ -9,14 +9,14 @@
  */
 export function PortfolioFooter() {
   const year = new Date().getFullYear();
-  const email = process.env.NX_SOCIAL_EMAIL;
+  const email = process.env.NP_SOCIAL_EMAIL;
   const social = [
-    { href: process.env.NX_SOCIAL_GITHUB, label: "GitHub" },
-    { href: process.env.NX_SOCIAL_TWITTER, label: "Twitter" },
-    { href: process.env.NX_SOCIAL_LINKEDIN, label: "LinkedIn" },
-    { href: process.env.NX_SOCIAL_MASTODON, label: "Mastodon" },
-    { href: process.env.NX_SOCIAL_DRIBBBLE, label: "Dribbble" },
-    { href: process.env.NX_SOCIAL_INSTAGRAM, label: "Instagram" },
+    { href: process.env.NP_SOCIAL_GITHUB, label: "GitHub" },
+    { href: process.env.NP_SOCIAL_TWITTER, label: "Twitter" },
+    { href: process.env.NP_SOCIAL_LINKEDIN, label: "LinkedIn" },
+    { href: process.env.NP_SOCIAL_MASTODON, label: "Mastodon" },
+    { href: process.env.NP_SOCIAL_DRIBBBLE, label: "Dribbble" },
+    { href: process.env.NP_SOCIAL_INSTAGRAM, label: "Instagram" },
   ].filter((s): s is { href: string; label: string } => Boolean(s.href));
 
   return (

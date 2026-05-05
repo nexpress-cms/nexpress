@@ -30,7 +30,7 @@ import { NpValidationError } from "../errors.js";
 
 /**
  * Phase 15.1 — multi-site registry. The framework treats
- * sites as long-lived rows in `nx_sites`; the bootstrap calls
+ * sites as long-lived rows in `np_sites`; the bootstrap calls
  * `ensureDefaultSite()` at boot to guarantee at least one row
  * exists so single-tenant installs (the existing reference
  * app shape) keep working without operator intervention.
@@ -72,7 +72,7 @@ function rowToSite(row: typeof npSites.$inferSelect): NpSite {
 /**
  * Idempotently create the default site if no sites exist.
  * Bootstrap calls this once during framework init; tests
- * that truncate `nx_sites` between cases re-trigger it.
+ * that truncate `np_sites` between cases re-trigger it.
  */
 export async function ensureDefaultSite(): Promise<NpSite> {
   const db = getDb();
@@ -244,7 +244,7 @@ export async function updateSite(
  * as orphans, in the cascade=false path).
  *
  * Includes:
- *   - per-collection row counts (codegen'd `nx_c_*` tables)
+ *   - per-collection row counts (codegen'd `np_c_*` tables)
  *   - system tables that carry `site_id`: settings,
  *     navigation, memberships, string overrides, plugin
  *     storage (Issue #220)
@@ -253,11 +253,11 @@ export async function updateSite(
  *     audit events, bans, member roles (Issue #220)
  *
  * Does NOT include things that aren't site-scoped:
- *   - users (`nx_users` is global)
- *   - members (`nx_members` is global; per-site enrollment
+ *   - users (`np_users` is global)
+ *   - members (`np_members` is global; per-site enrollment
  *     happens through the site-scoped `bans` / `member_roles`
  *     tables which DO appear in usage)
- *   - media (`nx_media` is global)
+ *   - media (`np_media` is global)
  *   - audit events with `site_id IS NULL` — those are
  *     intentional super-admin / background-job events that
  *     don't belong to any tenant.
@@ -394,7 +394,7 @@ export interface NpDeleteSiteOptions {
   /**
    * Phase 15.9 — when `true`, cascade-delete every site-scoped
    * row (collection content, settings, navigation, memberships,
-   * string overrides) before dropping the `nx_sites` row.
+   * string overrides) before dropping the `np_sites` row.
    *
    * When `false` (default, safe), the call refuses if any
    * site-scoped data still exists. The admin UI uses this to
@@ -472,7 +472,7 @@ export async function deleteSite(
     // Issue #220 — community rows. Order:
     //   reactions/follows/mutes/notifications/reports/audit/bans/
     //   member_roles → comments → string_overrides/navigation/
-    //   settings/plugin_storage/memberships → nx_sites.
+    //   settings/plugin_storage/memberships → np_sites.
     // Reactions reference comment ids polymorphically, so they
     // go before comments to keep the DB clean even though there's
     // no FK to enforce ordering.
@@ -496,4 +496,4 @@ export async function deleteSite(
   await db.delete(npSites).where(eq(npSites.id, id));
 }
 
-export const NX_DEFAULT_SITE_ID = DEFAULT_SITE_ID;
+export const NP_DEFAULT_SITE_ID = DEFAULT_SITE_ID;

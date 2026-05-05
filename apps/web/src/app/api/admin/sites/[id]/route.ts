@@ -25,7 +25,7 @@ import { canManageSite } from "@/lib/site-authz";
  * Authorization ladder (`canManageSite` in `@/lib/site-authz`):
  *
  *   - Super-admin can read / update / delete any site.
- *   - A user with an explicit `nx_site_memberships` row (with
+ *   - A user with an explicit `np_site_memberships` row (with
  *     admin or above) can read / update *that* site only.
  *   - Global admin retains read/update on the default site to
  *     keep single-tenant deployments working without a super-

@@ -6,7 +6,7 @@ import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 
 /**
- * Site-wide community settings, persisted in the generic `nx_settings`
+ * Site-wide community settings, persisted in the generic `np_settings`
  * table under the `community` key. Sites that never visit the admin UI
  * inherit `DEFAULT_COMMUNITY_SETTINGS` — every read goes through
  * `getCommunitySettings()` which merges the stored value over the
@@ -14,13 +14,13 @@ import { NpValidationError } from "../errors.js";
  *
  * Validation runs on the write path only — readers trust whatever is
  * in the table because the only writer is the admin API which
- * pre-validates. Tests poke values directly into `nx_settings` for
+ * pre-validates. Tests poke values directly into `np_settings` for
  * fault-injection cases.
  */
 /**
  * Per-member upload quota / rate limit. `null` on either field
  * means unlimited (the default — no quota). Both bounds count
- * non-deleted rows on `nx_media` keyed by `uploaded_by_member_id`,
+ * non-deleted rows on `np_media` keyed by `uploaded_by_member_id`,
  * so admin purges (Phase 9.7l) free up quota the same way a
  * member self-deleting their content would. Staff uploads are
  * never gated.
@@ -98,8 +98,8 @@ function readQuota(raw: unknown): NpMemberUploadQuota {
 export async function getCommunitySettings(): Promise<NpCommunitySettings> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   const { getCurrentSiteId } = await import("../sites/context.js");
-  const { NX_DEFAULT_SITE_ID } = await import("../sites/registry.js");
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const { NP_DEFAULT_SITE_ID } = await import("../sites/registry.js");
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select()
     .from(npSettings)

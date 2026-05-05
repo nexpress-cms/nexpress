@@ -3,7 +3,7 @@ import {
   getCurrentSiteId,
   isEditorOrAbove,
   isOwnerOrAdmin,
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
 } from "@nexpress/core";
 import { navCacheTag } from "@nexpress/next";
 import { revalidateTag } from "next/cache";
@@ -38,7 +38,7 @@ export const pagesCollection = defineCollection({
         const previousSlug = typeof originalDoc?.slug === "string" ? originalDoc.slug : null;
         const nextSlug = typeof data.slug === "string" ? data.slug : null;
         if (previousSlug === nextSlug) return data;
-        const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+        const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
         for (const location of NAV_LOCATIONS) {
           revalidateTag(navCacheTag(siteId, location), "default");
         }

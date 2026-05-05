@@ -24,7 +24,7 @@ contract to satisfy.
 import { setRateLimiter } from "@nexpress/core/rate-limit";
 import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
 
-setRateLimiter(new RedisRateLimiter({ url: process.env.NX_REDIS_URL }));
+setRateLimiter(new RedisRateLimiter({ url: process.env.NP_REDIS_URL }));
 ```
 
 Three constructor shapes:
@@ -39,7 +39,7 @@ new RedisRateLimiter({ host: "redis.internal", port: 6379, db: 1 });
 // 3. Reuse an existing ioredis client (e.g. shared with caching).
 //    The adapter does NOT close the client on shutdown() in this
 //    mode — the caller owns the lifecycle.
-const client = new Redis(process.env.NX_REDIS_URL);
+const client = new Redis(process.env.NP_REDIS_URL);
 new RedisRateLimiter({ client });
 ```
 

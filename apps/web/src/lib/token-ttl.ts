@@ -22,8 +22,8 @@
  *   - 7-day invite (matches typical onboarding cycles).
  *
  * Operators tighten via env. JWT / refresh-token TTLs follow the same
- * pattern but live in `@nexpress/next` (`NX_TOKEN_EXPIRATION` /
- * `NX_REFRESH_TOKEN_EXPIRATION`); we keep single-use tokens here in
+ * pattern but live in `@nexpress/next` (`NP_TOKEN_EXPIRATION` /
+ * `NP_REFRESH_TOKEN_EXPIRATION`); we keep single-use tokens here in
  * the app layer because that's where the route handlers live.
  */
 
@@ -42,9 +42,9 @@ function readEnvPositiveInt(envVar: string, fallback: number): number {
  * Invitation token TTL — admin invites a new staff member; the user
  * must complete signup within this window.
  *
- * Override via `NX_INVITE_TTL_HOURS` (integer hours, default 168).
+ * Override via `NP_INVITE_TTL_HOURS` (integer hours, default 168).
  */
-export const inviteTtlMs = readEnvPositiveInt("NX_INVITE_TTL_HOURS", 24 * 7) * HOUR_MS;
+export const inviteTtlMs = readEnvPositiveInt("NP_INVITE_TTL_HOURS", 24 * 7) * HOUR_MS;
 
 /**
  * Password-reset token TTL. Same value applies to staff and member
@@ -52,17 +52,17 @@ export const inviteTtlMs = readEnvPositiveInt("NX_INVITE_TTL_HOURS", 24 * 7) * H
  * splitting them invites the kind of drift this module exists to
  * prevent.
  *
- * Override via `NX_RESET_TTL_MINUTES` (integer minutes, default 60).
+ * Override via `NP_RESET_TTL_MINUTES` (integer minutes, default 60).
  */
-export const resetTtlMs = readEnvPositiveInt("NX_RESET_TTL_MINUTES", 60) * MINUTE_MS;
+export const resetTtlMs = readEnvPositiveInt("NP_RESET_TTL_MINUTES", 60) * MINUTE_MS;
 
 /**
  * Email-verification token TTL — member registers, must click the
  * link within this window.
  *
- * Override via `NX_VERIFY_TTL_HOURS` (integer hours, default 24).
+ * Override via `NP_VERIFY_TTL_HOURS` (integer hours, default 24).
  */
-export const verifyTtlMs = readEnvPositiveInt("NX_VERIFY_TTL_HOURS", 24) * HOUR_MS;
+export const verifyTtlMs = readEnvPositiveInt("NP_VERIFY_TTL_HOURS", 24) * HOUR_MS;
 
 /** @internal Exposed for unit tests. */
 export const __testInternals = { readEnvPositiveInt };

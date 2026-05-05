@@ -9,7 +9,7 @@ import { hashPassword } from "./password.js";
 import type { OAuthProfile } from "./oauth-providers.js";
 
 /**
- * Resolves an `OAuthProfile` to a real `nx_users` row, in this order:
+ * Resolves an `OAuthProfile` to a real `np_users` row, in this order:
  *
  *  1. Lookup by `(provider, provider_user_id)` — the durable link. This
  *     is the only path that survives an email change at the provider.
@@ -24,7 +24,7 @@ import type { OAuthProfile } from "./oauth-providers.js";
  *     constraints are satisfied; the user can later run the
  *     forgot-password flow to set a real password if they want one.
  *
- * Side effects: writes a row into `nx_user_oauth_identities` for paths
+ * Side effects: writes a row into `np_user_oauth_identities` for paths
  * 2 and 3, updates `metadata` for path 1.
  */
 export interface ResolveOAuthLoginResult {

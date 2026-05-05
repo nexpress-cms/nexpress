@@ -35,7 +35,7 @@ describe.skipIf(skipIfNoTestDb())("ctx.storage (integration)", () => {
     };
   }
 
-  it("round-trips a value via the nx_plugin_storage table", async () => {
+  it("round-trips a value via the np_plugin_storage table", async () => {
     const ctx = makeCtx();
     await ctx.storage.set("alpha", { n: 1 });
     expect(await ctx.storage.get("alpha")).toEqual({ n: 1 });

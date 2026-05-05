@@ -9,7 +9,7 @@ its `defineCollection()` config, not only the hardcoded `pages`
 slug. The reference `pages` collection ships with the flag on, so
 existing sites see no change. Sites with a `static-pages` or
 `landing-pages` collection can flip the same flag on and the panel
-will read/write the same `nx_navigation` rows.
+will read/write the same `np_navigation` rows.
 
 The panel also gains a success flash after add/remove so the
 operator gets explicit feedback (the silent membership reload was

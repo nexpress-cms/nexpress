@@ -5,7 +5,7 @@ import { getDb } from "../db/runtime.js";
 import { npComments, npReactions } from "../db/schema/community.js";
 import { NpForbiddenError, NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { withMemberWrite } from "./can.js";
 import { type CommunityScope } from "./roles.js";
@@ -18,7 +18,7 @@ import { getCommunitySettings } from "./settings.js";
  *   1. `KIND_RE` — a syntactic check (lowercase token, ≤30 chars)
  *      that runs on every add/remove call without a DB round-trip.
  *   2. The site's reaction allow-list, persisted in
- *      `nx_settings.community.reactionKinds` and edited from the
+ *      `np_settings.community.reactionKinds` and edited from the
  *      admin community settings page. v1 ships with `["like"]` as
  *      the only allowed kind. Removal is NOT gated against the
  *      allow-list — if a site retires a reaction, members can still
@@ -118,7 +118,7 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
   // fans out a notification through A's request context, and
   // we expose no UI affordance that would justify the cross-
   // tenant call. Reject outright.
-  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   let targetSiteId: string;
   if (input.targetType === "comment") {
     const [t] = (await db
@@ -226,7 +226,7 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
   // wrong site context). The siteId in the predicate is
   // defence-in-depth: even if the pre-check passes against a stale
   // resolver value, the row only deletes when both ids agree.
-  const requestSiteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   let recipientId: string | null = null;
   if (input.targetType === "comment") {
     const [comment] = (await db
@@ -318,7 +318,7 @@ export async function listMemberReactions(
  * Internal helper — assert that the target exists for the given kind.
  * Today only `comment` is supported. The polymorphic shape leaves
  * room for `thread` / `reply` once a thread schema lands; the forum
- * plugin shipped without one (it reuses `nx_comments` under the
+ * plugin shipped without one (it reuses `np_comments` under the
  * `discussions` collection), so widening this surface is on hold
  * until a separate threads design.
  */

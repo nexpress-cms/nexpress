@@ -75,7 +75,7 @@ const EMPTY_FORM: GrantFormState = {
 
 /**
  * Member role grant panel on `/admin/members/[id]`. Lists currently-
- * active grants from `nx_member_roles` and lets admins promote a
+ * active grants from `np_member_roles` and lets admins promote a
  * member to a community role (`community-mod` site-wide,
  * `category-mod` on a category, `collection-mod` on a collection,
  * etc.). The role registry is loaded once on mount; the picker is

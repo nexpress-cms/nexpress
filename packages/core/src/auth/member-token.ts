@@ -9,7 +9,7 @@ import { NpAuthError } from "../errors.js";
  * for a staff user can't be replayed against member-only routes (and
  * vice-versa).
  *
- * The signing secret is the same `NX_SECRET`; rotating it invalidates
+ * The signing secret is the same `NP_SECRET`; rotating it invalidates
  * both staff and member sessions, which is the desired behavior.
  *
  * Every token gets a random `jti` so two tokens minted within the
@@ -23,7 +23,7 @@ import { NpAuthError } from "../errors.js";
  * a session JWT cannot drive the rotation endpoint — without this
  * separation a leaked refresh token effectively became a long-lived
  * bearer access token because both kinds were stored as fungible
- * rows in `nx_member_sessions` with no row-level kind column.
+ * rows in `np_member_sessions` with no row-level kind column.
  */
 export type NpMemberTokenUse = "access" | "refresh";
 
@@ -71,7 +71,7 @@ export async function signMemberToken(
  * Tokens minted before the `use` claim landed have NO `use` payload
  * field. We refuse those outright rather than treating them as
  * `access` — the prior fallback let still-live legacy refresh JWTs
- * (already persisted in `nx_member_sessions` per #45's fix) be
+ * (already persisted in `np_member_sessions` per #45's fix) be
  * smuggled into the session cookie and pass the access check (#91
  * reopen). The cost: members logged in before this deploy must log
  * in once. That's bounded by the access-token TTL (default 2h);

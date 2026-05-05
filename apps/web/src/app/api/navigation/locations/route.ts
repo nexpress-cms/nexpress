@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   can,
   getCurrentSiteId,
@@ -28,11 +28,11 @@ interface LocationOption {
  *      can offer them to first-time setups.
  *   2. Any extra locations the operator has created via the
  *      editor (saving a nav at a custom location string spawns a
- *      new `nx_navigation` row, which shows up here on the next
+ *      new `np_navigation` row, which shows up here on the next
  *      load).
  *
  * Labels default to a Title-Case version of the slug for display.
- * Future enhancement: separate `nx_nav_locations` table with
+ * Future enhancement: separate `np_nav_locations` table with
  * proper labels + ordering. The editor can switch over without
  * the response shape changing.
  */
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     }
 
     const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const rows = await db
       .select({ location: npNavigation.location })
       .from(npNavigation)

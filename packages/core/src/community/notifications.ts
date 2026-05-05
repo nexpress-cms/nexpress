@@ -5,7 +5,7 @@ import { getDb } from "../db/runtime.js";
 import { npNotifications } from "../db/schema/community.js";
 import { NpForbiddenError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Per-member notification inbox. v1 is synchronous: every event that
@@ -122,7 +122,7 @@ export async function listNotifications(
 
   // Phase 18 — inbox is per-site. A member who's active on
   // multiple tenants sees a separate notification list on each.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const baseWhere = and(eq(npNotifications.memberId, memberId), eq(npNotifications.siteId, siteId));
   const where = options.unreadOnly ? and(baseWhere, isNull(npNotifications.readAt)) : baseWhere;
 
@@ -156,7 +156,7 @@ export async function listNotifications(
 export async function unreadNotificationCount(memberId: string): Promise<number> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
   // Phase 18 — count only notifications on the current site.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ total: count() })
     .from(npNotifications)

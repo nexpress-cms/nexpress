@@ -6,7 +6,7 @@ import { sha256 } from "./session.js";
 
 /**
  * Member-side session lookups, mirroring the staff helpers in session.ts
- * but for `nx_members` / `nx_member_sessions`. The sha256 helper is
+ * but for `np_members` / `np_member_sessions`. The sha256 helper is
  * reused (sessions store hashed tokens regardless of the principal kind).
  */
 
@@ -22,7 +22,7 @@ export interface NpMemberAuthRow {
 /**
  * Resolve a member from a verified JWT payload AND the raw access
  * token. We hash the token and require a live row in
- * `nx_member_sessions` — without that row check, deleting a session in
+ * `np_member_sessions` — without that row check, deleting a session in
  * `/api/members/logout` had no effect and a stolen token kept working
  * until JWT expiry. (#45)
  *

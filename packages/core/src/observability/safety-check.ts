@@ -15,7 +15,7 @@ export interface NpStartupSafetyInput {
   /** `process.env.NODE_ENV` at boot — typically `"production"` / `"development"` / undefined. */
   nodeEnv: string | undefined;
   /**
-   * `process.env.NX_MULTI_NODE` at boot. When the operator opts into
+   * `process.env.NP_MULTI_NODE` at boot. When the operator opts into
    * multi-node mode we tighten checks that are otherwise just hints.
    */
   multiNodeFlag: string | undefined;
@@ -26,7 +26,7 @@ export interface NpStartupSafetyInput {
    * in so this helper stays a pure function. We use this together
    * with `nodeEnv === "production"` to catch the common footgun
    * where an operator deploys to a multi-replica platform and forgot
-   * to set `NX_MULTI_NODE=true`. Optional for back-compat with
+   * to set `NP_MULTI_NODE=true`. Optional for back-compat with
    * callers that don't supply it (treated as `false`).
    */
   containerEnv?: boolean;
@@ -40,7 +40,7 @@ const MIN_PROD_SECRET_LENGTH = 32;
  * to map to a real failure mode that has either bitten the project or
  * been called out in the deployment docs:
  *
- *   - `LocalStorageAdapter` + `NX_MULTI_NODE=true`. Different nodes
+ *   - `LocalStorageAdapter` + `NP_MULTI_NODE=true`. Different nodes
  *     see different `./uploads` directories; uploads disappear
  *     between requests. (`docs/deployment.md` — Multi-node notes.)
  *   - `LocalStorageAdapter` + `NODE_ENV=production` + a managed-
@@ -48,9 +48,9 @@ const MIN_PROD_SECRET_LENGTH = 32;
  *     `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`, …). Same
  *     failure mode as above; this
  *     branch catches the operator who forgot to set
- *     `NX_MULTI_NODE` but is clearly running on a multi-replica
+ *     `NP_MULTI_NODE` but is clearly running on a multi-replica
  *     platform.
- *   - `NODE_ENV=production` + missing or short `NX_SECRET`. Tokens
+ *   - `NODE_ENV=production` + missing or short `NP_SECRET`. Tokens
  *     signed with a weak secret are forgeable. We cap below 32 bytes
  *     because that's the floor `signJwt` documents.
  *
@@ -67,7 +67,7 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   const multiNode = input.multiNodeFlag === "true" || input.multiNodeFlag === "1";
   const explicitOptOut = input.multiNodeFlag === "false" || input.multiNodeFlag === "0";
   // Explicit opt-out wins over the container heuristic: an
-  // operator who deliberately sets `NX_MULTI_NODE=false` on a
+  // operator who deliberately sets `NP_MULTI_NODE=false` on a
   // managed-container deploy (single-replica on Kubernetes, etc.)
   // should not see the hint, otherwise the warning the message
   // tells them to silence isn't actually silenceable.
@@ -78,11 +78,11 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   if (likelyMultiNode && input.storageAdapter === "local") {
     const reason = multiNode ? "explicit_flag" : "container_hint";
     const trigger = multiNode
-      ? "NX_MULTI_NODE is set"
+      ? "NP_MULTI_NODE is set"
       : "a managed-container env var was detected in production (KUBERNETES_SERVICE_HOST / FLY_REGION / RENDER_INSTANCE_ID / RAILWAY_ENVIRONMENT_NAME)";
     log.warn(
       `LocalStorageAdapter is not multi-node safe — ${trigger} but ./uploads is per-process. ` +
-        "Set NX_STORAGE_ADAPTER=s3 (or NX_MULTI_NODE=false to silence the hint on a single-node deploy).",
+        "Set NP_STORAGE_ADAPTER=s3 (or NP_MULTI_NODE=false to silence the hint on a single-node deploy).",
       { check: "multi_node_local_storage", reason },
     );
     emitted.push("multi_node_local_storage");
@@ -91,13 +91,13 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
   if (input.nodeEnv === "production") {
     if (!input.secret) {
       log.warn(
-        "NX_SECRET is unset in production — JWT sessions are signed with an empty key, which is forgeable.",
+        "NP_SECRET is unset in production — JWT sessions are signed with an empty key, which is forgeable.",
         { check: "missing_prod_secret" },
       );
       emitted.push("missing_prod_secret");
     } else if (input.secret.length < MIN_PROD_SECRET_LENGTH) {
       log.warn(
-        `NX_SECRET is shorter than ${MIN_PROD_SECRET_LENGTH} characters in production — pick a longer secret to avoid weak-key attacks.`,
+        `NP_SECRET is shorter than ${MIN_PROD_SECRET_LENGTH} characters in production — pick a longer secret to avoid weak-key attacks.`,
         { check: "weak_prod_secret", length: input.secret.length },
       );
       emitted.push("weak_prod_secret");

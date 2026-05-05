@@ -1,7 +1,7 @@
 import IntlMessageFormat from "intl-messageformat";
 
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getLogger } from "../observability/logger.js";
 
 import { getI18nConfig } from "./registry.js";
@@ -151,7 +151,7 @@ export async function t(
   // Site-scoped overrides are populated lazily; ensure the
   // cache for THIS site has been loaded once before the
   // synchronous getStringOverride lookups below.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   await getStringOverridesForSite(siteId);
 
   // 1. requested-locale override

@@ -763,7 +763,7 @@ export interface NpActionResult {
 │     - Widgets → Widget Registry                                │
 │     - Scheduled Tasks → Worker Queue                           │
 │     ↓                                                         │
-│  7. Plugin state saved to nx_plugins table (enabled, config)   │
+│  7. Plugin state saved to np_plugins table (enabled, config)   │
 │     ↓                                                         │
 │  8. Plugin is active                                          │
 │                                                               │

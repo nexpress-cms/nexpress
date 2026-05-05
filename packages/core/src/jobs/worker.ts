@@ -88,7 +88,7 @@ export async function startWorker(
 
     // Phase 20.2 — if the operator paused processing while the
     // worker was offline, honor it on boot. The flag is global
-    // (in `nx_settings` siteId="_system") so it survives worker
+    // (in `np_settings` siteId="_system") so it survives worker
     // restarts. We swallow read errors because a pre-migrate DB
     // would otherwise stop the worker from starting at all —
     // safer to default to "running" than to refuse to boot.

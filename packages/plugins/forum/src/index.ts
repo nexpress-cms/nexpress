@@ -48,7 +48,7 @@ const DEFAULT_LABELS = { singular: "Discussion", plural: "Discussions" } as cons
  * Returns a ready-to-spread `NpCollectionConfig` for the discussions
  * table. Drop the result into `nexpress.config.ts`'s `collections`
  * array, then run `pnpm db:generate && pnpm db:migrate` to add the
- * underlying `nx_c_<slug>` table.
+ * underlying `np_c_<slug>` table.
  */
 export function defineDiscussionsCollection(
   options: DiscussionsCollectionOptions = {},

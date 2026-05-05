@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpValidationError,
   hashPassword,
@@ -21,7 +21,7 @@ import { seedAll } from "@/lib/seed-content";
 /**
  * First-boot Admin Setup wizard endpoint.
  *
- *   - Allowed only when `nx_users` has zero rows with `role = 'admin'`;
+ *   - Allowed only when `np_users` has zero rows with `role = 'admin'`;
  *     once a real admin exists this route returns 409 (so a second
  *     visit can't hijack the install).
  *   - Creates the first admin, optionally renames the default site,
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     if (body.siteName) {
-      await updateSite(NX_DEFAULT_SITE_ID, { name: body.siteName });
+      await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
     }
 
     let seeded: Awaited<ReturnType<typeof seedAll>> | null = null;
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       // Sample content needs the plugin host loaded so collection
       // hooks (slugField, search-vector, etc.) fire.
       await ensureFor("plugins");
-      seeded = await withCurrentSite(NX_DEFAULT_SITE_ID, () =>
+      seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
         seedAll({
           id: created.id,
           email: created.email,

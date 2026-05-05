@@ -18,7 +18,7 @@ import {
   syncPluginRegistrations,
   verifyStartupSafety,
   verifyTokenFull,
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   type NpAuthUser,
   type NpConfig,
   type NpPluginConfig,
@@ -99,7 +99,7 @@ export async function canActorUseSite(
   if (await isSuperAdmin(user)) return true;
   const memberships = await listMembershipsForUser(user.id);
   if (memberships.some((m) => m.siteId === siteId)) return true;
-  if (siteId === NX_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
+  if (siteId === NP_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
   return false;
 }
 
@@ -169,12 +169,12 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // stays the only place reading process.env for these flags.
     verifyStartupSafety({
       storageAdapter: storageConfig.adapter,
-      secret: config.auth?.secret ?? process.env.NX_SECRET ?? null,
+      secret: config.auth?.secret ?? process.env.NP_SECRET ?? null,
       nodeEnv: process.env.NODE_ENV,
-      multiNodeFlag: process.env.NX_MULTI_NODE,
+      multiNodeFlag: process.env.NP_MULTI_NODE,
       // Phase 23.2 — well-known env vars set by managed container
       // platforms. If any is present in production we treat the
-      // deploy as "probably multi-replica" even when NX_MULTI_NODE
+      // deploy as "probably multi-replica" even when NP_MULTI_NODE
       // wasn't set, and warn about LocalStorageAdapter. The list is
       // additive — append new platform indicators here as they
       // become common.
@@ -283,9 +283,9 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           // 403; that just helps an attacker enumerate.
         }
         const host = headerList.get("x-np-host");
-        if (!host) return NX_DEFAULT_SITE_ID;
+        if (!host) return NP_DEFAULT_SITE_ID;
         const site = await resolveSiteForHostname(host);
-        return site?.id ?? NX_DEFAULT_SITE_ID;
+        return site?.id ?? NP_DEFAULT_SITE_ID;
       } catch {
         return null;
       }
@@ -354,14 +354,14 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
 
   /**
    * Wires pg-boss as the job queue for this process so `enqueueJob` calls
-   * actually send jobs. Opt-in via `NX_ENABLE_JOBS=1` — when it's off the
+   * actually send jobs. Opt-in via `NP_ENABLE_JOBS=1` — when it's off the
    * producer stays unwired and `enqueueJob` remains a no-op.
    *
    * Idempotent + race-safe.
    */
   async function ensureJobProducer(): Promise<void> {
     if (producerStarted) return;
-    if (process.env.NX_ENABLE_JOBS !== "1") {
+    if (process.env.NP_ENABLE_JOBS !== "1") {
       producerStarted = true;
       return;
     }

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   getCurrentSiteId,
   getSiteById,
 } from "@nexpress/core";
@@ -26,8 +26,8 @@ function fallbackOrigin(): string {
 
 async function resolveSiteOrigin(): Promise<string> {
   const fallback = fallbackOrigin();
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
-  if (siteId === NX_DEFAULT_SITE_ID) return fallback;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  if (siteId === NP_DEFAULT_SITE_ID) return fallback;
   try {
     const site = await getSiteById(siteId);
     if (site?.hostname) {

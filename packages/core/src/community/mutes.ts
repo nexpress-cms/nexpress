@@ -5,14 +5,14 @@ import { getDb } from "../db/runtime.js";
 import { npMemberMutes, npMembers } from "../db/schema/community.js";
 import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Phase 16.1 — member-to-member mute. One-directional: A
  * muting B hides B from A's surfaces (comments, notification
  * fan-out). B keeps posting normally.
  *
- * Distinct from `nx_bans` (staff-issued, global write block).
+ * Distinct from `np_bans` (staff-issued, global write block).
  * Mutes are always self-service: a member calls these helpers
  * for their own mute list, never for someone else's.
  */
@@ -101,7 +101,7 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
 export async function isMuted(input: MuteMemberInput): Promise<boolean> {
   if (input.memberId === input.targetId) return false;
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ memberId: npMemberMutes.memberId })
     .from(npMemberMutes)
@@ -123,7 +123,7 @@ export async function isMuted(input: MuteMemberInput): Promise<boolean> {
  */
 export async function getMutedTargetIds(memberId: string): Promise<Set<string>> {
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
     .select({ targetId: npMemberMutes.targetId })
     .from(npMemberMutes)
@@ -158,7 +158,7 @@ export async function listMutes(
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   // Phase 18 — settings list is per-site. The same muter can
   // see different lists on different tenants.
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
     .select({
       targetId: npMemberMutes.targetId,

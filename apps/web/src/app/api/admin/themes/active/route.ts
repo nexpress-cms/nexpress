@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
   getActiveThemeId,
@@ -86,7 +86,7 @@ export async function PUT(request: NextRequest) {
     // already succeeded; cache bust failure shouldn't surface
     // as a 500.
     try {
-      const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+      const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
       const { revalidatePath, revalidateTag } = await import("next/cache");
       revalidateTag(themeCacheTag(siteId), "default");
       revalidatePath("/", "layout");

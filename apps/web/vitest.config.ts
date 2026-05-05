@@ -17,7 +17,7 @@ export default defineConfig({
     ],
     environment: "node",
     globals: false,
-    // Set env vars (NX_SECRET, etc.) before any test module's imports are
+    // Set env vars (NP_SECRET, etc.) before any test module's imports are
     // evaluated — nexpress.config.ts validates them at module load time.
     setupFiles: ["./tests/setup-env.ts", "./tests/setup-site-resolver.ts"],
     // Builds the migrated `${TEST_DATABASE_URL}_template` once before any

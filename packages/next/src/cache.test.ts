@@ -5,7 +5,7 @@ vi.mock("next/cache", () => ({
 }));
 
 vi.mock("@nexpress/core", () => ({
-  NX_DEFAULT_SITE_ID: "default",
+  NP_DEFAULT_SITE_ID: "default",
   getActiveThemeId: vi.fn(),
   getCurrentSiteId: vi.fn(),
   getNavigation: vi.fn(),

@@ -7,7 +7,7 @@ import type { NpNavItem, NpFindOptions, NpFindResult, NpAuthUser } from "../conf
 import { DEFAULT_THEME } from "../theme/defaults.js";
 import { findDocuments, getCollectionConfig, getDb } from "../collections/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 /**
  * Phase 15.4 — every settings/navigation read scopes by the
@@ -19,7 +19,7 @@ import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
  * unchanged.
  */
 async function resolveSiteId(): Promise<string> {
-  return (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
 export async function getTheme(): Promise<NpThemeTokens> {
@@ -226,7 +226,7 @@ export async function getAllPageSlugs(): Promise<string[]> {
  * When a slug-having collection's row gets renamed (`/old-page` →
  * `/new-page`), the public-site catch-all should 301 the old URL
  * to the new one instead of returning 404. This helper walks the
- * `nx_slug_history` chain for the given collection + slug and
+ * `np_slug_history` chain for the given collection + slug and
  * returns the most recent target.
  *
  * Chain example: A → B → C (renamed twice). Looking up A walks

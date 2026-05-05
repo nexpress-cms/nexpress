@@ -24,11 +24,11 @@
 import { beforeEach } from "vitest";
 
 import { ensureFor } from "@/lib/init-core";
-import { NX_DEFAULT_SITE_ID, setCurrentSiteResolver } from "@nexpress/core";
+import { NP_DEFAULT_SITE_ID, setCurrentSiteResolver } from "@nexpress/core";
 
 await ensureFor("read");
-setCurrentSiteResolver(() => NX_DEFAULT_SITE_ID);
+setCurrentSiteResolver(() => NP_DEFAULT_SITE_ID);
 
 beforeEach(() => {
-  setCurrentSiteResolver(() => NX_DEFAULT_SITE_ID);
+  setCurrentSiteResolver(() => NP_DEFAULT_SITE_ID);
 });

@@ -10,7 +10,7 @@ vi.mock("@nexpress/blocks", () => ({
 }));
 
 vi.mock("@nexpress/core", () => ({
-  NX_DEFAULT_SITE_ID: "default",
+  NP_DEFAULT_SITE_ID: "default",
   can: vi.fn(() => false),
   createDbConnection: vi.fn(() => ({ kind: "db" })),
   createStorageAdapter: vi.fn(() => ({ kind: "storage" })),
@@ -75,7 +75,7 @@ describe("createBootstrap", () => {
   });
 
   it("retries job producer startup after a transient failure", async () => {
-    vi.stubEnv("NX_ENABLE_JOBS", "1");
+    vi.stubEnv("NP_ENABLE_JOBS", "1");
     const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
     const transient = new Error("producer timeout");
     vi.mocked(core.startProducer).mockRejectedValueOnce(transient).mockResolvedValueOnce(undefined);

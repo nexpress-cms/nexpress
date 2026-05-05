@@ -58,7 +58,7 @@ export interface ArcticLikeTokens {
 }
 
 export interface FromArcticOptions {
-  /** Provider id used in route paths and `nx_user_oauth_identities.provider`. */
+  /** Provider id used in route paths and `np_user_oauth_identities.provider`. */
   id: string;
   /** Human label for admin UI / login buttons. */
   label?: string;

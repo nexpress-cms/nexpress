@@ -21,7 +21,7 @@ import { getDb } from "@/lib/db";
  *     whole pod out of rotation.
  *   - **queue** — optional. Reports whether pg-boss is wired
  *     up; not having it doesn't fail readiness (sites can
- *     run without `NX_ENABLE_JOBS=1`).
+ *     run without `NP_ENABLE_JOBS=1`).
  *
  * Returns 200 + per-probe status when every required check
  * passes; 503 with the same shape when any required check

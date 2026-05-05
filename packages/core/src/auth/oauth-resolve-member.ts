@@ -13,10 +13,10 @@ import type { OAuthProfile } from "./oauth-providers.js";
  * Member-side mirror of `resolveOAuthLogin` (the staff resolver in
  * `oauth-resolve.ts`). Walks the same three-step ladder:
  *
- *   1. Lookup by `(provider, subject)` in `nx_member_identities` —
+ *   1. Lookup by `(provider, subject)` in `np_member_identities` —
  *      durable provider link.
  *   2. Email match — if the profile carries an email, link the
- *      identity to the existing `nx_members` row.
+ *      identity to the existing `np_members` row.
  *   3. Auto-provision a new member with status=`active`, default
  *      password = unrecoverable Argon2 of a random secret. The user
  *      can later run forgot-password to set a real password if they
@@ -24,7 +24,7 @@ import type { OAuthProfile } from "./oauth-providers.js";
  *
  * Members are kept distinct from staff users at every layer
  * (different table, different cookies, different audience claim on
- * the JWT). This resolver intentionally never touches `nx_users`.
+ * the JWT). This resolver intentionally never touches `np_users`.
  */
 export interface ResolvedOAuthMember {
   id: string;

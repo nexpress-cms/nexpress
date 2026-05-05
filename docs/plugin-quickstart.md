@@ -26,7 +26,7 @@ The v1 plugin model is **npm-package + rebuild**. A plugin can:
 - Register **actions** (`/api/plugins/<id>/actions/<id>`).
 - Register **scheduled tasks** (run via the pg-boss worker).
 - Provide **blocks**, **fields**, **admin extensions**, **collections**.
-- Read and write **plugin-scoped storage** (`nx_plugin_storage`).
+- Read and write **plugin-scoped storage** (`np_plugin_storage`).
 
 It cannot:
 

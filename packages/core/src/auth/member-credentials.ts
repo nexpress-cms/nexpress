@@ -11,7 +11,7 @@ import { sha256 } from "./session.js";
 /**
  * Member-side credential flows: email verification on registration,
  * password reset, password change. Mirrors the staff equivalents in
- * `reset-token.ts` but writes to `nx_members` and uses dedicated
+ * `reset-token.ts` but writes to `np_members` and uses dedicated
  * verify columns (`email_verify_token_hash` / `email_verify_expires_at`)
  * so a verify and a reset can coexist on the same member row.
  */

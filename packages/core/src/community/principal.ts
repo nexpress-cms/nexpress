@@ -11,7 +11,7 @@ import type { MemberAction, MemberCanTarget } from "./can.js";
  * community-mod actions — they're trusted by virtue of being CMS
  * staff. Other staff roles (author, viewer) and members fall through
  * to the member-side resolver, which checks role grants in
- * `nx_member_roles`.
+ * `np_member_roles`.
  *
  * `edit-own` / `delete-own` actions still require ownership even for
  * staff — the API layer should already check ownership for self-only

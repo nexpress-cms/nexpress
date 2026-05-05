@@ -145,7 +145,7 @@ function validateBody(
   }
   const npSecret = (raw.npSecret ?? "").trim();
   if (npSecret.length < 32) {
-    return { error: "NX_SECRET must be at least 32 characters" };
+    return { error: "NP_SECRET must be at least 32 characters" };
   }
   const siteUrl = (raw.siteUrl ?? "").trim();
   if (!/^https?:\/\//.test(siteUrl)) {
@@ -183,17 +183,17 @@ async function saveEnv(body: SetupBody): Promise<void> {
     `DATABASE_URL=${body.databaseUrl}`,
   ];
   if (body.testDatabaseUrl) lines.push(`TEST_DATABASE_URL=${body.testDatabaseUrl}`);
-  lines.push(`NX_SECRET=${body.npSecret}`, `SITE_URL=${body.siteUrl}`, "");
+  lines.push(`NP_SECRET=${body.npSecret}`, `SITE_URL=${body.siteUrl}`, "");
 
   if (body.storage === "s3") {
     lines.push(
-      "NX_STORAGE_ADAPTER=s3",
-      `NX_S3_BUCKET=${body.s3Bucket ?? ""}`,
-      `NX_S3_REGION=${body.s3Region ?? ""}`,
+      "NP_STORAGE_ADAPTER=s3",
+      `NP_S3_BUCKET=${body.s3Bucket ?? ""}`,
+      `NP_S3_REGION=${body.s3Region ?? ""}`,
     );
-    if (body.s3Endpoint) lines.push(`NX_S3_ENDPOINT=${body.s3Endpoint}`);
+    if (body.s3Endpoint) lines.push(`NP_S3_ENDPOINT=${body.s3Endpoint}`);
   } else {
-    lines.push("# NX_STORAGE_ADAPTER=local (default)");
+    lines.push("# NP_STORAGE_ADAPTER=local (default)");
   }
   await writeFile(ENV_PATH, `${lines.join("\n")}\n`, "utf8");
 }
@@ -327,15 +327,15 @@ function envForChild(body: SetupBody): Record<string, string> {
   // the operator's terminal.
   const env: Record<string, string> = {
     DATABASE_URL: body.databaseUrl,
-    NX_SECRET: body.npSecret,
+    NP_SECRET: body.npSecret,
     SITE_URL: body.siteUrl,
   };
   if (body.testDatabaseUrl) env.TEST_DATABASE_URL = body.testDatabaseUrl;
   if (body.storage === "s3") {
-    env.NX_STORAGE_ADAPTER = "s3";
-    if (body.s3Bucket) env.NX_S3_BUCKET = body.s3Bucket;
-    if (body.s3Region) env.NX_S3_REGION = body.s3Region;
-    if (body.s3Endpoint) env.NX_S3_ENDPOINT = body.s3Endpoint;
+    env.NP_STORAGE_ADAPTER = "s3";
+    if (body.s3Bucket) env.NP_S3_BUCKET = body.s3Bucket;
+    if (body.s3Region) env.NP_S3_REGION = body.s3Region;
+    if (body.s3Endpoint) env.NP_S3_ENDPOINT = body.s3Endpoint;
   }
   return env;
 }
@@ -459,7 +459,7 @@ function renderHtml(): string {
   <fieldset>
     <legend>Secrets &amp; URLs</legend>
     <label>
-      <span>NX_SECRET</span>
+      <span>NP_SECRET</span>
       <span class="hint">JWT signing key. We generated 32 random bytes; rotate freely. Anything ≥32 chars works.</span>
       <input id="npSecret" name="npSecret" type="text" required spellcheck="false" value="${defaultSecret}" />
     </label>

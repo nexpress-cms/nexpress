@@ -75,8 +75,8 @@ Brief sketches so each sub-phase doesn't need its own design doc.
 ### 23.1 — Backup & restore docs
 
 Single live guide under `docs/`. Sections: pg_dump recipe with the
-NexPress-specific tables to keep an eye on (`nx_users`, `nx_c_*`,
-`nx_revisions`, `nx_settings`, `nx_audit_events`), media bucket sync
+NexPress-specific tables to keep an eye on (`np_users`, `np_c_*`,
+`np_revisions`, `np_settings`, `np_audit_events`), media bucket sync
 for both local and S3 adapters, restore order (DB → media → workers),
 post-restore verification checklist, planned-maintenance vs incident
 recovery split. Cross-link from `operations.md`.
@@ -86,9 +86,9 @@ No code change. Add the file to `docs/README.md` live-guides table.
 ### 23.2 — LocalStorage production boot warning
 
 Add a branch to `verifyStartupSafety` that fires when
-`NX_STORAGE_ADAPTER` resolves to `local` and an explicit production
+`NP_STORAGE_ADAPTER` resolves to `local` and an explicit production
 hint is set (`NODE_ENV=production` plus a multi-replica indicator —
-either `NX_REPLICAS>1` or any of the well-known
+either `NP_REPLICAS>1` or any of the well-known
 `{KUBERNETES_SERVICE_HOST,FLY_REGION,RENDER_INSTANCE_ID}` env vars).
 Routed through the structured logger, severity `warn`, with a doc
 link to `docs/deployment.md` "Multi-node notes."
@@ -107,7 +107,7 @@ if so, that ships in the same PR.
 
 ### 23.4 — Multi-instance token revocation verify
 
-`tokenVersion` already lives on `nx_users` and `verifyTokenFull`
+`tokenVersion` already lives on `np_users` and `verifyTokenFull`
 already reads it per request. This sub-phase confirms that under
 multi-instance load — write an integration test that bumps
 `tokenVersion` on instance A and asserts instance B's next

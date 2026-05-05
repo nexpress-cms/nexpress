@@ -58,7 +58,7 @@ written.
 |------|---------|--------|
 | `--apply` | off | Switch from preview-only to applier mode. Without this flag the importer parses + summarises without touching the DB. |
 | `--dry-run` | on (with `--apply`) | When combined with `--apply`, walks records + media but skips the actual writes. Useful for spotting collisions on a real DB. |
-| `--no-create-authors` | off | Don't create `nx_users` rows for WP authors. Imported posts come in without an author wired and the original byline lands on `wpOriginalAuthor`. |
+| `--no-create-authors` | off | Don't create `np_users` rows for WP authors. Imported posts come in without an author wired and the original byline lands on `wpOriginalAuthor`. |
 | `--config <path>` | none | Load custom-post-type → collection mappings from a JSON file (see §6). |
 | `--strict` | off | Escalate sub-pipeline warnings (media 4xx / MIME reject / taxonomy / author resolver failures) into errors so the CLI exits non-zero. Use for "clean import or nothing" runs. |
 | `--update` | off | Rewrite the existing document instead of skipping when a slug collides. Comments are NOT re-imported on an update pass — that needs the per-comment idempotency keys landing in 21.14. |
@@ -82,7 +82,7 @@ written.
    - Apply mapped postmeta values to the configured field overrides.
    - Save via `saveDocument` (so hooks fire and revisions land).
    - Record an `import.wp.applied` audit event.
-   - Walk the record's WP comments — find-or-create `imported`-status members per author, insert directly into `nx_comments`.
+   - Walk the record's WP comments — find-or-create `imported`-status members per author, insert directly into `np_comments`.
 
 Skips and errors emit `import.wp.skipped` / `import.wp.error` audit events alongside the structured summary printed at the end.
 
@@ -128,22 +128,22 @@ Re-running the same WXR against the same DB:
 | Taxonomy terms | Skipped on slug match. |
 | Imported members | Skipped on handle match. |
 | Comments | Skipped on `wpCommentId` match when the resume marker is enabled (Phase 21.14). Without `--resume`, comments only land for posts the applier created in this run. |
-| Media | Cross-run dedup via byte-hash lookup against `nx_media.hash` (Phase 21.13). Identical bytes reuse an existing row instead of producing a duplicate. |
+| Media | Cross-run dedup via byte-hash lookup against `np_media.hash` (Phase 21.13). Identical bytes reuse an existing row instead of producing a duplicate. |
 
-The audit log carries the full forensic trail — query `nx_audit_events` filtered by `action LIKE 'import.wp.%'` to see what each run did.
+The audit log carries the full forensic trail — query `np_audit_events` filtered by `action LIKE 'import.wp.%'` to see what each run did.
 
 ---
 
 ## 8. Common situations
 
 **WP author count exploded after import.**
-You ran without `--no-create-authors` and the source site had a long contributor list. Either delete the unwanted `nx_users` rows whose email ends in `+wp-import@<domain>`, or re-run from a clean DB with `--no-create-authors`.
+You ran without `--no-create-authors` and the source site had a long contributor list. Either delete the unwanted `np_users` rows whose email ends in `+wp-import@<domain>`, or re-run from a clean DB with `--no-create-authors`.
 
 **Media URLs 404.**
 The source WP site was decommissioned or has its uploads dir behind auth. Either re-host the originals at the original URLs, snapshot the `wp-content/uploads` dir into a static server, or accept the broken-image fallout — the audit log lists exactly which URLs failed.
 
 **Comments look spammy.**
-The WP site's spam filter wasn't catching the unapproved tail. The importer drops anything with `<wp:comment_approved>` != `"1"`, but a permissive moderator may have approved spam. Cleaning this up is a `nx_comments` admin pass after the import — the audit trail at least tells you which run brought them in.
+The WP site's spam filter wasn't catching the unapproved tail. The importer drops anything with `<wp:comment_approved>` != `"1"`, but a permissive moderator may have approved spam. Cleaning this up is a `np_comments` admin pass after the import — the audit trail at least tells you which run brought them in.
 
 **The post body has stray Gutenberg comment fences (`<!-- wp:paragraph -->`).**
 Phase 21.4's converter is comment-aware in design but the v1 cut treats them as text. Run a follow-up cleanup pass via the editor or the framework's revision tools. A future sub-phase may layer real Gutenberg-block parsing on top.
@@ -158,11 +158,11 @@ Before running `--apply`:
 - [ ] Run `pnpm wp-import <wxr> --apply --dry-run` and skim the summary.
 - [ ] Confirm taxonomy + author counts look sane.
 - [ ] Confirm the media URL list doesn't include anything with credentials in the path.
-- [ ] Confirm the audit log table is reachable (`SELECT count(*) FROM nx_audit_events`).
+- [ ] Confirm the audit log table is reachable (`SELECT count(*) FROM np_audit_events`).
 
 After:
 
 - [ ] Spot-check a few posts in the admin — content rendering, cover image, taxonomy chips.
-- [ ] Confirm `nx_audit_events` has the expected number of `import.wp.applied` rows.
+- [ ] Confirm `np_audit_events` has the expected number of `import.wp.applied` rows.
 - [ ] Promote any `viewer`-role staff users you actually want as authors (or delete the rest).
 - [ ] If you need archived discussion to render distinctly, tweak your theme to flag members with `status === "imported"`.

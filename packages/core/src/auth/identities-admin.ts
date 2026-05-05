@@ -12,8 +12,8 @@ import { NpNotFoundError } from "../errors.js";
 
 /**
  * Admin-side helpers for listing and revoking OAuth identity links.
- * Both staff (`nx_user_oauth_identities`) and member
- * (`nx_member_identities`) tables use the same shape: one row per
+ * Both staff (`np_user_oauth_identities`) and member
+ * (`np_member_identities`) tables use the same shape: one row per
  * (account, provider) pair, holding the durable provider subject
  * plus arbitrary metadata. These helpers are the source of truth for
  * `/api/admin/users/[id]/identities` and the member equivalent.

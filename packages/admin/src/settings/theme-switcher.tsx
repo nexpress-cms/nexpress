@@ -18,7 +18,7 @@ import {
  * Lists every theme registered in `nexpress.config.ts` (read
  * from `/api/admin/themes`) and lets an admin activate one
  * with a click. The chosen id is persisted to
- * `nx_settings.activeTheme` via `PUT /api/admin/themes/active`,
+ * `np_settings.activeTheme` via `PUT /api/admin/themes/active`,
  * then `revalidatePath("/", "layout")` flushes the public
  * shell so the next request renders the new theme's header /
  * footer / CSS.

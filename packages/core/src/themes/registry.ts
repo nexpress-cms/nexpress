@@ -5,13 +5,13 @@ import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import { addStrings } from "../i18n/strings.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID as DEFAULT_SITE } from "../sites/registry.js";
 import type { NpRegisteredTheme } from "../config/types.js";
 
 /**
  * Phase 11.1 — theme registry. Sites declare an array of themes
  * in `nexpress.config.ts`; the framework registers them once at
- * boot. The active theme id lives in `nx_settings.activeTheme`,
+ * boot. The active theme id lives in `np_settings.activeTheme`,
  * so admins can switch between installed themes via the admin UI
  * without a redeploy. New theme INSTALLATION still requires a
  * rebuild (Next.js bundles the components) — same constraint
@@ -66,7 +66,7 @@ export function resetThemes(): void {
 }
 
 /**
- * Reads the persisted active-theme id from `nx_settings` for
+ * Reads the persisted active-theme id from `np_settings` for
  * the current site. Returns `null` when no row exists —
  * caller's job to decide the fallback (typically the first
  * registered theme).

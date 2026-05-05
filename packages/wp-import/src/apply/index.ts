@@ -54,7 +54,7 @@ import {
  * Phase 21.7 layer: when a `comments` deps object is supplied, the
  * applier walks each freshly created post's comments, find-or-
  * creates an `imported` member per author, and inserts each comment
- * directly into `nx_comments` via the deps. Spam/profanity adapters
+ * directly into `np_comments` via the deps. Spam/profanity adapters
  * and notification fan-out are bypassed — this is archived content,
  * not new community activity.
  *
@@ -94,7 +94,7 @@ export interface ApplyOptions {
   taxonomies?: TaxonomyResolver;
   /**
    * Phase 21.7 — when supplied, every newly created post's WP
-   * comments are imported as `nx_comments` rows, with imported
+   * comments are imported as `np_comments` rows, with imported
    * members find-or-created via the deps. Omit to skip comment
    * imports entirely.
    */
@@ -125,7 +125,7 @@ export interface ApplyOptions {
    * skips for already-imported slugs (`import.wp.skipped`), and
    * record-level errors (`import.wp.error`). The shim wires this
    * to `recordAuditEvent` from `@nexpress/core` so the entries
-   * land in `nx_audit_events` alongside the rest of the operator
+   * land in `np_audit_events` alongside the rest of the operator
    * trail. Audit failures NEVER abort the import — see the
    * deps's contract.
    */
@@ -135,7 +135,7 @@ export interface ApplyOptions {
    * WP author display name (or login when no display name is set)
    * to the named field on every imported document, so the byline
    * is preserved even when `--no-create-authors` strips the
-   * `nx_users` link. Operators add a matching `text` field to
+   * `np_users` link. Operators add a matching `text` field to
    * their collection and declare the mapping here, e.g.:
    *
    *   { posts: "wpOriginalAuthor" }
@@ -157,8 +157,8 @@ export interface ApplyOptions {
   /**
    * Phase 21.12 — when true, the applier rewrites content for
    * documents whose slug already exists instead of skipping them.
-   * The existing `nx_c_*` row keeps its id (so revisions and
-   * `nx_media_refs` pointers stay intact); the `data` payload —
+   * The existing `np_c_*` row keeps its id (so revisions and
+   * `np_media_refs` pointers stay intact); the `data` payload —
    * title, content, excerpt, coverImage, taxonomies, author,
    * publishedAt — is overwritten. Comments are NOT re-imported on
    * an update pass; existing rows under that document stay put.

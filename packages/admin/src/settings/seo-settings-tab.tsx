@@ -11,7 +11,7 @@ import { Label } from "../ui/label.js";
 /**
  * Phase 10.3 — SEO settings tab. Lives next to General / Theme /
  * Navigation / Users in `<SettingsView />`. Loads the `seo` key
- * from `nx_settings`, lets admins set defaults that flow into
+ * from `np_settings`, lets admins set defaults that flow into
  * `<head>` tags via the framework's `buildPageMetadata` helper.
  *
  * Site name + description still live on the General tab — they

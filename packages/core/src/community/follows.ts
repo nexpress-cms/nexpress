@@ -5,7 +5,7 @@ import { getDb } from "../db/runtime.js";
 import { npFollows, npMembers } from "../db/schema/community.js";
 import { NpNotFoundError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
-import { NX_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { withMemberWrite } from "./can.js";
 import { createNotification } from "./notifications.js";
@@ -94,7 +94,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
 
   // Idempotent: insert with `onConflictDoNothing` so two concurrent
   // follow toggles don't surface a unique-constraint 500 to the
-  // race-loser. The schema's `nx_follows_unique` enforces
+  // race-loser. The schema's `np_follows_unique` enforces
   // `(follower, targetType, targetId)` uniqueness — without
   // `onConflict` the loser of a race would bubble the raw
   // pg 23505 instead of the intended idempotent success (#124,
@@ -104,7 +104,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
   // tenants. The site comes from the request resolver (the
   // click happened on this tenant); falls back to the default
   // site for callers without a resolved site (scripts, jobs).
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [inserted] = (await db
     .insert(npFollows)
     .values({
@@ -156,7 +156,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
 export async function unfollow(input: NpFollowInput): Promise<void> {
   assertSupportedTarget(input.targetType);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   await db
     .delete(npFollows)
     .where(
@@ -172,7 +172,7 @@ export async function unfollow(input: NpFollowInput): Promise<void> {
 export async function isFollowing(input: NpFollowInput): Promise<boolean> {
   assertSupportedTarget(input.targetType);
   const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ id: npFollows.id })
     .from(npFollows)
@@ -203,7 +203,7 @@ export async function listFollowing(
   // tenant A and tenant B should see two separate "Following"
   // lists, one per site. Falls back to the default site when
   // the resolver isn't wired (scripts).
-  const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const where = options.targetType
     ? and(
         eq(npFollows.followerId, followerId),

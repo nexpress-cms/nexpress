@@ -76,7 +76,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
   });
   // Reset community settings between tests so a quota set in one
   // case doesn't leak into the next. `truncateAll` already clears
-  // `nx_settings`, so this is belt-and-braces.
+  // `np_settings`, so this is belt-and-braces.
   afterEach(async () => {
     const db = await getTestDb();
     const { npSettings } = await import("@nexpress/core");
@@ -294,7 +294,7 @@ describe.skipIf(skipIfNoTestDb())("member upload quota (Phase 9.7p)", () => {
     expect(results.map((r) => r.status)).toEqual([202, 202]);
   });
 
-  // Issue #138 — `uploadMedia` inserts the `nx_media` row before
+  // Issue #138 — `uploadMedia` inserts the `np_media` row before
   // calling `adapter.upload`. If the storage call throws, the
   // pre-fix code left a permanent `processing` row that counted
   // against quota forever (no job was enqueued, no processor

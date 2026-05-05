@@ -44,8 +44,8 @@ import { ensureFor } from "../src/lib/init-core";
  * importer drops terms with a single notes line).
  *
  * Phase 21.7 — wire the comments deps. Imported members land
- * directly in `nx_members` with status="imported"; comments land
- * in `nx_comments` via the framework's DB handle. We bypass
+ * directly in `np_members` with status="imported"; comments land
+ * in `np_comments` via the framework's DB handle. We bypass
  * `createComment` because that path runs spam/profanity adapters
  * and fans out notifications — neither is appropriate for
  * archived content.
@@ -176,7 +176,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
           // imported guests but possible if a live member already
           // owns the address; in that case fall through with a
           // synthetic placeholder so the unique index on
-          // nx_members.email doesn't reject the insert.
+          // np_members.email doesn't reject the insert.
           const safeEmail = email && (await isEmailFree(email)) ? email : `${handle}@imported.invalid`;
           const [inserted] = await db
             .insert(npMembers)
@@ -261,7 +261,7 @@ const code = await runCli(process.argv.slice(2), undefined, {
   resolveActor: async () => {
     const actor = await findFirstAdmin();
     if (!actor) {
-      throw new Error("No admin user found in nx_users. Run `pnpm seed:admin` once and retry.");
+      throw new Error("No admin user found in np_users. Run `pnpm seed:admin` once and retry.");
     }
     return actor;
   },

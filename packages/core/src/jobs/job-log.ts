@@ -13,7 +13,7 @@ import { type NpLogLevel, getLogger } from "../observability/logger.js";
  *
  * Each handler invocation runs inside an AsyncLocalStorage context
  * keyed on the pg-boss job id. While inside the context,
- * `recordJobLog()` writes to `nx_job_logs` stamped with that id;
+ * `recordJobLog()` writes to `np_job_logs` stamped with that id;
  * outside the context it no-ops, so the helper is safe to import
  * from non-handler code (and from plugins that don't know whether
  * they're inside a handler).
@@ -133,10 +133,10 @@ export async function listJobLogs(
 /**
  * How long per-job log rows survive before the cleanup handler
  * deletes them. Compliance regimes (GDPR, SOX) frequently dictate
- * a specific window — override via `NX_JOB_LOG_RETENTION_DAYS`.
+ * a specific window — override via `NP_JOB_LOG_RETENTION_DAYS`.
  */
 export const DEFAULT_JOB_LOG_RETENTION_MS =
-  readEnvPositiveInt("NX_JOB_LOG_RETENTION_DAYS", 14) * 24 * 60 * 60 * 1000;
+  readEnvPositiveInt("NP_JOB_LOG_RETENTION_DAYS", 14) * 24 * 60 * 60 * 1000;
 
 /**
  * Delete log rows older than the cutoff. Safe to call from a

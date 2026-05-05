@@ -13,7 +13,7 @@ export type NpPasswordResetPurpose = "invite" | "reset";
 export interface NpIssuedResetToken {
   /** The raw token — deliver to the user, never persist. */
   token: string;
-  /** Matches `nx_users.password_reset_expires_at`. */
+  /** Matches `np_users.password_reset_expires_at`. */
   expiresAt: Date;
   purpose: NpPasswordResetPurpose;
 }
@@ -33,7 +33,7 @@ function generateRawToken(): string {
 
 /**
  * Issues a new password reset token for `userId`. Stores the **hash** of the
- * token in the `nx_users` row alongside the expiry and purpose, then returns
+ * token in the `np_users` row alongside the expiry and purpose, then returns
  * the raw token for the caller to deliver (email/link).
  *
  * Any previously-outstanding reset token for the user is replaced.

@@ -11,7 +11,7 @@ Package manager is pnpm (v10.33, required). Node >=20.
 ```bash
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db   # Postgres 16 on :5433
-cp .env.example .env                                    # DATABASE_URL, NX_SECRET, SITE_URL
+cp .env.example .env                                    # DATABASE_URL, NP_SECRET, SITE_URL
 pnpm build                                              # build all packages (dist/) — needed before dev
 pnpm dev                                                # turbo watch: tsup --watch per pkg + next dev + collection schema:gen on src/collections/* changes
 ```
@@ -75,7 +75,7 @@ import { foo } from "./bar"; // breaks the build
 
 Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after fresh clone; `pnpm dev` keeps dists fresh with `tsup --watch`.
 
-Dev watch reads `NX_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's *signature* during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NX_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
+Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's *signature* during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NP_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
 
 ### Core service singletons (critical)
 
@@ -149,7 +149,7 @@ Each `./client` bundle is built by tsup with `"use client"` banner injection. Co
 
 ### Storage
 
-`createStorageAdapter(config)` returns either `LocalStorageAdapter` (writes under `./uploads`, served at `/uploads`) or `S3StorageAdapter`. Selection is env-driven: `NX_STORAGE_ADAPTER=s3` + `NX_S3_BUCKET`/`NX_S3_REGION`/`NX_S3_ENDPOINT`, otherwise local with `NX_STORAGE_DIR` / `NX_STORAGE_URL`. A MinIO service is defined in `docker/docker-compose.yml` under the `s3` profile for local S3 development.
+`createStorageAdapter(config)` returns either `LocalStorageAdapter` (writes under `./uploads`, served at `/uploads`) or `S3StorageAdapter`. Selection is env-driven: `NP_STORAGE_ADAPTER=s3` + `NP_S3_BUCKET`/`NP_S3_REGION`/`NP_S3_ENDPOINT`, otherwise local with `NP_STORAGE_DIR` / `NP_STORAGE_URL`. A MinIO service is defined in `docker/docker-compose.yml` under the `s3` profile for local S3 development.
 
 ### Jobs
 

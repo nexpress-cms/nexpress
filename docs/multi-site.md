@@ -31,21 +31,21 @@ sites** keyed by hostname. Each site has its own:
 - **Content rows** — every collection table carries a
   `site_id` column. Posts on `acme.example.com` are invisible
   to `partner-blog.example.com` and vice versa.
-- **Navigation menus** — `nx_navigation` is scoped per site.
-- **Settings** — `nx_settings` is scoped per site (active
+- **Navigation menus** — `np_navigation` is scoped per site.
+- **Settings** — `np_settings` is scoped per site (active
   theme, theme tokens, SEO defaults, community config, plugin
   storage keys).
 - **Memberships** — users can hold different roles on
-  different sites via `nx_site_memberships`.
-- **UI string overrides** — Phase D's `nx_string_overrides`
+  different sites via `np_site_memberships`.
+- **UI string overrides** — Phase D's `np_string_overrides`
   is per-site too, so each tenant can re-translate plugin
   strings independently.
 
 Shared across all sites:
 
 - **Plugin and theme code** (installed once at deploy time)
-- **User accounts** (`nx_users`)
-- **Media** (`nx_media`) — uploaded files are global; each
+- **User accounts** (`np_users`)
+- **Media** (`np_media`) — uploaded files are global; each
   site's content references them via the same id.
 
 ---
@@ -57,12 +57,12 @@ Multisite for tenancy). Single-DB / single-schema; `site_id`
 is a column on every tenant-scoped table.
 
 ```
-nx_sites          ← one row per tenant
-  ├─ nx_c_*       ← every collection table has site_id
-  ├─ nx_settings  ← composite PK (site_id, key)
-  ├─ nx_navigation
-  ├─ nx_site_memberships
-  ├─ nx_string_overrides
+np_sites          ← one row per tenant
+  ├─ np_c_*       ← every collection table has site_id
+  ├─ np_settings  ← composite PK (site_id, key)
+  ├─ np_navigation
+  ├─ np_site_memberships
+  ├─ np_string_overrides
 ```
 
 **Why this model**:
@@ -100,9 +100,9 @@ Per-request, in priority order:
    admin operate on any site without changing the URL.
 2. **`x-np-host` header** — middleware forwards the request
    `Host`. The bootstrap resolver does
-   `resolveSiteForHostname()` which queries `nx_sites` for
+   `resolveSiteForHostname()` which queries `np_sites` for
    a matching row.
-3. **Fallback to the default site** (`NX_DEFAULT_SITE_ID =
+3. **Fallback to the default site** (`NP_DEFAULT_SITE_ID =
 "default"`). Always exists — migration 0015 seeds it.
 
 Sites match the hostname **case-insensitively**. Multiple
@@ -132,7 +132,7 @@ Pipeline behavior:
 
 ## 5. Per-Site Settings
 
-`nx_settings` is keyed `(site_id, key)`. Helpers
+`np_settings` is keyed `(site_id, key)`. Helpers
 (`getTheme`, `getNavigation`, `getActiveThemeId`,
 `getSetting`, the settings/theme/navigation API routes)
 all auto-scope via `getCurrentSiteId()`.
@@ -156,7 +156,7 @@ Three tiers, in priority order:
    manage every site, including create/delete tenants.
    Bypasses every per-site membership check.
 2. **Per-site membership** — explicit row in
-   `nx_site_memberships(site_id, user_id, role)`. The
+   `np_site_memberships(site_id, user_id, role)`. The
    resolver returns this role for any check on that site.
 3. **Global default role** — `npUsers.role`. Used as the
    fallback when no membership exists. Single-tenant sites
@@ -274,31 +274,31 @@ A few system surfaces are intentionally global today.
 Listed here so operators reasoning about multi-tenant
 isolation know where the boundary stops:
 
-- **`nx_users`** — accounts are global. Memberships
+- **`np_users`** — accounts are global. Memberships
   (Phase 15.5+) decide which sites a user has rights on,
   so the intent is "one identity, many tenants."
-- **`nx_media`** — uploads share a single bucket. Each
+- **`np_media`** — uploads share a single bucket. Each
   site's content references media by id; the same image
   can be reused across tenants. A future "per-site media
   ownership" surface would need a new column +
   access-control hook. **Still a gap.**
-- **`nx_audit_events`** — Phase 17 added a nullable
+- **`np_audit_events`** — Phase 17 added a nullable
   `site_id` column + index. `recordAuditEvent` fills it
   from the current request's resolved site, so the audit
   list can filter by tenant. Events without a request
   scope (super-admin actions, scripts) leave it null.
-- **`nx_plugin_storage`** — Phase 17 made the table
+- **`np_plugin_storage`** — Phase 17 made the table
   site-scoped: PK is `(plugin_id, site_id, key)` with a
-  default of `NX_GLOBAL_PLUGIN_SITE_ID` for plugins that
+  default of `NP_GLOBAL_PLUGIN_SITE_ID` for plugins that
   want shared state. Plugins use `ctx.storage` and pass
   the active site through automatically.
-- **`nx_comments` / `nx_reactions` / `nx_follows` /
-  `nx_member_mutes` / `nx_notifications` / `nx_reports` /
-  `nx_bans`** — Phase 18 added `site_id` columns + indexes
+- **`np_comments` / `np_reactions` / `np_follows` /
+  `np_member_mutes` / `np_notifications` / `np_reports` /
+  `np_bans`** — Phase 18 added `site_id` columns + indexes
   so per-site queues, mutes, mod reports, and notification
-  inboxes are first-class. `nx_members` is intentionally
+  inboxes are first-class. `np_members` is intentionally
   still global (one identity, many tenants); per-site
-  member roles live in `nx_member_roles` keyed on
+  member roles live in `np_member_roles` keyed on
   `(site_id, member_id)`.
 
 ---
@@ -311,7 +311,7 @@ deployments:
 - The migration seeds a default site row, so existing single-
   tenant code keeps writing to `site_id = 'default'`
   transparently.
-- The resolver falls back to `NX_DEFAULT_SITE_ID` when no
+- The resolver falls back to `NP_DEFAULT_SITE_ID` when no
   `x-np-host` matches, so requests with no recognized
   hostname (e.g. local `localhost:3000`) resolve to default.
 - The site picker hides itself when only one site is

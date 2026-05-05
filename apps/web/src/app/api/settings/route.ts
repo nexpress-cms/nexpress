@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
   getCurrentSiteId,
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     }
 
     const db = getDb();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const rows = await db
       .select()
       .from(npSettings)
@@ -81,7 +81,7 @@ export async function PUT(request: NextRequest) {
 
     const db = getDb();
     const now = new Date();
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     const [result] = await db
       .insert(npSettings)

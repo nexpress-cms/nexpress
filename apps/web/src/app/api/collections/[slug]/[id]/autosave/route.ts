@@ -8,7 +8,7 @@ import { ensureFor } from "@/lib/init-core";
 
 /**
  * Editor autosave endpoint. Persists an in-flight snapshot to
- * nx_revisions with status="autosave" without touching the main doc
+ * np_revisions with status="autosave" without touching the main doc
  * row, so a crash/refresh mid-edit can recover via the revisions panel.
  *
  * Requires `versions.drafts.autosave === true` on the collection.

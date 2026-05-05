@@ -217,7 +217,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     const { npComments } = await import("@nexpress/core");
     const all = (await db.select().from(npComments)) as Array<unknown>;
     // Parent + 2 replies all gone (parent went via the explicit
-    // cascade in deleteDocumentImpl, replies via the nx_comments
+    // cascade in deleteDocumentImpl, replies via the np_comments
     // parent_id self-FK).
     expect(all).toHaveLength(0);
   });
@@ -242,7 +242,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
     const comments = (await db.select().from(npComments)) as Array<unknown>;
     // Reactions live on the comment via the polymorphic
     // (target_type='comment', target_id=$commentId) shape; there's
-    // no DB-level FK from nx_reactions to nx_comments, so the
+    // no DB-level FK from np_reactions to np_comments, so the
     // cascade in deleteDocumentImpl explicitly queries the
     // doc-scoped comment ids first and deletes their reactions
     // before the comments themselves go away.
@@ -252,7 +252,7 @@ describe.skipIf(skipIfNoTestDb())("comment cascade on doc delete (Phase 9.7m)", 
 
   it("reactions targeting the doc directly are cleaned up", async () => {
     // Hypothetical: a site that allows reactions on the doc itself
-    // (targetType=collection, targetId=docId). The nx_reactions
+    // (targetType=collection, targetId=docId). The np_reactions
     // schema is polymorphic so it accepts that shape — and our
     // explicit cascade handles it.
     const editor = await seedUser({ role: "editor" });

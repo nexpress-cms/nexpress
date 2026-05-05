@@ -18,7 +18,7 @@ import { resolve } from "node:path";
  * Each check returns one of three states:
  *   - ok       a green ✓ line; nothing for the operator to do
  *   - warn     a yellow ⚠ line; the install will probably work but
- *              something looks off (e.g. NX_SECRET shorter than the
+ *              something looks off (e.g. NP_SECRET shorter than the
  *              recommended floor)
  *   - error    a red ✗ line plus an actionable hint; the install
  *              won't boot until the operator fixes it
@@ -115,9 +115,9 @@ const REQUIRED_VARS: RequiredVarSpec[] = [
     hint: "Set DATABASE_URL to a postgres:// connection string. `pnpm run setup` writes one for you.",
   },
   {
-    name: "NX_SECRET",
+    name: "NP_SECRET",
     minLength: 32,
-    hint: "Set NX_SECRET to ≥32 random characters. `pnpm run setup` generates one.",
+    hint: "Set NP_SECRET to ≥32 random characters. `pnpm run setup` generates one.",
   },
   {
     name: "SITE_URL",
@@ -218,13 +218,13 @@ async function checkDatabase(): Promise<CheckResult> {
 }
 
 async function checkLocalStorage(): Promise<CheckResult> {
-  const adapter = (process.env.NX_STORAGE_ADAPTER ?? "local").toLowerCase();
+  const adapter = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
   if (adapter !== "local") {
     // S3 / R2 connectivity check would need the AWS SDK + credentials;
     // we leave that surface to runtime errors for now.
     return { state: "ok", label: `Storage adapter: ${adapter}`, detail: "S3-side checks not run" };
   }
-  const dir = process.env.NX_STORAGE_DIR ?? "./public/media";
+  const dir = process.env.NP_STORAGE_DIR ?? "./public/media";
   const path = resolve(process.cwd(), dir);
   try {
     const stats = await stat(path);
@@ -233,7 +233,7 @@ async function checkLocalStorage(): Promise<CheckResult> {
         state: "error",
         label: "Local storage directory",
         detail: `${dir} exists but is not a directory`,
-        hint: "Move the file aside or pick a different NX_STORAGE_DIR.",
+        hint: "Move the file aside or pick a different NP_STORAGE_DIR.",
       };
     }
     return { state: "ok", label: "Local storage directory", detail: dir };
@@ -248,10 +248,10 @@ async function checkLocalStorage(): Promise<CheckResult> {
 }
 
 async function checkS3Vars(): Promise<CheckResult | null> {
-  if ((process.env.NX_STORAGE_ADAPTER ?? "").toLowerCase() !== "s3") return null;
+  if ((process.env.NP_STORAGE_ADAPTER ?? "").toLowerCase() !== "s3") return null;
   const missing: string[] = [];
-  if (!process.env.NX_S3_BUCKET) missing.push("NX_S3_BUCKET");
-  if (!process.env.NX_S3_REGION) missing.push("NX_S3_REGION");
+  if (!process.env.NP_S3_BUCKET) missing.push("NP_S3_BUCKET");
+  if (!process.env.NP_S3_REGION) missing.push("NP_S3_REGION");
   if (missing.length > 0) {
     return {
       state: "error",
@@ -288,9 +288,9 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
     const result = await client.query<{ table_name: string }>(
       `select table_name from information_schema.tables
        where table_schema = 'public'
-         and table_name in ('nx_users', 'nx_settings', 'nx_navigation', 'nx_sites')`,
+         and table_name in ('np_users', 'np_settings', 'np_navigation', 'np_sites')`,
     );
-    const expected = ["nx_users", "nx_settings", "nx_navigation", "nx_sites"];
+    const expected = ["np_users", "np_settings", "np_navigation", "np_sites"];
     const present = new Set(result.rows.map((r) => r.table_name));
     const missing = expected.filter((t) => !present.has(t));
     if (missing.length === 0) {
@@ -352,16 +352,16 @@ async function checkMigrationsApplied(): Promise<CheckResult> {
 
 async function checkEnvExampleSync(): Promise<CheckResult> {
   // Soft check — flag obvious placeholders that survived a manual edit.
-  const value = process.env.NX_SECRET ?? "";
+  const value = process.env.NP_SECRET ?? "";
   if (value === "change-me-in-production" || value === "change-me-to-a-random-string") {
     return {
       state: "error",
-      label: "NX_SECRET not the placeholder",
+      label: "NP_SECRET not the placeholder",
       detail: "still the .env.example placeholder",
       hint: "Replace with a real secret. `pnpm run setup` generates one.",
     };
   }
-  return { state: "ok", label: "NX_SECRET not the placeholder" };
+  return { state: "ok", label: "NP_SECRET not the placeholder" };
 }
 
 const COLOR = {

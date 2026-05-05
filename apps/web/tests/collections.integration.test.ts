@@ -290,7 +290,7 @@ describe.skipIf(skipIfNoTestDb())("collections API (integration)", () => {
     expect(auto.body.status).toBe("autosave");
     expect(auto.body.reused).toBe(false);
 
-    // The main doc must be unchanged — autosave persists into nx_revisions only.
+    // The main doc must be unchanged — autosave persists into np_revisions only.
     // Anonymous reads now hide drafts (#56), so re-fetch with the
     // staff session so we can verify the unchanged main row.
     const after = await idGET(

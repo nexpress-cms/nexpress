@@ -10,21 +10,21 @@ import {
 export { nexpressConfig };
 
 /**
- * Install the SMTP email adapter when `NX_EMAIL_ADAPTER=smtp`. Any other
+ * Install the SMTP email adapter when `NP_EMAIL_ADAPTER=smtp`. Any other
  * value (unset, "noop", "custom") leaves the default `NoopEmailAdapter` in
  * place — apps that want Resend/SendGrid/etc. SDKs can call
  * `setEmailAdapter(customAdapter)` themselves after this runs.
  */
 function configureEmailAdapter(): void {
-  if (process.env.NX_EMAIL_ADAPTER !== "smtp") return;
+  if (process.env.NP_EMAIL_ADAPTER !== "smtp") return;
 
-  const host = process.env.NX_SMTP_HOST;
-  const port = Number(process.env.NX_SMTP_PORT ?? "587");
-  const from = process.env.NX_SMTP_FROM;
+  const host = process.env.NP_SMTP_HOST;
+  const port = Number(process.env.NP_SMTP_PORT ?? "587");
+  const from = process.env.NP_SMTP_FROM;
 
   if (!host || !from) {
     getScopedLogger({ subsystem: "boot" }).warn(
-      "NX_EMAIL_ADAPTER=smtp but NX_SMTP_HOST / NX_SMTP_FROM are unset — email adapter not installed.",
+      "NP_EMAIL_ADAPTER=smtp but NP_SMTP_HOST / NP_SMTP_FROM are unset — email adapter not installed.",
       { check: "smtp_misconfigured", missing: { host: !host, from: !from } },
     );
     return;
@@ -35,15 +35,15 @@ function configureEmailAdapter(): void {
   // → secure` default, so SMTPS configurations failed in the field
   // (#63). With `undefined` the SMTP adapter applies its documented
   // default.
-  const secureRaw = process.env.NX_SMTP_SECURE;
+  const secureRaw = process.env.NP_SMTP_SECURE;
   const secure = secureRaw === undefined ? undefined : secureRaw === "true";
 
   setEmailAdapter(
     new SmtpEmailAdapter({
       host,
       port,
-      user: process.env.NX_SMTP_USER,
-      pass: process.env.NX_SMTP_PASS,
+      user: process.env.NP_SMTP_USER,
+      pass: process.env.NP_SMTP_PASS,
       from,
       ...(secure !== undefined ? { secure } : {}),
     }),

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   getCurrentSiteId,
   isSuperAdmin,
   listMembershipsForUser,
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         // No explicit memberships + global admin → see the
         // default site so existing single-tenant admins
         // aren't locked out of their own picker.
-        allowedIds.add(NX_DEFAULT_SITE_ID);
+        allowedIds.add(NP_DEFAULT_SITE_ID);
       }
       accessible = allSites.filter((s) => allowedIds.has(s.id));
     }
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     // Phase 15.6 — surface the resolver's current site id so
     // the picker can highlight the active entry without
     // reading the HttpOnly cookie from JavaScript.
-    const currentId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const currentId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     return npSuccessResponse({
       docs: accessible.map((site) => ({

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   ROLE_HIERARCHY,
   can,
   getMembership,
@@ -30,7 +30,7 @@ import {
  */
 export async function canManageSite(user: NpAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
-  if (siteId === NX_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
+  if (siteId === NP_DEFAULT_SITE_ID && can(user, "admin.manage")) return true;
   const membership = await getMembership(siteId, user.id);
   if (!membership) return false;
   return ROLE_HIERARCHY[membership.role] >= ROLE_HIERARCHY.admin;
@@ -49,7 +49,7 @@ export async function canManageSite(user: NpAuthUser, siteId: string): Promise<b
  */
 export async function canModerateSite(user: NpAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
-  if (siteId === NX_DEFAULT_SITE_ID && can(user, "community.moderate")) return true;
+  if (siteId === NP_DEFAULT_SITE_ID && can(user, "community.moderate")) return true;
   const membership = await getMembership(siteId, user.id);
   if (!membership) return false;
   return ROLE_HIERARCHY[membership.role] >= ROLE_HIERARCHY.moderator;

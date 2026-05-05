@@ -45,7 +45,7 @@ export interface NpSpamCheckContext {
   /**
    * Collection slug that owns the document the comment is attached
    * to (`"posts"`, `"discussions"`, etc.) — same value as
-   * `nx_comments.target_type`. The schema is polymorphic over
+   * `np_comments.target_type`. The schema is polymorphic over
    * collection, so this is the collection identifier, not a
    * "comment vs thread" classifier.
    */

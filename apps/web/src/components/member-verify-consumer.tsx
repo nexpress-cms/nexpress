@@ -29,7 +29,7 @@ function extractMessage(body: unknown): string | null {
  *
  * Why a client component for what's effectively a server task: the
  * verify endpoint is `POST /api/members/verify` (single-use token,
- * mutates `nx_members.status` from `pending` to `active`). A server
+ * mutates `np_members.status` from `pending` to `active`). A server
  * page that POSTs server-side on every render would burn the token
  * on a page refresh; a client component fetches once-per-mount with
  * a guard that prevents React Strict-Mode double-fires from

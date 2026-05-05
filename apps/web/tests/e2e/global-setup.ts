@@ -11,7 +11,7 @@ import { seedE2EAdmin } from "./fixtures/seed.js";
  * uses to launch the test runner. We load the repo `.env` here
  * because Playwright's webServer block doesn't inherit the parent
  * shell's env consistently across local + CI invocations; loading
- * explicitly keeps DATABASE_URL / NX_SECRET predictable.
+ * explicitly keeps DATABASE_URL / NP_SECRET predictable.
  *
  * Then seeds the e2e admin user so spec files can rely on a
  * known login. Finally pre-warms the dev server's slow routes

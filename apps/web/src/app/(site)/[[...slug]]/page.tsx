@@ -153,7 +153,7 @@ export default async function CatchAllPage({ params }: PageProps) {
     }
 
     // Slug rename history — when a page used to live at this path
-    // but got renamed, walk `nx_slug_history` to the current
+    // but got renamed, walk `np_slug_history` to the current
     // target and 301. Search-engine indices, external links, and
     // bookmarks survive the rename. Only the `pages` collection is
     // checked here; the localized-pages branch above handles its

@@ -15,7 +15,7 @@ FROM base AS builder
 WORKDIR /app
 # Build-time env: Next page-data collection imports every route module
 # which transitively evaluates `nexpress.config.ts` and triggers
-# `defineConfig`'s zod validation — including a non-empty `NX_SECRET`.
+# `defineConfig`'s zod validation — including a non-empty `NP_SECRET`.
 # A placeholder satisfies the validator without leaking into the runtime
 # image (the runner stage doesn't inherit these).
 ENV CI=true \
@@ -33,7 +33,7 @@ RUN pnpm install --frozen-lockfile --config.confirmModulesPurge=false
 # Inline placeholders for the build only — Next page-data collection
 # imports every route, which transitively triggers nexpress.config.ts's
 # zod validation. These env vars don't propagate into the runner stage.
-RUN NX_SECRET=placeholder-build-time-secret-replaced-at-runtime \
+RUN NP_SECRET=placeholder-build-time-secret-replaced-at-runtime \
     DATABASE_URL=postgres://placeholder:placeholder@placeholder:5432/placeholder \
     pnpm build
 

@@ -44,7 +44,7 @@ describe("verifyStartupSafety", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("warns when LocalStorageAdapter runs under NX_MULTI_NODE=true", () => {
+  it("warns when LocalStorageAdapter runs under NP_MULTI_NODE=true", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
       storageAdapter: "local",
@@ -56,7 +56,7 @@ describe("verifyStartupSafety", () => {
     expect(warnings.some((w) => w.message.includes("multi-node safe"))).toBe(true);
   });
 
-  it("does not warn about local storage when NX_MULTI_NODE is unset", () => {
+  it("does not warn about local storage when NP_MULTI_NODE is unset", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
       storageAdapter: "local",
@@ -68,7 +68,7 @@ describe("verifyStartupSafety", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("accepts NX_MULTI_NODE=1 as truthy alongside 'true'", () => {
+  it("accepts NP_MULTI_NODE=1 as truthy alongside 'true'", () => {
     const { warnings } = captureWarnings();
     verifyStartupSafety({
       storageAdapter: "local",
@@ -79,7 +79,7 @@ describe("verifyStartupSafety", () => {
     expect(warnings.some((w) => w.message.includes("multi-node safe"))).toBe(true);
   });
 
-  it("warns about a missing NX_SECRET in production", () => {
+  it("warns about a missing NP_SECRET in production", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
       storageAdapter: "s3",
@@ -88,10 +88,10 @@ describe("verifyStartupSafety", () => {
       multiNodeFlag: undefined,
     });
     expect(emitted).toContain("missing_prod_secret");
-    expect(warnings.some((w) => w.message.includes("NX_SECRET is unset"))).toBe(true);
+    expect(warnings.some((w) => w.message.includes("NP_SECRET is unset"))).toBe(true);
   });
 
-  it("warns about a short NX_SECRET in production", () => {
+  it("warns about a short NP_SECRET in production", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
       storageAdapter: "s3",
@@ -192,7 +192,7 @@ describe("verifyStartupSafety", () => {
     }
   });
 
-  it("explicit NX_MULTI_NODE=false silences the container hint", () => {
+  it("explicit NP_MULTI_NODE=false silences the container hint", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
       storageAdapter: "local",

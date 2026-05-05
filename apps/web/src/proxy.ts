@@ -53,7 +53,7 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  *     so they can't have an nx-csrf cookie either. The handler
  *     guards with the "no admin yet" precondition (409 once one
  *     exists) which is a strictly stronger gate than CSRF.
- *   - `/api/internal/*`: bearer-token auth via NX_SCHEDULER_TOKEN.
+ *   - `/api/internal/*`: bearer-token auth via NP_SCHEDULER_TOKEN.
  *     No browser session involved.
  *   - `/api/plugins/<id>/<...>` for `<...>` other than the
  *     standard CRUD (`./route.ts`) and `actions/*`: the plugin

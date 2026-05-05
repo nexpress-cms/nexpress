@@ -8,7 +8,7 @@ import { ensureFor } from "@/lib/init-core";
 /**
  * Per-device logout. Clears the current `nx-session` / `nx-refresh` /
  * `nx-csrf` cookies. Previously this also called
- * `invalidateAllSessions(user.id)`, which bumped `nx_users.tokenVersion`
+ * `invalidateAllSessions(user.id)`, which bumped `np_users.tokenVersion`
  * and forcibly logged the user out of every other device they had —
  * routine logout had global side effects. (#74)
  *

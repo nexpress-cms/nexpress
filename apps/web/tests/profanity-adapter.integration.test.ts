@@ -62,7 +62,7 @@ async function seedStaffPost(): Promise<string> {
   }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NX_SECRET!,
+    process.env.NP_SECRET!,
   );
   const csrf = "csrf-staff";
   const create = await collectionPOST(

@@ -1,5 +1,5 @@
 import {
-  NX_DEFAULT_SITE_ID,
+  NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
   deleteStringOverride,
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     const i18n = getI18nConfig();
     const locales = i18n?.locales ?? [];
     const defaultLocale = i18n?.defaultLocale ?? null;
-    const siteId = (await getCurrentSiteId()) ?? NX_DEFAULT_SITE_ID;
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     const allStrings = getAllStrings();
     const overrides = await listStringOverridesForSite(siteId);
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
  * `i18n.locales` list. Without this gate an admin typo would
  * persist a row that no template lookup ever consults
  * (`allStrings[locale]` silently misses unrecognized keys), and
- * `nx_string_overrides` accumulates orphaned rows the next
+ * `np_string_overrides` accumulates orphaned rows the next
  * operator can't tell apart from intentional overrides.
  *
  * When the site has no `i18n` block configured, only the

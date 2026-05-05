@@ -1,10 +1,10 @@
 import { defineConfig } from "tsup";
 
-// NX_DEV_FAST is read from `.env` (default `1` in dev). It skips dts
+// NP_DEV_FAST is read from `.env` (default `1` in dev). It skips dts
 // emit + sourcemaps so the watch loop runs at transpile-only cost.
 // `.d.ts` files refresh on the next `pnpm build`, which prefixes
-// `NX_DEV_FAST=0` to guarantee full dts regardless of `.env`.
-const fast = process.env.NX_DEV_FAST === "1";
+// `NP_DEV_FAST=0` to guarantee full dts regardless of `.env`.
+const fast = process.env.NP_DEV_FAST === "1";
 
 export default defineConfig({
   entry: {

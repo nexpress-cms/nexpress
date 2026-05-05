@@ -10,7 +10,7 @@ import { ensureFor } from "@/lib/init-core";
  * to be called by external cron (Vercel Cron, systemd timer, Kubernetes
  * CronJob, etc.) every minute or so — the handler is idempotent and cheap.
  *
- * Set `NX_SCHEDULER_TOKEN` in the environment and invoke with
+ * Set `NP_SCHEDULER_TOKEN` in the environment and invoke with
  *   Authorization: Bearer <token>
  *
  * When the env var is unset the endpoint refuses every request so production
@@ -18,7 +18,7 @@ import { ensureFor } from "@/lib/init-core";
  */
 export async function POST(request: NextRequest) {
   try {
-    const expected = process.env.NX_SCHEDULER_TOKEN;
+    const expected = process.env.NP_SCHEDULER_TOKEN;
     if (!expected) {
       // Misconfiguration on the operator side — distinguish from server
       // failure (500) so monitors can alert correctly.
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         {
           error: {
             code: "SERVICE_UNAVAILABLE",
-            message: "Scheduler token not configured (set NX_SCHEDULER_TOKEN).",
+            message: "Scheduler token not configured (set NP_SCHEDULER_TOKEN).",
           },
           status: 503,
         },

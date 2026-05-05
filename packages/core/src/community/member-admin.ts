@@ -26,7 +26,7 @@ import { staffDeleteComment } from "./comments.js";
  * UI typically wants to call out "X discussions, Y posts" rather
  * than a flat total. Media has a `skipped` bucket because
  * `deleteMedia` refuses rows that are still referenced from a
- * doc (`nx_media_refs`) — those need to be unlinked first; the
+ * doc (`np_media_refs`) — those need to be unlinked first; the
  * mod can re-run after the reference is gone.
  */
 export interface NpMemberPurgeResult {
@@ -129,7 +129,7 @@ export async function purgeMemberContent(
   }
 
   // 3. Media. `deleteMedia` does its own reference check —
-  //    rows referenced from `nx_media_refs` (still embedded in
+  //    rows referenced from `np_media_refs` (still embedded in
   //    a doc body, etc.) come back with `deleted: false` and
   //    `references` populated. Count those separately so the
   //    operator knows manual cleanup is still needed.

@@ -51,7 +51,7 @@ permalink structure preserved.
 - **Authors** — mapped to NexPress staff users (default) or
   members (opt-in via config). The mapping is operator-driven; we
   don't auto-create staff accounts without explicit consent.
-- **Comments** — imported into `nx_comments`. Anonymous
+- **Comments** — imported into `np_comments`. Anonymous
   commenters become a single shared "Imported guest" member by
   default; configurable.
 - **Custom post types** — config-driven. The operator declares
@@ -61,7 +61,7 @@ permalink structure preserved.
 [--config <path>]`. Idempotent on slug; re-running with the same
   WXR is safe.
 - **Audit log entries** — every imported document records to
-  `nx_audit_events` with `action: "import.wp.*"` so operators can
+  `np_audit_events` with `action: "import.wp.*"` so operators can
   trace what landed.
 
 ### Explicitly out of scope
@@ -254,7 +254,7 @@ For every `MediaRef` in an IR record:
 3. Hand the bytes + filename to `mediaService.upload(...)` so the
    normal Sharp pipeline / dimension extraction / storage adapter
    logic runs.
-4. Record a mapping `wpAttachmentId → nx_media.id` in an
+4. Record a mapping `wpAttachmentId → np_media.id` in an
    in-memory cache so subsequent records reusing the same
    attachment don't re-download.
 5. Rewrite content references (Lexical `image` nodes pointing at
@@ -290,7 +290,7 @@ the document. Useful for one-person blogs.
 ### Comments
 
 Anonymous and pseudonymous WP commenters become rows on
-`nx_members` with:
+`np_members` with:
 
 - `handle`: derived from `authorName` (slugified, suffixed with
   `-wpimp` to avoid collisions).

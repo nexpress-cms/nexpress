@@ -20,7 +20,7 @@ import {
   type NpRichTextContent,
 } from "../../config/types.js";
 
-export const npUserRoleEnum = pgEnum("nx_user_role", [
+export const npUserRoleEnum = pgEnum("np_user_role", [
   "admin",
   "editor",
   // 9.5: community moderator. Sits OUTSIDE the linear content-edit
@@ -34,7 +34,7 @@ export const npUserRoleEnum = pgEnum("nx_user_role", [
   "viewer",
 ]);
 
-export const npRevisionStatusEnum = pgEnum("nx_revision_status", [
+export const npRevisionStatusEnum = pgEnum("np_revision_status", [
   "draft",
   "published",
   "autosave",
@@ -45,9 +45,9 @@ type NpRevisionSnapshot = Record<string, unknown> & {
   content?: NpRichTextContent;
 };
 
-export const npPasswordResetPurposeEnum = pgEnum("nx_password_reset_purpose", ["invite", "reset"]);
+export const npPasswordResetPurposeEnum = pgEnum("np_password_reset_purpose", ["invite", "reset"]);
 
-export const npUsers = pgTable("nx_users", {
+export const npUsers = pgTable("np_users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
@@ -81,7 +81,7 @@ export const npUsers = pgTable("nx_users", {
  * different role on each site they're a member of (admin on
  * `acme`, editor on `partner-blog`, no role on `internal`).
  * Composite PK on (site_id, user_id) so each pair is unique;
- * the role enum reuses the existing `nx_user_role` so the
+ * the role enum reuses the existing `np_user_role` so the
  * concept stays consistent across the framework.
  *
  * `npUsers.role` becomes the "global default role" — used in
@@ -92,7 +92,7 @@ export const npUsers = pgTable("nx_users", {
  * separately bypasses the membership check entirely.
  */
 export const npSiteMemberships = pgTable(
-  "nx_site_memberships",
+  "np_site_memberships",
   {
     siteId: text("site_id").notNull(),
     userId: uuid("user_id")
@@ -114,7 +114,7 @@ export const npSiteMemberships = pgTable(
  * `viewer`).
  */
 export const npUserOAuthIdentities = pgTable(
-  "nx_user_oauth_identities",
+  "np_user_oauth_identities",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
@@ -128,19 +128,19 @@ export const npUserOAuthIdentities = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => ({
-    providerSubjectUnique: unique("nx_user_oauth_identities_provider_subject_unique").on(
+    providerSubjectUnique: unique("np_user_oauth_identities_provider_subject_unique").on(
       table.provider,
       table.providerUserId,
     ),
-    userProviderUnique: unique("nx_user_oauth_identities_user_provider_unique").on(
+    userProviderUnique: unique("np_user_oauth_identities_user_provider_unique").on(
       table.userId,
       table.provider,
     ),
-    userIdx: index("nx_user_oauth_identities_user_idx").on(table.userId),
+    userIdx: index("np_user_oauth_identities_user_idx").on(table.userId),
   }),
 );
 
-export const npSessions = pgTable("nx_sessions", {
+export const npSessions = pgTable("np_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
@@ -153,7 +153,7 @@ export const npSessions = pgTable("nx_sessions", {
 });
 
 export const npRevisions = pgTable(
-  "nx_revisions",
+  "np_revisions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     collection: text("collection").notNull(),
@@ -166,12 +166,12 @@ export const npRevisions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => ({
-    documentVersionUnique: unique("nx_revisions_document_id_version_unique").on(
+    documentVersionUnique: unique("np_revisions_document_id_version_unique").on(
       table.documentId,
       table.version,
     ),
-    collectionIdx: index("nx_revisions_collection_idx").on(table.collection),
-    documentIdIdx: index("nx_revisions_document_id_idx").on(table.documentId),
+    collectionIdx: index("np_revisions_collection_idx").on(table.collection),
+    documentIdIdx: index("np_revisions_document_id_idx").on(table.documentId),
   }),
 );
 
@@ -185,7 +185,7 @@ export const npRevisions = pgTable(
  * values per tenant.
  */
 export const npSettings = pgTable(
-  "nx_settings",
+  "np_settings",
   {
     siteId: text("site_id").default("default").notNull(),
     key: text("key").notNull(),
@@ -211,7 +211,7 @@ export const npSettings = pgTable(
  * newSlug` to resolve to the current target.
  */
 export const npSlugHistory = pgTable(
-  "nx_slug_history",
+  "np_slug_history",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     siteId: text("site_id").default("default").notNull(),
@@ -224,8 +224,8 @@ export const npSlugHistory = pgTable(
       .notNull(),
   },
   (table) => [
-    index("nx_slug_history_lookup_idx").on(table.siteId, table.collection, table.oldSlug),
-    index("nx_slug_history_doc_idx").on(table.siteId, table.collection, table.documentId),
+    index("np_slug_history_lookup_idx").on(table.siteId, table.collection, table.oldSlug),
+    index("np_slug_history_doc_idx").on(table.siteId, table.collection, table.documentId),
   ],
 );
 
@@ -235,7 +235,7 @@ export const npSlugHistory = pgTable(
  * lets each tenant own its own header / footer menus.
  */
 export const npNavigation = pgTable(
-  "nx_navigation",
+  "np_navigation",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     siteId: text("site_id").default("default").notNull(),
@@ -244,7 +244,7 @@ export const npNavigation = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedBy: uuid("updated_by").references(() => npUsers.id),
   },
-  (table) => [unique("nx_navigation_site_location_idx").on(table.siteId, table.location)],
+  (table) => [unique("np_navigation_site_location_idx").on(table.siteId, table.location)],
 );
 
 /**
@@ -263,7 +263,7 @@ export const npNavigation = pgTable(
  * the same as no row for resolution purposes.
  */
 export const npStringOverrides = pgTable(
-  "nx_string_overrides",
+  "np_string_overrides",
   {
     siteId: text("site_id").default("default").notNull(),
     locale: text("locale").notNull(),
@@ -294,7 +294,7 @@ export const npStringOverrides = pgTable(
  * v15.1 is one-hostname-per-site.
  */
 export const npSites = pgTable(
-  "nx_sites",
+  "np_sites",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
@@ -305,10 +305,10 @@ export const npSites = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
-  (table) => [unique("nx_sites_hostname_idx").on(table.hostname)],
+  (table) => [unique("np_sites_hostname_idx").on(table.hostname)],
 );
 
-export const npPlugins = pgTable("nx_plugins", {
+export const npPlugins = pgTable("np_plugins", {
   id: text("id").primaryKey(),
   enabled: boolean("enabled").default(true).notNull(),
   config: jsonb("config").$type<unknown>().notNull(),
@@ -330,13 +330,13 @@ export const npPlugins = pgTable("nx_plugins", {
  * keyspace, while background workers / scripts (no resolved
  * site) share the `_global_` space.
  */
-export const NX_GLOBAL_PLUGIN_SITE_ID = "_global_";
+export const NP_GLOBAL_PLUGIN_SITE_ID = "_global_";
 
 export const npPluginStorage = pgTable(
-  "nx_plugin_storage",
+  "np_plugin_storage",
   {
     pluginId: text("plugin_id").notNull(),
-    siteId: text("site_id").default(NX_GLOBAL_PLUGIN_SITE_ID).notNull(),
+    siteId: text("site_id").default(NP_GLOBAL_PLUGIN_SITE_ID).notNull(),
     key: text("key").notNull(),
     value: jsonb("value").$type<unknown>().notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
@@ -344,8 +344,8 @@ export const npPluginStorage = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.pluginId, table.siteId, table.key] }),
-    pluginIdx: index("nx_plugin_storage_plugin_id_idx").on(table.pluginId),
-    siteIdx: index("nx_plugin_storage_site_idx").on(table.siteId),
+    pluginIdx: index("np_plugin_storage_plugin_id_idx").on(table.pluginId),
+    siteIdx: index("np_plugin_storage_site_idx").on(table.siteId),
   }),
 );
 
@@ -362,7 +362,7 @@ export const npPluginStorage = pgTable(
  * `unhealthy`; they survive in the table for forensic review
  * until an operator GCs them or a fresh worker reuses the id.
  */
-export const npWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
+export const npWorkerHeartbeats = pgTable("np_worker_heartbeats", {
   id: text("id").primaryKey(),
   status: text("status").default("running").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -390,7 +390,7 @@ export const npWorkerHeartbeats = pgTable("nx_worker_heartbeats", {
  *   - "prune logs older than X" → (created_at)
  */
 export const npJobLogs = pgTable(
-  "nx_job_logs",
+  "np_job_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     jobId: text("job_id").notNull(),
@@ -400,7 +400,7 @@ export const npJobLogs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   },
   (table) => [
-    index("nx_job_logs_job_idx").on(table.jobId, table.createdAt),
-    index("nx_job_logs_created_idx").on(table.createdAt),
+    index("np_job_logs_job_idx").on(table.jobId, table.createdAt),
+    index("np_job_logs_created_idx").on(table.createdAt),
   ],
 );

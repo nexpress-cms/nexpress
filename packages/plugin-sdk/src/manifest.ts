@@ -13,7 +13,7 @@ const npPluginVersionSchema = z
  * host negotiates compatibility. The value is a literal so host code can
  * switch on it without stringly-typed parsing.
  */
-export const NX_PLUGIN_MANIFEST_API_VERSION = "1" as const;
+export const NP_PLUGIN_MANIFEST_API_VERSION = "1" as const;
 
 export const npPluginManifestSchema = z.object({
   apiVersion: z.literal("1").default("1"),

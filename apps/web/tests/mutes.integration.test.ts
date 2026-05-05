@@ -70,7 +70,7 @@ async function seedStaffPostId(slug = "9-3-mute-target"): Promise<string> {
     })) as Array<{ id: string; email: string; role: "editor"; tokenVersion: number }>;
   const token = await signToken(
     { id: user.id, role: user.role, tokenVersion: user.tokenVersion },
-    process.env.NX_SECRET!,
+    process.env.NP_SECRET!,
   );
   const csrf = "csrf-staff";
   const create = await collectionPOST(

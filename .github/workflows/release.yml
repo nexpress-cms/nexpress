@@ -43,7 +43,7 @@ jobs:
     # (#394); release needs the same shim, otherwise every push to
     # main fails before the changesets action even runs.
     env:
-      NX_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
       SITE_URL: http://localhost:3000
 
     steps:

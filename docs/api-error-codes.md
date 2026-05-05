@@ -46,7 +46,7 @@ the union, which makes the addition visible in code review.
 | `RATE_LIMITED` | 429 | `NpRateLimitError`, member quota | Per-actor quota or rate limit exceeded. |
 | `TOO_MANY_REQUESTS` | 429 | Login lockout | Distinct from `RATE_LIMITED` so client UIs can differentiate "wait a bit" vs. "your account is locked." |
 | `SITE_CONTEXT_MISSING` | 500 | `requireSiteId()` on writes (#272) | Server-side wiring bug — no site resolver was set on a write path. Clients shouldn't see this in healthy production. |
-| `EMAIL_ADAPTER_MISSING_DEPENDENCY` | 500 | SMTP adapter | Operator configured `NX_EMAIL_ADAPTER=smtp` but the `nodemailer` package isn't installed. |
+| `EMAIL_ADAPTER_MISSING_DEPENDENCY` | 500 | SMTP adapter | Operator configured `NP_EMAIL_ADAPTER=smtp` but the `nodemailer` package isn't installed. |
 | `EMAIL_DELIVERY_FAILED` | 502 | SMTP adapter | Outbound SMTP rejected the message. |
 | `INTERNAL_ERROR` | 500 | Catch-all in `npErrorResponse` | An unexpected error reached the API layer. Body contains no stack trace; check server logs. |
 

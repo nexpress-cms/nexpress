@@ -22,11 +22,11 @@ import { ensureFor } from "@/lib/init-core";
  *
  *   - validate the `nx-mb-oauth-state` cookie, including HMAC + TTL
  *   - call `provider.exchange()` for the normalized profile
- *   - resolve the matching `nx_members` row via
+ *   - resolve the matching `np_members` row via
  *     `resolveMemberOAuthLogin` (durable link → email-match → auto-
  *     provision with status='active')
  *   - mint `use="access"` + `use="refresh"` member tokens, persist
- *     both hashes in `nx_member_sessions`, set the cookies, redirect
+ *     both hashes in `np_member_sessions`, set the cookies, redirect
  *     to `/`
  *
  * Failures redirect to `/members/login?oauth_error=<code>` — never

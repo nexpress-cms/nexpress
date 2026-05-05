@@ -212,7 +212,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
     expect(img?.mediaId).toBe(mediaId);
     expect(img?.src).toBe(heroUrl);
 
-    // Confirm the nx_media row exists and is owned by the importer.
+    // Confirm the np_media row exists and is owned by the importer.
     const db = await getTestDb();
     const [row] = await db.select().from(npMedia).where(eq(npMedia.id, mediaId!)).limit(1);
     expect(row).toBeDefined();
@@ -372,7 +372,7 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
       authors: {
         resolveAuthor: async ({ wpAuthorLogin }) => {
           seenLogins.push(wpAuthorLogin);
-          // Insert a real nx_users row so the post.author FK resolves.
+          // Insert a real np_users row so the post.author FK resolves.
           const [inserted] = await db
             .insert(npUsers)
             .values({

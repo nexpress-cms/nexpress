@@ -36,20 +36,20 @@ export default defineConfig({
     connectionString: process.env.DATABASE_URL ?? "",
   },
   storage:
-    process.env.NX_STORAGE_ADAPTER === "s3"
+    process.env.NP_STORAGE_ADAPTER === "s3"
       ? {
           adapter: "s3",
           s3: {
-            bucket: process.env.NX_S3_BUCKET ?? "",
-            region: process.env.NX_S3_REGION ?? "us-east-1",
-            endpoint: process.env.NX_S3_ENDPOINT,
+            bucket: process.env.NP_S3_BUCKET ?? "",
+            region: process.env.NP_S3_REGION ?? "us-east-1",
+            endpoint: process.env.NP_S3_ENDPOINT,
           },
         }
       : {
           adapter: "local",
           local: {
-            directory: process.env.NX_STORAGE_DIR ?? "./uploads",
-            baseUrl: process.env.NX_STORAGE_URL ?? "/uploads",
+            directory: process.env.NP_STORAGE_DIR ?? "./uploads",
+            baseUrl: process.env.NP_STORAGE_URL ?? "/uploads",
           },
         },
   collections: [
@@ -85,6 +85,6 @@ export default defineConfig({
     googleOAuthPlugin,
   ],
   auth: {
-    secret: process.env.NX_SECRET ?? "",
+    secret: process.env.NP_SECRET ?? "",
   },
 });
