@@ -32,7 +32,7 @@ export async function DefaultHeader() {
   let availableLocales: string[] | null = null;
   if (showLanguagePicker) {
     const headerList = await headers();
-    const pathname = headerList.get("x-nx-pathname");
+    const pathname = headerList.get("x-np-pathname");
     if (pathname) {
       try {
         availableLocales = await resolveAvailableLocales(pathname);
@@ -43,18 +43,18 @@ export async function DefaultHeader() {
   }
 
   return (
-    <header className="nx-site-header">
-      <div className="nx-site-header-inner">
-        <a href="/" className="nx-site-logo">
+    <header className="np-site-header">
+      <div className="np-site-header-inner">
+        <a href="/" className="np-site-logo">
           NexPress
         </a>
-        <nav className="nx-site-nav-desktop" aria-label="Primary">
-          <ul className="nx-site-nav">
+        <nav className="np-site-nav-desktop" aria-label="Primary">
+          <ul className="np-site-nav">
             {headerNav.map((item: NpNavItem, index: number) => (
-              <li key={`nav-${index.toString()}`} className="nx-site-nav-item">
+              <li key={`nav-${index.toString()}`} className="np-site-nav-item">
                 <a href={item.url}>{item.label}</a>
                 {item.children && item.children.length > 0 ? (
-                  <ul className="nx-site-subnav">
+                  <ul className="np-site-subnav">
                     {item.children.map((child: NpNavItem, childIndex: number) => (
                       <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
                         <a href={child.url}>{child.label}</a>
@@ -66,23 +66,23 @@ export async function DefaultHeader() {
             ))}
           </ul>
         </nav>
-        <div className="nx-site-header-tools">
+        <div className="np-site-header-tools">
           <form
             action="/search"
             method="GET"
             role="search"
-            className="nx-site-search"
+            className="np-site-search"
           >
-            <label className="sr-only" htmlFor="nx-site-search-input">
+            <label className="sr-only" htmlFor="np-site-search-input">
               Search
             </label>
             <input
-              id="nx-site-search-input"
+              id="np-site-search-input"
               type="search"
               name="q"
               placeholder="Search…"
               autoComplete="off"
-              className="nx-site-search-input"
+              className="np-site-search-input"
             />
           </form>
           {showLanguagePicker && i18n ? (

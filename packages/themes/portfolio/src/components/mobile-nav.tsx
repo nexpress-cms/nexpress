@@ -35,17 +35,17 @@ export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
     <>
       <button
         type="button"
-        className="nx-portfolio-nav-toggle"
+        className="np-portfolio-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
-        aria-controls="nx-portfolio-nav-drawer"
+        aria-controls="np-portfolio-nav-drawer"
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">{open ? "Close" : "Menu"}</span>
       </button>
       <aside
-        id="nx-portfolio-nav-drawer"
-        className="nx-portfolio-nav-drawer"
+        id="np-portfolio-nav-drawer"
+        className="np-portfolio-nav-drawer"
         data-open={open ? "true" : "false"}
         aria-hidden={open ? "false" : "true"}
         onClick={(e) => {
@@ -53,14 +53,14 @@ export function PortfolioMobileNav({ items }: PortfolioMobileNavProps) {
           if (e.target === e.currentTarget) setOpen(false);
         }}
       >
-        <ul className="nx-portfolio-nav-drawer-list">
+        <ul className="np-portfolio-nav-drawer-list">
           {items.map((item, index) => (
             <li key={`portfolio-mobile-${index.toString()}`}>
               <a href={item.url} onClick={() => setOpen(false)}>
                 {item.label}
               </a>
               {item.children && item.children.length > 0 ? (
-                <ul className="nx-portfolio-mobile-subnav">
+                <ul className="np-portfolio-mobile-subnav">
                   {item.children.map((child, childIndex) => (
                     <li key={`portfolio-mobile-${index.toString()}-${childIndex.toString()}`}>
                       <a href={child.url} onClick={() => setOpen(false)}>

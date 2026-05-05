@@ -56,10 +56,10 @@ function camelToKebab(value: string): string {
 
 function getTypographyVarName(key: ThemeTypographyKey): string {
   if (key === "lineHeight") {
-    return "--nx-line-height";
+    return "--np-line-height";
   }
 
-  return `--nx-${camelToKebab(key)}`;
+  return `--np-${camelToKebab(key)}`;
 }
 
 function formatDeclaration(name: string, value: string): string {
@@ -68,7 +68,7 @@ function formatDeclaration(name: string, value: string): string {
 
 /**
  * Emits the active theme's tokens as CSS custom properties
- * under `:root`, wrapped in `@layer nx-theme` so site CSS can
+ * under `:root`, wrapped in `@layer np-theme` so site CSS can
  * reliably override them.
  *
  * Color-scheme variants (light/dark) are intentionally not
@@ -81,10 +81,10 @@ function formatDeclaration(name: string, value: string): string {
  */
 export function generateThemeCss(theme: NpThemeTokens): string {
   const rootDeclarations = [
-    ...COLOR_KEYS.map((key) => formatDeclaration(`--nx-color-${camelToKebab(key)}`, theme.colors[key])),
+    ...COLOR_KEYS.map((key) => formatDeclaration(`--np-color-${camelToKebab(key)}`, theme.colors[key])),
     ...TYPOGRAPHY_KEYS.map((key) => formatDeclaration(getTypographyVarName(key), theme.typography[key])),
-    ...SHAPE_KEYS.map((key) => formatDeclaration(`--nx-${camelToKebab(key)}`, theme.shape[key])),
+    ...SHAPE_KEYS.map((key) => formatDeclaration(`--np-${camelToKebab(key)}`, theme.shape[key])),
   ];
 
-  return ["@layer nx-theme {", "  :root {", ...rootDeclarations, "  }", "}"].join("\n");
+  return ["@layer np-theme {", "  :root {", ...rootDeclarations, "  }", "}"].join("\n");
 }

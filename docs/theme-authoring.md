@@ -162,7 +162,7 @@ provider tree, or a CSS class on `<body>`-equivalent.
 import type { NpThemeShellProps } from "@nexpress/theme";
 
 export function Shell({ children }: NpThemeShellProps) {
-  return <div className="nx-mybrand-shell">{children}</div>;
+  return <div className="np-mybrand-shell">{children}</div>;
 }
 ```
 
@@ -212,16 +212,16 @@ Why a string and not a stylesheet?
 
 Put **layout-specific** rules here:
 
-- `.nx-site-header`, `.nx-site-footer` overrides for your shell
-- Theme-specific class names (`.nx-mybrand-*`)
-- Page-template modifiers like `.nx-page-wide`
+- `.np-site-header`, `.np-site-footer` overrides for your shell
+- Theme-specific class names (`.np-mybrand-*`)
+- Page-template modifiers like `.np-page-wide`
 
 **Don't** put cross-theme primitives here (forms, member auth,
 discussion threads). Those live in the consuming app's
 `globals.css` because every theme renders them identically.
 
-Token references are written as `var(--nx-color-primary)`. The
-admin's Settings → Theme tab generates `:root { --nx-* }`
+Token references are written as `var(--np-color-primary)`. The
+admin's Settings → Theme tab generates `:root { --np-* }`
 declarations from the saved tokens, so your CSS automatically
 reflects user customizations without the theme touching tokens.
 
@@ -308,8 +308,8 @@ export function MyShell({ children }: NpThemeShellProps) {
 ```css
 /* theme/src/styles.ts */
 [data-theme="dark"] {
-  --nx-color-background: oklch(0.145 0.004 285.823);
-  --nx-color-foreground: oklch(0.985 0.001 106.423);
+  --np-color-background: oklch(0.145 0.004 285.823);
+  --np-color-foreground: oklch(0.985 0.001 106.423);
   /* … flip whichever tokens this theme cares about … */
 }
 ```

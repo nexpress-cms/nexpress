@@ -20,13 +20,13 @@ export function PageLandingTemplate({ doc }: NpTemplateRenderProps) {
   const intro = (doc as { seoDescription?: string }).seoDescription;
 
   return (
-    <div className="nx-page nx-page-landing">
+    <div className="np-page np-page-landing">
       {blocks && blocks.length > 0 ? (
-        <div className="nx-page-landing-blocks">{renderBlocks(blocks)}</div>
+        <div className="np-page-landing-blocks">{renderBlocks(blocks)}</div>
       ) : (
-        <section className="nx-page-landing-hero">
+        <section className="np-page-landing-hero">
           <h1>{title}</h1>
-          {intro ? <p className="nx-page-landing-intro">{intro}</p> : null}
+          {intro ? <p className="np-page-landing-intro">{intro}</p> : null}
         </section>
       )}
     </div>

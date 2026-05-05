@@ -25,8 +25,8 @@ function MinimalShell({ children }: { children: ReactNode }) {
 
 function MinimalHeader() {
   return (
-    <header className="nx-site-header nx-minimal-header">
-      <a href="/" className="nx-site-logo">
+    <header className="np-site-header np-minimal-header">
+      <a href="/" className="np-site-logo">
         NexPress
       </a>
     </header>
@@ -36,18 +36,18 @@ function MinimalHeader() {
 function MinimalFooter() {
   // Empty footer renders just enough margin so the page
   // doesn't pin its last paragraph to the viewport bottom.
-  return <footer className="nx-site-footer nx-minimal-footer" aria-hidden="true" />;
+  return <footer className="np-site-footer np-minimal-footer" aria-hidden="true" />;
 }
 
 const minimalCss = `
-.nx-minimal-header {
-  border-bottom: 1px dotted var(--nx-color-border, #d1d5db);
+.np-minimal-header {
+  border-bottom: 1px dotted var(--np-color-border, #d1d5db);
   padding: 1.5rem 2rem;
   text-align: center;
   background: transparent;
 }
-.nx-minimal-header .nx-site-logo {
-  font-family: var(--nx-font-heading, "Georgia", serif);
+.np-minimal-header .np-site-logo {
+  font-family: var(--np-font-heading, "Georgia", serif);
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -58,14 +58,14 @@ const minimalCss = `
    widget at all — the components return only the logo — so
    we don't need defensive display:none rules here. The default
    theme's CSS isn't injected when minimal is active either. */
-.nx-minimal-footer {
+.np-minimal-footer {
   margin-top: 4rem;
   padding: 2rem 0;
-  border-top: 1px dotted var(--nx-color-border, #d1d5db);
+  border-top: 1px dotted var(--np-color-border, #d1d5db);
 }
 /* Wider body type for editorial reading. */
-.nx-site-main {
-  font-family: var(--nx-font-body, "Georgia", serif);
+.np-site-main {
+  font-family: var(--np-font-body, "Georgia", serif);
   font-size: 1.0625rem;
   line-height: 1.7;
 }

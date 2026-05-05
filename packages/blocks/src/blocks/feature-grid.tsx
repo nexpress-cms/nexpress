@@ -108,7 +108,7 @@ export const featureGridBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="nx-block-feature-grid" style={{ padding: "4rem 1.5rem", background: "#f8fafc" }}>
+      <section className="np-block-feature-grid" style={{ padding: "4rem 1.5rem", background: "#f8fafc" }}>
         <div style={{ maxWidth: "72rem", margin: "0 auto", display: "grid", gap: "1.75rem" }}>
           <header>
             <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 3rem)", color: "#0f172a" }}>{heading}</h2>
@@ -117,7 +117,7 @@ export const featureGridBlock: NpBlockDefinition = {
             {features.map((feature) => (
               <article
                 key={`${feature.title}-${feature.icon}`}
-                className="nx-block-feature-grid__card"
+                className="np-block-feature-grid__card"
                 style={{
                   padding: "1.5rem",
                   borderRadius: "1.25rem",

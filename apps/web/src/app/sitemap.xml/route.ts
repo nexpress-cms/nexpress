@@ -175,7 +175,7 @@ export async function GET(req: Request): Promise<Response> {
   // the per-locale `revalidateTag("nx:sitemap:<siteId>")` blow
   // still busts every variant for a site).
   const cacheKeyParts = [
-    "nx-sitemap",
+    "np-sitemap",
     siteId,
     mode,
     requestedLocale ?? "",

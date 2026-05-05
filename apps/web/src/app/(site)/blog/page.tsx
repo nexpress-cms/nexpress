@@ -20,18 +20,18 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
   });
 
   return (
-    <div className="nx-blog">
+    <div className="np-blog">
       <h1>Blog</h1>
-      <div className="nx-blog-list">
+      <div className="np-blog-list">
         {docs.map((post) => (
-          <article key={post.id as string} className="nx-blog-card">
+          <article key={post.id as string} className="np-blog-card">
             <h2>
               <Link href={`/blog/${post.slug as string}`}>
                 {post.title as string}
               </Link>
             </h2>
             {post.excerpt ? (
-              <p className="nx-blog-excerpt">{post.excerpt as string}</p>
+              <p className="np-blog-excerpt">{post.excerpt as string}</p>
             ) : null}
             <time dateTime={(post.createdAt as Date)?.toISOString?.()}>
               {(post.createdAt as Date)?.toLocaleDateString?.()}
@@ -40,7 +40,7 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
         ))}
       </div>
       {totalPages > 1 && (
-        <nav className="nx-blog-pagination">
+        <nav className="np-blog-pagination">
           {hasPrevPage && (
             <Link href={`/blog?page=${pageNum - 1}`}>← Previous</Link>
           )}

@@ -80,13 +80,13 @@ export const faqBlock: NpBlockDefinition = {
     const items = parseFaqItems(props.items);
 
     return (
-      <section className="nx-block-faq" style={{ padding: "4rem 1.5rem", background: "#fffdf7" }}>
+      <section className="np-block-faq" style={{ padding: "4rem 1.5rem", background: "#fffdf7" }}>
         <div style={{ maxWidth: "56rem", margin: "0 auto", display: "grid", gap: "1rem" }}>
           <h2 style={{ margin: "0 0 1rem", fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#111827" }}>{heading}</h2>
           {items.map((item) => (
             <details
               key={item.question}
-              className="nx-block-faq__item"
+              className="np-block-faq__item"
               style={{
                 borderRadius: "1rem",
                 border: "1px solid rgba(17, 24, 39, 0.12)",

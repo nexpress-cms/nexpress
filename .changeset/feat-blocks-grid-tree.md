@@ -5,8 +5,8 @@
 
 Page builder editor — phase 2 (grid layout + tree-shaped blocks).
 
-`NxBlockInstance` gains an optional `children: NxBlockInstance[]`,
-`NxBlockDefinition` gains `acceptsChildren: boolean`, and the
+`NpBlockInstance` gains an optional `children: NpBlockInstance[]`,
+`NpBlockDefinition` gains `acceptsChildren: boolean`, and the
 `render` signature picks up an optional second arg
 `(props, children?: ReactNode) => ReactElement`. Existing leaf
 blocks (hero, cta, faq, …) keep working unchanged because they

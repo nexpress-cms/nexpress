@@ -18,25 +18,25 @@ export async function MagazineFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="nx-site-footer nx-magazine-footer">
-      <div className="nx-magazine-footer-grid">
-        <section className="nx-magazine-footer-col">
-          <h2 className="nx-magazine-footer-heading">Subscribe</h2>
-          <p className="nx-magazine-footer-blurb">
+    <footer className="np-site-footer np-magazine-footer">
+      <div className="np-magazine-footer-grid">
+        <section className="np-magazine-footer-col">
+          <h2 className="np-magazine-footer-heading">Subscribe</h2>
+          <p className="np-magazine-footer-blurb">
             Get the next issue in your inbox. Read at your own pace.
           </p>
           <MagazineNewsletterForm />
         </section>
 
-        <section className="nx-magazine-footer-col">
-          <h2 className="nx-magazine-footer-heading">Sections</h2>
+        <section className="np-magazine-footer-col">
+          <h2 className="np-magazine-footer-heading">Sections</h2>
           {items.length > 0 ? (
-            <ul className="nx-magazine-footer-nav">
+            <ul className="np-magazine-footer-nav">
               {items.map((item: NpNavItem, index: number) => (
                 <li key={`magazine-footer-${index.toString()}`}>
                   <a href={item.url}>{item.label}</a>
                   {item.children && item.children.length > 0 ? (
-                    <ul className="nx-magazine-footer-subnav">
+                    <ul className="np-magazine-footer-subnav">
                       {item.children.map((child: NpNavItem, childIndex: number) => (
                         <li key={`magazine-footer-${index.toString()}-${childIndex.toString()}`}>
                           <a href={child.url}>{child.label}</a>
@@ -48,7 +48,7 @@ export async function MagazineFooter() {
               ))}
             </ul>
           ) : (
-            <ul className="nx-magazine-footer-nav">
+            <ul className="np-magazine-footer-nav">
               <li>
                 <a href="/blog">Stories</a>
               </li>
@@ -62,10 +62,10 @@ export async function MagazineFooter() {
           )}
         </section>
 
-        <section className="nx-magazine-footer-col">
-          <h2 className="nx-magazine-footer-heading">Colophon</h2>
-          <p className="nx-magazine-footer-mark">NexPress</p>
-          <p className="nx-magazine-footer-meta">
+        <section className="np-magazine-footer-col">
+          <h2 className="np-magazine-footer-heading">Colophon</h2>
+          <p className="np-magazine-footer-mark">NexPress</p>
+          <p className="np-magazine-footer-meta">
             Stories, essays, and reports.
             <br />© {year.toString()} · Built with NexPress
           </p>

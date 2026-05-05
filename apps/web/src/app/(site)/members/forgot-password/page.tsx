@@ -11,11 +11,11 @@ export default async function MemberForgotPasswordPage() {
   // goes to the registered email address either way.
 
   return (
-    <div className="nx-members-auth">
+    <div className="np-members-auth">
       <h1>Forgot your password?</h1>
       <p>Enter your email and we&apos;ll send you a reset link.</p>
       <ForgotPasswordForm />
-      <p className="nx-members-auth-alt">
+      <p className="np-members-auth-alt">
         Remembered it? <Link href="/members/login">Back to sign in</Link>
       </p>
     </div>

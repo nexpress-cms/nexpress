@@ -451,7 +451,7 @@ function SortableBlockItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const fieldIdPrefix = `nx-block-${block.id}`;
+  const fieldIdPrefix = `np-block-${block.id}`;
   const isContainer = Boolean(definition?.acceptsChildren);
   const isChildOfGrid = parentBlock?.type === "grid";
 
@@ -1238,7 +1238,7 @@ export function BlockPageEditor({
   }
 
   return (
-    <section className={cn("nx-block-page-editor flex flex-col gap-4")}>
+    <section className={cn("np-block-page-editor flex flex-col gap-4")}>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

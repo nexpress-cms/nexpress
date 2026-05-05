@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Lock } from "lucide-react";
 
-import { NpMark } from "../layout/nx-mark.js";
+import { NpMark } from "../layout/np-mark.js";
 import { cn } from "../ui/utils.js";
 
 interface AuthLayoutProps {

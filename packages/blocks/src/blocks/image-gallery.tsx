@@ -134,14 +134,14 @@ export const imageGalleryBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="nx-block-image-gallery" style={{ padding: "4rem 1.5rem", background: "#ffffff" }}>
+      <section className="np-block-image-gallery" style={{ padding: "4rem 1.5rem", background: "#ffffff" }}>
         <div style={{ maxWidth: "72rem", margin: "0 auto", display: "grid", gap: "1.5rem" }}>
           <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#111827" }}>{heading}</h2>
           <div style={gridStyle}>
             {images.map((image) => (
               <figure
                 key={`${image.src}-${image.alt}`}
-                className="nx-block-image-gallery__item"
+                className="np-block-image-gallery__item"
                 style={{ margin: 0, overflow: "hidden", borderRadius: "1.25rem", background: "#e5e7eb" }}
               >
                 <img src={image.src} alt={image.alt} style={{ display: "block", width: "100%", height: "18rem", objectFit: "cover" }} />

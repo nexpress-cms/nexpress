@@ -3,12 +3,12 @@
  *
  * The pipeline doesn't know how to find the current request's
  * site on its own (the runtime layer does — it reads the
- * `x-nx-site-id` header the middleware sets). This module
+ * `x-np-site-id` header the middleware sets). This module
  * exposes a setter the runtime calls at boot:
  *
  *   setCurrentSiteResolver(async () => {
  *     const headerList = await headers();
- *     return headerList.get("x-nx-site-id") ?? null;
+ *     return headerList.get("x-np-site-id") ?? null;
  *   });
  *
  * Pipeline / hooks call `getCurrentSiteId()` to read the

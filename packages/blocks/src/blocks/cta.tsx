@@ -58,13 +58,13 @@ export const ctaBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="nx-block-cta" style={sectionStyle}>
+      <section className="np-block-cta" style={sectionStyle}>
         <div style={{ maxWidth: "48rem", margin: "0 auto", textAlign: "center", display: "grid", gap: "1rem" }}>
           <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 3rem)" }}>{heading}</h2>
           <p style={{ margin: 0, lineHeight: 1.75, opacity: 0.86 }}>{description}</p>
           <div>
             <a
-              className="nx-block-cta__button"
+              className="np-block-cta__button"
               href={buttonUrl}
               style={{
                 display: "inline-flex",

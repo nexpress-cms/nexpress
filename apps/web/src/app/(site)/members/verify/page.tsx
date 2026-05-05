@@ -13,9 +13,9 @@ export default async function MemberVerifyPage({ searchParams }: VerifyPageProps
 
   if (!token) {
     return (
-      <div className="nx-members-auth">
+      <div className="np-members-auth">
         <h1>Verify your email</h1>
-        <p className="nx-form-error">
+        <p className="np-form-error">
           Missing verification token. Open the link from the email we sent
           you, or{" "}
           <Link href="/members/register">register again</Link>.
@@ -25,7 +25,7 @@ export default async function MemberVerifyPage({ searchParams }: VerifyPageProps
   }
 
   return (
-    <div className="nx-members-auth">
+    <div className="np-members-auth">
       <h1>Verifying your email…</h1>
       <VerifyTokenConsumer token={token} />
     </div>

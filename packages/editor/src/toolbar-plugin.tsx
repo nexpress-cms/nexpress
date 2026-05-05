@@ -105,7 +105,7 @@ function getBlockType(): Pick<ToolbarState, "blockType" | "link"> {
   return { blockType: "paragraph", link: $isLinkNode(linkNode) };
 }
 
-// Tailwind class strings — the editor used to ship `nx-toolbar*`
+// Tailwind class strings — the editor used to ship `np-toolbar*`
 // class hooks with no matching CSS, so the toolbar rendered as
 // raw text buttons. These compile via the host app's Tailwind
 // `@source` glob (see apps/web/src/app/globals.css) — the editor
@@ -182,7 +182,7 @@ export function ToolbarPlugin({ onUploadImage }: ToolbarPluginProps = {}) {
 
   return (
     <div
-      className="nx-toolbar flex flex-wrap items-center gap-0.5 rounded-t-md border-b border-border/60 bg-muted/30 p-1"
+      className="np-toolbar flex flex-wrap items-center gap-0.5 rounded-t-md border-b border-border/60 bg-muted/30 p-1"
       role="toolbar"
       aria-label="Rich text toolbar"
     >

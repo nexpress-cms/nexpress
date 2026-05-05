@@ -722,16 +722,16 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
         <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
           <div className="space-y-1">
             <label
-              htmlFor="nx-job-enqueue-type"
+              htmlFor="np-job-enqueue-type"
               className="text-xs font-medium text-muted-foreground"
             >
               Handler
             </label>
             <select
-              id="nx-job-enqueue-type"
+              id="np-job-enqueue-type"
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
+              className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
             >
               <option value="">Select…</option>
               {handlers.map((name) => (
@@ -743,18 +743,18 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
           </div>
           <div className="space-y-1">
             <label
-              htmlFor="nx-job-enqueue-data"
+              htmlFor="np-job-enqueue-data"
               className="text-xs font-medium text-muted-foreground"
             >
               Payload (JSON)
             </label>
             <textarea
-              id="nx-job-enqueue-data"
+              id="np-job-enqueue-data"
               value={dataText}
               onChange={(event) => setDataText(event.target.value)}
               rows={3}
               spellCheck={false}
-              className="w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
+              className="w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
               placeholder='{"docId": "..."}'
             />
           </div>

@@ -11,7 +11,7 @@ import type { NextRequest, NextResponse } from "next/server";
 
 /**
  * Member-side counterpart to `createAuthHelpers`. Same shape, but reads
- * `nx-mb-*` cookies, verifies JWTs with `aud: "member"` enforced, and
+ * `np-mb-*` cookies, verifies JWTs with `aud: "member"` enforced, and
  * looks members up in `nx_members`. Coexists with the staff helpers in
  * the same Next process.
  */

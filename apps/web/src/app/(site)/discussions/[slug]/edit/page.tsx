@@ -38,10 +38,10 @@ export default async function EditDiscussionPage({ params }: EditDiscussionPageP
   }
 
   return (
-    <div className="nx-discussions">
-      <header className="nx-discussions-header">
+    <div className="np-discussions">
+      <header className="np-discussions-header">
         <h1>Edit discussion</h1>
-        <Link href={`/discussions/${slug}`} className="nx-tab">
+        <Link href={`/discussions/${slug}`} className="np-tab">
           ← Back to discussion
         </Link>
       </header>

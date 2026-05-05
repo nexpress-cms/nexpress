@@ -56,7 +56,7 @@ export function DarkModeToggle() {
     // mounts. `aria-hidden` because it's a visual stub.
     return (
       <span
-        className="nx-color-scheme-toggle nx-color-scheme-toggle-placeholder"
+        className="np-color-scheme-toggle np-color-scheme-toggle-placeholder"
         aria-hidden="true"
       />
     );
@@ -68,7 +68,7 @@ export function DarkModeToggle() {
   return (
     <button
       type="button"
-      className="nx-color-scheme-toggle"
+      className="np-color-scheme-toggle"
       onClick={() => {
         writeChoice(next);
         setScheme(next);

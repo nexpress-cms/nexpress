@@ -82,19 +82,19 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       onSubmit={(e) => {
         void onSubmit(e);
       }}
-      className="nx-members-form"
+      className="np-members-form"
     >
       {error ? (
-        <div role="alert" className="nx-form-error">
+        <div role="alert" className="np-form-error">
           {error}
-          <p className="nx-form-help">
+          <p className="np-form-help">
             <Link href="/members/forgot-password">Request a new reset link</Link>
           </p>
         </div>
       ) : null}
 
-      <label className="nx-form-field">
-        <span className="nx-form-label">New password</span>
+      <label className="np-form-field">
+        <span className="np-form-label">New password</span>
         <input
           type="password"
           required
@@ -103,13 +103,13 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
-        <small className="nx-form-help">At least 8 characters.</small>
+        <small className="np-form-help">At least 8 characters.</small>
       </label>
 
-      <label className="nx-form-field">
-        <span className="nx-form-label">Confirm password</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Confirm password</span>
         <input
           type="password"
           required
@@ -117,18 +117,18 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
           aria-invalid={confirm.length > 0 && !passwordsMatch}
         />
         {confirm.length > 0 && !passwordsMatch ? (
-          <small className="nx-form-error">Passwords don&apos;t match.</small>
+          <small className="np-form-error">Passwords don&apos;t match.</small>
         ) : null}
       </label>
 
-      <div className="nx-form-actions">
+      <div className="np-form-actions">
         <button
           type="submit"
-          className="nx-button-primary"
+          className="np-button-primary"
           disabled={submitting || !passwordValid || !passwordsMatch}
         >
           {submitting ? "Saving…" : "Set new password"}

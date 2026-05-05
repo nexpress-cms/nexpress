@@ -818,7 +818,7 @@ export default definePlugin({
       category: "seo",
       tags: ["seo", "meta", "sitemap", "opengraph", "social"],
     },
-    usesTokens: ["--nx-color-primary", "--nx-color-foreground", "--nx-color-muted"],
+    usesTokens: ["--np-color-primary", "--np-color-foreground", "--np-color-muted"],
     styleSlots: {
       "seo-preview-card": "Container for SEO preview card",
       "seo-score-badge": "SEO score indicator badge",
@@ -1306,7 +1306,7 @@ const SeoPanel = dynamic(() =>
 // plugins/seo/blocks/SeoPreview.tsx
 export function SeoPreview({ title, description, showScore }: SeoPreviewProps) {
   return (
-    <div className="nx-seo-preview" style={{ color: "var(--nx-color-foreground)" }}>
+    <div className="np-seo-preview" style={{ color: "var(--np-color-foreground)" }}>
       <h3>{title}</h3>
       <p>{description}</p>
       {showScore && <SeoScoreBadge />}
@@ -1844,10 +1844,10 @@ Package: `eslint-plugin-nexpress`
 
 | Rule                                 | Severity | Description                                                                               |
 | ------------------------------------ | -------- | ----------------------------------------------------------------------------------------- |
-| `nexpress/no-hardcoded-colors`       | error    | Forbid hex, rgb, hsl, oklch color literals in CSS/JSX style. Must use `var(--nx-color-*)` |
-| `nexpress/no-hardcoded-fonts`        | error    | Forbid `font-family` declarations. Must use `var(--nx-font-*)`                            |
+| `nexpress/no-hardcoded-colors`       | error    | Forbid hex, rgb, hsl, oklch color literals in CSS/JSX style. Must use `var(--np-color-*)` |
+| `nexpress/no-hardcoded-fonts`        | error    | Forbid `font-family` declarations. Must use `var(--np-font-*)`                            |
 | `nexpress/no-important`              | error    | Forbid `!important` in CSS (breaks theme cascade)                                         |
-| `nexpress/no-layer-escape`           | warning  | Plugin CSS must be in `@layer nx-blocks`                                                  |
+| `nexpress/no-layer-escape`           | warning  | Plugin CSS must be in `@layer np-blocks`                                                  |
 | `nexpress/no-global-selectors`       | error    | Forbid selectors targeting `body`, `html`, `*`, `:root`                                   |
 | `nexpress/no-tailwind-color-classes` | warning  | Warn on Tailwind color utilities like `text-blue-500` (should use token-based classes)    |
 
@@ -1877,7 +1877,7 @@ Package: `eslint-plugin-nexpress`
 
 | Rule                                | Severity | Description                                                          |
 | ----------------------------------- | -------- | -------------------------------------------------------------------- |
-| `nexpress/block-tokens-declared`    | warning  | `--nx-*` CSS vars used in block should be in `usesTokens`            |
+| `nexpress/block-tokens-declared`    | warning  | `--np-*` CSS vars used in block should be in `usesTokens`            |
 | `nexpress/no-react-version-pin`     | error    | Don't pin React/Next.js versions in peerDependencies (core controls) |
 | `nexpress/prefer-rsc-blocks`        | info     | Blocks without interactivity should be Server Components             |
 | `nexpress/no-server-only-in-client` | error    | Don't import `server-only` code in client components                 |
@@ -1961,7 +1961,7 @@ module.exports = {
 | Hook execution      | Pipeline (ordered, sequential)                                                                                | Predictable, debuggable; concurrent would need careful design                  |
 | Plugin routes       | API routes are namespaced under `/api/plugins/{id}/`; site routes require `site:route` and generated rewrites | Prevents accidental collisions while allowing explicit root-level integrations |
 | Plugin storage      | KV prefixed with `nx:plugin:{id}:`                                                                            | Namespace isolation at DB level                                                |
-| Plugin CSS          | `@layer nx-blocks` required                                                                                   | Cascade layer ensures theme > plugin precedence                                |
+| Plugin CSS          | `@layer np-blocks` required                                                                                   | Cascade layer ensures theme > plugin precedence                                |
 | Server Actions      | Host dispatcher, not direct plugin actions                                                                    | Security: prevents arbitrary server-side execution                             |
 | Declarative UI      | Optional NpWidget system                                                                                      | Agent-friendly, sandbox-ready, but not required for trusted plugins            |
 
@@ -2132,7 +2132,7 @@ pnpm --filter web exec playwright test plugin-blocks.spec.ts
 # Steps:
 #   1. Navigate to a page with plugin block (e.g., seo-preview)
 #   2. Assert block component renders in page HTML (SSR check — visible in page source)
-#   3. Assert block uses --nx-color-* CSS vars (theme compliance)
+#   3. Assert block uses --np-color-* CSS vars (theme compliance)
 #   4. Assert no hydration errors in browser console
 ```
 
@@ -2218,7 +2218,7 @@ pnpm --filter @nexpress/plugin-sdk test -- --run eslint-rules.test
 # Expected: All pass
 # Test cases per rule:
 #   ✓ nexpress/no-hardcoded-colors: `color: "#ff0000"` → error
-#   ✓ nexpress/no-hardcoded-colors: `color: "var(--nx-color-primary)"` → pass
+#   ✓ nexpress/no-hardcoded-colors: `color: "var(--np-color-primary)"` → pass
 #   ✓ nexpress/no-important: `!important` → error
 #   ✓ nexpress/no-direct-db: `import { drizzle } from "drizzle-orm"` → error
 #   ✓ nexpress/no-dangerous-apis: `eval("code")` → error

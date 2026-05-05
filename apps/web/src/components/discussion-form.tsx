@@ -189,16 +189,16 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
       onSubmit={(e) => {
         void onSubmit(e);
       }}
-      className="nx-discussion-form"
+      className="np-discussion-form"
     >
       {error ? (
-        <div role="alert" className="nx-form-error">
+        <div role="alert" className="np-form-error">
           {error}
         </div>
       ) : null}
 
-      <label className="nx-form-field">
-        <span className="nx-form-label">Title</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Title</span>
         <input
           type="text"
           required
@@ -214,13 +214,13 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
           }}
           maxLength={200}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
 
       {mode === "create" ? (
-        <label className="nx-form-field">
-          <span className="nx-form-label">Slug (URL)</span>
+        <label className="np-form-field">
+          <span className="np-form-label">Slug (URL)</span>
           <input
             type="text"
             required
@@ -229,17 +229,17 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
             pattern="[a-z0-9-]+"
             maxLength={80}
             disabled={submitting}
-            className="nx-form-input"
+            className="np-form-input"
           />
-          <small className="nx-form-help">Lowercase letters, digits, and hyphens.</small>
+          <small className="np-form-help">Lowercase letters, digits, and hyphens.</small>
         </label>
       ) : null}
 
-      <div className="nx-form-field">
-        <span className="nx-form-label">Body</span>
+      <div className="np-form-field">
+        <span className="np-form-label">Body</span>
         <Suspense
           fallback={
-            <div className="nx-form-editor-loading" role="status">
+            <div className="np-form-editor-loading" role="status">
               Loading editor…
             </div>
           }
@@ -258,8 +258,8 @@ export function DiscussionForm({ mode, initial }: DiscussionFormProps) {
         </Suspense>
       </div>
 
-      <div className="nx-form-actions">
-        <button type="submit" className="nx-button-primary" disabled={submitting || !title.trim()}>
+      <div className="np-form-actions">
+        <button type="submit" className="np-button-primary" disabled={submitting || !title.trim()}>
           {submitting
             ? mode === "create"
               ? "Posting…"

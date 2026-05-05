@@ -6,9 +6,9 @@
  * stored preference / OS setting. */
 @variant dark (&:where(.dark, .dark *));
 
-@layer nx-base, nx-blocks, nx-theme, nx-overrides;
+@layer np-base, np-blocks, np-theme, np-overrides;
 
-@layer nx-base {
+@layer np-base {
   *,
   *::before,
   *::after {
@@ -16,11 +16,11 @@
   }
 
   body {
-    font-family: var(--nx-font-body, system-ui, sans-serif);
-    font-size: var(--nx-font-size-base, 16px);
-    line-height: var(--nx-line-height, 1.6);
-    color: var(--nx-color-foreground, #0f172a);
-    background: var(--nx-color-background, #fff);
+    font-family: var(--np-font-body, system-ui, sans-serif);
+    font-size: var(--np-font-size-base, 16px);
+    line-height: var(--np-line-height, 1.6);
+    color: var(--np-color-foreground, #0f172a);
+    background: var(--np-color-background, #fff);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

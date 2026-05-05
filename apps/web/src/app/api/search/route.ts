@@ -41,14 +41,14 @@ export async function GET(request: NextRequest) {
 
     // Phase 12.4 — locale resolution for search results.
     // Order: explicit `?locale=` query > request's own
-    // `x-nx-locale` header (set by middleware) > Next's
+    // `x-np-locale` header (set by middleware) > Next's
     // `headers()` reader > undefined (cross-locale search).
     // Unknown locale strings are ignored rather than 400'd;
     // the search just doesn't filter.
     const explicitLocale = params.get("locale")?.trim() ?? null;
     let headerLocale: string | null = null;
     if (!explicitLocale) {
-      headerLocale = request.headers.get("x-nx-locale");
+      headerLocale = request.headers.get("x-np-locale");
       if (!headerLocale) {
         // `headers()` throws when invoked outside a request
         // scope (e.g. integration tests calling GET()
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         // contexts — locale just falls back to undefined.
         try {
           const headerList = await headers();
-          headerLocale = headerList.get("x-nx-locale");
+          headerLocale = headerList.get("x-np-locale");
         } catch {
           headerLocale = null;
         }

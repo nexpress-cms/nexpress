@@ -661,9 +661,9 @@ export async function DELETE(
 ```
 Layer 3: Block Overrides — className slots (advanced, optional)
 Layer 2: Site Theme     — CSS Custom Properties override
-Layer 1: Token Contract — --nx-color-*, --nx-font-*, --nx-radius-*
+Layer 1: Token Contract — --np-color-*, --np-font-*, --np-radius-*
 
-@layer nx-base, nx-blocks, nx-theme, nx-overrides;
+@layer np-base, np-blocks, nx-theme, np-overrides;
 ```
 
 ### H.2 Design Token Contract
@@ -675,32 +675,32 @@ Layer 1: Token Contract — --nx-color-*, --nx-font-*, --nx-radius-*
  */
 export interface NpThemeTokens {
   colors: {
-    primary: string; // --nx-color-primary
-    primaryForeground: string; // --nx-color-primary-foreground
-    secondary: string; // --nx-color-secondary
+    primary: string; // --np-color-primary
+    primaryForeground: string; // --np-color-primary-foreground
+    secondary: string; // --np-color-secondary
     secondaryForeground: string;
-    accent: string; // --nx-color-accent
+    accent: string; // --np-color-accent
     accentForeground: string;
-    background: string; // --nx-color-background
-    foreground: string; // --nx-color-foreground
-    muted: string; // --nx-color-muted
+    background: string; // --np-color-background
+    foreground: string; // --np-color-foreground
+    muted: string; // --np-color-muted
     mutedForeground: string;
-    border: string; // --nx-color-border
-    input: string; // --nx-color-input
-    ring: string; // --nx-color-ring
-    destructive: string; // --nx-color-destructive
+    border: string; // --np-color-border
+    input: string; // --np-color-input
+    ring: string; // --np-color-ring
+    destructive: string; // --np-color-destructive
     destructiveForeground: string;
-    card: string; // --nx-color-card
+    card: string; // --np-color-card
     cardForeground: string;
   };
   typography: {
-    headingFont: string; // --nx-font-heading
-    bodyFont: string; // --nx-font-body
-    monoFont: string; // --nx-font-mono
-    baseFontSize: string; // --nx-font-size-base (e.g., "16px")
-    lineHeight: string; // --nx-line-height (e.g., "1.6")
+    headingFont: string; // --np-font-heading
+    bodyFont: string; // --np-font-body
+    monoFont: string; // --np-font-mono
+    baseFontSize: string; // --np-font-size-base (e.g., "16px")
+    lineHeight: string; // --np-line-height (e.g., "1.6")
     fontSizeScale: {
-      // --nx-font-size-sm through --nx-font-size-4xl
+      // --np-font-size-sm through --np-font-size-4xl
       sm: string;
       base: string;
       lg: string;
@@ -711,13 +711,13 @@ export interface NpThemeTokens {
     };
   };
   shape: {
-    radiusSm: string; // --nx-radius-sm
-    radiusMd: string; // --nx-radius-md
-    radiusLg: string; // --nx-radius-lg
-    radiusFull: string; // --nx-radius-full
-    shadowSm: string; // --nx-shadow-sm
-    shadowMd: string; // --nx-shadow-md
-    shadowLg: string; // --nx-shadow-lg
+    radiusSm: string; // --np-radius-sm
+    radiusMd: string; // --np-radius-md
+    radiusLg: string; // --np-radius-lg
+    radiusFull: string; // --np-radius-full
+    shadowSm: string; // --np-shadow-sm
+    shadowMd: string; // --np-shadow-md
+    shadowLg: string; // --np-shadow-lg
   };
   darkMode?: {
     enabled: boolean;
@@ -744,23 +744,23 @@ function generateThemeCss(theme: NpThemeTokens): string {
 
   // Colors
   for (const [key, value] of Object.entries(theme.colors)) {
-    const cssVar = `--nx-color-${camelToKebab(key)}`;
+    const cssVar = `--np-color-${camelToKebab(key)}`;
     lines.push(`  ${cssVar}: ${value};`);
   }
 
   // Typography
-  lines.push(`  --nx-font-heading: ${theme.typography.headingFont};`);
-  lines.push(`  --nx-font-body: ${theme.typography.bodyFont};`);
-  lines.push(`  --nx-font-mono: ${theme.typography.monoFont};`);
-  lines.push(`  --nx-font-size-base: ${theme.typography.baseFontSize};`);
-  lines.push(`  --nx-line-height: ${theme.typography.lineHeight};`);
+  lines.push(`  --np-font-heading: ${theme.typography.headingFont};`);
+  lines.push(`  --np-font-body: ${theme.typography.bodyFont};`);
+  lines.push(`  --np-font-mono: ${theme.typography.monoFont};`);
+  lines.push(`  --np-font-size-base: ${theme.typography.baseFontSize};`);
+  lines.push(`  --np-line-height: ${theme.typography.lineHeight};`);
   for (const [size, value] of Object.entries(theme.typography.fontSizeScale)) {
-    lines.push(`  --nx-font-size-${size}: ${value};`);
+    lines.push(`  --np-font-size-${size}: ${value};`);
   }
 
   // Shape
   for (const [key, value] of Object.entries(theme.shape)) {
-    const cssVar = `--nx-${camelToKebab(key)}`;
+    const cssVar = `--np-${camelToKebab(key)}`;
     lines.push(`  ${cssVar}: ${value};`);
   }
 
@@ -770,7 +770,7 @@ function generateThemeCss(theme: NpThemeTokens): string {
   if (theme.darkMode?.enabled && theme.darkMode.colors) {
     lines.push("@layer nx-theme {", '[data-theme="dark"] {');
     for (const [key, value] of Object.entries(theme.darkMode.colors)) {
-      const cssVar = `--nx-color-${camelToKebab(key)}`;
+      const cssVar = `--np-color-${camelToKebab(key)}`;
       lines.push(`  ${cssVar}: ${value};`);
     }
     lines.push("}", "}");
@@ -790,7 +790,7 @@ function camelToKebab(str: string): string {
 /* packages/theme/src/base.css */
 @import "tailwindcss";
 
-@layer nx-base {
+@layer np-base {
   /* NexPress base reset */
   *,
   *::before,
@@ -799,34 +799,34 @@ function camelToKebab(str: string): string {
   }
 
   body {
-    font-family: var(--nx-font-body);
-    font-size: var(--nx-font-size-base);
-    line-height: var(--nx-line-height);
-    color: var(--nx-color-foreground);
-    background: var(--nx-color-background);
+    font-family: var(--np-font-body);
+    font-size: var(--np-font-size-base);
+    line-height: var(--np-line-height);
+    color: var(--np-color-foreground);
+    background: var(--np-color-background);
   }
 }
 
 @theme {
   /* Map NexPress tokens to Tailwind v4 theme */
-  --color-primary: var(--nx-color-primary);
-  --color-primary-foreground: var(--nx-color-primary-foreground);
-  --color-secondary: var(--nx-color-secondary);
-  --color-accent: var(--nx-color-accent);
-  --color-background: var(--nx-color-background);
-  --color-foreground: var(--nx-color-foreground);
-  --color-muted: var(--nx-color-muted);
-  --color-border: var(--nx-color-border);
-  --color-destructive: var(--nx-color-destructive);
-  --color-card: var(--nx-color-card);
+  --color-primary: var(--np-color-primary);
+  --color-primary-foreground: var(--np-color-primary-foreground);
+  --color-secondary: var(--np-color-secondary);
+  --color-accent: var(--np-color-accent);
+  --color-background: var(--np-color-background);
+  --color-foreground: var(--np-color-foreground);
+  --color-muted: var(--np-color-muted);
+  --color-border: var(--np-color-border);
+  --color-destructive: var(--np-color-destructive);
+  --color-card: var(--np-color-card);
 
-  --font-heading: var(--nx-font-heading);
-  --font-body: var(--nx-font-body);
-  --font-mono: var(--nx-font-mono);
+  --font-heading: var(--np-font-heading);
+  --font-body: var(--np-font-body);
+  --font-mono: var(--np-font-mono);
 
-  --radius-sm: var(--nx-radius-sm);
-  --radius-md: var(--nx-radius-md);
-  --radius-lg: var(--nx-radius-lg);
+  --radius-sm: var(--np-radius-sm);
+  --radius-md: var(--np-radius-md);
+  --radius-lg: var(--np-radius-lg);
 }
 ```
 
@@ -2463,8 +2463,8 @@ export async function npAuthMiddleware(request: NextRequest): Promise<NextRespon
 
     // Inject user info into request headers for downstream handlers
     const headers = new Headers(request.headers);
-    headers.set("x-nx-user-id", payload.sub);
-    headers.set("x-nx-user-role", payload.role);
+    headers.set("x-np-user-id", payload.sub);
+    headers.set("x-np-user-role", payload.role);
 
     return NextResponse.next({ request: { headers } });
   } catch {
@@ -2842,7 +2842,7 @@ Auto-refresh flow (client-side):
     │                       │ verify JWT sig+exp │
     │                       │ (NO DB query)      │
     │                       │ attach payload to  │
-    │                       │ x-nx-user header   │
+    │                       │ x-np-user header   │
     │                       │───────────────────▶│ render page
     │◀──────────────────────────────────────────│ 200
 
@@ -4215,7 +4215,7 @@ function sanitizeTokenValue(value: string): string {
 }
 
 // Applied in generateThemeCss() for every token value:
-// --nx-color-primary: ${sanitizeTokenValue(theme.colors.primary)};
+// --np-color-primary: ${sanitizeTokenValue(theme.colors.primary)};
 ```
 
 ### N.4 v1 Deployment & Cache Constraints
@@ -4650,10 +4650,10 @@ export async function findDocuments(collection: string, options: FindOptions) {
 
 | #   | Tool       | Scenario                         | Steps                                                                                                          | Expected                                                                                                                      |
 | --- | ---------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| H1  | Vitest     | Theme JSON → CSS conversion      | 1. Call `generateThemeCss(DEFAULT_THEME)`                                                                      | Output string contains `@layer nx-theme { :root { --nx-color-primary: oklch(0.55 0.20 250); ... } }`. All token keys present. |
-| H2  | Vitest     | Dark mode CSS                    | 1. Call `generateThemeCss(DEFAULT_THEME)` with `darkMode.enabled: true`                                        | Output contains `[data-theme="dark"] { --nx-color-background: oklch(0.15 0.02 260); ... }`.                                   |
-| H3  | Playwright | Theme changes apply live         | 1. Login 2. Navigate to `/admin/settings/theme` 3. Change primary color 4. Save 5. Open public site in new tab | Public site `<style>` tag contains updated `--nx-color-primary` value.                                                        |
-| H4  | Playwright | Tailwind v4 uses NexPress tokens | 1. Add `className="bg-primary text-primary-foreground"` to a block 2. Visit public page                        | Element has background color matching `--nx-color-primary` and text color matching `--nx-color-primary-foreground`.           |
+| H1  | Vitest     | Theme JSON → CSS conversion      | 1. Call `generateThemeCss(DEFAULT_THEME)`                                                                      | Output string contains `@layer nx-theme { :root { --np-color-primary: oklch(0.55 0.20 250); ... } }`. All token keys present. |
+| H2  | Vitest     | Dark mode CSS                    | 1. Call `generateThemeCss(DEFAULT_THEME)` with `darkMode.enabled: true`                                        | Output contains `[data-theme="dark"] { --np-color-background: oklch(0.15 0.02 260); ... }`.                                   |
+| H3  | Playwright | Theme changes apply live         | 1. Login 2. Navigate to `/admin/settings/theme` 3. Change primary color 4. Save 5. Open public site in new tab | Public site `<style>` tag contains updated `--np-color-primary` value.                                                        |
+| H4  | Playwright | Tailwind v4 uses NexPress tokens | 1. Add `className="bg-primary text-primary-foreground"` to a block 2. Visit public page                        | Element has background color matching `--np-color-primary` and text color matching `--np-color-primary-foreground`.           |
 | H5  | Vitest     | NpThemeStyle is server-only      | 1. Import `NpThemeStyle` 2. Render via `renderToStaticMarkup`                                                  | Returns a `<style>` tag with CSS. No `"use client"` directive in source. Zero client JS.                                      |
 
 ### QA-I: Agent Interface

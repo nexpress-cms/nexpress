@@ -51,8 +51,8 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     expect(impl.shell).toBeTypeOf("function");
     expect(impl.slots?.header).toBeTypeOf("function");
     expect(impl.slots?.footer).toBeTypeOf("function");
-    expect(impl.css).toContain(".nx-site-header");
-    expect(impl.css).toContain(".nx-site-footer");
+    expect(impl.css).toContain(".np-site-header");
+    expect(impl.css).toContain(".np-site-footer");
   });
 
   it("setActiveThemeId('minimal') swaps the active theme; CSS reflects the swap", async () => {
@@ -63,10 +63,10 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     const active = await getActiveTheme();
     expect(active?.manifest.id).toBe("minimal");
     const impl = active?.impl as { css?: string };
-    // Minimal theme owns the `.nx-minimal-header` look (centered
+    // Minimal theme owns the `.np-minimal-header` look (centered
     // logo, dotted rule, serif type) — distinct from the
     // default theme's flex-row header layout.
-    expect(impl.css).toContain(".nx-minimal-header");
+    expect(impl.css).toContain(".np-minimal-header");
     expect(impl.css).toContain("text-align: center");
   });
 
@@ -74,9 +74,9 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     const { getActiveTheme } = await import("@nexpress/core");
     const active = await getActiveTheme();
     const impl = active?.impl as { css?: string };
-    // Default-active. The minimal theme's `.nx-minimal-header`
+    // Default-active. The minimal theme's `.np-minimal-header`
     // class shouldn't be in the default theme's CSS string.
-    expect(impl.css).not.toContain("nx-minimal-header");
+    expect(impl.css).not.toContain("np-minimal-header");
   });
 
   it("absent active theme falls back to first registered (resilience)", async () => {

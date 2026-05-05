@@ -36,35 +36,35 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
     <>
       <button
         type="button"
-        className="nx-magazine-nav-toggle"
+        className="np-magazine-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
-        aria-controls="nx-magazine-nav-drawer"
+        aria-controls="np-magazine-nav-drawer"
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">{open ? "Close" : "Menu"}</span>
       </button>
       {open ? (
         <div
-          className="nx-magazine-nav-overlay"
+          className="np-magazine-nav-overlay"
           role="presentation"
           onClick={() => setOpen(false)}
         />
       ) : null}
       <aside
-        id="nx-magazine-nav-drawer"
-        className="nx-magazine-nav-drawer"
+        id="np-magazine-nav-drawer"
+        className="np-magazine-nav-drawer"
         data-open={open ? "true" : "false"}
         aria-hidden={open ? "false" : "true"}
       >
-        <ul className="nx-magazine-nav-drawer-list">
+        <ul className="np-magazine-nav-drawer-list">
           {items.map((item, index) => (
             <li key={`magazine-mobile-${index.toString()}`}>
               <a href={item.url} onClick={() => setOpen(false)}>
                 {item.label}
               </a>
               {item.children && item.children.length > 0 ? (
-                <ul className="nx-magazine-mobile-subnav">
+                <ul className="np-magazine-mobile-subnav">
                   {item.children.map((child, childIndex) => (
                     <li key={`magazine-mobile-${index.toString()}-${childIndex.toString()}`}>
                       <a href={child.url} onClick={() => setOpen(false)}>

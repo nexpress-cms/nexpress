@@ -217,7 +217,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     setI18nConfig(config.i18n ?? null);
 
     // Phase 15.1 — install the per-request site resolver.
-    // The middleware sets `x-nx-host` from the incoming
+    // The middleware sets `x-np-host` from the incoming
     // Host header; this resolver maps it to a site id via
     // `resolveSiteForHostname` (DB lookup) and falls back to
     // the default site id. Reads `headers()` only inside a
@@ -282,7 +282,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           // session, lost membership). Don't leak an explicit
           // 403; that just helps an attacker enumerate.
         }
-        const host = headerList.get("x-nx-host");
+        const host = headerList.get("x-np-host");
         if (!host) return NX_DEFAULT_SITE_ID;
         const site = await resolveSiteForHostname(host);
         return site?.id ?? NX_DEFAULT_SITE_ID;

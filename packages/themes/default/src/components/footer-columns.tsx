@@ -21,28 +21,28 @@ export async function DefaultFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="nx-site-footer">
-      <div className="nx-site-footer-inner">
-        <div className="nx-site-footer-grid">
-          <section className="nx-site-footer-col nx-site-footer-brand">
-            <a href="/" className="nx-site-footer-logo">
+    <footer className="np-site-footer">
+      <div className="np-site-footer-inner">
+        <div className="np-site-footer-grid">
+          <section className="np-site-footer-col np-site-footer-brand">
+            <a href="/" className="np-site-footer-logo">
               NexPress
             </a>
-            <p className="nx-site-footer-tagline">
+            <p className="np-site-footer-tagline">
               The Next.js-native CMS for content-led teams.
             </p>
             <SocialLinks />
           </section>
 
-          <section className="nx-site-footer-col">
-            <h2 className="nx-site-footer-heading">Sitemap</h2>
-            <ul className="nx-site-footer-links">
+          <section className="np-site-footer-col">
+            <h2 className="np-site-footer-heading">Sitemap</h2>
+            <ul className="np-site-footer-links">
               {footerNav.length > 0 ? (
                 footerNav.map((item: NpNavItem, index: number) => (
                   <li key={`footer-sitemap-${index.toString()}`}>
                     <a href={item.url}>{item.label}</a>
                     {item.children && item.children.length > 0 ? (
-                      <ul className="nx-site-footer-subnav">
+                      <ul className="np-site-footer-subnav">
                         {item.children.map((child: NpNavItem, childIndex: number) => (
                           <li
                             key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}
@@ -60,9 +60,9 @@ export async function DefaultFooter() {
             </ul>
           </section>
 
-          <section className="nx-site-footer-col">
-            <h2 className="nx-site-footer-heading">Resources</h2>
-            <ul className="nx-site-footer-links">
+          <section className="np-site-footer-col">
+            <h2 className="np-site-footer-heading">Resources</h2>
+            <ul className="np-site-footer-links">
               <li>
                 <a href="/blog">Blog</a>
               </li>
@@ -78,20 +78,20 @@ export async function DefaultFooter() {
             </ul>
           </section>
 
-          <section className="nx-site-footer-col nx-site-footer-subscribe">
-            <h2 className="nx-site-footer-heading">Subscribe</h2>
-            <p className="nx-site-footer-subscribe-blurb">
+          <section className="np-site-footer-col np-site-footer-subscribe">
+            <h2 className="np-site-footer-heading">Subscribe</h2>
+            <p className="np-site-footer-subscribe-blurb">
               Occasional updates. No spam.
             </p>
             <NewsletterForm />
           </section>
         </div>
 
-        <div className="nx-site-footer-bottom">
-          <p className="nx-site-footer-copy">
+        <div className="np-site-footer-bottom">
+          <p className="np-site-footer-copy">
             © {year.toString()} · Built with NexPress
           </p>
-          <ul className="nx-site-footer-meta">
+          <ul className="np-site-footer-meta">
             <li>
               <a href="/privacy">Privacy</a>
             </li>

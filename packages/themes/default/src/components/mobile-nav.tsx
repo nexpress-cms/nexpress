@@ -45,46 +45,46 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
     <>
       <button
         type="button"
-        className="nx-mobile-nav-toggle"
+        className="np-mobile-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
-        aria-controls="nx-mobile-nav-drawer"
+        aria-controls="np-mobile-nav-drawer"
         onClick={() => setOpen((prev) => !prev)}
       >
         {open ? <CloseIcon /> : <MenuIcon />}
       </button>
       {open ? (
         <div
-          className="nx-mobile-nav-overlay"
+          className="np-mobile-nav-overlay"
           role="presentation"
           onClick={() => setOpen(false)}
         />
       ) : null}
       <aside
-        id="nx-mobile-nav-drawer"
-        className="nx-mobile-nav-drawer"
+        id="np-mobile-nav-drawer"
+        className="np-mobile-nav-drawer"
         data-open={open ? "true" : "false"}
         aria-hidden={open ? "false" : "true"}
       >
-        <header className="nx-mobile-nav-drawer-header">
-          <span className="nx-mobile-nav-drawer-label">{label}</span>
+        <header className="np-mobile-nav-drawer-header">
+          <span className="np-mobile-nav-drawer-label">{label}</span>
           <button
             type="button"
-            className="nx-mobile-nav-close"
+            className="np-mobile-nav-close"
             onClick={() => setOpen(false)}
             aria-label="Close menu"
           >
             <CloseIcon />
           </button>
         </header>
-        <ul className="nx-mobile-nav-list">
+        <ul className="np-mobile-nav-list">
           {items.map((item, index) => (
             <li key={`mobile-nav-${index.toString()}`}>
               <a href={item.url} onClick={() => setOpen(false)}>
                 {item.label}
               </a>
               {item.children && item.children.length > 0 ? (
-                <ul className="nx-mobile-subnav">
+                <ul className="np-mobile-subnav">
                   {item.children.map((child, childIndex) => (
                     <li key={`mobile-nav-${index.toString()}-${childIndex.toString()}`}>
                       <a href={child.url} onClick={() => setOpen(false)}>

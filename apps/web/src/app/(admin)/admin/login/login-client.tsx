@@ -169,7 +169,7 @@ export function LoginClient({ providers = [] }: LoginClientProps) {
               </Label>
               <Link
                 href="/admin/forgot-password"
-                className="text-[11.5px] text-[var(--nx-color-brand)] hover:underline underline-offset-[3px]"
+                className="text-[11.5px] text-[var(--np-color-brand)] hover:underline underline-offset-[3px]"
               >
                 Forgot password?
               </Link>

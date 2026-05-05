@@ -109,7 +109,7 @@ Why a separate table from `nx_users`:
 |---|---|---|
 | Register | `POST /api/members/register` | Sends verification email; member starts as `status: pending` until verified. |
 | Verify email | `POST /api/members/verify` | Token from email; flips `email_verified` + `status: active`. |
-| Login | `POST /api/members/login` | Same Argon2 + JWT machinery; sets `nx-mb-*` cookies. |
+| Login | `POST /api/members/login` | Same Argon2 + JWT machinery; sets `np-mb-*` cookies. |
 | Refresh | `POST /api/members/refresh` | Rotates session JWT. |
 | Forgot / reset | `POST /api/members/forgot-password`, `POST /api/members/reset-password` | Reuses the email adapter from PR #22. |
 | Logout | `POST /api/members/logout` | Clears cookies + revokes session row. |
@@ -530,8 +530,8 @@ implementation surfaces as questionable.
    Draft picks soft (anonymise display_name, scrub email, set
    `status: deleted`).
 
-10. **Two cookie families** — draft picks `nx-mb-*` for members vs.
-    `nx-` for staff. Alternative: single cookie with `aud` claim.
+10. **Two cookie families** — draft picks `np-mb-*` for members vs.
+    `np-` for staff. Alternative: single cookie with `aud` claim.
     Two families is more bytes per request but bug-isolation wins.
 
 11. **Scoped role granularity.** Resolved: ship four built-in roles

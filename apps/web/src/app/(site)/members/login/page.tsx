@@ -23,23 +23,23 @@ export default async function MemberLoginPage({ searchParams }: LoginPageProps) 
   }
 
   return (
-    <div className="nx-members-auth">
+    <div className="np-members-auth">
       <h1>Sign in</h1>
       {verified === "1" ? (
-        <p className="nx-form-success">
+        <p className="np-form-success">
           Email confirmed — you can sign in now.
         </p>
       ) : null}
       {reset === "1" ? (
-        <p className="nx-form-success">
+        <p className="np-form-success">
           Password updated — sign in with your new one.
         </p>
       ) : null}
       <LoginForm next={safeNext(next)} />
-      <p className="nx-members-auth-alt">
+      <p className="np-members-auth-alt">
         <Link href="/members/forgot-password">Forgot your password?</Link>
       </p>
-      <p className="nx-members-auth-alt">
+      <p className="np-members-auth-alt">
         Don&apos;t have an account?{" "}
         <Link href={`/members/register${nextQuery(next)}`}>Create one</Link>
       </p>

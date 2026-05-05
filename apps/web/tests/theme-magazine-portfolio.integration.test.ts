@@ -52,7 +52,7 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     const html = renderToString(
       Cover({ doc: { title: "Issue 01", coverImage: "https://example.com/c.jpg" } }),
     );
-    expect(html).toContain("nx-magazine-cover");
+    expect(html).toContain("np-magazine-cover");
     expect(html).toContain("Issue 01");
     // Background-image inline style should be present when the
     // cover field carries a URL.
@@ -66,7 +66,7 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
       props: { doc: Record<string, unknown> },
     ) => React.ReactElement;
     const html = renderToString(Cover({ doc: { title: "Untitled draft" } }));
-    expect(html).toContain("nx-magazine-cover-hero");
+    expect(html).toContain("np-magazine-cover-hero");
     expect(html).toContain("Untitled draft");
     // No inline background-image style when no cover URL.
     expect(html).not.toContain("background-image");
@@ -88,7 +88,7 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
       props: { doc: Record<string, unknown> },
     ) => React.ReactElement;
     const html = renderToString(Gallery({ doc: { title: "Selected work" } }));
-    expect(html).toContain("nx-portfolio-gallery-grid");
+    expect(html).toContain("np-portfolio-gallery-grid");
     expect(html).toContain("Selected work");
   });
 
@@ -97,12 +97,12 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
     const magazineCss = magazineTheme.impl.css ?? "";
     const portfolioCss = portfolioTheme.impl.css ?? "";
-    expect(magazineCss).toContain(".nx-magazine");
-    expect(portfolioCss).toContain(".nx-portfolio");
+    expect(magazineCss).toContain(".np-magazine");
+    expect(portfolioCss).toContain(".np-portfolio");
     // Cross-pollination check: each theme's CSS should NOT
     // mention the other theme's classes.
-    expect(magazineCss).not.toContain(".nx-portfolio");
-    expect(portfolioCss).not.toContain(".nx-magazine");
+    expect(magazineCss).not.toContain(".np-portfolio");
+    expect(portfolioCss).not.toContain(".np-magazine");
   });
 
   it("example themes use logical (RTL-safe) properties for directional layout", async () => {

@@ -8,5 +8,5 @@ import type { ReactNode } from "react";
  * it here.
  */
 export function MagazineShell({ children }: { children: ReactNode }) {
-  return <div className="nx-magazine">{children}</div>;
+  return <div className="np-magazine">{children}</div>;
 }

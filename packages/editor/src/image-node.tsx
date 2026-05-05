@@ -69,7 +69,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
   override createDOM(_config: EditorConfig): DomElement {
     const element = document.createElement("span");
-    element.className = "nx-editor-image";
+    element.className = "np-editor-image";
     return element;
   }
 

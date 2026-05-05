@@ -31,7 +31,7 @@ export function highlightMatches(text: string, query: string): ReactNode {
   const parts = text.split(re);
   return parts.map((part, i) =>
     i % 2 === 1 ? (
-      <mark key={i} className="nx-search-highlight">
+      <mark key={i} className="np-search-highlight">
         {part}
       </mark>
     ) : (

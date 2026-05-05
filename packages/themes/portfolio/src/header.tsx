@@ -12,19 +12,19 @@ export async function PortfolioHeader() {
   const items = await getCachedNavigation("header");
 
   return (
-    <header className="nx-site-header nx-portfolio-header">
-      <a href="/" className="nx-portfolio-logo">
+    <header className="np-site-header np-portfolio-header">
+      <a href="/" className="np-portfolio-logo">
         NexPress Studio
       </a>
       {items.length > 0 ? (
         <>
-          <nav aria-label="Main" className="nx-portfolio-nav-desktop">
-            <ul className="nx-portfolio-nav">
+          <nav aria-label="Main" className="np-portfolio-nav-desktop">
+            <ul className="np-portfolio-nav">
               {items.map((item: NpNavItem, index: number) => (
-                <li key={`portfolio-nav-${index.toString()}`} className="nx-portfolio-nav-item">
+                <li key={`portfolio-nav-${index.toString()}`} className="np-portfolio-nav-item">
                   <a href={item.url}>{item.label}</a>
                   {item.children && item.children.length > 0 ? (
-                    <ul className="nx-portfolio-subnav">
+                    <ul className="np-portfolio-subnav">
                       {item.children.map((child: NpNavItem, childIndex: number) => (
                         <li key={`portfolio-nav-${index.toString()}-${childIndex.toString()}`}>
                           <a href={child.url}>{child.label}</a>

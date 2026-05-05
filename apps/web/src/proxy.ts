@@ -228,12 +228,12 @@ export async function proxy(request: NextRequest) {
 
   // Phase 12.2 — propagate the resolved locale to server
   // components via a request header. Server components can read
-  // it via `headers().get("x-nx-locale")` without re-parsing the
+  // it via `headers().get("x-np-locale")` without re-parsing the
   // pathname themselves.
   const { locale } = resolveSiteLocale(pathname);
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nx-locale", locale);
-  requestHeaders.set("x-nx-pathname", pathname);
+  requestHeaders.set("x-np-locale", locale);
+  requestHeaders.set("x-np-pathname", pathname);
 
   // Phase 15.1 — propagate the request host so the server-side
   // site resolver can map it to a site id. The DB lookup
@@ -241,13 +241,13 @@ export async function proxy(request: NextRequest) {
   // middleware just forwards the raw value.
   const host = request.headers.get("host") ?? request.headers.get("x-forwarded-host");
   if (host) {
-    requestHeaders.set("x-nx-host", host);
+    requestHeaders.set("x-np-host", host);
   }
 
   // Phase 15.6 — admin context override. The site-picker UI
   // sets this cookie when an admin (typically a super-admin)
   // chooses which tenant to operate on. The bootstrap's
-  // resolver reads `x-nx-admin-site` BEFORE x-nx-host, so the
+  // resolver reads `x-nx-admin-site` BEFORE x-np-host, so the
   // cookie wins inside the admin area; the public site is
   // unaffected (the resolver only checks the override on
   // /admin and /api/admin paths). Validation that the user is

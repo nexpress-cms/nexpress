@@ -114,8 +114,8 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
 
   it("default theme's `wide` template renders without the centered max-width container", async () => {
     // Sanity-check the template component. The `wide` variant
-    // should opt out of the standard `nx-page` max-width by
-    // adding the `nx-page-wide` class — that's the contract the
+    // should opt out of the standard `np-page` max-width by
+    // adding the `np-page-wide` class — that's the contract the
     // theme CSS hooks into.
     const { defaultTheme } = await import("@nexpress/theme-default");
     const impl = defaultTheme.impl as {
@@ -136,16 +136,16 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     expect(wide?.component).toBeTypeOf("function");
     expect(wide?.label).toBe("Wide");
 
-    // The wide template must add `nx-page-wide` so the theme CSS
+    // The wide template must add `np-page-wide` so the theme CSS
     // can drop the max-width. If a refactor accidentally removes
     // the class, page layouts silently regress to centered —
     // this assertion catches that.
     const Component = wide!.component!;
     const html = renderToString(Component({ doc: { title: "Hi" } }));
-    expect(html).toContain("nx-page-wide");
+    expect(html).toContain("np-page-wide");
   });
 
-  it("default template renders the standard `nx-page` container", async () => {
+  it("default template renders the standard `np-page` container", async () => {
     const { defaultTheme } = await import("@nexpress/theme-default");
     const impl = defaultTheme.impl as {
       templates?: Record<
@@ -163,8 +163,8 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     const Component = impl.templates!.pages!.default!.component!;
     const html = renderToString(Component({ doc: { title: "Hello" } }));
     // Default keeps the centered container (no `wide` modifier).
-    expect(html).toContain("nx-page");
-    expect(html).not.toContain("nx-page-wide");
+    expect(html).toContain("np-page");
+    expect(html).not.toContain("np-page-wide");
     expect(html).toContain("Hello");
   });
 });

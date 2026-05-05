@@ -19,7 +19,7 @@ import { PostListTemplate } from "./templates/post-list.js";
  *   - Page templates: default centered column, full-bleed cover.
  *   - Post templates: feature article (drop cap, byline rule), index
  *     list with lead piece + 2-up secondary row + archive grid.
- *   - All CSS scoped under `.nx-magazine-*` so theme swaps never
+ *   - All CSS scoped under `.np-magazine-*` so theme swaps never
  *     leave residue.
  */
 export const magazineTheme = defineTheme({

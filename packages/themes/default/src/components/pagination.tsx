@@ -44,19 +44,19 @@ export function Pagination({ page, totalPages, hrefForPage, siblings = 1 }: Pagi
   const next = page < totalPages ? hrefForPage(page + 1) : null;
 
   return (
-    <nav className="nx-pagination" aria-label="Pagination">
+    <nav className="np-pagination" aria-label="Pagination">
       {prev ? (
-        <a href={prev} rel="prev" className="nx-pagination-step">
+        <a href={prev} rel="prev" className="np-pagination-step">
           ← Prev
         </a>
       ) : (
-        <span className="nx-pagination-step nx-pagination-disabled">← Prev</span>
+        <span className="np-pagination-step np-pagination-disabled">← Prev</span>
       )}
-      <ol className="nx-pagination-pages">
+      <ol className="np-pagination-pages">
         {items.map((entry, index) => (
           <li key={`${typeof entry === "number" ? entry.toString() : "gap"}-${index.toString()}`}>
             {entry === "gap" ? (
-              <span className="nx-pagination-gap" aria-hidden="true">
+              <span className="np-pagination-gap" aria-hidden="true">
                 …
               </span>
             ) : (
@@ -64,7 +64,7 @@ export function Pagination({ page, totalPages, hrefForPage, siblings = 1 }: Pagi
                 href={hrefForPage(entry)}
                 aria-current={entry === page ? "page" : undefined}
                 className={
-                  entry === page ? "nx-pagination-page nx-pagination-current" : "nx-pagination-page"
+                  entry === page ? "np-pagination-page np-pagination-current" : "np-pagination-page"
                 }
               >
                 {entry.toString()}
@@ -74,11 +74,11 @@ export function Pagination({ page, totalPages, hrefForPage, siblings = 1 }: Pagi
         ))}
       </ol>
       {next ? (
-        <a href={next} rel="next" className="nx-pagination-step">
+        <a href={next} rel="next" className="np-pagination-step">
           Next →
         </a>
       ) : (
-        <span className="nx-pagination-step nx-pagination-disabled">Next →</span>
+        <span className="np-pagination-step np-pagination-disabled">Next →</span>
       )}
     </nav>
   );

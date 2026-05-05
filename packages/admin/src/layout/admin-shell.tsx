@@ -21,7 +21,7 @@ import {
 import type { NpAuthUser } from "@nexpress/core";
 
 import { AdminTopbar } from "./admin-topbar.js";
-import { NpMark } from "./nx-mark.js";
+import { NpMark } from "./np-mark.js";
 import { Button } from "../ui/button.js";
 import { ScrollArea } from "../ui/scroll-area.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
@@ -100,7 +100,7 @@ function NavLink({
         <span
           aria-hidden
           className={cn(
-            "absolute top-2 bottom-2 w-0.5 rounded-sm bg-[var(--nx-color-brand)]",
+            "absolute top-2 bottom-2 w-0.5 rounded-sm bg-[var(--np-color-brand)]",
             collapsed ? "-left-1" : "-left-2",
           )}
         />
@@ -109,7 +109,7 @@ function NavLink({
         className={cn(
           "size-[15px] shrink-0",
           active
-            ? "text-[var(--nx-color-brand)]"
+            ? "text-[var(--np-color-brand)]"
             : "text-neutral-500 dark:text-neutral-400",
         )}
       />

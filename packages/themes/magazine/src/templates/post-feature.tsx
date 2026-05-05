@@ -17,11 +17,11 @@ export function PostFeatureTemplate({ doc }: NpTemplateRenderProps) {
   const content = (doc as { content?: NpRichTextContent }).content;
 
   return (
-    <article className="nx-magazine-feature">
-      {kicker ? <p className="nx-magazine-feature-kicker">{kicker}</p> : null}
-      <h1 className="nx-magazine-feature-title">{title}</h1>
+    <article className="np-magazine-feature">
+      {kicker ? <p className="np-magazine-feature-kicker">{kicker}</p> : null}
+      <h1 className="np-magazine-feature-title">{title}</h1>
       {author || published ? (
-        <p className="nx-magazine-feature-byline">
+        <p className="np-magazine-feature-byline">
           {author ? `By ${author}` : null}
           {author && published ? " · " : null}
           {published
@@ -33,7 +33,7 @@ export function PostFeatureTemplate({ doc }: NpTemplateRenderProps) {
             : null}
         </p>
       ) : null}
-      <div className="nx-magazine-feature-body">
+      <div className="np-magazine-feature-body">
         {content ? renderRichText(content) : null}
       </div>
     </article>

@@ -25,7 +25,7 @@ export const renderBlocks = (
     return null;
   }
 
-  return <div className="nx-blocks">{pageBlocks.map((b) => renderBlock(b, registry))}</div>;
+  return <div className="np-blocks">{pageBlocks.map((b) => renderBlock(b, registry))}</div>;
 };
 
 function renderBlock(
@@ -37,7 +37,7 @@ function renderBlock(
 
   if (!definition) {
     return (
-      <div key={instance.id} className="nx-block-unknown">
+      <div key={instance.id} className="np-block-unknown">
         Unknown block type: {instance.type}
       </div>
     );
@@ -62,7 +62,7 @@ function renderBlock(
     return (
       <div
         key={instance.id}
-        className="nx-block-grid-cell"
+        className="np-block-grid-cell"
         style={{ gridColumn: `span ${colSpan} / span ${colSpan}` }}
       >
         {node}

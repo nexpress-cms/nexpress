@@ -55,8 +55,8 @@ export function ForgotPasswordForm() {
     // a member — matches the API's anti-enumeration policy. We
     // never reveal whether the email is registered.
     return (
-      <div className="nx-members-form">
-        <div className="nx-form-success" role="status">
+      <div className="np-members-form">
+        <div className="np-form-success" role="status">
           <p>
             <strong>Check your email.</strong>
           </p>
@@ -64,11 +64,11 @@ export function ForgotPasswordForm() {
             If <code>{email}</code> matches an account, we&apos;ve sent a
             reset link. The link expires in 1 hour.
           </p>
-          <p className="nx-form-help">
+          <p className="np-form-help">
             Didn&apos;t get the email? Check your spam folder, or{" "}
             <button
               type="button"
-              className="nx-text-button"
+              className="np-text-button"
               onClick={() => {
                 setSubmitted(false);
                 setError(null);
@@ -88,15 +88,15 @@ export function ForgotPasswordForm() {
       onSubmit={(e) => {
         void onSubmit(e);
       }}
-      className="nx-members-form"
+      className="np-members-form"
     >
       {error ? (
-        <div role="alert" className="nx-form-error">
+        <div role="alert" className="np-form-error">
           {error}
         </div>
       ) : null}
-      <label className="nx-form-field">
-        <span className="nx-form-label">Email</span>
+      <label className="np-form-field">
+        <span className="np-form-label">Email</span>
         <input
           type="email"
           required
@@ -104,13 +104,13 @@ export function ForgotPasswordForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={submitting}
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
-      <div className="nx-form-actions">
+      <div className="np-form-actions">
         <button
           type="submit"
-          className="nx-button-primary"
+          className="np-button-primary"
           disabled={submitting || !email.trim()}
         >
           {submitting ? "Sending…" : "Send reset link"}

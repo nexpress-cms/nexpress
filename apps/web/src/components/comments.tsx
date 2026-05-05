@@ -111,7 +111,7 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
   };
 
   return (
-    <section className="nx-comments" style={{ marginTop: "3rem", maxWidth: 720 }}>
+    <section className="np-comments" style={{ marginTop: "3rem", maxWidth: 720 }}>
       <div
         style={{
           display: "flex",
@@ -260,7 +260,7 @@ function CommentItem({ comment, memberKnown, viewerMemberId, onMuted }: CommentI
           </span>
         ) : null}
       </div>
-      <div className="nx-comment-body" dangerouslySetInnerHTML={{ __html: comment.bodyHtml }} />
+      <div className="np-comment-body" dangerouslySetInnerHTML={{ __html: comment.bodyHtml }} />
       <div
         style={{
           display: "flex",

@@ -45,8 +45,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     : null;
 
   return (
-    <section className="nx-search">
-      <header className="nx-search-header">
+    <section className="np-search">
+      <header className="np-search-header">
         <h1>Search</h1>
         <SearchForm initialQ={q} />
       </header>
@@ -54,7 +54,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       {result ? (
         <SearchResults q={q} result={result} page={page} />
       ) : (
-        <p className="nx-search-empty">
+        <p className="np-search-empty">
           Type a query above to search across the site.
         </p>
       )}
@@ -71,8 +71,8 @@ function parsePage(raw: string | undefined): number {
 
 function SearchForm({ initialQ }: { initialQ: string }) {
   return (
-    <form action="/search" method="GET" role="search" className="nx-search-form">
-      <label className="nx-search-form-label">
+    <form action="/search" method="GET" role="search" className="np-search-form">
+      <label className="np-search-form-label">
         <span className="sr-only">Search query</span>
         <input
           type="search"
@@ -81,10 +81,10 @@ function SearchForm({ initialQ }: { initialQ: string }) {
           placeholder="Search posts, pages, discussions…"
           autoComplete="off"
           aria-label="Search query"
-          className="nx-form-input"
+          className="np-form-input"
         />
       </label>
-      <button type="submit" className="nx-button-primary">
+      <button type="submit" className="np-button-primary">
         Search
       </button>
     </form>
@@ -100,7 +100,7 @@ interface SearchResultsProps {
 function SearchResults({ q, result, page }: SearchResultsProps) {
   if (result.total === 0) {
     return (
-      <p className="nx-search-empty">
+      <p className="np-search-empty">
         No results for <strong>{q}</strong>. Try a different keyword.
       </p>
     );
@@ -121,18 +121,18 @@ function SearchResults({ q, result, page }: SearchResultsProps) {
   const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
 
   return (
-    <div className="nx-search-results">
-      <p className="nx-search-summary">
+    <div className="np-search-results">
+      <p className="np-search-summary">
         {result.total} result{result.total === 1 ? "" : "s"} for{" "}
         <strong>{q}</strong>
       </p>
 
       {[...grouped.entries()].map(([collection, items]) => (
-        <section key={collection} className="nx-search-group">
-          <h2 className="nx-search-group-title">
+        <section key={collection} className="np-search-group">
+          <h2 className="np-search-group-title">
             {collection} ({result.perCollection[collection] ?? items.length})
           </h2>
-          <ul className="nx-search-list">
+          <ul className="np-search-list">
             {items.map((item) => (
               <SearchResultRow
                 key={`${item.collection}:${docId(item.doc)}`}
@@ -169,22 +169,22 @@ function SearchResultRow({
     // as plain text so an admin viewing the search page sees the
     // hit, but don't bait public visitors with a dead link.
     return (
-      <li className="nx-search-result nx-search-result-untargeted">
-        <span className="nx-search-result-title">{highlightedTitle}</span>
+      <li className="np-search-result np-search-result-untargeted">
+        <span className="np-search-result-title">{highlightedTitle}</span>
         {highlightedExcerpt ? (
-          <p className="nx-search-result-excerpt">{highlightedExcerpt}</p>
+          <p className="np-search-result-excerpt">{highlightedExcerpt}</p>
         ) : null}
       </li>
     );
   }
 
   return (
-    <li className="nx-search-result">
-      <Link href={href} className="nx-search-result-title">
+    <li className="np-search-result">
+      <Link href={href} className="np-search-result-title">
         {highlightedTitle}
       </Link>
       {highlightedExcerpt ? (
-        <p className="nx-search-result-excerpt">{highlightedExcerpt}</p>
+        <p className="np-search-result-excerpt">{highlightedExcerpt}</p>
       ) : null}
     </li>
   );
@@ -203,15 +203,15 @@ function Pagination({
   const next = page < lastPage ? buildHref(q, page + 1) : null;
 
   return (
-    <nav className="nx-search-pagination" aria-label="Search pagination">
+    <nav className="np-search-pagination" aria-label="Search pagination">
       {prev ? (
         <Link href={prev} rel="prev">
           ← Previous
         </Link>
       ) : (
-        <span className="nx-search-pagination-disabled">← Previous</span>
+        <span className="np-search-pagination-disabled">← Previous</span>
       )}
-      <span className="nx-search-pagination-info">
+      <span className="np-search-pagination-info">
         Page {page} of {lastPage}
       </span>
       {next ? (
@@ -219,7 +219,7 @@ function Pagination({
           Next →
         </Link>
       ) : (
-        <span className="nx-search-pagination-disabled">Next →</span>
+        <span className="np-search-pagination-disabled">Next →</span>
       )}
     </nav>
   );

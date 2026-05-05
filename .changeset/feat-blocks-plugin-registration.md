@@ -8,8 +8,8 @@
 Page builder editor — phase 3 (plugin block registration).
 
 Plugins can now contribute block types to the page builder.
-`definePlugin({ blocks: NxBlockDefinition[] })` accepts the same
-real `NxBlockDefinition` shape as the built-ins (icon, label,
+`definePlugin({ blocks: NpBlockDefinition[] })` accepts the same
+real `NpBlockDefinition` shape as the built-ins (icon, label,
 propsSchema, render function) — no string-component indirection
 or separate registration shape. The `@nexpress/next` bootstrap
 calls `registerBlock` on each plugin's blocks right after
@@ -25,9 +25,9 @@ Wiring details:
   type overwrites silently so HMR / repeated boot in the same
   process don't blow up the editor.
 - `@nexpress/plugin-sdk` swaps the legacy
-  `NxBlockRegistration` type (component-string, never wired) for
-  the real `NxBlockDefinition` from `@nexpress/blocks` on
-  `NxPluginDefinition.blocks`. The legacy interface stays
+  `NpBlockRegistration` type (component-string, never wired) for
+  the real `NpBlockDefinition` from `@nexpress/blocks` on
+  `NpPluginDefinition.blocks`. The legacy interface stays
   exported as `@deprecated` for type compatibility.
 - `@nexpress/next` bootstrap iterates plugin defs and calls
   `registerBlock` for each block. Adds `@nexpress/blocks` as a
@@ -42,7 +42,7 @@ nothing breaks. The first real plugin block can be added in a
 single PR now.
 
 Server → client wiring: `@nexpress/blocks` exposes a serializable
-`NxBlockMetadata` type (`Omit<NxBlockDefinition, "render">`) and
+`NpBlockMetadata` type (`Omit<NpBlockDefinition, "render">`) and
 a `getRegisteredBlockMetadata()` helper. The admin's protected
 layout calls it server-side after `ensureFor("plugins")` and
 mounts a `<BlocksRegistryProvider>` (new export from

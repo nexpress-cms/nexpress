@@ -36,19 +36,19 @@ export function ProjectDetailTemplate({ doc }: NpTemplateRenderProps) {
   const title = project.title ?? "Untitled";
   const cover = coverUrl(project.cover);
   return (
-    <article className="nx-portfolio-project-detail">
+    <article className="np-portfolio-project-detail">
       {cover ? (
-        <figure className="nx-portfolio-project-hero">
+        <figure className="np-portfolio-project-hero">
           <img src={cover} alt={coverAlt(project.cover, title)} />
         </figure>
       ) : null}
-      <header className="nx-portfolio-project-header">
+      <header className="np-portfolio-project-header">
         <h1>{title}</h1>
         {project.excerpt ? (
-          <p className="nx-portfolio-project-excerpt">{project.excerpt}</p>
+          <p className="np-portfolio-project-excerpt">{project.excerpt}</p>
         ) : null}
         {(project.role || project.year || project.client) ? (
-          <dl className="nx-portfolio-project-meta">
+          <dl className="np-portfolio-project-meta">
             {project.client ? (
               <>
                 <dt>Client</dt>
@@ -71,7 +71,7 @@ export function ProjectDetailTemplate({ doc }: NpTemplateRenderProps) {
         ) : null}
       </header>
       {project.blocks && project.blocks.length > 0 ? (
-        <div className="nx-portfolio-project-body">
+        <div className="np-portfolio-project-body">
           {renderBlocks(project.blocks)}
         </div>
       ) : null}

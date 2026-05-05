@@ -21,17 +21,17 @@ export function PageSidebarTemplate({ doc }: NpTemplateRenderProps) {
   const title = (doc as { title?: string }).title ?? "Untitled";
 
   return (
-    <div className="nx-page nx-page-sidebar">
-      <article className="nx-page-sidebar-main">
+    <div className="np-page np-page-sidebar">
+      <article className="np-page-sidebar-main">
         {blocks ? renderBlocks(blocks) : <h1>{title}</h1>}
       </article>
-      <aside className="nx-page-sidebar-aside" aria-label="Page sidebar">
+      <aside className="np-page-sidebar-aside" aria-label="Page sidebar">
         {sidebar && sidebar.length > 0 ? (
           renderBlocks(sidebar)
         ) : (
-          <div className="nx-page-sidebar-placeholder">
-            <p className="nx-page-sidebar-placeholder-label">On this page</p>
-            <p className="nx-page-sidebar-placeholder-hint">
+          <div className="np-page-sidebar-placeholder">
+            <p className="np-page-sidebar-placeholder-label">On this page</p>
+            <p className="np-page-sidebar-placeholder-hint">
               Add a <code>sidebar</code> field to your pages collection to fill
               this column with secondary blocks.
             </p>

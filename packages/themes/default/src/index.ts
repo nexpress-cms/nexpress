@@ -23,7 +23,7 @@ import { PostListTemplate } from "./templates/post-list.js";
  * framework drops it as a single `<style data-nx-theme="default">`
  * tag at SSR time — no extra round-trip.
  *
- * Sites brand by overriding the design tokens (`--nx-color-*` etc).
+ * Sites brand by overriding the design tokens (`--np-color-*` etc).
  * Ship a competing theme package (see theme-magazine / theme-portfolio)
  * to change layout structure rather than colors.
  */

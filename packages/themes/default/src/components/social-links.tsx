@@ -54,7 +54,7 @@ export function SocialLinks() {
   const links = buildLinks();
   if (links.length === 0) return null;
   return (
-    <ul className="nx-site-footer-social">
+    <ul className="np-site-footer-social">
       {links.map((link) => (
         <li key={link.href}>
           <a

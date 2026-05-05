@@ -54,14 +54,14 @@ describe.skipIf(skipIfNoTestDb())("theme render snapshots (Phase 11.2 fixup)", (
     }).slots.header;
     const html = renderToString(Header());
     // Logo present
-    expect(html).toContain('class="nx-site-logo"');
+    expect(html).toContain('class="np-site-logo"');
     expect(html).toContain("NexPress");
     // Header wrapper carries the minimal modifier
-    expect(html).toContain("nx-minimal-header");
+    expect(html).toContain("np-minimal-header");
     // No nav menu, no search form, no member widget
-    expect(html).not.toContain("nx-site-nav");
-    expect(html).not.toContain("nx-site-search");
-    expect(html).not.toContain("nx-member-status");
+    expect(html).not.toContain("np-site-nav");
+    expect(html).not.toContain("np-site-search");
+    expect(html).not.toContain("np-member-status");
   });
 
   it("MinimalFooter is the bare top-rule (no menu)", async () => {
@@ -70,7 +70,7 @@ describe.skipIf(skipIfNoTestDb())("theme render snapshots (Phase 11.2 fixup)", (
       slots: { footer: () => React.ReactElement };
     }).slots.footer;
     const html = renderToString(Footer());
-    expect(html).toContain("nx-minimal-footer");
+    expect(html).toContain("np-minimal-footer");
     // No `<nav>` / `<ul>` — minimal footer renders just the
     // visual rule, no link list.
     expect(html).not.toContain("<nav");
@@ -89,10 +89,10 @@ describe.skipIf(skipIfNoTestDb())("theme render snapshots (Phase 11.2 fixup)", (
       slots: { header: () => React.ReactElement };
     }).slots.header;
     const html = renderToString(Header());
-    expect(html).toContain("nx-minimal-header");
-    // Default header would contain `nx-site-search-input`
+    expect(html).toContain("np-minimal-header");
+    // Default header would contain `np-site-search-input`
     // (search input class). Minimal explicitly drops it.
-    expect(html).not.toContain("nx-site-search-input");
+    expect(html).not.toContain("np-site-search-input");
   });
 
   it("Theme CSS strings are non-trivial and don't share rule signatures", async () => {
@@ -106,6 +106,6 @@ describe.skipIf(skipIfNoTestDb())("theme render snapshots (Phase 11.2 fixup)", (
     // minimal's CSS — proves we actually wrote different
     // rule sets, not a copy-paste with one selector tweaked.
     expect(minimalCss).not.toContain("max-width: 1200px");
-    expect(defaultCss).not.toContain("nx-minimal-header");
+    expect(defaultCss).not.toContain("np-minimal-header");
   });
 });

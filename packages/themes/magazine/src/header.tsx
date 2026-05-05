@@ -14,14 +14,14 @@ import { MagazineMobileNav } from "./components/mobile-nav.js";
  *
  * Phase 12.5 — the masthead tagline is keyed in the theme's
  * i18n bundle (`magazine.tagline`) and rendered via `t()`. The
- * locale comes from the middleware-set `x-nx-locale` header.
+ * locale comes from the middleware-set `x-np-locale` header.
  */
 export async function MagazineHeader() {
   const items = await getCachedNavigation("header");
   let locale: string | undefined;
   try {
     const headerList = await headers();
-    locale = headerList.get("x-nx-locale") ?? undefined;
+    locale = headerList.get("x-np-locale") ?? undefined;
   } catch {
     // Outside a request scope; t()'s default-locale fallback handles it.
   }
@@ -34,23 +34,23 @@ export async function MagazineHeader() {
   });
 
   return (
-    <header className="nx-site-header nx-magazine-header">
-      <div className="nx-magazine-masthead">
-        <p className="nx-magazine-dateline">{today}</p>
-        <a href="/" className="nx-site-logo nx-magazine-logo">
+    <header className="np-site-header np-magazine-header">
+      <div className="np-magazine-masthead">
+        <p className="np-magazine-dateline">{today}</p>
+        <a href="/" className="np-site-logo np-magazine-logo">
           NexPress
         </a>
-        <p className="nx-magazine-tagline">{tagline}</p>
+        <p className="np-magazine-tagline">{tagline}</p>
       </div>
       {items.length > 0 ? (
         <>
-          <nav aria-label="Sections" className="nx-magazine-sections">
+          <nav aria-label="Sections" className="np-magazine-sections">
             <ul>
               {items.map((item: NpNavItem, index: number) => (
-                <li key={`magazine-nav-${index.toString()}`} className="nx-magazine-nav-item">
+                <li key={`magazine-nav-${index.toString()}`} className="np-magazine-nav-item">
                   <a href={item.url}>{item.label}</a>
                   {item.children && item.children.length > 0 ? (
-                    <ul className="nx-magazine-subnav">
+                    <ul className="np-magazine-subnav">
                       {item.children.map((child: NpNavItem, childIndex: number) => (
                         <li key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}>
                           <a href={child.url}>{child.label}</a>

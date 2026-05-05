@@ -58,31 +58,31 @@ export function DiscussionAuthorActions({ docId, slug }: DiscussionAuthorActions
   };
 
   return (
-    <div className="nx-discussion-actions">
-      <Link href={`/discussions/${slug}/edit`} className="nx-tab">
+    <div className="np-discussion-actions">
+      <Link href={`/discussions/${slug}/edit`} className="np-tab">
         Edit
       </Link>
       <button
         type="button"
         onClick={() => setConfirmingDelete(true)}
         disabled={submitting}
-        className="nx-tab nx-tab-destructive"
+        className="np-tab np-tab-destructive"
       >
         Delete
       </button>
       {error ? (
-        <span role="alert" className="nx-form-error">
+        <span role="alert" className="np-form-error">
           {error}
         </span>
       ) : null}
 
       {confirmingDelete ? (
-        <div role="dialog" aria-modal="true" className="nx-confirm-dialog">
+        <div role="dialog" aria-modal="true" className="np-confirm-dialog">
           <p>Delete this discussion? This cannot be undone.</p>
-          <div className="nx-form-actions">
+          <div className="np-form-actions">
             <button
               type="button"
-              className="nx-tab"
+              className="np-tab"
               onClick={() => setConfirmingDelete(false)}
               disabled={submitting}
             >
@@ -90,7 +90,7 @@ export function DiscussionAuthorActions({ docId, slug }: DiscussionAuthorActions
             </button>
             <button
               type="button"
-              className="nx-tab nx-tab-destructive"
+              className="np-tab np-tab-destructive"
               onClick={() => void handleDelete()}
               disabled={submitting}
             >

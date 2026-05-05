@@ -98,7 +98,7 @@ Per-request, in priority order:
    the `nx-admin-site` cookie (set by the admin site-picker)
    on `/admin` and `/api/admin` paths only. Lets a super-
    admin operate on any site without changing the URL.
-2. **`x-nx-host` header** — middleware forwards the request
+2. **`x-np-host` header** — middleware forwards the request
    `Host`. The bootstrap resolver does
    `resolveSiteForHostname()` which queries `nx_sites` for
    a matching row.
@@ -312,7 +312,7 @@ deployments:
   tenant code keeps writing to `site_id = 'default'`
   transparently.
 - The resolver falls back to `NX_DEFAULT_SITE_ID` when no
-  `x-nx-host` matches, so requests with no recognized
+  `x-np-host` matches, so requests with no recognized
   hostname (e.g. local `localhost:3000`) resolve to default.
 - The site picker hides itself when only one site is
   accessible, removing the noise.

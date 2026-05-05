@@ -58,7 +58,7 @@ export default async function PublicProfilePage({ params }: ProfilePageProps) {
   });
 
   return (
-    <article className="nx-member-profile" style={{ maxWidth: 640, margin: "3rem auto", padding: "0 1.5rem" }}>
+    <article className="np-member-profile" style={{ maxWidth: 640, margin: "3rem auto", padding: "0 1.5rem" }}>
       <JsonLd data={personJsonLd as unknown as Record<string, unknown>} />
       <header style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
         <div
