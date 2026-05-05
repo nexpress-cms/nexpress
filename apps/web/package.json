@@ -40,6 +40,7 @@
     "@nexpress/plugin-block-callout": "workspace:*",
     "@nexpress/plugin-block-embed": "workspace:*",
     "@nexpress/plugin-block-latest-posts": "workspace:*",
+    "@nexpress/plugin-block-newsletter": "workspace:*",
     "@nexpress/plugin-block-stats": "workspace:*",
     "@nexpress/plugin-forum": "workspace:*",
     "@nexpress/plugin-oauth-github": "workspace:*",

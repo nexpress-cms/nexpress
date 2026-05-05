@@ -1,0 +1,16 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "jsx": "react-jsx",
+    // The base tsconfig sets lib: ["ES2022"] only, since most NexPress
+    // packages are server-only. The newsletter plugin ships an
+    // interactive client component (`subscribe-form.tsx` with
+    // `useState` + `<input>` event handlers), so it needs the DOM
+    // lib for `HTMLInputElement.value` etc. — pulled in additively
+    // here without polluting the workspace base.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src"]
+}
