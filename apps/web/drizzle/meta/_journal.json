@@ -218,6 +218,13 @@
       "when": 1777909457214,
       "tag": "0030_jazzy_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1777996800000,
+      "tag": "0031_nosy_mandrill",
+      "breakpoints": true
     }
   ]
 }
