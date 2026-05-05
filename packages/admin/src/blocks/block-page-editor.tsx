@@ -80,6 +80,12 @@ import { Textarea } from "../ui/textarea.js";
 import { cn } from "../ui/utils.js";
 
 import { BlockPalette } from "./block-palette.js";
+import {
+  getBuiltInPatterns,
+  getCustomPatterns,
+  saveCustomPattern,
+  type NpPattern,
+} from "./patterns.js";
 import { PreviewPanel } from "./preview-panel.js";
 import { useCollectionOptions } from "./registry-context.js";
 
@@ -138,6 +144,11 @@ type EditorAction =
   | { type: "MOVE_INTO"; id: string; targetParentId: string }
   | { type: "MOVE_OUT"; id: string }
   | { type: "WRAP_IN"; id: string; containerType: string }
+  // Append a pattern's pre-shaped subtree to the top-level (or
+  // into a container when `parentId` is supplied). All ids in
+  // the pattern's blocks get regenerated so reuse never collides
+  // with an existing row.
+  | { type: "INSERT_PATTERN"; pattern: NpPattern; parentId?: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
   | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> };
 
@@ -456,6 +467,21 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
             children: [block],
           };
         });
+      }
+      case "INSERT_PATTERN": {
+        // Re-id every block in the pattern so each insertion is
+        // independent. Filter unknown types defensively — a
+        // pattern stored via "save current as pattern" might
+        // outlive the plugin that contributed one of its blocks.
+        const sanitized = action.pattern.blocks
+          .filter((b) => definitions.has(b.type))
+          .map(cloneBlockDeep);
+        if (sanitized.length === 0) return state;
+        const parentId = action.parentId ?? null;
+        return updateContainerChildren(state, parentId, (siblings) => [
+          ...siblings,
+          ...sanitized,
+        ]);
       }
       case "UPDATE_PROPS":
         return mapTree(state, (block) =>
@@ -2069,7 +2095,7 @@ interface CommandAction {
   hint?: string;
   // Group label for the section header — actions with the same
   // group render together with the group as the header.
-  group: "Block" | "Page" | "Add";
+  group: "Block" | "Pattern" | "Page" | "Add";
   run: () => void;
 }
 
@@ -2082,6 +2108,8 @@ interface CommandMenuProps {
   definitions: Map<string, NpBlockMetadata>;
   dispatch: (action: EditorAction) => void;
   onOpenPageJson: () => void;
+  patterns: NpPattern[];
+  onSaveFocusedAsPattern: (focusedBlockId: string) => void;
 }
 
 // Cmd-K command palette for the page-builder. Built on the
@@ -2100,6 +2128,8 @@ function CommandMenu({
   definitions,
   dispatch,
   onOpenPageJson,
+  patterns,
+  onSaveFocusedAsPattern,
 }: CommandMenuProps) {
   const [query, setQuery] = useState("");
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
@@ -2215,6 +2245,28 @@ function CommandMenu({
       hint: def.type,
       group: "Add",
       run: () => dispatch({ type: "ADD", blockType: def.type }),
+    });
+  }
+
+  // Patterns (#467 phase 4). Built-ins ship with the editor;
+  // custom patterns come from localStorage and survive across
+  // sessions. Both surface under the same "Pattern" group so
+  // operators don't have to know which is which.
+  for (const pattern of patterns) {
+    actions.push({
+      id: `pattern.insert.${pattern.id}`,
+      label: `Insert pattern: ${pattern.label}`,
+      hint: pattern.source === "custom" ? "saved" : pattern.id,
+      group: "Pattern",
+      run: () => dispatch({ type: "INSERT_PATTERN", pattern }),
+    });
+  }
+  if (focusedBlock && focusedBlockId) {
+    actions.push({
+      id: "pattern.save-focused",
+      label: `Save ${focusedLabel ?? "block"} as pattern`,
+      group: "Pattern",
+      run: () => onSaveFocusedAsPattern(focusedBlockId),
     });
   }
 
@@ -2366,7 +2418,7 @@ function filterCommandActions(
 function groupCommandActions(
   actions: CommandAction[],
 ): { group: CommandAction["group"]; items: CommandAction[] }[] {
-  const order: CommandAction["group"][] = ["Block", "Add", "Page"];
+  const order: CommandAction["group"][] = ["Block", "Pattern", "Add", "Page"];
   const buckets = new Map<CommandAction["group"], CommandAction[]>();
   for (const a of actions) {
     const list = buckets.get(a.group) ?? [];
@@ -2899,6 +2951,42 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
+  // Section patterns (#467 phase 4). Built-ins ship with the
+  // editor; custom patterns live in localStorage and refresh on
+  // every render-cycle that opens the command menu (we re-read
+  // from storage when the menu opens so a save in the same
+  // session shows up without a page reload).
+  const [customPatterns, setCustomPatterns] = useState<NpPattern[]>([]);
+  useEffect(() => {
+    if (commandOpen) setCustomPatterns(getCustomPatterns());
+  }, [commandOpen]);
+  const patterns = useMemo(
+    () => [...getBuiltInPatterns(), ...customPatterns],
+    [customPatterns],
+  );
+  const handleSaveFocusedAsPattern = useCallback(
+    (focusedBlockId: string) => {
+      const focused = findBlockInTreeFlat(blocks, focusedBlockId);
+      if (!focused) return;
+      const label = window.prompt(
+        "Save as pattern — name?",
+        focused.props.title?.toString() ??
+          focused.props.heading?.toString() ??
+          focused.type,
+      );
+      if (!label || label.trim().length === 0) return;
+      const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const pattern: NpPattern = {
+        id,
+        label: label.trim(),
+        source: "custom",
+        blocks: [focused],
+      };
+      const next = saveCustomPattern(pattern);
+      setCustomPatterns(next);
+    },
+    [blocks],
+  );
   // Live preview toggle. Persisted in localStorage so an operator
   // who keeps it open across sessions doesn't need to flip it on
   // every page load. Defaults to off — preview costs an extra
@@ -3272,6 +3360,8 @@ export function BlockPageEditor({
         definitions={definitions}
         dispatch={dispatch}
         onOpenPageJson={() => setPageJsonOpen(true)}
+        patterns={patterns}
+        onSaveFocusedAsPattern={handleSaveFocusedAsPattern}
       />
     </section>
   );
