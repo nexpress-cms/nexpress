@@ -16,6 +16,7 @@ export {
   getRegisteredBlocks,
   getSharedRegistry,
   registerBlock,
+  resetSharedBlockRegistry,
 } from "./registry.js";
 export { renderBlocks } from "./render-blocks.js";
 export type { NpRenderBlocksOptions } from "./render-blocks.js";

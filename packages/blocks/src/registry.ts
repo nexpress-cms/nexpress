@@ -85,6 +85,24 @@ export const registerBlock = (definition: NpBlockDefinition): void => {
   sharedRegistry.register(definition);
 };
 
+/**
+ * Resets the shared block registry to the built-in defaults
+ * (issue #477). Called by the bootstrap's `reloadPlugins()` so
+ * disabled / removed plugins don't leave their block definitions
+ * lingering in the registry — without this, a disabled plugin's
+ * block would still appear in the admin's Add-block popover and
+ * still resolve during server render after a reload, even though
+ * its hooks / routes / actions had been cleared by `resetPlugins()`.
+ *
+ * Safe to call repeatedly — the bootstrap re-registers every
+ * enabled plugin's blocks immediately after, so the registry
+ * settles on `defaults + currently-enabled plugin contributions`.
+ */
+export const resetSharedBlockRegistry = (): void => {
+  sharedDefinitions.clear();
+  for (const block of defaultBlocks) sharedDefinitions.set(block.type, block);
+};
+
 /** Returns every block in the shared registry — defaults + plugin contributions. */
 export const getRegisteredBlocks = (): NpBlockDefinition[] => sharedRegistry.getAll();
 

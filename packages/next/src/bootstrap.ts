@@ -27,7 +27,11 @@ import {
   type NpReconcileSchedulesResult,
   type NpResolvedPluginLike,
 } from "@nexpress/core";
-import { registerBlock, type NpBlockDefinition } from "@nexpress/blocks";
+import {
+  registerBlock,
+  resetSharedBlockRegistry,
+  type NpBlockDefinition,
+} from "@nexpress/blocks";
 import { cookies, headers } from "next/headers";
 
 // Plugin definitions can ship a `blocks` array (see plugin-sdk's
@@ -408,6 +412,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // reload instead of starting a parallel one.
     const loading = (async () => {
       resetPlugins();
+      // Issue #477 — also drop plugin-contributed blocks from the
+      // shared block registry. `resetPlugins()` clears hooks /
+      // routes / actions, but block definitions live in a separate
+      // registry that previously persisted across reloads. After a
+      // disable + reload the disabled plugin's blocks would still
+      // surface in the admin's Add-block popover and still resolve
+      // server-side. Resetting here, then re-registering only the
+      // currently-enabled set below, settles on
+      // `built-ins + enabled plugins` — the obvious invariant.
+      resetSharedBlockRegistry();
       const instance = getDbInstance();
       const configured = config.plugins ?? [];
       const configuredIds = configured.map(resolvePluginId);
