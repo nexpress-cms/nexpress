@@ -179,3 +179,93 @@ function isPattern(value: unknown): value is NpPattern {
   if (!Array.isArray(candidate.blocks)) return false;
   return true;
 }
+
+// ---------------------------------------------------------------
+// Server-side patterns (#467 follow-up). Stored in `np_settings`
+// per site so a team's saved compositions show up across operator
+// accounts and devices instead of being trapped in one browser's
+// localStorage. The local store stays as fallback for offline use,
+// for accounts without `admin.manage`, and as a graceful path when
+// the API endpoint is unreachable.
+// ---------------------------------------------------------------
+
+interface ServerPatternResponse {
+  patterns?: unknown[];
+}
+
+interface SavedServerPatternResponse {
+  pattern?: unknown;
+}
+
+const PATTERNS_ENDPOINT = "/api/admin/patterns";
+
+/**
+ * Fetches site-shared patterns from the server. Returns `null`
+ * when the call fails (no network, 401/403, server error) so the
+ * caller can decide to fall back to local-only patterns.
+ */
+export async function fetchServerPatterns(): Promise<NpPattern[] | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const res = await fetch(PATTERNS_ENDPOINT, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as ServerPatternResponse;
+    if (!Array.isArray(payload.patterns)) return [];
+    return payload.patterns
+      .filter(isPattern)
+      .map((p) => ({ ...p, source: "custom" as const }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Saves a pattern to the server. Returns the persisted pattern on
+ * success or `null` on failure — the caller falls back to the
+ * local store so the operator's intent isn't lost.
+ */
+export async function saveServerPattern(
+  pattern: NpPattern,
+): Promise<NpPattern | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const res = await fetch(PATTERNS_ENDPOINT, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: pattern.id,
+        label: pattern.label,
+        description: pattern.description,
+        blocks: pattern.blocks,
+      }),
+    });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as SavedServerPatternResponse;
+    if (!isPattern(payload.pattern)) return null;
+    return { ...payload.pattern, source: "custom" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes a server-stored pattern. Returns `true` on a 2xx
+ * response (including the case where the id wasn't there to
+ * begin with — the server treats that as a no-op success).
+ */
+export async function deleteServerPattern(id: string): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  try {
+    const res = await fetch(`${PATTERNS_ENDPOINT}/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

@@ -81,9 +81,11 @@ import { cn } from "../ui/utils.js";
 
 import { BlockPalette } from "./block-palette.js";
 import {
+  fetchServerPatterns,
   getBuiltInPatterns,
   getCustomPatterns,
   saveCustomPattern,
+  saveServerPattern,
   type NpPattern,
 } from "./patterns.js";
 import { PreviewPanel } from "./preview-panel.js";
@@ -2951,15 +2953,38 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
-  // Section patterns (#467 phase 4). Built-ins ship with the
-  // editor; custom patterns live in localStorage and refresh on
-  // every render-cycle that opens the command menu (we re-read
-  // from storage when the menu opens so a save in the same
-  // session shows up without a page reload).
+  // Section patterns (#467 phase 4 + follow-up).
+  //
+  // - Built-ins ship with the editor.
+  // - Server patterns live in `np_settings` (per site, shared
+  //   across operators on the same team) and arrive via
+  //   `/api/admin/patterns`. They take precedence in the merged
+  //   list so a team-shared "Featured CTA" overrides any locally
+  //   saved pattern with the same id.
+  // - Local-only fallback: when the API call fails (offline, lower
+  //   role than admin.manage, server error) we fall back to the
+  //   localStorage list so an operator can still keep working.
+  //
+  // We refresh on command-menu open so an out-of-band save (another
+  // tab) flows through without a page reload.
   const [customPatterns, setCustomPatterns] = useState<NpPattern[]>([]);
+  const refreshPatterns = useCallback(async () => {
+    const local = getCustomPatterns();
+    const server = await fetchServerPatterns();
+    if (server === null) {
+      // API unreachable — show local-only list.
+      setCustomPatterns(local);
+      return;
+    }
+    // Merge: server first (canonical), then any local-only ids the
+    // operator hasn't pushed up yet. Same id → server wins.
+    const serverIds = new Set(server.map((p) => p.id));
+    const localOnly = local.filter((p) => !serverIds.has(p.id));
+    setCustomPatterns([...server, ...localOnly]);
+  }, []);
   useEffect(() => {
-    if (commandOpen) setCustomPatterns(getCustomPatterns());
-  }, [commandOpen]);
+    if (commandOpen) void refreshPatterns();
+  }, [commandOpen, refreshPatterns]);
   const patterns = useMemo(
     () => [...getBuiltInPatterns(), ...customPatterns],
     [customPatterns],
@@ -2982,8 +3007,20 @@ export function BlockPageEditor({
         source: "custom",
         blocks: [focused],
       };
-      const next = saveCustomPattern(pattern);
-      setCustomPatterns(next);
+      // Try server first. Falls back to localStorage so the save
+      // never silently fails — the operator just gets a local-only
+      // pattern that a later refresh can promote.
+      void saveServerPattern(pattern).then((saved) => {
+        if (saved) {
+          setCustomPatterns((current) => [
+            saved,
+            ...current.filter((p) => p.id !== saved.id),
+          ]);
+          return;
+        }
+        const next = saveCustomPattern(pattern);
+        setCustomPatterns(next);
+      });
     },
     [blocks],
   );
