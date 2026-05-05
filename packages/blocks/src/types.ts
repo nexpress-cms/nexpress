@@ -152,6 +152,58 @@ export interface NpBlockPropField {
   /** Optional helper text rendered under the field in the props form. */
   description?: string;
   /**
+   * Native input placeholder. Applies to `text` / `textarea` /
+   * `url` / `number`. Ignored for non-input types (`boolean`,
+   * `select`, `image`, `media`, `richtext`, `array`, `collection`,
+   * `color`).
+   */
+  placeholder?: string;
+  /**
+   * For `type: "number"`. Mirrors the HTML number input
+   * attributes. Validation pass surfaces a soft warning when the
+   * stored value falls outside `[min, max]` or doesn't align to
+   * `step` from `min` (or 0 if `min` is omitted).
+   */
+  min?: number;
+  max?: number;
+  step?: number;
+  /**
+   * For `type: "text"` / `type: "url"`. Regex source string —
+   * the validation pass tests the stored value against
+   * `new RegExp(pattern)`. Invalid patterns are silently dropped
+   * (we don't want a typo in an author's schema to crash the
+   * editor). Use anchors (`^…$`) to constrain the entire value.
+   */
+  pattern?: string;
+  /** Custom error message paired with `pattern` / `min` / `max`. */
+  patternMessage?: string;
+  /**
+   * For `type: "textarea"`. Number of visible rows. Defaults to
+   * 4 when omitted (matching the existing renderer).
+   */
+  rows?: number;
+  /**
+   * Field grouping label. Fields with the same `group` render
+   * under one collapsible section in the props form, in
+   * declaration order. Omitted falls into the default ungrouped
+   * surface so existing schemas stay flat. Block authors that
+   * want a tabbed layout can still rely on field order — the
+   * editor lays out groups stacked, not as tabs (a v2 upgrade).
+   */
+  group?: string;
+  /**
+   * Conditional visibility — the field is hidden when *all* of
+   * the listed `[propName, value]` predicates match the block's
+   * current `props`. Lets a schema express "show `ctaUrl` only
+   * when `showCta` is true". Leaving the array empty (or omitting
+   * the field) keeps the field always visible.
+   *
+   * Predicate semantics: a missing prop on the block compares
+   * against `undefined`, so `hiddenWhen: [["showCta", undefined]]`
+   * hides until `showCta` is set to anything.
+   */
+  hiddenWhen?: ReadonlyArray<readonly [string, unknown]>;
+  /**
    * For `type: "array"`. Schema applied to every entry in the stored
    * `unknown[]`. The admin renderer recurses through this list when an
    * operator clicks "Add" — fields here use the same `NpBlockPropField`

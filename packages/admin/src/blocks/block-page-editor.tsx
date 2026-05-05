@@ -449,7 +449,8 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
     return (
       <Textarea
         id={inputId}
-        rows={4}
+        rows={typeof field.rows === "number" && field.rows > 0 ? field.rows : 4}
+        placeholder={field.placeholder}
         value={typeof value === "string" ? value : ""}
         onChange={(event) => onChange(event.currentTarget.value)}
       />
@@ -587,6 +588,32 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
       type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
       value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
       onChange={(event) => onChange(parseFieldInput(field, event.currentTarget.value))}
+      placeholder={field.placeholder}
+      // Number-input attributes (#467 phase 3). The runtime
+      // validator (`lintFieldValue`) re-checks them so blocks
+      // saved through the JSON dialog or the API also surface
+      // bounds violations as warnings — these here just give
+      // operators native browser feedback while typing.
+      min={
+        field.type === "number" && typeof field.min === "number"
+          ? field.min
+          : undefined
+      }
+      max={
+        field.type === "number" && typeof field.max === "number"
+          ? field.max
+          : undefined
+      }
+      step={
+        field.type === "number" && typeof field.step === "number"
+          ? field.step
+          : undefined
+      }
+      pattern={
+        (field.type === "text" || field.type === "url") && field.pattern
+          ? field.pattern
+          : undefined
+      }
       aria-invalid={requiredMissing || undefined}
       className={
         requiredMissing
@@ -595,6 +622,91 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
       }
     />
   );
+}
+
+// Returns true when every `[propName, expected]` predicate in
+// `field.hiddenWhen` matches the block's current `props`. Used by
+// the props form to skip rendering conditionally hidden fields —
+// a schema can express "show ctaUrl only when showCta is true"
+// without the block author writing UI logic.
+function isFieldHidden(
+  field: NpBlockPropField,
+  blockProps: Record<string, unknown>,
+): boolean {
+  const predicates = field.hiddenWhen;
+  if (!predicates || predicates.length === 0) return false;
+  for (const [name, expected] of predicates) {
+    if (blockProps[name] !== expected) return false;
+  }
+  return true;
+}
+
+// Soft client-side validation for a single field value. Returns
+// null when the value is OK, otherwise a human-readable warning
+// (the props form surfaces it as an amber banner). Server-side
+// validation still has the final say — this surface helps
+// operators spot issues before save.
+function lintFieldValue(
+  field: NpBlockPropField,
+  value: unknown,
+): string | null {
+  if (field.type === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    if (typeof field.min === "number" && value < field.min) {
+      return field.patternMessage ?? `Must be ≥ ${field.min}`;
+    }
+    if (typeof field.max === "number" && value > field.max) {
+      return field.patternMessage ?? `Must be ≤ ${field.max}`;
+    }
+    return null;
+  }
+  if ((field.type === "text" || field.type === "url") && field.pattern) {
+    if (typeof value !== "string" || value.length === 0) return null;
+    let regex: RegExp | null = null;
+    try {
+      regex = new RegExp(field.pattern);
+    } catch {
+      // Author typed an invalid pattern — silently drop. Don't
+      // crash the editor over a schema typo.
+      return null;
+    }
+    if (regex && !regex.test(value)) {
+      return field.patternMessage ?? `Doesn't match pattern \`${field.pattern}\``;
+    }
+  }
+  return null;
+}
+
+interface FieldGroupSection {
+  group: string | null;
+  fields: NpBlockPropField[];
+}
+
+// Walks `propsSchema` and partitions visible (non-`hiddenWhen`)
+// fields into groups in declaration order. Fields without a
+// `group` go into the leading "ungrouped" bucket so existing
+// schemas stay flat. Within each bucket, declaration order is
+// preserved.
+function groupVisibleFields(
+  schema: readonly NpBlockPropField[],
+  blockProps: Record<string, unknown>,
+): FieldGroupSection[] {
+  const sections: FieldGroupSection[] = [];
+  const indexByGroup = new Map<string, number>();
+
+  for (const field of schema) {
+    if (isFieldHidden(field, blockProps)) continue;
+    const groupKey = field.group ?? null;
+    const lookupKey = groupKey ?? "__np_ungrouped__";
+    let index = indexByGroup.get(lookupKey);
+    if (index === undefined) {
+      index = sections.length;
+      sections.push({ group: groupKey, fields: [] });
+      indexByGroup.set(lookupKey, index);
+    }
+    sections[index].fields.push(field);
+  }
+  return sections;
 }
 
 // Reads the first non-empty string-shaped prop named in
@@ -886,43 +998,82 @@ function SortableBlockItem({
                   This block has no editable props.
                 </p>
               ) : (
-                definition.propsSchema.map((field) => {
-                  const value = getFieldValue(field, block.props[field.name]);
-                  const inputId = `${fieldIdPrefix}-${field.name}`;
-                  const isRequiredMissing =
-                    field.required === true &&
-                    (value === undefined || value === "" || value === null);
-                  return (
-                    <div key={field.name} className="grid gap-1.5">
-                      {field.type !== "boolean" ? (
-                        <Label htmlFor={inputId} className="flex items-center gap-1">
-                          <span>{field.label}</span>
-                          {field.required ? (
-                            <span aria-label="required" className="text-rose-500">
-                              *
-                            </span>
-                          ) : null}
-                        </Label>
+                groupVisibleFields(definition.propsSchema, block.props).map(
+                  (section) => (
+                    <div
+                      key={section.group ?? "__ungrouped__"}
+                      className={cn(
+                        section.group
+                          ? "rounded-md border border-border/50 bg-muted/20 p-3"
+                          : "contents",
+                      )}
+                    >
+                      {section.group ? (
+                        <div className="pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          {section.group}
+                        </div>
                       ) : null}
-                      <FieldControl
-                        field={field}
-                        value={value}
-                        onChange={(next) =>
-                          onUpdateProps(block.id, { [field.name]: next })
-                        }
-                        inputId={inputId}
-                      />
-                      {field.description ? (
-                        <p className="text-xs text-muted-foreground">{field.description}</p>
-                      ) : null}
-                      {isRequiredMissing ? (
-                        <p className="text-xs text-rose-600 dark:text-rose-300">
-                          {field.label} is required.
-                        </p>
-                      ) : null}
+                      <div className="grid gap-4">
+                        {section.fields.map((field) => {
+                          const value = getFieldValue(
+                            field,
+                            block.props[field.name],
+                          );
+                          const inputId = `${fieldIdPrefix}-${field.name}`;
+                          const isRequiredMissing =
+                            field.required === true &&
+                            (value === undefined ||
+                              value === "" ||
+                              value === null);
+                          const lintMessage = lintFieldValue(field, value);
+                          return (
+                            <div key={field.name} className="grid gap-1.5">
+                              {field.type !== "boolean" ? (
+                                <Label
+                                  htmlFor={inputId}
+                                  className="flex items-center gap-1"
+                                >
+                                  <span>{field.label}</span>
+                                  {field.required ? (
+                                    <span
+                                      aria-label="required"
+                                      className="text-rose-500"
+                                    >
+                                      *
+                                    </span>
+                                  ) : null}
+                                </Label>
+                              ) : null}
+                              <FieldControl
+                                field={field}
+                                value={value}
+                                onChange={(next) =>
+                                  onUpdateProps(block.id, { [field.name]: next })
+                                }
+                                inputId={inputId}
+                              />
+                              {field.description ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {field.description}
+                                </p>
+                              ) : null}
+                              {isRequiredMissing ? (
+                                <p className="text-xs text-rose-600 dark:text-rose-300">
+                                  {field.label} is required.
+                                </p>
+                              ) : null}
+                              {!isRequiredMissing && lintMessage ? (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                  {lintMessage}
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  );
-                })
+                  ),
+                )
               )
             ) : (
               <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
