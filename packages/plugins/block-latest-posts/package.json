@@ -1,0 +1,44 @@
+{
+  "name": "@nexpress/plugin-block-latest-posts",
+  "version": "0.1.0",
+  "description": "Latest posts block — list the most recent documents from any collection.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "dependencies": {
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
+    "prepublishOnly": "pnpm build"
+  }
+}

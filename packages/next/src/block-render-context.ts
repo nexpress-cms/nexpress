@@ -1,0 +1,78 @@
+import {
+  findDocuments,
+  getDocumentById,
+  type NpFindOptions,
+  type NpFindResult,
+} from "@nexpress/core";
+import type { NpBlockRenderContext } from "@nexpress/blocks";
+
+/**
+ * Forces a `status = "published"` filter when the caller didn't already
+ * specify one on `where.status`. The block-render ctx is meant for
+ * public-page rendering; surfacing draft / scheduled rows to anonymous
+ * visitors is almost always a bug, so we make safe-by-default the path
+ * of least resistance. Plugins that explicitly want a different status
+ * can pass `where: { status: { equals: "draft" } }` and we won't
+ * overwrite it.
+ */
+function applyPublishedDefault(
+  options: Partial<NpFindOptions> | undefined,
+): Partial<NpFindOptions> {
+  const next: Partial<NpFindOptions> = { ...(options ?? {}) };
+  const existingWhere = (next.where ?? {}) as Record<string, unknown>;
+  const callerSpecifiedStatus =
+    "status" in existingWhere && existingWhere.status !== undefined;
+  if (!callerSpecifiedStatus) {
+    next.where = {
+      ...existingWhere,
+      status: { equals: "published" },
+    } as NpFindOptions["where"];
+  }
+  return next;
+}
+
+/**
+ * Server-only default builder for `NpBlockRenderContext`. Lives in
+ * `@nexpress/next` (server boundary) instead of `@nexpress/blocks`
+ * because blocks is in the host's `transpilePackages` list — adding
+ * a `@nexpress/core` dependency to blocks (even via dynamic import)
+ * would drag `pg` / `@node-rs/argon2` / `node:timers/promises` into
+ * the client bundle graph and break the build.
+ *
+ * Calls into `findDocuments` / `getDocumentById` with NO `user` argument:
+ * `@nexpress/core` already treats an absent / null principal as the
+ * "anonymous visitor" case — it dispatches to each collection's
+ * `access.read({ user: null })` and auto-applies `visibility = "public"`
+ * inside the pipeline. The earlier draft of this file synthesised a
+ * `viewer`-role principal as a workaround; that's now gone, so block
+ * plugins inherit whatever access the collection author defined for
+ * unauthenticated reads. Combined with `applyPublishedDefault()`, the
+ * surface is "what a logged-out visitor of the site itself can read."
+ *
+ * Site / theme template authors call this once per page render and
+ * pass the result into `renderBlocks(blocks, { ctx })`. Static-only
+ * pages (no data-bound blocks) can omit the ctx — `renderBlocks`
+ * passes `undefined` through to each block's render.
+ */
+export function createDefaultBlockRenderContext(): NpBlockRenderContext {
+  return {
+    content: {
+      async find(collection: string, options?: Partial<NpFindOptions>): Promise<NpFindResult> {
+        return findDocuments(collection, applyPublishedDefault(options));
+      },
+      async findOne(collection: string, id: string): Promise<Record<string, unknown> | null> {
+        // `getDocumentById` doesn't take a `where`, so the
+        // published-only default doesn't apply here. The collection's
+        // own access function is the safety net — anonymous callers
+        // hitting it should already be filtered to public-readable
+        // rows by the project's auth model.
+        const doc = await getDocumentById(collection, id);
+        return doc ?? null;
+      },
+      async count(collection: string): Promise<number> {
+        const result = await findDocuments(collection, applyPublishedDefault({ limit: 1 }));
+        return result.totalDocs;
+      },
+    },
+  };
+}

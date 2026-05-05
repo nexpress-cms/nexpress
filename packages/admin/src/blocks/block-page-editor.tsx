@@ -74,6 +74,7 @@ import { Textarea } from "../ui/textarea.js";
 import { cn } from "../ui/utils.js";
 
 import { BlockPalette } from "./block-palette.js";
+import { useCollectionOptions } from "./registry-context.js";
 
 declare const crypto: { randomUUID(): string };
 
@@ -317,6 +318,43 @@ interface FieldControlProps {
 }
 
 function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
+  // Hooks must run unconditionally so the React rules of hooks hold even
+  // when the field type is something other than "collection".
+  const collectionOptions = useCollectionOptions();
+
+  if (field.type === "collection") {
+    // The option list is injected via context by the host's admin layout
+    // (server-side, after bootstrap → after plugin collections register).
+    // When the list is empty (older mounts that didn't pass
+    // `collectionOptions`), we fall back to a free-text input so the
+    // form still works — better than disabling the field outright.
+    const stringValue = typeof value === "string" ? value : "";
+    if (collectionOptions.length === 0) {
+      return (
+        <Input
+          id={inputId}
+          value={stringValue}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="collection slug"
+        />
+      );
+    }
+    return (
+      <Select value={stringValue} onValueChange={(v) => onChange(v)}>
+        <SelectTrigger id={inputId}>
+          <SelectValue placeholder="Pick a collection" />
+        </SelectTrigger>
+        <SelectContent>
+          {collectionOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   if (field.type === "textarea") {
     return (
       <Textarea
@@ -361,6 +399,33 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
     );
   }
 
+  if (field.type === "media") {
+    // Until the admin grows a proper media-library browser, `media`
+    // reuses the existing image picker — operators paste a URL or
+    // upload through the same flow as the legacy `image` field. The
+    // type still differs at the propsSchema level so block authors
+    // can opt into the future picker without rewriting; today the
+    // wire format (a string) matches `image` exactly.
+    return (
+      <BlockImagePicker
+        inputId={inputId}
+        value={typeof value === "string" ? value : ""}
+        onChange={(next) => onChange(next)}
+      />
+    );
+  }
+
+  if (field.type === "array") {
+    return (
+      <ArrayFieldControl
+        field={field}
+        value={value}
+        onChange={onChange}
+        inputId={inputId}
+      />
+    );
+  }
+
   if (field.type === "select") {
     const stringValue =
       typeof value === "string"
@@ -399,12 +464,45 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
     );
   }
 
+  if (field.type === "color") {
+    // Browser native picker. Store as `#rrggbb` so `style={{ color }}`
+    // works directly. The text input next to it lets operators paste
+    // arbitrary CSS colors (rgb/hsl/var(...)) when the picker is too
+    // restrictive for theme-token references.
+    const stringValue = typeof value === "string" ? value : "";
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          id={inputId}
+          type="color"
+          value={/^#([0-9a-fA-F]{6})$/.test(stringValue) ? stringValue : "#000000"}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          className="h-9 w-12 cursor-pointer rounded-md border border-input bg-background"
+        />
+        <Input
+          value={stringValue}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          placeholder="#000000 or var(--np-color-primary)"
+          className="flex-1 font-mono text-xs"
+        />
+      </div>
+    );
+  }
+
+  const requiredMissing = field.required === true && (value === undefined || value === "" || value === null);
+
   return (
     <Input
       id={inputId}
       type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
       value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
       onChange={(event) => onChange(parseFieldInput(field, event.currentTarget.value))}
+      aria-invalid={requiredMissing || undefined}
+      className={
+        requiredMissing
+          ? "border-rose-500/60 focus-visible:ring-rose-500/40"
+          : undefined
+      }
     />
   );
 }
@@ -576,10 +674,20 @@ function SortableBlockItem({
                 definition.propsSchema.map((field) => {
                   const value = getFieldValue(field, block.props[field.name]);
                   const inputId = `${fieldIdPrefix}-${field.name}`;
+                  const isRequiredMissing =
+                    field.required === true &&
+                    (value === undefined || value === "" || value === null);
                   return (
                     <div key={field.name} className="grid gap-1.5">
                       {field.type !== "boolean" ? (
-                        <Label htmlFor={inputId}>{field.label}</Label>
+                        <Label htmlFor={inputId} className="flex items-center gap-1">
+                          <span>{field.label}</span>
+                          {field.required ? (
+                            <span aria-label="required" className="text-rose-500">
+                              *
+                            </span>
+                          ) : null}
+                        </Label>
                       ) : null}
                       <FieldControl
                         field={field}
@@ -589,6 +697,14 @@ function SortableBlockItem({
                         }
                         inputId={inputId}
                       />
+                      {field.description ? (
+                        <p className="text-xs text-muted-foreground">{field.description}</p>
+                      ) : null}
+                      {isRequiredMissing ? (
+                        <p className="text-xs text-rose-600 dark:text-rose-300">
+                          {field.label} is required.
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })
@@ -1040,6 +1156,113 @@ interface MediaDoc {
 // picker translates the selected media doc's `url` into the value
 // so the wire format stays simple (no relationship resolution
 // at render time).
+/**
+ * Renders an `array`-typed prop field. Each entry is a record matching
+ * `field.itemSchema`. `+ Add` pushes `field.itemDefault` (or a record
+ * derived from each `itemSchema[].defaultValue`); the remove button
+ * splices the entry out. v1 is intentionally light — no drag reorder,
+ * no nested arrays — to keep the renderer + storage shape predictable.
+ * The type system enforces no-nested-array on the source side; we
+ * additionally skip rendering at runtime if an author bypassed that.
+ */
+function ArrayFieldControl({
+  field,
+  value,
+  onChange,
+  inputId,
+}: {
+  field: NpBlockPropField;
+  value: unknown;
+  onChange: (next: unknown) => void;
+  inputId: string;
+}) {
+  const items: Record<string, unknown>[] = Array.isArray(value)
+    ? (value.filter(isRecord) as Record<string, unknown>[])
+    : [];
+  const itemSchema = (field.itemSchema ?? []).filter(
+    (sub) => sub.type !== "array",
+  );
+
+  const buildItemDefault = (): Record<string, unknown> => {
+    if (field.itemDefault && typeof field.itemDefault === "object") {
+      return { ...field.itemDefault };
+    }
+    const out: Record<string, unknown> = {};
+    for (const sub of itemSchema) {
+      if (sub.defaultValue !== undefined) out[sub.name] = sub.defaultValue;
+    }
+    return out;
+  };
+
+  const updateAt = (index: number, key: string, next: unknown) => {
+    const updated = items.map((item, i) =>
+      i === index ? { ...item, [key]: next } : item,
+    );
+    onChange(updated);
+  };
+
+  const removeAt = (index: number) => {
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">
+          No entries yet. Click &ldquo;Add&rdquo; below.
+        </p>
+      ) : null}
+      {items.map((item, index) => (
+        <div
+          key={index}
+          className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              #{index + 1}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => removeAt(index)}
+              aria-label={`Remove item ${index + 1}`}
+            >
+              <Trash2 className="size-3.5" />
+              Remove
+            </Button>
+          </div>
+          {itemSchema.map((sub) => {
+            const subInputId = `${inputId}-${index}-${sub.name}`;
+            return (
+              <div key={sub.name} className="grid gap-1.5">
+                {sub.type !== "boolean" ? (
+                  <Label htmlFor={subInputId}>{sub.label}</Label>
+                ) : null}
+                <FieldControl
+                  field={sub}
+                  value={item[sub.name]}
+                  onChange={(next) => updateAt(index, sub.name, next)}
+                  inputId={subInputId}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => onChange([...items, buildItemDefault()])}
+      >
+        <Plus className="size-3.5" />
+        Add
+      </Button>
+    </div>
+  );
+}
+
 function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<MediaDoc[]>([]);
