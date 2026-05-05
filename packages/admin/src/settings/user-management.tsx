@@ -154,16 +154,16 @@ export function UserManagement() {
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>User management</CardTitle>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setEmailInviteOpen(true)}>
-            <MailPlus className="mr-2 h-4 w-4" />
+            <MailPlus className="size-3.5" />
             Invite user
           </Button>
           <Button variant="outline" onClick={() => setInviteOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="size-3.5" />
             Create with password
           </Button>
         </div>
@@ -188,7 +188,7 @@ export function UserManagement() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-2xl border border-border/70">
+        <div className="overflow-hidden rounded-xl border border-border/70">
           <div className="grid grid-cols-[1fr_1.2fr_140px_120px] gap-4 border-b border-border/70 bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             <span>Name</span>
             <span>Email</span>

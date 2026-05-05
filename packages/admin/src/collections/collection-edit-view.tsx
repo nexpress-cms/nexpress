@@ -18,6 +18,7 @@ import { TranslationTabs } from "./translation-tabs.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
+import { StatusBadge } from "../ui/status-badge.js";
 import { nxFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
@@ -506,25 +507,18 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">
+              <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
                 {doc?.id ? `Edit ${config.labels.singular}` : `Create ${config.labels.singular}`}
               </h1>
               {currentStatus ? (
-                <span
-                  className={
-                    currentStatus === "published"
-                      ? "inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300"
-                      : currentStatus === "draft"
-                        ? "inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
-                        : currentStatus === "scheduled"
-                          ? "inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
-                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                <StatusBadge
+                  status={currentStatus}
+                  override={
+                    currentStatus === "scheduled" && doc?.publishedAt
+                      ? { label: `Scheduled · ${new Date(String(doc.publishedAt)).toLocaleString()}` }
+                      : undefined
                   }
-                >
-                  {currentStatus === "scheduled" && doc?.publishedAt
-                    ? `scheduled · ${new Date(String(doc.publishedAt)).toLocaleString()}`
-                    : currentStatus}
-                </span>
+                />
               ) : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">Shape content, metadata, and publishing details in one pass.</p>
@@ -545,7 +539,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             {previewSlug ? (
               <Button type="button" variant="outline" asChild>
                 <Link href={`/api/preview?path=/${collectionSlug}/${previewSlug}`} target="_blank">
-                  <Eye className="mr-2 h-4 w-4" />
+                  <Eye className="size-3.5" />
                   Preview
                 </Link>
               </Button>
@@ -561,7 +555,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
                 }}
                 disabled={isDeleting}
               >
-                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                {isDeleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
                 Delete
               </Button>
             ) : null}
@@ -574,7 +568,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               }}
               disabled={isSaving}
             >
-              {savingAs === "draft" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+              {savingAs === "draft" ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />}
               Save as Draft
             </Button>
 
@@ -585,15 +579,15 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
               disabled={isSaving}
             >
               {savingAs === "scheduled" || savingAs === "unschedule" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <CalendarClock className="mr-2 h-4 w-4" />
+                <CalendarClock className="size-3.5" />
               )}
               {isScheduled ? "Reschedule" : "Schedule"}
             </Button>
 
             <Button type="submit" disabled={isSaving}>
-              {savingAs === "published" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {savingAs === "published" ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
               {isScheduled ? "Publish now" : "Publish"}
             </Button>
           </div>
@@ -618,7 +612,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             ) : null}
             {mainFields.map((field, index) => (
               <Card key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}>
-                <CardContent className="pt-6">
+                <CardContent>
                   <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
                 </CardContent>
               </Card>
@@ -626,7 +620,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           </div>
 
           <div className="space-y-6 xl:col-span-4">
-            <Card className="sticky top-6 border-border/60 shadow-sm">
+            <Card className="sticky top-6">
               <CardHeader>
                 <CardTitle>Publishing</CardTitle>
               </CardHeader>

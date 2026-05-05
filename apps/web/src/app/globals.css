@@ -14,6 +14,18 @@
 
 @layer nx-base, nx-blocks, nx-theme, nx-overrides;
 
+/* ------------------------------------------------------------------
+ * Admin brand accent — used as a quiet indicator (active sidebar
+ * rail, focus rings, links, progress bars), never as a fill.
+ * Sourced from the wordmark's blue notch (`assets/icon.svg`).
+ * --------------------------------------------------------------- */
+:root {
+  --nx-color-brand: #0066ff;
+  --nx-color-brand-foreground: #ffffff;
+  --nx-color-brand-soft: rgb(0 102 255 / 0.08);
+  --nx-color-brand-ring: rgb(0 102 255 / 0.32);
+}
+
 @layer nx-base {
   *,
   *::before,
@@ -29,6 +41,11 @@
     background: var(--nx-color-background, #fff);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Stylistic alternates pulled from the design system: ss01 picks
+       the geometric "1" and "0" variants; cv11/cv02 swap to the
+       single-storey g/a where the font ships them. Harmless on fonts
+       that don't (the browser silently ignores unknown features). */
+    font-feature-settings: "ss01", "cv11", "cv02";
   }
 
   /*
@@ -678,6 +695,8 @@
   --color-destructive-foreground: var(--nx-color-destructive-foreground, oklch(0.98 0 0));
   --color-card: var(--nx-color-card, oklch(0.99 0 0));
   --color-card-foreground: var(--nx-color-card-foreground, oklch(0.15 0.02 260));
+  --color-brand: var(--nx-color-brand, #0066ff);
+  --color-brand-foreground: var(--nx-color-brand-foreground, #ffffff);
 
   --font-heading: var(--nx-font-heading, "Inter", system-ui, sans-serif);
   --font-body: var(--nx-font-body, "Inter", system-ui, sans-serif);

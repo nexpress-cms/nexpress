@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import {
+  AuthCard,
+  AuthLayout,
+  Button,
+  Input,
+  Label,
+} from "@nexpress/admin/client";
 
 type Status = "idle" | "submitting" | "sent" | "error";
 
@@ -39,67 +46,64 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-md">
-        <h1 className="mb-2 text-center text-2xl font-bold">Reset password</h1>
-        <p className="mb-6 text-center text-sm text-muted-foreground">
-          Enter the email on your account — we&rsquo;ll send a reset link if it matches.
-        </p>
-
+    <AuthLayout>
+      <AuthCard
+        title="Reset password"
+        description={
+          status === "sent"
+            ? undefined
+            : "Enter the email on your account — we'll send a reset link if it matches."
+        }
+        footer={
+          <Link
+            href="/admin/login"
+            className="text-[var(--nx-color-brand)] hover:underline underline-offset-[3px]"
+          >
+            ← Back to sign in
+          </Link>
+        }
+      >
         {status === "sent" ? (
-          <div className="space-y-4">
-            <div className="rounded-md bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
-              If an account exists for <strong>{email}</strong>, a reset link has been sent.
-              Check your email.
-            </div>
-            <Link
-              href="/admin/login"
-              className="block text-center text-sm text-muted-foreground hover:text-primary"
-            >
-              Back to sign in
-            </Link>
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12.5px] leading-[1.5] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+            If an account exists for <strong className="font-semibold">{email}</strong>, a reset link has been sent.
+            Check your email.
           </div>
         ) : (
           <form
             onSubmit={(e) => {
               void handleSubmit(e);
             }}
-            className="space-y-4"
+            className="flex flex-col gap-3"
           >
             {error ? (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
                 {error}
               </div>
             ) : null}
-            <div>
-              <label htmlFor="email" className="mb-1 block text-sm font-medium">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email" className="text-[12.5px]">
                 Email
-              </label>
-              <input
+              </Label>
+              <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                placeholder="admin@example.com"
+                autoComplete="email"
+                placeholder="you@workspace.com"
               />
             </div>
-            <button
+            <Button
               type="submit"
               disabled={status === "submitting"}
-              className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="mt-1 h-9 w-full justify-center"
             >
               {status === "submitting" ? "Sending…" : "Send reset link"}
-            </button>
-            <p className="text-center text-sm text-muted-foreground">
-              <Link href="/admin/login" className="hover:text-primary">
-                Back to sign in
-              </Link>
-            </p>
+            </Button>
           </form>
         )}
-      </div>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   );
 }

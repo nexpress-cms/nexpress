@@ -215,11 +215,11 @@ export function ThemeEditor() {
           {Array.from({ length: 3 }).map((_, index) => (
             <div
               key={`theme-skeleton-${index}`}
-              className="h-48 animate-pulse rounded-2xl border border-border/70 bg-muted/40"
+              className="h-48 animate-pulse rounded-xl border border-border/70 bg-muted/40"
             />
           ))}
         </div>
-        <div className="h-[420px] animate-pulse rounded-2xl border border-border/70 bg-muted/40" />
+        <div className="h-[420px] animate-pulse rounded-xl border border-border/70 bg-muted/40" />
       </div>
     );
   }
@@ -239,7 +239,7 @@ export function ThemeEditor() {
           </div>
         ) : null}
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
@@ -278,7 +278,7 @@ export function ThemeEditor() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Type className="h-4 w-4" />
@@ -307,7 +307,7 @@ export function ThemeEditor() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Square className="h-4 w-4" />
@@ -353,19 +353,19 @@ export function ThemeEditor() {
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload className="mr-2 h-4 w-4" />
+                <Upload className="size-3.5" />
                 Import JSON
               </Button>
               <Button variant="outline" onClick={exportTheme}>
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="size-3.5" />
                 Export JSON
               </Button>
               <Button variant="outline" onClick={() => setTheme(defaultTheme)}>
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw className="size-3.5" />
                 Reset to Defaults
               </Button>
               <Button onClick={() => void saveTheme()} disabled={saving}>
-                <Save className="mr-2 h-4 w-4" />
+                <Save className="size-3.5" />
                 {saving ? "Saving..." : "Save Theme"}
               </Button>
             </div>
@@ -373,7 +373,7 @@ export function ThemeEditor() {
         </Card>
       </div>
 
-      <Card className="sticky top-6 h-fit border-border/70 bg-card/80 shadow-sm">
+      <Card className="sticky top-6 h-fit">
         <CardHeader>
           <CardTitle>Live preview</CardTitle>
         </CardHeader>
@@ -423,7 +423,7 @@ export function ThemeEditor() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div
-                className="rounded-2xl border p-4"
+                className="rounded-xl border p-4"
                 style={{
                   backgroundColor: theme.colors.card,
                   color: theme.colors.cardForeground,
@@ -436,7 +436,7 @@ export function ThemeEditor() {
                 <p className="mt-1 text-sm opacity-80">Quiet surfaces with strong hierarchy.</p>
               </div>
               <div
-                className="rounded-2xl p-4"
+                className="rounded-xl p-4"
                 style={{
                   backgroundColor: theme.colors.primary,
                   color: theme.colors.primaryForeground,

@@ -86,15 +86,15 @@ export function LocalesTab() {
   if (error) {
     return (
       <Card className="border-destructive/30 bg-destructive/5">
-        <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+        <CardContent className="text-[13px] text-destructive">{error}</CardContent>
       </Card>
     );
   }
 
   if (!config) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
-        <CardContent className="pt-6">
+      <Card>
+        <CardContent>
           <div className="h-6 w-32 animate-pulse rounded bg-muted" />
           <div className="mt-3 h-16 w-full animate-pulse rounded bg-muted/50" />
         </CardContent>
@@ -104,7 +104,7 @@ export function LocalesTab() {
 
   if (!config.enabled) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
@@ -132,7 +132,7 @@ export function LocalesTab() {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
@@ -186,7 +186,7 @@ function TranslationProgressCard({
 }) {
   if (progress.collections.length === 0) {
     return (
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
@@ -203,7 +203,7 @@ function TranslationProgressCard({
   }
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4" />
@@ -220,11 +220,11 @@ function TranslationProgressCard({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-border/60 text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Collection</th>
-                <th className="py-2 pr-4 font-medium">Groups</th>
+              <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
+                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Collection</th>
+                <th className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Groups</th>
                 {progress.locales.map((locale) => (
-                  <th key={locale} className="py-2 pr-4 font-medium">
+                  <th key={locale} className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                     {locale.toUpperCase()}
                   </th>
                 ))}

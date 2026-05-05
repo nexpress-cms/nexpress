@@ -536,7 +536,7 @@ const renderNamedField = (
       );
     case "group":
       return (
-        <fieldset className="space-y-4 rounded-2xl border border-border/60 p-5">
+        <fieldset className="space-y-4 rounded-xl border border-border/60 p-5">
           <legend className="px-2 text-sm font-semibold text-foreground">{label}</legend>
           {field.fields.map((nestedField, index) => (
             <FieldRenderer
@@ -581,7 +581,7 @@ export function FieldRenderer({
 
   if (field.type === "collapsible") {
     return (
-      <Collapsible className="rounded-2xl border border-border/60">
+      <Collapsible className="rounded-xl border border-border/60">
         <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium">
           <span>{field.label}</span>
           <ChevronDown className="h-4 w-4" />

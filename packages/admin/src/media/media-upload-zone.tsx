@@ -102,7 +102,7 @@ export function MediaUploadZone({
     <div className="space-y-6">
       <div
         className={cn(
-          "rounded-2xl border border-dashed px-6 py-12 text-center transition-colors",
+          "rounded-xl border border-dashed px-6 py-12 text-center transition-colors",
           isDragging
             ? "border-primary bg-primary/5"
             : "border-border/80 bg-muted/25",
@@ -131,7 +131,7 @@ export function MediaUploadZone({
             onChange={handleInputChange}
           />
           <Button onClick={() => inputRef.current?.click()}>
-            <Upload className="mr-2 h-4 w-4" />
+            <Upload className="size-3.5" />
             Choose files
           </Button>
         </div>

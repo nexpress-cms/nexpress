@@ -58,23 +58,23 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   if (!row) throw new NxNotFoundError("user", id);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <Link
           href="/admin/settings"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+          className="text-[12.5px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400"
         >
           ← Settings
         </Link>
-        <div className="mt-2 flex items-baseline gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">
+        <div className="mt-1.5 flex items-baseline gap-2.5">
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
             {row.name ?? row.email}
           </h1>
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="rounded-full bg-neutral-950/[0.045] px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-700 dark:bg-white/[0.06] dark:text-neutral-300">
             {row.role}
           </span>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">{row.email}</p>
+        <p className="mt-1 text-[13px] text-neutral-500 dark:text-neutral-400">{row.email}</p>
       </div>
 
       <LinkedIdentitiesPanel subjectKind="user" subjectId={row.id} canRevoke />

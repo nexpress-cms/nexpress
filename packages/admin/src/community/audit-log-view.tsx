@@ -8,6 +8,7 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
+import { PageHeader } from "../layout/page-header.js";
 
 export interface AuditEventRow {
   id: string;
@@ -100,22 +101,20 @@ export function AuditLogView() {
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">Audit log</h1>
-          <Badge variant="secondary">{totalDocs}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Append-only record of every moderation action — comment hide /
-          restore / delete, member ban / unban, report file / resolve. Filter
-          by target or actor when investigating an incident.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            Audit log
+            <Badge variant="secondary">{totalDocs}</Badge>
+          </span>
+        }
+        description="Append-only record of every moderation action — comment hide / restore / delete, member ban / unban, report file / resolve. Filter by target or actor when investigating an incident."
+      />
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Filters</CardTitle>
+          <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
           <form
@@ -230,11 +229,11 @@ export function AuditLogView() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg">Events</CardTitle>
+          <CardTitle>Events</CardTitle>
           {totalPages > 1 ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
@@ -243,7 +242,7 @@ export function AuditLogView() {
               >
                 Prev
               </Button>
-              <span>
+              <span className="min-w-16 text-center text-[12px] tabular-nums text-neutral-500 dark:text-neutral-400">
                 Page {page} of {totalPages}
               </span>
               <Button
@@ -265,13 +264,13 @@ export function AuditLogView() {
           ) : null}
           <div className="overflow-hidden rounded-xl border border-border/60">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-muted-foreground">
+              <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">When</th>
-                  <th className="px-4 py-3 font-medium">Action</th>
-                  <th className="px-4 py-3 font-medium">Actor</th>
-                  <th className="px-4 py-3 font-medium">Target</th>
-                  <th className="px-4 py-3 font-medium">Payload</th>
+                  <th className="h-9 px-3.5 font-medium">When</th>
+                  <th className="h-9 px-3.5 font-medium">Action</th>
+                  <th className="h-9 px-3.5 font-medium">Actor</th>
+                  <th className="h-9 px-3.5 font-medium">Target</th>
+                  <th className="h-9 px-3.5 font-medium">Payload</th>
                 </tr>
               </thead>
               <tbody>

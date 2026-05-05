@@ -22,6 +22,7 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
+import { PageHeader } from "../layout/page-header.js";
 import {
   Select,
   SelectContent,
@@ -120,34 +121,34 @@ export function MembershipsView({ siteId }: { siteId: string }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Multi-tenancy
-          </p>
-          <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
-            <Users className="h-7 w-7 text-muted-foreground" />
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Users className="size-5 text-neutral-500" />
             Site members
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Members of <code>{siteId}</code> with explicit roles. Users not
-            listed here fall back to their global default role.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/admin/sites">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              All sites
+          </span>
+        }
+        description={
+          <>
+            Members of <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[12px] text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{siteId}</code> with explicit roles. Users not listed here fall back to their global default role.
+          </>
+        }
+        actions={
+          <>
+            <Link href="/admin/sites">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft />
+                All sites
+              </Button>
+            </Link>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus />
+              Grant membership
             </Button>
-          </Link>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Grant membership
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -157,21 +158,21 @@ export function MembershipsView({ siteId }: { siteId: string }) {
 
       {!memberships ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+          <CardContent className="text-[13px] text-muted-foreground">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Loading memberships…
           </CardContent>
         </Card>
       ) : memberships.length === 0 ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
+          <CardContent className="text-[13px] text-muted-foreground">
             No explicit memberships on this site. Grant one to start scoping
             roles per tenant.
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="pb-2">
+        <Card>
+          <CardHeader className="border-b-0 pb-0">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               {memberships.length} membership
               {memberships.length === 1 ? "" : "s"}
@@ -200,9 +201,9 @@ export function MembershipsView({ siteId }: { siteId: string }) {
                     onClick={() => void handleRevoke(m.userId)}
                   >
                     {busyUserId === m.userId ? (
-                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-1.5 h-3 w-3" />
+                      <Trash2 className="size-3" />
                     )}
                     Revoke
                   </Button>
@@ -367,7 +368,7 @@ function GrantDialog({
                   <div className="rounded-xl border border-border/70 bg-background">
                     {searching ? (
                       <p className="px-3 py-2 text-xs text-muted-foreground">
-                        <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+                        <Loader2 className="size-3 animate-spin" />
                         Searching…
                       </p>
                     ) : results.length === 0 ? (
@@ -440,7 +441,7 @@ function GrantDialog({
             disabled={submitting || !selected}
           >
             {submitting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : null}
             Grant
           </Button>

@@ -5,8 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
-  ChevronLeft,
-  ChevronRight,
   FileText,
   Flag,
   Globe2,
@@ -14,6 +12,7 @@ import {
   Image,
   Inbox,
   LayoutDashboard,
+  PanelLeft,
   Puzzle,
   Settings,
   Timer,
@@ -22,22 +21,16 @@ import {
 import type { NxAuthUser } from "@nexpress/core";
 
 import { AdminTopbar } from "./admin-topbar.js";
+import { NxMark } from "./nx-mark.js";
 import { Button } from "../ui/button.js";
 import { ScrollArea } from "../ui/scroll-area.js";
-import { Separator } from "../ui/separator.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
 import { cn } from "../ui/utils.js";
 
 /**
  * Capability flags resolved on the server (where `can(user, ...)`
  * lives) and passed down so this client component never duplicates
- * the role-set logic (#343). The flags name the *behavior*, not
- * the role hierarchy, mirroring the `can()` capability vocabulary.
- *
- *   - `canManageAdmin`   — admin-only surfaces (Sites, Jobs).
- *   - `canPublish`       — editor-or-admin (Members directory).
- *   - `canModerate`      — community-mod (Pending review, Reports,
- *                          Audit log, Community settings).
+ * the role-set logic (#343).
  */
 export interface AdminShellCapabilities {
   canManageAdmin: boolean;
@@ -45,11 +38,7 @@ export interface AdminShellCapabilities {
   canModerate: boolean;
 }
 
-/**
- * Serializable collection metadata for the sidebar only. Do not pass
- * full `NxCollectionConfig` from a Server Component — configs include
- * `access`/`hooks`/callbacks that cannot cross the RSC → client boundary.
- */
+/** Serializable collection metadata for the sidebar. */
 export interface AdminShellCollection {
   slug: string;
   labels: { plural: string };
@@ -70,6 +59,11 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+};
+
+type NavGroup = {
+  eyebrow: string;
+  items: NavItem[];
 };
 
 function isActive(pathname: string, href: string) {
@@ -95,14 +89,30 @@ function NavLink({
     <Link
       href={href}
       className={cn(
-        "group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+        "group relative flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13.5px] font-normal transition-colors",
         active
-          ? "bg-neutral-950 text-white shadow-sm dark:bg-white dark:text-neutral-950"
-          : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-50",
+          ? "bg-neutral-950/[0.045] text-neutral-950 font-medium dark:bg-white/[0.06] dark:text-neutral-50"
+          : "text-neutral-700 hover:bg-neutral-950/[0.035] hover:text-neutral-950 dark:text-neutral-400 dark:hover:bg-white/[0.04] dark:hover:text-neutral-50",
         collapsed && "justify-center px-2",
       )}
     >
-      <Icon className="size-4 shrink-0" />
+      {active ? (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute top-2 bottom-2 w-0.5 rounded-sm bg-[var(--nx-color-brand)]",
+            collapsed ? "-left-1" : "-left-2",
+          )}
+        />
+      ) : null}
+      <Icon
+        className={cn(
+          "size-[15px] shrink-0",
+          active
+            ? "text-[var(--nx-color-brand)]"
+            : "text-neutral-500 dark:text-neutral-400",
+        )}
+      />
       {!collapsed ? <span className="truncate">{label}</span> : null}
     </Link>
   );
@@ -134,103 +144,134 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       }, {});
   }, [collections]);
 
-  const systemItems: NavItem[] = [
-    { href: "/admin/media", label: "Media", icon: Image },
-    { href: "/admin/plugins", label: "Plugins", icon: Puzzle },
-    ...(caps.canManageAdmin
-      ? [
-          { href: "/admin/jobs", label: "Jobs", icon: Timer },
-          { href: "/admin/sites", label: "Sites", icon: Globe2 },
-          { href: "/admin/health", label: "Health", icon: Activity },
-        ]
-      : []),
-    { href: "/admin/settings", label: "Settings", icon: Settings },
-  ];
+  const groups = React.useMemo<NavGroup[]>(() => {
+    const result: NavGroup[] = [
+      {
+        eyebrow: "Workspace",
+        items: [{ href: "/admin", label: "Dashboard", icon: LayoutDashboard }],
+      },
+    ];
 
-  const communityItems = React.useMemo<NavItem[]>(() => {
-    const items: NavItem[] = [];
+    const collectionEntries = Object.entries(collectionGroups);
+    if (collectionEntries.length > 0) {
+      const [firstGroup, ...rest] = collectionEntries;
+      const [firstName, firstItems] = firstGroup;
+      result.push({
+        eyebrow: firstName,
+        items: [
+          ...firstItems.map((collection) => ({
+            href: `/admin/collections/${collection.slug}`,
+            label: collection.labels.plural,
+            icon: collection.slug.includes("media") ? Image : FileText,
+          })),
+          { href: "/admin/media", label: "Media", icon: Image },
+        ],
+      });
+      for (const [groupName, items] of rest) {
+        result.push({
+          eyebrow: groupName,
+          items: items.map((collection) => ({
+            href: `/admin/collections/${collection.slug}`,
+            label: collection.labels.plural,
+            icon: FileText,
+          })),
+        });
+      }
+    } else {
+      result.push({
+        eyebrow: "Content",
+        items: [{ href: "/admin/media", label: "Media", icon: Image }],
+      });
+    }
+
+    if (caps.canManageAdmin) {
+      result.push({
+        eyebrow: "Multi-site",
+        items: [
+          { href: "/admin/sites", label: "Sites", icon: Globe2 },
+          { href: "/admin/users", label: "Users", icon: Users },
+        ],
+      });
+    }
+
+    const communityItems: NavItem[] = [];
     if (caps.canPublish) {
-      items.push({ href: "/admin/members", label: "Members", icon: Users });
+      communityItems.push({ href: "/admin/members", label: "Members", icon: Users });
     }
     if (caps.canModerate) {
-      items.push({ href: "/admin/community/pending", label: "Pending review", icon: Inbox });
-      items.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
-      items.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
-      items.push({ href: "/admin/community/settings", label: "Community settings", icon: Settings });
+      communityItems.push({ href: "/admin/community/pending", label: "Pending review", icon: Inbox });
+      communityItems.push({ href: "/admin/community/reports", label: "Reports", icon: Flag });
+      communityItems.push({ href: "/admin/community/audit", label: "Audit log", icon: History });
+      communityItems.push({
+        href: "/admin/community/settings",
+        label: "Community settings",
+        icon: Settings,
+      });
     }
-    return items;
-  }, [caps.canPublish, caps.canModerate]);
+    if (communityItems.length > 0) {
+      result.push({ eyebrow: "Community", items: communityItems });
+    }
+
+    const systemItems: NavItem[] = [
+      { href: "/admin/plugins", label: "Plugins", icon: Puzzle },
+    ];
+    if (caps.canManageAdmin) {
+      systemItems.push({ href: "/admin/jobs", label: "Jobs", icon: Timer });
+      systemItems.push({ href: "/admin/health", label: "Health", icon: Activity });
+    }
+    systemItems.push({ href: "/admin/settings", label: "Settings", icon: Settings });
+    result.push({ eyebrow: "System", items: systemItems });
+
+    return result;
+  }, [caps.canManageAdmin, caps.canModerate, caps.canPublish, collectionGroups]);
 
   return (
     <TooltipProvider delayDuration={120}>
-      <div className="flex min-h-screen bg-neutral-100 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
+      <div className="flex min-h-screen bg-[#f8f8f7] text-neutral-950 dark:bg-neutral-950 dark:text-neutral-50">
         <aside
           className={cn(
-            "flex h-screen shrink-0 flex-col border-r border-neutral-200/80 bg-white/95 backdrop-blur-xl transition-all duration-300 dark:border-neutral-800/80 dark:bg-neutral-950/95",
-            collapsed ? "w-20" : "w-72",
+            "sticky top-0 flex h-screen shrink-0 flex-col border-r border-neutral-200/70 bg-[#fbfbfa] transition-[width] duration-300 dark:border-neutral-800/70 dark:bg-neutral-950/95",
+            collapsed ? "w-16" : "w-60",
           )}
         >
-          <div className="flex h-20 items-center justify-between px-4">
-            <div className={cn("min-w-0", collapsed && "sr-only")}>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-neutral-500">NexPress</p>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">Editorial control center</p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0 rounded-2xl"
-              onClick={() => setCollapsed((value) => !value)}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          <div className="flex h-14 items-center justify-between px-4">
+            <Link
+              href="/admin"
+              className={cn(
+                "flex items-center gap-2.5 text-[13px] font-semibold tracking-tight text-neutral-950 dark:text-neutral-50",
+                collapsed && "justify-center",
+              )}
+              aria-label="NexPress"
             >
-              {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-            </Button>
+              <NxMark size={22} />
+              {!collapsed ? <span>NexPress</span> : null}
+            </Link>
+            {!collapsed ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setCollapsed(true)}
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeft className="size-3.5" />
+              </Button>
+            ) : null}
           </div>
 
-          <Separator />
+          <div className="h-px bg-neutral-200/70 dark:bg-neutral-800/70" />
 
-          <ScrollArea className="flex-1 px-3 py-4">
-            <nav className="space-y-6">
-              <div className="space-y-2">
-                {!collapsed ? (
-                  <p className="px-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Overview</p>
-                ) : null}
-                <NavLink
-                  collapsed={collapsed}
-                  href="/admin"
-                  icon={LayoutDashboard}
-                  label="Dashboard"
-                  pathname={pathname}
-                />
-              </div>
-
-              {Object.entries(collectionGroups).map(([group, items]) => (
-                <div key={group} className="space-y-2">
+          <ScrollArea className="flex-1 px-2 py-3">
+            <nav className="space-y-4">
+              {groups.map((group) => (
+                <div key={group.eyebrow} className="space-y-0.5">
                   {!collapsed ? (
-                    <p className="px-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">{group}</p>
+                    <p className="px-3 pt-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.14em] text-neutral-400">
+                      {group.eyebrow}
+                    </p>
                   ) : null}
-                  <div className="space-y-1">
-                    {items.map((collection) => (
-                      <NavLink
-                        key={collection.slug}
-                        collapsed={collapsed}
-                        href={`/admin/collections/${collection.slug}`}
-                        icon={FileText}
-                        label={collection.labels.plural}
-                        pathname={pathname}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-              {communityItems.length > 0 ? (
-                <div className="space-y-2">
-                  {!collapsed ? (
-                    <p className="px-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Community</p>
-                  ) : null}
-                  <div className="space-y-1">
-                    {communityItems.map((item) => (
+                  <div className="space-y-px">
+                    {group.items.map((item) => (
                       <NavLink
                         key={item.href}
                         collapsed={collapsed}
@@ -242,33 +283,37 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
                     ))}
                   </div>
                 </div>
-              ) : null}
-
-              <div className="space-y-2">
-                {!collapsed ? (
-                  <p className="px-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">System</p>
-                ) : null}
-                <div className="space-y-1">
-                  {systemItems.map((item) => (
-                    <NavLink
-                      key={item.href}
-                      collapsed={collapsed}
-                      href={item.href}
-                      icon={item.icon}
-                      label={item.label}
-                      pathname={pathname}
-                    />
-                  ))}
-                </div>
-              </div>
+              ))}
             </nav>
           </ScrollArea>
+
+          <div className="h-px bg-neutral-200/70 dark:bg-neutral-800/70" />
+
+          <div className="flex items-center gap-2 px-3 py-2.5 font-mono text-[11px] text-neutral-400">
+            <span
+              aria-hidden
+              className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+            />
+            {!collapsed ? <span>v0.1.0 · idle</span> : null}
+            {collapsed ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="ml-auto"
+                onClick={() => setCollapsed(false)}
+                aria-label="Expand sidebar"
+              >
+                <PanelLeft className="size-3.5 rotate-180" />
+              </Button>
+            ) : null}
+          </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <AdminTopbar user={user} />
-          <main className="flex-1 p-6 md:p-8">
-            <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">{children}</div>
+          <main className="flex-1 px-6 py-7 md:px-8">
+            <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-6">{children}</div>
           </main>
         </div>
       </div>

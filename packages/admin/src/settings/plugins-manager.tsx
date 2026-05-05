@@ -19,6 +19,7 @@ import {
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
+import { PageHeader } from "../layout/page-header.js";
 
 interface PluginItem {
   id: string;
@@ -168,13 +169,11 @@ export function PluginsManager() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Plugins</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Toggle and configure installed plugins. Changes take effect on the next server restart.
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Plugins"
+        description="Toggle and configure installed plugins. Changes take effect on the next server restart."
+      />
 
       {toast ? (
         <div
@@ -245,7 +244,7 @@ export function PluginsManager() {
                   {plugin.hasAdmin ? (
                     <Button type="button" variant="outline" size="sm" asChild>
                       <Link href={`/admin/plugins/${plugin.id}`}>
-                        <ExternalLink className="mr-2 h-4 w-4" />
+                        <ExternalLink className="size-3.5" />
                         Open admin
                       </Link>
                     </Button>
@@ -256,7 +255,7 @@ export function PluginsManager() {
                     size="sm"
                     onClick={() => openConfigDialog(plugin)}
                   >
-                    <Settings2 className="mr-2 h-4 w-4" />
+                    <Settings2 className="size-3.5" />
                     Config
                   </Button>
                   <div className="flex items-center gap-2">
@@ -355,7 +354,7 @@ export function PluginsManager() {
               }}
               disabled={savingConfig}
             >
-              {savingConfig ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {savingConfig ? <Loader2 className="size-3.5 animate-spin" /> : null}
               Save config
             </Button>
           </DialogFooter>

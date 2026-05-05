@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
+import { PageHeader } from "../layout/page-header.js";
 import { useForm } from "react-hook-form";
 
 interface ColumnDef {
@@ -87,14 +88,11 @@ export function PluginAdminPage({
   if (admin.tables?.length) sections.push("tables");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{pluginName}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Plugin admin surface. Settings save to the plugin&rsquo;s DB config;
-          widgets and actions dispatch the plugin&rsquo;s registered handlers.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={pluginName}
+        description="Plugin admin surface. Settings save to the plugin's DB config; widgets and actions dispatch the plugin's registered handlers."
+      />
 
       {admin.widgets && admin.widgets.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -229,7 +227,7 @@ function SettingsCard({
               />
             ))}
             <Button type="submit" disabled={saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
               Save settings
             </Button>
           </form>
@@ -277,7 +275,7 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">{widget.label}</CardTitle>
       </CardHeader>
       <CardContent>
@@ -285,7 +283,7 @@ function WidgetCard({ pluginId, widget }: { pluginId: string; widget: WidgetDef 
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "metric" ? (
           <div>
-            <div className="text-2xl font-semibold">{state.value}</div>
+            <div className="text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-neutral-950 dark:text-neutral-50">{state.value}</div>
             {state.delta ? <div className="text-xs text-muted-foreground">{state.delta}</div> : null}
           </div>
         ) : state.kind === "status" ? (
@@ -350,7 +348,7 @@ function ActionRow({ pluginId, action }: { pluginId: string; action: ActionDef }
         ) : null}
       </div>
       <Button type="button" variant="outline" onClick={() => void run()} disabled={running}>
-        {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+        {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
         Run
       </Button>
     </div>
@@ -406,9 +404,9 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr className="border-b border-neutral-200/70 dark:border-neutral-800/70">
                   {table.columns.map((col) => (
-                    <th key={col.name} className="py-2 pr-4 font-medium">
+                    <th key={col.name} className="h-9 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
                       {col.label}
                     </th>
                   ))}

@@ -128,7 +128,7 @@ export function StringsTab() {
   }, [data, filter]);
 
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm">
+    <Card>
       <CardHeader>
         <CardTitle>UI Strings</CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -150,12 +150,12 @@ export function StringsTab() {
         ) : null}
 
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter keys (e.g. magazine.)"
-            className="pl-9"
+            className="pl-8"
           />
         </div>
 

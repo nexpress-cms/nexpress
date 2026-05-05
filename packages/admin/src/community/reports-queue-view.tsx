@@ -6,6 +6,8 @@ import { nxFetch } from "../lib/api-client.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { PageHeader } from "../layout/page-header.js";
+import { StatusBadge } from "../ui/status-badge.js";
 import {
   Dialog,
   DialogContent,
@@ -85,22 +87,20 @@ export function ReportsQueueView() {
   }, [refresh]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">Reports</h1>
-          <Badge variant="secondary">{totalDocs}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Member-filed reports against comments, members, and other community
-          content. Resolving a report flips its row and writes an audit entry —
-          take any follow-up action (hide / ban) separately.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            Reports
+            <Badge variant="secondary">{totalDocs}</Badge>
+          </span>
+        }
+        description="Member-filed reports against comments, members, and other community content. Resolving a report flips its row and writes an audit entry — take any follow-up action (hide / ban) separately."
+      />
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg">Queue</CardTitle>
+          <CardTitle>Queue</CardTitle>
           <div className="flex items-center gap-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
               Status
@@ -127,13 +127,13 @@ export function ReportsQueueView() {
           ) : null}
           <div className="overflow-hidden rounded-xl border border-border/60">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-left text-muted-foreground">
+              <thead className="bg-neutral-50/60 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:bg-neutral-900/40 dark:text-neutral-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Target</th>
-                  <th className="px-4 py-3 font-medium">Reason</th>
-                  <th className="px-4 py-3 font-medium">Filed</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium" />
+                  <th className="h-9 px-3.5 font-medium">Target</th>
+                  <th className="h-9 px-3.5 font-medium">Reason</th>
+                  <th className="h-9 px-3.5 font-medium">Filed</th>
+                  <th className="h-9 px-3.5 font-medium">Status</th>
+                  <th className="h-9 px-3.5 font-medium" />
                 </tr>
               </thead>
               <tbody>
@@ -168,9 +168,9 @@ export function ReportsQueueView() {
                       </td>
                       <td className="px-4 py-3">
                         {report.resolvedAt ? (
-                          <Badge variant="secondary">{report.resolution ?? "resolved"}</Badge>
+                          <StatusBadge status={report.resolution ?? "resolved"} />
                         ) : (
-                          <Badge variant="destructive">open</Badge>
+                          <StatusBadge status="open" />
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">

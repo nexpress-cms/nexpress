@@ -715,7 +715,7 @@ export function NavigationEditor() {
 
   return (
     <>
-      <Card className="border-border/70 bg-card/80 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle>Navigation structure</CardTitle>
@@ -754,11 +754,11 @@ export function NavigationEditor() {
               </Select>
             </div>
             <Button variant="outline" onClick={addItem}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="size-3.5" />
               Add item
             </Button>
             <Button onClick={() => void saveNavigation()} disabled={saving || loading}>
-              <Save className="mr-2 h-4 w-4" />
+              <Save className="size-3.5" />
               {saving ? "Saving..." : "Save"}
             </Button>
           </div>
@@ -787,12 +787,12 @@ export function NavigationEditor() {
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={`navigation-skeleton-${index}`}
-                  className="h-28 animate-pulse rounded-2xl border border-border/70 bg-muted/40"
+                  className="h-28 animate-pulse rounded-xl border border-border/70 bg-muted/40"
                 />
               ))}
             </div>
           ) : items.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border/70 px-6 py-12 text-center text-sm text-muted-foreground">
               No navigation items in this location yet. Add your first link to get started.
             </div>
           ) : (
@@ -1140,7 +1140,7 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid gap-4 rounded-2xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_180px_auto] lg:items-end ${
+      className={`grid gap-4 rounded-xl border border-border/70 bg-background/70 p-4 lg:grid-cols-[auto_1.1fr_1.4fr_180px_180px_auto] lg:items-end ${
         isChild ? "ml-8 border-l-4 border-l-primary/40" : ""
       } ${isDragging ? "shadow-lg" : ""} ${previewClass} transition-shadow`}
     >

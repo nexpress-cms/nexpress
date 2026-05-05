@@ -85,7 +85,7 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
   );
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/60 p-4">
+    <div className="space-y-3 rounded-xl border border-border/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {selectedItems.length > 0 ? (
@@ -120,8 +120,8 @@ export function RelationshipField({ relationTo, hasMany, value, onChange }: Rela
                   type="button"
                   className={
                     isSelected
-                      ? "rounded-2xl border border-foreground bg-muted/50 p-4 text-left"
-                      : "rounded-2xl border border-border/60 p-4 text-left transition-colors hover:bg-muted/40"
+                      ? "rounded-xl border border-foreground bg-muted/50 p-4 text-left"
+                      : "rounded-xl border border-border/60 p-4 text-left transition-colors hover:bg-muted/40"
                   }
                   onClick={() => {
                     if (hasMany) {

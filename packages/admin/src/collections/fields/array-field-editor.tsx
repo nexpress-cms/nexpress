@@ -76,11 +76,11 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
           const rowKey = typeof item === "object" && item !== null && "id" in item ? String(item.id) : `${name}-${index}`;
 
           return (
-            <div key={rowKey} className="space-y-4 rounded-2xl border border-border/60 p-4">
+            <div key={rowKey} className="space-y-4 rounded-xl border border-border/60 p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-foreground">Item {index + 1}</p>
                 <Button type="button" variant="outline" size="sm" onClick={() => remove(index)} disabled={!canRemove}>
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="size-3.5" />
                   Remove
                 </Button>
               </div>
@@ -108,7 +108,7 @@ export function ArrayFieldEditor({ field, control, name, renderField }: ArrayFie
           onClick={() => append(createEmptyRow(field.fields) as never)}
           disabled={!canAdd}
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="size-3.5" />
           Add item
         </Button>
       </div>

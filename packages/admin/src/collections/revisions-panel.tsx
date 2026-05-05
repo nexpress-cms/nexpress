@@ -201,7 +201,7 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
               {state.revisions.map((revision) => (
                 <li
                   key={revision.id}
-                  className="flex flex-col gap-2 rounded-2xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-xl border border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <button
                     type="button"
@@ -237,9 +237,9 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
                     disabled={restoringId !== null}
                   >
                     {restoringId === revision.id ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="size-3.5 animate-spin" />
                     ) : (
-                      <RotateCcw className="mr-2 h-4 w-4" />
+                      <RotateCcw className="size-3.5" />
                     )}
                     Restore
                   </Button>
@@ -290,9 +290,9 @@ export function RevisionsPanel({ collectionSlug, documentId }: RevisionsPanelPro
                 disabled={restoringId !== null}
               >
                 {restoringId === selected.id ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <RotateCcw className="mr-2 h-4 w-4" />
+                  <RotateCcw className="size-3.5" />
                 )}
                 Restore this version
               </Button>

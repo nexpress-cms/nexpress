@@ -107,14 +107,14 @@ export function SitePicker() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-2xl border border-neutral-200/80 bg-white/90 px-3 py-2 text-sm shadow-sm transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950/10 dark:border-neutral-800/80 dark:bg-neutral-950/90 dark:hover:bg-neutral-900"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200/80 bg-white px-2.5 text-[12.5px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800/80 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900"
           title="Switch site"
         >
-          <Globe2 className="size-4 text-neutral-500" />
-          <span className="font-medium text-neutral-950 dark:text-neutral-50">
+          <Globe2 className="size-3.5 text-neutral-400" />
+          <span className="text-neutral-950 dark:text-neutral-50">
             {current?.name ?? "Site"}
           </span>
-          <ChevronsUpDown className="size-3.5 text-neutral-400" />
+          <ChevronsUpDown className="size-3 text-neutral-400" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
@@ -134,17 +134,17 @@ export function SitePicker() {
             >
               <div className="flex w-full items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-neutral-950 dark:text-neutral-50">
+                  <p className="truncate text-[13px] font-medium text-neutral-950 dark:text-neutral-50">
                     {site.name}
                   </p>
-                  <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="truncate font-mono text-[11.5px] text-neutral-500 dark:text-neutral-400">
                     {site.hostname ? site.hostname : "Default tenant"}
                   </p>
                 </div>
                 {active ? (
-                  <Check className="size-4 text-primary" />
+                  <Check className="size-3.5 text-[var(--nx-color-brand)]" />
                 ) : busyId === site.id ? (
-                  <Loader2 className="size-4 animate-spin text-neutral-400" />
+                  <Loader2 className="size-3.5 animate-spin text-neutral-400" />
                 ) : null}
               </div>
             </DropdownMenuItem>

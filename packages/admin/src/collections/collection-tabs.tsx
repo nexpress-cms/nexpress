@@ -64,7 +64,7 @@ export function CollectionTabs({ tabs, collection, documentId }: CollectionTabsP
   return (
     <>
       {tabs.map((tab) => (
-        <Card key={`${tab.pluginId}:${tab.id}`} className="border-border/60 shadow-sm">
+        <Card key={`${tab.pluginId}:${tab.id}`}>
           <CardHeader>
             <CardTitle className="text-base">{tab.label}</CardTitle>
             <p className="text-xs text-muted-foreground">{tab.pluginName}</p>

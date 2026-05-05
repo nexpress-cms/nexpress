@@ -123,7 +123,7 @@ export function TranslationTabs({
 
   if (!translations) {
     return (
-      <div className="rounded-2xl border border-border/70 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-border/70 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
         Loading translations…
       </div>
@@ -164,7 +164,7 @@ export function TranslationTabs({
                 }
               >
                 {isCurrent ? (
-                  <Check className="mr-1.5 h-3 w-3" />
+                  <Check className="size-3" />
                 ) : null}
                 {locale.toUpperCase()}
                 <span className="ml-1.5 text-[11px] opacity-70">
@@ -183,9 +183,9 @@ export function TranslationTabs({
               title={`Create ${locale} translation`}
             >
               {creatingFor === locale ? (
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                <Loader2 className="size-3 animate-spin" />
               ) : (
-                <Plus className="mr-1.5 h-3 w-3" />
+                <Plus className="size-3" />
               )}
               {locale.toUpperCase()}
             </Button>

@@ -18,6 +18,7 @@ import { nxFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
+import { PageHeader } from "../layout/page-header.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -293,28 +294,21 @@ export function JobsView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Operations
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Background jobs</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so
-            you can patch the upstream issue and re-run.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Background jobs"
+        description="Inspect, retry, and cancel queued jobs. Failed jobs surface their last error inline so you can patch the upstream issue and re-run."
+        actions={
+          <div className="flex items-center gap-2">
           {isStateTab(tab) ? (
-            <div className="inline-flex rounded-md border border-border/70 bg-background p-0.5 text-xs">
+            <div className="inline-flex h-8 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900">
               <button
                 type="button"
                 onClick={() => setWindowMode("all")}
-                className={`rounded px-2 py-1 transition ${
+                className={`rounded-md px-2.5 transition-colors ${
                   windowMode === "all"
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
+                    : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
                 }`}
               >
                 All time
@@ -322,10 +316,10 @@ export function JobsView() {
               <button
                 type="button"
                 onClick={() => setWindowMode("24h")}
-                className={`rounded px-2 py-1 transition ${
+                className={`rounded-md px-2.5 transition-colors ${
                   windowMode === "24h"
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white font-medium text-neutral-950 shadow-sm dark:bg-neutral-950 dark:text-neutral-50"
+                    : "text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-50"
                 }`}
               >
                 Last 24 h
@@ -345,18 +339,19 @@ export function JobsView() {
             disabled={refreshing}
           >
             {refreshing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
             ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className="size-3.5" />
             )}
             Refresh
           </Button>
         </div>
-      </div>
+        }
+      />
 
       {!supported ? (
         <Card className="border-amber-500/30/60 bg-amber-500/10">
-          <CardContent className="pt-6 text-sm text-amber-900 dark:text-amber-100">
+          <CardContent className="text-[13px] text-amber-900 dark:text-amber-100">
             <strong className="font-semibold">Background jobs disabled.</strong> This site is
             running without pg-boss. Set <code>NX_ENABLE_JOBS=1</code> and restart the worker to
             surface queued jobs here.
@@ -392,7 +387,7 @@ export function JobsView() {
                   disabled={refreshing}
                   onClick={() => void retryAllFailed()}
                 >
-                  <Play className="mr-1.5 h-3 w-3" />
+                  <Play className="size-3" />
                   Retry all failed
                 </Button>
               </div>
@@ -491,7 +486,7 @@ function WorkerHealthCard() {
   const showStuckWarning = failedOverThreshold || expiredOverThreshold;
 
   return (
-    <Card className="border-border/60 shadow-sm">
+    <Card>
       <CardContent className="flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <span
@@ -582,8 +577,8 @@ function SchedulesPanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-border/60 shadow-sm">
-          <CardHeader className="pb-2">
+        <Card>
+          <CardHeader className="border-b-0 pb-0">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <CalendarClock className="h-4 w-4" /> Cron schedules
             </CardTitle>
@@ -599,7 +594,7 @@ function SchedulesPanel({
               </p>
             ) : schedules === null ? (
               <p className="px-5 pb-5 text-sm text-muted-foreground">
-                <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+                <Loader2 className="size-3 animate-spin" />
                 Loading…
               </p>
             ) : schedules.length === 0 ? (
@@ -637,8 +632,8 @@ function SchedulesPanel({
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 shadow-sm">
-          <CardHeader className="pb-2">
+        <Card>
+          <CardHeader className="border-b-0 pb-0">
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Code className="h-4 w-4" /> Registered handlers
             </CardTitle>
@@ -713,8 +708,8 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
   }
 
   return (
-    <Card className="border-border/60 shadow-sm">
-      <CardHeader className="pb-2">
+    <Card>
+      <CardHeader className="border-b-0 pb-0">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Play className="h-4 w-4" /> Run a handler
         </CardTitle>
@@ -736,7 +731,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               id="nx-job-enqueue-type"
               value={type}
               onChange={(event) => setType(event.target.value)}
-              className="w-full rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm"
+              className="flex h-8 w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 text-[13px] outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
             >
               <option value="">Select…</option>
               {handlers.map((name) => (
@@ -759,7 +754,7 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
               onChange={(event) => setDataText(event.target.value)}
               rows={3}
               spellCheck={false}
-              className="w-full rounded-md border border-border/70 bg-background px-2 py-1.5 font-mono text-xs"
+              className="w-full rounded-lg border border-neutral-200/80 bg-white px-2.5 py-2 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--nx-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--nx-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950"
               placeholder='{"docId": "..."}'
             />
           </div>
@@ -771,9 +766,9 @@ function EnqueuePanel({ handlers, onEnqueued }: { handlers: string[]; onEnqueued
         <div className="flex justify-end">
           <Button size="sm" disabled={busy || !type} onClick={() => void submit()}>
             {busy ? (
-              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              <Loader2 className="size-3 animate-spin" />
             ) : (
-              <Play className="mr-1.5 h-3 w-3" />
+              <Play className="size-3" />
             )}
             Enqueue
           </Button>
@@ -799,7 +794,7 @@ function JobList({
   if (jobs === null) {
     return (
       <Card className="border-border/60 bg-card/60">
-        <CardContent className="pt-6 text-sm text-muted-foreground">
+        <CardContent className="text-[13px] text-muted-foreground">
           <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
           Loading jobs…
         </CardContent>
@@ -809,15 +804,15 @@ function JobList({
   if (jobs.length === 0) {
     return (
       <Card className="border-dashed border-border/60 bg-muted/20">
-        <CardContent className="pt-6 text-center text-sm text-muted-foreground">
+        <CardContent className="text-center text-[13px] text-muted-foreground">
           No jobs in this bucket.
         </CardContent>
       </Card>
     );
   }
   return (
-    <Card className="border-border/60 shadow-sm">
-      <CardHeader className="pb-2">
+    <Card>
+      <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {jobs.length} job{jobs.length === 1 ? "" : "s"}
         </CardTitle>
@@ -853,9 +848,9 @@ function JobList({
                     onClick={() => onRetry(job.id)}
                   >
                     {busyJobId === job.id ? (
-                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3 animate-spin" />
                     ) : (
-                      <Play className="mr-1.5 h-3 w-3" />
+                      <Play className="size-3" />
                     )}
                     Retry
                   </Button>
@@ -868,9 +863,9 @@ function JobList({
                     onClick={() => onCancel(job.id)}
                   >
                     {busyJobId === job.id ? (
-                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3 animate-spin" />
                     ) : (
-                      <Ban className="mr-1.5 h-3 w-3" />
+                      <Ban className="size-3" />
                     )}
                     Cancel
                   </Button>

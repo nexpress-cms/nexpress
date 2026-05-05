@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
+import { PageHeader } from "../layout/page-header.js";
 
 export interface CommunitySettings {
   reactionKinds: string[];
@@ -127,21 +128,11 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-          Community
-        </p>
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Community settings
-          </h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Site-wide knobs for member registration and the reactions members can
-            leave on community content. Changes apply immediately.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Community settings"
+        description="Site-wide knobs for member registration and the reactions members can leave on community content. Changes apply immediately."
+      />
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -154,9 +145,9 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </div>
       ) : null}
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Member registration</CardTitle>
+          <CardTitle>Member registration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-4">
@@ -181,9 +172,9 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Reaction kinds</CardTitle>
+          <CardTitle>Reaction kinds</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -237,9 +228,9 @@ export function CommunitySettingsView({ canEdit }: CommunitySettingsViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Member upload quota</CardTitle>
+          <CardTitle>Member upload quota</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">

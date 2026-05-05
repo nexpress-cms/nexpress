@@ -140,9 +140,9 @@ export function ScheduleDialog({
             </Button>
             <Button type="button" onClick={handleSubmit} disabled={busy}>
               {busy ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <CalendarClock className="mr-2 h-4 w-4" />
+                <CalendarClock className="size-3.5" />
               )}
               Schedule
             </Button>

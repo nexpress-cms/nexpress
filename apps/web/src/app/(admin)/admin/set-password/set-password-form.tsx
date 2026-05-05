@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Button, Input, Label } from "@nexpress/admin/client";
 
 type Status = "idle" | "submitting" | "done" | "error";
 
@@ -65,14 +66,13 @@ export function SetPasswordForm() {
 
   if (missingToken) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          Missing reset token. Start from the forgot-password page or the invitation link in
-          your email.
+      <div className="flex flex-col gap-3">
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          Missing reset token. Start from the forgot-password page or the invitation link in your email.
         </div>
         <Link
           href="/admin/forgot-password"
-          className="block text-center text-sm text-muted-foreground hover:text-primary"
+          className="text-center text-[13px] text-[var(--nx-color-brand)] hover:underline underline-offset-[3px]"
         >
           Request a new reset link
         </Link>
@@ -82,17 +82,17 @@ export function SetPasswordForm() {
 
   if (status === "done") {
     return (
-      <div className="space-y-4">
-        <div className="rounded-md bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
+      <div className="flex flex-col gap-3">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12.5px] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
           Password saved. You can now sign in with the new password.
         </div>
-        <button
+        <Button
           type="button"
           onClick={() => router.push("/admin/login")}
-          className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="h-9 w-full justify-center"
         >
           Go to sign in
-        </button>
+        </Button>
       </div>
     );
   }
@@ -102,48 +102,48 @@ export function SetPasswordForm() {
       onSubmit={(e) => {
         void handleSubmit(e);
       }}
-      className="space-y-4"
+      className="flex flex-col gap-3"
     >
       {error ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
           {error}
         </div>
       ) : null}
-      <div>
-        <label htmlFor="password" className="mb-1 block text-sm font-medium">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="password" className="text-[12.5px]">
           New password
-        </label>
-        <input
+        </Label>
+        <Input
           id="password"
           type="password"
           minLength={8}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          autoComplete="new-password"
         />
       </div>
-      <div>
-        <label htmlFor="confirm" className="mb-1 block text-sm font-medium">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="confirm" className="text-[12.5px]">
           Confirm password
-        </label>
-        <input
+        </Label>
+        <Input
           id="confirm"
           type="password"
           minLength={8}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          autoComplete="new-password"
         />
       </div>
-      <button
+      <Button
         type="submit"
         disabled={status === "submitting"}
-        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        className="mt-1 h-9 w-full justify-center"
       >
         {status === "submitting" ? "Saving…" : "Save password"}
-      </button>
+      </Button>
     </form>
   );
 }

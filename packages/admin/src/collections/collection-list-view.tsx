@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "../ui/badge.js";
+import { StatusBadge } from "../ui/status-badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
@@ -29,6 +30,7 @@ import {
 import { Input } from "../ui/input.js";
 import { nxFetch } from "../lib/api-client.js";
 import { cn } from "../ui/utils.js";
+import { PageHeader } from "../layout/page-header.js";
 
 interface CollectionListViewProps {
   config: NxCollectionConfig;
@@ -243,34 +245,35 @@ export function CollectionListView({
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight">{config.labels.plural}</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            {config.labels.plural}
             <Badge variant="secondary">{totalDocs}</Badge>
-          </div>
-          {config.admin?.description ? <p className="text-sm text-muted-foreground">{config.admin.description}</p> : null}
-        </div>
+          </span>
+        }
+        description={config.admin?.description}
+        actions={
+          <Button asChild>
+            <Link href={`/admin/collections/${config.slug}/create`}>
+              <Plus />
+              Create
+            </Link>
+          </Button>
+        }
+      />
 
-        <Button asChild>
-          <Link href={`/admin/collections/${config.slug}/create`}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create
-          </Link>
-        </Button>
-      </div>
-
-      <Card className="border-border/60 shadow-sm">
+      <Card>
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle className="text-lg">All entries</CardTitle>
+          <CardTitle>All entries</CardTitle>
           <div className="relative w-full md:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
             <Input
               value={searchValue}
               onChange={(event: { target: { value: string } }) => setSearchValue(event.target.value)}
               placeholder={`Search ${config.labels.plural.toLowerCase()}...`}
-              className="pl-9"
+              className="pl-8"
             />
           </div>
         </CardHeader>
@@ -301,9 +304,9 @@ export function CollectionListView({
                   disabled={bulkBusy !== null}
                 >
                   {bulkBusy === "publish" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    <CheckCircle2 className="size-3.5" />
                   )}
                   Publish
                 </Button>
@@ -315,9 +318,9 @@ export function CollectionListView({
                   disabled={bulkBusy !== null}
                 >
                   {bulkBusy === "unpublish" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    <CircleX className="mr-2 h-4 w-4" />
+                    <CircleX className="size-3.5" />
                   )}
                   Unpublish
                 </Button>
@@ -329,7 +332,7 @@ export function CollectionListView({
                   onClick={() => setConfirmDelete(true)}
                   disabled={bulkBusy !== null}
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="size-3.5" />
                   Delete
                 </Button>
                 <Button
@@ -425,17 +428,7 @@ export function CollectionListView({
                                     {formatCellValue(rawValue)}
                                   </Link>
                                 ) : isStatus ? (
-                                  <span
-                                    className={
-                                      rawValue === "published"
-                                        ? "inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300"
-                                        : rawValue === "draft"
-                                          ? "inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
-                                          : "inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                    }
-                                  >
-                                    {rawValue}
-                                  </span>
+                                  <StatusBadge status={rawValue} />
                                 ) : (
                                   <span className="text-muted-foreground">{formatCellValue(rawValue)}</span>
                                 )}
@@ -451,12 +444,12 @@ export function CollectionListView({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3.5 dark:border-neutral-900 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12.5px] tabular-nums text-neutral-500 dark:text-neutral-400">
               Page {currentPage} of {Math.max(totalPages, 1)}
             </p>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 type="button"
                 variant="outline"
@@ -470,7 +463,7 @@ export function CollectionListView({
                   router.push(query ? `${pathname}?${query}` : pathname);
                 }}
               >
-                <ChevronLeft className="mr-2 h-4 w-4" />
+                <ChevronLeft className="size-3.5" />
                 Previous
               </Button>
               <Button
@@ -487,7 +480,7 @@ export function CollectionListView({
                 }}
               >
                 Next
-                <ChevronRight className="ml-2 h-4 w-4" />
+                <ChevronRight className="size-3.5" />
               </Button>
             </div>
           </div>
@@ -520,9 +513,9 @@ export function CollectionListView({
               disabled={bulkBusy !== null}
             >
               {bulkBusy === "delete" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="size-3.5" />
               )}
               Delete {selectedIds.size}
             </Button>
