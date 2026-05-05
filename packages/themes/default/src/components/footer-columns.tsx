@@ -1,5 +1,6 @@
 import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
+import Link from "next/link";
 
 import { NewsletterForm } from "./newsletter-form.js";
 import { SocialLinks } from "./social-links.js";
@@ -25,9 +26,9 @@ export async function DefaultFooter() {
       <div className="np-site-footer-inner">
         <div className="np-site-footer-grid">
           <section className="np-site-footer-col np-site-footer-brand">
-            <a href="/" className="np-site-footer-logo">
+            <Link href="/" className="np-site-footer-logo">
               NexPress
-            </a>
+            </Link>
             <p className="np-site-footer-tagline">
               The Next.js-native CMS for content-led teams.
             </p>
@@ -40,14 +41,14 @@ export async function DefaultFooter() {
               {footerNav.length > 0 ? (
                 footerNav.map((item: NpNavItem, index: number) => (
                   <li key={`footer-sitemap-${index.toString()}`}>
-                    <a href={item.url}>{item.label}</a>
+                    {item.url ? <Link href={item.url}>{item.label}</Link> : <span>{item.label}</span>}
                     {item.children && item.children.length > 0 ? (
                       <ul className="np-site-footer-subnav">
                         {item.children.map((child: NpNavItem, childIndex: number) => (
                           <li
                             key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}
                           >
-                            <a href={child.url}>{child.label}</a>
+                            {child.url ? <Link href={child.url}>{child.label}</Link> : <span>{child.label}</span>}
                           </li>
                         ))}
                       </ul>
@@ -64,10 +65,10 @@ export async function DefaultFooter() {
             <h2 className="np-site-footer-heading">Resources</h2>
             <ul className="np-site-footer-links">
               <li>
-                <a href="/blog">Blog</a>
+                <Link href="/blog">Blog</Link>
               </li>
               <li>
-                <a href="/search">Search</a>
+                <Link href="/search">Search</Link>
               </li>
               <li>
                 <a href="/feed.xml">RSS feed</a>
@@ -93,10 +94,10 @@ export async function DefaultFooter() {
           </p>
           <ul className="np-site-footer-meta">
             <li>
-              <a href="/privacy">Privacy</a>
+              <Link href="/privacy">Privacy</Link>
             </li>
             <li>
-              <a href="/terms">Terms</a>
+              <Link href="/terms">Terms</Link>
             </li>
           </ul>
         </div>
@@ -111,16 +112,16 @@ function FooterNavFallback() {
   return (
     <>
       <li>
-        <a href="/">Home</a>
+        <Link href="/">Home</Link>
       </li>
       <li>
-        <a href="/about">About</a>
+        <Link href="/about">About</Link>
       </li>
       <li>
-        <a href="/blog">Blog</a>
+        <Link href="/blog">Blog</Link>
       </li>
       <li>
-        <a href="/contact">Contact</a>
+        <Link href="/contact">Contact</Link>
       </li>
     </>
   );

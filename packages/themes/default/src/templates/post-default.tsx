@@ -1,5 +1,6 @@
 import { renderRichText } from "@nexpress/editor/server";
 import type { NpRichTextContent } from "@nexpress/editor";
+import Link from "next/link";
 
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
@@ -95,7 +96,7 @@ export function PostDefaultTemplate({ doc }: NpTemplateRenderProps) {
             {tags.map((tag) => (
               <li key={tag.slug ?? tag.label}>
                 {tag.slug ? (
-                  <a href={`/tags/${tag.slug}`}>{tag.label}</a>
+                  <Link href={`/tags/${tag.slug}`}>{tag.label}</Link>
                 ) : (
                   <span>{tag.label}</span>
                 )}

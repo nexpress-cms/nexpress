@@ -10,6 +10,8 @@
  * shape requirement.
  */
 
+import Link from "next/link";
+
 export interface PostCardDoc {
   id?: string;
   slug?: string;
@@ -83,7 +85,7 @@ export function PostCard({ doc, variant = "grid" }: PostCardProps) {
     <article
       className={`np-post-card${variant === "feature" ? " np-post-card-feature" : ""}`}
     >
-      <a href={href} className="np-post-card-link">
+      <Link href={href} className="np-post-card-link">
         {cover ? (
           <div className="np-post-card-cover">
             <img src={cover} alt={coverAlt(doc.cover, title)} loading="lazy" />
@@ -100,7 +102,7 @@ export function PostCard({ doc, variant = "grid" }: PostCardProps) {
             {reading ? <span>{reading}</span> : null}
           </div>
         </div>
-      </a>
+      </Link>
     </article>
   );
 }

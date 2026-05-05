@@ -2,6 +2,7 @@ import { getI18nConfig } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation, resolveAvailableLocales } from "@nexpress/next";
 import { headers } from "next/headers";
+import Link from "next/link";
 
 import { DarkModeToggle } from "./components/dark-mode-toggle.js";
 import { LanguagePicker } from "./components/language-picker.js";
@@ -45,19 +46,19 @@ export async function DefaultHeader() {
   return (
     <header className="np-site-header">
       <div className="np-site-header-inner">
-        <a href="/" className="np-site-logo">
+        <Link href="/" className="np-site-logo">
           NexPress
-        </a>
+        </Link>
         <nav className="np-site-nav-desktop" aria-label="Primary">
           <ul className="np-site-nav">
             {headerNav.map((item: NpNavItem, index: number) => (
               <li key={`nav-${index.toString()}`} className="np-site-nav-item">
-                <a href={item.url}>{item.label}</a>
+                {item.url ? <Link href={item.url}>{item.label}</Link> : <span>{item.label}</span>}
                 {item.children && item.children.length > 0 ? (
                   <ul className="np-site-subnav">
                     {item.children.map((child: NpNavItem, childIndex: number) => (
                       <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
-                        <a href={child.url}>{child.label}</a>
+                        {child.url ? <Link href={child.url}>{child.label}</Link> : <span>{child.label}</span>}
                       </li>
                     ))}
                   </ul>

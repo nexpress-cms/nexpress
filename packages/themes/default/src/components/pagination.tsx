@@ -1,8 +1,11 @@
 /**
  * Server-rendered pagination strip. Templates pass in the current
  * page + total count + URL builder; we render Prev / page numbers
- * / Next as plain anchors so it works without JS.
+ * / Next via next/link so navigation stays SPA-style and a
+ * no-JS user still gets working anchors.
  */
+
+import Link from "next/link";
 
 export interface PaginationProps {
   page: number;
@@ -46,9 +49,9 @@ export function Pagination({ page, totalPages, hrefForPage, siblings = 1 }: Pagi
   return (
     <nav className="np-pagination" aria-label="Pagination">
       {prev ? (
-        <a href={prev} rel="prev" className="np-pagination-step">
+        <Link href={prev} rel="prev" className="np-pagination-step">
           ← Prev
-        </a>
+        </Link>
       ) : (
         <span className="np-pagination-step np-pagination-disabled">← Prev</span>
       )}
@@ -60,7 +63,7 @@ export function Pagination({ page, totalPages, hrefForPage, siblings = 1 }: Pagi
                 …
               </span>
             ) : (
-              <a
+              <Link
                 href={hrefForPage(entry)}
                 aria-current={entry === page ? "page" : undefined}
                 className={
@@ -68,15 +71,15 @@ export function Pagination({ page, totalPages, hrefForPage, siblings = 1 }: Pagi
                 }
               >
                 {entry.toString()}
-              </a>
+              </Link>
             )}
           </li>
         ))}
       </ol>
       {next ? (
-        <a href={next} rel="next" className="np-pagination-step">
+        <Link href={next} rel="next" className="np-pagination-step">
           Next →
-        </a>
+        </Link>
       ) : (
         <span className="np-pagination-step np-pagination-disabled">Next →</span>
       )}

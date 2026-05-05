@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { NpNavItem } from "@nexpress/core";
 
 /**
@@ -80,16 +81,24 @@ export function MobileNav({ items, label = "Menu" }: MobileNavProps) {
         <ul className="np-mobile-nav-list">
           {items.map((item, index) => (
             <li key={`mobile-nav-${index.toString()}`}>
-              <a href={item.url} onClick={() => setOpen(false)}>
-                {item.label}
-              </a>
+              {item.url ? (
+                <Link href={item.url} onClick={() => setOpen(false)}>
+                  {item.label}
+                </Link>
+              ) : (
+                <span>{item.label}</span>
+              )}
               {item.children && item.children.length > 0 ? (
                 <ul className="np-mobile-subnav">
                   {item.children.map((child, childIndex) => (
                     <li key={`mobile-nav-${index.toString()}-${childIndex.toString()}`}>
-                      <a href={child.url} onClick={() => setOpen(false)}>
-                        {child.label}
-                      </a>
+                      {child.url ? (
+                        <Link href={child.url} onClick={() => setOpen(false)}>
+                          {child.label}
+                        </Link>
+                      ) : (
+                        <span>{child.label}</span>
+                      )}
                     </li>
                   ))}
                 </ul>
