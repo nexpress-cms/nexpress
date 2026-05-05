@@ -1453,6 +1453,54 @@ interface MediaDoc {
  * The type system enforces no-nested-array on the source side; we
  * additionally skip rendering at runtime if an author bypassed that.
  */
+// Normalize legacy `array` prop values into the structured shape
+// the editor expects (`Record<string, unknown>[]`). The render-time
+// parsers in @nexpress/blocks already accept legacy shapes, but
+// the editor used to filter everything that wasn't already a
+// record array down to `[]` — which made operators see an empty
+// list, and the first Add / Remove silently overwrote real data.
+//
+// Two legacy shapes need to flow through:
+//   - JSON-string: `'[{"q":"...","a":"..."}]'` (FAQ / Feature
+//     Grid / Pricing / Image Gallery before the array-field PR).
+//   - Primitive array: `["Name","Email","Company"]` (contact-form
+//     fields before its itemSchema landed). Each entry gets wrapped
+//     into `{ [firstFieldName]: value }` so the existing itemSchema
+//     can edit it without authors having to know about the legacy
+//     shape.
+function normalizeArrayValue(
+  value: unknown,
+  itemSchema: readonly NpBlockPropField[],
+): Record<string, unknown>[] {
+  let source: unknown = value;
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(source)) return [];
+
+  const firstFieldName = itemSchema[0]?.name;
+  const out: Record<string, unknown>[] = [];
+  for (const entry of source) {
+    if (isRecord(entry)) {
+      out.push(entry);
+      continue;
+    }
+    if (
+      firstFieldName !== undefined &&
+      (typeof entry === "string" ||
+        typeof entry === "number" ||
+        typeof entry === "boolean")
+    ) {
+      out.push({ [firstFieldName]: entry });
+    }
+  }
+  return out;
+}
+
 function ArrayFieldControl({
   field,
   value,
@@ -1464,12 +1512,10 @@ function ArrayFieldControl({
   onChange: (next: unknown) => void;
   inputId: string;
 }) {
-  const items: Record<string, unknown>[] = Array.isArray(value)
-    ? (value.filter(isRecord) as Record<string, unknown>[])
-    : [];
   const itemSchema = (field.itemSchema ?? []).filter(
     (sub) => sub.type !== "array",
   );
+  const items = normalizeArrayValue(value, itemSchema);
 
   const buildItemDefault = (): Record<string, unknown> => {
     if (field.itemDefault && typeof field.itemDefault === "object") {
