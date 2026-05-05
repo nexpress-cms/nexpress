@@ -64,18 +64,16 @@ async function LatestPostsBody({
   heading: string;
   ctx: NpBlockRenderContext;
 }) {
-  let posts: PostLike[] = [];
-  let errored: string | null = null;
-  try {
-    const result = await ctx.content.find(collection, {
-      limit,
-      sort: "-publishedAt",
-      where: { status: { equals: "published" } },
-    });
-    posts = result.docs.map(readPost).filter((p): p is PostLike => p !== null);
-  } catch (error) {
-    errored = error instanceof Error ? error.message : "Failed to load posts";
-  }
+  // No try/catch — `renderBlocks` wraps every block in `SafeBlock`,
+  // which catches rejections from this Promise<ReactElement> and renders
+  // the framework's error placeholder. We still want a graceful empty
+  // state for the success-but-zero-rows case below.
+  const result = await ctx.content.find(collection, {
+    limit,
+    sort: "-publishedAt",
+    where: { status: { equals: "published" } },
+  });
+  const posts = result.docs.map(readPost).filter((p): p is PostLike => p !== null);
 
   const wrapperStyle: CSSProperties = {
     margin: "1.5rem 0",
@@ -87,25 +85,6 @@ async function LatestPostsBody({
     margin: "0 0 1rem",
     color: "#0f172a",
   };
-
-  if (errored) {
-    return (
-      <div className="np-block-latest-posts np-block-latest-posts--error" style={wrapperStyle}>
-        {heading.length > 0 ? <h2 style={headingStyle}>{heading}</h2> : null}
-        <p
-          style={{
-            padding: "0.75rem 1rem",
-            border: "1px dashed #fca5a5",
-            borderRadius: "0.5rem",
-            color: "#991b1b",
-            fontSize: "0.875rem",
-          }}
-        >
-          Couldn&rsquo;t load posts from &ldquo;{collection}&rdquo;: {errored}
-        </p>
-      </div>
-    );
-  }
 
   if (posts.length === 0) {
     return (
@@ -220,12 +199,11 @@ const latestPostsBlock: NpBlockDefinition = {
   propsSchema: [
     {
       name: "collection",
-      label: "Collection slug",
-      type: "text",
+      label: "Collection",
+      type: "collection",
       required: true,
       defaultValue: "posts",
-      description:
-        "Slug of the collection to read from. Typo here = empty list — should become a picker once propsSchema gains a 'collection' field type.",
+      description: "Pick from the collections registered in this site.",
     },
     {
       name: "limit",

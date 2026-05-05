@@ -8,6 +8,7 @@ import { calloutPlugin } from "@nexpress/plugin-block-callout";
 import { embedPlugin } from "@nexpress/plugin-block-embed";
 import { latestPostsPlugin } from "@nexpress/plugin-block-latest-posts";
 import { newsletterPlugin } from "@nexpress/plugin-block-newsletter";
+import { pricingPlugin } from "@nexpress/plugin-block-pricing";
 import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
@@ -91,6 +92,7 @@ export default defineConfig({
     embedPlugin,
     latestPostsPlugin,
     newsletterPlugin,
+    pricingPlugin,
     statsBlockPlugin,
     readingTimePlugin,
     seoAuditPlugin,
