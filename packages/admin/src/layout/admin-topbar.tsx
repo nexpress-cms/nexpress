@@ -109,7 +109,7 @@ function AdminTopbar({ user }: AdminTopbarProps) {
   }, [user.email, user.name]);
 
   return (
-    <header className="sticky top-0 z-20 flex h-[52px] items-center justify-between border-b border-neutral-200/70 bg-[rgb(248_248_247_/_0.8)] px-6 backdrop-blur-md backdrop-saturate-150 dark:border-neutral-800/70 dark:bg-neutral-950/80">
+    <header className="sticky top-0 z-20 flex h-[57px] items-center justify-between border-b border-neutral-200/70 bg-[rgb(248_248_247_/_0.8)] px-6 backdrop-blur-md backdrop-saturate-150 dark:border-neutral-800/70 dark:bg-neutral-950/80">
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px]">
         {crumbs.map((crumb, i) => {
           const isLast = i === crumbs.length - 1;
