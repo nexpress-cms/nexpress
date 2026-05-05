@@ -36,9 +36,29 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<boolean>>();
+/**
+ * Per-plugin generation counter. Bumped by `invalidatePluginEnabled()` so
+ * an in-flight `fetchEnabled()` can tell whether its result is still
+ * relevant before writing to the cache. Without this token, the original
+ * implementation (#462) had a race:
+ *   T0 — request A starts fetchEnabled, reads `enabled=true` from DB
+ *   T1 — admin toggles → invalidate clears cache + inflight
+ *   T2 — request B starts a fresh fetchEnabled, reads `enabled=false`,
+ *        writes `false` to cache
+ *   T3 — A's `.then()` finally runs and overwrites cache with the
+ *        stale `true`, sticking until the TTL expires
+ * Now A bumps its captured generation against the current value before
+ * writing; if they disagree, A drops its result.
+ */
+const generation = new Map<string, number>();
 let ttlMs = DEFAULT_TTL_MS;
 
+function currentGeneration(pluginId: string): number {
+  return generation.get(pluginId) ?? 0;
+}
+
 async function fetchEnabled(pluginId: string): Promise<boolean> {
+  if (fetchOverride) return fetchOverride(pluginId);
   try {
     const db = getDb();
     const rows = await db
@@ -72,13 +92,24 @@ export async function isPluginEnabled(pluginId: string): Promise<boolean> {
   const existing = inflight.get(pluginId);
   if (existing) return existing;
 
+  // Capture the generation BEFORE awaiting. If the cache is invalidated
+  // while we're in flight, the generation map will tick and the .then()
+  // below skips the cache write.
+  const fetchGeneration = currentGeneration(pluginId);
   const promise = fetchEnabled(pluginId)
     .then((enabled) => {
-      cache.set(pluginId, { enabled, expiresAt: Date.now() + ttlMs });
+      if (currentGeneration(pluginId) === fetchGeneration) {
+        cache.set(pluginId, { enabled, expiresAt: Date.now() + ttlMs });
+      }
       return enabled;
     })
     .finally(() => {
-      inflight.delete(pluginId);
+      // Only clear the inflight slot if it's still ours — a concurrent
+      // invalidate may have cleared and a sibling request may have
+      // installed a fresh promise. Don't yank theirs.
+      if (inflight.get(pluginId) === promise) {
+        inflight.delete(pluginId);
+      }
     });
   inflight.set(pluginId, promise);
   return promise;
@@ -87,6 +118,11 @@ export async function isPluginEnabled(pluginId: string): Promise<boolean> {
 export function invalidatePluginEnabled(pluginId: string): void {
   cache.delete(pluginId);
   inflight.delete(pluginId);
+  // Tick the generation so any already-running fetchEnabled() promise
+  // for this id refuses to write its result back into the cache when
+  // it eventually settles. Without the bump, a slow DB read started
+  // before the toggle could re-cache the stale value for up to TTL.
+  generation.set(pluginId, currentGeneration(pluginId) + 1);
 }
 
 /**
@@ -101,10 +137,26 @@ export function setPluginEnabledForTest(pluginId: string, enabled: boolean): voi
 export function resetEnabledGate(): void {
   cache.clear();
   inflight.clear();
+  generation.clear();
   ttlMs = DEFAULT_TTL_MS;
+  fetchOverride = null;
 }
 
 /** Test-only: tighten the TTL so cache-expiry behavior is observable. */
 export function setEnabledGateTtlForTest(ms: number): void {
   ttlMs = ms;
+}
+
+/**
+ * Test-only: replace the DB read with a deterministic implementation so
+ * race-window tests can resolve fetches in a controlled order. Production
+ * code goes through `fetchEnabled()` directly; the override is wired in
+ * via this setter and torn down by `resetEnabledGate()`.
+ */
+let fetchOverride: ((pluginId: string) => Promise<boolean>) | null = null;
+
+export function setFetchImplForTest(
+  impl: ((pluginId: string) => Promise<boolean>) | null,
+): void {
+  fetchOverride = impl;
 }
