@@ -619,49 +619,51 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
             ))}
           </div>
 
-          <div className="space-y-6 xl:col-span-4">
-            <Card className="sticky top-6">
-              <CardHeader>
-                <CardTitle>Publishing</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {sidebarFields.length > 0 ? (
-                  sidebarFields.map((field, index) => (
-                    <FieldRenderer
-                      key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}
-                      field={field}
-                      control={form.control}
-                      collectionSlug={collectionSlug}
-                    />
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No sidebar fields configured for this collection.</p>
-                )}
-              </CardContent>
-            </Card>
+          <div className="xl:col-span-4">
+            <div className="sticky top-20 space-y-6">
+              <Card className="">
+                <CardHeader>
+                  <CardTitle>Publishing</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {sidebarFields.length > 0 ? (
+                    sidebarFields.map((field, index) => (
+                      <FieldRenderer
+                        key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}
+                        field={field}
+                        control={form.control}
+                        collectionSlug={collectionSlug}
+                      />
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No sidebar fields configured for this collection.</p>
+                  )}
+                </CardContent>
+              </Card>
 
-            {doc?.id && config.admin?.navMembership ? (
-              <NavMembershipPanel
-                pageId={String(doc.id)}
-                pageTitle={typeof doc.title === "string" ? doc.title : undefined}
-                collectionSlug={collectionSlug}
-              />
-            ) : null}
+              {doc?.id && config.admin?.navMembership ? (
+                <NavMembershipPanel
+                  pageId={String(doc.id)}
+                  pageTitle={typeof doc.title === "string" ? doc.title : undefined}
+                  collectionSlug={collectionSlug}
+                />
+              ) : null}
 
-            {doc?.id && config.versions ? (
-              <RevisionsPanel
-                collectionSlug={collectionSlug}
-                documentId={String(doc.id)}
-              />
-            ) : null}
+              {doc?.id && config.versions ? (
+                <RevisionsPanel
+                  collectionSlug={collectionSlug}
+                  documentId={String(doc.id)}
+                />
+              ) : null}
 
-            {doc?.id && collectionTabs && collectionTabs.length > 0 ? (
-              <CollectionTabs
-                tabs={collectionTabs}
-                collection={collectionSlug}
-                documentId={String(doc.id)}
-              />
-            ) : null}
+              {doc?.id && collectionTabs && collectionTabs.length > 0 ? (
+                <CollectionTabs
+                  tabs={collectionTabs}
+                  collection={collectionSlug}
+                  documentId={String(doc.id)}
+                />
+              ) : null}
+            </div>
           </div>
         </div>
       </form>
