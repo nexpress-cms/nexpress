@@ -1,9 +1,10 @@
 # Plugin author quickstart
 
 This guide takes you from "I want to add behavior to NexPress" to a
-running plugin in roughly thirty minutes. We'll build a plugin that
-logs whenever a post is created and exposes a tiny HTTP endpoint —
-the same shape as the bundled `@nexpress/plugin-reading-time`, which
+running plugin in about ten minutes — five if you use the
+`nexpress create *-plugin` generator. We'll build a plugin that logs
+whenever a post is created and exposes a tiny HTTP endpoint — the
+same shape as the bundled `@nexpress/plugin-reading-time`, which
 this guide pulls from.
 
 For the *why* behind the plugin model, see
@@ -106,41 +107,23 @@ Restart the dev server (or click "Reload all" in `/admin/plugins` for
 config / state changes — see [`plugin-reload.md`](plugin-reload.md) for
 the limits) and your plugin runs.
 
-## Step 1b — From-scratch scaffold (manual)
+## Step 1b — From-scratch scaffold (without the CLI)
 
-If you'd rather skip the generator:
+If the CLI generator isn't available or you prefer to start from
+nothing, the minimum on-disk shape is four files:
 
-```bash
-cd packages/plugins
-cp -R reading-time my-plugin
-cd my-plugin
+```
+packages/plugins/my-plugin/
+├── package.json    # name + dependency on @nexpress/plugin-sdk
+├── tsconfig.json   # extends ../../../tsconfig.base.json
+├── tsup.config.ts  # mirrors any sibling plugin's
+└── src/index.ts    # the definePlugin body — see Step 2
 ```
 
-Update the package metadata:
-
-```bash
-# package.json
-sed -i '' 's/@nexpress\/plugin-reading-time/@nexpress\/plugin-my-plugin/' package.json
-sed -i '' 's/Reading-time meta plugin for NexPress\./My plugin./' package.json
-sed -i '' 's/packages\/plugins\/reading-time/packages\/plugins\/my-plugin/' package.json
-```
-
-(GNU `sed` users: drop the `'' ` after `-i`.)
-
-Wipe the example logic so you can write your own:
-
-```bash
-rm -rf dist src/index.ts
-mkdir -p src
-```
-
-Then re-run `pnpm install` from the repo root so the workspace picks
-up the new package:
-
-```bash
-cd ../../..
-pnpm install
-```
+Copy `tsconfig.json` and `tsup.config.ts` verbatim from any sibling
+plugin (`packages/plugins/reading-time` is the smallest reference).
+Then run `pnpm install` from the repo root so the workspace picks up
+the new package.
 
 ## Step 2 — Write the plugin
 
@@ -149,7 +132,7 @@ Create `packages/plugins/my-plugin/src/index.ts`:
 ```ts
 import { definePlugin } from "@nexpress/plugin-sdk";
 
-export const myPlugin = definePlugin({
+export const myPluginPlugin = definePlugin({
   manifest: {
     id: "my-plugin",
     version: "0.1.0",
@@ -158,25 +141,14 @@ export const myPlugin = definePlugin({
     author: { name: "Your Name" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    capabilities: ["hooks:content", "api:route"],
-    allowedHosts: [],
-    provides: {
-      blocks: [],
-      fields: [],
-      collections: [],
-      adminExtensions: [],
-      apiRoutes: ["/ping"],
-      hooks: ["content:afterCreate"],
-    },
-    agent: { description: "Demo plugin." },
-    usesTokens: [],
-    styleSlots: {},
   },
   hooks: {
-    "content:afterCreate": ({ data }) => {
-      const collection = typeof data.collection === "string" ? data.collection : "?";
-      const id = (data.doc as { id?: string } | undefined)?.id ?? "?";
-      console.log(`[my-plugin] new ${collection}/${id}`);
+    "content:afterCreate": ({ data, collection, ctx }) => {
+      const doc = (data as { doc?: { id?: string } }).doc;
+      ctx.log.info("New document created", {
+        collection: collection ?? "?",
+        id: doc?.id ?? "?",
+      });
     },
   },
   routes: [
@@ -191,15 +163,26 @@ export const myPlugin = definePlugin({
   ],
 });
 
-export default myPlugin;
+export default myPluginPlugin;
 ```
 
-The `manifest` is what the plugin host uses to enforce capabilities
-and present the plugin in `/admin/plugins`. The fields with empty
-arrays (`blocks`, `fields`, `collections`, `adminExtensions`) are
-required even when unused — the schema is exhaustive on purpose so a
-reviewer can read the manifest and know exactly what the plugin
-touches without grepping the source.
+The export-name doubles "Plugin" because the CLI's convention is
+`<identifier>Plugin` (the slug `my-plugin` → identifier `myPlugin`
+→ export `myPluginPlugin`). Stick to it so a CLI-scaffolded plugin
+and a hand-written one read the same.
+
+That's the entire manifest — seven fields. `definePlugin` auto-fills
+the rest: `capabilities` is derived from the surface (the
+`content:afterCreate` hook adds `hooks:content`, the route adds
+`api:route`), `provides.*` is derived from the same surface for
+catalog metadata, and the optional metadata blocks (`agent`,
+`allowedHosts`, `usesTokens`, `styleSlots`, `requires`,
+`apiVersion`) all default to empty/sensible values. You add them
+explicitly only when you *need* them — see
+[`plugin-manifest.md`](plugin-manifest.md) for the full field
+reference and [`plugin-capabilities.md`](plugin-capabilities.md) for
+the capabilities `definePlugin` can't auto-derive (such as
+`storage:kv` or `network:fetch`).
 
 ## Step 3 — Wire it into the app
 
@@ -207,7 +190,7 @@ Open `apps/web/src/nexpress.config.ts` and add your plugin to the
 `plugins` array:
 
 ```ts
-import { myPlugin } from "@nexpress/plugin-my-plugin";
+import { myPluginPlugin } from "@nexpress/plugin-my-plugin";
 
 export default defineConfig({
   // …
@@ -217,7 +200,7 @@ export default defineConfig({
     forumPlugin,
     githubOAuthPlugin,
     googleOAuthPlugin,
-    myPlugin,
+    myPluginPlugin,
   ],
 });
 ```
@@ -234,9 +217,12 @@ pnpm dev                            # starts watch + next dev
 ```
 
 If `pnpm dev` was already running you must stop and restart it —
-the plugin host runs `loadPlugins()` once at boot, so a new entry in
-`plugins` only takes effect on a fresh start. (See [`roadmap.md`](roadmap.md)
-category 3 for the hot-reload story.)
+the plugin host imports `nexpress.config.ts` once at boot, so a new
+entry in `plugins` only takes effect on a fresh start. Once a plugin
+is loaded, edits to its config or enabled-state can be picked up
+without a restart via `/admin/plugins` "Reload all" — see
+[`plugin-reload.md`](plugin-reload.md) for what reload does and
+doesn't cover.
 
 ## Step 5 — Verify
 
@@ -250,10 +236,11 @@ curl http://localhost:3000/api/plugins/my-plugin/ping
 ```
 
 **Trigger the hook** by publishing a post in `/admin/collections/posts/new`.
-Watch the dev terminal:
+Watch the dev terminal — `ctx.log.info` emits a structured line
+through whatever logger is wired (default: `console`):
 
 ```
-[my-plugin] new posts/<uuid>
+[my-plugin] New document created collection=posts id=<uuid>
 ```
 
 If neither shows up:
@@ -263,39 +250,13 @@ If neither shows up:
   or route is registered without a matching `capabilities` entry —
   that error surfaces as a startup crash, not a silent skip.
   Successful registrations are intentionally quiet; the plugin's
-  own `console.log` (or your structured logger) is the signal that
-  the hook fired.
+  own `ctx.log.info` (or `console.log`) is the signal that the hook
+  fired.
 - Confirm the plugin is in the `plugins` array of
   `nexpress.config.ts` and you restarted after editing the config.
 - Confirm `pnpm build` finished without errors. A failed `tsup` run
   on the plugin leaves stale `dist/`; sibling `apps/web` would still
   run but never load the plugin.
-
-## Where to go next
-
-You now have the entire surface area in front of you. Pick the next
-extension point from the live guides, not from this quickstart:
-
-- [`plugin-render.md`](plugin-render.md) — adding render hooks for
-  page contributions (head tags, body tags, structured data).
-- [`plugin-admin.md`](plugin-admin.md) — extending the admin UI with
-  custom views.
-- [`agent-integration.md`](agent-integration.md) — exposing a plugin
-  to LLM-driven agents through the manifest's `agent` field.
-- [`scheduled-publishing.md`](scheduled-publishing.md) — registering
-  scheduled tasks against the pg-boss worker.
-- [`api-error-codes.md`](api-error-codes.md) — what to throw and
-  what to catch from a route handler.
-
-The bundled plugins are the best reference for "how is this done in
-practice":
-
-| Plugin                                             | Demonstrates                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------ |
-| `packages/plugins/reading-time`                    | Hooks, routes, plain handler                                       |
-| `packages/plugins/seo-audit`                       | More elaborate routes, admin extension, capabilities               |
-| `packages/plugins/forum`                           | Defining a collection from a plugin (`defineDiscussionsCollection`)|
-| `packages/plugins/oauth-github`, `oauth-google`    | OAuth provider wiring through plugin routes                        |
 
 ## External projects
 
@@ -334,6 +295,8 @@ NexPress. The plugin host refuses to load plugins whose
 
 ## Where to go next
 
+The reference docs go deeper on each surface:
+
 - [`plugin-manifest.md`](plugin-manifest.md) — every manifest field,
   what it defaults to, and how `definePlugin` auto-derives `provides`
   + `capabilities` from your declared surface.
@@ -347,3 +310,19 @@ NexPress. The plugin host refuses to load plugins whose
   semantics, head-tag and script contributions.
 - [`plugin-admin.md`](plugin-admin.md) — declarative admin extensions
   (settings, widgets, actions, tables, dashboard, collection tabs).
+- [`agent-integration.md`](agent-integration.md) — exposing a plugin
+  to LLM-driven agents through the manifest's `agent` field.
+- [`scheduled-publishing.md`](scheduled-publishing.md) — registering
+  scheduled tasks against the pg-boss worker.
+- [`api-error-codes.md`](api-error-codes.md) — what to throw and
+  what to catch from a route handler.
+
+The bundled plugins are the best reference for "how is this done in
+practice":
+
+| Plugin                                             | Demonstrates                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------ |
+| `packages/plugins/reading-time`                    | Hooks, routes, plain handler                                       |
+| `packages/plugins/seo-audit`                       | More elaborate routes, admin extension, capabilities               |
+| `packages/plugins/forum`                           | Defining a collection from a plugin (`defineDiscussionsCollection`)|
+| `packages/plugins/oauth-github`, `oauth-google`    | OAuth provider wiring through plugin routes                        |

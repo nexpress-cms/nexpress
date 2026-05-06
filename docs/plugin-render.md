@@ -18,8 +18,7 @@ import { definePlugin, type NpRenderContribution } from "@nexpress/plugin-sdk";
 
 export default definePlugin({
   manifest: {
-    /* … */
-    capabilities: ["hooks:render" /* , … */],
+    /* …seven required fields; see plugin-manifest.md… */
   },
   hooks: {
     "render:beforePage": ({ data }): NpRenderContribution | undefined => {
