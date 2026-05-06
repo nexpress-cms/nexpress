@@ -113,7 +113,7 @@ export const testimonialsBlock: NpBlockDefinition = {
 
     const sectionStyle: CSSProperties = {
       padding: "4rem 1.5rem",
-      background: "#f8fafc",
+      background: "var(--np-color-muted, #f8fafc)",
     };
     const wrapperStyle: CSSProperties = {
       maxWidth: "72rem",
@@ -141,14 +141,14 @@ export const testimonialsBlock: NpBlockDefinition = {
                 margin: 0,
                 textAlign: "center",
                 fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
-                color: "#0f172a",
+                color: "var(--np-color-foreground, #0f172a)",
               }}
             >
               {heading}
             </h2>
           ) : null}
           {items.length === 0 ? (
-            <p style={{ textAlign: "center", color: "#64748b" }}>
+            <p style={{ textAlign: "center", color: "var(--np-color-muted-foreground, #64748b)" }}>
               Add testimonial items in the block editor.
             </p>
           ) : (
@@ -158,8 +158,8 @@ export const testimonialsBlock: NpBlockDefinition = {
                   key={index}
                   className="np-block-testimonials__card"
                   style={{
-                    background: "#ffffff",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--np-color-card, #ffffff)",
+                    border: "1px solid var(--np-color-border, #e2e8f0)",
                     borderRadius: "1rem",
                     padding: "1.75rem",
                     // Flex column so the footer's `marginTop: auto`
@@ -177,6 +177,11 @@ export const testimonialsBlock: NpBlockDefinition = {
                       aria-label={`Rated ${item.rating} out of 5`}
                       style={{ color: "#f59e0b", letterSpacing: "0.15em" }}
                     >
+                      {/* Star colors stay literal — amber/gray is
+                          semantic to "rating", not part of the brand
+                          palette. Themes that want a different rating
+                          color override `.np-block-testimonials__card
+                          [aria-label^="Rated"]` from their CSS. */}
                       {"★".repeat(item.rating)}
                       <span style={{ color: "#cbd5e1" }}>
                         {"★".repeat(5 - item.rating)}
@@ -188,7 +193,7 @@ export const testimonialsBlock: NpBlockDefinition = {
                       margin: 0,
                       fontSize: "1.05rem",
                       lineHeight: 1.65,
-                      color: "#1e293b",
+                      color: "var(--np-color-card-foreground, #1e293b)",
                     }}
                   >
                     “{item.quote}”
@@ -222,8 +227,8 @@ export const testimonialsBlock: NpBlockDefinition = {
                           width: "40px",
                           height: "40px",
                           borderRadius: "999px",
-                          background: "#e0e7ff",
-                          color: "#4338ca",
+                          background: "var(--np-color-accent, #e0e7ff)",
+                          color: "var(--np-color-accent-foreground, #4338ca)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -240,11 +245,11 @@ export const testimonialsBlock: NpBlockDefinition = {
                       </div>
                     )}
                     <div style={{ display: "grid" }}>
-                      <span style={{ fontWeight: 600, color: "#0f172a" }}>
+                      <span style={{ fontWeight: 600, color: "var(--np-color-card-foreground, #0f172a)" }}>
                         {item.name}
                       </span>
                       {item.role ? (
-                        <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+                        <span style={{ fontSize: "0.85rem", color: "var(--np-color-muted-foreground, #64748b)" }}>
                           {item.role}
                         </span>
                       ) : null}

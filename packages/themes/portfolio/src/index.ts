@@ -45,6 +45,34 @@ export const portfolioTheme = defineTheme({
       header: PortfolioHeader,
       footer: PortfolioFooter,
     },
+    // Dark palette is now token-driven — previously the dark
+    // surface was hardcoded as `#0b0b0c` in `styles.ts`, so admin
+    // overrides couldn't reach it. Tokens here flip background +
+    // foreground for the whole shell; `styles.ts` reads them via
+    // `var(--np-color-*)` so a single token change reflows the
+    // entire theme. Light variant: override these in the admin's
+    // theme settings tab — no fork required.
+    tokens: {
+      colors: {
+        primary: "oklch(0.985 0.001 106)",
+        primaryForeground: "oklch(0.145 0.005 285)",
+        background: "oklch(0.16 0.005 285)",
+        foreground: "oklch(0.91 0.003 286)",
+        muted: "oklch(0.22 0.006 286)",
+        mutedForeground: "oklch(0.66 0.005 286)",
+        border: "oklch(0.28 0.008 286)",
+        card: "oklch(0.20 0.006 286)",
+        cardForeground: "oklch(0.91 0.003 286)",
+        accent: "oklch(0.32 0.012 286)",
+        accentForeground: "oklch(0.985 0.001 106)",
+      },
+      typography: {
+        fontHeading:
+          '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+        fontBody:
+          '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+      },
+    },
     css: portfolioCss,
     templates: {
       pages: {

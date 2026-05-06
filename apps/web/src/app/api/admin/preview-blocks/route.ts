@@ -1,4 +1,4 @@
-import { DEFAULT_THEME, NpForbiddenError, can } from "@nexpress/core";
+import { NpForbiddenError, can, getTheme } from "@nexpress/core";
 import { renderBlocks, type NpBlockInstance } from "@nexpress/blocks";
 import { createDefaultBlockRenderContext } from "@nexpress/next";
 import { generateThemeCss } from "@nexpress/theme";
@@ -32,13 +32,13 @@ import { ensureFor } from "@/lib/init-core";
  *   preview matches what the public page would render.
  *
  * Shell:
- * - The active theme's `impl.css` + `generateThemeCss(impl.tokens)`
+ * - The active theme's `impl.css` + `generateThemeCss(getTheme())`
  *   are inlined into the preview document head, so theme-styled
  *   blocks (rich text typography, theme tokens used as CSS
- *   variables, etc.) actually look right in preview. Multi-site
- *   builds inherit whichever theme the current site context resolves
- *   to (`getCachedActiveTheme` walks the same path the public
- *   renderer uses).
+ *   variables, etc.) actually look right in preview. `getTheme`
+ *   does the layered merge (DEFAULT_THEME → theme `impl.tokens` →
+ *   admin DB override) so preview and the public render resolve
+ *   to identical tokens for the same site context.
  *
  * Errors come back as a wrapped HTML document with a banner so the
  * iframe still mounts something — the operator doesn't lose editor
@@ -145,14 +145,16 @@ async function resolveThemeStyle(): Promise<PreviewThemeStyle> {
   try {
     const theme = await getCachedActiveTheme();
     if (!theme) return { inlineCss: "" };
-    // Merge the theme's partial tokens onto the framework
-    // defaults — `generateThemeCss` requires a complete shape and
-    // a theme that overrides only a few colors shouldn't lose the
-    // unset tokens. Mirrors what the public render path does.
-    const tokens = {
-      ...DEFAULT_THEME,
-      ...(theme.impl.tokens ?? {}),
-    };
+    // `getTheme` does the layered merge:
+    //   DEFAULT_THEME ⊕ active theme's impl.tokens ⊕ DB override.
+    // It's the same call the public site layout makes, so preview
+    // and public render resolve to identical tokens for the same
+    // active theme. The previous shallow `{...DEFAULT_THEME,
+    // ...impl.tokens}` form blew away sub-objects (a theme that
+    // only set `colors.primary` lost every other color), so the
+    // preview iframe rendered with `--np-color-destructive: undefined`
+    // and similar — visible as missing form-error styling.
+    const tokens = await getTheme();
     const tokensCss = generateThemeCss(tokens);
     const themeCss = theme.impl.css ?? "";
     // Order: tokens first (so theme-owned CSS can use them as

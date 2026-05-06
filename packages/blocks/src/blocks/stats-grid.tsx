@@ -84,7 +84,7 @@ export const statsGridBlock: NpBlockDefinition = {
 
     const sectionStyle: CSSProperties = {
       padding: "3rem 1.5rem",
-      background: "#ffffff",
+      background: "var(--np-color-background, #ffffff)",
     };
     const wrapperStyle: CSSProperties = {
       maxWidth: "72rem",
@@ -107,14 +107,14 @@ export const statsGridBlock: NpBlockDefinition = {
                 margin: 0,
                 textAlign: "center",
                 fontSize: "clamp(1.5rem, 3vw, 2rem)",
-                color: "#0f172a",
+                color: "var(--np-color-foreground, #0f172a)",
               }}
             >
               {heading}
             </h2>
           ) : null}
           {items.length === 0 ? (
-            <p style={{ textAlign: "center", color: "#64748b" }}>
+            <p style={{ textAlign: "center", color: "var(--np-color-muted-foreground, #64748b)" }}>
               Add stat items in the block editor.
             </p>
           ) : (
@@ -135,7 +135,7 @@ export const statsGridBlock: NpBlockDefinition = {
                       fontSize: "clamp(2.25rem, 5vw, 3rem)",
                       fontWeight: 700,
                       lineHeight: 1.1,
-                      color: "#6366f1",
+                      color: "var(--np-color-primary, #6366f1)",
                       fontVariantNumeric: "tabular-nums",
                     }}
                   >
@@ -145,7 +145,7 @@ export const statsGridBlock: NpBlockDefinition = {
                     style={{
                       fontSize: "0.95rem",
                       fontWeight: 600,
-                      color: "#0f172a",
+                      color: "var(--np-color-foreground, #0f172a)",
                     }}
                   >
                     {item.label}
@@ -154,7 +154,7 @@ export const statsGridBlock: NpBlockDefinition = {
                     <span
                       style={{
                         fontSize: "0.8rem",
-                        color: "#64748b",
+                        color: "var(--np-color-muted-foreground, #64748b)",
                       }}
                     >
                       {item.hint}

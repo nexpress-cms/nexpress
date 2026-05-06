@@ -1,30 +1,36 @@
 /**
- * Theme-owned CSS for `@nexpress/theme-portfolio`. Dark surface,
- * visual-first layouts, scoped under `.np-portfolio-*` so swapping
- * themes never leaves residue. The framework injects this string
- * as a `<style data-np-theme="portfolio">` tag at SSR time.
+ * Theme-owned CSS for `@nexpress/theme-portfolio`. Reads from the
+ * theme token system (background / foreground / primary / card /
+ * muted) so admin token overrides reflow the whole shell. The
+ * dark surface ships via `impl.tokens` in `index.ts`; that's the
+ * single point of truth, this CSS just consumes it. Scoped under
+ * `.np-portfolio-*` so swapping themes never leaves residue.
+ *
+ * Decorative dividers stay as `rgba(255, 255, 255, …)` since they're
+ * tied to the dark assumption — flipping to a light palette is an
+ * intentional fork that needs a fresh divider color anyway.
  */
 export const portfolioCss = `
 .np-portfolio {
-  background: #0b0b0c;
-  color: #e7e7e7;
+  background: var(--np-color-background);
+  color: var(--np-color-foreground);
   min-height: 100vh;
   font-family: var(--np-font-body, "Inter", system-ui, sans-serif);
 }
 .np-portfolio a { color: inherit; }
 .np-portfolio ::selection {
-  background: #fff;
-  color: #0b0b0c;
+  background: var(--np-color-primary);
+  color: var(--np-color-primary-foreground);
 }
 
 /* ----------------------------------------------------------------
  * Header
  * --------------------------------------------------------------- */
 .np-portfolio-header {
-  background: rgba(11, 11, 12, 0.85);
+  background: color-mix(in oklab, var(--np-color-background) 85%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid color-mix(in oklab, var(--np-color-foreground) 8%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -93,7 +99,7 @@ export const portfolioCss = `
   align-items: center;
   justify-content: center;
   padding: 0.4rem 0.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid color-mix(in oklab, var(--np-color-foreground) 20%, transparent);
   border-radius: 999px;
   background: transparent;
   color: inherit;
@@ -103,12 +109,12 @@ export const portfolioCss = `
   cursor: pointer;
 }
 .np-portfolio-nav-toggle:hover {
-  border-color: rgba(255, 255, 255, 0.5);
+  border-color: color-mix(in oklab, var(--np-color-foreground) 50%, transparent);
 }
 .np-portfolio-nav-drawer {
   position: fixed;
   inset: 0;
-  background: rgba(11, 11, 12, 0.95);
+  background: color-mix(in oklab, var(--np-color-background) 95%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   z-index: 50;
@@ -155,7 +161,7 @@ export const portfolioCss = `
  * Footer
  * --------------------------------------------------------------- */
 .np-portfolio-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid color-mix(in oklab, var(--np-color-foreground) 8%, transparent);
   margin-top: 6rem;
   background: transparent;
   text-align: center;
@@ -173,11 +179,11 @@ export const portfolioCss = `
 .np-portfolio-footer-email {
   text-decoration: none;
   letter-spacing: 0.02em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  border-bottom: 1px solid color-mix(in oklab, var(--np-color-foreground) 40%, transparent);
   padding-bottom: 0.15rem;
 }
 .np-portfolio-footer-email:hover {
-  border-bottom-color: rgba(255, 255, 255, 0.85);
+  border-bottom-color: color-mix(in oklab, var(--np-color-foreground) 85%, transparent);
 }
 .np-portfolio-footer-social {
   list-style: none;
@@ -294,7 +300,7 @@ export const portfolioCss = `
   position: relative;
   overflow: hidden;
   border-radius: 4px;
-  background: #181818;
+  background: var(--np-color-card);
 }
 .np-portfolio-project-cover {
   margin: 0;
@@ -316,7 +322,11 @@ export const portfolioCss = `
   display: block;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #1f1f22 0%, #2a2a2d 100%);
+  background: linear-gradient(
+    135deg,
+    var(--np-color-muted) 0%,
+    var(--np-color-accent) 100%
+  );
 }
 .np-portfolio-project-caption {
   position: absolute;
@@ -358,7 +368,7 @@ export const portfolioCss = `
   width: 100%;
   aspect-ratio: 21 / 9;
   overflow: hidden;
-  background: #1a1a1c;
+  background: var(--np-color-card);
 }
 .np-portfolio-project-hero img {
   width: 100%;
@@ -420,10 +430,10 @@ export const portfolioCss = `
   margin: 1.5rem 0;
 }
 
-/* Re-cast the .np-page baseline so its dark variant carries
-   the right link / muted colors without having to touch
-   admin-edited tokens. */
+/* Re-cast the .np-page baseline so links pick up the theme's
+   primary token. Dark theme: primary is light-on-dark, so the
+   link reads correctly. */
 .np-portfolio .np-page a {
-  color: #93c5fd;
+  color: var(--np-color-primary);
 }
 `.trim();

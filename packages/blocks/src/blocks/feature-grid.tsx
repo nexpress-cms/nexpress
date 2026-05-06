@@ -105,10 +105,24 @@ export const featureGridBlock: NpBlockDefinition = {
     };
 
     return (
-      <section className="np-block-feature-grid" style={{ padding: "4rem 1.5rem", background: "#f8fafc" }}>
+      <section
+        className="np-block-feature-grid"
+        style={{
+          padding: "4rem 1.5rem",
+          background: "var(--np-color-muted, #f8fafc)",
+        }}
+      >
         <div style={{ maxWidth: "72rem", margin: "0 auto", display: "grid", gap: "1.75rem" }}>
           <header>
-            <h2 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 3rem)", color: "#0f172a" }}>{heading}</h2>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "clamp(2rem, 4vw, 3rem)",
+                color: "var(--np-color-foreground, #0f172a)",
+              }}
+            >
+              {heading}
+            </h2>
           </header>
           <div style={gridStyle}>
             {features.map((feature) => (
@@ -118,14 +132,14 @@ export const featureGridBlock: NpBlockDefinition = {
                 style={{
                   padding: "1.5rem",
                   borderRadius: "1.25rem",
-                  background: "#ffffff",
-                  border: "1px solid rgba(15, 23, 42, 0.08)",
+                  background: "var(--np-color-card, #ffffff)",
+                  border: "1px solid var(--np-color-border, rgba(15, 23, 42, 0.08))",
                   boxShadow: "0 14px 35px rgba(15, 23, 42, 0.08)",
                 }}
               >
                 <div style={{ fontSize: "1.8rem", marginBottom: "0.9rem" }}>{feature.icon}</div>
-                <h3 style={{ margin: "0 0 0.6rem", color: "#0f172a" }}>{feature.title}</h3>
-                <p style={{ margin: 0, lineHeight: 1.7, color: "#475569" }}>{feature.description}</p>
+                <h3 style={{ margin: "0 0 0.6rem", color: "var(--np-color-card-foreground, #0f172a)" }}>{feature.title}</h3>
+                <p style={{ margin: 0, lineHeight: 1.7, color: "var(--np-color-muted-foreground, #475569)" }}>{feature.description}</p>
               </article>
             ))}
           </div>

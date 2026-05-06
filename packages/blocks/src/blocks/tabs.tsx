@@ -101,7 +101,7 @@ export const tabsBlock: NpBlockDefinition = {
 
     const sectionStyle: CSSProperties = {
       padding: "3rem 1.5rem",
-      background: "#ffffff",
+      background: "var(--np-color-background, #ffffff)",
     };
     const wrapperStyle: CSSProperties = {
       maxWidth: "56rem",
@@ -130,14 +130,14 @@ export const tabsBlock: NpBlockDefinition = {
               style={{
                 margin: 0,
                 fontSize: "clamp(1.5rem, 3vw, 2rem)",
-                color: "#0f172a",
+                color: "var(--np-color-foreground, #0f172a)",
               }}
             >
               {heading}
             </h2>
           ) : null}
           {items.length === 0 ? (
-            <p style={{ color: "#64748b" }}>Add tab items in the block editor.</p>
+            <p style={{ color: "var(--np-color-muted-foreground, #64748b)" }}>Add tab items in the block editor.</p>
           ) : (
             <div className="np-block-tabs__group" style={{ display: "grid", gap: "0.5rem" }}>
               {items.map((item, index) => (
@@ -147,9 +147,9 @@ export const tabsBlock: NpBlockDefinition = {
                   open={index === 0}
                   className="np-block-tabs__panel"
                   style={{
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--np-color-border, #e2e8f0)",
                     borderRadius: "0.75rem",
-                    background: "#ffffff",
+                    background: "var(--np-color-card, #ffffff)",
                     overflow: "hidden",
                   }}
                 >
@@ -158,7 +158,7 @@ export const tabsBlock: NpBlockDefinition = {
                       cursor: "pointer",
                       padding: "1rem 1.25rem",
                       fontWeight: 600,
-                      color: "#0f172a",
+                      color: "var(--np-color-foreground, #0f172a)",
                       listStyle: "none",
                     }}
                   >
@@ -168,7 +168,7 @@ export const tabsBlock: NpBlockDefinition = {
                     style={{
                       padding: "0 1.25rem 1.25rem",
                       lineHeight: 1.65,
-                      color: "#334155",
+                      color: "var(--np-color-card-foreground, #334155)",
                       whiteSpace: "pre-wrap",
                     }}
                   >
