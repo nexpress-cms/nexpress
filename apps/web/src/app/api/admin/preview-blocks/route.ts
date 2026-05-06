@@ -63,7 +63,12 @@ export async function POST(request: NextRequest) {
     const ctx = createDefaultBlockRenderContext();
     let bodyHtml: string;
     try {
-      const tree = renderBlocks(blocks, { ctx });
+      // `previewMarkers: true` wraps each rendered block with a
+      // `<div data-np-block-id="…" style="display: contents">` so
+      // the editor can scroll-to / highlight the focused row in
+      // the iframe. The wrapper is layout-neutral (display:
+      // contents); production renders never enable this.
+      const tree = renderBlocks(blocks, { ctx, previewMarkers: true });
       bodyHtml = tree ? await renderTreeToHtml(tree) : emptyState();
     } catch (renderError) {
       return new Response(

@@ -95,7 +95,30 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  // Currently-focused row id (#467 #1 — selected-block preview).
+  // Tracked via focusin/focusout listeners on the editor section
+  // so any focus surface (row card, popover, dropdown) within a
+  // `[data-np-block-row]` ancestor counts as "this block is the
+  // operator's current target". The PreviewPanel receives the
+  // value and highlights / scrolls to the matching marker in the
+  // iframe.
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const root = sectionRef.current;
+    if (!root) return;
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const row = target.closest<HTMLElement>("[data-np-block-row]");
+      if (!row) return;
+      const id = row.dataset.npBlockRow;
+      if (id) setSelectedBlockId(id);
+    };
+    root.addEventListener("focusin", onFocusIn);
+    return () => root.removeEventListener("focusin", onFocusIn);
+  }, []);
 
   // Per-row collapsed state (#467 quick-wins). Lives at the
   // orchestrator so it survives every dispatch (the row card itself
@@ -638,7 +661,9 @@ export function BlockPageEditor({
         </Button>
       </div>
 
-      {previewOpen ? <PreviewPanel blocks={blocks} /> : null}
+      {previewOpen ? (
+        <PreviewPanel blocks={blocks} selectedBlockId={selectedBlockId} />
+      ) : null}
 
       <PageJsonDialog
         open={pageJsonOpen}
