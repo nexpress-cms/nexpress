@@ -1,14 +1,7 @@
 "use client";
 
 import type { Dispatch } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  MoreHorizontal,
-  Trash2,
-  Wand2,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, MoreHorizontal, Trash2, Wand2 } from "lucide-react";
 import type { NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
@@ -57,21 +50,15 @@ export function BlockActionsPopover({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
-        <DropdownMenuItem
-          onSelect={() => dispatch({ type: "DUPLICATE", id: blockId })}
-        >
+        <DropdownMenuItem onSelect={() => dispatch({ type: "DUPLICATE", id: blockId })}>
           <Copy className="mr-2 h-3.5 w-3.5" />
           Duplicate
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => dispatch({ type: "MOVE_UP", id: blockId })}
-        >
+        <DropdownMenuItem onSelect={() => dispatch({ type: "MOVE_UP", id: blockId })}>
           <ChevronUp className="mr-2 h-3.5 w-3.5" />
           Move up
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => dispatch({ type: "MOVE_DOWN", id: blockId })}
-        >
+        <DropdownMenuItem onSelect={() => dispatch({ type: "MOVE_DOWN", id: blockId })}>
           <ChevronDown className="mr-2 h-3.5 w-3.5" />
           Move down
         </DropdownMenuItem>
@@ -105,9 +92,7 @@ export function BlockActionsPopover({
         ) : (
           <DropdownMenuItem disabled>
             <Wand2 className="mr-2 h-3.5 w-3.5" />
-            <span className="text-muted-foreground">
-              Nothing to turn this into
-            </span>
+            <span className="text-muted-foreground">Nothing to turn this into</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
@@ -117,9 +102,7 @@ export function BlockActionsPopover({
         >
           <Trash2 className="mr-2 h-3.5 w-3.5" />
           Delete
-          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-            {blockType}
-          </span>
+          <span className="ml-auto font-mono text-[10px] text-muted-foreground">{blockType}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

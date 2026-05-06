@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, type ComponentType, type Dispatch, type KeyboardEvent } from "react";
+import { lazy, type ComponentType, type Dispatch, type KeyboardEvent } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
@@ -31,11 +31,8 @@ interface BodyProps {
   onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
-const update = (
-  dispatch: Dispatch<EditorAction>,
-  id: string,
-  patch: Record<string, unknown>,
-) => dispatch({ type: "UPDATE_PROPS", id, props: patch });
+const update = (dispatch: Dispatch<EditorAction>, id: string, patch: Record<string, unknown>) =>
+  dispatch({ type: "UPDATE_PROPS", id, props: patch });
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -178,8 +175,7 @@ function ListBody({ block, dispatch, onFocus, onKeyDown }: BodyProps) {
     ? block.props.items.filter((v): v is string => typeof v === "string")
     : [""];
   const ordered = block.props.ordered === true;
-  const setItems = (next: string[]) =>
-    update(dispatch, block.id, { items: next });
+  const setItems = (next: string[]) => update(dispatch, block.id, { items: next });
 
   return (
     <ul className="flex flex-col gap-1 py-1">
@@ -188,7 +184,8 @@ function ListBody({ block, dispatch, onFocus, onKeyDown }: BodyProps) {
           <span
             className={cn(
               "mt-2 h-1 w-1 shrink-0 self-start rounded-full bg-foreground/70",
-              ordered && "h-auto w-auto rounded-none font-mono text-[11px] leading-7 text-muted-foreground",
+              ordered &&
+                "h-auto w-auto rounded-none font-mono text-[11px] leading-7 text-muted-foreground",
             )}
           >
             {ordered ? `${i + 1}.` : null}
@@ -289,9 +286,7 @@ function ComplexBody({ meta, block }: BodyProps) {
     <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm dark:border-neutral-700 dark:bg-neutral-900/40">
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{meta.label}</span>
-        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-          {block.type}
-        </code>
+        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">{block.type}</code>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         Composite block — switch to Page builder to edit its props.
@@ -305,30 +300,28 @@ function RichTextBody({ block, dispatch, onFocus }: BodyProps) {
   // sticky toolbar's `inRichText` detection lights up the inline-
   // mark segment (Bold / Italic / Underline / etc.) when focus
   // lands inside the Lexical contenteditable.
+  //
+  // The Suspense boundary lives ONE LEVEL UP in `<DocCanvas>` so
+  // multiple rich-text rows in the same doc share a single
+  // "Loading rich-text editor…" fallback instead of each rendering
+  // their own. Once `@nexpress/editor/client` resolves, every
+  // `<LazyRichTextEditor>` instance hydrates simultaneously.
   return (
     <div
       data-np-rich-text-body
       onFocusCapture={onFocus}
       className="np-doc-rich-text rounded-lg border border-neutral-200/80 bg-background px-3 py-2 dark:border-neutral-800/80"
     >
-      <Suspense
-        fallback={
-          <div className="px-1 py-2 text-xs text-muted-foreground">
-            Loading rich-text editor…
-          </div>
+      <LazyRichTextEditor
+        value={block.props.content ?? null}
+        onChange={(content: unknown) =>
+          dispatch({
+            type: "UPDATE_PROPS",
+            id: block.id,
+            props: { content },
+          })
         }
-      >
-        <LazyRichTextEditor
-          value={block.props.content ?? null}
-          onChange={(content: unknown) =>
-            dispatch({
-              type: "UPDATE_PROPS",
-              id: block.id,
-              props: { content },
-            })
-          }
-        />
-      </Suspense>
+      />
     </div>
   );
 }

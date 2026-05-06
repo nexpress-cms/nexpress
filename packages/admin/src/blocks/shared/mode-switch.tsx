@@ -59,12 +59,7 @@ export interface ModeSwitchProps {
  * state; this component just renders the chrome and persists
  * the choice when `scope` is provided.
  */
-export function ModeSwitch({
-  view,
-  onViewChange,
-  scope,
-  disabled,
-}: ModeSwitchProps) {
+export function ModeSwitch({ view, onViewChange, scope, disabled }: ModeSwitchProps) {
   const handlePick = (next: EditorView) => {
     if (disabled || next === view) return;
     onViewChange(next);

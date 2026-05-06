@@ -59,35 +59,27 @@ export function StatusBar({
         {typeof wordCount === "number" ? (
           <>
             <span>
-              <strong className="font-semibold tabular-nums text-foreground">
-                {wordCount}
-              </strong>{" "}
+              <strong className="font-semibold tabular-nums text-foreground">{wordCount}</strong>{" "}
               words
             </span>
             <span className="text-muted-foreground/40">·</span>
           </>
         ) : null}
         <span>
-          <strong className="font-semibold tabular-nums text-foreground">
-            {totalBlocks}
-          </strong>{" "}
+          <strong className="font-semibold tabular-nums text-foreground">{totalBlocks}</strong>{" "}
           blocks
         </span>
         <span className="text-muted-foreground/40">·</span>
         <span>
-          <strong className="font-semibold tabular-nums text-foreground">
-            {registrySize}
-          </strong>{" "}
-          in registry
+          <strong className="font-semibold tabular-nums text-foreground">{registrySize}</strong> in
+          registry
         </span>
         {warningsCount > 0 ? (
           <>
             <span className="text-muted-foreground/40">·</span>
             <span className="text-amber-600 dark:text-amber-400">
-              <strong className="font-semibold tabular-nums">
-                {warningsCount}
-              </strong>{" "}
-              warning{warningsCount === 1 ? "" : "s"}
+              <strong className="font-semibold tabular-nums">{warningsCount}</strong> warning
+              {warningsCount === 1 ? "" : "s"}
             </span>
           </>
         ) : null}
@@ -113,9 +105,7 @@ export function StatusBar({
               sizeClassName="h-3 w-3"
               className="text-muted-foreground"
             />
-            <span className="font-medium text-foreground">
-              {activeMeta.label ?? activeType}
-            </span>
+            <span className="font-medium text-foreground">{activeMeta.label ?? activeType}</span>
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground/80">
               {activeType}
             </code>

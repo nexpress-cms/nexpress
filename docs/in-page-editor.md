@@ -128,18 +128,25 @@ Behavior:
 - **Drag-and-drop reorder in Document view** — HTML5 native (see
   `dnd.ts`). Drag the row's grip handle; the row above / below the
   cursor highlights with a 2-px primary line; drop dispatches
-  `MOVE_WITHIN_PARENT`. Same-parent only — cross-container drag
-  stays a Page builder feature (matches the form-card editor's
-  same constraint).
+  `MOVE_WITHIN_PARENT`. **Cross-parent drag** is supported: drop
+  on a container's children area (which highlights in primary)
+  to dispatch `MOVE_INTO`. The reducer's cycle / contract guards
+  (`allowedChildTypes`, `maxChildren`, descendant rejection) gate
+  the actual move; rejected drops are silent no-ops.
 - **Slash menu** — closes on Esc and stays closed for the just-
   dismissed `/foo` text via `dismissedTextRef`. Typing past or
   deleting the slash invalidates the snapshot and reopens normally.
-- **Inline marks** — Bold / Italic / Underline / Strikethrough /
-  Inline-code / Link live on the rich-text block only. Atom blocks
-  store plain strings; the toolbar's mark segment disables when
-  focus sits outside a Lexical body (`[data-np-rich-text-body]`
-  marker). v1.1 may add a `props.marks` shape on atom bodies —
-  additive, no wire-format break.
+- **Inline marks** — atom blocks now support a small markdown
+  subset at render time: `**bold**`, `*italic*`, `_underline_`,
+  `~~strike~~`, `` `code` ``. The toolbar's Bold / Italic /
+  Underline / Strikethrough / Inline-code buttons wrap the active
+  textarea selection in the matching delimiter (no selection →
+  paired delimiters with the caret between them). The wire format
+  stays plain string — operators see the syntax while editing but
+  the public-site render resolves into proper spans via
+  `renderInlineMarks` from `@nexpress/blocks`. For nested marks
+  beyond what markdown covers (links, custom inline blocks), the
+  rich-text block (Lexical) is still the right surface.
 - **Rich-text body in Doc view** — lazy-loads `NpRichTextEditor`
   from `@nexpress/editor/client`. Same Lexical instance the Page
   builder mounts; same `NpRichTextContent` JSON shape on the wire.
@@ -151,7 +158,10 @@ Behavior:
   parent's `allowedChildTypes`. Drag-reorder inside a container
   works the same way as top-level. For child types that don't have
   a `docBodyKind` set, the inline picker hides the "Add into …"
-  button and points operators to Page builder.
+  button and points operators to Page builder. Typing `/` in a
+  nested atom row opens the slash menu the same way it does at
+  top level — the picker's type list also respects the parent's
+  `allowedChildTypes`.
 
 ## Testing
 

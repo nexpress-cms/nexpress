@@ -1,12 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-} from "react";
+import { Suspense, useEffect, useRef, useState, type Dispatch } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
@@ -46,13 +41,9 @@ export function DocCanvas({
   // Doc-friendly types — the slash menu and trailing "+" inserter
   // surface these. Containers + complex composites edit in Page
   // builder, so we hide them here.
-  const docFriendly = availableBlocks.filter(
-    (b) => b.docBodyKind && b.docBodyKind !== "complex",
-  );
+  const docFriendly = availableBlocks.filter((b) => b.docBodyKind && b.docBodyKind !== "complex");
   const fallbackInsertType =
-    docFriendly.find((b) => b.type === "paragraph")?.type ??
-    docFriendly[0]?.type ??
-    "paragraph";
+    docFriendly.find((b) => b.type === "paragraph")?.type ?? docFriendly[0]?.type ?? "paragraph";
 
   const insertAfter = (targetId: string, blockType?: string) =>
     dispatch({
@@ -73,17 +64,11 @@ export function DocCanvas({
   // `blocks` array IS the parent's siblings list. The reducer's
   // MOVE_WITHIN_PARENT handles the index math; we just translate
   // "below this row" into "to the row's next sibling".
-  const handleReorder = (
-    sourceId: string,
-    targetId: string,
-    side: "above" | "below" | null,
-  ) => {
+  const handleReorder = (sourceId: string, targetId: string, side: "above" | "below" | null) => {
     if (!side) return;
     const targetIndex = blocks.findIndex((b) => b.id === targetId);
     if (targetIndex === -1) return;
-    const toId = side === "above"
-      ? targetId
-      : blocks[targetIndex + 1]?.id ?? targetId;
+    const toId = side === "above" ? targetId : (blocks[targetIndex + 1]?.id ?? targetId);
     dispatch({
       type: "MOVE_WITHIN_PARENT",
       parentId: null,
@@ -93,7 +78,7 @@ export function DocCanvas({
   };
 
   const activeBlock = selectedBlockId
-    ? blocks.find((b) => b.id === selectedBlockId) ?? null
+    ? (blocks.find((b) => b.id === selectedBlockId) ?? null)
     : null;
   // Track whether focus sits inside a Lexical body. Atom blocks
   // don't carry inline marks, so the toolbar's mark segment is
@@ -108,10 +93,7 @@ export function DocCanvas({
     if (!root) return;
     const update = () => {
       const active = document.activeElement;
-      const inside = !!(
-        active instanceof Element &&
-        active.closest("[data-np-rich-text-body]")
-      );
+      const inside = !!(active instanceof Element && active.closest("[data-np-rich-text-body]"));
       setInRichText((current) => (current === inside ? current : inside));
     };
     root.addEventListener("focusin", update);
@@ -136,25 +118,46 @@ export function DocCanvas({
   // the operator edits the text again — typing past or deleting
   // the slash both invalidate it.
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const dismissedTextRef = useRef<{ blockId: string; text: string } | null>(
-    null,
-  );
+  const dismissedTextRef = useRef<{ blockId: string; text: string } | null>(null);
   const [slashState, setSlashState] = useState<{
     blockId: string;
+    /** Parent container id, or `null` if the row is top-level. */
+    parentId: string | null;
     query: string;
     position: SlashMenuPosition;
   } | null>(null);
+
+  // Recursive lookup — finds the block + its direct parent id by
+  // walking the tree. Top-level blocks return parentId=null. Used
+  // by the slash-menu trigger detector so a row inside a container
+  // can also open the menu (and so the parent's allowedChildTypes
+  // contract gates the picker's options when nested).
+  const findBlockWithParent = (
+    arr: NpBlockInstance[],
+    id: string,
+    parentId: string | null = null,
+  ): { block: NpBlockInstance; parentId: string | null } | null => {
+    for (const b of arr) {
+      if (b.id === id) return { block: b, parentId };
+      if (Array.isArray(b.children)) {
+        const inChild = findBlockWithParent(b.children, id, b.id);
+        if (inChild) return inChild;
+      }
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (!selectedBlockId) {
       if (slashState) setSlashState(null);
       return;
     }
-    const block = blocks.find((b) => b.id === selectedBlockId);
-    if (!block) {
+    const found = findBlockWithParent(blocks, selectedBlockId);
+    if (!found) {
       if (slashState) setSlashState(null);
       return;
     }
+    const { block, parentId } = found;
     const meta = definitions.get(block.type);
     const isAtomText =
       meta?.docBodyKind === "paragraph" ||
@@ -174,31 +177,26 @@ export function DocCanvas({
       return;
     }
     const dismissed = dismissedTextRef.current;
-    if (
-      dismissed &&
-      dismissed.blockId === block.id &&
-      dismissed.text === text
-    ) {
+    if (dismissed && dismissed.blockId === block.id && dismissed.text === text) {
       // Same row, same text the operator just dismissed — keep
       // the menu closed. Editing the text resets the snapshot via
       // the branch above.
       return;
     }
     // Anchor under the row's textarea — best effort; falls back to
-    // top-left if the row hasn't mounted yet.
+    // top-level if the row hasn't mounted yet. The selector works
+    // for nested rows too (data-np-block-row is on every BlockRow,
+    // including children).
     const row = containerRef.current?.querySelector<HTMLElement>(
       `[data-np-block-row="${block.id}"] textarea`,
     );
     const containerRect = containerRef.current?.getBoundingClientRect();
     const rowRect = row?.getBoundingClientRect();
-    const x =
-      rowRect && containerRect ? rowRect.left - containerRect.left : 24;
-    const y =
-      rowRect && containerRect
-        ? rowRect.bottom - containerRect.top + 6
-        : 60;
+    const x = rowRect && containerRect ? rowRect.left - containerRect.left : 24;
+    const y = rowRect && containerRect ? rowRect.bottom - containerRect.top + 6 : 60;
     setSlashState({
       blockId: block.id,
+      parentId,
       query: text.slice(1),
       position: { x, y },
     });
@@ -215,6 +213,24 @@ export function DocCanvas({
     setSlashState(null);
   };
 
+  // When the slash row is INSIDE a container, filter the picker's
+  // type list to types the container's `allowedChildTypes` contract
+  // permits. Top-level rows (parentId=null) see the full doc-friendly
+  // set.
+  const slashCandidates = (() => {
+    if (!slashState || slashState.parentId === null) return docFriendly;
+    const parent = (() => {
+      const found = findBlockWithParent(blocks, slashState.parentId);
+      return found?.block;
+    })();
+    const parentMeta = parent ? definitions.get(parent.type) : null;
+    const allowed = parentMeta?.allowedChildTypes;
+    if (!allowed || allowed.length === 0 || allowed.includes("*")) {
+      return docFriendly;
+    }
+    return docFriendly.filter((b) => allowed.includes(b.type));
+  })();
+
   return (
     <div
       ref={containerRef}
@@ -223,35 +239,42 @@ export function DocCanvas({
         "dark:border-neutral-800/80 dark:bg-neutral-950/95",
       )}
     >
-      <EditorToolbar
-        activeBlock={activeBlock}
-        inRichText={inRichText}
-        dispatch={dispatch}
-      />
+      <EditorToolbar activeBlock={activeBlock} inRichText={inRichText} dispatch={dispatch} />
       {blocks.length === 0 ? (
         <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50/70 p-8 text-center text-sm text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900/30">
           Empty page. Add a block to start writing.
         </div>
       ) : (
-        blocks.map((block) => (
-          <BlockRow
-            key={block.id}
-            block={block}
-            meta={definitions.get(block.type)}
-            availableBlocks={availableBlocks}
-            definitions={definitions}
-            dispatch={dispatch}
-            isFocused={selectedBlockId === block.id}
-            selectedBlockId={selectedBlockId}
-            onFocus={() => onSelectBlock(block.id)}
-            onSelectBlock={onSelectBlock}
-            parentId={null}
-            onAddBelow={() => insertAfter(block.id)}
-            onReorder={(sourceId, side) =>
-              handleReorder(sourceId, block.id, side)
-            }
-          />
-        ))
+        // Single Suspense boundary covering every BlockRow's
+        // potentially-lazy body (rich-text → @nexpress/editor/client).
+        // Without this hoist each rich-text row would render its own
+        // "Loading…" fallback; here the whole list waits on one
+        // module load, then all rows hydrate together.
+        <Suspense
+          fallback={
+            <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50/70 p-4 text-center text-xs text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900/30">
+              Loading editor…
+            </div>
+          }
+        >
+          {blocks.map((block) => (
+            <BlockRow
+              key={block.id}
+              block={block}
+              meta={definitions.get(block.type)}
+              availableBlocks={availableBlocks}
+              definitions={definitions}
+              dispatch={dispatch}
+              isFocused={selectedBlockId === block.id}
+              selectedBlockId={selectedBlockId}
+              onFocus={() => onSelectBlock(block.id)}
+              onSelectBlock={onSelectBlock}
+              parentId={null}
+              onAddBelow={() => insertAfter(block.id)}
+              onReorder={(sourceId, side) => handleReorder(sourceId, block.id, side)}
+            />
+          ))}
+        </Suspense>
       )}
 
       <Button
@@ -267,7 +290,7 @@ export function DocCanvas({
 
       {slashState ? (
         <SlashMenu
-          blocks={docFriendly}
+          blocks={slashCandidates}
           query={slashState.query}
           position={slashState.position}
           onPick={handleSlashPick}
@@ -275,12 +298,11 @@ export function DocCanvas({
             // Snapshot the text-at-dismiss so the trigger detector
             // doesn't reopen the menu on the next render — the
             // snapshot invalidates as soon as the operator edits
-            // the row again (see useEffect above).
-            const block = blocks.find((b) => b.id === slashState.blockId);
-            const text =
-              block && typeof block.props.text === "string"
-                ? block.props.text
-                : "";
+            // the row again (see useEffect above). Walk recursively
+            // because nested rows can also trigger the menu.
+            const found = findBlockWithParent(blocks, slashState.blockId);
+            const block = found?.block;
+            const text = block && typeof block.props.text === "string" ? block.props.text : "";
             dismissedTextRef.current = { blockId: slashState.blockId, text };
             setSlashState(null);
           }}

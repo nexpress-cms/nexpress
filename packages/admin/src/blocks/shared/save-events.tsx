@@ -50,15 +50,8 @@ export function SaveEventsProvider({ children }: { children: ReactNode }) {
   // so useMemo returns the same object identity on every render —
   // children that depend on the context don't re-render on every
   // emit (events flow through the ref directly).
-  const value = useMemo<SaveEventsContextValue>(
-    () => ({ subscribe, emit }),
-    [subscribe, emit],
-  );
-  return (
-    <SaveEventsContext.Provider value={value}>
-      {children}
-    </SaveEventsContext.Provider>
-  );
+  const value = useMemo<SaveEventsContextValue>(() => ({ subscribe, emit }), [subscribe, emit]);
+  return <SaveEventsContext.Provider value={value}>{children}</SaveEventsContext.Provider>;
 }
 
 /**

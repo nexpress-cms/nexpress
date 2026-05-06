@@ -33,13 +33,7 @@ export interface SlashMenuProps {
  * textarea) and the dispatch — this component is presentation +
  * keyboard nav only.
  */
-export function SlashMenu({
-  blocks,
-  query,
-  position,
-  onPick,
-  onClose,
-}: SlashMenuProps) {
+export function SlashMenu({ blocks, query, position, onPick, onClose }: SlashMenuProps) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return blocks;
@@ -59,9 +53,7 @@ export function SlashMenu({
         setActive((a) => (a + 1) % Math.max(1, filtered.length));
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        setActive(
-          (a) => (a - 1 + filtered.length) % Math.max(1, filtered.length),
-        );
+        setActive((a) => (a - 1 + filtered.length) % Math.max(1, filtered.length));
       } else if (event.key === "Enter") {
         event.preventDefault();
         const pick = filtered[active];
@@ -119,12 +111,8 @@ export function SlashMenu({
             sizeClassName="h-3.5 w-3.5"
             className="text-muted-foreground"
           />
-          <span className="truncate font-medium text-foreground">
-            {block.label}
-          </span>
-          <span className="font-mono text-[10px] text-muted-foreground">
-            {block.type}
-          </span>
+          <span className="truncate font-medium text-foreground">{block.label}</span>
+          <span className="font-mono text-[10px] text-muted-foreground">{block.type}</span>
         </button>
       ))}
     </div>

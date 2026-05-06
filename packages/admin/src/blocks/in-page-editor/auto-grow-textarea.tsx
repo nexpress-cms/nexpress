@@ -35,50 +35,39 @@ export interface AutoGrowTextareaProps {
  * refs the textarea so the orchestrator's focus-on-newly-inserted
  * effect can land focus directly.
  */
-export const AutoGrowTextarea = forwardRef<
-  HTMLTextAreaElement,
-  AutoGrowTextareaProps
->(function AutoGrowTextarea(
-  {
-    value,
-    onChange,
-    placeholder,
-    className,
-    onFocus,
-    onKeyDown,
-    id,
-    ariaLabel,
-    disabled,
+export const AutoGrowTextarea = forwardRef<HTMLTextAreaElement, AutoGrowTextareaProps>(
+  function AutoGrowTextarea(
+    { value, onChange, placeholder, className, onFocus, onKeyDown, id, ariaLabel, disabled },
+    ref,
+  ) {
+    const internalRef = useRef<HTMLTextAreaElement | null>(null);
+    useImperativeHandle(ref, () => internalRef.current as HTMLTextAreaElement);
+
+    useLayoutEffect(() => {
+      const el = internalRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }, [value]);
+
+    return (
+      <textarea
+        ref={internalRef}
+        id={id}
+        aria-label={ariaLabel}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
+        onFocus={onFocus}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+        rows={1}
+        className={cn(
+          "block w-full resize-none border-0 bg-transparent p-0 outline-none focus:ring-0",
+          "placeholder:text-muted-foreground/60",
+          className,
+        )}
+      />
+    );
   },
-  ref,
-) {
-  const internalRef = useRef<HTMLTextAreaElement | null>(null);
-  useImperativeHandle(ref, () => internalRef.current as HTMLTextAreaElement);
-
-  useLayoutEffect(() => {
-    const el = internalRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
-
-  return (
-    <textarea
-      ref={internalRef}
-      id={id}
-      aria-label={ariaLabel}
-      value={value}
-      placeholder={placeholder}
-      onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
-      onFocus={onFocus}
-      onKeyDown={onKeyDown}
-      disabled={disabled}
-      rows={1}
-      className={cn(
-        "block w-full resize-none border-0 bg-transparent p-0 outline-none focus:ring-0",
-        "placeholder:text-muted-foreground/60",
-        className,
-      )}
-    />
-  );
-});
+);

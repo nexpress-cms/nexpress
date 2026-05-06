@@ -67,12 +67,11 @@ export function PaletteModal({
     setOpen(next);
   };
 
-  const { filteredSections, favorites, toggleFavorite, pushRecent } =
-    useBlockPaletteSections({
-      availableBlocks,
-      query,
-      open,
-    });
+  const { filteredSections, favorites, toggleFavorite, pushRecent } = useBlockPaletteSections({
+    availableBlocks,
+    query,
+    open,
+  });
 
   const handlePick = (block: NpBlockMetadata) => {
     onAdd(block.type);
@@ -88,10 +87,7 @@ export function PaletteModal({
         className="grid w-[min(100%-2rem,46rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0"
       >
         <div className="flex items-center gap-2 border-b border-neutral-200/80 px-3.5 py-2.5 dark:border-neutral-800/80">
-          <Search
-            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-            aria-hidden="true"
-          />
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
@@ -117,10 +113,7 @@ export function PaletteModal({
             </div>
           ) : (
             filteredSections.map((section, sectionIndex) => (
-              <div
-                key={section.category}
-                className={cn(sectionIndex > 0 && "mt-4")}
-              >
+              <div key={section.category} className={cn(sectionIndex > 0 && "mt-4")}>
                 <div className="px-1 pb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                   {section.category}
                 </div>
@@ -141,9 +134,7 @@ export function PaletteModal({
         </div>
         <div className="flex items-center justify-between border-t border-neutral-200/80 px-3.5 py-2 text-[11px] text-muted-foreground dark:border-neutral-800/80">
           <span>
-            <strong className="font-semibold text-foreground">
-              {availableBlocks.length}
-            </strong>{" "}
+            <strong className="font-semibold text-foreground">{availableBlocks.length}</strong>{" "}
             blocks · shared registry
           </span>
           <span>↑↓ navigate · ↵ insert · esc close</span>
@@ -160,12 +151,7 @@ interface PaletteCardProps {
   onToggleFavorite: () => void;
 }
 
-function PaletteCard({
-  block,
-  isFavorite,
-  onPick,
-  onToggleFavorite,
-}: PaletteCardProps) {
+function PaletteCard({ block, isFavorite, onPick, onToggleFavorite }: PaletteCardProps) {
   return (
     <div
       className={cn(
@@ -189,10 +175,7 @@ function PaletteCard({
             : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
         )}
       >
-        <Star
-          className={cn("h-3.5 w-3.5", isFavorite && "fill-current")}
-          aria-hidden="true"
-        />
+        <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -200,14 +183,8 @@ function PaletteCard({
         className="flex flex-col gap-1 text-left focus-visible:outline-none"
       >
         <div className="flex items-center gap-2 pr-7">
-          <BlockIcon
-            icon={block.icon}
-            kind={block.iconKind}
-            className="text-muted-foreground"
-          />
-          <span className="flex-1 truncate text-sm font-semibold">
-            {block.label}
-          </span>
+          <BlockIcon icon={block.icon} kind={block.iconKind} className="text-muted-foreground" />
+          <span className="flex-1 truncate text-sm font-semibold">{block.label}</span>
           {block.source && block.source !== "built-in" ? (
             <span
               className={cn(
@@ -215,8 +192,8 @@ function PaletteCard({
                 block.source === "plugin"
                   ? "bg-primary/10 text-primary"
                   : block.source === "theme"
-                  ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-                  : "bg-muted text-muted-foreground",
+                    ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                    : "bg-muted text-muted-foreground",
               )}
               aria-label={`${block.source} block`}
             >
@@ -233,9 +210,7 @@ function PaletteCard({
           ) : null}
         </div>
         {block.description ? (
-          <p className="line-clamp-2 text-xs text-muted-foreground">
-            {block.description}
-          </p>
+          <p className="line-clamp-2 text-xs text-muted-foreground">{block.description}</p>
         ) : null}
         <span className="mt-auto pt-0.5 font-mono text-[10px] text-muted-foreground/70">
           {block.type}

@@ -1,3 +1,4 @@
+import { renderInlineMarks } from "../inline-marks.js";
 import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
@@ -41,7 +42,7 @@ export const quoteBlock: NpBlockDefinition = {
     const cite = readString(props.cite, "");
     return (
       <blockquote className="np-quote">
-        <p>{text}</p>
+        <p>{renderInlineMarks(text)}</p>
         {cite ? <cite className="np-quote-cite">— {cite}</cite> : null}
       </blockquote>
     );

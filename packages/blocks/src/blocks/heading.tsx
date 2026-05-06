@@ -1,3 +1,4 @@
+import { renderInlineMarks } from "../inline-marks.js";
 import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
@@ -53,7 +54,10 @@ export const headingBlock: NpBlockDefinition = {
   render: (props) => {
     const text = readString(props.text, "");
     const level = readLevel(props.level);
-    const Tag = (`h${level}` as "h1" | "h2" | "h3");
-    return <Tag className={`np-heading np-heading-${level}`}>{text}</Tag>;
+    const className = `np-heading np-heading-${level}`;
+    const content = renderInlineMarks(text);
+    if (level === 1) return <h1 className={className}>{content}</h1>;
+    if (level === 3) return <h3 className={className}>{content}</h3>;
+    return <h2 className={className}>{content}</h2>;
   },
 };

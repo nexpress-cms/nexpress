@@ -22,10 +22,7 @@
  * row-card UI that's specific to the form-card layout.
  */
 
-export {
-  ArrayFieldControl,
-  normalizeArrayValue,
-} from "./array-field-control.js";
+export { ArrayFieldControl, normalizeArrayValue } from "./array-field-control.js";
 export { BlockIcon, type BlockIconProps } from "./block-icon.js";
 export { EMOJI_TO_LUCIDE, LUCIDE_ICONS } from "./block-icon-registry.js";
 export { PaletteModal, type PaletteModalProps } from "./palette-modal.js";
@@ -40,11 +37,7 @@ export {
   ContainerWarningsPanel,
   type ContainerWarningsPanelProps,
 } from "./container-warnings-panel.js";
-export {
-  StatusBar,
-  type StatusBarProps,
-  type AutosaveStatus,
-} from "./status-bar.js";
+export { StatusBar, type StatusBarProps, type AutosaveStatus } from "./status-bar.js";
 export {
   ModeSwitch,
   readPersistedView,
@@ -52,38 +45,17 @@ export {
   type EditorView,
   type ModeSwitchProps,
 } from "./mode-switch.js";
-export {
-  useAutosaveStatus,
-  type UseAutosaveStatusResult,
-} from "./autosave-status.js";
+export { useAutosaveStatus, type UseAutosaveStatusResult } from "./autosave-status.js";
 export {
   SaveEventsProvider,
   useSaveEmitter,
   useSaveEvents,
   type SaveEvent,
 } from "./save-events.js";
-export {
-  BlockImagePicker,
-  type BlockImagePickerProps,
-} from "./block-image-picker.js";
-export {
-  BlockJsonDialog,
-  type BlockJsonDialogProps,
-} from "./block-json-dialog.js";
-export {
-  CommandMenu,
-  type CommandMenuProps,
-} from "./command-menu.js";
-export {
-  DeleteBlockDialog,
-  type DeleteBlockDialogProps,
-} from "./delete-block-dialog.js";
+export { BlockImagePicker, type BlockImagePickerProps } from "./block-image-picker.js";
+export { BlockJsonDialog, type BlockJsonDialogProps } from "./block-json-dialog.js";
+export { CommandMenu, type CommandMenuProps } from "./command-menu.js";
+export { DeleteBlockDialog, type DeleteBlockDialogProps } from "./delete-block-dialog.js";
 export { FieldControl, type FieldControlProps } from "./field-control.js";
-export {
-  PageJsonDialog,
-  type PageJsonDialogProps,
-} from "./page-json-dialog.js";
-export {
-  PastePatternDialog,
-  type PastePatternDialogProps,
-} from "./paste-pattern-dialog.js";
+export { PageJsonDialog, type PageJsonDialogProps } from "./page-json-dialog.js";
+export { PastePatternDialog, type PastePatternDialogProps } from "./paste-pattern-dialog.js";

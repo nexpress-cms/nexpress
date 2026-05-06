@@ -32,8 +32,7 @@ const MIME = "application/x-np-block-row";
  * Cleared on dragEnd so a subsequent drag starts clean. Null when
  * no drag is in flight.
  */
-let activeDragSource: { sourceId: string; parentId: string | null } | null =
-  null;
+let activeDragSource: { sourceId: string; parentId: string | null } | null = null;
 
 export interface RowDragHandlers {
   /** Spread on the row element to make it `draggable`. */
@@ -67,11 +66,83 @@ interface UseRowDragOptions {
  * grip) calls `event.dataTransfer.setData()` via the row's
  * `onDragStart`; any other row's `onDragOver` reads the same data.
  */
-export function useRowDrag({
-  blockId,
-  parentId,
+/**
+ * Container drop-zone handlers — wires `MOVE_INTO` for the
+ * cross-parent case. Mounted on a container's children area;
+ * accepts drops from blocks whose parent ISN'T this container,
+ * dispatches `MOVE_INTO` to append the source as the container's
+ * last child. Same-parent drops fall through to the per-row
+ * handlers (which dispatch `MOVE_WITHIN_PARENT`).
+ *
+ * Combined with `useRowDrag`'s same-parent gate, this covers both
+ * v1 reorder paths without overlap: `useRowDrag` shows the
+ * above/below indicator on rows whose parent matches the source's
+ * parent; `useContainerDropZone` shows a "drop into" highlight on
+ * containers whose id isn't the source's parent.
+ */
+export interface ContainerDropZoneHandlers {
+  onDragOver: (event: DragEvent<HTMLElement>) => void;
+  onDragLeave: (event: DragEvent<HTMLElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
+  /** True when a cross-parent drag is currently hovering this zone. */
+  isHovering: boolean;
+}
+
+interface UseContainerDropZoneOptions {
+  /** The container block id this zone belongs to. */
+  containerId: string;
+  /** Called on drop with the source row id. */
+  onDrop: (sourceId: string) => void;
+}
+
+export function useContainerDropZone({
+  containerId,
   onDrop,
-}: UseRowDragOptions): RowDragHandlers {
+}: UseContainerDropZoneOptions): ContainerDropZoneHandlers {
+  const [isHovering, setIsHovering] = useState(false);
+  return {
+    onDragOver: (event) => {
+      const types = Array.from(event.dataTransfer.types);
+      if (!types.includes(MIME)) return;
+      // Only highlight when the drag source comes from a DIFFERENT
+      // parent — otherwise the row-level handlers cover the
+      // reorder path and we'd double-handle the drop.
+      if (!activeDragSource || activeDragSource.parentId === containerId) {
+        return;
+      }
+      // Reject self-into-self (dragging the container onto its
+      // own children area would orphan the container's tree
+      // inside itself — the reducer rejects this anyway, but we
+      // shouldn't show an indicator for it either).
+      if (activeDragSource.sourceId === containerId) return;
+      event.stopPropagation();
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setIsHovering(true);
+    },
+    onDragLeave: (event) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && event.currentTarget.contains(next)) {
+        return;
+      }
+      setIsHovering(false);
+    },
+    onDrop: (event) => {
+      const sourceId = event.dataTransfer.getData(MIME);
+      setIsHovering(false);
+      if (!sourceId || sourceId === containerId) return;
+      // The reducer's `MOVE_INTO` handles cycle prevention
+      // (descendant target) + parent contract (allowedChildTypes /
+      // maxChildren) — we just dispatch and trust those gates.
+      event.stopPropagation();
+      event.preventDefault();
+      onDrop(sourceId);
+    },
+    isHovering,
+  };
+}
+
+export function useRowDrag({ blockId, parentId, onDrop }: UseRowDragOptions): RowDragHandlers {
   const [dropSide, setDropSide] = useState<DropSide>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -118,8 +189,7 @@ export function useRowDrag({
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       const rect = event.currentTarget.getBoundingClientRect();
-      const side: DropSide =
-        event.clientY - rect.top < rect.height / 2 ? "above" : "below";
+      const side: DropSide = event.clientY - rect.top < rect.height / 2 ? "above" : "below";
       setDropSide(side);
     },
     onDragLeave: (event) => {

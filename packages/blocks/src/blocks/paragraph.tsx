@@ -1,3 +1,4 @@
+import { renderInlineMarks } from "../inline-marks.js";
 import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
@@ -34,6 +35,6 @@ export const paragraphBlock: NpBlockDefinition = {
   render: (props) => {
     const text = readString(props.text, "");
     if (!text) return <p className="np-paragraph-empty" aria-hidden="true" />;
-    return <p className="np-paragraph">{text}</p>;
+    return <p className="np-paragraph">{renderInlineMarks(text)}</p>;
   },
 };

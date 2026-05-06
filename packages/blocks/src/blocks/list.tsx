@@ -1,3 +1,4 @@
+import { renderInlineMarks } from "../inline-marks.js";
 import type { NpBlockDefinition } from "../types.js";
 
 const readStringArray = (value: unknown): string[] => {
@@ -46,7 +47,7 @@ export const listBlock: NpBlockDefinition = {
     return (
       <Tag className={`np-list np-list-${ordered ? "ordered" : "bullet"}`}>
         {items.map((item, i) => (
-          <li key={i}>{item}</li>
+          <li key={i}>{renderInlineMarks(item)}</li>
         ))}
       </Tag>
     );

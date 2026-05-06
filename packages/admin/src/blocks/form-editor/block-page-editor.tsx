@@ -9,18 +9,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import {
-  Braces,
-  Copy,
-  Eye,
-  EyeOff,
-  Group,
-  Plus,
-  Redo2,
-  Trash2,
-  Undo2,
-  X,
-} from "lucide-react";
+import { Braces, Copy, Eye, EyeOff, Group, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -178,20 +167,14 @@ export function BlockPageEditor({
       return new Set();
     }
   });
-  const isRowOpen = useCallback(
-    (id: string) => !collapsedIds.has(id),
-    [collapsedIds],
-  );
+  const isRowOpen = useCallback((id: string) => !collapsedIds.has(id), [collapsedIds]);
   const setRowOpen = useCallback((id: string, open: boolean) => {
     setCollapsedIds((current) => {
       const next = new Set(current);
       if (open) next.delete(id);
       else next.add(id);
       try {
-        window.localStorage.setItem(
-          COLLAPSED_KEY,
-          JSON.stringify(Array.from(next)),
-        );
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(next)));
       } catch {
         // Private mode / quota — drop the persistence, keep the
         // in-memory state. The collapsed set just resets next load.
@@ -225,9 +208,7 @@ export function BlockPageEditor({
     for (const id of seen) if (!knownIdsRef.current.has(id)) newIds.push(id);
     knownIdsRef.current = seen;
     if (newIds.length !== 1) return;
-    const target = document.querySelector<HTMLElement>(
-      `[data-np-block-row="${newIds[0]}"]`,
-    );
+    const target = document.querySelector<HTMLElement>(`[data-np-block-row="${newIds[0]}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     target.focus({ preventScroll: true });
@@ -242,10 +223,7 @@ export function BlockPageEditor({
   // shift-click that crosses parent boundaries falls back to a
   // plain toggle (extending across containers would create a
   // selection no bulk action could honor).
-  const isSelected = useCallback(
-    (id: string) => selectedIds.has(id),
-    [selectedIds],
-  );
+  const isSelected = useCallback((id: string) => selectedIds.has(id), [selectedIds]);
   const toggleSelected = useCallback(
     (id: string, modifiers: { shift: boolean; meta: boolean }) => {
       setSelectedIds((current) => {
@@ -253,23 +231,15 @@ export function BlockPageEditor({
         if (modifiers.shift && selectionAnchorRef.current) {
           const anchorLoc = locateBlock(blocks, selectionAnchorRef.current);
           const targetLoc = locateBlock(blocks, id);
-          if (
-            anchorLoc &&
-            targetLoc &&
-            anchorLoc.parentId === targetLoc.parentId
-          ) {
+          if (anchorLoc && targetLoc && anchorLoc.parentId === targetLoc.parentId) {
             const lo = Math.min(anchorLoc.index, targetLoc.index);
             const hi = Math.max(anchorLoc.index, targetLoc.index);
             // Resolve the parent's sibling array and add every id
             // in [lo..hi]. updateContainerChildren is overkill —
             // we just need a read of the siblings.
             const parentBlock =
-              anchorLoc.parentId === null
-                ? null
-                : findBlockInTreeFlat(blocks, anchorLoc.parentId);
-            const siblings =
-              parentBlock?.children ??
-              (anchorLoc.parentId === null ? blocks : []);
+              anchorLoc.parentId === null ? null : findBlockInTreeFlat(blocks, anchorLoc.parentId);
+            const siblings = parentBlock?.children ?? (anchorLoc.parentId === null ? blocks : []);
             for (let i = lo; i <= hi; i++) {
               const sib = siblings[i];
               if (sib) next.add(sib.id);
@@ -343,10 +313,7 @@ export function BlockPageEditor({
     const migrated = await migrateLocalPatternsToServer(server);
     const finalServer =
       migrated.length > 0
-        ? [
-            ...migrated,
-            ...server.filter((p) => !migrated.some((m) => m.id === p.id)),
-          ]
+        ? [...migrated, ...server.filter((p) => !migrated.some((m) => m.id === p.id))]
         : server;
     const local = getCustomPatterns(); // Re-read post-migration cleanup.
     const serverIds = new Set(finalServer.map((p) => p.id));
@@ -367,9 +334,7 @@ export function BlockPageEditor({
   const patterns = useMemo(() => {
     const builtIns = getBuiltInPatterns();
     const builtInIds = new Set(builtIns.map((p) => p.id));
-    const contributedDeduped = contributedPatterns.filter(
-      (p) => !builtInIds.has(p.id),
-    );
+    const contributedDeduped = contributedPatterns.filter((p) => !builtInIds.has(p.id));
     return [...builtIns, ...contributedDeduped, ...customPatterns];
   }, [contributedPatterns, customPatterns]);
   const handleSaveFocusedAsPattern = useCallback(
@@ -378,9 +343,7 @@ export function BlockPageEditor({
       if (!focused) return;
       const label = window.prompt(
         "Save as pattern — name?",
-        focused.props.title?.toString() ??
-          focused.props.heading?.toString() ??
-          focused.type,
+        focused.props.title?.toString() ?? focused.props.heading?.toString() ?? focused.type,
       );
       if (!label || label.trim().length === 0) return;
       const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -392,10 +355,7 @@ export function BlockPageEditor({
       };
       void saveServerPattern(pattern).then((saved) => {
         if (saved) {
-          setCustomPatterns((current) => [
-            saved,
-            ...current.filter((p) => p.id !== saved.id),
-          ]);
+          setCustomPatterns((current) => [saved, ...current.filter((p) => p.id !== saved.id)]);
           return;
         }
         const next = saveCustomPattern(pattern);
@@ -430,10 +390,7 @@ export function BlockPageEditor({
     setPreviewOpen((current) => {
       const next = !current;
       try {
-        window.localStorage.setItem(
-          "np-page-builder.preview",
-          next ? "1" : "0",
-        );
+        window.localStorage.setItem("np-page-builder.preview", next ? "1" : "0");
       } catch {
         // Same as above — silent.
       }
@@ -502,12 +459,10 @@ export function BlockPageEditor({
   }, [blocks]);
 
   const activeBlockMeta = selectedBlockId
-    ? definitions.get(
-        findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? "",
-      ) ?? null
+    ? (definitions.get(findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? "") ?? null)
     : null;
   const activeBlockType = selectedBlockId
-    ? findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? null
+    ? (findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? null)
     : null;
 
   /**
@@ -519,9 +474,7 @@ export function BlockPageEditor({
   const focusBlockRow = useCallback((id: string) => {
     setSelectedBlockId(id);
     if (typeof document === "undefined") return;
-    const target = document.querySelector<HTMLElement>(
-      `[data-np-block-row="${id}"]`,
-    );
+    const target = document.querySelector<HTMLElement>(`[data-np-block-row="${id}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     target.focus({ preventScroll: true });
@@ -535,10 +488,7 @@ export function BlockPageEditor({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.matches("input, textarea") || target.isContentEditable)
-      ) {
+      if (target && (target.matches("input, textarea") || target.isContentEditable)) {
         return;
       }
       const meta = event.metaKey || event.ctrlKey;
@@ -570,10 +520,7 @@ export function BlockPageEditor({
   // Locate the active block anywhere in the tree (it may be a
   // top-level block or nested inside a container). The drag
   // overlay just needs the label, so a flat search is enough.
-  const findInTree = (
-    arr: NpBlockInstance[],
-    id: string,
-  ): NpBlockInstance | undefined => {
+  const findInTree = (arr: NpBlockInstance[], id: string): NpBlockInstance | undefined => {
     for (const b of arr) {
       if (b.id === id) return b;
       const inChild = b.children ? findInTree(b.children, id) : undefined;
@@ -590,10 +537,7 @@ export function BlockPageEditor({
   // top-level row.
   function handleKeyboardNav(event: ReactKeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
-    if (
-      target &&
-      (target.matches("input, textarea") || target.isContentEditable)
-    ) {
+    if (target && (target.matches("input, textarea") || target.isContentEditable)) {
       return;
     }
 
@@ -604,19 +548,12 @@ export function BlockPageEditor({
     }
 
     const key = event.key;
-    if (
-      key !== "ArrowDown" &&
-      key !== "ArrowUp" &&
-      key !== "Home" &&
-      key !== "End"
-    ) {
+    if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Home" && key !== "End") {
       return;
     }
     const root = sectionRef.current;
     if (!root) return;
-    const rows = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-np-block-row]"),
-    );
+    const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-np-block-row]"));
     if (rows.length === 0) return;
     const activeRow = target?.closest<HTMLElement>("[data-np-block-row]");
     const currentIndex = activeRow ? rows.indexOf(activeRow) : -1;
@@ -641,9 +578,7 @@ export function BlockPageEditor({
   // rather than mirroring focus into React state on every move.
   function readFocusedBlockId(): string | null {
     if (typeof document === "undefined") return null;
-    const focusedRow = document.activeElement?.closest<HTMLElement>(
-      "[data-np-block-row]",
-    );
+    const focusedRow = document.activeElement?.closest<HTMLElement>("[data-np-block-row]");
     return focusedRow?.dataset.npBlockRow ?? null;
   }
 
@@ -729,345 +664,330 @@ export function BlockPageEditor({
     >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
-        <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Undo"
-          onClick={undo}
-          disabled={!canUndo}
-        >
-          <Undo2 className="mr-1.5 h-4 w-4" />
-          Undo
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Redo"
-          onClick={redo}
-          disabled={!canRedo}
-        >
-          <Redo2 className="mr-1.5 h-4 w-4" />
-          Redo
-        </Button>
-        </div>
-      </div>
-      {/* Bulk-action toolbar (#467 #3). Sticks above the row list
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Undo"
+                onClick={undo}
+                disabled={!canUndo}
+              >
+                <Undo2 className="mr-1.5 h-4 w-4" />
+                Undo
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Redo"
+                onClick={redo}
+                disabled={!canRedo}
+              >
+                <Redo2 className="mr-1.5 h-4 w-4" />
+                Redo
+              </Button>
+            </div>
+          </div>
+          {/* Bulk-action toolbar (#467 #3). Sticks above the row list
           while a multi-selection is live. Wrap is gated by
           contiguous-siblings; delete/duplicate work on any non-
           empty selection. */}
-      {selectedIds.size >= 1 ? (
-        <div
-          className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 backdrop-blur"
-          role="region"
-          aria-label="Bulk block actions"
-        >
-          <span className="text-xs font-medium text-primary">
-            {selectedIds.size} selected
-          </span>
-          <div className="ml-auto flex flex-wrap items-center gap-1">
-            <div className="relative" ref={wrapPickerRef}>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!wrapEligible}
-                onClick={() => setWrapPickerOpen((v) => !v)}
-                title={
-                  wrapEligible
-                    ? "Wrap selected blocks in a container"
-                    : "Selected blocks must be contiguous siblings of one parent"
-                }
-              >
-                <Group className="mr-1.5 h-3.5 w-3.5" />
-                Wrap in…
-              </Button>
-              {wrapPickerOpen && wrapEligible ? (
-                <div
-                  className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border/60 bg-popover p-1 shadow-md"
-                  role="menu"
-                >
-                  {containerDefinitions.length === 0 ? (
-                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No container blocks registered.
-                    </p>
-                  ) : (
-                    containerDefinitions.map((def) => (
-                      <button
-                        key={def.type}
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
-                        onClick={() => {
-                          dispatch({
-                            type: "WRAP_MANY",
-                            ids: Array.from(selectedIds),
-                            containerType: def.type,
-                          });
-                          setWrapPickerOpen(false);
-                          // Clear the multi-select after wrap so
-                          // the operator sees the freshly-created
-                          // container rather than a now-stale set.
-                          clearSelection();
-                        }}
-                      >
-                        <span>{def.label}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {def.type}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              ) : null}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                dispatch({
-                  type: "DUPLICATE_MANY",
-                  ids: Array.from(selectedIds),
-                });
-                clearSelection();
-              }}
+          {selectedIds.size >= 1 ? (
+            <div
+              className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 backdrop-blur"
+              role="region"
+              aria-label="Bulk block actions"
             >
-              <Copy className="mr-1.5 h-3.5 w-3.5" />
-              Duplicate
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => {
-                const confirmed = window.confirm(
-                  `Delete ${selectedIds.size} selected block${
-                    selectedIds.size === 1 ? "" : "s"
-                  }? This can be undone with Cmd-Z.`,
-                );
-                if (!confirmed) return;
-                dispatch({
-                  type: "DELETE_MANY",
-                  ids: Array.from(selectedIds),
-                });
-                clearSelection();
-              }}
-            >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              Delete
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={clearSelection}
-              aria-label="Clear selection"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      ) : null}
-      {view === "doc" ? (
-        <DocCanvas
-          blocks={blocks}
-          definitions={definitions}
-          availableBlocks={availableBlocks}
-          dispatch={dispatch}
-          selectedBlockId={selectedBlockId}
-          onSelectBlock={setSelectedBlockId}
-        />
-      ) : null}
-      {view === "page" ? (
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(event) => setActiveId(String(event.active.id))}
-        onDragCancel={() => setActiveId(null)}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={blocks.map((block) => block.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="flex flex-col gap-3">
-            {blocks.map((block, index) => {
-              const blockDefinition = definitions.get(block.type);
-              const blockLabel = blockDefinition?.label ?? block.type;
-              return (
-                <Fragment key={block.id}>
-                  {index === 0 ? (
-                    <InsertSlot
-                      availableBlocks={availableBlocks}
-                      onInsert={(blockType) =>
-                        onInsert("before", block.id, blockType)
-                      }
-                      ariaLabel={`Insert block before ${blockLabel}`}
-                    />
+              <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
+              <div className="ml-auto flex flex-wrap items-center gap-1">
+                <div className="relative" ref={wrapPickerRef}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!wrapEligible}
+                    onClick={() => setWrapPickerOpen((v) => !v)}
+                    title={
+                      wrapEligible
+                        ? "Wrap selected blocks in a container"
+                        : "Selected blocks must be contiguous siblings of one parent"
+                    }
+                  >
+                    <Group className="mr-1.5 h-3.5 w-3.5" />
+                    Wrap in…
+                  </Button>
+                  {wrapPickerOpen && wrapEligible ? (
+                    <div
+                      className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border/60 bg-popover p-1 shadow-md"
+                      role="menu"
+                    >
+                      {containerDefinitions.length === 0 ? (
+                        <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                          No container blocks registered.
+                        </p>
+                      ) : (
+                        containerDefinitions.map((def) => (
+                          <button
+                            key={def.type}
+                            type="button"
+                            role="menuitem"
+                            className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+                            onClick={() => {
+                              dispatch({
+                                type: "WRAP_MANY",
+                                ids: Array.from(selectedIds),
+                                containerType: def.type,
+                              });
+                              setWrapPickerOpen(false);
+                              // Clear the multi-select after wrap so
+                              // the operator sees the freshly-created
+                              // container rather than a now-stale set.
+                              clearSelection();
+                            }}
+                          >
+                            <span>{def.label}</span>
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {def.type}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   ) : null}
-                  <SortableBlockItem
-                    block={block}
-                    definition={blockDefinition}
-                    availableBlocks={availableBlocks}
-                    definitions={definitions}
-                    onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
-                    onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
-                    onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
-                    onDelete={(id) => dispatch({ type: "DELETE", id })}
-                    onUpdateProps={(id, props) =>
-                      dispatch({ type: "UPDATE_PROPS", id, props })
-                    }
-                    onReplaceProps={(id, props) =>
-                      dispatch({ type: "REPLACE_PROPS", id, props })
-                    }
-                    onAddChild={(parentId, blockType) =>
-                      dispatch({ type: "ADD", blockType, parentId })
-                    }
-                    onInsert={onInsert}
-                    onMoveOut={(id) => dispatch({ type: "MOVE_OUT", id })}
-                    onMoveInto={(id, targetParentId) =>
-                      dispatch({ type: "MOVE_INTO", id, targetParentId })
-                    }
-                    onWrapIn={(id, containerType) =>
-                      dispatch({ type: "WRAP_IN", id, containerType })
-                    }
-                    getMoveIntoCandidates={(id) =>
-                      collectContainerCandidates(blocks, id, definitions)
-                    }
-                    isOpen={isRowOpen}
-                    onOpenChange={setRowOpen}
-                    isSelected={isSelected}
-                    onToggleSelected={toggleSelected}
-                  />
-                  <InsertSlot
-                    availableBlocks={availableBlocks}
-                    onInsert={(blockType) =>
-                      onInsert("after", block.id, blockType)
-                    }
-                    ariaLabel={`Insert block after ${blockLabel}`}
-                  />
-                </Fragment>
-              );
-            })}
-            {blocks.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
-                <p className="mb-4 text-sm text-muted-foreground">
-                  No blocks yet. Pick one to start building the page.
-                </p>
-                {/* Recommended starters (#467 quick-wins). The
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    dispatch({
+                      type: "DUPLICATE_MANY",
+                      ids: Array.from(selectedIds),
+                    });
+                    clearSelection();
+                  }}
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  Duplicate
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => {
+                    const confirmed = window.confirm(
+                      `Delete ${selectedIds.size} selected block${
+                        selectedIds.size === 1 ? "" : "s"
+                      }? This can be undone with Cmd-Z.`,
+                    );
+                    if (!confirmed) return;
+                    dispatch({
+                      type: "DELETE_MANY",
+                      ids: Array.from(selectedIds),
+                    });
+                    clearSelection();
+                  }}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Delete
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  aria-label="Clear selection"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {view === "doc" ? (
+            <DocCanvas
+              blocks={blocks}
+              definitions={definitions}
+              availableBlocks={availableBlocks}
+              dispatch={dispatch}
+              selectedBlockId={selectedBlockId}
+              onSelectBlock={setSelectedBlockId}
+            />
+          ) : null}
+          {view === "page" ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={(event) => setActiveId(String(event.active.id))}
+              onDragCancel={() => setActiveId(null)}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={blocks.map((block) => block.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="flex flex-col gap-3">
+                  {blocks.map((block, index) => {
+                    const blockDefinition = definitions.get(block.type);
+                    const blockLabel = blockDefinition?.label ?? block.type;
+                    return (
+                      <Fragment key={block.id}>
+                        {index === 0 ? (
+                          <InsertSlot
+                            availableBlocks={availableBlocks}
+                            onInsert={(blockType) => onInsert("before", block.id, blockType)}
+                            ariaLabel={`Insert block before ${blockLabel}`}
+                          />
+                        ) : null}
+                        <SortableBlockItem
+                          block={block}
+                          definition={blockDefinition}
+                          availableBlocks={availableBlocks}
+                          definitions={definitions}
+                          onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
+                          onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
+                          onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
+                          onDelete={(id) => dispatch({ type: "DELETE", id })}
+                          onUpdateProps={(id, props) =>
+                            dispatch({ type: "UPDATE_PROPS", id, props })
+                          }
+                          onReplaceProps={(id, props) =>
+                            dispatch({ type: "REPLACE_PROPS", id, props })
+                          }
+                          onAddChild={(parentId, blockType) =>
+                            dispatch({ type: "ADD", blockType, parentId })
+                          }
+                          onInsert={onInsert}
+                          onMoveOut={(id) => dispatch({ type: "MOVE_OUT", id })}
+                          onMoveInto={(id, targetParentId) =>
+                            dispatch({ type: "MOVE_INTO", id, targetParentId })
+                          }
+                          onWrapIn={(id, containerType) =>
+                            dispatch({ type: "WRAP_IN", id, containerType })
+                          }
+                          getMoveIntoCandidates={(id) =>
+                            collectContainerCandidates(blocks, id, definitions)
+                          }
+                          isOpen={isRowOpen}
+                          onOpenChange={setRowOpen}
+                          isSelected={isSelected}
+                          onToggleSelected={toggleSelected}
+                        />
+                        <InsertSlot
+                          availableBlocks={availableBlocks}
+                          onInsert={(blockType) => onInsert("after", block.id, blockType)}
+                          ariaLabel={`Insert block after ${blockLabel}`}
+                        />
+                      </Fragment>
+                    );
+                  })}
+                  {blocks.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
+                      <p className="mb-4 text-sm text-muted-foreground">
+                        No blocks yet. Pick one to start building the page.
+                      </p>
+                      {/* Recommended starters (#467 quick-wins). The
                     preference list is the typical "above the fold"
                     set — operators almost always lead with a
                     hero/heading and a paragraph or grid. We show
                     only blocks the host actually registered so a
                     plugin-light setup doesn't see broken buttons. */}
-                <div className="flex flex-wrap justify-center gap-2">
-                  {(() => {
-                    const preferred = ["hero", "heading", "text", "grid", "cta"];
-                    const pickList: NpBlockMetadata[] = [];
-                    for (const type of preferred) {
-                      const def = definitions.get(type);
-                      if (def) pickList.push(def);
-                      if (pickList.length >= 4) break;
-                    }
-                    if (pickList.length < 4) {
-                      for (const def of availableBlocks) {
-                        if (pickList.includes(def)) continue;
-                        if (def.acceptsChildren) continue;
-                        pickList.push(def);
-                        if (pickList.length >= 4) break;
-                      }
-                    }
-                    return pickList.map((def) => (
-                      <Button
-                        key={def.type}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          dispatch({ type: "ADD", blockType: def.type })
-                        }
-                      >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        {def.label}
-                      </Button>
-                    ));
-                  })()}
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {(() => {
+                          const preferred = ["hero", "heading", "text", "grid", "cta"];
+                          const pickList: NpBlockMetadata[] = [];
+                          for (const type of preferred) {
+                            const def = definitions.get(type);
+                            if (def) pickList.push(def);
+                            if (pickList.length >= 4) break;
+                          }
+                          if (pickList.length < 4) {
+                            for (const def of availableBlocks) {
+                              if (pickList.includes(def)) continue;
+                              if (def.acceptsChildren) continue;
+                              pickList.push(def);
+                              if (pickList.length >= 4) break;
+                            }
+                          }
+                          return pickList.map((def) => (
+                            <Button
+                              key={def.type}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => dispatch({ type: "ADD", blockType: def.type })}
+                            >
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              {def.label}
+                            </Button>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            ) : null}
-          </div>
-        </SortableContext>
-        <DragOverlay>
-          <DragPreview
-            block={activeBlock}
-            definition={activeBlock ? definitions.get(activeBlock.type) : undefined}
+              </SortableContext>
+              <DragOverlay>
+                <DragPreview
+                  block={activeBlock}
+                  definition={activeBlock ? definitions.get(activeBlock.type) : undefined}
+                />
+              </DragOverlay>
+            </DndContext>
+          ) : null}
+
+          {view === "page" ? (
+            <div className="flex items-center justify-center gap-2">
+              <BlockPalette
+                availableBlocks={availableBlocks}
+                onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
+                trigger={
+                  <Button type="button" variant="outline" size="sm">
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    Add block
+                  </Button>
+                }
+              />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setPageJsonOpen(true)}>
+                <Braces className="mr-1.5 h-4 w-4" />
+                Edit JSON
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={previewOpen}
+                onClick={togglePreview}
+              >
+                {previewOpen ? (
+                  <>
+                    <EyeOff className="mr-1.5 h-4 w-4" />
+                    Hide preview
+                  </>
+                ) : (
+                  <>
+                    <Eye className="mr-1.5 h-4 w-4" />
+                    Show preview
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : null}
+
+          {previewOpen ? <PreviewPanel blocks={blocks} selectedBlockId={selectedBlockId} /> : null}
+
+          <StatusBar
+            totalBlocks={totalBlocks}
+            registrySize={availableBlocks.length}
+            warningsCount={containerWarnings.length}
+            activeMeta={activeBlockMeta}
+            activeType={activeBlockType}
+            savedLabel={autosave.savedLabel}
+            status={autosave.status}
           />
-        </DragOverlay>
-      </DndContext>
-      ) : null}
-
-      {view === "page" ? (
-      <div className="flex items-center justify-center gap-2">
-        <BlockPalette
-          availableBlocks={availableBlocks}
-          onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
-          trigger={
-            <Button type="button" variant="outline" size="sm">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add block
-            </Button>
-          }
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setPageJsonOpen(true)}
-        >
-          <Braces className="mr-1.5 h-4 w-4" />
-          Edit JSON
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-pressed={previewOpen}
-          onClick={togglePreview}
-        >
-          {previewOpen ? (
-            <>
-              <EyeOff className="mr-1.5 h-4 w-4" />
-              Hide preview
-            </>
-          ) : (
-            <>
-              <Eye className="mr-1.5 h-4 w-4" />
-              Show preview
-            </>
-          )}
-        </Button>
-      </div>
-      ) : null}
-
-      {previewOpen ? (
-        <PreviewPanel blocks={blocks} selectedBlockId={selectedBlockId} />
-      ) : null}
-
-      <StatusBar
-        totalBlocks={totalBlocks}
-        registrySize={availableBlocks.length}
-        warningsCount={containerWarnings.length}
-        activeMeta={activeBlockMeta}
-        activeType={activeBlockType}
-        savedLabel={autosave.savedLabel}
-        status={autosave.status}
-      />
         </div>
 
         <aside className="flex flex-col gap-4">
@@ -1079,10 +999,7 @@ export function BlockPageEditor({
             title="Page tree"
             footer="page.blocks · NpBlockInstance[] · live"
           />
-          <ContainerWarningsPanel
-            warnings={containerWarnings}
-            onPick={focusBlockRow}
-          />
+          <ContainerWarningsPanel warnings={containerWarnings} onPick={focusBlockRow} />
         </aside>
       </div>
 

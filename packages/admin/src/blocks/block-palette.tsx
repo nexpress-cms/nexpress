@@ -22,16 +22,6 @@ interface BlockPaletteProps {
  *   exists only to keep the long-standing `BlockPalette` import
  *   path working.
  */
-export function BlockPalette({
-  availableBlocks,
-  onAdd,
-  trigger,
-}: BlockPaletteProps) {
-  return (
-    <PaletteModal
-      availableBlocks={availableBlocks}
-      onAdd={onAdd}
-      trigger={trigger}
-    />
-  );
+export function BlockPalette({ availableBlocks, onAdd, trigger }: BlockPaletteProps) {
+  return <PaletteModal availableBlocks={availableBlocks} onAdd={onAdd} trigger={trigger} />;
 }

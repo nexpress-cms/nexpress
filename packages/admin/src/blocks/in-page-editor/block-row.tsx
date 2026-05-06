@@ -11,7 +11,7 @@ import { cn } from "../../ui/utils.js";
 import { BlockActionsPopover } from "./block-actions-popover.js";
 import { BlockBodyRenderer } from "./block-body-renderer.js";
 import { BlockIcon } from "../shared/block-icon.js";
-import { useRowDrag, type DropSide } from "./dnd.js";
+import { useContainerDropZone, useRowDrag, type DropSide } from "./dnd.js";
 
 export interface BlockRowProps {
   block: NpBlockInstance;
@@ -71,7 +71,7 @@ export function BlockRow({
   const rowRef = useRef<HTMLDivElement | null>(null);
 
   const isContainer = Boolean(meta?.acceptsChildren);
-  const children = isContainer ? block.children ?? [] : null;
+  const children = isContainer ? (block.children ?? []) : null;
 
   const convertCandidates = availableBlocks.filter(
     (b) =>
@@ -102,13 +102,11 @@ export function BlockRow({
   // disabled button + tooltip is clearer than a hidden one for
   // wraparound cases (`undo` brings the cap back into reach).
   const atMaxChildren =
-    typeof meta?.maxChildren === "number" &&
-    (children?.length ?? 0) >= meta.maxChildren;
-  const childFallbackType =
-    !atMaxChildren
-      ? childInsertCandidates.find((b) => b.type === "paragraph")?.type ??
-        childInsertCandidates[0]?.type
-      : undefined;
+    typeof meta?.maxChildren === "number" && (children?.length ?? 0) >= meta.maxChildren;
+  const childFallbackType = !atMaxChildren
+    ? (childInsertCandidates.find((b) => b.type === "paragraph")?.type ??
+      childInsertCandidates[0]?.type)
+    : undefined;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Backspace on an empty body: delete the row (unless it's the
@@ -127,6 +125,18 @@ export function BlockRow({
     blockId: block.id,
     parentId,
     onDrop: (sourceId, side) => onReorder(sourceId, side),
+  });
+  // Container drop-zone — only mounted when this row IS a
+  // container. Accepts cross-parent drops by dispatching
+  // MOVE_INTO; the reducer enforces cycle / contract guards.
+  const containerDrop = useContainerDropZone({
+    containerId: block.id,
+    onDrop: (sourceId) =>
+      dispatch({
+        type: "MOVE_INTO",
+        id: sourceId,
+        targetParentId: block.id,
+      }),
   });
 
   return (
@@ -207,10 +217,15 @@ export function BlockRow({
         {isContainer ? (
           <div
             className={cn(
-              "mt-2 flex flex-col gap-1 rounded-lg border border-dashed border-neutral-300 bg-neutral-50/40 p-2",
-              "dark:border-neutral-700 dark:bg-neutral-900/30",
+              "mt-2 flex flex-col gap-1 rounded-lg border border-dashed p-2 transition-colors",
+              containerDrop.isHovering
+                ? "border-primary bg-primary/5"
+                : "border-neutral-300 bg-neutral-50/40 dark:border-neutral-700 dark:bg-neutral-900/30",
             )}
             data-np-block-children={block.id}
+            onDragOver={containerDrop.onDragOver}
+            onDragLeave={containerDrop.onDragLeave}
+            onDrop={containerDrop.onDrop}
           >
             {children && children.length > 0 ? (
               children.map((child) => (
@@ -236,15 +251,10 @@ export function BlockRow({
                   }}
                   onReorder={(sourceId, side) => {
                     // Same-parent reorder inside a container.
-                    const targetIndex = (children ?? []).findIndex(
-                      (c) => c.id === child.id,
-                    );
+                    const targetIndex = (children ?? []).findIndex((c) => c.id === child.id);
                     if (targetIndex === -1) return;
                     const next = (children ?? [])[targetIndex + 1]?.id;
-                    const toId =
-                      side === "above"
-                        ? child.id
-                        : next ?? child.id;
+                    const toId = side === "above" ? child.id : (next ?? child.id);
                     dispatch({
                       type: "MOVE_WITHIN_PARENT",
                       parentId: block.id,
@@ -256,9 +266,7 @@ export function BlockRow({
                 />
               ))
             ) : (
-              <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                Empty container.
-              </p>
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">Empty container.</p>
             )}
             {childFallbackType ? (
               <button
@@ -281,9 +289,7 @@ export function BlockRow({
             ) : atMaxChildren ? (
               <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
                 {meta?.label ?? block.type} caps at{" "}
-                <strong className="font-semibold text-foreground">
-                  {meta?.maxChildren}
-                </strong>{" "}
+                <strong className="font-semibold text-foreground">{meta?.maxChildren}</strong>{" "}
                 children.
               </p>
             ) : (
@@ -294,8 +300,7 @@ export function BlockRow({
                   sizeClassName="h-3 w-3"
                   className="mr-1 inline-flex"
                 />
-                No Doc-friendly child types — switch to Page builder
-                to add nested blocks.
+                No Doc-friendly child types — switch to Page builder to add nested blocks.
               </p>
             )}
           </div>

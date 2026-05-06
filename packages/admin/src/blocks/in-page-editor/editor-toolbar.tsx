@@ -32,13 +32,7 @@ interface ToolbarButtonProps {
   disabled?: boolean;
 }
 
-function ToolbarButton({
-  Icon,
-  label,
-  onClick,
-  active,
-  disabled,
-}: ToolbarButtonProps) {
+function ToolbarButton({ Icon, label, onClick, active, disabled }: ToolbarButtonProps) {
   return (
     <button
       type="button"
@@ -51,7 +45,8 @@ function ToolbarButton({
         "inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors",
         "hover:bg-accent hover:text-foreground",
         active && "bg-primary/10 text-primary",
-        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground",
+        disabled &&
+          "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground",
       )}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -61,6 +56,24 @@ function ToolbarButton({
 
 function Sep() {
   return <span className="mx-1 h-4 w-px bg-neutral-200 dark:bg-neutral-800" />;
+}
+
+/**
+ * True when the active block's type renders a markdown-aware
+ * textarea body (paragraph / heading / quote / list / callout).
+ * The toolbar's inline-mark buttons treat these as wrap targets:
+ * clicking Bold inserts `**…**` around the selection, which the
+ * block's `render()` parses via `renderInlineMarks`.
+ */
+function isAtomTextarea(blockType: string | null): boolean {
+  if (!blockType) return false;
+  return (
+    blockType === "paragraph" ||
+    blockType === "heading" ||
+    blockType === "quote" ||
+    blockType === "list" ||
+    blockType === "callout"
+  );
 }
 
 export interface EditorToolbarProps {
@@ -82,11 +95,7 @@ export interface EditorToolbarProps {
  *    inside a Lexical body (the rich-text block). Atom bodies
  *    don't carry marks in v1; the buttons disable with a tooltip.
  */
-export function EditorToolbar({
-  activeBlock,
-  inRichText,
-  dispatch,
-}: EditorToolbarProps) {
+export function EditorToolbar({ activeBlock, inRichText, dispatch }: EditorToolbarProps) {
   const activeBlockId = activeBlock?.id ?? null;
   const activeBlockType = activeBlock?.type ?? null;
 
@@ -121,16 +130,73 @@ export function EditorToolbar({
   // Heading-level active state — read the live `level` prop on a
   // heading-type block so H1/H2/H3 highlight the right button.
   const headingLevel =
-    activeBlockType === "heading" &&
-    typeof activeBlock?.props.level === "number"
+    activeBlockType === "heading" && typeof activeBlock?.props.level === "number"
       ? activeBlock.props.level
       : null;
   const isHeading1 = headingLevel === 1;
   const isHeading2 = headingLevel === 2;
   const isHeading3 = headingLevel === 3;
-  const isListOrdered =
-    activeBlockType === "list" && activeBlock?.props.ordered === true;
+  const isListOrdered = activeBlockType === "list" && activeBlock?.props.ordered === true;
   const isListBullet = activeBlockType === "list" && !isListOrdered;
+
+  // Inline-mark buttons (Bold / Italic / Underline / Strikethrough /
+  // Inline-code) are enabled in two contexts:
+  //   1. Focus is inside a Lexical body (`inRichText`) — the
+  //      buttons would dispatch Lexical commands. v1 ships the
+  //      Lexical body but not the command bridge, so today this
+  //      branch is decorative; v1.1 will wire it.
+  //   2. Focus is inside a markdown-friendly atom body's textarea —
+  //      the click wraps the selection in markdown delimiters
+  //      (`**`, `*`, `_`, `~~`, `` ` ``). The atom block's
+  //      `render()` parses the syntax via `renderInlineMarks`.
+  //
+  // Markdown wrap is implemented here directly: read the focused
+  // textarea's selectionStart/End, splice in the delimiters, fire
+  // a native `input` event so the React-controlled value updates,
+  // and restore the selection across the inserted text.
+  const inlineMarksEnabled = inRichText || isAtomTextarea(activeBlockType);
+
+  function wrapInlineMark(delimiter: string): void {
+    if (!activeBlockId) return;
+    if (typeof document === "undefined") return;
+    const el = document.activeElement;
+    if (!(el instanceof HTMLTextAreaElement)) {
+      // Lexical path — v1 stub. Once the Lexical command bridge
+      // lands, this branch dispatches `FORMAT_TEXT_COMMAND`.
+      return;
+    }
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const value = el.value;
+    const before = value.slice(0, start);
+    const selection = value.slice(start, end);
+    const after = value.slice(end);
+    // No selection → insert paired delimiters with the caret
+    // between them, ready to type the marked text.
+    const insert = selection.length > 0 ? selection : "";
+    const next = `${before}${delimiter}${insert}${delimiter}${after}`;
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    if (nativeSetter) {
+      nativeSetter.call(el, next);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      // Fallback: fire a DOM event the AutoGrowTextarea reads via
+      // its onChange. This path is rare (browsers ship the value
+      // setter universally).
+      el.value = next;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    // Restore selection across the just-inserted text.
+    const cursorStart = start + delimiter.length;
+    const cursorEnd = cursorStart + insert.length;
+    requestAnimationFrame(() => {
+      el.setSelectionRange(cursorStart, cursorEnd);
+      el.focus();
+    });
+  }
 
   return (
     <div
@@ -211,13 +277,35 @@ export function EditorToolbar({
         disabled={!activeBlockId}
       />
       <Sep />
-      <ToolbarButton Icon={Bold} label="Bold (rich-text only)" disabled={!inRichText} />
-      <ToolbarButton Icon={Italic} label="Italic (rich-text only)" disabled={!inRichText} />
-      <ToolbarButton Icon={Underline} label="Underline (rich-text only)" disabled={!inRichText} />
+      <ToolbarButton
+        Icon={Bold}
+        label="Bold (⌘B)"
+        onClick={() => wrapInlineMark("**")}
+        disabled={!inlineMarksEnabled}
+      />
+      <ToolbarButton
+        Icon={Italic}
+        label="Italic (⌘I)"
+        onClick={() => wrapInlineMark("*")}
+        disabled={!inlineMarksEnabled}
+      />
+      <ToolbarButton
+        Icon={Underline}
+        label="Underline (⌘U)"
+        onClick={() => wrapInlineMark("_")}
+        disabled={!inlineMarksEnabled}
+      />
       <ToolbarButton
         Icon={Strikethrough}
-        label="Strikethrough (rich-text only)"
-        disabled={!inRichText}
+        label="Strikethrough"
+        onClick={() => wrapInlineMark("~~")}
+        disabled={!inlineMarksEnabled}
+      />
+      <ToolbarButton
+        Icon={Code}
+        label="Inline code"
+        onClick={() => wrapInlineMark("`")}
+        disabled={!inlineMarksEnabled}
       />
       <ToolbarButton Icon={LinkIcon} label="Link (rich-text only)" disabled={!inRichText} />
     </div>

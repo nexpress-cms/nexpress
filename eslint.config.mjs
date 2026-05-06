@@ -17,6 +17,7 @@ export default tseslint.config(
       "**/tsup.config.ts",
       "**/vitest.config.ts",
       "**/vitest.integration.config.ts",
+      "**/vitest.unit.config.ts",
       "**/vitest.workspace.ts",
       "**/drizzle.config.ts",
       "**/next.config.ts",

@@ -43,9 +43,7 @@ export function DeleteBlockDialog({
             <div className="space-y-2">
               <div>
                 <span className="font-semibold text-foreground">{label}</span>
-                {summary ? (
-                  <span className="ml-1 text-muted-foreground">— {summary}</span>
-                ) : null}
+                {summary ? <span className="ml-1 text-muted-foreground">— {summary}</span> : null}
               </div>
               {childCount > 0 ? (
                 <div className="text-sm text-muted-foreground">
@@ -54,19 +52,15 @@ export function DeleteBlockDialog({
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  This block has edits that will be lost. Use Undo to restore
-                  if you delete by mistake.
+                  This block has edits that will be lost. Use Undo to restore if you delete by
+                  mistake.
                 </div>
               )}
             </div>
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button type="button" variant="destructive" onClick={onConfirm}>

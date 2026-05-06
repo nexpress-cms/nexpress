@@ -15,13 +15,7 @@ interface OutlineRowProps {
   onPick: (id: string) => void;
 }
 
-function OutlineRow({
-  node,
-  depth,
-  definitions,
-  activeId,
-  onPick,
-}: OutlineRowProps) {
+function OutlineRow({ node, depth, definitions, activeId, onPick }: OutlineRowProps) {
   const meta = definitions.get(node.type);
   const summary = readSummary(node, meta);
   const isActive = activeId === node.id;
@@ -43,18 +37,13 @@ function OutlineRow({
           icon={meta?.icon}
           kind={meta?.iconKind}
           sizeClassName="h-3 w-3"
-          className={cn(
-            "text-muted-foreground",
-            isActive && "text-primary",
-          )}
+          className={cn("text-muted-foreground", isActive && "text-primary")}
         />
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-medium text-foreground/90">
             {meta?.label ?? node.type}
           </span>
-          {summary ? (
-            <span className="truncate text-muted-foreground">{summary}</span>
-          ) : null}
+          {summary ? <span className="truncate text-muted-foreground">{summary}</span> : null}
         </span>
         {meta?.source && meta.source !== "built-in" ? (
           <span
@@ -63,16 +52,14 @@ function OutlineRow({
               meta.source === "plugin"
                 ? "bg-primary/10 text-primary"
                 : meta.source === "theme"
-                ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-                : "bg-muted text-muted-foreground",
+                  ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                  : "bg-muted text-muted-foreground",
             )}
           >
             {meta.source}
           </span>
         ) : null}
-        <span className="font-mono text-[10px] text-muted-foreground/70">
-          {node.type}
-        </span>
+        <span className="font-mono text-[10px] text-muted-foreground/70">{node.type}</span>
       </button>
       {Array.isArray(node.children) &&
         node.children.map((child) => (
@@ -89,10 +76,7 @@ function OutlineRow({
   );
 }
 
-function readSummary(
-  node: NpBlockInstance,
-  meta?: NpBlockMetadata,
-): string {
+function readSummary(node: NpBlockInstance, meta?: NpBlockMetadata): string {
   if (!meta) return "";
   const fields = meta.summaryFields ?? [];
   for (const f of fields) {
@@ -143,14 +127,9 @@ export function OutlinePanel({
       <header className="border-b border-neutral-200/80 px-4 py-2.5 dark:border-neutral-800/80">
         <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
       </header>
-      <ScrollArea
-        className="px-1.5 py-1.5"
-        style={{ maxHeight: `${maxHeight}px` }}
-      >
+      <ScrollArea className="px-1.5 py-1.5" style={{ maxHeight: `${maxHeight}px` }}>
         {blocks.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-muted-foreground">
-            No blocks yet.
-          </p>
+          <p className="px-2 py-3 text-xs text-muted-foreground">No blocks yet.</p>
         ) : (
           <div className="flex flex-col gap-0.5">
             {blocks.map((b) => (

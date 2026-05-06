@@ -38,10 +38,7 @@ export function evaluateContainerWarnings(
       const meta = definitions.get(node.type);
       if (meta?.acceptsChildren) {
         const children = node.children ?? [];
-        if (
-          typeof meta.minChildren === "number" &&
-          children.length < meta.minChildren
-        ) {
+        if (typeof meta.minChildren === "number" && children.length < meta.minChildren) {
           const noun = meta.minChildren === 1 ? "child" : "children";
           out.push({
             id: node.id,
@@ -49,10 +46,7 @@ export function evaluateContainerWarnings(
             message: `${meta.label} expects at least ${meta.minChildren} ${noun} (has ${children.length}).`,
           });
         }
-        if (
-          typeof meta.maxChildren === "number" &&
-          children.length > meta.maxChildren
-        ) {
+        if (typeof meta.maxChildren === "number" && children.length > meta.maxChildren) {
           out.push({
             id: node.id,
             kind: "max",
@@ -60,11 +54,7 @@ export function evaluateContainerWarnings(
           });
         }
         const allowed = meta.allowedChildTypes;
-        if (
-          Array.isArray(allowed) &&
-          allowed.length > 0 &&
-          !allowed.includes("*")
-        ) {
+        if (Array.isArray(allowed) && allowed.length > 0 && !allowed.includes("*")) {
           for (const child of children) {
             if (!allowed.includes(child.type)) {
               out.push({

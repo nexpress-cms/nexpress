@@ -16,10 +16,7 @@ export interface ContainerWarningsPanelProps {
  * view (the orchestrator owns the scroll behavior). Hidden when
  * the warnings list is empty.
  */
-export function ContainerWarningsPanel({
-  warnings,
-  onPick,
-}: ContainerWarningsPanelProps) {
+export function ContainerWarningsPanel({ warnings, onPick }: ContainerWarningsPanelProps) {
   if (warnings.length === 0) return null;
   return (
     <section
@@ -27,9 +24,7 @@ export function ContainerWarningsPanel({
       aria-label="Container warnings"
     >
       <header className="border-b border-neutral-200/80 px-4 py-2.5 dark:border-neutral-800/80">
-        <h3 className="text-sm font-semibold tracking-tight">
-          Container warnings
-        </h3>
+        <h3 className="text-sm font-semibold tracking-tight">Container warnings</h3>
       </header>
       <ul className="flex flex-col gap-1 p-2">
         {warnings.map((w, i) => (

@@ -12,19 +12,15 @@
 
 export { DocCanvas, type DocCanvasProps } from "./doc-canvas.js";
 export { BlockRow, type BlockRowProps } from "./block-row.js";
-export {
-  BlockBodyRenderer,
-  type BlockBodyRendererProps,
-} from "./block-body-renderer.js";
+export { BlockBodyRenderer, type BlockBodyRendererProps } from "./block-body-renderer.js";
 export { BlockActionsPopover } from "./block-actions-popover.js";
 export { EditorToolbar, type EditorToolbarProps } from "./editor-toolbar.js";
+export { SlashMenu, type SlashMenuProps, type SlashMenuPosition } from "./slash-menu.js";
+export { AutoGrowTextarea, type AutoGrowTextareaProps } from "./auto-grow-textarea.js";
 export {
-  SlashMenu,
-  type SlashMenuProps,
-  type SlashMenuPosition,
-} from "./slash-menu.js";
-export {
-  AutoGrowTextarea,
-  type AutoGrowTextareaProps,
-} from "./auto-grow-textarea.js";
-export { useRowDrag, type DropSide, type RowDragHandlers } from "./dnd.js";
+  useContainerDropZone,
+  useRowDrag,
+  type ContainerDropZoneHandlers,
+  type DropSide,
+  type RowDragHandlers,
+} from "./dnd.js";

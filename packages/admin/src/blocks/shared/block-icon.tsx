@@ -61,11 +61,7 @@ export function BlockIcon({
     return (
       <span
         aria-hidden="true"
-        className={cn(
-          "inline-flex shrink-0 items-center justify-center",
-          sizeClassName,
-          className,
-        )}
+        className={cn("inline-flex shrink-0 items-center justify-center", sizeClassName, className)}
         {...spanProps}
       >
         <Resolved className={sizeClassName} aria-hidden="true" />

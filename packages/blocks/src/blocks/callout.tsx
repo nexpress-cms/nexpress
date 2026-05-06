@@ -1,3 +1,4 @@
+import { renderInlineMarks } from "../inline-marks.js";
 import type { NpBlockDefinition } from "../types.js";
 
 const readString = (value: unknown, fallback: string): string =>
@@ -56,7 +57,7 @@ export const calloutBlock: NpBlockDefinition = {
     const tone = readTone(props.tone);
     return (
       <aside className={`np-callout np-callout-${tone}`} data-tone={tone}>
-        <p>{text}</p>
+        <p>{renderInlineMarks(text)}</p>
       </aside>
     );
   },

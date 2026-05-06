@@ -24,3 +24,4 @@ export {
 } from "./registry.js";
 export { renderBlocks } from "./render-blocks.js";
 export type { NpRenderBlocksOptions } from "./render-blocks.js";
+export { renderInlineMarks } from "./inline-marks.js";

@@ -76,10 +76,7 @@ function readFavorites(): Set<string> {
 function writeFavorites(types: Set<string>): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
-      FAVORITES_KEY,
-      JSON.stringify(Array.from(types)),
-    );
+    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(types)));
   } catch {
     // Same as recent — favorites are a nice-to-have, never crash.
   }
@@ -129,9 +126,7 @@ function buildSections(
       buckets.delete(cat);
     }
   }
-  const remaining = [...buckets.entries()].sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  const remaining = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [cat, items] of remaining) {
     sections.push({ category: cat, items });
   }
@@ -221,10 +216,7 @@ export function useBlockPaletteSections({
 
   const pushRecent = (type: string) => {
     setRecent((current) => {
-      const next = [type, ...current.filter((t) => t !== type)].slice(
-        0,
-        RECENT_LIMIT,
-      );
+      const next = [type, ...current.filter((t) => t !== type)].slice(0, RECENT_LIMIT);
       writeRecent(next);
       return next;
     });
