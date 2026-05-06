@@ -360,6 +360,24 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         if (!definition) return state;
         const loc = locateBlock(state, action.targetId);
         if (!loc) return state;
+        // Honor the container contract on the parent (#467
+        // post-review). Slot insertion inside a container with
+        // `allowedChildTypes` / `maxChildren` previously bypassed
+        // the gate the Add-block popover already respected.
+        if (loc.parentId !== null) {
+          const parent = findBlockInTreeFlat(state, loc.parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (
+            parentDef &&
+            !canAcceptChild(
+              parentDef,
+              action.blockType,
+              parent?.children?.length ?? 0,
+            )
+          ) {
+            return state;
+          }
+        }
         const next = createBlockInstance(definition);
         const offset = action.type === "INSERT_AFTER" ? 1 : 0;
         return updateContainerChildren(state, loc.parentId, (siblings) => [
@@ -473,6 +491,15 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
       case "WRAP_IN": {
         const containerDef = definitions.get(action.containerType);
         if (!containerDef || !containerDef.acceptsChildren) return state;
+        const source = findBlockInTreeFlat(state, action.id);
+        if (!source) return state;
+        // Honor the wrapper's contract (#467 post-review). Wrapping
+        // a `hero` in a container with `allowedChildTypes:
+        // ["pricing-tier"]` would create an instantly-invalid tree
+        // — fail closed instead.
+        if (!canAcceptChild(containerDef, source.type, 0)) {
+          return state;
+        }
         return mapTree(state, (block) => {
           if (block.id !== action.id) return block;
           const wrapper = createBlockInstance(containerDef);
@@ -487,11 +514,33 @@ const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // independent. Filter unknown types defensively — a
         // pattern stored via "save current as pattern" might
         // outlive the plugin that contributed one of its blocks.
-        const sanitized = action.pattern.blocks
+        let sanitized = action.pattern.blocks
           .filter((b) => definitions.has(b.type))
           .map(cloneBlockDeep);
         if (sanitized.length === 0) return state;
         const parentId = action.parentId ?? null;
+        // Honor the parent container contract (#467 post-review).
+        // Each top-level block in the pattern is checked against
+        // `allowedChildTypes`, and the cap is enforced cumulatively
+        // — a pattern that would push the count past `maxChildren`
+        // truncates instead of breaking the cap.
+        if (parentId !== null) {
+          const parent = findBlockInTreeFlat(state, parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (parentDef) {
+            const baseCount = parent?.children?.length ?? 0;
+            const accepted: NpBlockInstance[] = [];
+            let projectedCount = baseCount;
+            for (const block of sanitized) {
+              if (canAcceptChild(parentDef, block.type, projectedCount)) {
+                accepted.push(block);
+                projectedCount += 1;
+              }
+            }
+            if (accepted.length === 0) return state;
+            sanitized = accepted;
+          }
+        }
         return updateContainerChildren(state, parentId, (siblings) => [
           ...siblings,
           ...sanitized,
@@ -868,9 +917,16 @@ function lintFieldValue(
   }
   if ((field.type === "text" || field.type === "url") && field.pattern) {
     if (typeof value !== "string" || value.length === 0) return null;
+    // Anchor the regex (#467 post-review) so the soft-warning
+    // matches HTML5 `<input pattern>` semantics — the browser
+    // implicitly anchors with `^...$`, and we want both surfaces
+    // to agree on whether a value is valid.
+    const sourceWithoutAnchors = field.pattern
+      .replace(/^\^/, "")
+      .replace(/\$$/, "");
     let regex: RegExp | null = null;
     try {
-      regex = new RegExp(field.pattern);
+      regex = new RegExp(`^(?:${sourceWithoutAnchors})$`);
     } catch {
       // Author typed an invalid pattern — silently drop. Don't
       // crash the editor over a schema typo.
@@ -1243,16 +1299,21 @@ function SortableBlockItem({
                       ) : null}
                       <div className="grid gap-4">
                         {section.fields.map((field) => {
-                          const value = getFieldValue(
-                            field,
-                            block.props[field.name],
-                          );
+                          // Required-missing checks the RAW prop, not the
+                          // value-with-defaults (#467 post-review). For a
+                          // number field with no default, getFieldValue
+                          // returns `0` so a post-default check would never
+                          // flag it as missing — looking at `block.props`
+                          // directly recovers the "operator hasn't supplied
+                          // a value yet" semantics.
+                          const rawValue = block.props[field.name];
+                          const value = getFieldValue(field, rawValue);
                           const inputId = `${fieldIdPrefix}-${field.name}`;
                           const isRequiredMissing =
                             field.required === true &&
-                            (value === undefined ||
-                              value === "" ||
-                              value === null);
+                            (rawValue === undefined ||
+                              rawValue === "" ||
+                              rawValue === null);
                           const lintMessage = lintFieldValue(field, value);
                           return (
                             <div key={field.name} className="grid gap-1.5">
@@ -2803,7 +2864,9 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
   const [uploading, setUploading] = useState(false);
   const [previewBroken, setPreviewBroken] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const loadAbortRef = useRef<AbortController | null>(null);
   const PAGE_SIZE = 24;
+  const UPLOAD_CONCURRENCY = 3;
 
   // Debounce query to avoid hammering the media API on every
   // keystroke while still feeling responsive.
@@ -2825,6 +2888,14 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
   // instead of paging through everything client-side.
   const loadMedia = useCallback(
     async (page: number, query: string, mode: "replace" | "append") => {
+      // Cancel any in-flight request so a slow earlier query
+      // can't overwrite the response from a newer query (#467
+      // post-review). Debouncing alone doesn't cover the case
+      // where the network is the bottleneck.
+      if (loadAbortRef.current) loadAbortRef.current.abort();
+      const controller = new AbortController();
+      loadAbortRef.current = controller;
+
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("page", String(page));
@@ -2833,7 +2904,9 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/media?${params.toString()}`);
+        const res = await fetch(`/api/media?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error(`Media load failed (${res.status})`);
         const payload = (await res.json()) as {
           docs?: MediaDoc[];
@@ -2847,9 +2920,13 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
           typeof payload.totalPages === "number" ? payload.totalPages : page;
         setHasMore(page < totalPages);
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to load media.");
       } finally {
-        setLoading(false);
+        if (loadAbortRef.current === controller) {
+          loadAbortRef.current = null;
+          setLoading(false);
+        }
       }
     },
     [],
@@ -2870,39 +2947,58 @@ function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
     setUploading(true);
     setError(null);
     try {
-      // Upload in parallel via Promise.all (#467 follow-up). The
-      // media endpoint is single-file but the network is the
-      // bottleneck — running uploads concurrently makes a 5-image
-      // batch finish in roughly 1× the slowest upload instead of
-      // the sum. `allSettled` so a single corrupt file doesn't
-      // block the rest from completing.
+      // Upload with a small concurrency cap (#467 post-review).
+      // Pure `Promise.all` would let a 100-file drop kick off 100
+      // simultaneous POSTs and saturate connections / rate limits.
+      // The cap (`UPLOAD_CONCURRENCY`) keeps the parallel benefit
+      // for typical 3-10 image batches without the multi-hundred
+      // foot-gun. `allSettled` semantics preserved — one corrupt
+      // file doesn't block the rest.
       const files = Array.from(fileList);
-      const results = await Promise.allSettled(
-        files.map(async (file) => {
-          const fd = new FormData();
-          fd.append("file", file);
-          const res = await fetch("/api/media", {
-            method: "POST",
-            body: fd,
-            credentials: "same-origin",
-          });
-          if (!res.ok) {
-            throw new Error(`Upload failed (${res.status})`);
+      type UploadOutcome =
+        | { status: "fulfilled"; value: string | null }
+        | { status: "rejected"; reason: unknown };
+      const results: UploadOutcome[] = new Array(files.length);
+      const uploadOne = async (file: File): Promise<string | null> => {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/media", {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin",
+        });
+        if (!res.ok) {
+          throw new Error(`Upload failed (${res.status})`);
+        }
+        const doc = (await res.json()) as { doc?: MediaDoc };
+        return doc.doc?.url ?? null;
+      };
+      let cursor = 0;
+      const workers = Array.from(
+        { length: Math.min(UPLOAD_CONCURRENCY, files.length) },
+        async () => {
+          while (true) {
+            const index = cursor++;
+            if (index >= files.length) return;
+            const file = files[index];
+            try {
+              const value = await uploadOne(file);
+              results[index] = { status: "fulfilled", value };
+            } catch (reason) {
+              results[index] = { status: "rejected", reason };
+            }
           }
-          const doc = (await res.json()) as { doc?: MediaDoc };
-          return doc.doc?.url ?? null;
-        }),
+        },
       );
-      const failures = results.filter(
-        (r): r is PromiseRejectedResult => r.status === "rejected",
-      );
+      await Promise.all(workers);
+      const failures = results.filter((r) => r.status === "rejected");
       // Pick the URL of the LAST successful upload to fill the
       // field — operators that drop a single file get that file;
       // batch uploads land the most-recent in the field, with the
       // rest available via the library.
       const successfulUrls = results
         .filter(
-          (r): r is PromiseFulfilledResult<string | null> =>
+          (r): r is { status: "fulfilled"; value: string | null } =>
             r.status === "fulfilled",
         )
         .map((r) => r.value)
