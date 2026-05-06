@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
 
 import { npUsers, verifyTokenFull } from "@nexpress/core";
-import { getRegisteredBlockMetadata } from "@nexpress/blocks";
+import {
+  getRegisteredBlockMetadata,
+  getRegisteredPatterns,
+} from "@nexpress/blocks";
 import { BlocksRegistryProvider } from "@nexpress/admin/client";
 import { ensureFor, getDb } from "@/lib/bootstrap";
 
@@ -41,10 +44,15 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
     redirect("/admin/login");
   }
 
-  // Block-metadata snapshot — server-side, so plugin-registered
-  // blocks (which only land in the SERVER module-instance during
-  // bootstrap) reach the browser editor through React props.
+  // Block-metadata + contributed-patterns snapshots — server-side,
+  // so plugin/theme-registered blocks AND patterns (which only land
+  // in the SERVER module-instance during bootstrap) reach the
+  // browser editor through React props. The browser-side block
+  // registry only sees built-ins; without this hand-off the admin's
+  // Add-block popover would silently miss every plugin contribution
+  // and the page-builder's pattern picker would show only built-ins.
   const blocksMetadata = getRegisteredBlockMetadata();
+  const patterns = getRegisteredPatterns();
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -61,7 +69,9 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">
-        <BlocksRegistryProvider metadata={blocksMetadata}>{children}</BlocksRegistryProvider>
+        <BlocksRegistryProvider metadata={blocksMetadata} patterns={patterns}>
+          {children}
+        </BlocksRegistryProvider>
       </main>
     </div>
   );

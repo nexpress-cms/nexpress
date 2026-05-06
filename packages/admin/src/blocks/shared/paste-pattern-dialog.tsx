@@ -49,10 +49,39 @@ interface ValidationResult {
   warning?: string;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+/**
+ * Defensive shape check. Recurses into `children` so a paste with
+ * a malformed deep node can't pass top-level validation only to
+ * crash the reducer's `cloneBlockDeep` (which calls
+ * `block.children.map(...)` — would throw on string / non-array).
+ *
+ * Rejects:
+ *   - missing string `id` or `type`
+ *   - `props` present but not a plain object
+ *   - `children` present but not an array, or an array with any
+ *     element that fails the same check
+ */
 function isBlockShape(value: unknown): value is NpBlockInstance {
-  if (!value || typeof value !== "object") return false;
-  const b = value as Record<string, unknown>;
-  return typeof b.id === "string" && typeof b.type === "string";
+  if (!isPlainObject(value)) return false;
+  if (typeof value.id !== "string" || typeof value.type !== "string") {
+    return false;
+  }
+  if (value.props !== undefined && !isPlainObject(value.props)) return false;
+  if (value.children !== undefined) {
+    if (!Array.isArray(value.children)) return false;
+    for (const child of value.children) {
+      if (!isBlockShape(child)) return false;
+    }
+  }
+  return true;
 }
 
 function validate(raw: string, known: Set<string>): ValidationResult {

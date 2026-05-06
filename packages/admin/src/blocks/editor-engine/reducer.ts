@@ -277,7 +277,28 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
       }
       case "DUPLICATE_MANY": {
         if (action.ids.length === 0) return state;
-        const idSet = new Set(action.ids);
+        const rawSet = new Set(action.ids);
+        // Drop any id whose ancestor is also selected — duplicating
+        // both would clone the descendant *inside* the ancestor's
+        // clone (because the ancestor's children already include the
+        // descendant's clone from the recursive walk), producing 4×
+        // the descendant + 2× the ancestor instead of the intended
+        // 2× each. Pre-walking once to filter is O(N × depth) which
+        // is fine for editor-scale trees.
+        const idSet = new Set<string>();
+        for (const id of rawSet) {
+          let loc = locateBlock(state, id);
+          let ancestorSelected = false;
+          while (loc && loc.parentId !== null) {
+            if (rawSet.has(loc.parentId)) {
+              ancestorSelected = true;
+              break;
+            }
+            loc = locateBlock(state, loc.parentId);
+          }
+          if (!ancestorSelected) idSet.add(id);
+        }
+        if (idSet.size === 0) return state;
         // Walk depth-first, recursing into children first so a
         // selection that spans depths still duplicates bottom-up
         // and the indices stay correct. Each selected block emits
