@@ -90,6 +90,81 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
+
+  // Per-row collapsed state (#467 quick-wins). Lives at the
+  // orchestrator so it survives every dispatch (the row card itself
+  // gets re-mounted on tree changes) and so we can persist it in
+  // localStorage. Default is expanded — we track the collapsed
+  // *set* instead of the open set so brand-new blocks open by
+  // default without needing an explicit insert hook.
+  const COLLAPSED_KEY = "np-page-builder.collapsed";
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_KEY);
+      if (!raw) return new Set();
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? new Set(parsed.filter((id): id is string => typeof id === "string"))
+        : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const isRowOpen = useCallback(
+    (id: string) => !collapsedIds.has(id),
+    [collapsedIds],
+  );
+  const setRowOpen = useCallback((id: string, open: boolean) => {
+    setCollapsedIds((current) => {
+      const next = new Set(current);
+      if (open) next.delete(id);
+      else next.add(id);
+      try {
+        window.localStorage.setItem(
+          COLLAPSED_KEY,
+          JSON.stringify(Array.from(next)),
+        );
+      } catch {
+        // Private mode / quota — drop the persistence, keep the
+        // in-memory state. The collapsed set just resets next load.
+      }
+      return next;
+    });
+  }, []);
+
+  // Focus-on-newly-inserted (#467 quick-wins). Diff the id set
+  // across renders; if exactly one new top-level-or-nested id
+  // appeared, scroll its row into view and move focus to it so the
+  // operator can type into the new block immediately. Diffing is
+  // cheap — pages have dozens of blocks at most, not thousands.
+  // The first effect run just seeds the baseline so the auto-
+  // focus doesn't fire on initial mount.
+  const knownIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const collect = (arr: NpBlockInstance[], into: Set<string>): void => {
+      for (const b of arr) {
+        into.add(b.id);
+        if (b.children) collect(b.children, into);
+      }
+    };
+    const seen = new Set<string>();
+    collect(blocks, seen);
+    if (knownIdsRef.current === null) {
+      knownIdsRef.current = seen;
+      return;
+    }
+    const newIds: string[] = [];
+    for (const id of seen) if (!knownIdsRef.current.has(id)) newIds.push(id);
+    knownIdsRef.current = seen;
+    if (newIds.length !== 1) return;
+    const target = document.querySelector<HTMLElement>(
+      `[data-np-block-row="${newIds[0]}"]`,
+    );
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    target.focus({ preventScroll: true });
+  }, [blocks]);
   // Section patterns (#467 phase 4 + follow-up).
   //
   // - Built-ins ship with the editor.
@@ -435,6 +510,8 @@ export function BlockPageEditor({
                     getMoveIntoCandidates={(id) =>
                       collectContainerCandidates(blocks, id, definitions)
                     }
+                    isOpen={isRowOpen}
+                    onOpenChange={setRowOpen}
                   />
                   <InsertSlot
                     availableBlocks={availableBlocks}
@@ -448,9 +525,48 @@ export function BlockPageEditor({
             })}
             {blocks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
-                <p className="mb-3 text-sm text-muted-foreground">
+                <p className="mb-4 text-sm text-muted-foreground">
                   No blocks yet. Pick one to start building the page.
                 </p>
+                {/* Recommended starters (#467 quick-wins). The
+                    preference list is the typical "above the fold"
+                    set — operators almost always lead with a
+                    hero/heading and a paragraph or grid. We show
+                    only blocks the host actually registered so a
+                    plugin-light setup doesn't see broken buttons. */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {(() => {
+                    const preferred = ["hero", "heading", "text", "grid", "cta"];
+                    const pickList: NpBlockMetadata[] = [];
+                    for (const type of preferred) {
+                      const def = definitions.get(type);
+                      if (def) pickList.push(def);
+                      if (pickList.length >= 4) break;
+                    }
+                    if (pickList.length < 4) {
+                      for (const def of availableBlocks) {
+                        if (pickList.includes(def)) continue;
+                        if (def.acceptsChildren) continue;
+                        pickList.push(def);
+                        if (pickList.length >= 4) break;
+                      }
+                    }
+                    return pickList.map((def) => (
+                      <Button
+                        key={def.type}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          dispatch({ type: "ADD", blockType: def.type })
+                        }
+                      >
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        {def.label}
+                      </Button>
+                    ));
+                  })()}
+                </div>
               </div>
             ) : null}
           </div>

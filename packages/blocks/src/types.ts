@@ -241,6 +241,18 @@ export interface NpBlockPropField {
    */
   hiddenWhen?: ReadonlyArray<readonly [string, unknown]>;
   /**
+   * Conditional visibility — inverse of `hiddenWhen`. The field is
+   * shown only when *all* of the listed `[propName, value]`
+   * predicates match the block's current `props`. Lets a schema
+   * express "show `imageUrl` only when `mode === 'media'`".
+   * Leaving the array empty (or omitting the field) keeps the
+   * field always visible (subject to `hiddenWhen`).
+   *
+   * If both `hiddenWhen` and `visibleWhen` are set, the field is
+   * shown when `visibleWhen` matches AND `hiddenWhen` doesn't.
+   */
+  visibleWhen?: ReadonlyArray<readonly [string, unknown]>;
+  /**
    * For `type: "array"`. Schema applied to every entry in the stored
    * `unknown[]`. The admin renderer recurses through this list when an
    * operator clicks "Add" — fields here use the same `NpBlockPropField`
