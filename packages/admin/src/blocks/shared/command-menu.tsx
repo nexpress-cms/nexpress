@@ -1,0 +1,336 @@
+"use client";
+
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
+
+import {
+  collectContainerCandidates,
+  findBlockInTreeFlat,
+  locateBlock,
+  type EditorAction,
+} from "../editor-engine/index.js";
+import type { NpPattern } from "../patterns.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../../ui/dialog.js";
+import { Input } from "../../ui/input.js";
+import { cn } from "../../ui/utils.js";
+
+/**
+ * Cmd-K command palette for the page-builder. Built on the
+ * existing Dialog primitive (no cmdk dep) — the action set is
+ * small and the matching is just substring filter, so a custom
+ * implementation keeps the bundle lean.
+ *
+ * Context-sensitive: when a row is focused at the moment the
+ * menu opens, block-scoped actions (move, duplicate, delete,
+ * hierarchy moves, save-as-pattern) target it; otherwise only
+ * page-level + add-block + insert-pattern actions show.
+ */
+
+interface CommandAction {
+  id: string;
+  label: string;
+  hint?: string;
+  // Group label for the section header — actions with the same
+  // group render together with the group as the header.
+  group: "Block" | "Pattern" | "Page" | "Add";
+  run: () => void;
+}
+
+export interface CommandMenuProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  availableBlocks: NpBlockMetadata[];
+  readFocusedBlockId: () => string | null;
+  blocks: NpBlockInstance[];
+  definitions: Map<string, NpBlockMetadata>;
+  dispatch: (action: EditorAction) => void;
+  onOpenPageJson: () => void;
+  patterns: NpPattern[];
+  onSaveFocusedAsPattern: (focusedBlockId: string) => void;
+  onDeletePattern: (patternId: string) => void;
+}
+
+function filterCommandActions(
+  actions: CommandAction[],
+  query: string,
+): CommandAction[] {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) return actions;
+  return actions.filter((a) => {
+    const haystack = `${a.label} ${a.hint ?? ""}`.toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
+function groupCommandActions(
+  actions: CommandAction[],
+): { group: CommandAction["group"]; items: CommandAction[] }[] {
+  const order: CommandAction["group"][] = ["Block", "Pattern", "Add", "Page"];
+  const buckets = new Map<CommandAction["group"], CommandAction[]>();
+  for (const a of actions) {
+    const list = buckets.get(a.group) ?? [];
+    list.push(a);
+    buckets.set(a.group, list);
+  }
+  return order
+    .filter((g) => (buckets.get(g)?.length ?? 0) > 0)
+    .map((g) => ({ group: g, items: buckets.get(g) ?? [] }));
+}
+
+export function CommandMenu({
+  open,
+  onOpenChange,
+  availableBlocks,
+  readFocusedBlockId,
+  blocks,
+  definitions,
+  dispatch,
+  onOpenPageJson,
+  patterns,
+  onSaveFocusedAsPattern,
+  onDeletePattern,
+}: CommandMenuProps) {
+  const [query, setQuery] = useState("");
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Resolve the focused row exactly once per open — not on every
+  // keystroke. The DOM walk + closest() lookup is cheap, but
+  // freezing it gives a stable "context block" so the menu's
+  // labels don't flicker if focus shifts mid-typing.
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setFocusedBlockId(readFocusedBlockId());
+    }
+  }, [open, readFocusedBlockId]);
+
+  // Dialog content auto-focuses its first focusable child, which
+  // is the input — but on Radix the autofocus timing can lose to
+  // the open animation. A microtask kick keeps it reliable.
+  useEffect(() => {
+    if (open) {
+      const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [open]);
+
+  const focusedBlock = focusedBlockId
+    ? findBlockInTreeFlat(blocks, focusedBlockId)
+    : null;
+  const focusedDefinition = focusedBlock
+    ? definitions.get(focusedBlock.type)
+    : null;
+  const focusedLabel = focusedDefinition?.label ?? focusedBlock?.type ?? null;
+
+  const actions: CommandAction[] = [];
+
+  if (focusedBlock && focusedBlockId) {
+    const id = focusedBlockId;
+    actions.push(
+      {
+        id: "block.move-up",
+        label: `Move ${focusedLabel} up`,
+        group: "Block",
+        run: () => dispatch({ type: "MOVE_UP", id }),
+      },
+      {
+        id: "block.move-down",
+        label: `Move ${focusedLabel} down`,
+        group: "Block",
+        run: () => dispatch({ type: "MOVE_DOWN", id }),
+      },
+      {
+        id: "block.duplicate",
+        label: `Duplicate ${focusedLabel}`,
+        group: "Block",
+        run: () => dispatch({ type: "DUPLICATE", id }),
+      },
+      {
+        id: "block.delete",
+        label: `Delete ${focusedLabel}`,
+        hint: "destructive",
+        group: "Block",
+        run: () => dispatch({ type: "DELETE", id }),
+      },
+    );
+
+    // Hierarchy moves. MOVE_OUT only shows when the block has a
+    // grandparent; MOVE_INTO appears once per candidate container
+    // so operators can pick a target without a separate target-
+    // picker UI.
+    const focusedLoc = locateBlock(blocks, id);
+    if (focusedLoc && focusedLoc.parentId !== null) {
+      actions.push({
+        id: "block.move-out",
+        label: `Move ${focusedLabel} out of parent`,
+        group: "Block",
+        run: () => dispatch({ type: "MOVE_OUT", id }),
+      });
+    }
+    for (const candidate of collectContainerCandidates(blocks, id, definitions)) {
+      actions.push({
+        id: `block.move-into.${candidate.id}`,
+        label: `Move ${focusedLabel} into ${candidate.label}`,
+        hint: candidate.id.slice(0, 8),
+        group: "Block",
+        run: () =>
+          dispatch({ type: "MOVE_INTO", id, targetParentId: candidate.id }),
+      });
+    }
+    for (const def of availableBlocks) {
+      if (!def.acceptsChildren) continue;
+      // Skip wrapping a container in itself — wrap is intended to
+      // introduce structure around a leaf, not nest containers.
+      if (def.type === focusedBlock.type) continue;
+      actions.push({
+        id: `block.wrap-in.${def.type}`,
+        label: `Wrap ${focusedLabel} in ${def.label}`,
+        group: "Block",
+        run: () => dispatch({ type: "WRAP_IN", id, containerType: def.type }),
+      });
+    }
+  }
+
+  for (const def of availableBlocks) {
+    actions.push({
+      id: `add.${def.type}`,
+      label: `Add block: ${def.label}`,
+      hint: def.type,
+      group: "Add",
+      run: () => dispatch({ type: "ADD", blockType: def.type }),
+    });
+  }
+
+  // Patterns. Built-ins ship with the editor; custom patterns
+  // come from server (when available) and localStorage. Both
+  // surface under the same Pattern group. Delete actions appear
+  // only for custom patterns — built-ins are immutable.
+  for (const pattern of patterns) {
+    actions.push({
+      id: `pattern.insert.${pattern.id}`,
+      label: `Insert pattern: ${pattern.label}`,
+      hint: pattern.source === "custom" ? "saved" : pattern.id,
+      group: "Pattern",
+      run: () => dispatch({ type: "INSERT_PATTERN", pattern }),
+    });
+  }
+  for (const pattern of patterns) {
+    if (pattern.source !== "custom") continue;
+    actions.push({
+      id: `pattern.delete.${pattern.id}`,
+      label: `Delete pattern: ${pattern.label}`,
+      hint: "destructive",
+      group: "Pattern",
+      run: () => {
+        const confirmed = window.confirm(
+          `Delete the saved pattern "${pattern.label}"? This can't be undone.`,
+        );
+        if (confirmed) onDeletePattern(pattern.id);
+      },
+    });
+  }
+  if (focusedBlock && focusedBlockId) {
+    actions.push({
+      id: "pattern.save-focused",
+      label: `Save ${focusedLabel ?? "block"} as pattern`,
+      group: "Pattern",
+      run: () => onSaveFocusedAsPattern(focusedBlockId),
+    });
+  }
+
+  actions.push({
+    id: "page.edit-json",
+    label: "Edit page JSON",
+    group: "Page",
+    run: onOpenPageJson,
+  });
+
+  const filtered = filterCommandActions(actions, query);
+  const groups = groupCommandActions(filtered);
+
+  function runAction(action: CommandAction) {
+    action.run();
+    onOpenChange(false);
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter" && filtered.length > 0) {
+      event.preventDefault();
+      runAction(filtered[0]);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg gap-2 p-0">
+        <DialogHeader className="border-b border-border/60 px-3 py-2">
+          <DialogTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Page-builder commands
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Run a context-sensitive page-builder action by typing a name.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="px-3 pt-2">
+          <Input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={handleInputKeyDown}
+            placeholder={
+              focusedLabel
+                ? `Run a command for ${focusedLabel}…`
+                : "Type to filter commands…"
+            }
+            aria-label="Filter commands"
+          />
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto px-1 pb-2">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+              No matching commands.
+            </p>
+          ) : (
+            groups.map(({ group, items }) => (
+              <div key={group} className="px-2 pt-2">
+                <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {group}
+                </div>
+                <ul className="space-y-0.5">
+                  {items.map((action) => (
+                    <li key={action.id}>
+                      <button
+                        type="button"
+                        onClick={() => runAction(action)}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
+                          "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+                          action.hint === "destructive" && "text-destructive",
+                        )}
+                      >
+                        <span className="truncate">{action.label}</span>
+                        {action.hint && action.hint !== "destructive" ? (
+                          <span className="ml-2 truncate font-mono text-[10px] text-muted-foreground">
+                            {action.hint}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
