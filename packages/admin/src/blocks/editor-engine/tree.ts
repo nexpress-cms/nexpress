@@ -16,6 +16,26 @@ declare const crypto: { randomUUID(): string };
 export const createBlockId = (): string => crypto.randomUUID();
 
 /**
+ * Pure-array reorder. Removes the item at `from` and reinserts
+ * at `to`. Out-of-range or equal indices return a fresh copy
+ * without mutating the caller's array.
+ *
+ * In-engine version of `@dnd-kit/sortable`'s `arrayMove` so the
+ * reducer doesn't have to take a drag-library dependency for a
+ * 4-line helper. Drag UIs (form-editor today, in-page-editor
+ * tomorrow) keep using their library's own version where they
+ * compute drop indices.
+ */
+export function arrayMove<T>(arr: readonly T[], from: number, to: number): T[] {
+  const next = arr.slice();
+  if (from === to || from < 0 || from >= next.length) return next;
+  const clamped = Math.max(0, Math.min(to, next.length - 1));
+  const [item] = next.splice(from, 1);
+  next.splice(clamped, 0, item);
+  return next;
+}
+
+/**
  * `mapTree(blocks, fn)` walks every block depth-first and replaces
  * each one with `fn(block)`. Unchanged returns short-circuit so
  * children arrays don't get reallocated when nothing in their

@@ -1,9 +1,9 @@
-import { arrayMove } from "@dnd-kit/sortable";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "./types.js";
 import { canAcceptChild } from "./contracts.js";
 import {
+  arrayMove,
   cloneBlockDeep,
   createBlockId,
   detachBlock,
