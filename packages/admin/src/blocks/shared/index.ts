@@ -47,3 +47,7 @@ export {
   PageJsonDialog,
   type PageJsonDialogProps,
 } from "./page-json-dialog.js";
+export {
+  PastePatternDialog,
+  type PastePatternDialogProps,
+} from "./paste-pattern-dialog.js";

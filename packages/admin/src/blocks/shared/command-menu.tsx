@@ -51,6 +51,12 @@ export interface CommandMenuProps {
   definitions: Map<string, NpBlockMetadata>;
   dispatch: (action: EditorAction) => void;
   onOpenPageJson: () => void;
+  /**
+   * Opens the paste-import dialog. Wired through the page editor
+   * so the dialog state (and the resulting `INSERT_PATTERN`
+   * dispatch) lives next to the rest of the editor's UI state.
+   */
+  onOpenPasteImport: () => void;
   patterns: NpPattern[];
   onSaveFocusedAsPattern: (focusedBlockId: string) => void;
   onDeletePattern: (patternId: string) => void;
@@ -92,6 +98,7 @@ export function CommandMenu({
   definitions,
   dispatch,
   onOpenPageJson,
+  onOpenPasteImport,
   patterns,
   onSaveFocusedAsPattern,
   onDeletePattern,
@@ -210,14 +217,26 @@ export function CommandMenu({
   }
 
   // Patterns. Built-ins ship with the editor; custom patterns
-  // come from server (when available) and localStorage. Both
-  // surface under the same Pattern group. Delete actions appear
-  // only for custom patterns — built-ins are immutable.
+  // come from server (when available) and localStorage; plugins /
+  // themes contribute via the bootstrap registry. All surface
+  // under the same Pattern group with a source hint so the
+  // operator can tell at a glance where each pattern came from.
+  // Delete actions appear only for custom patterns — built-ins
+  // and plugin/theme patterns are immutable from the operator's
+  // side.
   for (const pattern of patterns) {
+    const sourceHint =
+      pattern.source === "custom"
+        ? "saved"
+        : pattern.source === "plugin"
+          ? "plugin"
+          : pattern.source === "theme"
+            ? "theme"
+            : pattern.id;
     actions.push({
       id: `pattern.insert.${pattern.id}`,
       label: `Insert pattern: ${pattern.label}`,
-      hint: pattern.source === "custom" ? "saved" : pattern.id,
+      hint: sourceHint,
       group: "Pattern",
       run: () => dispatch({ type: "INSERT_PATTERN", pattern }),
     });
@@ -245,6 +264,13 @@ export function CommandMenu({
       run: () => onSaveFocusedAsPattern(focusedBlockId),
     });
   }
+  actions.push({
+    id: "pattern.paste-import",
+    label: "Paste blocks from JSON",
+    hint: "import",
+    group: "Pattern",
+    run: onOpenPasteImport,
+  });
 
   actions.push({
     id: "page.edit-json",

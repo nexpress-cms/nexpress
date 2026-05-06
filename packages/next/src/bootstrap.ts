@@ -29,8 +29,11 @@ import {
 } from "@nexpress/core";
 import {
   registerBlock,
+  registerPattern,
   resetSharedBlockRegistry,
+  resetSharedPatternRegistry,
   type NpBlockDefinition,
+  type NpPattern,
 } from "@nexpress/blocks";
 import { cookies, headers } from "next/headers";
 
@@ -47,6 +50,23 @@ function pluginBlocks(plugin: NpPluginConfig | NpResolvedPluginLike): NpBlockDef
       typeof b === "object" &&
       typeof (b as { type?: unknown }).type === "string" &&
       typeof (b as { render?: unknown }).render === "function",
+  );
+}
+
+// Sister to `pluginBlocks` — narrows a plugin's `patterns` field
+// without forcing core to depend on the pattern type. Same loose-
+// shape duck-typing pattern (id + label + blocks). Source defaults
+// are stamped at registration time below.
+function pluginPatterns(plugin: NpPluginConfig | NpResolvedPluginLike): NpPattern[] {
+  const patterns = (plugin as { patterns?: unknown }).patterns;
+  if (!Array.isArray(patterns)) return [];
+  return patterns.filter(
+    (p): p is NpPattern =>
+      p !== null &&
+      typeof p === "object" &&
+      typeof (p as { id?: unknown }).id === "string" &&
+      typeof (p as { label?: unknown }).label === "string" &&
+      Array.isArray((p as { blocks?: unknown }).blocks),
   );
 }
 
@@ -382,6 +402,12 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           // (theme-bundled blocks, etc.) keep their value.
           registerBlock({ ...block, source: block.source ?? "plugin" });
         }
+        for (const pattern of pluginPatterns(plugin)) {
+          // Same source-default tagging — patterns ship under
+          // `"plugin"` unless the author overrode it (a theme-
+          // bundled plugin might want `"theme"`).
+          registerPattern({ ...pattern, source: pattern.source ?? "plugin" });
+        }
       }
       pluginsLoaded = true;
     })();
@@ -426,6 +452,10 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // currently-enabled set below, settles on
       // `built-ins + enabled plugins` — the obvious invariant.
       resetSharedBlockRegistry();
+      // Same invariant for patterns: drop plugin-contributed
+      // patterns on reload so a disabled plugin's pattern doesn't
+      // linger in the editor's command-menu picker.
+      resetSharedPatternRegistry();
       const instance = getDbInstance();
       const configured = config.plugins ?? [];
       const configuredIds = configured.map(resolvePluginId);
@@ -440,6 +470,9 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
         for (const block of pluginBlocks(plugin)) {
           // Same source-default tagging as `ensurePluginsLoaded`.
           registerBlock({ ...block, source: block.source ?? "plugin" });
+        }
+        for (const pattern of pluginPatterns(plugin)) {
+          registerPattern({ ...pattern, source: pattern.source ?? "plugin" });
         }
       }
       pluginsLoaded = true;

@@ -1,7 +1,12 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { getRegisteredBlockMetadata, type NpBlockMetadata } from "@nexpress/blocks";
+import {
+  getRegisteredBlockMetadata,
+  getRegisteredPatterns,
+  type NpBlockMetadata,
+  type NpPattern,
+} from "@nexpress/blocks";
 
 interface RegistryContextValue {
   metadata: NpBlockMetadata[];
@@ -14,6 +19,15 @@ interface RegistryContextValue {
    * mounts) — the field falls back to a free-text input in that case.
    */
   collectionOptions: Array<{ label: string; value: string }>;
+  /**
+   * Plugin / theme contributed patterns. Resolved server-side via
+   * `getRegisteredPatterns()` after bootstrap and handed to the
+   * provider so the page-builder's command-menu pattern picker
+   * surfaces them alongside built-in and operator-saved patterns.
+   * Empty when the host hasn't supplied it (older mounts) — the
+   * editor still works with built-ins + custom (server/local).
+   */
+  patterns: NpPattern[];
 }
 
 // Block metadata travels server → client through this context. The
@@ -31,6 +45,7 @@ const BlocksRegistryContext = createContext<RegistryContextValue | null>(null);
 export function BlocksRegistryProvider({
   metadata,
   collectionOptions,
+  patterns,
   children,
 }: {
   metadata: NpBlockMetadata[];
@@ -41,11 +56,22 @@ export function BlocksRegistryProvider({
    * after bootstrap finishes — same lifecycle hook as the metadata.
    */
   collectionOptions?: Array<{ label: string; value: string }>;
+  /**
+   * Optional. Plugin / theme contributed patterns. The host server
+   * component should pass `getRegisteredPatterns()` from
+   * `@nexpress/blocks` after bootstrap finishes. Empty / undefined
+   * is fine — the editor falls back to built-ins + custom only.
+   */
+  patterns?: NpPattern[];
   children: ReactNode;
 }) {
   return (
     <BlocksRegistryContext.Provider
-      value={{ metadata, collectionOptions: collectionOptions ?? [] }}
+      value={{
+        metadata,
+        collectionOptions: collectionOptions ?? [],
+        patterns: patterns ?? [],
+      }}
     >
       {children}
     </BlocksRegistryContext.Provider>
@@ -73,4 +99,16 @@ export function useBlocksRegistry(): NpBlockMetadata[] {
 export function useCollectionOptions(): Array<{ label: string; value: string }> {
   const fromContext = useContext(BlocksRegistryContext);
   return fromContext?.collectionOptions ?? [];
+}
+
+/**
+ * Returns the plugin / theme contributed pattern list. Falls back
+ * to the browser's local registry (which is empty in the browser —
+ * the registry is server-populated) when the provider isn't
+ * mounted, so non-admin consumers still get a useful answer.
+ */
+export function useContributedPatterns(): NpPattern[] {
+  const fromContext = useContext(BlocksRegistryContext);
+  if (fromContext) return fromContext.patterns;
+  return getRegisteredPatterns();
 }

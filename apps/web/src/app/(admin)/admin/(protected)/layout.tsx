@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
 import { can, npUsers, verifyTokenFull } from "@nexpress/core";
 import { AdminShell, BlocksRegistryProvider } from "@nexpress/admin/client";
-import { getRegisteredBlockMetadata } from "@nexpress/blocks";
+import { getRegisteredBlockMetadata, getRegisteredPatterns } from "@nexpress/blocks";
 import nexpressConfig from "@/nexpress.config";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
@@ -62,6 +62,10 @@ export default async function AdminLayout({
   // blocks (which only land in the SERVER module-instance during
   // bootstrap) reach the browser editor through React props.
   const blocksMetadata = getRegisteredBlockMetadata();
+  // Same trick for plugin / theme contributed patterns — they land
+  // in the SERVER instance of the shared pattern registry during
+  // bootstrap and need to ride props to the browser-side editor.
+  const patterns = getRegisteredPatterns();
   // Same trick for collection-slug options used by `propsSchema`
   // entries with `type: "collection"`. The picker can't ask the
   // browser for the registered slugs (block render runs on the
@@ -79,6 +83,7 @@ export default async function AdminLayout({
       <BlocksRegistryProvider
         metadata={blocksMetadata}
         collectionOptions={collectionOptions}
+        patterns={patterns}
       >
         {children}
       </BlocksRegistryProvider>

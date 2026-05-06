@@ -7,7 +7,9 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@nexpress/blocks", () => ({
   registerBlock: vi.fn(),
+  registerPattern: vi.fn(),
   resetSharedBlockRegistry: vi.fn(),
+  resetSharedPatternRegistry: vi.fn(),
 }));
 
 vi.mock("@nexpress/core", () => ({
@@ -100,11 +102,15 @@ describe("createBootstrap", () => {
     const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
     await bootstrap.ensurePluginsLoaded();
     vi.mocked(blocks.resetSharedBlockRegistry).mockClear();
+    vi.mocked(blocks.resetSharedPatternRegistry).mockClear();
     vi.mocked(core.resetPlugins).mockClear();
 
     await bootstrap.reloadPlugins();
 
     expect(core.resetPlugins).toHaveBeenCalledTimes(1);
     expect(blocks.resetSharedBlockRegistry).toHaveBeenCalledTimes(1);
+    // Pattern registry follows the same invariant — disabled
+    // plugins must not leave their patterns behind.
+    expect(blocks.resetSharedPatternRegistry).toHaveBeenCalledTimes(1);
   });
 });
