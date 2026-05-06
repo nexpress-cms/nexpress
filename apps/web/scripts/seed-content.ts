@@ -18,6 +18,7 @@ import {
   seedNavigation,
   seedPages,
   seedPosts,
+  seedTaxonomies,
 } from "../src/lib/seed-content";
 
 /**
@@ -95,29 +96,41 @@ async function main(): Promise<void> {
   }
   console.log(`Seeding content for site "${siteId}" as ${actor.email}…`);
 
-  const { pages, posts, navigation } = await withCurrentSite(siteId, async () => {
-    const pages = await seedPages(actor);
-    if (pages.skipped) console.log("• pages: already populated, skipping");
-    else console.log(`  ✓ pages: ${pages.created} created`);
+  const { taxonomies, pages, posts, navigation } = await withCurrentSite(
+    siteId,
+    async () => {
+      // Order matters — posts reference tag rows, so taxonomies
+      // come first.
+      const taxonomies = await seedTaxonomies(actor);
+      if (taxonomies.skipped)
+        console.log("• taxonomies: already populated, skipping");
+      else console.log(`  ✓ taxonomies: ${taxonomies.created} tags created`);
 
-    const posts = await seedPosts(actor);
-    if (posts.skipped) console.log("• posts: already populated, skipping");
-    else console.log(`  ✓ posts: ${posts.created} created`);
+      const pages = await seedPages(actor);
+      if (pages.skipped) console.log("• pages: already populated, skipping");
+      else console.log(`  ✓ pages: ${pages.created} created`);
 
-    const navigation = await seedNavigation(actor);
-    if (navigation.headerSkipped)
-      console.log("• header navigation: already exists, skipping");
-    else console.log(`  ✓ header navigation: ${navigation.header} items`);
-    if (navigation.footerSkipped)
-      console.log("• footer navigation: already exists, skipping");
-    else console.log(`  ✓ footer navigation: ${navigation.footer} items`);
+      const posts = await seedPosts(actor);
+      if (posts.skipped) console.log("• posts: already populated, skipping");
+      else console.log(`  ✓ posts: ${posts.created} created`);
 
-    return { pages, posts, navigation };
-  });
+      const navigation = await seedNavigation(actor);
+      if (navigation.headerSkipped)
+        console.log("• header navigation: already exists, skipping");
+      else
+        console.log(`  ✓ header navigation: ${navigation.header} items`);
+      if (navigation.footerSkipped)
+        console.log("• footer navigation: already exists, skipping");
+      else
+        console.log(`  ✓ footer navigation: ${navigation.footer} items`);
+
+      return { taxonomies, pages, posts, navigation };
+    },
+  );
 
   console.log("");
   console.log(
-    `Done. Created ${pages.created} pages, ${posts.created} posts, ${
+    `Done. Created ${pages.created} pages, ${posts.created} posts, ${taxonomies.created} tags, ${
       navigation.header + navigation.footer
     } nav items.`,
   );
