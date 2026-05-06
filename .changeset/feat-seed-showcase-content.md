@@ -13,7 +13,7 @@ rich-text dump:
 
 - **Home** (`/`) — hero → logos-cloud → section-header +
   feature-grid → stats-grid → testimonials → tabs → pricing →
-  faq → cta. Twelve blocks total. Exercises every PR-A primitive
+  faq → cta. Thirteen blocks total. Exercises every PR-A primitive
   plus the existing hero / feature-grid / pricing / faq / cta
   built-ins. An operator landing on a fresh install sees what the
   page builder actually does.

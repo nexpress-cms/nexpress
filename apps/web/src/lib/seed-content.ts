@@ -128,7 +128,6 @@ async function tagIdsByName(): Promise<Map<string, string>> {
 interface PageSample {
   title: string;
   forceSlug?: string;
-  template?: string;
   seoDescription?: string;
   blocks: unknown[];
 }
@@ -400,23 +399,11 @@ function blockId(token: string): string {
 }
 
 /**
- * Build the minimal Lexical-compatible JSON shape the editor /
- * renderer expects. A single paragraph with one text child.
+ * Multi-paragraph Lexical doc — each entry is one paragraph. The
+ * shape is the minimal `root → paragraph → text` tree the Lexical
+ * renderer expects; richer formatting lands when an editor opens
+ * the document in the admin.
  */
-function lexicalParagraph(text: string): unknown {
-  return {
-    root: {
-      type: "root",
-      version: 1,
-      direction: null,
-      format: "",
-      indent: 0,
-      children: [paragraphNode(text)],
-    },
-  };
-}
-
-/** Multi-paragraph Lexical doc — each entry is one paragraph. */
 function lexicalDoc(paragraphs: string[]): unknown {
   return {
     root: {
