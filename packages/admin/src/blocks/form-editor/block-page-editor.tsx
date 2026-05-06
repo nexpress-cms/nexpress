@@ -9,7 +9,18 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Braces, Eye, EyeOff, Plus, Redo2, Undo2 } from "lucide-react";
+import {
+  Braces,
+  Copy,
+  Eye,
+  EyeOff,
+  Group,
+  Plus,
+  Redo2,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -103,6 +114,16 @@ export function BlockPageEditor({
   // value and highlights / scrolls to the matching marker in the
   // iframe.
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+
+  // Multi-select set (#467 #3). Lives at the orchestrator so a
+  // single dispatch can act on every selected id at once. Also
+  // remembers the "anchor" — the last id the operator clicked
+  // without shift — so a subsequent shift-click extends the
+  // range. Selection clears on most structural mutations
+  // (DELETE_MANY clears, etc.) since stale ids would haunt the
+  // bulk toolbar after a delete.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const selectionAnchorRef = useRef<string | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -194,6 +215,90 @@ export function BlockPageEditor({
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     target.focus({ preventScroll: true });
   }, [blocks]);
+
+  // Selection helpers (#467 #3). `isSelected` is a stable lookup
+  // for row props; `toggleSelected` handles the click semantics
+  // (plain click toggles a single id, shift-click extends from the
+  // anchor across the same parent's siblings — the common case
+  // for "wrap these adjacent blocks", cmd/ctrl-click also toggles
+  // additive). Selection is intentionally siblings-aware: a
+  // shift-click that crosses parent boundaries falls back to a
+  // plain toggle (extending across containers would create a
+  // selection no bulk action could honor).
+  const isSelected = useCallback(
+    (id: string) => selectedIds.has(id),
+    [selectedIds],
+  );
+  const toggleSelected = useCallback(
+    (id: string, modifiers: { shift: boolean; meta: boolean }) => {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        if (modifiers.shift && selectionAnchorRef.current) {
+          const anchorLoc = locateBlock(blocks, selectionAnchorRef.current);
+          const targetLoc = locateBlock(blocks, id);
+          if (
+            anchorLoc &&
+            targetLoc &&
+            anchorLoc.parentId === targetLoc.parentId
+          ) {
+            const lo = Math.min(anchorLoc.index, targetLoc.index);
+            const hi = Math.max(anchorLoc.index, targetLoc.index);
+            // Resolve the parent's sibling array and add every id
+            // in [lo..hi]. updateContainerChildren is overkill —
+            // we just need a read of the siblings.
+            const parentBlock =
+              anchorLoc.parentId === null
+                ? null
+                : findBlockInTreeFlat(blocks, anchorLoc.parentId);
+            const siblings =
+              parentBlock?.children ??
+              (anchorLoc.parentId === null ? blocks : []);
+            for (let i = lo; i <= hi; i++) {
+              const sib = siblings[i];
+              if (sib) next.add(sib.id);
+            }
+            return next;
+          }
+          // Cross-parent shift-click: fall through to plain toggle.
+        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        // Track the anchor for shift-click. Modifier-less click
+        // and cmd/ctrl-click both reset the anchor to the just-
+        // clicked id; shift-click leaves it alone.
+        if (!modifiers.shift) selectionAnchorRef.current = id;
+        return next;
+      });
+    },
+    [blocks],
+  );
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    selectionAnchorRef.current = null;
+  }, []);
+
+  // Drop ids that no longer exist in the tree (post-delete /
+  // post-undo). Cheap because pages have dozens of blocks at
+  // most. Without this, the bulk toolbar would show a stale
+  // count after a single-block delete from outside the toolbar.
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const live = new Set<string>();
+    const collect = (arr: NpBlockInstance[]): void => {
+      for (const b of arr) {
+        live.add(b.id);
+        if (b.children) collect(b.children);
+      }
+    };
+    collect(blocks);
+    let changed = false;
+    const next = new Set<string>();
+    for (const id of selectedIds) {
+      if (live.has(id)) next.add(id);
+      else changed = true;
+    }
+    if (changed) setSelectedIds(next);
+  }, [blocks, selectedIds]);
   // Section patterns (#467 phase 4 + follow-up).
   //
   // - Built-ins ship with the editor.
@@ -466,6 +571,33 @@ export function BlockPageEditor({
     });
   }
 
+  // WRAP_MANY contract preview (#467 #3). Bulk-wrap requires all
+  // selected ids to be contiguous siblings of one parent — same
+  // gate the reducer enforces. Computing it once here lets the
+  // toolbar disable the wrap button up front instead of failing
+  // silently on dispatch.
+  const wrapEligible = useMemo(() => {
+    if (selectedIds.size < 2) return false;
+    const ids = Array.from(selectedIds);
+    const locs = ids.map((id) => locateBlock(blocks, id));
+    if (locs.some((l) => l === null)) return false;
+    const parentId = locs[0]!.parentId;
+    if (locs.some((l) => l!.parentId !== parentId)) return false;
+    const indices = locs.map((l) => l!.index).sort((a, b) => a - b);
+    for (let i = 1; i < indices.length; i++) {
+      if (indices[i] !== indices[i - 1] + 1) return false;
+    }
+    return true;
+  }, [blocks, selectedIds]);
+
+  // Container types available for bulk-wrap. Filter to definitions
+  // that accept children — the wrap reducer would reject leafs.
+  const containerDefinitions = useMemo(
+    () => availableBlocks.filter((def) => def.acceptsChildren),
+    [availableBlocks],
+  );
+  const [wrapPickerOpen, setWrapPickerOpen] = useState(false);
+
   return (
     <section
       ref={sectionRef}
@@ -496,6 +628,124 @@ export function BlockPageEditor({
           Redo
         </Button>
       </div>
+      {/* Bulk-action toolbar (#467 #3). Sticks above the row list
+          while a multi-selection is live. Wrap is gated by
+          contiguous-siblings; delete/duplicate work on any non-
+          empty selection. */}
+      {selectedIds.size >= 1 ? (
+        <div
+          className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 backdrop-blur"
+          role="region"
+          aria-label="Bulk block actions"
+        >
+          <span className="text-xs font-medium text-primary">
+            {selectedIds.size} selected
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!wrapEligible}
+                onClick={() => setWrapPickerOpen((v) => !v)}
+                title={
+                  wrapEligible
+                    ? "Wrap selected blocks in a container"
+                    : "Selected blocks must be contiguous siblings of one parent"
+                }
+              >
+                <Group className="mr-1.5 h-3.5 w-3.5" />
+                Wrap in…
+              </Button>
+              {wrapPickerOpen && wrapEligible ? (
+                <div
+                  className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border/60 bg-popover p-1 shadow-md"
+                  role="menu"
+                >
+                  {containerDefinitions.length === 0 ? (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No container blocks registered.
+                    </p>
+                  ) : (
+                    containerDefinitions.map((def) => (
+                      <button
+                        key={def.type}
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        onClick={() => {
+                          dispatch({
+                            type: "WRAP_MANY",
+                            ids: Array.from(selectedIds),
+                            containerType: def.type,
+                          });
+                          setWrapPickerOpen(false);
+                          // Clear the multi-select after wrap so
+                          // the operator sees the freshly-created
+                          // container rather than a now-stale set.
+                          clearSelection();
+                        }}
+                      >
+                        <span>{def.label}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {def.type}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                dispatch({
+                  type: "DUPLICATE_MANY",
+                  ids: Array.from(selectedIds),
+                });
+                clearSelection();
+              }}
+            >
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              Duplicate
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => {
+                const confirmed = window.confirm(
+                  `Delete ${selectedIds.size} selected block${
+                    selectedIds.size === 1 ? "" : "s"
+                  }? This can be undone with Cmd-Z.`,
+                );
+                if (!confirmed) return;
+                dispatch({
+                  type: "DELETE_MANY",
+                  ids: Array.from(selectedIds),
+                });
+                clearSelection();
+              }}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Delete
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              aria-label="Clear selection"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -553,6 +803,8 @@ export function BlockPageEditor({
                     }
                     isOpen={isRowOpen}
                     onOpenChange={setRowOpen}
+                    isSelected={isSelected}
+                    onToggleSelected={toggleSelected}
                   />
                   <InsertSlot
                     availableBlocks={availableBlocks}
