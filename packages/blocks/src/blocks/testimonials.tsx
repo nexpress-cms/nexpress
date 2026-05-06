@@ -121,9 +121,11 @@ export const testimonialsBlock: NpBlockDefinition = {
       display: "grid",
       gap: "2rem",
     };
-    // Cap at 3 columns; rows wrap below that. The minmax floor keeps
-    // each card readable on tablet without snapping to one column
-    // until ~360px viewports.
+    // `auto-fit` + an 18rem floor lets the grid pack as many columns
+    // as fit within the 72rem wrapper (typically 1–4 depending on
+    // viewport). Rows wrap on overflow, and `min(100%, 18rem)` lets
+    // a single card still fill the wrapper on phones instead of
+    // snapping to 18rem.
     const gridStyle: CSSProperties = {
       display: "grid",
       gap: "1.5rem",
@@ -160,7 +162,12 @@ export const testimonialsBlock: NpBlockDefinition = {
                     border: "1px solid #e2e8f0",
                     borderRadius: "1rem",
                     padding: "1.75rem",
-                    display: "grid",
+                    // Flex column so the footer's `marginTop: auto`
+                    // pushes it to the bottom — that's how cards in
+                    // a row line up their author footers when the
+                    // quotes above are different lengths.
+                    display: "flex",
+                    flexDirection: "column",
                     gap: "1rem",
                     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
                   }}
@@ -224,7 +231,12 @@ export const testimonialsBlock: NpBlockDefinition = {
                           fontSize: "0.95rem",
                         }}
                       >
-                        {item.name.charAt(0).toUpperCase()}
+                        {/* `Array.from` splits on grapheme-ish
+                            boundaries so the first letter of "한
+                            국" / "🚀 Rocket" / etc. doesn't tear a
+                            surrogate pair into a replacement
+                            character. */}
+                        {(Array.from(item.name)[0] ?? "?").toUpperCase()}
                       </div>
                     )}
                     <div style={{ display: "grid" }}>

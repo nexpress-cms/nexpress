@@ -86,10 +86,13 @@ export const tabsBlock: NpBlockDefinition = {
       ? (props.items.map(readItem).filter(Boolean) as TabItem[])
       : [];
     // Same `name` across <details> within this group is what makes
-    // them mutually exclusive in browsers that support it. The
-    // hash is opportunistic — two tabs blocks on the same page
-    // render with different group names so they don't fight each
-    // other for "open" state.
+    // them mutually exclusive in browsers that support it (Chromium
+    // 120+ / Safari 17+). The slug is derived from the labels so two
+    // tabs blocks with different content get different group names,
+    // but it's truncated to 32 chars — two blocks whose first 32
+    // alphanumeric label chars match will share a group. That's a
+    // niche case (twin tabs blocks with identical leading labels);
+    // collision means cross-block exclusivity, not a crash.
     const groupName = `np-tabs-${items
       .map((i) => i.label)
       .join("-")
@@ -109,6 +112,18 @@ export const tabsBlock: NpBlockDefinition = {
 
     return (
       <section className="np-block-tabs" style={sectionStyle}>
+        {/* `list-style: none` on summary kills the default disclosure
+            triangle in Chromium / Firefox. Safari uses a separate
+            `::-webkit-details-marker` pseudo that ignores the inline
+            style, so we emit a tiny scoped rule alongside the inline
+            ones. The rule is idempotent — multiple tabs blocks on the
+            same page emit the same selector with no side effects. */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              ".np-block-tabs summary::-webkit-details-marker { display: none; }",
+          }}
+        />
         <div style={wrapperStyle}>
           {heading ? (
             <h2
