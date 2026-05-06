@@ -365,9 +365,11 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // Honor the parent's contract — the wrapper takes the place
         // of `range.length` siblings, so the parent now contains the
         // wrapper. If `allowedChildTypes` excludes the wrapper type,
-        // the wrap would build an instantly-invalid tree. Count is
-        // strictly non-increasing (N → 1), so passing the post-op
-        // count - 1 makes `canAcceptChild`'s max check pass through.
+        // the wrap would build an instantly-invalid tree. The
+        // wrap collapses N siblings into 1 wrapper, so the parent's
+        // child count is strictly non-increasing — passing
+        // `postOpCount - 1` keeps `canAcceptChild`'s max check a
+        // no-op and lets it focus on `allowedChildTypes`.
         if (parentId !== null) {
           const parent = findBlockInTreeFlat(state, parentId);
           const parentDef = parent ? definitions.get(parent.type) : null;
