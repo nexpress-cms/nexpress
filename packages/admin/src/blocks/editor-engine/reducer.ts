@@ -224,6 +224,28 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         if (!canAcceptChild(containerDef, source.type, 0)) {
           return state;
         }
+        // Honor the *parent*'s contract too. The source is replaced
+        // in place by the wrapper, so the parent now contains the
+        // wrapper — if `allowedChildTypes` excludes the wrapper
+        // type, this would create an instantly-invalid tree on the
+        // way out. Count is non-increasing (1 source → 1 wrapper),
+        // so passing `len - 1` keeps the max-children check a no-op
+        // and lets `canAcceptChild` focus on `allowedChildTypes`.
+        const sourceLoc = locateBlock(state, action.id);
+        if (sourceLoc && sourceLoc.parentId !== null) {
+          const parent = findBlockInTreeFlat(state, sourceLoc.parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (
+            parentDef &&
+            !canAcceptChild(
+              parentDef,
+              action.containerType,
+              (parent?.children?.length ?? 1) - 1,
+            )
+          ) {
+            return state;
+          }
+        }
         return mapTree(state, (block) => {
           if (block.id !== action.id) return block;
           const wrapper = createBlockInstance(containerDef);
@@ -340,6 +362,24 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         }
         const start = indices[0];
         const end = indices[indices.length - 1];
+        // Honor the parent's contract — the wrapper takes the place
+        // of `range.length` siblings, so the parent now contains the
+        // wrapper. If `allowedChildTypes` excludes the wrapper type,
+        // the wrap would build an instantly-invalid tree. Count is
+        // strictly non-increasing (N → 1), so passing the post-op
+        // count - 1 makes `canAcceptChild`'s max check pass through.
+        if (parentId !== null) {
+          const parent = findBlockInTreeFlat(state, parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (parentDef) {
+            const postOpCount = (parent?.children?.length ?? 0) - (end - start + 1) + 1;
+            if (
+              !canAcceptChild(parentDef, action.containerType, postOpCount - 1)
+            ) {
+              return state;
+            }
+          }
+        }
         return updateContainerChildren(state, parentId, (siblings) => {
           const range = siblings.slice(start, end + 1);
           // Honor the wrapper's contract on each child + the

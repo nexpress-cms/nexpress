@@ -182,8 +182,16 @@ export function PreviewPanel({
         scroll-margin-bottom: 1rem;
       }
     `;
+    // Scroll the marker's first element child, not the marker
+    // itself. The marker has `display: contents` so it generates no
+    // box of its own — `scrollIntoView` on a box-less element is
+    // historically unreliable across browsers (Chrome/Firefox
+    // mostly handle it via descendant fallback, Safari has had
+    // edge-case bugs). Targeting the rendered element is the same
+    // node the outline CSS hits via `> *`, so the scroll target and
+    // the highlight target stay aligned.
     const target = doc.querySelector<HTMLElement>(
-      `[data-np-block-id="${escaped}"]`,
+      `[data-np-block-id="${escaped}"] > *`,
     );
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [selectedBlockId]);
