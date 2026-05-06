@@ -65,22 +65,38 @@ export const parseFieldInput = (
 };
 
 /**
- * Returns true when every `[propName, expected]` predicate in
- * `field.hiddenWhen` matches the block's current `props`. Used by
- * the props form to skip rendering conditionally hidden fields —
- * a schema can express "show ctaUrl only when showCta is true"
- * without the block author writing UI logic.
+ * Returns true when the field should be hidden in the form. A
+ * schema can express conditional visibility two ways:
+ *
+ * - `hiddenWhen`: hide when every predicate matches.
+ * - `visibleWhen`: show only when every predicate matches (i.e.
+ *   hide when any predicate doesn't match).
+ *
+ * Both can coexist on the same field. The field is hidden if
+ * either rule fires.
  */
 export function isFieldHidden(
   field: NpBlockPropField,
   blockProps: Record<string, unknown>,
 ): boolean {
-  const predicates = field.hiddenWhen;
-  if (!predicates || predicates.length === 0) return false;
-  for (const [name, expected] of predicates) {
-    if (blockProps[name] !== expected) return false;
+  const hidden = field.hiddenWhen;
+  if (hidden && hidden.length > 0) {
+    let allMatch = true;
+    for (const [name, expected] of hidden) {
+      if (blockProps[name] !== expected) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) return true;
   }
-  return true;
+  const visible = field.visibleWhen;
+  if (visible && visible.length > 0) {
+    for (const [name, expected] of visible) {
+      if (blockProps[name] !== expected) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -152,6 +168,39 @@ export function groupVisibleFields(
     sections[index].fields.push(field);
   }
   return sections;
+}
+
+/**
+ * Quickly summarizes a block's validation status for collapsed-
+ * row badges. Returns:
+ *
+ * - `"error"` when any required prop is missing on the raw value.
+ * - `"warning"` when no required-missing but at least one
+ *   `lintFieldValue` warning fires (pattern / min / max).
+ * - `null` when everything looks clean.
+ *
+ * Skips fields hidden by `hiddenWhen` / `visibleWhen` so the
+ * badge doesn't fire on a field the operator can't see anyway.
+ */
+export function getRowValidationStatus(
+  definition: NpBlockMetadata | undefined,
+  block: NpBlockInstance,
+): "error" | "warning" | null {
+  if (!definition) return null;
+  let warning = false;
+  for (const field of definition.propsSchema) {
+    if (isFieldHidden(field, block.props)) continue;
+    const rawValue = block.props[field.name];
+    if (
+      field.required === true &&
+      (rawValue === undefined || rawValue === "" || rawValue === null)
+    ) {
+      return "error";
+    }
+    const value = getFieldValue(field, rawValue);
+    if (lintFieldValue(field, value)) warning = true;
+  }
+  return warning ? "warning" : null;
 }
 
 /**

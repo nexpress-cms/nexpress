@@ -39,6 +39,7 @@ export { createHistoryReducer } from "./history.js";
 export {
   deleteNeedsConfirmation,
   getFieldValue,
+  getRowValidationStatus,
   groupVisibleFields,
   isFieldHidden,
   isRecord,

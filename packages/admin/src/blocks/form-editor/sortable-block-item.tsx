@@ -25,6 +25,7 @@ import {
   deleteNeedsConfirmation,
   getFieldValue,
   getRowSummary,
+  getRowValidationStatus,
   groupVisibleFields,
   lintFieldValue,
   type ContainerCandidate,
@@ -85,6 +86,20 @@ export interface SortableBlockItemProps {
   onMoveInto: (id: string, targetParentId: string) => void;
   onWrapIn: (id: string, containerType: string) => void;
   getMoveIntoCandidates: (id: string) => ContainerCandidate[];
+  // Collapsed/open state lifted to the orchestrator so it
+  // persists across the same session — `BlockPageEditor` keeps a
+  // Set<id> of explicitly-collapsed rows.
+  /**
+   * Lookup-by-id for the persisted "is this row expanded" state.
+   * Lifted to `BlockPageEditor` so collapsed rows survive every
+   * dispatch (re-creating sub-trees) and so the orchestrator can
+   * persist the set across reloads via localStorage. The lookup
+   * shape (vs a plain boolean) lets us propagate the same handle
+   * recursively into ChildrenArea without each level having to
+   * splice its own children's state.
+   */
+  isOpen: (id: string) => boolean;
+  onOpenChange: (id: string, open: boolean) => void;
 }
 
 export function SortableBlockItem({
@@ -106,10 +121,11 @@ export function SortableBlockItem({
   onMoveInto,
   onWrapIn,
   getMoveIntoCandidates,
+  isOpen,
+  onOpenChange,
 }: SortableBlockItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id });
-  const [open, setOpen] = useState(true);
   const [jsonOpen, setJsonOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -124,6 +140,8 @@ export function SortableBlockItem({
   const isChildOfGrid = parentBlock?.type === "grid";
   const summary = getRowSummary(definition, block);
   const childCount = block.children?.length ?? 0;
+  const validationStatus = getRowValidationStatus(definition, block);
+  const selfOpen = isOpen(block.id);
 
   const handleDelete = () => {
     if (deleteNeedsConfirmation(definition, block)) {
@@ -146,7 +164,10 @@ export function SortableBlockItem({
         isContainer && "focus-within:ring-2 focus-within:ring-primary/30",
       )}
     >
-      <Collapsible open={open} onOpenChange={setOpen}>
+      <Collapsible
+        open={selfOpen}
+        onOpenChange={(next) => onOpenChange(block.id, next)}
+      >
         <header className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2">
           <button
             type="button"
@@ -161,9 +182,9 @@ export function SortableBlockItem({
             <button
               type="button"
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label={open ? "Collapse block" : "Expand block"}
+              aria-label={selfOpen ? "Collapse block" : "Expand block"}
             >
-              {open ? (
+              {selfOpen ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
                 <ChevronRight className="h-4 w-4" />
@@ -176,6 +197,26 @@ export function SortableBlockItem({
               {isContainer ? (
                 <span className="ml-2 inline-flex items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
                   container
+                </span>
+              ) : null}
+              {/* Validation status badge — visible whether the row
+                  is collapsed or open so a missing required prop
+                  buried inside a collapsed row stays visible. */}
+              {validationStatus === "error" ? (
+                <span
+                  className="ml-2 inline-flex items-center rounded-sm bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-rose-600 dark:text-rose-300"
+                  aria-label="This block has missing required props"
+                  title="Missing required props"
+                >
+                  required
+                </span>
+              ) : validationStatus === "warning" ? (
+                <span
+                  className="ml-2 inline-flex items-center rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300"
+                  aria-label="This block has prop validation warnings"
+                  title="Prop validation warnings"
+                >
+                  warning
                 </span>
               ) : null}
               {summary ? (
@@ -392,6 +433,8 @@ export function SortableBlockItem({
                 onMoveInto={onMoveInto}
                 onWrapIn={onWrapIn}
                 getMoveIntoCandidates={getMoveIntoCandidates}
+                isOpen={isOpen}
+                onOpenChange={onOpenChange}
               />
             ) : null}
           </div>
@@ -421,6 +464,8 @@ interface ChildrenAreaProps {
   onMoveInto: (id: string, targetParentId: string) => void;
   onWrapIn: (id: string, containerType: string) => void;
   getMoveIntoCandidates: (id: string) => ContainerCandidate[];
+  isOpen: (id: string) => boolean;
+  onOpenChange: (id: string, open: boolean) => void;
 }
 
 function ChildrenArea({
@@ -439,6 +484,8 @@ function ChildrenArea({
   onMoveInto,
   onWrapIn,
   getMoveIntoCandidates,
+  isOpen,
+  onOpenChange,
 }: ChildrenAreaProps) {
   const children = container.children ?? [];
   const containerDefinition = definitions.get(container.type);
@@ -525,6 +572,8 @@ function ChildrenArea({
                     onMoveInto={onMoveInto}
                     onWrapIn={onWrapIn}
                     getMoveIntoCandidates={getMoveIntoCandidates}
+                    isOpen={isOpen}
+                    onOpenChange={onOpenChange}
                   />
                   <InsertSlot
                     availableBlocks={availableBlocks}
