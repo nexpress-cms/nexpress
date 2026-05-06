@@ -26,6 +26,15 @@ const VIEWPORTS: readonly ViewportConfig[] = [
 interface PreviewPanelProps {
   blocks: NpBlockInstance[];
   className?: string;
+  /**
+   * Currently-focused block id from the editor, or `null` when no
+   * row has focus. The panel scrolls the matching element in the
+   * preview iframe into view and applies a highlight outline.
+   * Layout-neutral marker divs (`data-np-block-id`) are emitted by
+   * the preview render path (`previewMarkers: true` on
+   * `renderBlocks`).
+   */
+  selectedBlockId?: string | null;
 }
 
 const PREVIEW_ENDPOINT = "/api/admin/preview-blocks";
@@ -47,13 +56,18 @@ const DEBOUNCE_MS = 500;
  * editor state is preserved, the operator just sees the error
  * context inside the preview frame.
  */
-export function PreviewPanel({ blocks, className }: PreviewPanelProps) {
+export function PreviewPanel({
+  blocks,
+  className,
+  selectedBlockId,
+}: PreviewPanelProps) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [viewport, setViewport] = useState<Viewport>("desktop");
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Serialized payload — both for stable useEffect deps (otherwise
   // every re-render with the same blocks tree would re-fetch) and
@@ -116,6 +130,51 @@ export function PreviewPanel({ blocks, className }: PreviewPanelProps) {
   const activeViewport =
     VIEWPORTS.find((v) => v.id === viewport) ?? VIEWPORTS[0];
 
+  // Selection highlight + scroll-into-view. The iframe is
+  // `srcDoc` + `sandbox="allow-same-origin"`, so the parent can
+  // reach into `iframe.contentDocument` directly. We re-run the
+  // effect on selection change AND on `html` change so a selection
+  // applied while the iframe was still mid-load gets re-applied
+  // after the new doc lands. CSS injection is idempotent — we look
+  // for a stable `<style data-np-preview-selection>` and replace
+  // its rules instead of appending duplicates.
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    if (!doc || !doc.body) return;
+
+    let style = doc.querySelector<HTMLStyleElement>(
+      "style[data-np-preview-selection]",
+    );
+    if (!style) {
+      style = doc.createElement("style");
+      style.setAttribute("data-np-preview-selection", "");
+      doc.head.appendChild(style);
+    }
+    if (!selectedBlockId) {
+      style.textContent = "";
+      return;
+    }
+    // The marker wrapper is `display: contents`, so the outline
+    // would do nothing if applied to it directly. Apply to its
+    // first element-typed child instead via CSS — `:scope > *` is
+    // exactly what we want.
+    const escaped = selectedBlockId.replace(/"/g, '\\"');
+    style.textContent = `
+      [data-np-block-id="${escaped}"] > * {
+        outline: 2px solid #6366f1 !important;
+        outline-offset: 2px;
+        scroll-margin-top: 1rem;
+        scroll-margin-bottom: 1rem;
+      }
+    `;
+    const target = doc.querySelector<HTMLElement>(
+      `[data-np-block-id="${escaped}"]`,
+    );
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [selectedBlockId, html]);
+
   return (
     <section
       className={cn(
@@ -164,6 +223,7 @@ export function PreviewPanel({ blocks, className }: PreviewPanelProps) {
       ) : null}
       <div className="flex justify-center overflow-hidden rounded-md border border-border/60 bg-background">
         <iframe
+          ref={iframeRef}
           // `srcDoc` keeps the preview inside this document — no
           // navigation, no admin-cookie leakage into the rendered
           // tree, no separate URL. The route's HTML is fully self-

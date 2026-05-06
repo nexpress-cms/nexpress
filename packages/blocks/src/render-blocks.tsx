@@ -36,6 +36,19 @@ export interface NpRenderBlocksOptions {
    * server-only modules even via dynamic import.
    */
   ctx?: NpBlockRenderContext;
+  /**
+   * When true, wraps each rendered block instance with a marker
+   * `<div data-np-block-id="…">` so the page-builder's iframe-
+   * preview can find a specific block in the rendered DOM (for
+   * selection highlight + scroll-to). The wrapper uses
+   * `display: contents` so it doesn't change layout — it's
+   * purely a DOM landmark, invisible to layout and to the
+   * accessibility tree's content flow.
+   *
+   * Off by default. Production renders never enable this; only
+   * the preview API route flips it on.
+   */
+  previewMarkers?: boolean;
 }
 
 /**
@@ -64,10 +77,11 @@ export function renderBlocks(
     : (optionsOrRegistry ?? {});
   const registry = options.registry ?? getSharedRegistry();
   const ctx = options.ctx;
+  const previewMarkers = options.previewMarkers ?? false;
 
   return (
     <div className="np-blocks">
-      {pageBlocks.map((b) => renderBlock(b, registry, ctx))}
+      {pageBlocks.map((b) => renderBlock(b, registry, ctx, undefined, previewMarkers))}
     </div>
   );
 }
@@ -157,7 +171,8 @@ function renderBlock(
   instance: NpBlockInstance,
   registry: NpBlockRegistry,
   ctx: NpBlockRenderContext | undefined,
-  parentType?: string,
+  parentType: string | undefined,
+  previewMarkers: boolean,
 ): React.ReactElement {
   const definition = registry.get(instance.type);
 
@@ -175,7 +190,7 @@ function renderBlock(
     // render() so the parent decides where to place children
     // (inside its grid wrapper, columns, etc.).
     rendered = instance.children.map((child) =>
-      renderBlock(child, registry, ctx, instance.type),
+      renderBlock(child, registry, ctx, instance.type, previewMarkers),
     );
   }
 
@@ -194,6 +209,25 @@ function renderBlock(
     />
   );
 
+  // Optional preview marker. `display: contents` keeps the wrapper
+  // out of the layout / box flow — the rendered block looks
+  // identical to a non-marker render, but a `querySelector` from
+  // the editor's iframe parent can find it by id. Marker is added
+  // BEFORE the grid-cell wrap so the cell's grid-column rule
+  // applies to the actual visible element, not the marker.
+  const markedNode = previewMarkers ? (
+    <div
+      key={instance.id}
+      data-np-block-id={instance.id}
+      data-np-block-type={instance.type}
+      style={{ display: "contents" }}
+    >
+      {node}
+    </div>
+  ) : (
+    node
+  );
+
   // When this block is itself a grid child, wrap it in a span div
   // so the grid layout reads the colSpan meta off `props._layout`.
   // We do this at the renderer (not inside each leaf block) so
@@ -206,10 +240,10 @@ function renderBlock(
         className="np-block-grid-cell"
         style={{ gridColumn: `span ${colSpan} / span ${colSpan}` }}
       >
-        {node}
+        {markedNode}
       </div>
     );
   }
 
-  return node;
+  return markedNode;
 }
