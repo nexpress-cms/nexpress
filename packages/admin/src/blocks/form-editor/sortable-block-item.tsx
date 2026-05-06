@@ -1,0 +1,542 @@
+"use client";
+
+import { Fragment, useState } from "react";
+import {
+  Braces,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Copy,
+  GripVertical,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
+
+import { BlockPalette } from "../block-palette.js";
+import {
+  canAcceptChild,
+  deleteNeedsConfirmation,
+  getFieldValue,
+  getRowSummary,
+  groupVisibleFields,
+  lintFieldValue,
+  type ContainerCandidate,
+} from "../editor-engine/index.js";
+import {
+  BlockJsonDialog,
+  DeleteBlockDialog,
+  FieldControl,
+} from "../shared/index.js";
+import { Button } from "../../ui/button.js";
+import { Card } from "../../ui/card.js";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../ui/collapsible.js";
+import { Label } from "../../ui/label.js";
+import { cn } from "../../ui/utils.js";
+
+import { GridChildLayoutControl, getLayout } from "./grid-child-layout.js";
+import { HierarchyMenu } from "./hierarchy-menu.js";
+import { InsertSlot } from "./insert-slot.js";
+
+/**
+ * Form-card row UI for a single block + the recursive
+ * `ChildrenArea` that renders container children. Both are in the
+ * same file because they call each other (a container's
+ * `SortableBlockItem` mounts `ChildrenArea`, which in turn mounts
+ * a `SortableBlockItem` per child). Splitting them into separate
+ * modules works in ESM but the tight cycle reads cleaner here.
+ *
+ * The form-editor lives behind `useEditorState` from the engine —
+ * this component never builds reducer state itself, only
+ * dispatches the right action through the props the orchestrator
+ * gave it.
+ */
+
+export interface SortableBlockItemProps {
+  block: NpBlockInstance;
+  definition?: NpBlockMetadata;
+  parentBlock?: NpBlockInstance;
+  parentDefinition?: NpBlockMetadata;
+  availableBlocks: NpBlockMetadata[];
+  definitions: Map<string, NpBlockMetadata>;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string) => void;
+  onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onReplaceProps: (id: string, props: Record<string, unknown>) => void;
+  onAddChild: (parentId: string, blockType: string) => void;
+  onInsert: (
+    position: "before" | "after",
+    targetId: string,
+    blockType: string,
+  ) => void;
+  onMoveOut: (id: string) => void;
+  onMoveInto: (id: string, targetParentId: string) => void;
+  onWrapIn: (id: string, containerType: string) => void;
+  getMoveIntoCandidates: (id: string) => ContainerCandidate[];
+}
+
+export function SortableBlockItem({
+  block,
+  definition,
+  parentBlock,
+  parentDefinition,
+  availableBlocks,
+  definitions,
+  onMoveUp,
+  onMoveDown,
+  onDuplicate,
+  onDelete,
+  onUpdateProps,
+  onReplaceProps,
+  onAddChild,
+  onInsert,
+  onMoveOut,
+  onMoveInto,
+  onWrapIn,
+  getMoveIntoCandidates,
+}: SortableBlockItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: block.id });
+  const [open, setOpen] = useState(true);
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const fieldIdPrefix = `np-block-${block.id}`;
+  const isContainer = Boolean(definition?.acceptsChildren);
+  const isChildOfGrid = parentBlock?.type === "grid";
+  const summary = getRowSummary(definition, block);
+  const childCount = block.children?.length ?? 0;
+
+  const handleDelete = () => {
+    if (deleteNeedsConfirmation(definition, block)) {
+      setDeleteOpen(true);
+      return;
+    }
+    onDelete(block.id);
+  };
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      tabIndex={0}
+      data-np-block-row={block.id}
+      aria-label={`Block row: ${definition?.label ?? block.type}`}
+      className={cn(
+        "overflow-hidden border-border/60 outline-none",
+        "focus-visible:ring-2 focus-visible:ring-primary/40",
+        isContainer && "focus-within:ring-2 focus-within:ring-primary/30",
+      )}
+    >
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <header className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2">
+          <button
+            type="button"
+            aria-label={`Drag ${definition?.label ?? block.type}`}
+            {...attributes}
+            {...listeners}
+            className="inline-flex h-7 w-7 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label={open ? "Collapse block" : "Expand block"}
+            >
+              {open ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+          </CollapsibleTrigger>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">
+              {definition?.label ?? block.type}
+              {isContainer ? (
+                <span className="ml-2 inline-flex items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+                  container
+                </span>
+              ) : null}
+              {summary ? (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  — {summary}
+                </span>
+              ) : null}
+            </div>
+            <div className="truncate font-mono text-xs text-muted-foreground">
+              {block.type}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Move up"
+              onClick={() => onMoveUp(block.id)}
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Move down"
+              onClick={() => onMoveDown(block.id)}
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Duplicate"
+              onClick={() => onDuplicate(block.id)}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Edit as JSON"
+              onClick={() => setJsonOpen(true)}
+            >
+              <Braces className="h-4 w-4" />
+            </Button>
+            <HierarchyMenu
+              block={block}
+              parentBlock={parentBlock}
+              availableBlocks={availableBlocks}
+              onMoveOut={onMoveOut}
+              onMoveInto={onMoveInto}
+              onWrapIn={onWrapIn}
+              getMoveIntoCandidates={getMoveIntoCandidates}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Delete"
+              onClick={handleDelete}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </header>
+        <BlockJsonDialog
+          open={jsonOpen}
+          onOpenChange={setJsonOpen}
+          blockType={block.type}
+          props={block.props}
+          propsSchema={definition?.propsSchema}
+          onApply={(nextProps) => onReplaceProps(block.id, nextProps)}
+        />
+        <DeleteBlockDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          label={definition?.label ?? block.type}
+          summary={summary}
+          childCount={childCount}
+          onConfirm={() => {
+            setDeleteOpen(false);
+            onDelete(block.id);
+          }}
+        />
+        <CollapsibleContent>
+          <div className="grid gap-4 p-4">
+            {/* Grid-child layout control. Only shown when this
+                block sits directly inside a `grid` container — the
+                meta lives on the child's props as `_layout: { colSpan }`. */}
+            {isChildOfGrid && parentDefinition ? (
+              <GridChildLayoutControl
+                block={block}
+                inputId={`${fieldIdPrefix}-_layout-colSpan`}
+                onChange={(colSpan) =>
+                  onUpdateProps(block.id, {
+                    _layout: { ...(getLayout(block.props) ?? {}), colSpan },
+                  })
+                }
+              />
+            ) : null}
+
+            {definition ? (
+              definition.propsSchema.length === 0 && !isContainer ? (
+                <p className="text-xs text-muted-foreground">
+                  This block has no editable props.
+                </p>
+              ) : (
+                groupVisibleFields(definition.propsSchema, block.props).map(
+                  (section) => (
+                    <div
+                      key={section.group ?? "__ungrouped__"}
+                      className={cn(
+                        section.group
+                          ? "rounded-md border border-border/50 bg-muted/20 p-3"
+                          : "contents",
+                      )}
+                    >
+                      {section.group ? (
+                        <div className="pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          {section.group}
+                        </div>
+                      ) : null}
+                      <div className="grid gap-4">
+                        {section.fields.map((field) => {
+                          // Required-missing checks the RAW prop, not the
+                          // value-with-defaults (#467 post-review).
+                          const rawValue = block.props[field.name];
+                          const value = getFieldValue(field, rawValue);
+                          const inputId = `${fieldIdPrefix}-${field.name}`;
+                          const isRequiredMissing =
+                            field.required === true &&
+                            (rawValue === undefined ||
+                              rawValue === "" ||
+                              rawValue === null);
+                          const lintMessage = lintFieldValue(field, value);
+                          return (
+                            <div key={field.name} className="grid gap-1.5">
+                              {field.type !== "boolean" ? (
+                                <Label
+                                  htmlFor={inputId}
+                                  className="flex items-center gap-1"
+                                >
+                                  <span>{field.label}</span>
+                                  {field.required ? (
+                                    <span
+                                      aria-label="required"
+                                      className="text-rose-500"
+                                    >
+                                      *
+                                    </span>
+                                  ) : null}
+                                </Label>
+                              ) : null}
+                              <FieldControl
+                                field={field}
+                                value={value}
+                                onChange={(next) =>
+                                  onUpdateProps(block.id, { [field.name]: next })
+                                }
+                                inputId={inputId}
+                              />
+                              {field.description ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {field.description}
+                                </p>
+                              ) : null}
+                              {isRequiredMissing ? (
+                                <p className="text-xs text-rose-600 dark:text-rose-300">
+                                  {field.label} is required.
+                                </p>
+                              ) : null}
+                              {!isRequiredMissing && lintMessage ? (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                  {lintMessage}
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ),
+                )
+              )
+            ) : (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                Unknown block type: <span className="font-mono">{block.type}</span>
+              </div>
+            )}
+
+            {/* Children area for container blocks. Each container
+                hosts its own SortableContext so children can be
+                reordered within the container; cross-container
+                drag is intentionally not supported in v1. */}
+            {isContainer ? (
+              <ChildrenArea
+                container={block}
+                availableBlocks={availableBlocks}
+                definitions={definitions}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                onDuplicate={onDuplicate}
+                onDelete={onDelete}
+                onUpdateProps={onUpdateProps}
+                onReplaceProps={onReplaceProps}
+                onAddChild={onAddChild}
+                onInsert={onInsert}
+                onMoveOut={onMoveOut}
+                onMoveInto={onMoveInto}
+                onWrapIn={onWrapIn}
+                getMoveIntoCandidates={getMoveIntoCandidates}
+              />
+            ) : null}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+interface ChildrenAreaProps {
+  container: NpBlockInstance;
+  availableBlocks: NpBlockMetadata[];
+  definitions: Map<string, NpBlockMetadata>;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string) => void;
+  onUpdateProps: (id: string, props: Record<string, unknown>) => void;
+  onReplaceProps: (id: string, props: Record<string, unknown>) => void;
+  onAddChild: (parentId: string, blockType: string) => void;
+  onInsert: (
+    position: "before" | "after",
+    targetId: string,
+    blockType: string,
+  ) => void;
+  onMoveOut: (id: string) => void;
+  onMoveInto: (id: string, targetParentId: string) => void;
+  onWrapIn: (id: string, containerType: string) => void;
+  getMoveIntoCandidates: (id: string) => ContainerCandidate[];
+}
+
+function ChildrenArea({
+  container,
+  availableBlocks,
+  definitions,
+  onMoveUp,
+  onMoveDown,
+  onDuplicate,
+  onDelete,
+  onUpdateProps,
+  onReplaceProps,
+  onAddChild,
+  onInsert,
+  onMoveOut,
+  onMoveInto,
+  onWrapIn,
+  getMoveIntoCandidates,
+}: ChildrenAreaProps) {
+  const children = container.children ?? [];
+  const containerDefinition = definitions.get(container.type);
+  // Container contracts (#467 phase 4) — filter the Add-block
+  // popover to types this container actually accepts, hide the
+  // Add UI when at `maxChildren`, and surface min/max status.
+  const allowedChildBlocks = containerDefinition
+    ? availableBlocks.filter((def) =>
+        canAcceptChild(containerDefinition, def.type, children.length),
+      )
+    : availableBlocks;
+  const max = containerDefinition?.maxChildren;
+  const min = containerDefinition?.minChildren;
+  const atMax = typeof max === "number" && children.length >= max;
+  const belowMin = typeof min === "number" && children.length < min;
+  return (
+    <div className="grid gap-2 rounded-md border border-dashed border-border/60 bg-muted/20 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          Children ({children.length}
+          {typeof max === "number" ? ` / ${max}` : ""})
+        </p>
+        {atMax ? (
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Max reached
+          </span>
+        ) : (
+          <BlockPalette
+            availableBlocks={allowedChildBlocks}
+            onAdd={(type) => onAddChild(container.id, type)}
+            trigger={
+              <Button type="button" variant="outline" size="sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add child
+              </Button>
+            }
+          />
+        )}
+      </div>
+      {belowMin ? (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          This container expects at least {min} child
+          {min === 1 ? "" : "ren"}. Currently {children.length}.
+        </p>
+      ) : null}
+      <SortableContext
+        items={children.map((c) => c.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="grid gap-2">
+          {children.length === 0 ? (
+            <p className="rounded-md bg-background/50 px-3 py-4 text-center text-xs text-muted-foreground">
+              No children yet. Add one to start.
+            </p>
+          ) : (
+            children.map((child, index) => {
+              const childDefinition = definitions.get(child.type);
+              const childLabel = childDefinition?.label ?? child.type;
+              return (
+                <Fragment key={child.id}>
+                  {index === 0 ? (
+                    <InsertSlot
+                      availableBlocks={availableBlocks}
+                      onInsert={(blockType) => onInsert("before", child.id, blockType)}
+                      ariaLabel={`Insert block before ${childLabel}`}
+                    />
+                  ) : null}
+                  <SortableBlockItem
+                    block={child}
+                    definition={childDefinition}
+                    parentBlock={container}
+                    parentDefinition={containerDefinition}
+                    availableBlocks={availableBlocks}
+                    definitions={definitions}
+                    onMoveUp={onMoveUp}
+                    onMoveDown={onMoveDown}
+                    onDuplicate={onDuplicate}
+                    onDelete={onDelete}
+                    onUpdateProps={onUpdateProps}
+                    onReplaceProps={onReplaceProps}
+                    onAddChild={onAddChild}
+                    onInsert={onInsert}
+                    onMoveOut={onMoveOut}
+                    onMoveInto={onMoveInto}
+                    onWrapIn={onWrapIn}
+                    getMoveIntoCandidates={getMoveIntoCandidates}
+                  />
+                  <InsertSlot
+                    availableBlocks={availableBlocks}
+                    onInsert={(blockType) => onInsert("after", child.id, blockType)}
+                    ariaLabel={`Insert block after ${childLabel}`}
+                  />
+                </Fragment>
+              );
+            })
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
