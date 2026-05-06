@@ -7,7 +7,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   type ComponentType,
@@ -40,7 +39,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -90,6 +88,23 @@ import { cn } from "../ui/utils.js";
 
 import { BlockPalette } from "./block-palette.js";
 import {
+  canAcceptChild,
+  cloneBlockDeep,
+  collectContainerCandidates,
+  deleteNeedsConfirmation,
+  findBlockInTreeFlat,
+  getFieldValue,
+  getRowSummary,
+  groupVisibleFields,
+  isRecord,
+  lintFieldValue,
+  locateBlock,
+  parseFieldInput,
+  useEditorState,
+  type ContainerCandidate,
+  type EditorAction,
+} from "./editor-engine/index.js";
+import {
   deleteCustomPattern,
   deleteServerPattern,
   fetchServerPatterns,
@@ -102,8 +117,6 @@ import {
 } from "./patterns.js";
 import { PreviewPanel } from "./preview-panel.js";
 import { useCollectionOptions } from "./registry-context.js";
-
-declare const crypto: { randomUUID(): string };
 
 // Lexical editor — same lazy pattern the collection field-renderer
 // uses (#XXX). Loads only when an `image` / `richtext` block prop
@@ -132,528 +145,6 @@ interface BlockPageEditorProps {
   availableBlocks: NpBlockMetadata[];
 }
 
-type EditorAction =
-  | { type: "RESET"; blocks: NpBlockInstance[] }
-  | { type: "ADD"; blockType: string; parentId?: string }
-  | { type: "INSERT_BEFORE"; targetId: string; blockType: string }
-  | { type: "INSERT_AFTER"; targetId: string; blockType: string }
-  | { type: "DELETE"; id: string }
-  | { type: "DUPLICATE"; id: string }
-  | { type: "MOVE_WITHIN_PARENT"; parentId: string | null; fromId: string; toId: string }
-  | { type: "MOVE_UP"; id: string }
-  | { type: "MOVE_DOWN"; id: string }
-  // Cross-hierarchy moves (#467 phase 4). All three preserve
-  // children + props of the moved subtree; only its position
-  // changes.
-  // - MOVE_INTO: detach the block and append it as the last
-  //   child of `targetParentId` (a container block). No-op when
-  //   targetParentId == id (would orphan the block) or when
-  //   the target is a descendant of `id` (would create a cycle).
-  // - MOVE_OUT: detach the block from its current parent and
-  //   place it immediately AFTER its parent in the grandparent's
-  //   sibling list. No-op for top-level blocks (no grandparent).
-  // - WRAP_IN: replace the block in place with a new container
-  //   of `containerType` that has the block as its sole child.
-  //   Container's `defaultProps` apply.
-  | { type: "MOVE_INTO"; id: string; targetParentId: string }
-  | { type: "MOVE_OUT"; id: string }
-  | { type: "WRAP_IN"; id: string; containerType: string }
-  // Append a pattern's pre-shaped subtree to the top-level (or
-  // into a container when `parentId` is supplied). All ids in
-  // the pattern's blocks get regenerated so reuse never collides
-  // with an existing row.
-  | { type: "INSERT_PATTERN"; pattern: NpPattern; parentId?: string }
-  | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
-  | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> };
-
-const createBlockId = (): string => crypto.randomUUID();
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const getFieldValue = (field: NpBlockPropField, value: unknown): unknown => {
-  if (value !== undefined) return value;
-  if (field.defaultValue !== undefined) return field.defaultValue;
-  if (field.type === "boolean") return false;
-  if (field.type === "number") return 0;
-  return "";
-};
-
-const createBlockInstance = (definition: NpBlockMetadata): NpBlockInstance => ({
-  id: createBlockId(),
-  type: definition.type,
-  props: { ...definition.defaultProps },
-  // Eagerly seed an empty children array on containers so the
-  // editor's add-child UI has something to push into without a
-  // null-check round-trip.
-  ...(definition.acceptsChildren ? { children: [] } : {}),
-});
-
-// Recursive tree helpers. The blocks tree is small (handfuls of
-// blocks per page) so straightforward DFS beats threading a path
-// through every action.
-
-function mapTree(
-  blocks: NpBlockInstance[],
-  fn: (block: NpBlockInstance) => NpBlockInstance,
-): NpBlockInstance[] {
-  return blocks.map((block) => {
-    const next = fn(block);
-    if (next.children) {
-      const nextChildren = mapTree(next.children, fn);
-      return nextChildren === next.children ? next : { ...next, children: nextChildren };
-    }
-    return next;
-  });
-}
-
-function filterTree(
-  blocks: NpBlockInstance[],
-  predicate: (block: NpBlockInstance) => boolean,
-): NpBlockInstance[] {
-  return blocks
-    .filter(predicate)
-    .map((block) =>
-      block.children
-        ? { ...block, children: filterTree(block.children, predicate) }
-        : block,
-    );
-}
-
-// Find the parent id (or null for top-level) and index of a target.
-function locateBlock(
-  blocks: NpBlockInstance[],
-  id: string,
-  parentId: string | null = null,
-): { parentId: string | null; index: number } | null {
-  for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].id === id) return { parentId, index: i };
-    const childMatch = blocks[i].children
-      ? locateBlock(blocks[i].children!, id, blocks[i].id)
-      : null;
-    if (childMatch) return childMatch;
-  }
-  return null;
-}
-
-// Update the children of a target container (or top-level when
-// parentId is null) with `mutate`. Returns the new tree.
-function updateContainerChildren(
-  blocks: NpBlockInstance[],
-  parentId: string | null,
-  mutate: (children: NpBlockInstance[]) => NpBlockInstance[],
-): NpBlockInstance[] {
-  if (parentId === null) return mutate(blocks);
-  return blocks.map((block) => {
-    if (block.id === parentId) {
-      return { ...block, children: mutate(block.children ?? []) };
-    }
-    if (block.children) {
-      const nextChildren = updateContainerChildren(block.children, parentId, mutate);
-      return nextChildren === block.children ? block : { ...block, children: nextChildren };
-    }
-    return block;
-  });
-}
-
-const cloneBlockDeep = (block: NpBlockInstance): NpBlockInstance => ({
-  id: createBlockId(),
-  type: block.type,
-  props: { ...block.props },
-  ...(block.children ? { children: block.children.map(cloneBlockDeep) } : {}),
-});
-
-// Flat tree-walk that returns the block instance with the given
-// id, anywhere in the tree. Mirrors `findInTree` inside the
-// editor but lives at module scope so the reducer can use it.
-function findBlockInTreeFlat(
-  blocks: NpBlockInstance[],
-  id: string,
-): NpBlockInstance | null {
-  for (const b of blocks) {
-    if (b.id === id) return b;
-    if (b.children) {
-      const found = findBlockInTreeFlat(b.children, id);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-// True when `candidateId` lives inside the subtree rooted at
-// `ancestorId`. Used by MOVE_INTO to reject moves that would
-// create a cycle (move a block into its own descendant).
-function isDescendantOf(
-  blocks: NpBlockInstance[],
-  candidateId: string,
-  ancestorId: string,
-): boolean {
-  const ancestor = findBlockInTreeFlat(blocks, ancestorId);
-  if (!ancestor || !ancestor.children) return false;
-  return findBlockInTreeFlat(ancestor.children, candidateId) !== null;
-}
-
-// Decides whether the container described by `parentDef` can
-// accept a child of `childType` given its current children
-// count. A container with no `allowedChildTypes` accepts every
-// type; with `["*"]` is the same. `maxChildren` (when set)
-// caps the count.
-function canAcceptChild(
-  parentDef: NpBlockMetadata,
-  childType: string,
-  currentCount: number,
-): boolean {
-  if (
-    typeof parentDef.maxChildren === "number" &&
-    currentCount >= parentDef.maxChildren
-  ) {
-    return false;
-  }
-  const allowed = parentDef.allowedChildTypes;
-  if (!allowed || allowed.length === 0) return true;
-  if (allowed.includes("*")) return true;
-  return allowed.includes(childType);
-}
-
-// Removes the block with `id` from anywhere in the tree, returning
-// the new tree plus the detached block. Returns null when the
-// block isn't found.
-function detachBlock(
-  blocks: NpBlockInstance[],
-  id: string,
-): { tree: NpBlockInstance[]; removed: NpBlockInstance } | null {
-  const found = findBlockInTreeFlat(blocks, id);
-  if (!found) return null;
-  return {
-    tree: filterTree(blocks, (b) => b.id !== id),
-    removed: found,
-  };
-}
-
-const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
-  const definitions = new Map(availableBlocks.map((block) => [block.type, block]));
-
-  return (state: NpBlockInstance[], action: EditorAction): NpBlockInstance[] => {
-    switch (action.type) {
-      case "RESET":
-        return action.blocks;
-      case "ADD": {
-        const definition = definitions.get(action.blockType);
-        if (!definition) return state;
-        const parentId = action.parentId ?? null;
-        // Honor container contracts (#467) — reject when the
-        // type isn't allowed or the cap is hit. Top-level adds
-        // skip the check (no parent contract to honor).
-        if (parentId !== null) {
-          const parent = findBlockInTreeFlat(state, parentId);
-          const parentDef = parent ? definitions.get(parent.type) : null;
-          if (parentDef && !canAcceptChild(parentDef, action.blockType, parent?.children?.length ?? 0)) {
-            return state;
-          }
-        }
-        const next = createBlockInstance(definition);
-        return updateContainerChildren(state, parentId, (siblings) => [...siblings, next]);
-      }
-      case "INSERT_BEFORE":
-      case "INSERT_AFTER": {
-        const definition = definitions.get(action.blockType);
-        if (!definition) return state;
-        const loc = locateBlock(state, action.targetId);
-        if (!loc) return state;
-        // Honor the container contract on the parent (#467
-        // post-review). Slot insertion inside a container with
-        // `allowedChildTypes` / `maxChildren` previously bypassed
-        // the gate the Add-block popover already respected.
-        if (loc.parentId !== null) {
-          const parent = findBlockInTreeFlat(state, loc.parentId);
-          const parentDef = parent ? definitions.get(parent.type) : null;
-          if (
-            parentDef &&
-            !canAcceptChild(
-              parentDef,
-              action.blockType,
-              parent?.children?.length ?? 0,
-            )
-          ) {
-            return state;
-          }
-        }
-        const next = createBlockInstance(definition);
-        const offset = action.type === "INSERT_AFTER" ? 1 : 0;
-        return updateContainerChildren(state, loc.parentId, (siblings) => [
-          ...siblings.slice(0, loc.index + offset),
-          next,
-          ...siblings.slice(loc.index + offset),
-        ]);
-      }
-      case "DELETE":
-        return filterTree(state, (block) => block.id !== action.id);
-      case "DUPLICATE": {
-        const loc = locateBlock(state, action.id);
-        if (!loc) return state;
-        return updateContainerChildren(state, loc.parentId, (siblings) => {
-          const source = siblings[loc.index];
-          if (!source) return siblings;
-          const clone = cloneBlockDeep(source);
-          return [
-            ...siblings.slice(0, loc.index + 1),
-            clone,
-            ...siblings.slice(loc.index + 1),
-          ];
-        });
-      }
-      case "MOVE_WITHIN_PARENT": {
-        return updateContainerChildren(state, action.parentId, (siblings) => {
-          const fromIndex = siblings.findIndex((b) => b.id === action.fromId);
-          const toIndex = siblings.findIndex((b) => b.id === action.toId);
-          if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
-            return siblings;
-          }
-          return arrayMove(siblings, fromIndex, toIndex);
-        });
-      }
-      case "MOVE_UP": {
-        const loc = locateBlock(state, action.id);
-        if (!loc || loc.index === 0) return state;
-        return updateContainerChildren(state, loc.parentId, (siblings) =>
-          arrayMove(siblings, loc.index, loc.index - 1),
-        );
-      }
-      case "MOVE_DOWN": {
-        const loc = locateBlock(state, action.id);
-        if (!loc) return state;
-        return updateContainerChildren(state, loc.parentId, (siblings) => {
-          if (loc.index >= siblings.length - 1) return siblings;
-          return arrayMove(siblings, loc.index, loc.index + 1);
-        });
-      }
-      case "MOVE_INTO": {
-        // Detach + append into target container. Reject the
-        // self-into-self and into-descendant cases up front so the
-        // tree can never form a cycle, and honor any
-        // `allowedChildTypes` / `maxChildren` contract on the
-        // target.
-        if (action.id === action.targetParentId) return state;
-        const sourceLoc = locateBlock(state, action.id);
-        if (!sourceLoc) return state;
-        const target = findBlockInTreeFlat(state, action.targetParentId);
-        const targetDef = target ? definitions.get(target.type) : null;
-        if (!targetDef?.acceptsChildren) return state;
-        if (isDescendantOf(state, action.targetParentId, action.id)) {
-          return state;
-        }
-        const source = findBlockInTreeFlat(state, action.id);
-        if (
-          source &&
-          !canAcceptChild(
-            targetDef,
-            source.type,
-            target?.children?.length ?? 0,
-          )
-        ) {
-          return state;
-        }
-        const detached = detachBlock(state, action.id);
-        if (!detached) return state;
-        return updateContainerChildren(
-          detached.tree,
-          action.targetParentId,
-          (siblings) => [...siblings, detached.removed],
-        );
-      }
-      case "MOVE_OUT": {
-        // Promote one level: drop into grandparent immediately
-        // after the current parent. No-op at top-level (no
-        // grandparent to receive the block).
-        const sourceLoc = locateBlock(state, action.id);
-        if (!sourceLoc || sourceLoc.parentId === null) return state;
-        const parentId = sourceLoc.parentId;
-        const parentLoc = locateBlock(state, parentId);
-        if (!parentLoc) return state;
-        const detached = detachBlock(state, action.id);
-        if (!detached) return state;
-        return updateContainerChildren(
-          detached.tree,
-          parentLoc.parentId,
-          (siblings) => {
-            const parentIndex = siblings.findIndex((s) => s.id === parentId);
-            if (parentIndex === -1) {
-              return [...siblings, detached.removed];
-            }
-            return [
-              ...siblings.slice(0, parentIndex + 1),
-              detached.removed,
-              ...siblings.slice(parentIndex + 1),
-            ];
-          },
-        );
-      }
-      case "WRAP_IN": {
-        const containerDef = definitions.get(action.containerType);
-        if (!containerDef || !containerDef.acceptsChildren) return state;
-        const source = findBlockInTreeFlat(state, action.id);
-        if (!source) return state;
-        // Honor the wrapper's contract (#467 post-review). Wrapping
-        // a `hero` in a container with `allowedChildTypes:
-        // ["pricing-tier"]` would create an instantly-invalid tree
-        // — fail closed instead.
-        if (!canAcceptChild(containerDef, source.type, 0)) {
-          return state;
-        }
-        return mapTree(state, (block) => {
-          if (block.id !== action.id) return block;
-          const wrapper = createBlockInstance(containerDef);
-          return {
-            ...wrapper,
-            children: [block],
-          };
-        });
-      }
-      case "INSERT_PATTERN": {
-        // Re-id every block in the pattern so each insertion is
-        // independent. Filter unknown types defensively — a
-        // pattern stored via "save current as pattern" might
-        // outlive the plugin that contributed one of its blocks.
-        let sanitized = action.pattern.blocks
-          .filter((b) => definitions.has(b.type))
-          .map(cloneBlockDeep);
-        if (sanitized.length === 0) return state;
-        const parentId = action.parentId ?? null;
-        // Honor the parent container contract (#467 post-review).
-        // Each top-level block in the pattern is checked against
-        // `allowedChildTypes`, and the cap is enforced cumulatively
-        // — a pattern that would push the count past `maxChildren`
-        // truncates instead of breaking the cap.
-        if (parentId !== null) {
-          const parent = findBlockInTreeFlat(state, parentId);
-          const parentDef = parent ? definitions.get(parent.type) : null;
-          if (parentDef) {
-            const baseCount = parent?.children?.length ?? 0;
-            const accepted: NpBlockInstance[] = [];
-            let projectedCount = baseCount;
-            for (const block of sanitized) {
-              if (canAcceptChild(parentDef, block.type, projectedCount)) {
-                accepted.push(block);
-                projectedCount += 1;
-              }
-            }
-            if (accepted.length === 0) return state;
-            sanitized = accepted;
-          }
-        }
-        return updateContainerChildren(state, parentId, (siblings) => [
-          ...siblings,
-          ...sanitized,
-        ]);
-      }
-      case "UPDATE_PROPS":
-        return mapTree(state, (block) =>
-          block.id === action.id
-            ? { ...block, props: { ...block.props, ...action.props } }
-            : block,
-        );
-      case "REPLACE_PROPS":
-        // JSON-edit dialog wants the operator to drop keys by
-        // omitting them, so we replace rather than merge here.
-        return mapTree(state, (block) =>
-          block.id === action.id ? { ...block, props: action.props } : block,
-        );
-      default:
-        return state;
-    }
-  };
-};
-
-// Undo/redo wraps the inner reducer with a past/future stack. Only
-// state-mutating actions push history; UPDATE_PROPS is coalesced
-// when the operator is typing into the same block (consecutive
-// `coalesce: true` dispatches replace `present` without growing
-// `past`), so a sentence-long edit collapses to a single undo step.
-//
-// `RESET` clears history — used when the backing document changes
-// underneath the editor (server reload, JSON-apply, route nav).
-interface HistoryState<T> {
-  past: T[];
-  present: T;
-  future: T[];
-}
-
-type HistoryAction =
-  | { type: "DO"; action: EditorAction; coalesce: boolean }
-  | { type: "UNDO" }
-  | { type: "REDO" }
-  | { type: "RESET_HISTORY"; blocks: NpBlockInstance[] };
-
-const HISTORY_LIMIT = 50;
-
-const createHistoryReducer = (
-  inner: (state: NpBlockInstance[], action: EditorAction) => NpBlockInstance[],
-) =>
-  (
-    state: HistoryState<NpBlockInstance[]>,
-    action: HistoryAction,
-  ): HistoryState<NpBlockInstance[]> => {
-    switch (action.type) {
-      case "RESET_HISTORY":
-        return { past: [], present: action.blocks, future: [] };
-      case "UNDO": {
-        if (state.past.length === 0) return state;
-        const previous = state.past[state.past.length - 1];
-        return {
-          past: state.past.slice(0, -1),
-          present: previous,
-          future: [state.present, ...state.future],
-        };
-      }
-      case "REDO": {
-        if (state.future.length === 0) return state;
-        const [next, ...rest] = state.future;
-        return {
-          past: [...state.past, state.present],
-          present: next,
-          future: rest,
-        };
-      }
-      case "DO": {
-        const next = inner(state.present, action.action);
-        if (next === state.present) return state;
-        if (action.coalesce && state.past.length > 0) {
-          // Replace `present` without growing `past` so a typing
-          // burst collapses into one undo step.
-          return { past: state.past, present: next, future: [] };
-        }
-        const past = [...state.past, state.present];
-        if (past.length > HISTORY_LIMIT) past.shift();
-        return { past, present: next, future: [] };
-      }
-      default:
-        return state;
-    }
-  };
-
-const parseFieldInput = (
-  field: NpBlockPropField,
-  rawValue: string | boolean,
-): unknown => {
-  if (field.type === "boolean") return Boolean(rawValue);
-  if (field.type === "number") {
-    if (typeof rawValue === "string") {
-      const parsed = Number(rawValue);
-      return Number.isFinite(parsed) ? parsed : (field.defaultValue ?? 0);
-    }
-    return field.defaultValue ?? 0;
-  }
-  if (field.type === "richtext") {
-    if (typeof rawValue !== "string") return field.defaultValue ?? {};
-    try {
-      const parsed: unknown = JSON.parse(rawValue);
-      return isRecord(parsed) ? parsed : (field.defaultValue ?? {});
-    } catch {
-      return rawValue;
-    }
-  }
-  return rawValue;
-};
 
 interface FieldControlProps {
   field: NpBlockPropField;
@@ -877,142 +368,6 @@ function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
       }
     />
   );
-}
-
-// Returns true when every `[propName, expected]` predicate in
-// `field.hiddenWhen` matches the block's current `props`. Used by
-// the props form to skip rendering conditionally hidden fields —
-// a schema can express "show ctaUrl only when showCta is true"
-// without the block author writing UI logic.
-function isFieldHidden(
-  field: NpBlockPropField,
-  blockProps: Record<string, unknown>,
-): boolean {
-  const predicates = field.hiddenWhen;
-  if (!predicates || predicates.length === 0) return false;
-  for (const [name, expected] of predicates) {
-    if (blockProps[name] !== expected) return false;
-  }
-  return true;
-}
-
-// Soft client-side validation for a single field value. Returns
-// null when the value is OK, otherwise a human-readable warning
-// (the props form surfaces it as an amber banner). Server-side
-// validation still has the final say — this surface helps
-// operators spot issues before save.
-function lintFieldValue(
-  field: NpBlockPropField,
-  value: unknown,
-): string | null {
-  if (field.type === "number") {
-    if (typeof value !== "number" || !Number.isFinite(value)) return null;
-    if (typeof field.min === "number" && value < field.min) {
-      return field.patternMessage ?? `Must be ≥ ${field.min}`;
-    }
-    if (typeof field.max === "number" && value > field.max) {
-      return field.patternMessage ?? `Must be ≤ ${field.max}`;
-    }
-    return null;
-  }
-  if ((field.type === "text" || field.type === "url") && field.pattern) {
-    if (typeof value !== "string" || value.length === 0) return null;
-    // Anchor the regex (#467 post-review) so the soft-warning
-    // matches HTML5 `<input pattern>` semantics — the browser
-    // implicitly anchors with `^...$`, and we want both surfaces
-    // to agree on whether a value is valid.
-    const sourceWithoutAnchors = field.pattern
-      .replace(/^\^/, "")
-      .replace(/\$$/, "");
-    let regex: RegExp | null = null;
-    try {
-      regex = new RegExp(`^(?:${sourceWithoutAnchors})$`);
-    } catch {
-      // Author typed an invalid pattern — silently drop. Don't
-      // crash the editor over a schema typo.
-      return null;
-    }
-    if (regex && !regex.test(value)) {
-      return field.patternMessage ?? `Doesn't match pattern \`${field.pattern}\``;
-    }
-  }
-  return null;
-}
-
-interface FieldGroupSection {
-  group: string | null;
-  fields: NpBlockPropField[];
-}
-
-// Walks `propsSchema` and partitions visible (non-`hiddenWhen`)
-// fields into groups in declaration order. Fields without a
-// `group` go into the leading "ungrouped" bucket so existing
-// schemas stay flat. Within each bucket, declaration order is
-// preserved.
-function groupVisibleFields(
-  schema: readonly NpBlockPropField[],
-  blockProps: Record<string, unknown>,
-): FieldGroupSection[] {
-  const sections: FieldGroupSection[] = [];
-  const indexByGroup = new Map<string, number>();
-
-  for (const field of schema) {
-    if (isFieldHidden(field, blockProps)) continue;
-    const groupKey = field.group ?? null;
-    const lookupKey = groupKey ?? "__np_ungrouped__";
-    let index = indexByGroup.get(lookupKey);
-    if (index === undefined) {
-      index = sections.length;
-      sections.push({ group: groupKey, fields: [] });
-      indexByGroup.set(lookupKey, index);
-    }
-    sections[index].fields.push(field);
-  }
-  return sections;
-}
-
-// Reads the first non-empty string-shaped prop named in
-// `definition.summaryFields` and returns it for display on the
-// collapsed row header. Falls back to `null` so callers can render
-// a different layout (block type only) when no summary is available.
-function getRowSummary(
-  definition: NpBlockMetadata | undefined,
-  block: NpBlockInstance,
-): string | null {
-  const fields = definition?.summaryFields;
-  if (!fields || fields.length === 0) return null;
-  for (const name of fields) {
-    const value = block.props[name];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return null;
-}
-
-// Decides whether a delete should ask for confirmation. We confirm
-// when the operator might lose work — block has children or has any
-// prop that diverges from the registered defaults. Plain rows whose
-// props still match `defaultProps` delete in one click.
-function deleteNeedsConfirmation(
-  definition: NpBlockMetadata | undefined,
-  block: NpBlockInstance,
-): boolean {
-  if (block.children && block.children.length > 0) return true;
-  const defaults = definition?.defaultProps ?? {};
-  const propKeys = new Set([
-    ...Object.keys(defaults),
-    ...Object.keys(block.props),
-  ]);
-  for (const key of propKeys) {
-    if (key === "_layout") continue; // grid-child layout meta is structural
-    const next = block.props[key];
-    const prev = defaults[key];
-    if (JSON.stringify(next) !== JSON.stringify(prev)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 interface InsertSlotProps {
@@ -2611,35 +1966,6 @@ function findBlockInTree(
   return null;
 }
 
-interface ContainerCandidate {
-  id: string;
-  label: string;
-}
-
-// Walks the tree and collects container blocks that are valid
-// MOVE_INTO targets for `sourceId`: any container block that
-// isn't `sourceId` itself and isn't a descendant of it (which
-// would create a cycle).
-function collectContainerCandidates(
-  blocks: NpBlockInstance[],
-  sourceId: string,
-  definitions: Map<string, NpBlockMetadata>,
-): ContainerCandidate[] {
-  const out: ContainerCandidate[] = [];
-  const walk = (arr: NpBlockInstance[]): void => {
-    for (const b of arr) {
-      if (b.id !== sourceId) {
-        const def = definitions.get(b.type);
-        if (def?.acceptsChildren && !isDescendantOf(blocks, b.id, sourceId)) {
-          out.push({ id: b.id, label: def.label });
-        }
-      }
-      if (b.children) walk(b.children);
-    }
-  };
-  walk(blocks);
-  return out;
-}
 
 function filterCommandActions(
   actions: CommandAction[],
@@ -3194,53 +2520,14 @@ export function BlockPageEditor({
     () => new Map(availableBlocks.map((block) => [block.type, block])),
     [availableBlocks],
   );
-  const innerReducer = useMemo(
-    () => createEditorReducer(availableBlocks),
-    [availableBlocks],
-  );
-  const historyReducer = useMemo(
-    () => createHistoryReducer(innerReducer),
-    [innerReducer],
-  );
-  const [history, historyDispatch] = useReducer(historyReducer, {
-    past: [],
-    present: initialBlocks,
-    future: [],
-  } as HistoryState<NpBlockInstance[]>);
-  const blocks = history.present;
-  const canUndo = history.past.length > 0;
-  const canRedo = history.future.length > 0;
-
-  // Coalescing window for typing. Consecutive UPDATE_PROPS calls to
-  // the same block within this window collapse into a single undo
-  // step so a sentence-long edit doesn't bury earlier history.
-  const lastUpdateRef = useRef<{ time: number; id: string } | null>(null);
-  const dispatch = useCallback((action: EditorAction) => {
-    let coalesce = false;
-    if (action.type === "UPDATE_PROPS") {
-      const now = Date.now();
-      const last = lastUpdateRef.current;
-      if (last && last.id === action.id && now - last.time < 600) {
-        coalesce = true;
-      }
-      lastUpdateRef.current = { time: now, id: action.id };
-    } else {
-      lastUpdateRef.current = null;
-    }
-    historyDispatch({ type: "DO", action, coalesce });
-  }, []);
-  // Clearing `lastUpdateRef` on undo/redo prevents the next typing
-  // burst from being coalesced into the post-undo state — without
-  // this, an edit made within 600 ms of an undo would replace
-  // `present` without growing `past`, so it couldn't be undone.
-  const undo = useCallback(() => {
-    lastUpdateRef.current = null;
-    historyDispatch({ type: "UNDO" });
-  }, []);
-  const redo = useCallback(() => {
-    lastUpdateRef.current = null;
-    historyDispatch({ type: "REDO" });
-  }, []);
+  // Engine drives reducer + history + dispatch coalesce + onChange
+  // effect (#467 refactor). The form-editor here is just one
+  // surface; an in-page editor would use the same hook.
+  const { blocks, dispatch, undo, redo, canUndo, canRedo } = useEditorState({
+    initialBlocks,
+    availableBlocks,
+    onChange,
+  });
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
@@ -3376,26 +2663,6 @@ export function BlockPageEditor({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
-  const initialBlocksKey = useMemo(
-    () => JSON.stringify(initialBlocks),
-    [initialBlocks],
-  );
-
-  useEffect(() => {
-    historyDispatch({ type: "RESET_HISTORY", blocks: initialBlocks });
-    lastUpdateRef.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialBlocksKey]);
-
-  const isFirstRender = useRef(true);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    onChange(blocks);
-  }, [blocks, onChange]);
 
   // Cmd/Ctrl-Z / Cmd-Shift-Z / Ctrl-Y bound at window level. We
   // skip the shortcut while focus sits on a text-entry surface so
