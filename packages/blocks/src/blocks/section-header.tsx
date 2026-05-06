@@ -87,7 +87,7 @@ export const sectionHeaderBlock: NpBlockDefinition = {
               fontWeight: 700,
               letterSpacing: "0.18em",
               textTransform: "uppercase",
-              color: "#6366f1",
+              color: "var(--np-color-primary, #6366f1)",
             }}
           >
             {eyebrow}
@@ -99,7 +99,7 @@ export const sectionHeaderBlock: NpBlockDefinition = {
             margin: 0,
             fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
             lineHeight: 1.2,
-            color: "#0f172a",
+            color: "var(--np-color-foreground, #0f172a)",
           }}
         >
           {heading}
@@ -111,7 +111,7 @@ export const sectionHeaderBlock: NpBlockDefinition = {
               margin: 0,
               fontSize: "1.05rem",
               lineHeight: 1.65,
-              color: "#475569",
+              color: "var(--np-color-muted-foreground, #475569)",
               maxWidth: align === "center" ? "42rem" : "none",
               marginInline: align === "center" ? "auto" : undefined,
             }}

@@ -2,12 +2,13 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { npSettings } from "../db/schema/system.js";
 import { npNavigation, npSlugHistory } from "../db/schema/system.js";
-import type { NpThemeTokens } from "../theme/types.js";
+import type { NpThemeTokens, NpThemeTokensOverlay } from "../theme/types.js";
 import type { NpNavItem, NpFindOptions, NpFindResult, NpAuthUser } from "../config/types.js";
 import { DEFAULT_THEME } from "../theme/defaults.js";
 import { findDocuments, getCollectionConfig, getDb } from "../collections/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { getActiveTheme } from "../themes/registry.js";
 
 /**
  * Phase 15.4 — every settings/navigation read scopes by the
@@ -22,6 +23,25 @@ async function resolveSiteId(): Promise<string> {
   return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
+/**
+ * Resolves the effective theme tokens for the current site by
+ * layering three sources, last-writer-wins:
+ *
+ *   1. `DEFAULT_THEME` — framework baseline (always full).
+ *   2. The active theme's `impl.tokens` — author-shipped defaults
+ *      that distinguish a theme from the framework baseline (e.g.
+ *      magazine's warm cream palette, portfolio's dark surface).
+ *   3. The DB row in `np_settings.theme` — admin overrides via the
+ *      theme settings tab.
+ *
+ * Each layer is `Partial<NpThemeTokens>` — themes only declare the
+ * keys they care about, admins only save deltas they edit. The
+ * merge ensures every emitted token has a value.
+ *
+ * Mirrors the merge that `apps/web`'s preview-blocks route already
+ * performs, so the public render and the page-builder preview
+ * resolve to the same tokens for the same theme.
+ */
 export async function getTheme(): Promise<NpThemeTokens> {
   const db = getDb();
   const siteId = await resolveSiteId();
@@ -31,11 +51,46 @@ export async function getTheme(): Promise<NpThemeTokens> {
     .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme")))
     .limit(1);
 
-  if (rows.length === 0 || !rows[0]) {
-    return DEFAULT_THEME;
-  }
+  // `impl` is opaque to core (declared as `unknown` so React types
+  // don't leak into this package). Cast narrowly to read the only
+  // field we need; everything else stays opaque.
+  const active = await getActiveTheme();
+  const themeOverlay = (
+    active?.impl as { tokens?: NpThemeTokensOverlay } | null | undefined
+  )?.tokens;
+  // Admin's theme settings tab historically saved a full
+  // `NpThemeTokens` shape, but accept partial overlays too — same
+  // sub-tree-aware merge applies, so a future admin UI that only
+  // edits a handful of fields doesn't have to round-trip the entire
+  // token tree on every save.
+  const dbOverlay = rows[0]?.value as NpThemeTokensOverlay | undefined;
 
-  return rows[0].value as NpThemeTokens;
+  if (!themeOverlay && !dbOverlay) return DEFAULT_THEME;
+  return mergeThemeTokens(DEFAULT_THEME, themeOverlay, dbOverlay);
+}
+
+/**
+ * Layered token merge. Each subsequent overlay wins on key
+ * collision. Sub-objects merge field-by-field so a theme that only
+ * sets `colors.primary` doesn't blow away the rest of the colors
+ * sub-tree.
+ */
+function mergeThemeTokens(
+  base: NpThemeTokens,
+  ...overlays: Array<NpThemeTokensOverlay | undefined>
+): NpThemeTokens {
+  const result: NpThemeTokens = {
+    colors: { ...base.colors },
+    typography: { ...base.typography },
+    shape: { ...base.shape },
+  };
+  for (const overlay of overlays) {
+    if (!overlay) continue;
+    if (overlay.colors) Object.assign(result.colors, overlay.colors);
+    if (overlay.typography) Object.assign(result.typography, overlay.typography);
+    if (overlay.shape) Object.assign(result.shape, overlay.shape);
+  }
+  return result;
 }
 
 export async function getNavigation(

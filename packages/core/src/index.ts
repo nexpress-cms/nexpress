@@ -357,6 +357,7 @@ export type {
   NpThemeColors,
   NpThemeTypography,
   NpThemeShape,
+  NpThemeTokensOverlay,
 } from "./theme/types.js";
 export { DEFAULT_THEME } from "./theme/defaults.js";
 export { sanitizeTokenValue } from "./theme/sanitize.js";

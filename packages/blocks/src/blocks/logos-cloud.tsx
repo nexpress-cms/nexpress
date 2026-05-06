@@ -79,7 +79,7 @@ export const logosCloudBlock: NpBlockDefinition = {
 
     const sectionStyle: CSSProperties = {
       padding: "3rem 1.5rem",
-      background: "#ffffff",
+      background: "var(--np-color-background, #ffffff)",
     };
     const wrapperStyle: CSSProperties = {
       maxWidth: "72rem",
@@ -113,14 +113,14 @@ export const logosCloudBlock: NpBlockDefinition = {
                 fontWeight: 600,
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
-                color: "#64748b",
+                color: "var(--np-color-muted-foreground, #64748b)",
               }}
             >
               {heading}
             </p>
           ) : null}
           {items.length === 0 ? (
-            <p style={{ textAlign: "center", color: "#94a3b8" }}>
+            <p style={{ textAlign: "center", color: "var(--np-color-muted-foreground, #94a3b8)" }}>
               Add logo entries in the block editor.
             </p>
           ) : (

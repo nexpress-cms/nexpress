@@ -57,8 +57,14 @@ export const ctaBlock: NpBlockDefinition = {
 
     const sectionStyle: CSSProperties = {
       padding: "4rem 1.5rem",
-      background: variant === "primary" ? "linear-gradient(135deg, #1d4ed8, #0f172a)" : "#e2e8f0",
-      color: variant === "primary" ? "#eff6ff" : "#0f172a",
+      background:
+        variant === "primary"
+          ? "linear-gradient(135deg, var(--np-color-primary, #1d4ed8), var(--np-color-foreground, #0f172a))"
+          : "var(--np-color-muted, #e2e8f0)",
+      color:
+        variant === "primary"
+          ? "var(--np-color-primary-foreground, #eff6ff)"
+          : "var(--np-color-foreground, #0f172a)",
     };
 
     return (
@@ -76,8 +82,14 @@ export const ctaBlock: NpBlockDefinition = {
                 alignItems: "center",
                 padding: "0.9rem 1.6rem",
                 borderRadius: "999px",
-                background: variant === "primary" ? "#ffffff" : "#0f172a",
-                color: variant === "primary" ? "#0f172a" : "#ffffff",
+                background:
+                  variant === "primary"
+                    ? "var(--np-color-background, #ffffff)"
+                    : "var(--np-color-foreground, #0f172a)",
+                color:
+                  variant === "primary"
+                    ? "var(--np-color-foreground, #0f172a)"
+                    : "var(--np-color-background, #ffffff)",
                 textDecoration: "none",
                 fontWeight: 700,
               }}

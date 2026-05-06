@@ -43,3 +43,18 @@ export interface NpThemeTokens {
   typography: NpThemeTypography;
   shape: NpThemeShape;
 }
+
+/**
+ * Author-facing partial token shape. Themes that override only a
+ * few colors / fonts / radii ship one of these via `defineTheme`'s
+ * `impl.tokens`. Each sub-tree is `Partial<...>` so a theme that
+ * sets only `colors.primary` doesn't have to copy the rest of
+ * `colors` from `DEFAULT_THEME`. The runtime merger
+ * (`getTheme()` in `content/helpers.ts`) layers an overlay onto
+ * `DEFAULT_THEME` field-by-field.
+ */
+export interface NpThemeTokensOverlay {
+  colors?: Partial<NpThemeColors>;
+  typography?: Partial<NpThemeTypography>;
+  shape?: Partial<NpThemeShape>;
+}

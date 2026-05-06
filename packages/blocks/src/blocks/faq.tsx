@@ -76,22 +76,49 @@ export const faqBlock: NpBlockDefinition = {
     const items = parseFaqItems(props.items);
 
     return (
-      <section className="np-block-faq" style={{ padding: "4rem 1.5rem", background: "#fffdf7" }}>
+      <section
+        className="np-block-faq"
+        style={{ padding: "4rem 1.5rem", background: "var(--np-color-background, #fffdf7)" }}
+      >
         <div style={{ maxWidth: "56rem", margin: "0 auto", display: "grid", gap: "1rem" }}>
-          <h2 style={{ margin: "0 0 1rem", fontSize: "clamp(2rem, 4vw, 2.8rem)", color: "#111827" }}>{heading}</h2>
+          <h2
+            style={{
+              margin: "0 0 1rem",
+              fontSize: "clamp(2rem, 4vw, 2.8rem)",
+              color: "var(--np-color-foreground, #111827)",
+            }}
+          >
+            {heading}
+          </h2>
           {items.map((item) => (
             <details
               key={item.question}
               className="np-block-faq__item"
               style={{
                 borderRadius: "1rem",
-                border: "1px solid rgba(17, 24, 39, 0.12)",
-                background: "#ffffff",
+                border: "1px solid var(--np-color-border, rgba(17, 24, 39, 0.12))",
+                background: "var(--np-color-card, #ffffff)",
                 padding: "1rem 1.2rem",
               }}
             >
-              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#111827" }}>{item.question}</summary>
-              <p style={{ margin: "0.9rem 0 0", lineHeight: 1.7, color: "#4b5563" }}>{item.answer}</p>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  color: "var(--np-color-card-foreground, #111827)",
+                }}
+              >
+                {item.question}
+              </summary>
+              <p
+                style={{
+                  margin: "0.9rem 0 0",
+                  lineHeight: 1.7,
+                  color: "var(--np-color-muted-foreground, #4b5563)",
+                }}
+              >
+                {item.answer}
+              </p>
             </details>
           ))}
         </div>

@@ -3,9 +3,29 @@ import type { ComponentType, ReactNode } from "react";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
 import type {
   NpRegisteredTheme,
+  NpThemeColors,
   NpThemeManifest,
-  NpThemeTokens,
+  NpThemeShape,
+  NpThemeTypography,
 } from "@nexpress/core";
+
+/**
+ * Local mirror of `NpThemeTokensOverlay` from `@nexpress/core` —
+ * authored as `Partial`s of each sub-tree so a theme that overrides
+ * only a few tokens (e.g. `colors.primary`) doesn't have to copy
+ * the rest from `DEFAULT_THEME`. The runtime merger in
+ * `@nexpress/core`'s `getTheme()` accepts the same shape and layers
+ * it onto framework defaults before serving them. We re-declare
+ * here instead of importing the named type because tsup's DTS
+ * bundler refuses to resolve the symbol intermittently across
+ * fresh dist rebuilds — the structural shape is what matters
+ * downstream, the name is private to this file.
+ */
+export interface NpThemeTokensOverlay {
+  colors?: Partial<NpThemeColors>;
+  typography?: Partial<NpThemeTypography>;
+  shape?: Partial<NpThemeShape>;
+}
 
 /**
  * Phase 11.1 — `NpTheme` is the typed shape themes export.
@@ -103,8 +123,16 @@ export interface NpThemeImpl {
   slots?: NpThemeSlots;
   /** Per-collection page templates (`{ posts: { default: ..., featured: ... } }`). */
   templates?: NpThemeTemplates;
-  /** Default tokens. Admin overrides via the theme settings tab (11.4). */
-  tokens?: Partial<NpThemeTokens>;
+  /**
+   * Default tokens. Each sub-tree (colors / typography / shape) is
+   * a `Partial<...>` so a theme that overrides only a few keys
+   * (e.g. `colors.primary` + `typography.fontHeading`) doesn't have
+   * to copy the rest from `DEFAULT_THEME`. The runtime merger in
+   * `getTheme()` layers this overlay onto the framework defaults
+   * before serving them. Admin overrides via the theme settings
+   * tab compose on top in turn.
+   */
+  tokens?: NpThemeTokensOverlay;
   /**
    * Theme-owned CSS, served alongside the theme's components.
    * The framework injects this as a `<style data-np-theme="{id}">`
