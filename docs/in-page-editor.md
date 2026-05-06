@@ -128,11 +128,15 @@ Behavior:
 - **Drag-and-drop reorder in Document view** — HTML5 native (see
   `dnd.ts`). Drag the row's grip handle; the row above / below the
   cursor highlights with a 2-px primary line; drop dispatches
-  `MOVE_WITHIN_PARENT`. **Cross-parent drag** is supported: drop
-  on a container's children area (which highlights in primary)
-  to dispatch `MOVE_INTO`. The reducer's cycle / contract guards
-  (`allowedChildTypes`, `maxChildren`, descendant rejection) gate
-  the actual move; rejected drops are silent no-ops.
+  `MOVE_WITHIN_PARENT`. **Cross-parent drag** is supported INTO a
+  container: drop on the container's children area (which
+  highlights in primary) to dispatch `MOVE_INTO`. The reducer's
+  cycle / contract guards (`allowedChildTypes`, `maxChildren`,
+  descendant rejection) gate the actual move; rejected drops are
+  silent no-ops. **Cross-parent drag OUT of a container** (back
+  to top-level) is not yet supported — use the row's actions
+  popover Move-up / Move-down or the Page builder view's
+  `MOVE_OUT` affordance to promote a row out of its container.
 - **Slash menu** — closes on Esc and stays closed for the just-
   dismissed `/foo` text via `dismissedTextRef`. Typing past or
   deleting the slash invalidates the snapshot and reopens normally.

@@ -202,6 +202,15 @@ export function EditorToolbar({ activeBlock, inRichText, dispatch }: EditorToolb
     <div
       role="toolbar"
       aria-label="Formatting"
+      // `mousedown.preventDefault()` keeps the active textarea
+      // from losing focus when an operator clicks a button —
+      // critical for the inline-mark wrap path, which reads
+      // `document.activeElement` and the textarea's
+      // selectionStart / selectionEnd at click time. Without this
+      // guard the click would land on the button and the
+      // selection would be gone before wrapInlineMark runs.
+      // (This is the same pattern Lexical's toolbar plugin uses.)
+      onMouseDown={(e) => e.preventDefault()}
       className={cn(
         "sticky top-2 z-10 flex items-center gap-0.5 rounded-lg border border-neutral-200/80 bg-white/90 px-1 py-1 shadow-sm backdrop-blur-md",
         "dark:border-neutral-800/80 dark:bg-neutral-950/90",
