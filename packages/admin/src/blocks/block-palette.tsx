@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Search } from "lucide-react";
+import { Search, Star } from "lucide-react";
 import type { NpBlockMetadata } from "@nexpress/blocks";
 
 import { Input } from "../ui/input.js";
@@ -16,11 +16,15 @@ interface BlockPaletteProps {
 
 const RECENT_KEY = "np-page-builder.recent-blocks";
 const RECENT_LIMIT = 5;
+const FAVORITES_KEY = "np-page-builder.favorite-blocks";
 
-// Section order for the grouped palette. Built-in categories
-// render first; "Plugin" + "Other" sit at the bottom so the
-// operator-defined surface is closer to the top of the list.
+// Section order for the grouped palette. Favorites pin to the
+// very top so an operator's pinned set always sits above the
+// frequency-driven Recent. "Plugin" + "Other" sit at the bottom
+// so the operator-defined surface is closer to the top of the
+// list.
 const CATEGORY_ORDER = [
+  "Favorites",
   "Recent",
   "Layout",
   "Content",
@@ -68,16 +72,55 @@ function writeRecent(types: string[]): void {
   }
 }
 
+function readFavorites(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeFavorites(types: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      FAVORITES_KEY,
+      JSON.stringify(Array.from(types)),
+    );
+  } catch {
+    // Same as recent — favorites are a nice-to-have, never crash
+    // the editor on a quota / private-mode failure.
+  }
+}
+
 function buildSections(
   availableBlocks: NpBlockMetadata[],
   recent: string[],
+  favorites: Set<string>,
 ): PaletteSection[] {
   const byType = new Map(availableBlocks.map((b) => [b.type, b]));
 
+  // Favorites section pulls from localStorage and filters out
+  // types that are no longer registered. Order follows the
+  // operator's add-order (newest favorite first).
+  const favoriteItems: NpBlockMetadata[] = [];
+  for (const type of favorites) {
+    const block = byType.get(type);
+    if (block) favoriteItems.push(block);
+  }
+
   // Recent section pulls from localStorage and filters out types
   // that are no longer registered (plugin disabled, theme swap).
+  // We also drop anything already in Favorites so the same block
+  // doesn't show up twice at the top.
   const recentItems: NpBlockMetadata[] = [];
   for (const type of recent) {
+    if (favorites.has(type)) continue;
     const block = byType.get(type);
     if (block) recentItems.push(block);
     if (recentItems.length >= RECENT_LIMIT) break;
@@ -92,11 +135,14 @@ function buildSections(
   }
 
   const sections: PaletteSection[] = [];
+  if (favoriteItems.length > 0) {
+    sections.push({ category: "Favorites", items: favoriteItems });
+  }
   if (recentItems.length > 0) {
     sections.push({ category: "Recent", items: recentItems });
   }
   for (const cat of CATEGORY_ORDER) {
-    if (cat === "Recent") continue;
+    if (cat === "Favorites" || cat === "Recent") continue;
     const items = buckets.get(cat);
     if (items && items.length > 0) {
       sections.push({ category: cat, items });
@@ -143,23 +189,35 @@ export function BlockPalette({ availableBlocks, onAdd, trigger }: BlockPalettePr
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
 
   // Reset the search filter on close so reopening shows the full
   // list again — operators rarely want to resume a stale filter.
-  // Refresh the recent list on open so a Recent picked in another
-  // tab / dialog flows through.
+  // Refresh the recent + favorites lists on open so picks made
+  // in another tab / dialog flow through.
   useEffect(() => {
     if (open) {
       setRecent(readRecent());
+      setFavorites(readFavorites());
     } else {
       setQuery("");
     }
   }, [open]);
 
   const sections = useMemo(
-    () => buildSections(availableBlocks, recent),
-    [availableBlocks, recent],
+    () => buildSections(availableBlocks, recent, favorites),
+    [availableBlocks, recent, favorites],
   );
+
+  const toggleFavorite = (type: string) => {
+    setFavorites((current) => {
+      const next = new Set(current);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      writeFavorites(next);
+      return next;
+    });
+  };
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSections = useMemo(() => {
@@ -221,44 +279,88 @@ export function BlockPalette({ availableBlocks, onAdd, trigger }: BlockPalettePr
                   {section.category}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {section.items.map((block) => (
-                    <button
-                      key={`${section.category}-${block.type}`}
-                      type="button"
-                      onClick={() => handlePick(block)}
-                      className={cn(
-                        "flex flex-col gap-1 rounded-lg border border-border/60 bg-background p-3 text-left transition-colors",
-                        "hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        {block.icon ? (
-                          <span aria-hidden="true" className="text-base leading-none">
-                            {block.icon}
+                  {section.items.map((block) => {
+                    const isFavorite = favorites.has(block.type);
+                    return (
+                      <div
+                        key={`${section.category}-${block.type}`}
+                        className={cn(
+                          "group relative flex flex-col gap-1 rounded-lg border border-border/60 bg-background p-3 transition-colors",
+                          "hover:border-primary/40 hover:bg-accent focus-within:border-primary/40",
+                        )}
+                      >
+                        {/* Star button positioned in the top-right
+                            corner. `stopPropagation` keeps the click
+                            from triggering the underlying pick
+                            button. Visible always when favorited;
+                            otherwise on hover/focus to keep the
+                            card visually quiet by default. */}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleFavorite(block.type);
+                          }}
+                          aria-label={
+                            isFavorite
+                              ? `Unpin ${block.label}`
+                              : `Pin ${block.label}`
+                          }
+                          aria-pressed={isFavorite}
+                          className={cn(
+                            "absolute right-1.5 top-1.5 z-10 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition",
+                            "hover:bg-accent hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                            isFavorite
+                              ? "text-amber-500"
+                              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                          )}
+                        >
+                          <Star
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              isFavorite && "fill-current",
+                            )}
+                            aria-hidden="true"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePick(block)}
+                          className={cn(
+                            "flex flex-col gap-1 text-left",
+                            "focus-visible:outline-none",
+                          )}
+                        >
+                          <div className="flex items-center gap-2 pr-7">
+                            {block.icon ? (
+                              <span aria-hidden="true" className="text-base leading-none">
+                                {block.icon}
+                              </span>
+                            ) : null}
+                            <span className="flex-1 truncate text-sm font-semibold">
+                              {block.label}
+                            </span>
+                            {block.source === "plugin" ? (
+                              <span
+                                className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-primary"
+                                aria-label="Plugin block"
+                              >
+                                plugin
+                              </span>
+                            ) : null}
+                          </div>
+                          {block.description ? (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {block.description}
+                            </p>
+                          ) : null}
+                          <span className="mt-auto font-mono text-[10px] text-muted-foreground/70">
+                            {block.type}
                           </span>
-                        ) : null}
-                        <span className="flex-1 truncate text-sm font-semibold">
-                          {block.label}
-                        </span>
-                        {block.source === "plugin" ? (
-                          <span
-                            className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-primary"
-                            aria-label="Plugin block"
-                          >
-                            plugin
-                          </span>
-                        ) : null}
+                        </button>
                       </div>
-                      {block.description ? (
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
-                          {block.description}
-                        </p>
-                      ) : null}
-                      <span className="mt-auto font-mono text-[10px] text-muted-foreground/70">
-                        {block.type}
-                      </span>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))

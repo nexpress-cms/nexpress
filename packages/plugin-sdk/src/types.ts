@@ -1,5 +1,5 @@
 import type { ZodType } from "zod";
-import type { NpBlockDefinition } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpPattern } from "@nexpress/blocks";
 import type { NpFieldConfig } from "@nexpress/core";
 
 import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
@@ -7,7 +7,7 @@ import type { NpPluginManifest, NpPluginManifestResolved } from "./manifest.js";
 // Re-export NpBlockDefinition so plugin authors get a single
 // import: definePlugin({ blocks: [...] }) typed via the same
 // package they reach for everything else.
-export type { NpBlockDefinition } from "@nexpress/blocks";
+export type { NpBlockDefinition, NpPattern } from "@nexpress/blocks";
 
 export const npPluginCapabilities = [
   "content:read",
@@ -610,6 +610,16 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    * (no string indirection). See `@nexpress/blocks` for the shape.
    */
   blocks?: NpBlockDefinition[];
+  /**
+   * Page-builder patterns the plugin contributes. Registered into
+   * the shared pattern registry by the bootstrap so they show up
+   * in the editor's command-menu pattern picker alongside built-in
+   * and operator-saved patterns. Each pattern is a pre-shaped
+   * subtree (`NpBlockInstance[]`) — see `@nexpress/blocks`'s
+   * `NpPattern` shape. Wire format = page-builder tree state, so
+   * plugin authors can copy a saved-pattern JSON straight in.
+   */
+  patterns?: NpPattern[];
   fields?: NpFieldRegistration[];
   admin?: NpAdminExtension;
   hooks?: NpHookRegistration<TConfig>;

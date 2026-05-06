@@ -317,4 +317,32 @@ export interface NpBlockRegistry {
   has(type: string): boolean;
 }
 
+/**
+ * A "pattern" is a pre-shaped subtree of blocks the page-builder
+ * can drop into a page in one click. The wire format mirrors the
+ * page-builder's tree state (`NpBlockInstance[]`); the editor's
+ * `INSERT_PATTERN` action runs `cloneBlockDeep` over `blocks` so
+ * every insertion gets fresh ids.
+ *
+ * `source` namespaces the origin so the admin can group patterns
+ * by where they came from:
+ *
+ * - `"built-in"`: ships with the editor.
+ * - `"custom"`: operator-saved, lives in `localStorage` or
+ *   `np_settings` (server-shared).
+ * - `"plugin"` / `"theme"`: contributed via the plugin or theme
+ *   manifest at boot time. The bootstrap fans these into the
+ *   shared pattern registry.
+ *
+ * String-and-loose for forward compatibility — additional sources
+ * (e.g. `"marketplace"`) can land without bumping the union.
+ */
+export interface NpPattern {
+  id: string;
+  label: string;
+  description?: string;
+  source: "built-in" | "custom" | "plugin" | "theme" | (string & {});
+  blocks: NpBlockInstance[];
+}
+
 void (0 as ReactNode | undefined);

@@ -1,26 +1,10 @@
-import type { NpBlockInstance } from "@nexpress/blocks";
+import { type NpPattern } from "@nexpress/blocks";
 
-/**
- * Issue #467 phase 4 — section patterns.
- *
- * A "pattern" is a pre-shaped subtree of blocks the operator can
- * drop into a page in one click. Built-ins ship with the editor;
- * custom patterns get persisted in `localStorage` so an operator
- * can save a section they like and reuse it across pages without
- * exporting / importing JSON.
- *
- * The wire format is the same `NpBlockInstance` shape as the
- * page-builder reducer's state; the reducer's `INSERT_PATTERN`
- * action runs `cloneBlockDeep` over the pattern's `blocks` so
- * every insertion gets fresh ids.
- */
-export interface NpPattern {
-  id: string;
-  label: string;
-  description?: string;
-  source: "built-in" | "custom";
-  blocks: NpBlockInstance[];
-}
+// Re-export so existing admin call sites (`import { NpPattern }
+// from "../patterns.js"`) keep working — the canonical home for
+// the type moved to `@nexpress/blocks` so plugin-sdk and the
+// pattern registry can share it.
+export type { NpPattern };
 
 const STORAGE_KEY = "np-page-builder.custom-patterns";
 

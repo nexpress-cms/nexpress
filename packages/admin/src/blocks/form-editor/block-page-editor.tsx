@@ -46,7 +46,12 @@ import {
   type NpPattern,
 } from "../patterns.js";
 import { PreviewPanel } from "../preview-panel.js";
-import { CommandMenu, PageJsonDialog } from "../shared/index.js";
+import { useContributedPatterns } from "../registry-context.js";
+import {
+  CommandMenu,
+  PageJsonDialog,
+  PastePatternDialog,
+} from "../shared/index.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 
@@ -88,6 +93,7 @@ export function BlockPageEditor({
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
+  const [pasteImportOpen, setPasteImportOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
 
@@ -205,10 +211,22 @@ export function BlockPageEditor({
   useEffect(() => {
     if (commandOpen) void refreshPatterns();
   }, [commandOpen, refreshPatterns]);
-  const patterns = useMemo(
-    () => [...getBuiltInPatterns(), ...customPatterns],
-    [customPatterns],
-  );
+  // Plugin / theme contributed patterns flow through the
+  // registry-context (server-populated by the bootstrap). They sit
+  // between built-ins and custom in the merged list — operators
+  // expect their own saves to appear at the top, themes/plugins
+  // below the canonical built-ins. De-dupe by id with built-ins
+  // winning on collision so a misconfigured plugin can't shadow
+  // the canonical "landing-hero" pattern.
+  const contributedPatterns = useContributedPatterns();
+  const patterns = useMemo(() => {
+    const builtIns = getBuiltInPatterns();
+    const builtInIds = new Set(builtIns.map((p) => p.id));
+    const contributedDeduped = contributedPatterns.filter(
+      (p) => !builtInIds.has(p.id),
+    );
+    return [...builtIns, ...contributedDeduped, ...customPatterns];
+  }, [contributedPatterns, customPatterns]);
   const handleSaveFocusedAsPattern = useCallback(
     (focusedBlockId: string) => {
       const focused = findBlockInTreeFlat(blocks, focusedBlockId);
@@ -646,9 +664,17 @@ export function BlockPageEditor({
         definitions={definitions}
         dispatch={dispatch}
         onOpenPageJson={() => setPageJsonOpen(true)}
+        onOpenPasteImport={() => setPasteImportOpen(true)}
         patterns={patterns}
         onSaveFocusedAsPattern={handleSaveFocusedAsPattern}
         onDeletePattern={(id) => void handleDeletePattern(id)}
+      />
+
+      <PastePatternDialog
+        open={pasteImportOpen}
+        onOpenChange={setPasteImportOpen}
+        knownTypes={availableBlocks.map((b) => b.type)}
+        onApply={(pattern) => dispatch({ type: "INSERT_PATTERN", pattern })}
       />
     </section>
   );

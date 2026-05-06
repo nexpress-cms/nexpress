@@ -9,7 +9,12 @@ import {
   pricingBlock,
   richTextBlock,
 } from "./blocks/index.js";
-import type { NpBlockDefinition, NpBlockMetadata, NpBlockRegistry } from "./types.js";
+import type {
+  NpBlockDefinition,
+  NpBlockMetadata,
+  NpBlockRegistry,
+  NpPattern,
+} from "./types.js";
 
 const defaultBlocks = [
   // Layout containers first — operators looking to compose a page
@@ -122,3 +127,39 @@ export const getRegisteredBlockMetadata = (): NpBlockMetadata[] =>
 
 /** Internal: returns the shared registry. Used by `renderBlocks`. */
 export const getSharedRegistry = (): NpBlockRegistry => sharedRegistry;
+
+// ----------------------------------------------------------------
+// Pattern registry — sister to the block registry. Plugins / themes
+// register pre-shaped subtrees (`NpPattern`) at boot via the next.js
+// bootstrap, and the admin reads them through the registry-context
+// alongside block metadata. Operator-saved patterns
+// (localStorage / np_settings) bypass this registry — they're
+// scoped per browser / site, not per process.
+// ----------------------------------------------------------------
+
+const sharedPatterns = new Map<string, NpPattern>();
+
+/**
+ * Adds a pattern to the shared registry. Plugins / themes call
+ * this (via the bootstrap, not directly) so their patterns appear
+ * in the page-builder's command-menu pattern picker. Overwrites on
+ * duplicate `id` so HMR / re-bootstrap don't blow up; the last
+ * registration wins, mirroring `registerBlock`.
+ */
+export const registerPattern = (pattern: NpPattern): void => {
+  sharedPatterns.set(pattern.id, pattern);
+};
+
+/**
+ * Resets the shared pattern registry. Called by the bootstrap's
+ * `reloadPlugins()` so disabled / removed plugins don't leave their
+ * pattern definitions behind — same invariant as the block registry
+ * reset.
+ */
+export const resetSharedPatternRegistry = (): void => {
+  sharedPatterns.clear();
+};
+
+/** Returns every pattern in the shared registry — plugin + theme contributions. */
+export const getRegisteredPatterns = (): NpPattern[] =>
+  Array.from(sharedPatterns.values());
