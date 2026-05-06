@@ -100,6 +100,19 @@ export interface SortableBlockItemProps {
    */
   isOpen: (id: string) => boolean;
   onOpenChange: (id: string, open: boolean) => void;
+  /**
+   * Lookup-by-id for the multi-select set (#467 #3). The
+   * orchestrator owns the Set; rows just read by id and dispatch
+   * toggles on click. Shift-click is handled in the click handler
+   * itself — `onToggleSelected(id, { shift, meta })` carries the
+   * modifier flags through so the orchestrator can range-select
+   * relative to the last clicked id.
+   */
+  isSelected: (id: string) => boolean;
+  onToggleSelected: (
+    id: string,
+    modifiers: { shift: boolean; meta: boolean },
+  ) => void;
 }
 
 export function SortableBlockItem({
@@ -123,6 +136,8 @@ export function SortableBlockItem({
   getMoveIntoCandidates,
   isOpen,
   onOpenChange,
+  isSelected,
+  onToggleSelected,
 }: SortableBlockItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: block.id });
@@ -142,6 +157,7 @@ export function SortableBlockItem({
   const childCount = block.children?.length ?? 0;
   const validationStatus = getRowValidationStatus(definition, block);
   const selfOpen = isOpen(block.id);
+  const selfSelected = isSelected(block.id);
 
   const handleDelete = () => {
     if (deleteNeedsConfirmation(definition, block)) {
@@ -157,11 +173,14 @@ export function SortableBlockItem({
       style={style}
       tabIndex={0}
       data-np-block-row={block.id}
+      data-np-block-selected={selfSelected ? "true" : undefined}
       aria-label={`Block row: ${definition?.label ?? block.type}`}
+      aria-selected={selfSelected}
       className={cn(
         "overflow-hidden border-border/60 outline-none",
         "focus-visible:ring-2 focus-visible:ring-primary/40",
         isContainer && "focus-within:ring-2 focus-within:ring-primary/30",
+        selfSelected && "ring-2 ring-primary/60 ring-offset-1",
       )}
     >
       <Collapsible
@@ -169,6 +188,31 @@ export function SortableBlockItem({
         onOpenChange={(next) => onOpenChange(block.id, next)}
       >
         <header className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2">
+          {/* Multi-select checkbox (#467 #3). Click toggles; shift-
+              click extends from the last clicked id (the orchestrator
+              owns the range logic). Stop propagation so the click
+              doesn't also fire focusin handlers that would change
+              the preview-selection target. */}
+          <input
+            type="checkbox"
+            aria-label={
+              selfSelected
+                ? `Deselect ${definition?.label ?? block.type}`
+                : `Select ${definition?.label ?? block.type}`
+            }
+            checked={selfSelected}
+            onChange={() => {
+              /* handled in onClick to read modifiers */
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSelected(block.id, {
+                shift: event.shiftKey,
+                meta: event.metaKey || event.ctrlKey,
+              });
+            }}
+            className="h-3.5 w-3.5 cursor-pointer accent-primary"
+          />
           <button
             type="button"
             aria-label={`Drag ${definition?.label ?? block.type}`}
@@ -435,6 +479,8 @@ export function SortableBlockItem({
                 getMoveIntoCandidates={getMoveIntoCandidates}
                 isOpen={isOpen}
                 onOpenChange={onOpenChange}
+                isSelected={isSelected}
+                onToggleSelected={onToggleSelected}
               />
             ) : null}
           </div>
@@ -466,6 +512,11 @@ interface ChildrenAreaProps {
   getMoveIntoCandidates: (id: string) => ContainerCandidate[];
   isOpen: (id: string) => boolean;
   onOpenChange: (id: string, open: boolean) => void;
+  isSelected: (id: string) => boolean;
+  onToggleSelected: (
+    id: string,
+    modifiers: { shift: boolean; meta: boolean },
+  ) => void;
 }
 
 function ChildrenArea({
@@ -486,6 +537,8 @@ function ChildrenArea({
   getMoveIntoCandidates,
   isOpen,
   onOpenChange,
+  isSelected,
+  onToggleSelected,
 }: ChildrenAreaProps) {
   const children = container.children ?? [];
   const containerDefinition = definitions.get(container.type);
@@ -574,6 +627,8 @@ function ChildrenArea({
                     getMoveIntoCandidates={getMoveIntoCandidates}
                     isOpen={isOpen}
                     onOpenChange={onOpenChange}
+                    isSelected={isSelected}
+                    onToggleSelected={onToggleSelected}
                   />
                   <InsertSlot
                     availableBlocks={availableBlocks}

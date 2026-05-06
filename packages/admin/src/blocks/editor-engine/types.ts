@@ -45,6 +45,15 @@ export type EditorAction =
   // the pattern's blocks get regenerated so reuse never collides
   // with an existing row.
   | { type: "INSERT_PATTERN"; pattern: NpPattern; parentId?: string }
+  // Bulk actions (#467 #3 — multi-select). All three accept a list
+  // of ids; missing ids are skipped silently. WRAP_MANY additionally
+  // requires every id to be a contiguous sibling under one parent —
+  // wrapping a non-contiguous set or cross-container set would
+  // either reorder the page or split the selection, so we reject
+  // both up front.
+  | { type: "DELETE_MANY"; ids: string[] }
+  | { type: "DUPLICATE_MANY"; ids: string[] }
+  | { type: "WRAP_MANY"; ids: string[]; containerType: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
   | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> };
 

@@ -270,6 +270,79 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           ...sanitized,
         ]);
       }
+      case "DELETE_MANY": {
+        if (action.ids.length === 0) return state;
+        const idSet = new Set(action.ids);
+        return filterTree(state, (block) => !idSet.has(block.id));
+      }
+      case "DUPLICATE_MANY": {
+        if (action.ids.length === 0) return state;
+        const idSet = new Set(action.ids);
+        // Walk depth-first, recursing into children first so a
+        // selection that spans depths still duplicates bottom-up
+        // and the indices stay correct. Each selected block emits
+        // its (post-recurse) self followed by a fresh-id clone.
+        const walk = (siblings: NpBlockInstance[]): NpBlockInstance[] => {
+          const out: NpBlockInstance[] = [];
+          for (const block of siblings) {
+            const transformed = block.children
+              ? { ...block, children: walk(block.children) }
+              : block;
+            out.push(transformed);
+            if (idSet.has(block.id)) {
+              out.push(cloneBlockDeep(transformed));
+            }
+          }
+          return out;
+        };
+        return walk(state);
+      }
+      case "WRAP_MANY": {
+        if (action.ids.length === 0) return state;
+        const containerDef = definitions.get(action.containerType);
+        if (!containerDef || !containerDef.acceptsChildren) return state;
+        // Resolve every id's location; require all to share a
+        // parent AND be contiguous siblings — wrapping a non-
+        // contiguous set would reorder the page, wrapping across
+        // containers would split the selection.
+        const locs = action.ids
+          .map((id) => locateBlock(state, id))
+          .filter(
+            (l): l is { parentId: string | null; index: number } => l !== null,
+          );
+        if (locs.length !== action.ids.length) return state;
+        const parentId = locs[0].parentId;
+        if (locs.some((l) => l.parentId !== parentId)) return state;
+        const indices = locs.map((l) => l.index).sort((a, b) => a - b);
+        for (let i = 1; i < indices.length; i++) {
+          if (indices[i] !== indices[i - 1] + 1) return state;
+        }
+        const start = indices[0];
+        const end = indices[indices.length - 1];
+        return updateContainerChildren(state, parentId, (siblings) => {
+          const range = siblings.slice(start, end + 1);
+          // Honor the wrapper's contract on each child + the
+          // cumulative cap. Reject the whole wrap if any child
+          // would be invalid — partial-wrap would leave the
+          // selection in a confusing state.
+          let projected = 0;
+          for (const block of range) {
+            if (!canAcceptChild(containerDef, block.type, projected)) {
+              return siblings;
+            }
+            projected += 1;
+          }
+          const wrapper: NpBlockInstance = {
+            ...createBlockInstance(containerDef),
+            children: range,
+          };
+          return [
+            ...siblings.slice(0, start),
+            wrapper,
+            ...siblings.slice(end + 1),
+          ];
+        });
+      }
       case "UPDATE_PROPS":
         return mapTree(state, (block) =>
           block.id === action.id
