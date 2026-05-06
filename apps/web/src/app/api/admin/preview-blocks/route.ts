@@ -32,13 +32,13 @@ import { ensureFor } from "@/lib/init-core";
  *   preview matches what the public page would render.
  *
  * Shell:
- * - The active theme's `impl.css` + `generateThemeCss(impl.tokens)`
+ * - The active theme's `impl.css` + `generateThemeCss(getTheme())`
  *   are inlined into the preview document head, so theme-styled
  *   blocks (rich text typography, theme tokens used as CSS
- *   variables, etc.) actually look right in preview. Multi-site
- *   builds inherit whichever theme the current site context resolves
- *   to (`getCachedActiveTheme` walks the same path the public
- *   renderer uses).
+ *   variables, etc.) actually look right in preview. `getTheme`
+ *   does the layered merge (DEFAULT_THEME → theme `impl.tokens` →
+ *   admin DB override) so preview and the public render resolve
+ *   to identical tokens for the same site context.
  *
  * Errors come back as a wrapped HTML document with a banner so the
  * iframe still mounts something — the operator doesn't lose editor

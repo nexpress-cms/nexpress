@@ -34,13 +34,13 @@ async function resolveSiteId(): Promise<string> {
  *   3. The DB row in `np_settings.theme` — admin overrides via the
  *      theme settings tab.
  *
- * Each layer is `Partial<NpThemeTokens>` — themes only declare the
- * keys they care about, admins only save deltas they edit. The
- * merge ensures every emitted token has a value.
+ * Each layer is `NpThemeTokensOverlay` (sub-tree-Partial) — themes
+ * only declare the keys they care about, admins only save deltas
+ * they edit. The merge ensures every emitted token has a value.
  *
- * Mirrors the merge that `apps/web`'s preview-blocks route already
- * performs, so the public render and the page-builder preview
- * resolve to the same tokens for the same theme.
+ * This is the canonical token resolver — `apps/web`'s preview
+ * route calls it directly so the page-builder iframe matches what
+ * the public render produces for the same active theme.
  */
 export async function getTheme(): Promise<NpThemeTokens> {
   const db = getDb();

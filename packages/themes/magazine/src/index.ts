@@ -60,8 +60,13 @@ export const magazineTheme = defineTheme({
         accentForeground: "oklch(0.245 0.025 60)",
       },
       typography: {
-        fontHeading: '"Source Serif Pro", Georgia, "Times New Roman", serif',
-        fontBody: '"Source Serif Pro", Georgia, "Times New Roman", serif',
+        // Match the font stacks magazine's CSS already uses as
+        // var() fallbacks — Fraunces is the display serif for
+        // mastheads / headlines, Source Serif 4 carries the body
+        // text. Operators who don't load these webfonts fall
+        // through to Georgia, the universal serif.
+        fontHeading: '"Fraunces", Georgia, "Times New Roman", serif',
+        fontBody: '"Source Serif 4", Georgia, "Times New Roman", serif',
       },
     },
     css: magazineCss,

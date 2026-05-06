@@ -15,11 +15,18 @@ import type {
  * only a few tokens (e.g. `colors.primary`) doesn't have to copy
  * the rest from `DEFAULT_THEME`. The runtime merger in
  * `@nexpress/core`'s `getTheme()` accepts the same shape and layers
- * it onto framework defaults before serving them. We re-declare
- * here instead of importing the named type because tsup's DTS
- * bundler refuses to resolve the symbol intermittently across
- * fresh dist rebuilds — the structural shape is what matters
- * downstream, the name is private to this file.
+ * it onto framework defaults before serving them.
+ *
+ * Re-declared here (instead of imported by name) as a workaround:
+ * tsup's DTS bundler failed to resolve the named type from
+ * `@nexpress/core/dist/index.d.ts` even though the symbol was
+ * present in the file — likely a quirk in how the bundler walks
+ * cross-package exports for type-only imports. Structural identity
+ * is what consumers depend on, so the duplicated declaration is
+ * functionally equivalent. If you're consuming this externally,
+ * prefer importing `NpThemeTokensOverlay` from `@nexpress/core`
+ * directly — this copy is a build-time crutch, not a parallel
+ * surface.
  */
 export interface NpThemeTokensOverlay {
   colors?: Partial<NpThemeColors>;
