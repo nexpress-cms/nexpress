@@ -31,6 +31,7 @@ import {
   type ContainerCandidate,
 } from "../editor-engine/index.js";
 import {
+  BlockIcon,
   BlockJsonDialog,
   DeleteBlockDialog,
   FieldControl,
@@ -177,7 +178,7 @@ export function SortableBlockItem({
       aria-label={`Block row: ${definition?.label ?? block.type}`}
       aria-selected={selfSelected}
       className={cn(
-        "overflow-hidden border-border/60 outline-none",
+        "overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/95 shadow-sm outline-none backdrop-blur-sm dark:border-neutral-800/80 dark:bg-neutral-950/95",
         "focus-visible:ring-2 focus-visible:ring-primary/40",
         isContainer && "focus-within:ring-2 focus-within:ring-primary/30",
         selfSelected && "ring-2 ring-primary/60 ring-offset-1",
@@ -187,7 +188,7 @@ export function SortableBlockItem({
         open={selfOpen}
         onOpenChange={(next) => onOpenChange(block.id, next)}
       >
-        <header className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2">
+        <header className="flex items-center gap-2 border-b border-neutral-200/80 bg-neutral-50/60 px-3 py-2 dark:border-neutral-800/80 dark:bg-neutral-900/40">
           {/* Multi-select checkbox (#467 #3). Click toggles; shift-
               click extends from the last clicked id (the orchestrator
               owns the range logic). Stop propagation so the click
@@ -235,11 +236,31 @@ export function SortableBlockItem({
               )}
             </button>
           </CollapsibleTrigger>
+          <BlockIcon
+            icon={definition?.icon}
+            kind={definition?.iconKind}
+            className="text-muted-foreground"
+          />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">
               {definition?.label ?? block.type}
+              {definition?.source && definition.source !== "built-in" ? (
+                <span
+                  className={cn(
+                    "ml-2 inline-flex items-center rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+                    definition.source === "plugin"
+                      ? "bg-primary/10 text-primary"
+                      : definition.source === "theme"
+                      ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                  aria-label={`${definition.source} block`}
+                >
+                  {definition.source}
+                </span>
+              ) : null}
               {isContainer ? (
-                <span className="ml-2 inline-flex items-center rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
+                <span className="ml-2 inline-flex items-center rounded-sm bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300">
                   container
                 </span>
               ) : null}

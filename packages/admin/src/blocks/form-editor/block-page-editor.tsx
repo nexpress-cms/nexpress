@@ -41,6 +41,7 @@ import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 import { BlockPalette } from "../block-palette.js";
 import {
   collectContainerCandidates,
+  evaluateContainerWarnings,
   findBlockInTreeFlat,
   locateBlock,
   useEditorState,
@@ -60,9 +61,16 @@ import { PreviewPanel } from "../preview-panel.js";
 import { useContributedPatterns } from "../registry-context.js";
 import {
   CommandMenu,
+  ContainerWarningsPanel,
+  ModeSwitch,
+  OutlinePanel,
   PageJsonDialog,
   PastePatternDialog,
+  StatusBar,
+  useAutosaveStatus,
+  usePersistedView,
 } from "../shared/index.js";
+import { DocCanvas } from "../in-page-editor/index.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 
@@ -85,12 +93,20 @@ interface BlockPageEditorProps {
   blocks: NpBlockInstance[];
   onChange: (blocks: NpBlockInstance[]) => void;
   availableBlocks: NpBlockMetadata[];
+  /**
+   * Optional persistence scope for the Document / Page builder
+   * view toggle. Pass `<collection>.<field>` (e.g. `"pages.blocks"`)
+   * so the operator's choice survives reloads. When omitted the
+   * toggle still works in-session but the choice doesn't persist.
+   */
+  viewScope?: string;
 }
 
 export function BlockPageEditor({
   blocks: initialBlocks,
   onChange,
   availableBlocks,
+  viewScope,
 }: BlockPageEditorProps) {
   const definitions = useMemo(
     () => new Map(availableBlocks.map((block) => [block.type, block])),
@@ -429,6 +445,77 @@ export function BlockPageEditor({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Document / Page builder toggle. Persists per `viewScope` in
+  // localStorage when the orchestrator is mounted with one.
+  // Default lands on Page builder (the muscle-memory view) so
+  // existing operators see no behavior change until they opt in.
+  const [view, setView] = usePersistedView(viewScope, "page");
+
+  // Autosave status — driven by `onChange` (any tree mutation
+  // marks the editor dirty). Save coordination lives in the
+  // collection's form layer (react-hook-form's submit) — this
+  // hook just surfaces a "Saved" / pulse cue in the status bar.
+  // The form-card editor doesn't yet observe save resolution,
+  // so for v1 we settle into a steady "Just now" anchor on
+  // every dispatch. Wiring `mark("saved")` to the actual save
+  // resolve lands when the orchestrator grows a save callback.
+  const autosave = useAutosaveStatus();
+  const lastBlocksRef = useRef(initialBlocks);
+  useEffect(() => {
+    if (lastBlocksRef.current !== blocks) {
+      autosave.mark("dirty");
+      lastBlocksRef.current = blocks;
+    }
+  }, [blocks, autosave]);
+
+  // Container contract warnings — surfaced as a side card and
+  // referenced in the status bar's count. Driven by the engine's
+  // pure `evaluateContainerWarnings`, recomputed on every tree
+  // change (cheap — pages have dozens of blocks at most).
+  const containerWarnings = useMemo(
+    () => evaluateContainerWarnings(blocks, definitions),
+    [blocks, definitions],
+  );
+
+  // Total count across the recursive tree (status-bar telemetry).
+  const totalBlocks = useMemo(() => {
+    let n = 0;
+    const walk = (arr: NpBlockInstance[]): void => {
+      for (const b of arr) {
+        n += 1;
+        if (b.children) walk(b.children);
+      }
+    };
+    walk(blocks);
+    return n;
+  }, [blocks]);
+
+  const activeBlockMeta = selectedBlockId
+    ? definitions.get(
+        findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? "",
+      ) ?? null
+    : null;
+  const activeBlockType = selectedBlockId
+    ? findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? null
+    : null;
+
+  /**
+   * Scroll a block row into view + focus it. Reused by the
+   * outline panel's pick handler and the warnings panel's pick
+   * handler — both want the same "find the row, scroll, focus"
+   * effect.
+   */
+  const focusBlockRow = useCallback((id: string) => {
+    setSelectedBlockId(id);
+    if (typeof document === "undefined") return;
+    const target = document.querySelector<HTMLElement>(
+      `[data-np-block-row="${id}"]`,
+    );
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    target.focus({ preventScroll: true });
+  }, []);
+
   // Cmd/Ctrl-Z / Cmd-Shift-Z / Ctrl-Y bound at window level.
   // Skip while focus sits on a text-entry surface so operators
   // still get native input undo while typing into prop fields —
@@ -629,7 +716,11 @@ export function BlockPageEditor({
       className={cn("np-block-page-editor flex flex-col gap-4")}
       onKeyDown={handleKeyboardNav}
     >
-      <div className="flex items-center justify-end gap-1">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
+        <div className="flex items-center gap-1">
         <Button
           type="button"
           variant="ghost"
@@ -652,6 +743,7 @@ export function BlockPageEditor({
           <Redo2 className="mr-1.5 h-4 w-4" />
           Redo
         </Button>
+        </div>
       </div>
       {/* Bulk-action toolbar (#467 #3). Sticks above the row list
           while a multi-selection is live. Wrap is gated by
@@ -771,6 +863,17 @@ export function BlockPageEditor({
           </div>
         </div>
       ) : null}
+      {view === "doc" ? (
+        <DocCanvas
+          blocks={blocks}
+          definitions={definitions}
+          availableBlocks={availableBlocks}
+          dispatch={dispatch}
+          selectedBlockId={selectedBlockId}
+          onSelectBlock={setSelectedBlockId}
+        />
+      ) : null}
+      {view === "page" ? (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -896,7 +999,9 @@ export function BlockPageEditor({
           />
         </DragOverlay>
       </DndContext>
+      ) : null}
 
+      {view === "page" ? (
       <div className="flex items-center justify-center gap-2">
         <BlockPalette
           availableBlocks={availableBlocks}
@@ -937,10 +1042,38 @@ export function BlockPageEditor({
           )}
         </Button>
       </div>
+      ) : null}
 
       {previewOpen ? (
         <PreviewPanel blocks={blocks} selectedBlockId={selectedBlockId} />
       ) : null}
+
+      <StatusBar
+        totalBlocks={totalBlocks}
+        registrySize={availableBlocks.length}
+        warningsCount={containerWarnings.length}
+        activeMeta={activeBlockMeta}
+        activeType={activeBlockType}
+        savedLabel={autosave.savedLabel}
+        status={autosave.status}
+      />
+        </div>
+
+        <aside className="flex flex-col gap-4">
+          <OutlinePanel
+            blocks={blocks}
+            definitions={definitions}
+            activeId={selectedBlockId}
+            onPick={focusBlockRow}
+            title="Page tree"
+            footer="page.blocks · NpBlockInstance[] · live"
+          />
+          <ContainerWarningsPanel
+            warnings={containerWarnings}
+            onPick={focusBlockRow}
+          />
+        </aside>
+      </div>
 
       <PageJsonDialog
         open={pageJsonOpen}

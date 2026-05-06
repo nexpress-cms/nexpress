@@ -1,13 +1,21 @@
 import {
+  calloutBlock,
+  codeBlock,
   contactFormBlock,
   ctaBlock,
+  dividerBlock,
   faqBlock,
   featureGridBlock,
   gridBlock,
+  headingBlock,
   heroBlock,
+  imageBlock,
   imageGalleryBlock,
+  listBlock,
   logosCloudBlock,
+  paragraphBlock,
   pricingBlock,
+  quoteBlock,
   richTextBlock,
   sectionHeaderBlock,
   statsGridBlock,
@@ -40,6 +48,17 @@ const defaultBlocks = [
   richTextBlock,
   contactFormBlock,
   imageGalleryBlock,
+  // Atom blocks — Doc-friendly building blocks for the in-page
+  // editor. Slash menu surfaces these inline; Page builder treats
+  // them like any other leaf block.
+  paragraphBlock,
+  headingBlock,
+  quoteBlock,
+  listBlock,
+  dividerBlock,
+  codeBlock,
+  calloutBlock,
+  imageBlock,
 ] satisfies NpBlockDefinition[];
 
 export const createBlockRegistry = (): NpBlockRegistry => {

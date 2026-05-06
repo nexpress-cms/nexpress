@@ -88,6 +88,7 @@ const LazyBlockPageEditor = lazy(async () => {
       blocks: NpBlockInstance[];
       onChange: (blocks: NpBlockInstance[]) => void;
       availableBlocks: NpBlockMetadata[];
+      viewScope?: string;
     }>,
   };
 });
@@ -152,9 +153,16 @@ interface BlocksFieldRenderProps {
   name: string;
   label: string;
   allowedTypes: string[] | undefined;
+  collectionSlug?: string;
 }
 
-function BlocksFieldRender({ control, name, label, allowedTypes }: BlocksFieldRenderProps) {
+function BlocksFieldRender({
+  control,
+  name,
+  label,
+  allowedTypes,
+  collectionSlug,
+}: BlocksFieldRenderProps) {
   // Read from the BlocksRegistryProvider context. The admin
   // protected layout populates that with the SERVER-resolved
   // registry (defaults + plugin contributions). Direct calls to
@@ -188,6 +196,9 @@ function BlocksFieldRender({ control, name, label, allowedTypes }: BlocksFieldRe
                 blocks={toBlockInstances(formField.value)}
                 onChange={formField.onChange}
                 availableBlocks={availableBlocks}
+                viewScope={
+                  collectionSlug ? `${collectionSlug}.${name}` : undefined
+                }
               />
             </Suspense>
           </FormControl>
@@ -207,6 +218,7 @@ const renderNamedField = (
   field: Extract<NpFieldConfig, { name: string }>,
   control: Control<Record<string, unknown>>,
   namePrefix?: string,
+  collectionSlug?: string,
 ) => {
   const name = buildFieldName(field.name, namePrefix);
   const label = field.label ?? field.name;
@@ -339,6 +351,7 @@ const renderNamedField = (
           name={name}
           label={label}
           allowedTypes={field.allowedBlocks}
+          collectionSlug={collectionSlug}
         />
       );
     case "checkbox":
@@ -620,5 +633,5 @@ export function FieldRenderer({
     );
   }
 
-  return renderNamedField(field, control, namePrefix);
+  return renderNamedField(field, control, namePrefix, collectionSlug);
 }

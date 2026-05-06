@@ -418,8 +418,112 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         return mapTree(state, (block) =>
           block.id === action.id ? { ...block, props: action.props } : block,
         );
+      case "REPLACE_TYPE": {
+        const newDef = definitions.get(action.newType);
+        if (!newDef) return state;
+        const sourceLoc = locateBlock(state, action.id);
+        if (!sourceLoc) return state;
+        const source = findBlockInTreeFlat(state, action.id);
+        if (!source) return state;
+        // Honor the parent's contract — converting a paragraph to a
+        // hero inside a `pricing-tiers` container with
+        // `allowedChildTypes: ["pricing-tier"]` would create an
+        // instantly-invalid tree. Count is non-changing (1 → 1) so
+        // pass `len - 1` to keep the max-children check a no-op.
+        if (sourceLoc.parentId !== null) {
+          const parent = findBlockInTreeFlat(state, sourceLoc.parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (
+            parentDef &&
+            !canAcceptChild(
+              parentDef,
+              action.newType,
+              (parent?.children?.length ?? 1) - 1,
+            )
+          ) {
+            return state;
+          }
+        }
+        const preserveText = action.preserveText ?? true;
+        const carriedText = preserveText ? readPrimaryText(source) : "";
+        const baseInstance = createBlockInstance(newDef);
+        // Keep the existing id so undo/redo + focus tracking stay
+        // anchored on the same row visually.
+        baseInstance.id = source.id;
+        // Drop children when the new type isn't a container; carry
+        // them forward when it is. Mid-conversion children-loss is
+        // surprising — operators expect a hero->grid swap to land
+        // their existing children inside the grid.
+        if (newDef.acceptsChildren && source.children) {
+          baseInstance.children = source.children;
+        }
+        const next =
+          carriedText && preserveText
+            ? {
+                ...baseInstance,
+                props: writePrimaryText(
+                  baseInstance.props,
+                  newDef.defaultProps,
+                  carriedText,
+                ),
+              }
+            : baseInstance;
+        return mapTree(state, (block) =>
+          block.id === action.id ? next : block,
+        );
+      }
       default:
         return state;
     }
   };
 };
+
+/**
+ * First non-empty string-shaped prop on the block, in priority
+ * order. Used by REPLACE_TYPE to carry an operator's prose across
+ * a type swap without forcing them to retype it. The order
+ * matches the typical "primary text" slot across the framework's
+ * atom blocks (paragraph `text`, heading `text`, quote `text`,
+ * code `code`, list `items[0]`, image `caption`).
+ */
+const PRIMARY_TEXT_KEYS = [
+  "text",
+  "heading",
+  "title",
+  "label",
+  "code",
+  "caption",
+] as const;
+
+function readPrimaryText(block: NpBlockInstance): string {
+  for (const key of PRIMARY_TEXT_KEYS) {
+    const v = block.props[key];
+    if (typeof v === "string" && v.trim().length > 0) return v;
+  }
+  // List blocks: the first item is the closest analogue of "primary
+  // text" — converting a single-item list back to a paragraph
+  // shouldn't lose the line.
+  const items = block.props.items;
+  if (Array.isArray(items)) {
+    const first = items[0];
+    if (typeof first === "string" && first.trim().length > 0) return first;
+  }
+  return "";
+}
+
+function writePrimaryText(
+  props: Record<string, unknown>,
+  defaults: Record<string, unknown>,
+  text: string,
+): Record<string, unknown> {
+  for (const key of PRIMARY_TEXT_KEYS) {
+    if (typeof defaults[key] === "string") {
+      return { ...props, [key]: text };
+    }
+  }
+  // List target: seed the first item with the carried text.
+  if (Array.isArray(defaults.items)) {
+    return { ...props, items: [text] };
+  }
+  return props;
+}

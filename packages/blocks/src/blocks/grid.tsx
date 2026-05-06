@@ -38,7 +38,9 @@ export const gridBlock: NpBlockDefinition = {
   label: "Grid",
   description:
     "12-column responsive grid. Drop blocks inside and tune the column span on each child.",
-  icon: "▦",
+  icon: "LayoutGrid",
+  iconKind: "lucide",
+  docBodyKind: "complex",
   category: "Layout",
   source: "built-in",
   keywords: ["columns", "row", "container"],

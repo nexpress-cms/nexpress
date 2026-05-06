@@ -120,6 +120,57 @@ export interface NpBlockMetadata {
    * the cap.
    */
   maxChildren?: number;
+  /**
+   * Hint for the admin's icon resolver. The framework's built-in
+   * blocks set `iconKind: "lucide"` and put a Lucide icon name
+   * (e.g. `"Sunrise"`, `"LayoutGrid"`) in `icon`. Plugin / theme
+   * blocks that still ship an emoji glyph in `icon` can either
+   * leave `iconKind` unset (the resolver falls back to text) or
+   * set `iconKind: "emoji"` to skip the Lucide lookup entirely.
+   *
+   * Resolver behavior:
+   * - When `iconKind` is `"lucide"` (or omitted), the admin tries
+   *   `LUCIDE_ICONS[icon]` first, then `EMOJI_TO_LUCIDE[icon]`,
+   *   then falls back to rendering `icon` as text.
+   * - When `iconKind` is `"emoji"`, the admin renders `icon`
+   *   verbatim — useful for plugin authors who want a glyph that
+   *   doesn't have a Lucide counterpart.
+   */
+  iconKind?: "lucide" | "emoji";
+  /**
+   * Doc-mode body kind. The in-page editor's Document view picks
+   * an inline body component based on this hint:
+   *
+   * - `"paragraph"` / `"heading"` / `"heading-2"` / `"heading-3"` /
+   *   `"quote"` — single-line auto-grow textarea with the matching
+   *   typographic treatment.
+   * - `"code"` — fenced code block with a language dropdown.
+   * - `"callout"` — tone-aware callout box (info / warning / success).
+   * - `"list"` — bulleted/ordered list with line-by-line items.
+   * - `"image"` — drop area + URL + caption.
+   * - `"divider"` — focusable horizontal rule.
+   * - `"rich-text"` — Lexical rich-text editor (the existing
+   *   `@nexpress/editor` body — preserves inline marks).
+   * - `"complex"` (or omitted) — Doc view shows a read-only summary
+   *   card; operators switch to Page builder view to edit.
+   *
+   * Plugin / theme blocks that want to be Doc-editable opt in by
+   * setting this; everything else falls into `"complex"` and stays
+   * 100% editable in Page builder view (today's behavior).
+   */
+  docBodyKind?:
+    | "paragraph"
+    | "heading"
+    | "heading-2"
+    | "heading-3"
+    | "quote"
+    | "code"
+    | "callout"
+    | "list"
+    | "image"
+    | "divider"
+    | "rich-text"
+    | "complex";
 }
 
 export interface NpBlockDefinition extends NpBlockMetadata {
