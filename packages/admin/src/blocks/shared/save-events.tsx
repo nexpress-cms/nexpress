@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   type ReactNode,
 } from "react";
@@ -45,14 +46,14 @@ export function SaveEventsProvider({ children }: { children: ReactNode }) {
   const emit = useCallback((event: SaveEvent) => {
     for (const listener of listenersRef.current) listener(event);
   }, []);
-  // The context value is stable across renders — both `subscribe`
-  // and `emit` are useCallback'd, and `listenersRef` is a ref. So
+  // Both `subscribe` and `emit` are useCallback-stable (deps `[]`),
+  // so useMemo returns the same object identity on every render —
   // children that depend on the context don't re-render on every
   // emit (events flow through the ref directly).
-  const value = useRef<SaveEventsContextValue>({ subscribe, emit }).current;
-  // Keep the value's references in sync if the provider remounts.
-  value.subscribe = subscribe;
-  value.emit = emit;
+  const value = useMemo<SaveEventsContextValue>(
+    () => ({ subscribe, emit }),
+    [subscribe, emit],
+  );
   return (
     <SaveEventsContext.Provider value={value}>
       {children}

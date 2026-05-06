@@ -31,6 +31,12 @@ export interface BlockRowProps {
    * below ↔ this row's next sibling).
    */
   onReorder: (sourceId: string, side: DropSide) => void;
+  /**
+   * Parent block id. `null` for top-level rows in the canvas;
+   * the container's id for nested children. Same-parent gating
+   * for drag/drop reorder keys off this.
+   */
+  parentId: string | null;
   /** Nesting depth (0 for top-level). Used to bound recursion. */
   depth?: number;
 }
@@ -59,6 +65,7 @@ export function BlockRow({
   onSelectBlock,
   onAddBelow,
   onReorder,
+  parentId,
   depth = 0,
 }: BlockRowProps) {
   const rowRef = useRef<HTMLDivElement | null>(null);
@@ -89,9 +96,19 @@ export function BlockRow({
         }
         return allowed.includes(b.type);
       });
+  // Hide the inline insert button when the container is at its
+  // maxChildren cap. The reducer would no-op silently otherwise —
+  // the operator clicks "Add into …" and nothing happens. A
+  // disabled button + tooltip is clearer than a hidden one for
+  // wraparound cases (`undo` brings the cap back into reach).
+  const atMaxChildren =
+    typeof meta?.maxChildren === "number" &&
+    (children?.length ?? 0) >= meta.maxChildren;
   const childFallbackType =
-    childInsertCandidates.find((b) => b.type === "paragraph")?.type ??
-    childInsertCandidates[0]?.type;
+    !atMaxChildren
+      ? childInsertCandidates.find((b) => b.type === "paragraph")?.type ??
+        childInsertCandidates[0]?.type
+      : undefined;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Backspace on an empty body: delete the row (unless it's the
@@ -108,6 +125,7 @@ export function BlockRow({
 
   const drag = useRowDrag({
     blockId: block.id,
+    parentId,
     onDrop: (sourceId, side) => onReorder(sourceId, side),
   });
 
@@ -207,6 +225,7 @@ export function BlockRow({
                   selectedBlockId={selectedBlockId}
                   onFocus={() => onSelectBlock(child.id)}
                   onSelectBlock={onSelectBlock}
+                  parentId={block.id}
                   onAddBelow={() => {
                     if (!childFallbackType) return;
                     dispatch({
@@ -259,6 +278,14 @@ export function BlockRow({
                 <Plus className="h-3 w-3" />
                 Add into {meta?.label ?? block.type}
               </button>
+            ) : atMaxChildren ? (
+              <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                {meta?.label ?? block.type} caps at{" "}
+                <strong className="font-semibold text-foreground">
+                  {meta?.maxChildren}
+                </strong>{" "}
+                children.
+              </p>
             ) : (
               <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
                 <BlockIcon

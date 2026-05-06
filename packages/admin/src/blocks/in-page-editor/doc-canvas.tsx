@@ -245,6 +245,7 @@ export function DocCanvas({
             selectedBlockId={selectedBlockId}
             onFocus={() => onSelectBlock(block.id)}
             onSelectBlock={onSelectBlock}
+            parentId={null}
             onAddBelow={() => insertAfter(block.id)}
             onReorder={(sourceId, side) =>
               handleReorder(sourceId, block.id, side)
