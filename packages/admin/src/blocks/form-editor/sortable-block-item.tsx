@@ -359,11 +359,27 @@ export function SortableBlockItem({
               <GridChildLayoutControl
                 block={block}
                 inputId={`${fieldIdPrefix}-_layout-colSpan`}
-                onChange={(colSpan) =>
-                  onUpdateProps(block.id, {
-                    _layout: { ...(getLayout(block.props) ?? {}), colSpan },
-                  })
-                }
+                onChange={(breakpoint, value) => {
+                  const current = getLayout(block.props) ?? {};
+                  // Map UI breakpoint key → meta field. The base
+                  // span is required; tablet / desktop are
+                  // optional and dropped from the meta when set
+                  // to Auto (`null`).
+                  const fieldKey =
+                    breakpoint === "base"
+                      ? "colSpan"
+                      : breakpoint === "md"
+                        ? "mdColSpan"
+                        : "lgColSpan";
+                  const next = { ...current };
+                  if (value === null) {
+                    if (breakpoint === "base") next.colSpan = 12;
+                    else delete next[fieldKey];
+                  } else {
+                    next[fieldKey] = value;
+                  }
+                  onUpdateProps(block.id, { _layout: next });
+                }}
               />
             ) : null}
 

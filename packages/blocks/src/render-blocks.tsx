@@ -228,17 +228,28 @@ function renderBlock(
     node
   );
 
-  // When this block is itself a grid child, wrap it in a span div
-  // so the grid layout reads the colSpan meta off `props._layout`.
-  // We do this at the renderer (not inside each leaf block) so
-  // every existing block reuses the same wrapper without changes.
+  // When this block is itself a grid child, wrap it in a cell
+  // div whose `--np-cell-span*` CSS custom properties carry the
+  // per-breakpoint spans. The grid block's scoped `<style>` block
+  // applies them through media queries.
   if (parentType === "grid") {
-    const { colSpan } = readGridChildLayout(instance.props, 12);
+    const { colSpan, mdColSpan, lgColSpan } = readGridChildLayout(
+      instance.props,
+      12,
+    );
+    // Compose the inline style with the base span fixed and the
+    // optional md/lg overrides only when set — leaving them
+    // unset keeps the CSS fallback chain (lg → md → base) intact.
+    const cellStyle: Record<string, string | number> = {
+      "--np-cell-span": colSpan,
+    };
+    if (mdColSpan !== undefined) cellStyle["--np-cell-span-md"] = mdColSpan;
+    if (lgColSpan !== undefined) cellStyle["--np-cell-span-lg"] = lgColSpan;
     return (
       <div
         key={instance.id}
         className="np-block-grid-cell"
-        style={{ gridColumn: `span ${colSpan} / span ${colSpan}` }}
+        style={cellStyle as React.CSSProperties}
       >
         {markedNode}
       </div>
