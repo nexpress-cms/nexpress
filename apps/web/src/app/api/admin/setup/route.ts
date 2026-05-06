@@ -208,6 +208,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         ? {
             pages: seeded.pages.created,
             posts: seeded.posts.created,
+            tags: seeded.taxonomies.created,
             navItems: seeded.navigation.header + seeded.navigation.footer,
           }
         : null,
