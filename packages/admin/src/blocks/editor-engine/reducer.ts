@@ -224,6 +224,28 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         if (!canAcceptChild(containerDef, source.type, 0)) {
           return state;
         }
+        // Honor the *parent*'s contract too. The source is replaced
+        // in place by the wrapper, so the parent now contains the
+        // wrapper — if `allowedChildTypes` excludes the wrapper
+        // type, this would create an instantly-invalid tree on the
+        // way out. Count is non-increasing (1 source → 1 wrapper),
+        // so passing `len - 1` keeps the max-children check a no-op
+        // and lets `canAcceptChild` focus on `allowedChildTypes`.
+        const sourceLoc = locateBlock(state, action.id);
+        if (sourceLoc && sourceLoc.parentId !== null) {
+          const parent = findBlockInTreeFlat(state, sourceLoc.parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (
+            parentDef &&
+            !canAcceptChild(
+              parentDef,
+              action.containerType,
+              (parent?.children?.length ?? 1) - 1,
+            )
+          ) {
+            return state;
+          }
+        }
         return mapTree(state, (block) => {
           if (block.id !== action.id) return block;
           const wrapper = createBlockInstance(containerDef);
@@ -277,7 +299,28 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
       }
       case "DUPLICATE_MANY": {
         if (action.ids.length === 0) return state;
-        const idSet = new Set(action.ids);
+        const rawSet = new Set(action.ids);
+        // Drop any id whose ancestor is also selected — duplicating
+        // both would clone the descendant *inside* the ancestor's
+        // clone (because the ancestor's children already include the
+        // descendant's clone from the recursive walk), producing 4×
+        // the descendant + 2× the ancestor instead of the intended
+        // 2× each. Pre-walking once to filter is O(N × depth) which
+        // is fine for editor-scale trees.
+        const idSet = new Set<string>();
+        for (const id of rawSet) {
+          let loc = locateBlock(state, id);
+          let ancestorSelected = false;
+          while (loc && loc.parentId !== null) {
+            if (rawSet.has(loc.parentId)) {
+              ancestorSelected = true;
+              break;
+            }
+            loc = locateBlock(state, loc.parentId);
+          }
+          if (!ancestorSelected) idSet.add(id);
+        }
+        if (idSet.size === 0) return state;
         // Walk depth-first, recursing into children first so a
         // selection that spans depths still duplicates bottom-up
         // and the indices stay correct. Each selected block emits
@@ -319,6 +362,26 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         }
         const start = indices[0];
         const end = indices[indices.length - 1];
+        // Honor the parent's contract — the wrapper takes the place
+        // of `range.length` siblings, so the parent now contains the
+        // wrapper. If `allowedChildTypes` excludes the wrapper type,
+        // the wrap would build an instantly-invalid tree. The
+        // wrap collapses N siblings into 1 wrapper, so the parent's
+        // child count is strictly non-increasing — passing
+        // `postOpCount - 1` keeps `canAcceptChild`'s max check a
+        // no-op and lets it focus on `allowedChildTypes`.
+        if (parentId !== null) {
+          const parent = findBlockInTreeFlat(state, parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          if (parentDef) {
+            const postOpCount = (parent?.children?.length ?? 0) - (end - start + 1) + 1;
+            if (
+              !canAcceptChild(parentDef, action.containerType, postOpCount - 1)
+            ) {
+              return state;
+            }
+          }
+        }
         return updateContainerChildren(state, parentId, (siblings) => {
           const range = siblings.slice(start, end + 1);
           // Honor the wrapper's contract on each child + the

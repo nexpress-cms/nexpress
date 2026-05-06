@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Monitor, Smartphone, Tablet } from "lucide-react";
 import type { NpBlockInstance } from "@nexpress/blocks";
 
@@ -132,13 +132,21 @@ export function PreviewPanel({
 
   // Selection highlight + scroll-into-view. The iframe is
   // `srcDoc` + `sandbox="allow-same-origin"`, so the parent can
-  // reach into `iframe.contentDocument` directly. We re-run the
-  // effect on selection change AND on `html` change so a selection
-  // applied while the iframe was still mid-load gets re-applied
-  // after the new doc lands. CSS injection is idempotent — we look
-  // for a stable `<style data-np-preview-selection>` and replace
-  // its rules instead of appending duplicates.
-  useEffect(() => {
+  // reach into `iframe.contentDocument` directly. CSS injection is
+  // idempotent — we look for a stable `<style
+  // data-np-preview-selection>` and replace its rules instead of
+  // appending duplicates.
+  //
+  // We re-apply on three triggers:
+  //   1. selection change
+  //   2. html change (the effect alone — but the iframe's srcDoc
+  //      reflow is async, so contentDocument may still hold the
+  //      previous doc. The `onLoad` handler below covers that.)
+  //   3. iframe load (fires after each srcDoc replace, when the
+  //      new contentDocument is ready). Without this the highlight
+  //      injected on selection-change pre-load gets wiped when the
+  //      iframe swaps documents.
+  const applySelection = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
     const doc = iframe.contentDocument;
@@ -156,11 +164,16 @@ export function PreviewPanel({
       style.textContent = "";
       return;
     }
-    // The marker wrapper is `display: contents`, so the outline
-    // would do nothing if applied to it directly. Apply to its
-    // first element-typed child instead via CSS — `:scope > *` is
-    // exactly what we want.
-    const escaped = selectedBlockId.replace(/"/g, '\\"');
+    // CSS.escape is the canonical way to embed an arbitrary string
+    // in an attribute selector. Falls back to a manual escape that
+    // covers `\` and `"` for environments where CSS.escape isn't
+    // exposed (older test stubs). The marker wrapper is `display:
+    // contents`, so the outline would do nothing if applied to it
+    // directly — we target its first element-typed child via `> *`.
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(selectedBlockId)
+        : selectedBlockId.replace(/[\\"]/g, "\\$&");
     style.textContent = `
       [data-np-block-id="${escaped}"] > * {
         outline: 2px solid #6366f1 !important;
@@ -169,11 +182,22 @@ export function PreviewPanel({
         scroll-margin-bottom: 1rem;
       }
     `;
+    // Scroll the marker's first element child, not the marker
+    // itself. The marker has `display: contents` so it generates no
+    // box of its own — `scrollIntoView` on a box-less element is
+    // historically unreliable across browsers (Chrome/Firefox
+    // mostly handle it via descendant fallback, Safari has had
+    // edge-case bugs). Targeting the rendered element is the same
+    // node the outline CSS hits via `> *`, so the scroll target and
+    // the highlight target stay aligned.
     const target = doc.querySelector<HTMLElement>(
-      `[data-np-block-id="${escaped}"]`,
+      `[data-np-block-id="${escaped}"] > *`,
     );
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [selectedBlockId, html]);
+  }, [selectedBlockId]);
+  useEffect(() => {
+    applySelection();
+  }, [applySelection, html]);
 
   return (
     <section
@@ -230,6 +254,13 @@ export function PreviewPanel({
           // contained.
           srcDoc={html ?? "<!doctype html><html><body></body></html>"}
           title="Block preview"
+          // Re-apply the selection highlight after each srcDoc
+          // swap. Without this, the `<style
+          // data-np-preview-selection>` injected pre-swap gets
+          // discarded when the iframe replaces its document, and
+          // the operator loses the highlight on every preview
+          // refetch (every 500ms-debounced edit).
+          onLoad={applySelection}
           // Fixed minimum height so the panel doesn't collapse to
           // 0 while loading; the iframe content is whatever the
           // route returned.

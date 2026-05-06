@@ -597,6 +597,31 @@ export function BlockPageEditor({
     [availableBlocks],
   );
   const [wrapPickerOpen, setWrapPickerOpen] = useState(false);
+  const wrapPickerRef = useRef<HTMLDivElement | null>(null);
+  // Auto-close when the selection stops being wrap-eligible. The
+  // render-time guard `{wrapPickerOpen && wrapEligible}` already
+  // hides the popup visually, but without resetting state the
+  // popup would re-appear on its own the moment eligibility came
+  // back — without the operator clicking. Pin the state to the
+  // gate so "open" only ever means "currently visible".
+  useEffect(() => {
+    if (!wrapEligible && wrapPickerOpen) setWrapPickerOpen(false);
+  }, [wrapEligible, wrapPickerOpen]);
+  // Outside-click dismiss. The ref wraps both the trigger button
+  // and the popup, so clicks on either count as "inside" and
+  // don't fire the close. `pointerdown` (not `click`) so we beat
+  // any inner button's `onClick` that might unmount its own DOM.
+  useEffect(() => {
+    if (!wrapPickerOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (wrapPickerRef.current?.contains(target)) return;
+      setWrapPickerOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [wrapPickerOpen]);
 
   return (
     <section
@@ -642,7 +667,7 @@ export function BlockPageEditor({
             {selectedIds.size} selected
           </span>
           <div className="ml-auto flex flex-wrap items-center gap-1">
-            <div className="relative">
+            <div className="relative" ref={wrapPickerRef}>
               <Button
                 type="button"
                 variant="outline"
