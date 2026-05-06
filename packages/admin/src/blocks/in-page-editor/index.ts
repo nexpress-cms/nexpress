@@ -27,3 +27,4 @@ export {
   AutoGrowTextarea,
   type AutoGrowTextareaProps,
 } from "./auto-grow-textarea.js";
+export { useRowDrag, type DropSide, type RowDragHandlers } from "./dnd.js";

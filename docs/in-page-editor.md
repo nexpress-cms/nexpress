@@ -116,35 +116,42 @@ Behavior:
 - Same id is preserved — undo/redo lands the operator on the
   same row visually.
 
-## Known limitations (v1)
+## Notes & limitations (v1)
 
-- **Autosave indicator stays in "dirty" state.** The status bar
-  ships the pulse + label scaffolding (`useAutosaveStatus`), but the
-  orchestrator doesn't yet receive a save-resolution callback from
-  the surrounding form (react-hook-form's submit lives one layer
-  up). Until that's plumbed, the indicator marks dirty on every
-  edit but never flips back to "saved". The block tree itself is
-  saved via the form's existing submit path — the indicator is
-  cosmetic.
-- **No drag-and-drop reorder in Document view.** Use the row's `⋯`
-  popover (Move up / Move down) or switch to Page builder for
-  dnd-kit-driven reorder. The form-card editor's nested-container
-  drag stays unchanged.
-- **Slash menu closes on Esc and re-opens if the text still starts
-  with `/`.** The `dismissedTextRef` snapshot keeps the menu shut
-  for the just-dismissed `/foo` text — typing past or deleting the
-  slash invalidates the snapshot and reopens normally.
-- **Inline marks (Bold / Italic / Underline / Strikethrough /
-  Inline-code / Link) are rich-text-only.** Atom blocks store plain
-  strings; the toolbar's mark segment disables when focus sits
-  outside a Lexical body. v1.1 may add a `props.marks` shape on
-  atom bodies — additive, no wire-format break.
-- **The rich-text body in Doc view is a placeholder.** Existing
-  rich-text content edits in Page builder (full Lexical UI). The
-  in-page Lexical body lands in a follow-up PR.
-- **Doc view edits top-level blocks only.** Containers (`grid`,
-  `tabs`) render as read-only summary cards in Doc view; nest into
-  them via Page builder.
+- **Autosave indicator** — driven by `SaveEventsProvider` in
+  `CollectionEditView`. The form emits `"saving"` before the
+  network round-trip and `"saved"` / `"error"` after — the
+  orchestrator's `useSaveEvents` subscription forwards them into
+  `useAutosaveStatus`, so the pulse cycles dirty → saving → saved
+  → idle as expected. Errors stay in dirty so operators see they
+  still need to retry.
+- **Drag-and-drop reorder in Document view** — HTML5 native (see
+  `dnd.ts`). Drag the row's grip handle; the row above / below the
+  cursor highlights with a 2-px primary line; drop dispatches
+  `MOVE_WITHIN_PARENT`. Same-parent only — cross-container drag
+  stays a Page builder feature (matches the form-card editor's
+  same constraint).
+- **Slash menu** — closes on Esc and stays closed for the just-
+  dismissed `/foo` text via `dismissedTextRef`. Typing past or
+  deleting the slash invalidates the snapshot and reopens normally.
+- **Inline marks** — Bold / Italic / Underline / Strikethrough /
+  Inline-code / Link live on the rich-text block only. Atom blocks
+  store plain strings; the toolbar's mark segment disables when
+  focus sits outside a Lexical body (`[data-np-rich-text-body]`
+  marker). v1.1 may add a `props.marks` shape on atom bodies —
+  additive, no wire-format break.
+- **Rich-text body in Doc view** — lazy-loads `NpRichTextEditor`
+  from `@nexpress/editor/client`. Same Lexical instance the Page
+  builder mounts; same `NpRichTextContent` JSON shape on the wire.
+  Focusing the contenteditable lights up the toolbar's inline-mark
+  segment.
+- **Container nesting** — Doc view renders `acceptsChildren`
+  blocks (`grid`, `tabs`, etc.) with a dashed children area. Add
+  Doc-friendly types directly inline; the inline picker honors the
+  parent's `allowedChildTypes`. Drag-reorder inside a container
+  works the same way as top-level. For child types that don't have
+  a `docBodyKind` set, the inline picker hides the "Add into …"
+  button and points operators to Page builder.
 
 ## Testing
 

@@ -57,6 +57,12 @@ export {
   type UseAutosaveStatusResult,
 } from "./autosave-status.js";
 export {
+  SaveEventsProvider,
+  useSaveEmitter,
+  useSaveEvents,
+  type SaveEvent,
+} from "./save-events.js";
+export {
   BlockImagePicker,
   type BlockImagePickerProps,
 } from "./block-image-picker.js";

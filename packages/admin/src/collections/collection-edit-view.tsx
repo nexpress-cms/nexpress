@@ -15,6 +15,7 @@ import { NavMembershipPanel } from "./nav-membership-panel.js";
 import { RevisionsPanel } from "./revisions-panel.js";
 import { ScheduleDialog } from "./schedule-dialog.js";
 import { TranslationTabs } from "./translation-tabs.js";
+import { SaveEventsProvider, useSaveEmitter } from "../blocks/shared/save-events.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
@@ -231,8 +232,22 @@ function formatRelative(timestamp: number): string {
   return `${hours}h ago`;
 }
 
-export function CollectionEditView({ config, doc, collectionSlug, collectionTabs }: CollectionEditViewProps) {
+export function CollectionEditView(props: CollectionEditViewProps) {
+  // Wrap in `SaveEventsProvider` so block-editor orchestrators
+  // mounted inside the form (via `BlocksFieldRender`) can subscribe
+  // to save lifecycle events and flip their autosave indicator.
+  // The actual view body lives in `CollectionEditViewInner` so its
+  // `useSaveEmitter()` call sits inside the provider's tree.
+  return (
+    <SaveEventsProvider>
+      <CollectionEditViewInner {...props} />
+    </SaveEventsProvider>
+  );
+}
+
+function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }: CollectionEditViewProps) {
   const router = useRouter();
+  const emitSave = useSaveEmitter();
   const [toast, setToast] = useState<ToastState>(null);
   const [savingAs, setSavingAs] = useState<SaveStatus | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -386,6 +401,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
     form.handleSubmit(async (values) => {
       setSavingAs(status);
       setToast(null);
+      emitSave("saving");
 
       try {
         const method = doc?.id ? "PATCH" : "POST";
@@ -424,6 +440,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
           type: "success",
           message: successMessage(status, publishedAtOverride),
         });
+        emitSave("saved");
         if (status === "scheduled" || status === "unschedule") {
           setScheduleOpen(false);
         }
@@ -435,6 +452,7 @@ export function CollectionEditView({ config, doc, collectionSlug, collectionTabs
 
         router.refresh();
       } catch (error) {
+        emitSave("error");
         setToast({
           type: "error",
           message: error instanceof Error ? error.message : "Something went wrong while saving.",

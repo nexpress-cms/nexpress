@@ -67,14 +67,60 @@ export function DocCanvas({
       blockType: blockType ?? fallbackInsertType,
     });
 
+  // Drag-reorder dispatch. Drops carry a source-id and a side
+  // ("above" / "below" of the target). v1 supports same-parent
+  // reorder only — Doc rows are top-level, so the canvas's
+  // `blocks` array IS the parent's siblings list. The reducer's
+  // MOVE_WITHIN_PARENT handles the index math; we just translate
+  // "below this row" into "to the row's next sibling".
+  const handleReorder = (
+    sourceId: string,
+    targetId: string,
+    side: "above" | "below" | null,
+  ) => {
+    if (!side) return;
+    const targetIndex = blocks.findIndex((b) => b.id === targetId);
+    if (targetIndex === -1) return;
+    const toId = side === "above"
+      ? targetId
+      : blocks[targetIndex + 1]?.id ?? targetId;
+    dispatch({
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: sourceId,
+      toId,
+    });
+  };
+
   const activeBlock = selectedBlockId
     ? blocks.find((b) => b.id === selectedBlockId) ?? null
     : null;
-  // Track whether focus sits inside a Lexical body — atom blocks
+  // Track whether focus sits inside a Lexical body. Atom blocks
   // don't carry inline marks, so the toolbar's mark segment is
-  // gated on this. v1 keeps it pessimistic (always false) since
-  // the in-page rich-text body is itself a v1.1 follow-up.
-  const [inRichText] = useState(false);
+  // gated on this — focusing a Lexical contenteditable lights up
+  // Bold / Italic / etc., focusing an atom textarea greys them.
+  // The check runs on every focusin / focusout inside the canvas;
+  // ref guards prevent state thrash when focus moves between two
+  // atom rows (status doesn't change).
+  const [inRichText, setInRichText] = useState(false);
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const update = () => {
+      const active = document.activeElement;
+      const inside = !!(
+        active instanceof Element &&
+        active.closest("[data-np-rich-text-body]")
+      );
+      setInRichText((current) => (current === inside ? current : inside));
+    };
+    root.addEventListener("focusin", update);
+    root.addEventListener("focusout", update);
+    return () => {
+      root.removeEventListener("focusin", update);
+      root.removeEventListener("focusout", update);
+    };
+  }, []);
 
   // Slash-menu trigger detection. A paragraph whose `text` starts
   // with `/` is treated as a slash-menu invocation: the menu opens
@@ -193,10 +239,16 @@ export function DocCanvas({
             block={block}
             meta={definitions.get(block.type)}
             availableBlocks={availableBlocks}
+            definitions={definitions}
             dispatch={dispatch}
             isFocused={selectedBlockId === block.id}
+            selectedBlockId={selectedBlockId}
             onFocus={() => onSelectBlock(block.id)}
+            onSelectBlock={onSelectBlock}
             onAddBelow={() => insertAfter(block.id)}
+            onReorder={(sourceId, side) =>
+              handleReorder(sourceId, block.id, side)
+            }
           />
         ))
       )}

@@ -1,12 +1,27 @@
 "use client";
 
-import type { Dispatch, KeyboardEvent } from "react";
+import { Suspense, lazy, type ComponentType, type Dispatch, type KeyboardEvent } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
 import { cn } from "../../ui/utils.js";
 
 import { AutoGrowTextarea } from "./auto-grow-textarea.js";
+
+// Lazy-load the Lexical editor to keep it out of the in-page
+// editor's main bundle. Mirrors the lazy-load in field-renderer.tsx
+// so collections that don't use rich-text blocks don't pay the
+// cost.
+const LazyRichTextEditor = lazy(async () => {
+  const mod = await import("@nexpress/editor/client");
+  return {
+    default: mod.NpRichTextEditor as ComponentType<{
+      value: unknown;
+      onChange: (value: unknown) => void;
+      config?: unknown;
+    }>,
+  };
+});
 
 interface BodyProps {
   block: NpBlockInstance;
@@ -285,22 +300,35 @@ function ComplexBody({ meta, block }: BodyProps) {
   );
 }
 
-function RichTextBody({ meta, block }: BodyProps) {
-  // The full Lexical body lands in a follow-up phase. Until then,
-  // surface a hint so operators know to switch views — the data
-  // round-trips, no edit is lost.
+function RichTextBody({ block, dispatch, onFocus }: BodyProps) {
+  // Mark the body container with `data-np-rich-text-body` so the
+  // sticky toolbar's `inRichText` detection lights up the inline-
+  // mark segment (Bold / Italic / Underline / etc.) when focus
+  // lands inside the Lexical contenteditable.
   return (
-    <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm dark:border-neutral-700 dark:bg-neutral-900/40">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{meta.label}</span>
-        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-          rich-text
-        </code>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Long-form prose with inline marks — edit in Page builder. Block
-        id: <code className="font-mono">{block.id.slice(0, 8)}</code>
-      </p>
+    <div
+      data-np-rich-text-body
+      onFocusCapture={onFocus}
+      className="np-doc-rich-text rounded-lg border border-neutral-200/80 bg-background px-3 py-2 dark:border-neutral-800/80"
+    >
+      <Suspense
+        fallback={
+          <div className="px-1 py-2 text-xs text-muted-foreground">
+            Loading rich-text editor…
+          </div>
+        }
+      >
+        <LazyRichTextEditor
+          value={block.props.content ?? null}
+          onChange={(content: unknown) =>
+            dispatch({
+              type: "UPDATE_PROPS",
+              id: block.id,
+              props: { content },
+            })
+          }
+        />
+      </Suspense>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, type Dispatch, type KeyboardEvent } from "react";
-import { Plus } from "lucide-react";
+import { GripVertical, Plus } from "lucide-react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
@@ -10,41 +10,61 @@ import { cn } from "../../ui/utils.js";
 
 import { BlockActionsPopover } from "./block-actions-popover.js";
 import { BlockBodyRenderer } from "./block-body-renderer.js";
+import { BlockIcon } from "../shared/block-icon.js";
+import { useRowDrag, type DropSide } from "./dnd.js";
 
 export interface BlockRowProps {
   block: NpBlockInstance;
   meta: NpBlockMetadata | undefined;
   availableBlocks: NpBlockMetadata[];
+  definitions: ReadonlyMap<string, NpBlockMetadata>;
   dispatch: Dispatch<EditorAction>;
   isFocused: boolean;
+  selectedBlockId: string | null;
   onFocus: () => void;
+  onSelectBlock: (id: string) => void;
   onAddBelow: () => void;
+  /**
+   * Reorder callback fired when a drop lands on this row. The
+   * canvas owns the actual MOVE_WITHIN_PARENT dispatch so it can
+   * compute the right `toId` from the side (above ↔ this row,
+   * below ↔ this row's next sibling).
+   */
+  onReorder: (sourceId: string, side: DropSide) => void;
+  /** Nesting depth (0 for top-level). Used to bound recursion. */
+  depth?: number;
 }
 
 /**
  * Single row in the Doc canvas. The hover-revealed left rail
- * surfaces a `+` (insert below) and a grip (drag-handle + actions
- * popover trigger). The body comes from `BlockBodyRenderer`,
- * which switches over `meta.docBodyKind` to render the right
- * inline editor.
+ * surfaces a `+` (insert below), a grip (HTML5 drag handle), and
+ * an actions popover trigger. The body comes from
+ * `BlockBodyRenderer`, which switches over `meta.docBodyKind` to
+ * render the right inline editor.
  *
- * Drag-and-drop reorder lands in a follow-up phase — for v1 the
- * grip just triggers the actions popover, with Move up / Move
- * down available there. The same row data attribute
- * (`data-np-block-row`) the form-card editor uses keeps the
- * orchestrator's keyboard nav + outline scroll-into-view working
- * across both views.
+ * Drag/drop is HTML5 native (see `dnd.ts`). The grip is the only
+ * draggable element — dragging the row body would conflict with
+ * text selection inside the auto-grow textarea. The whole row
+ * acts as the drop target so the indicator anchors visually.
  */
 export function BlockRow({
   block,
   meta,
   availableBlocks,
+  definitions,
   dispatch,
   isFocused,
+  selectedBlockId,
   onFocus,
+  onSelectBlock,
   onAddBelow,
+  onReorder,
+  depth = 0,
 }: BlockRowProps) {
   const rowRef = useRef<HTMLDivElement | null>(null);
+
+  const isContainer = Boolean(meta?.acceptsChildren);
+  const children = isContainer ? block.children ?? [] : null;
 
   const convertCandidates = availableBlocks.filter(
     (b) =>
@@ -54,6 +74,24 @@ export function BlockRow({
       b.docBodyKind !== "image" &&
       b.docBodyKind !== "divider",
   );
+
+  // Doc-friendly types ALSO honor the parent's `allowedChildTypes`
+  // contract — the inline "Add into …" button shouldn't surface
+  // types the reducer would reject. Empty / wildcard means accept
+  // anything Doc-friendly.
+  const childInsertCandidates = !isContainer
+    ? []
+    : availableBlocks.filter((b) => {
+        if (!b.docBodyKind || b.docBodyKind === "complex") return false;
+        const allowed = meta?.allowedChildTypes;
+        if (!allowed || allowed.length === 0 || allowed.includes("*")) {
+          return true;
+        }
+        return allowed.includes(b.type);
+      });
+  const childFallbackType =
+    childInsertCandidates.find((b) => b.type === "paragraph")?.type ??
+    childInsertCandidates[0]?.type;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Backspace on an empty body: delete the row (unless it's the
@@ -68,18 +106,44 @@ export function BlockRow({
     }
   };
 
+  const drag = useRowDrag({
+    blockId: block.id,
+    onDrop: (sourceId, side) => onReorder(sourceId, side),
+  });
+
   return (
     <div
       ref={rowRef}
       data-np-block-row={block.id}
       data-focused={isFocused ? "true" : undefined}
+      data-dragover={drag.dropSide ?? undefined}
       tabIndex={-1}
       className={cn(
         "group/row relative flex items-start gap-1 rounded-md px-1 py-1 outline-none transition-colors",
         isFocused && "bg-neutral-100/50 dark:bg-neutral-900/40",
+        drag.isDragging && "opacity-40",
       )}
       onFocusCapture={onFocus}
+      onDragOver={drag.onDragOver}
+      onDragLeave={drag.onDragLeave}
+      onDrop={drag.onDrop}
     >
+      {/* Drop indicators — 2 px highlighted lines anchored above /
+          below the row when a drag is hovering. The pseudo-element
+          approach matches the design's BlockRow CSS. */}
+      {drag.dropSide === "above" ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-px left-7 right-1 h-0.5 rounded-full bg-primary"
+        />
+      ) : null}
+      {drag.dropSide === "below" ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-px left-7 right-1 h-0.5 rounded-full bg-primary"
+        />
+      ) : null}
+
       <div
         className={cn(
           "sticky top-16 flex h-6 w-7 shrink-0 items-center gap-0.5 pt-1.5 opacity-0 transition-opacity",
@@ -97,6 +161,16 @@ export function BlockRow({
         >
           <Plus className="h-3.5 w-3.5" />
         </Button>
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          draggable={drag.draggable}
+          onDragStart={drag.onDragStart}
+          onDragEnd={drag.onDragEnd}
+          className="inline-flex h-5 w-5 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
         <BlockActionsPopover
           blockId={block.id}
           blockType={block.type}
@@ -112,6 +186,93 @@ export function BlockRow({
           onFocus={onFocus}
           onKeyDown={handleKeyDown}
         />
+        {isContainer ? (
+          <div
+            className={cn(
+              "mt-2 flex flex-col gap-1 rounded-lg border border-dashed border-neutral-300 bg-neutral-50/40 p-2",
+              "dark:border-neutral-700 dark:bg-neutral-900/30",
+            )}
+            data-np-block-children={block.id}
+          >
+            {children && children.length > 0 ? (
+              children.map((child) => (
+                <BlockRow
+                  key={child.id}
+                  block={child}
+                  meta={definitions.get(child.type)}
+                  availableBlocks={availableBlocks}
+                  definitions={definitions}
+                  dispatch={dispatch}
+                  isFocused={selectedBlockId === child.id}
+                  selectedBlockId={selectedBlockId}
+                  onFocus={() => onSelectBlock(child.id)}
+                  onSelectBlock={onSelectBlock}
+                  onAddBelow={() => {
+                    if (!childFallbackType) return;
+                    dispatch({
+                      type: "INSERT_AFTER",
+                      targetId: child.id,
+                      blockType: childFallbackType,
+                    });
+                  }}
+                  onReorder={(sourceId, side) => {
+                    // Same-parent reorder inside a container.
+                    const targetIndex = (children ?? []).findIndex(
+                      (c) => c.id === child.id,
+                    );
+                    if (targetIndex === -1) return;
+                    const next = (children ?? [])[targetIndex + 1]?.id;
+                    const toId =
+                      side === "above"
+                        ? child.id
+                        : next ?? child.id;
+                    dispatch({
+                      type: "MOVE_WITHIN_PARENT",
+                      parentId: block.id,
+                      fromId: sourceId,
+                      toId,
+                    });
+                  }}
+                  depth={depth + 1}
+                />
+              ))
+            ) : (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                Empty container.
+              </p>
+            )}
+            {childFallbackType ? (
+              <button
+                type="button"
+                onClick={() =>
+                  dispatch({
+                    type: "ADD",
+                    blockType: childFallbackType,
+                    parentId: block.id,
+                  })
+                }
+                className={cn(
+                  "inline-flex items-center gap-1.5 self-start rounded-md border border-dashed border-neutral-300 bg-transparent px-2 py-1 text-[11px] text-muted-foreground transition-colors",
+                  "hover:border-neutral-400 hover:text-foreground dark:border-neutral-700",
+                )}
+              >
+                <Plus className="h-3 w-3" />
+                Add into {meta?.label ?? block.type}
+              </button>
+            ) : (
+              <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                <BlockIcon
+                  icon={meta?.icon}
+                  kind={meta?.iconKind}
+                  sizeClassName="h-3 w-3"
+                  className="mr-1 inline-flex"
+                />
+                No Doc-friendly child types — switch to Page builder
+                to add nested blocks.
+              </p>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
