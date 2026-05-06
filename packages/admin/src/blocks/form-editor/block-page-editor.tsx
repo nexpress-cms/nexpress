@@ -30,6 +30,7 @@ import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 import { BlockPalette } from "../block-palette.js";
 import {
   collectContainerCandidates,
+  findBlockInTreeFlat,
   locateBlock,
   useEditorState,
 } from "../editor-engine/index.js";
@@ -46,7 +47,6 @@ import {
 } from "../patterns.js";
 import { PreviewPanel } from "../preview-panel.js";
 import { CommandMenu, PageJsonDialog } from "../shared/index.js";
-import { findBlockInTreeFlat } from "../editor-engine/index.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 
