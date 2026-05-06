@@ -24,6 +24,8 @@ import {
 import type { EditorAction } from "../editor-engine/index.js";
 import { cn } from "../../ui/utils.js";
 
+import { wrapInlineMark } from "./wrap-inline-mark.js";
+
 interface ToolbarButtonProps {
   Icon: LucideIcon;
   label: string;
@@ -150,53 +152,10 @@ export function EditorToolbar({ activeBlock, inRichText, dispatch }: EditorToolb
   //      (`**`, `*`, `_`, `~~`, `` ` ``). The atom block's
   //      `render()` parses the syntax via `renderInlineMarks`.
   //
-  // Markdown wrap is implemented here directly: read the focused
-  // textarea's selectionStart/End, splice in the delimiters, fire
-  // a native `input` event so the React-controlled value updates,
-  // and restore the selection across the inserted text.
+  // Markdown wrap is delegated to the shared `wrapInlineMark`
+  // helper so the floating `InlineSelectionToolbar` and this
+  // sticky toolbar dispatch the exact same flow.
   const inlineMarksEnabled = inRichText || isAtomTextarea(activeBlockType);
-
-  function wrapInlineMark(delimiter: string): void {
-    if (!activeBlockId) return;
-    if (typeof document === "undefined") return;
-    const el = document.activeElement;
-    if (!(el instanceof HTMLTextAreaElement)) {
-      // Lexical path — v1 stub. Once the Lexical command bridge
-      // lands, this branch dispatches `FORMAT_TEXT_COMMAND`.
-      return;
-    }
-    const start = el.selectionStart ?? 0;
-    const end = el.selectionEnd ?? 0;
-    const value = el.value;
-    const before = value.slice(0, start);
-    const selection = value.slice(start, end);
-    const after = value.slice(end);
-    // No selection → insert paired delimiters with the caret
-    // between them, ready to type the marked text.
-    const insert = selection.length > 0 ? selection : "";
-    const next = `${before}${delimiter}${insert}${delimiter}${after}`;
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      "value",
-    )?.set;
-    if (nativeSetter) {
-      nativeSetter.call(el, next);
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    } else {
-      // Fallback: fire a DOM event the AutoGrowTextarea reads via
-      // its onChange. This path is rare (browsers ship the value
-      // setter universally).
-      el.value = next;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-    // Restore selection across the just-inserted text.
-    const cursorStart = start + delimiter.length;
-    const cursorEnd = cursorStart + insert.length;
-    requestAnimationFrame(() => {
-      el.setSelectionRange(cursorStart, cursorEnd);
-      el.focus();
-    });
-  }
 
   return (
     <div

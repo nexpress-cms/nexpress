@@ -851,3 +851,26 @@
     background: var(--np-color-border, #e5e7eb);
   }
 }
+
+/* ==========================================================================
+   IN-PAGE EDITOR — autosave pulse
+
+   Custom box-shadow ripple keyframe used by the in-page editor's
+   status bar to indicate "autosave on / save resolved". Tailwind's
+   built-in `animate-pulse` is opacity-only; the design wants a
+   radiating ring like the form-card's status-pulse preview card.
+   ========================================================================== */
+@keyframes np-autosave-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 167, 100, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 167, 100, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 167, 100, 0);
+  }
+}
+.np-autosave-pulse {
+  animation: np-autosave-pulse 2s ease-out infinite;
+}

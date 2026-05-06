@@ -120,9 +120,12 @@ export function StatusBar({
           className={cn(
             "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
             status === "saving" && "animate-pulse bg-amber-500",
-            status === "saved" && "bg-emerald-500",
+            status === "saved" && "np-autosave-pulse bg-emerald-500",
             status === "dirty" && "bg-amber-500",
-            status === "idle" && "bg-emerald-500",
+            // Idle = autosave on, no pending changes — ripple to
+            // signal the indicator is alive (matches the design's
+            // `be-pulse` ambient state).
+            status === "idle" && "np-autosave-pulse bg-emerald-500",
           )}
           aria-label={`Autosave ${status}`}
         />

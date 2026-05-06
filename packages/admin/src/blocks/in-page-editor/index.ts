@@ -16,6 +16,11 @@ export { BlockBodyRenderer, type BlockBodyRendererProps } from "./block-body-ren
 export { BlockActionsPopover } from "./block-actions-popover.js";
 export { EditorToolbar, type EditorToolbarProps } from "./editor-toolbar.js";
 export { SlashMenu, type SlashMenuProps, type SlashMenuPosition } from "./slash-menu.js";
+export {
+  InlineSelectionToolbar,
+  type InlineSelectionToolbarProps,
+} from "./inline-selection-toolbar.js";
+export { wrapInlineMark } from "./wrap-inline-mark.js";
 export { AutoGrowTextarea, type AutoGrowTextareaProps } from "./auto-grow-textarea.js";
 export {
   useContainerDropZone,

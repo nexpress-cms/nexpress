@@ -10,7 +10,9 @@ import { cn } from "../../ui/utils.js";
 
 import { BlockRow } from "./block-row.js";
 import { EditorToolbar } from "./editor-toolbar.js";
+import { InlineSelectionToolbar } from "./inline-selection-toolbar.js";
 import { SlashMenu, type SlashMenuPosition } from "./slash-menu.js";
+import { wrapInlineMark } from "./wrap-inline-mark.js";
 
 export interface DocCanvasProps {
   blocks: NpBlockInstance[];
@@ -282,10 +284,13 @@ export function DocCanvas({
         variant="ghost"
         size="sm"
         onClick={() => appendAtEnd()}
-        className="mt-1 justify-start border border-dashed border-neutral-300 bg-transparent text-muted-foreground hover:border-neutral-400 hover:text-foreground dark:border-neutral-700"
+        className="mt-1 w-full justify-start border border-dashed border-neutral-300 bg-transparent text-muted-foreground hover:border-neutral-400 hover:text-foreground dark:border-neutral-700"
       >
         <Plus className="mr-1.5 h-3.5 w-3.5" />
         Add block
+        <span className="ml-auto text-[11px] text-muted-foreground/70">
+          type <code className="rounded bg-muted px-1 font-mono">/</code> for menu
+        </span>
       </Button>
 
       {slashState ? (
@@ -308,6 +313,16 @@ export function DocCanvas({
           }}
         />
       ) : null}
+
+      {/* Floating inline-selection toolbar — appears above any
+          non-collapsed selection inside an atom-block textarea.
+          Mirrors the design's `be-inline` surface: dark
+          background, compact button row, B/I/U/S/Inline-code +
+          Link (rich-text only). The shared `wrapInlineMark`
+          helper produces the same dispatch the sticky toolbar
+          uses, so operators get identical behavior whether they
+          reach for the top toolbar or the floating one. */}
+      <InlineSelectionToolbar containerRef={containerRef} onWrap={wrapInlineMark} />
     </div>
   );
 }

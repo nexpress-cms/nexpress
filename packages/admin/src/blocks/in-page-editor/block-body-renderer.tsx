@@ -1,6 +1,7 @@
 "use client";
 
 import { lazy, type ComponentType, type Dispatch, type KeyboardEvent } from "react";
+import { AlertTriangle, CheckCircle, Info } from "lucide-react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
@@ -131,13 +132,16 @@ function CalloutBody({ block, dispatch, onFocus, onKeyDown }: BodyProps) {
     warning:
       "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100",
   } as const;
+  const ToneIcon =
+    tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle : Info;
   return (
     <div
       className={cn(
-        "grid grid-cols-[1fr_auto] gap-3 rounded-lg border px-3 py-2.5",
+        "grid grid-cols-[auto_1fr_auto] gap-3 rounded-lg border px-3 py-2.5",
         toneClasses[tone],
       )}
     >
+      <ToneIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <AutoGrowTextarea
         value={readString(block.props.text)}
         onChange={(text) => update(dispatch, block.id, { text })}
