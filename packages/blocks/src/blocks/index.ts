@@ -7,3 +7,8 @@ export { richTextBlock } from "./rich-text.js";
 export { contactFormBlock } from "./contact-form.js";
 export { imageGalleryBlock } from "./image-gallery.js";
 export { gridBlock, readGridChildLayout } from "./grid.js";
+export { sectionHeaderBlock } from "./section-header.js";
+export { testimonialsBlock } from "./testimonials.js";
+export { statsGridBlock } from "./stats-grid.js";
+export { logosCloudBlock } from "./logos-cloud.js";
+export { tabsBlock } from "./tabs.js";

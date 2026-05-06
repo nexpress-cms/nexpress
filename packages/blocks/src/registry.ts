@@ -6,8 +6,13 @@ import {
   gridBlock,
   heroBlock,
   imageGalleryBlock,
+  logosCloudBlock,
   pricingBlock,
   richTextBlock,
+  sectionHeaderBlock,
+  statsGridBlock,
+  tabsBlock,
+  testimonialsBlock,
 } from "./blocks/index.js";
 import type {
   NpBlockDefinition,
@@ -20,8 +25,15 @@ const defaultBlocks = [
   // Layout containers first — operators looking to compose a page
   // typically reach for these before any leaf block.
   gridBlock,
+  // Section primitives — the building-block intros and trust strips
+  // most landing pages reach for next.
+  sectionHeaderBlock,
   heroBlock,
   featureGridBlock,
+  testimonialsBlock,
+  statsGridBlock,
+  logosCloudBlock,
+  tabsBlock,
   faqBlock,
   pricingBlock,
   ctaBlock,
