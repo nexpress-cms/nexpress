@@ -116,8 +116,9 @@ if (process.env.RESEND_API_KEY) {
 ```
 
 Call `setEmailAdapter` **before** the first password-reset / invite
-request — the easiest place is inside `ensureWriteReady()` or any
-module-scope init that runs on boot.
+request — the reference app wires it inside `ensureFor("write")`
+(see `apps/web/src/lib/init-core.ts`). Any module-scope init that
+runs on boot also works.
 
 ---
 

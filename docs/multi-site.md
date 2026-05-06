@@ -166,12 +166,19 @@ Helper APIs:
 
 - `resolveUserRoleOnSite(user, siteId)` — full chain.
 - `hasRoleOnSite(user, minRole, siteId?)` — site-scoped
-  variant of `hasRole()`.
+  role-rank check (super-admin → admin, explicit membership
+  → that role, otherwise global default). Defaults to the
+  current request site when `siteId` is omitted.
 - `isSuperAdmin(user)` — quick boolean check.
 
-The framework's existing `hasRole(user, minRole)` keeps
-working as a global check (used by routes that don't care
-about site context, like `/api/auth/*`).
+For non-site-scoped checks (e.g. `/api/auth/*` routes that
+don't care about tenant boundaries), use `can(user, capability)`
+from `@nexpress/core/auth` (`"admin.manage"`,
+`"content.publish"`, `"content.author"`,
+`"community.moderate"`). The legacy global `hasRole(user,
+minRole)` was retired in #273; capability strings replace it
+because they describe the *behavior* a route gates on rather
+than a role-rank comparison.
 
 ---
 
@@ -316,8 +323,10 @@ deployments:
   hostname (e.g. local `localhost:3000`) resolve to default.
 - The site picker hides itself when only one site is
   accessible, removing the noise.
-- `hasRole()` keeps working as a global check; nothing in
-  the existing role tree changed.
+- The role tree itself didn't change — Phase 15 only added the
+  per-site dimension on top. Global non-site-scoped checks now
+  go through `can(user, capability)` (the legacy `hasRole()` /
+  `isStaffMod()` helpers were retired in #273).
 
 Sites that don't need multi-tenancy can ignore Phase 15
 entirely — the framework treats them the same as before.

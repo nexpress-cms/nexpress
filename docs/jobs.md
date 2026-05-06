@@ -72,8 +72,9 @@ Two separate roles, both backed by the same pg-boss tables:
 
 - **Producer** — the Next.js web/API process. Calls
   `enqueueJob(type, data)` to push work onto the queue.
-  Started lazily by `ensureJobProducer()` on the first
-  request that needs the queue.
+  Started lazily via `ensureFor("write")` on the first
+  request that needs the queue (mutating API routes,
+  server actions, import scripts).
 - **Worker** — a dedicated long-running process that
   registers `boss.work()` loops for every handler in the
   registry and runs them. Started via `startWorker()`.

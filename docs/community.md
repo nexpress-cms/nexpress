@@ -357,7 +357,7 @@ roles:
 `memberCan(memberId, action, target)` resolves grants in
 priority order: site-wide member roles → scoped grants →
 default `member` capabilities. Staff users always pass
-(`isStaffMod` check shortcuts).
+(short-circuited via `can(user, "community.moderate")`).
 
 Capability matrix lives in `packages/core/src/community/can.ts`.
 The matrix is the source of truth — UI buttons read it via
