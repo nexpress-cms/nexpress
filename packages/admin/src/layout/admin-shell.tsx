@@ -5,16 +5,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  FileStack,
   FileText,
   Flag,
+  FolderTree,
   Globe2,
   History,
   Image,
   Inbox,
   LayoutDashboard,
+  type LucideIcon,
+  MessageSquare,
+  Newspaper,
   PanelLeft,
   Puzzle,
   Settings,
+  Tag,
   Timer,
   Users,
 } from "lucide-react";
@@ -26,6 +32,28 @@ import { Button } from "../ui/button.js";
 import { ScrollArea } from "../ui/scroll-area.js";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
 import { cn } from "../ui/utils.js";
+
+/**
+ * Lucide-name → component map for `admin.icon` resolution. Add
+ * here when a collection wants a non-default icon. Unknown names
+ * fall back to the generic `FileText` so a typo can't break the
+ * sidebar render. Kept small on purpose — the bundle pulls only
+ * the icons the shell actually mounts.
+ */
+const COLLECTION_ICONS: Record<string, LucideIcon> = {
+  FileStack,
+  FileText,
+  FolderTree,
+  Image,
+  MessageSquare,
+  Newspaper,
+  Tag,
+};
+
+function resolveCollectionIcon(name: string | undefined): LucideIcon {
+  if (!name) return FileText;
+  return COLLECTION_ICONS[name] ?? FileText;
+}
 
 /**
  * Capability flags resolved on the server (where `can(user, ...)`
@@ -45,6 +73,8 @@ export interface AdminShellCollection {
   admin?: {
     group?: string;
     hidden?: boolean;
+    /** Lucide icon name; resolved against COLLECTION_ICONS at render time. */
+    icon?: string;
   };
 }
 
@@ -162,7 +192,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
           ...firstItems.map((collection) => ({
             href: `/admin/collections/${collection.slug}`,
             label: collection.labels.plural,
-            icon: collection.slug.includes("media") ? Image : FileText,
+            icon: resolveCollectionIcon(collection.admin?.icon),
           })),
           { href: "/admin/media", label: "Media", icon: Image },
         ],
@@ -173,7 +203,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
           items: items.map((collection) => ({
             href: `/admin/collections/${collection.slug}`,
             label: collection.labels.plural,
-            icon: FileText,
+            icon: resolveCollectionIcon(collection.admin?.icon),
           })),
         });
       }

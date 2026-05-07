@@ -20,9 +20,10 @@ import { magazineTheme } from "@nexpress/theme-magazine";
 import { minimalTheme } from "@nexpress/theme-minimal";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
 
+import { categoriesCollection } from "./collections/categories";
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
-import { taxonomiesCollection } from "./collections/taxonomies";
+import { tagsCollection } from "./collections/tags";
 import { i18nConfig } from "./i18n.config";
 
 const discussionsCollection = defineDiscussionsCollection({
@@ -62,7 +63,8 @@ export default defineConfig({
   collections: [
     postsCollection,
     pagesCollection,
-    taxonomiesCollection,
+    categoriesCollection,
+    tagsCollection,
     discussionsCollection,
   ],
   // Phase 12.1 — i18n config. Required when any collection

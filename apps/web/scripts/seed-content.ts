@@ -18,7 +18,7 @@ import {
   seedNavigation,
   seedPages,
   seedPosts,
-  seedTaxonomies,
+  seedTerms,
 } from "../src/lib/seed-content";
 
 /**
@@ -96,15 +96,17 @@ async function main(): Promise<void> {
   }
   console.log(`Seeding content for site "${siteId}" as ${actor.email}…`);
 
-  const { taxonomies, pages, posts, navigation } = await withCurrentSite(
+  const { terms, pages, posts, navigation } = await withCurrentSite(
     siteId,
     async () => {
-      // Order matters — posts reference tag rows, so taxonomies
-      // come first.
-      const taxonomies = await seedTaxonomies(actor);
-      if (taxonomies.skipped)
-        console.log("• taxonomies: already populated, skipping");
-      else console.log(`  ✓ taxonomies: ${taxonomies.created} tags created`);
+      // Order matters — posts reference tag rows, so terms come first.
+      const terms = await seedTerms(actor);
+      if (terms.skipped)
+        console.log("• terms: already populated, skipping");
+      else
+        console.log(
+          `  ✓ terms: ${terms.tagsCreated} tags + ${terms.categoriesCreated} categories created`,
+        );
 
       const pages = await seedPages(actor);
       if (pages.skipped) console.log("• pages: already populated, skipping");
@@ -124,13 +126,13 @@ async function main(): Promise<void> {
       else
         console.log(`  ✓ footer navigation: ${navigation.footer} items`);
 
-      return { taxonomies, pages, posts, navigation };
+      return { terms, pages, posts, navigation };
     },
   );
 
   console.log("");
   console.log(
-    `Done. Created ${pages.created} pages, ${posts.created} posts, ${taxonomies.created} tags, ${
+    `Done. Created ${pages.created} pages, ${posts.created} posts, ${terms.tagsCreated} tags, ${terms.categoriesCreated} categories, ${
       navigation.header + navigation.footer
     } nav items.`,
   );
