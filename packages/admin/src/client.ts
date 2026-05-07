@@ -65,6 +65,7 @@ export { ThemeEditor } from "./settings/theme-editor.js";
 export { ThemeSwitcher } from "./settings/theme-switcher.js";
 export { TranslationTabs } from "./collections/translation-tabs.js";
 export { NavigationEditor } from "./settings/navigation-editor.js";
+export { CustomRoutesList } from "./settings/custom-routes-list.js";
 export { UserManagement } from "./settings/user-management.js";
 export { PluginsManager } from "./settings/plugins-manager.js";
 export { PluginAdminPage } from "./settings/plugin-admin-page.js";

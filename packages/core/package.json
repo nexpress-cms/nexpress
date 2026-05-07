@@ -73,6 +73,11 @@
       "import": "./dist/rate-limit.js",
       "default": "./dist/rate-limit.js"
     },
+    "./routes": {
+      "types": "./dist/routes.d.ts",
+      "import": "./dist/routes.js",
+      "default": "./dist/routes.js"
+    },
     "./seo": {
       "types": "./dist/seo.d.ts",
       "import": "./dist/seo.js",

@@ -6,6 +6,7 @@ import {
   ensurePluginsLoaded as bootstrapEnsurePluginsLoaded,
   nexpressConfig,
 } from "@/lib/bootstrap";
+import { registerCustomRoutes } from "@/lib/custom-routes";
 
 export { nexpressConfig };
 
@@ -57,6 +58,13 @@ function configureEmailOnce(): void {
   emailConfigured = true;
 }
 
+let customRoutesRegistered = false;
+function registerCustomRoutesOnce(): void {
+  if (customRoutesRegistered) return;
+  registerCustomRoutes();
+  customRoutesRegistered = true;
+}
+
 /**
  * Single typed entry point for bootstrap initialization (#266). One
  * function with three explicit intents replaced the four ad-hoc
@@ -80,6 +88,7 @@ export type NpBootstrapIntent = "read" | "plugins" | "write";
 
 export async function ensureFor(intent: NpBootstrapIntent): Promise<void> {
   bootstrapEnsureCoreServices();
+  registerCustomRoutesOnce();
   if (intent === "read") return;
 
   await bootstrapEnsurePluginsLoaded();

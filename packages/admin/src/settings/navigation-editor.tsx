@@ -92,6 +92,11 @@ interface CollectionOption {
   label: string;
 }
 
+interface CustomRouteOption {
+  path: string;
+  label: string;
+}
+
 interface LocationOption {
   value: string;
   label: string;
@@ -150,6 +155,11 @@ export function NavigationEditor() {
   const [collections, setCollections] = useState<CollectionOption[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
+  // Hand-coded routes registered via `registerCustomRoute(...)`.
+  // Used as a `<datalist>` source for the link URL input so
+  // operators can pick `/blog`, `/search`, etc. without typing.
+  // Soft-fails — empty list just disables the autocomplete.
+  const [customRoutes, setCustomRoutes] = useState<CustomRouteOption[]>([]);
   const [pendingLocation, setPendingLocation] = useState<NavLocation | null>(null);
   // Live drag-over state — populated by handleDragOver, cleared on
   // drag end / cancel. The visible affordance (highlighted target,
@@ -195,7 +205,31 @@ export function NavigationEditor() {
   // endpoint is unreachable.
   useEffect(() => {
     void loadLocations();
+    void loadCustomRoutes();
   }, []);
+
+  async function loadCustomRoutes() {
+    try {
+      const response = await fetch("/api/admin/custom-routes");
+      if (!response.ok) return;
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (!isRecord(payload) || !Array.isArray(payload.routes)) return;
+      const next: CustomRouteOption[] = [];
+      for (const item of payload.routes) {
+        if (!isRecord(item)) continue;
+        if (typeof item.path !== "string" || typeof item.label !== "string") continue;
+        // Skip dynamic routes (`/u/[handle]`, `/blog/[slug]`) — a
+        // raw href can't be derived without input, so suggesting
+        // them in the URL field would just produce 404s.
+        if (item.path.includes("[")) continue;
+        next.push({ path: item.path, label: item.label });
+      }
+      next.sort((a, b) => a.path.localeCompare(b.path));
+      setCustomRoutes(next);
+    } catch {
+      // soft-fail: autocomplete is optional
+    }
+  }
 
   async function loadLocations() {
     try {
@@ -825,6 +859,7 @@ export function NavigationEditor() {
                         onCachePages={addPagesToCache}
                         collections={collections}
                         collectionsLoading={collectionsLoading}
+                        customRoutes={customRoutes}
                         // Visual cue for the live drag preview. The
                         // over row gets a primary-tinted ring; if
                         // releasing now would nest, the ring slides
@@ -1081,6 +1116,7 @@ interface SortableRowProps {
   onCachePages: (next: PageOption[]) => void;
   collections: CollectionOption[];
   collectionsLoading: boolean;
+  customRoutes: CustomRouteOption[];
   previewIntent: RowPreviewIntent;
   onUpdate: (id: string, patch: Partial<EditableNavItem>) => void;
   onChangeType: (id: string, nextType: EditableNavItem["type"]) => void;
@@ -1097,12 +1133,14 @@ function SortableRow({
   onCachePages,
   collections,
   collectionsLoading,
+  customRoutes,
   previewIntent,
   onUpdate,
   onChangeType,
   onChangeParent,
   onRemove,
 }: SortableRowProps) {
+  const customRouteListId = `nav-custom-routes-${item.id}`;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
@@ -1209,7 +1247,18 @@ function SortableRow({
               id={`nav-url-${item.id}`}
               value={item.url ?? ""}
               onChange={(event) => onUpdate(item.id, { url: event.target.value })}
+              list={customRoutes.length > 0 ? customRouteListId : undefined}
+              placeholder="/path or https://example.com"
             />
+            {customRoutes.length > 0 ? (
+              <datalist id={customRouteListId}>
+                {customRoutes.map((route) => (
+                  <option key={route.path} value={route.path}>
+                    {route.label}
+                  </option>
+                ))}
+              </datalist>
+            ) : null}
           </>
         )}
       </div>
