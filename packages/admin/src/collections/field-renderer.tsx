@@ -639,6 +639,12 @@ export function FieldRenderer({
   // empty states. The edit view skips the surrounding Card wrapper
   // so the title flows into whatever follows (typically a blocks
   // editor) with no card seam between them.
+  //
+  // `admin.description` is intentionally NOT rendered for title
+  // fields — a description sitting under a giant headline reads as
+  // body copy and breaks the title→editor visual flow. Authors
+  // who set a description on a `kind: "title"` field probably
+  // didn't intend it; treat it as advisory metadata only.
   if (
     "name" in field &&
     field.type === "text" &&

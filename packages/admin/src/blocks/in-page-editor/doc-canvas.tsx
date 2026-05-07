@@ -334,8 +334,6 @@ export function DocCanvas({
     ? (definitions.get(settingsBlock.type) ?? null)
     : null;
 
-  const docFriendly = availableBlocks; // Doc mode picks from the same registry as Page builder.
-
   // Adding from the bottom inserter or quick-insert bar appends to
   // the top level. Adding from a hovered block's `+` rail inserts
   // the new block AFTER that block so the picked type slots into
@@ -689,7 +687,7 @@ export function DocCanvas({
           setPaletteOpen(open);
           if (!open) setInsertAfterId(null);
         }}
-        availableBlocks={docFriendly}
+        availableBlocks={availableBlocks}
         onAdd={handleAdd}
       />
 

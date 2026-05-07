@@ -15,6 +15,10 @@ import {
   createEditorReducer,
 } from "../../../packages/admin/src/blocks/editor-engine/reducer.js";
 import type { EditorAction } from "../../../packages/admin/src/blocks/editor-engine/types.js";
+import {
+  filterSlashMenuDefinitions,
+  SLASH_MENU_LIMIT,
+} from "../../../packages/admin/src/blocks/in-page-editor/quick-insert-bar.js";
 
 /**
  * In-page editor unit suite. Atom-block-specific tests + the
@@ -323,5 +327,104 @@ describe("editor reducer — MOVE_WITHIN_PARENT side semantics", () => {
       toId: "b1",
     });
     expect(ids(backward)).toEqual(["b0", "b3", "b1", "b2"]);
+  });
+});
+
+describe("QuickInsertBar — filterSlashMenuDefinitions", () => {
+  // The pure filter that the slash menu wraps. Component-level
+  // testing (keyboard nav, dispatch) needs jsdom + Testing Library
+  // which the unit suite doesn't host today; the filter is the
+  // testable core, so cover it directly.
+  const corpus: NpBlockDefinition[] = [
+    {
+      type: "rich-text",
+      label: "Rich Text",
+      keywords: ["paragraph", "prose"],
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+    {
+      type: "hero",
+      label: "Hero",
+      keywords: ["banner", "headline"],
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+    {
+      type: "feature-grid",
+      label: "Feature Grid",
+      keywords: ["features", "cards"],
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+    {
+      // No `keywords`, no `label` — falls back to `type` for both
+      // displayed label AND search corpus.
+      type: "divider",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+  ];
+
+  it("returns the first SLASH_MENU_LIMIT entries when query is empty", () => {
+    // Synthesize a corpus larger than the cap so we can verify the
+    // slice. Identity / order doesn't matter, only the cap.
+    const big: NpBlockDefinition[] = Array.from(
+      { length: SLASH_MENU_LIMIT + 5 },
+      (_, i) => ({
+        type: `b${i}`,
+        defaultProps: {},
+        propsSchema: [],
+        render: () => null,
+      }),
+    );
+    const result = filterSlashMenuDefinitions(big, "");
+    expect(result).toHaveLength(SLASH_MENU_LIMIT);
+    expect(result[0].type).toBe("b0");
+  });
+
+  it("matches by label substring (case-insensitive)", () => {
+    const result = filterSlashMenuDefinitions(corpus, "feat");
+    expect(result.map((d) => d.type)).toEqual(["feature-grid"]);
+  });
+
+  it("matches by type substring", () => {
+    const result = filterSlashMenuDefinitions(corpus, "rich");
+    expect(result.map((d) => d.type)).toEqual(["rich-text"]);
+  });
+
+  it("matches by keyword substring", () => {
+    const result = filterSlashMenuDefinitions(corpus, "banner");
+    expect(result.map((d) => d.type)).toEqual(["hero"]);
+  });
+
+  it("falls back to type when label is missing (divider has no label)", () => {
+    const result = filterSlashMenuDefinitions(corpus, "div");
+    expect(result.map((d) => d.type)).toEqual(["divider"]);
+  });
+
+  it("returns an empty list when nothing matches", () => {
+    const result = filterSlashMenuDefinitions(corpus, "nonexistent");
+    expect(result).toEqual([]);
+  });
+
+  it("caps results at SLASH_MENU_LIMIT even with a matching query", () => {
+    // Build corpus where every entry matches "x" — verifies the cap
+    // applies AFTER filtering, not just on the no-query branch.
+    const big: NpBlockDefinition[] = Array.from(
+      { length: SLASH_MENU_LIMIT + 8 },
+      (_, i) => ({
+        type: `xb${i}`,
+        defaultProps: {},
+        propsSchema: [],
+        render: () => null,
+      }),
+    );
+    const result = filterSlashMenuDefinitions(big, "x");
+    expect(result).toHaveLength(SLASH_MENU_LIMIT);
   });
 });

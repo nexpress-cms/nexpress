@@ -16,6 +16,40 @@ interface QuickInsertBarProps {
   onInsertText: (text: string) => void;
 }
 
+// Cap the slash menu at this many entries so a registry with
+// dozens of plugin blocks doesn't render an unscrollable wall on
+// open. Operators with a larger registry refine via the query;
+// the corpus is searched, only the rendering is capped.
+export const SLASH_MENU_LIMIT = 12;
+
+/**
+ * Pure filter for the slash-menu corpus. Exposed so the unit
+ * suite can lock the contract (label / type / keyword match,
+ * case-insensitive, capped) without booting React.
+ *
+ * @param definitions  Sorted list of every registered block.
+ * @param query        Slash query (already lower-cased; pass `""`
+ *                     for the no-query "show top N" case).
+ */
+export function filterSlashMenuDefinitions(
+  definitions: readonly NpBlockMetadata[],
+  query: string,
+): NpBlockMetadata[] {
+  if (!query) return definitions.slice(0, SLASH_MENU_LIMIT);
+  const needle = query.toLowerCase();
+  return definitions
+    .filter((def) => {
+      const label = (def.label ?? def.type).toLowerCase();
+      const keywords = (def.keywords ?? []).join(" ").toLowerCase();
+      return (
+        label.includes(needle) ||
+        def.type.toLowerCase().includes(needle) ||
+        keywords.includes(needle)
+      );
+    })
+    .slice(0, SLASH_MENU_LIMIT);
+}
+
 /**
  * Bottom-of-canvas insert bar. Two modes, picked by what the
  * operator types:
@@ -61,18 +95,7 @@ export function QuickInsertBar({
   const slashQuery = isSlashMode ? value.slice(1).toLowerCase() : "";
   const filtered = useMemo(() => {
     if (!isSlashMode) return [];
-    if (!slashQuery) return allDefinitions.slice(0, 12);
-    return allDefinitions
-      .filter((def) => {
-        const label = (def.label ?? def.type).toLowerCase();
-        const keywords = (def.keywords ?? []).join(" ").toLowerCase();
-        return (
-          label.includes(slashQuery) ||
-          def.type.toLowerCase().includes(slashQuery) ||
-          keywords.includes(slashQuery)
-        );
-      })
-      .slice(0, 12);
+    return filterSlashMenuDefinitions(allDefinitions, slashQuery);
   }, [isSlashMode, slashQuery, allDefinitions]);
 
   // Reset active index when the filter changes — clamping it to
@@ -144,7 +167,11 @@ export function QuickInsertBar({
       {isSlashMode && filtered.length > 0 ? (
         <div
           className={cn(
-            "absolute bottom-full left-0 right-0 z-20 mb-2 max-h-72 overflow-auto rounded-xl border border-neutral-200 bg-popover py-1 shadow-lg",
+            // `left-0` anchors the popover to the input's leading
+            // edge; `max-w-md` keeps it from stretching to the full
+            // canvas width on wide layouts so it reads as a
+            // popover, not a full-width list.
+            "absolute bottom-full left-0 z-20 mb-2 max-h-72 w-full max-w-md overflow-auto rounded-xl border border-neutral-200 bg-popover py-1 shadow-lg",
             "dark:border-neutral-800",
           )}
           role="listbox"
@@ -189,7 +216,7 @@ export function QuickInsertBar({
       {isSlashMode && filtered.length === 0 ? (
         <div
           className={cn(
-            "absolute bottom-full left-0 right-0 z-20 mb-2 rounded-xl border border-neutral-200 bg-popover px-3 py-2 text-sm text-muted-foreground shadow-lg",
+            "absolute bottom-full left-0 z-20 mb-2 w-full max-w-md rounded-xl border border-neutral-200 bg-popover px-3 py-2 text-sm text-muted-foreground shadow-lg",
             "dark:border-neutral-800",
           )}
         >
