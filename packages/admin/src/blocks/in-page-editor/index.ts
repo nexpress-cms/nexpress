@@ -19,10 +19,3 @@ export {
   BlockSettingsDialog,
   type BlockSettingsDialogProps,
 } from "./block-settings-dialog.js";
-export {
-  useContainerDropZone,
-  useRowDrag,
-  type ContainerDropZoneHandlers,
-  type DropSide,
-  type RowDragHandlers,
-} from "./dnd.js";

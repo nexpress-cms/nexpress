@@ -15,6 +15,10 @@ import {
   createEditorReducer,
 } from "../../../packages/admin/src/blocks/editor-engine/reducer.js";
 import type { EditorAction } from "../../../packages/admin/src/blocks/editor-engine/types.js";
+import {
+  filterSlashMenuDefinitions,
+  SLASH_MENU_LIMIT,
+} from "../../../packages/admin/src/blocks/in-page-editor/quick-insert-bar.js";
 
 /**
  * In-page editor unit suite. Atom-block-specific tests + the
@@ -198,5 +202,229 @@ describe("editor reducer — REPLACE_TYPE", () => {
     // No-op: the child stays a rich-text block, not converted.
     expect(next[0].children?.[0].type).toBe("rich-text");
     expect(next[0].children?.[0].id).toBe(richChild.id);
+  });
+});
+
+describe("editor reducer — ADD/INSERT initial props override", () => {
+  // The DocCanvas plain-text → rich-text shortcut threads the
+  // Lexical body through ADD's optional `props` slot so the new
+  // block lands fully populated in one dispatch (no post-add
+  // hydration race). These cases pin that contract.
+  const reducer = createEditorReducer(defaults);
+
+  it("ADD merges `props` over the definition's defaults", () => {
+    const sentinel = { __test__: "value" } as const;
+    const next = reducer([], {
+      type: "ADD",
+      blockType: "rich-text",
+      props: sentinel,
+    });
+    expect(next).toHaveLength(1);
+    expect(next[0].type).toBe("rich-text");
+    // Override merged shallow on top of defaults.
+    expect((next[0].props as { __test__?: string }).__test__).toBe("value");
+  });
+
+  it("ADD without `props` keeps definition defaults intact", () => {
+    const next = reducer([], { type: "ADD", blockType: "rich-text" });
+    expect(next[0].props).toBeDefined();
+    expect((next[0].props as { __test__?: string }).__test__).toBeUndefined();
+  });
+
+  it("INSERT_AFTER honors initial props slot too", () => {
+    const seedDef = byType.get("rich-text") as NpBlockDefinition;
+    const seed = { ...createBlockInstance(seedDef), id: "seed" };
+    const next = reducer([seed], {
+      type: "INSERT_AFTER",
+      targetId: "seed",
+      blockType: "rich-text",
+      props: { __test__: "after" },
+    });
+    expect(next).toHaveLength(2);
+    expect((next[1].props as { __test__?: string }).__test__).toBe("after");
+  });
+});
+
+describe("editor reducer — MOVE_WITHIN_PARENT side semantics", () => {
+  // The DocCanvas drag-shield needs the reducer's outcome to match
+  // the visual drop indicator (top-bar = before, bottom-bar = after)
+  // regardless of drag direction. These cases pin that contract.
+  const reducer = createEditorReducer(defaults);
+  const seed = (count: number): NpBlockInstance[] => {
+    const def = byType.get("rich-text") as NpBlockDefinition;
+    return Array.from({ length: count }, (_, i) => ({
+      ...createBlockInstance(def),
+      id: `b${i}`,
+    }));
+  };
+  const ids = (state: NpBlockInstance[]) => state.map((b) => b.id);
+
+  it('side: "before" forward drag — source lands above target', () => {
+    // [b0, b1, b2, b3], drag b0 onto b2 with side=before → [b1, b0, b2, b3]
+    const next = reducer(seed(4), {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "b0",
+      toId: "b2",
+      side: "before",
+    });
+    expect(ids(next)).toEqual(["b1", "b0", "b2", "b3"]);
+  });
+
+  it('side: "before" backward drag — source lands above target', () => {
+    // [b0, b1, b2, b3], drag b3 onto b1 with side=before → [b0, b3, b1, b2]
+    const next = reducer(seed(4), {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "b3",
+      toId: "b1",
+      side: "before",
+    });
+    expect(ids(next)).toEqual(["b0", "b3", "b1", "b2"]);
+  });
+
+  it('side: "after" forward drag — source lands below target', () => {
+    // [b0, b1, b2, b3], drag b0 onto b2 with side=after → [b1, b2, b0, b3]
+    const next = reducer(seed(4), {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "b0",
+      toId: "b2",
+      side: "after",
+    });
+    expect(ids(next)).toEqual(["b1", "b2", "b0", "b3"]);
+  });
+
+  it('side: "after" backward drag — source lands below target', () => {
+    // [b0, b1, b2, b3], drag b3 onto b1 with side=after → [b0, b1, b3, b2]
+    const next = reducer(seed(4), {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "b3",
+      toId: "b1",
+      side: "after",
+    });
+    expect(ids(next)).toEqual(["b0", "b1", "b3", "b2"]);
+  });
+
+  it("no `side` keeps legacy arrayMove (dnd-kit) behavior", () => {
+    // [b0, b1, b2, b3], drag b0 onto b2 (no side) → [b1, b2, b0, b3]
+    // (arrayMove asymmetry — same as side:"after" for forward drag)
+    const forward = reducer(seed(4), {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "b0",
+      toId: "b2",
+    });
+    expect(ids(forward)).toEqual(["b1", "b2", "b0", "b3"]);
+
+    // Backward — drag b3 onto b1 (no side) → [b0, b3, b1, b2]
+    // (same as side:"before" for backward drag)
+    const backward = reducer(seed(4), {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "b3",
+      toId: "b1",
+    });
+    expect(ids(backward)).toEqual(["b0", "b3", "b1", "b2"]);
+  });
+});
+
+describe("QuickInsertBar — filterSlashMenuDefinitions", () => {
+  // The pure filter that the slash menu wraps. Component-level
+  // testing (keyboard nav, dispatch) needs jsdom + Testing Library
+  // which the unit suite doesn't host today; the filter is the
+  // testable core, so cover it directly.
+  const corpus: NpBlockDefinition[] = [
+    {
+      type: "rich-text",
+      label: "Rich Text",
+      keywords: ["paragraph", "prose"],
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+    {
+      type: "hero",
+      label: "Hero",
+      keywords: ["banner", "headline"],
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+    {
+      type: "feature-grid",
+      label: "Feature Grid",
+      keywords: ["features", "cards"],
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+    {
+      // No `keywords`, no `label` — falls back to `type` for both
+      // displayed label AND search corpus.
+      type: "divider",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+    },
+  ];
+
+  it("returns the first SLASH_MENU_LIMIT entries when query is empty", () => {
+    // Synthesize a corpus larger than the cap so we can verify the
+    // slice. Identity / order doesn't matter, only the cap.
+    const big: NpBlockDefinition[] = Array.from(
+      { length: SLASH_MENU_LIMIT + 5 },
+      (_, i) => ({
+        type: `b${i}`,
+        defaultProps: {},
+        propsSchema: [],
+        render: () => null,
+      }),
+    );
+    const result = filterSlashMenuDefinitions(big, "");
+    expect(result).toHaveLength(SLASH_MENU_LIMIT);
+    expect(result[0].type).toBe("b0");
+  });
+
+  it("matches by label substring (case-insensitive)", () => {
+    const result = filterSlashMenuDefinitions(corpus, "feat");
+    expect(result.map((d) => d.type)).toEqual(["feature-grid"]);
+  });
+
+  it("matches by type substring", () => {
+    const result = filterSlashMenuDefinitions(corpus, "rich");
+    expect(result.map((d) => d.type)).toEqual(["rich-text"]);
+  });
+
+  it("matches by keyword substring", () => {
+    const result = filterSlashMenuDefinitions(corpus, "banner");
+    expect(result.map((d) => d.type)).toEqual(["hero"]);
+  });
+
+  it("falls back to type when label is missing (divider has no label)", () => {
+    const result = filterSlashMenuDefinitions(corpus, "div");
+    expect(result.map((d) => d.type)).toEqual(["divider"]);
+  });
+
+  it("returns an empty list when nothing matches", () => {
+    const result = filterSlashMenuDefinitions(corpus, "nonexistent");
+    expect(result).toEqual([]);
+  });
+
+  it("caps results at SLASH_MENU_LIMIT even with a matching query", () => {
+    // Build corpus where every entry matches "x" — verifies the cap
+    // applies AFTER filtering, not just on the no-query branch.
+    const big: NpBlockDefinition[] = Array.from(
+      { length: SLASH_MENU_LIMIT + 8 },
+      (_, i) => ({
+        type: `xb${i}`,
+        defaultProps: {},
+        propsSchema: [],
+        render: () => null,
+      }),
+    );
+    const result = filterSlashMenuDefinitions(big, "x");
+    expect(result).toHaveLength(SLASH_MENU_LIMIT);
   });
 });

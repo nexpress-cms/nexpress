@@ -209,7 +209,29 @@ const isSidebarField = (field: NpFieldConfig): boolean => {
     return false;
   }
 
+  if (field.admin?.position === "sidebar") return true;
+  if (field.admin?.position === "main") return false;
+
   return field.type === "date" || Boolean(field.admin?.width) || namedSidebarFields.has(field.name);
+};
+
+// Title-kind fields render outside the Card stack at the top of
+// the left column as a large borderless headline that flows
+// directly into the editor canvas underneath. Matches the
+// design's "document title above the writing surface" pattern.
+const isTitleField = (field: NpFieldConfig): boolean => {
+  if (field.type === "row" || field.type === "collapsible") return false;
+  return field.admin?.kind === "title";
+};
+
+// Writing-surface fields (blocks editor, rich-text editor, title)
+// don't need a Card wrapper — they ship their own bordered canvas
+// and stacking another card on top reads as nested chrome. Naked
+// rendering lets title → body flow as one continuous editing
+// composition.
+const isUnwrappedField = (field: NpFieldConfig): boolean => {
+  if (field.type === "row" || field.type === "collapsible") return false;
+  return field.type === "blocks" || field.type === "richText" || isTitleField(field);
 };
 
 const isVisibleField = (field: NpFieldConfig): boolean => {
@@ -621,20 +643,39 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
         />
 
         <div className="grid gap-6 xl:grid-cols-12">
-          <div className="space-y-6 xl:col-span-8">
+          <div className="space-y-4 xl:col-span-8">
             {config.i18n && doc?.id ? (
               <TranslationTabs
                 collectionSlug={collectionSlug}
                 documentId={String(doc.id)}
               />
             ) : null}
-            {mainFields.map((field, index) => (
-              <Card key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}>
-                <CardContent>
-                  <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
-                </CardContent>
-              </Card>
-            ))}
+            {mainFields.map((field, index) => {
+              const key =
+                field.type === "row" || field.type === "collapsible"
+                  ? `${field.type}-${index}`
+                  : field.name;
+              // Title + blocks render naked so they form a single
+              // editing composition: large title flows into the
+              // editor canvas with no Card seam between them.
+              if (isUnwrappedField(field)) {
+                return (
+                  <FieldRenderer
+                    key={key}
+                    field={field}
+                    control={form.control}
+                    collectionSlug={collectionSlug}
+                  />
+                );
+              }
+              return (
+                <Card key={key}>
+                  <CardContent>
+                    <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           <div className="xl:col-span-4">

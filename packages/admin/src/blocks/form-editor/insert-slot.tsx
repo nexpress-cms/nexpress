@@ -29,7 +29,15 @@ export function InsertSlot({
   ariaLabel,
 }: InsertSlotProps) {
   return (
-    <div className="group/slot relative -my-1 flex h-3 items-center justify-center">
+    <div className="group/slot relative -my-1.5 flex h-4 items-center justify-center">
+      {/* Hairline that fades in alongside the button so the slot
+          reads as a real insertion point (not just a floating "+").
+          Stays invisible until hover/focus/open so resting rows
+          aren't crowded by separator lines between every card. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-8 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 transition-opacity group-hover/slot:opacity-100 group-focus-within/slot:opacity-100"
+      />
       <BlockPalette
         availableBlocks={availableBlocks}
         onAdd={onInsert}
@@ -37,9 +45,10 @@ export function InsertSlot({
           <button
             type="button"
             aria-label={ariaLabel ?? "Insert block here"}
-            className="invisible inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background text-muted-foreground shadow-sm transition hover:border-primary/60 hover:text-primary group-hover/slot:visible focus-visible:visible data-[state=open]:visible"
+            className="relative inline-flex h-6 items-center gap-1 rounded-full border border-border/60 bg-background px-2 text-[11px] font-medium text-muted-foreground opacity-0 shadow-sm transition hover:border-primary/60 hover:text-primary focus-visible:opacity-100 group-hover/slot:opacity-100 data-[state=open]:opacity-100"
           >
             <Plus className="h-3 w-3" />
+            Insert
           </button>
         }
       />
