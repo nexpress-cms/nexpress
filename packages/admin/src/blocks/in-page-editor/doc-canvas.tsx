@@ -171,7 +171,14 @@ export function DocCanvas({
       if (!id) return;
       const iframeRect = iframe.getBoundingClientRect();
       const containerRect = containerRef.current?.getBoundingClientRect();
-      const blockRect = blockEl.getBoundingClientRect();
+      // The preview markers wrap each block with `style="display:
+      // contents"` so the marker doesn't disturb grid / flex
+      // layouts upstream — but a `display: contents` element has
+      // NO layout box of its own, so `getBoundingClientRect()`
+      // returns 0×0. Resolve the visible rect by walking the
+      // marker's descendants and unioning their client rects;
+      // that's what the operator actually sees on screen.
+      const blockRect = unionVisibleRect(blockEl);
       if (!containerRect) return;
       // Block rect is relative to the iframe's viewport; project
       // back into the container's coordinate space.
@@ -219,7 +226,7 @@ export function DocCanvas({
       const iframeRect = iframe.getBoundingClientRect();
       const containerRect = containerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
-      const blockRect = blockEl.getBoundingClientRect();
+      const blockRect = unionVisibleRect(blockEl);
       setHoverRect({
         top: iframeRect.top - containerRect.top + blockRect.top,
         left: iframeRect.left - containerRect.left + blockRect.left,
@@ -386,4 +393,42 @@ export function DocCanvas({
       />
     </div>
   );
+}
+
+/**
+ * Compute the union bounding rect of an element AND its
+ * descendants. The block-marker divs ship `style="display:
+ * contents"` so they don't disturb upstream grid / flex layouts —
+ * but a `display: contents` element generates no boxes, so its
+ * own `getBoundingClientRect()` is `0×0`. Walk down until we hit
+ * elements that DO produce boxes, union their rects, and return
+ * a real visible bound. Falls back to the original element's
+ * rect when nothing visible is found (e.g. an empty container
+ * with `display: none` children).
+ */
+function unionVisibleRect(el: Element): DOMRect {
+  const direct = el.getBoundingClientRect();
+  if (direct.width > 0 || direct.height > 0) return direct;
+
+  let top = Infinity;
+  let left = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  const visit = (node: Element) => {
+    const rect = node.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+      top = Math.min(top, rect.top);
+      left = Math.min(left, rect.left);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+      // Don't recurse into already-measurable children; their
+      // outer rect already covers their subtree.
+      return;
+    }
+    for (const child of Array.from(node.children)) visit(child);
+  };
+  for (const child of Array.from(el.children)) visit(child);
+
+  if (top === Infinity) return direct;
+  return new DOMRect(left, top, right - left, bottom - top);
 }
