@@ -24,6 +24,14 @@ import {
   Timer,
   Users,
 } from "lucide-react";
+import type { NpAuthUser } from "@nexpress/core";
+
+import { AdminTopbar } from "./admin-topbar.js";
+import { NpMark } from "./np-mark.js";
+import { Button } from "../ui/button.js";
+import { ScrollArea } from "../ui/scroll-area.js";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
+import { cn } from "../ui/utils.js";
 
 /**
  * Lucide-name → component map for `admin.icon` resolution. Add
@@ -46,14 +54,6 @@ function resolveCollectionIcon(name: string | undefined): LucideIcon {
   if (!name) return FileText;
   return COLLECTION_ICONS[name] ?? FileText;
 }
-import type { NpAuthUser } from "@nexpress/core";
-
-import { AdminTopbar } from "./admin-topbar.js";
-import { NpMark } from "./np-mark.js";
-import { Button } from "../ui/button.js";
-import { ScrollArea } from "../ui/scroll-area.js";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip.js";
-import { cn } from "../ui/utils.js";
 
 /**
  * Capability flags resolved on the server (where `can(user, ...)`
