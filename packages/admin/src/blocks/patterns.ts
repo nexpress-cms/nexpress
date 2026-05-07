@@ -1,5 +1,7 @@
 import { type NpPattern } from "@nexpress/blocks";
 
+import { npFetch } from "../lib/api-client.js";
+
 // Re-export so existing admin call sites (`import { NpPattern }
 // from "../patterns.js"`) keep working — the canonical home for
 // the type moved to `@nexpress/blocks` so plugin-sdk and the
@@ -320,9 +322,12 @@ export async function saveServerPattern(
 ): Promise<NpPattern | null> {
   if (typeof window === "undefined") return null;
   try {
-    const res = await fetch(PATTERNS_ENDPOINT, {
+    // npFetch attaches the CSRF token from the np-csrf cookie —
+    // /api/admin/* mutations are not in the proxy's CSRF exemption
+    // list (proxy.ts CSRF_EXEMPT_PATTERNS), so a bare fetch returns
+    // 403 CSRF_INVALID and the pattern silently fails to save.
+    const res = await npFetch(PATTERNS_ENDPOINT, {
       method: "POST",
-      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: pattern.id,
@@ -348,9 +353,10 @@ export async function saveServerPattern(
 export async function deleteServerPattern(id: string): Promise<boolean> {
   if (typeof window === "undefined") return false;
   try {
-    const res = await fetch(`${PATTERNS_ENDPOINT}/${encodeURIComponent(id)}`, {
+    // Same CSRF reason as `saveServerPattern` above — DELETE on
+    // /api/admin/patterns/<id> is a mutation that the proxy gates.
+    const res = await npFetch(`${PATTERNS_ENDPOINT}/${encodeURIComponent(id)}`, {
       method: "DELETE",
-      credentials: "same-origin",
     });
     return res.ok;
   } catch {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { npFetch } from "../../lib/api-client.js";
 import { Button } from "../../ui/button.js";
 import {
   Dialog,
@@ -135,10 +136,14 @@ export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerP
       const uploadOne = async (file: File): Promise<string | null> => {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch("/api/media", {
+        // POST /api/media is a CSRF-gated mutation per proxy.ts;
+        // npFetch reads the np-csrf cookie and attaches the
+        // X-CSRF-Token header. The browser handles Content-Type
+        // for FormData automatically — npFetch's header merging
+        // doesn't touch it.
+        const res = await npFetch("/api/media", {
           method: "POST",
           body: fd,
-          credentials: "same-origin",
         });
         if (!res.ok) {
           throw new Error(`Upload failed (${res.status})`);

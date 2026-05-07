@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Monitor, Smartphone, Tablet } from "lucide-react";
 import type { NpBlockInstance } from "@nexpress/blocks";
 
+import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../ui/utils.js";
 
@@ -82,12 +83,16 @@ export function PreviewPanel({
       const controller = new AbortController();
       abortRef.current = controller;
       setLoading(true);
-      fetch(PREVIEW_ENDPOINT, {
+      // Route through `npFetch` so the proxy's auto-CSRF check
+      // (#281) sees the `x-csrf-token` header — `/api/admin/*`
+      // mutations are not in the CSRF exemption list. A bare
+      // `fetch(POST, ...)` returned 403 CSRF_INVALID and the
+      // preview iframe never updated.
+      npFetch(PREVIEW_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payload,
         signal: controller.signal,
-        credentials: "same-origin",
       })
         .then(async (res) => {
           if (!res.ok && res.status !== 200) {
