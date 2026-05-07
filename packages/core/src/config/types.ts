@@ -395,6 +395,17 @@ export interface NpCollectionConfig {
      * can opt in here too.
      */
     navMembership?: boolean;
+    /**
+     * Lucide icon name for the admin sidebar entry. Defaults to
+     * `FileText` when unset or unrecognized. Examples:
+     * `"Newspaper"` for posts, `"FileStack"` for pages,
+     * `"FolderTree"` for categories, `"Tag"` for tags.
+     *
+     * Resolved client-side by `admin-shell.tsx` against a small
+     * lucide-react registry; unknown names fall back to the
+     * default so a typo can't break the sidebar render.
+     */
+    icon?: string;
   };
   upload?: NpUploadConfig;
 }
