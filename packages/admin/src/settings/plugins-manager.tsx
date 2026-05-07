@@ -246,7 +246,7 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
 function PluginStatusBadge({ status }: { status: "active" | "pending" | "disabled" }) {
   if (status === "active") {
     return (
-      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-200 sm:self-center">
+      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-200">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
         Active
       </span>
@@ -254,14 +254,14 @@ function PluginStatusBadge({ status }: { status: "active" | "pending" | "disable
   }
   if (status === "pending") {
     return (
-      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-200 sm:self-center">
+      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-200">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
         Pending restart
       </span>
     );
   }
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground sm:self-center">
+    <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
       Inactive
     </span>
   );
