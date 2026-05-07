@@ -22,6 +22,7 @@ export default defineConfig({
     media: "src/media/index.ts",
     observability: "src/observability/index.ts",
     "rate-limit": "src/rate-limit/index.ts",
+    routes: "src/routes/index.ts",
     seo: "src/seo/index.ts",
   },
   format: ["esm"],

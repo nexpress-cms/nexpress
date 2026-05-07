@@ -682,3 +682,10 @@ export type {
   RunDigestSweepInput,
   RunDigestSweepResult,
 } from "./community/index.js";
+
+export {
+  registerCustomRoute,
+  getCustomRoutes,
+  clearCustomRoutes,
+} from "./routes/index.js";
+export type { NpCustomRoute } from "./routes/index.js";
