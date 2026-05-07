@@ -58,10 +58,31 @@ export function registerCustomRoutes(): void {
     group: "auth",
   });
   registerCustomRoute({
-    path: "/members/me",
-    label: "My account",
-    description: "Signed-in member's profile dashboard",
+    path: "/members/me/notifications",
+    label: "My notifications",
+    description: "Signed-in member's notification preferences",
     icon: "circle-user",
+    group: "auth",
+  });
+  registerCustomRoute({
+    path: "/members/forgot-password",
+    label: "Forgot password",
+    description: "Member password-reset request",
+    icon: "log-in",
+    group: "auth",
+  });
+  registerCustomRoute({
+    path: "/members/reset-password",
+    label: "Reset password",
+    description: "Member password-reset confirmation",
+    icon: "log-in",
+    group: "auth",
+  });
+  registerCustomRoute({
+    path: "/members/verify",
+    label: "Verify email",
+    description: "Member email-verification landing page",
+    icon: "log-in",
     group: "auth",
   });
 }
