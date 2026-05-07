@@ -24,3 +24,20 @@ The `PluginsManager` swaps the per-plugin Card stack for a single
 No public API change — `PluginsManager`'s prop surface, the API
 endpoints, the toggle / config flow, and the dialog itself are
 unchanged. Visual / interaction only.
+
+## Pagehead actions
+
+The page header now matches the design's `PluginsScreen` action
+rail with three buttons:
+
+- **Reload all** (existing) — re-runs every plugin's `setup()`.
+- **Browse registry** (new) — opens a large modal listing every
+  npm package tagged `keywords:nexpress-plugin`. Replaces the
+  inline `DiscoverPanel` card that previously sat below the
+  Installed list. Same `/api/admin/plugins/discover` endpoint
+  feeds it; copy-install button is preserved per row.
+- **Install plugin** (new) — opens a guide modal that walks the
+  operator through the actual install flow (`pnpm add` → register
+  in `nexpress.config.ts` → restart). NexPress doesn't ship a
+  runtime installer, so this is the honest UI for the CTA. Both
+  the install command and the config snippet have copy buttons.
