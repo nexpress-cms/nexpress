@@ -44,7 +44,7 @@ export {
 } from "./settings.js";
 export type { NpCommunitySettings, NpMemberUploadQuota } from "./settings.js";
 
-export { getMemberProfile } from "./profiles.js";
+export { getMemberProfile, getMemberProfiles } from "./profiles.js";
 export type { NpMemberProfile } from "./profiles.js";
 
 export type { MemberAction, MemberCanTarget } from "./can.js";

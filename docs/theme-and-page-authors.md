@@ -425,6 +425,45 @@ notification prefs, plugin meta bag) are deliberately excluded —
 this helper is safe to call from any public page without a
 sensitivity audit.
 
+### Listings — batch fetch
+
+For a list view ("recent discussions by N members," "comment
+thread with M authors"), looping `getMemberProfile` would fire
+N queries. Use the batch form instead:
+
+```ts
+import { getMemberProfiles } from "@nexpress/core";
+
+const authorIds = result.docs
+  .map((d) => d.memberAuthorId as string | null)
+  .filter((v): v is string => typeof v === "string" && v.length > 0);
+
+// One SELECT for the rows, parallel `getMediaUrl` calls for avatars.
+const authorById = await getMemberProfiles(authorIds);
+// → Map<id, NpMemberProfile>
+
+result.docs.map((doc) => {
+  const author = doc.memberAuthorId
+    ? authorById.get(doc.memberAuthorId as string)
+    : null;
+  return author ? <Link href={`/u/${author.handle}`}>@{author.handle}</Link> : null;
+});
+```
+
+The map only contains entries for ids that matched (suspended /
+deleted members are dropped) — so always check `if (author)`
+before reading fields. Empty input returns an empty map without
+hitting the DB.
+
+### `joinedAt` is a `Date`, not a string
+
+`NpMemberProfile.joinedAt` is a server-side `Date` instance.
+Calling `.toLocaleDateString()` works inside an RSC. If you pass
+the profile to a client component as a prop, Next serializes it
+to an ISO string — call `.toISOString()` (or format) yourself
+before crossing the boundary, or accept `string` on the client
+side and parse with `new Date(...)`.
+
 ---
 
 ## 9. Theme tokens

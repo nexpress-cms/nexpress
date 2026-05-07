@@ -1,11 +1,9 @@
-import { buildPageMetadata, findDocuments, npMembers } from "@nexpress/core";
+import { buildPageMetadata, findDocuments, getMemberProfiles } from "@nexpress/core";
 import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ensureFor } from "@/lib/init-core";
-import { getDb } from "@/lib/db";
 import { getSiteMember } from "@/lib/site-member";
-import { inArray } from "drizzle-orm";
 
 interface DiscussionsListPageProps {
   searchParams: Promise<{ page?: string; author?: string }>;
@@ -53,31 +51,13 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
     limit,
   });
 
-  // Resolve member-author handles in one query so each row can render
+  // Resolve member-author profiles in one query so each row can render
   // "by @handle" without N round-trips. Anonymous-authored rows (the
   // staff-side path) leave `memberAuthorId` null and skip the lookup.
-  const authorIds = Array.from(
-    new Set(
-      result.docs
-        .map((d) => (d.memberAuthorId as string | null) ?? null)
-        .filter((v): v is string => typeof v === "string" && v.length > 0),
-    ),
-  );
-  const authors = authorIds.length
-    ? ((await getDb()
-        .select({
-          id: npMembers.id,
-          handle: npMembers.handle,
-          displayName: npMembers.displayName,
-        })
-        .from(npMembers)
-        .where(inArray(npMembers.id, authorIds))) as Array<{
-        id: string;
-        handle: string;
-        displayName: string;
-      }>)
-    : [];
-  const authorById = new Map(authors.map((a) => [a.id, a]));
+  const authorIds = result.docs
+    .map((d) => (d.memberAuthorId as string | null) ?? null)
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  const authorById = await getMemberProfiles(authorIds);
 
   return (
     <div className="np-discussions">
@@ -134,6 +114,22 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
                 <div className="np-discussions-meta">
                   {author ? (
                     <Link href={`/u/${author.handle}`} className="np-discussions-author">
+                      {author.avatarUrl ? (
+                        <img
+                          src={author.avatarUrl}
+                          alt=""
+                          width={20}
+                          height={20}
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            verticalAlign: "middle",
+                            marginRight: "0.375rem",
+                          }}
+                        />
+                      ) : null}
                       @{author.handle}
                     </Link>
                   ) : (
