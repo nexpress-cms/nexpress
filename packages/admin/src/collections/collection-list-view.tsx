@@ -149,12 +149,25 @@ export function CollectionListView({
   }, [searchParams]);
 
   useEffect(() => {
-    const timeout = globalThis.setTimeout(() => {
-      const query = createQueryString(new URLSearchParams(searchParams.toString()), {
-        search: searchValue || null,
-        page: searchValue !== searchParams.get("search") ? "1" : searchParams.get("page"),
-      });
+    // Sync the local search box back to the URL — but ONLY when it
+    // actually differs from what the URL currently carries. The
+    // earlier version fired on every mount (and on every other
+    // searchParams change) and called `router.replace(samePathname)`
+    // even when there was nothing to sync. That triggers an RSC
+    // refetch for the SAME page, and any click on the Create link
+    // landing inside the 250 ms debounce window OR the in-flight
+    // replace gets swallowed by the racing transition. Operators
+    // saw this as "Create button does nothing the first time."
+    const currentSearch = searchParams.get("search") ?? "";
+    if (currentSearch === searchValue) return;
 
+    const timeout = globalThis.setTimeout(() => {
+      // Search changed → always reset to page 1; the prior page
+      // index is meaningless against a different result set.
+      const query = createQueryString(
+        new URLSearchParams(searchParams.toString()),
+        { search: searchValue || null, page: "1" },
+      );
       const nextUrl = query ? `${pathname}?${query}` : pathname;
       router.replace(nextUrl);
     }, 250);
