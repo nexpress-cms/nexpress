@@ -22,8 +22,8 @@ export const defaultThemeCss = `
 .np-page,
 .np-post,
 .np-post-list {
-  --np-content-max: 720px;
-  --np-content-max-wide: 1100px;
+  --np-content-max: 1100px;
+  --np-content-max-wide: 1300px;
 }
 .np-page h1,
 .np-post-title,
