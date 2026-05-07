@@ -351,6 +351,8 @@ export type { NpMediaUploader, NpMediaUploaderKindFilter } from "./media/service
 export { processImage, DEFAULT_IMAGE_SIZES } from "./media/processor.js";
 export type { NpProcessedImageVariant, NpProcessedImageResult } from "./media/processor.js";
 export { extractMediaIds } from "./media/refs.js";
+export { getMediaUrl } from "./media/url.js";
+export type { NpMediaVariantName, NpGetMediaUrlOptions } from "./media/url.js";
 
 export type {
   NpThemeTokens,
@@ -420,6 +422,11 @@ export {
 export type { SiteMembership } from "./sites/memberships.js";
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./i18n/registry.js";
+export { resolveLocale, getCurrentLocale } from "./i18n/locale-resolver.js";
+export type {
+  NpResolveLocaleInput,
+  NpResolveLocaleResult,
+} from "./i18n/locale-resolver.js";
 export {
   addStrings,
   setStrings,
@@ -459,6 +466,7 @@ export {
   runHookAndCollect,
   getPluginRoutes,
   getPluginRegistration,
+  getPluginConfig,
   getAllPluginIds,
   getPluginAdminExtension,
   getCollectionTabsForSlug,
@@ -608,6 +616,7 @@ export {
   recordDigestSent,
   buildDigestEmail,
   runDigestSweep,
+  getMemberProfile,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -681,4 +690,5 @@ export type {
   BuildDigestEmailInput,
   RunDigestSweepInput,
   RunDigestSweepResult,
+  NpMemberProfile,
 } from "./community/index.js";

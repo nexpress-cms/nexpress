@@ -298,6 +298,30 @@ type ResolvedRouteFn = (
 ) => Promise<PluginRouteResponse>;
 
 async function loadPluginConfig(pluginId: string): Promise<Record<string, unknown>> {
+  const config = await getPluginConfig(pluginId);
+  return config ?? {};
+}
+
+/**
+ * Read a plugin's persisted config from `np_plugins.config`.
+ *
+ * Distinguishes three cases that internal callers (which always
+ * want the "empty" fallback) couldn't:
+ *  - Plugin not installed → `null`. Theme / page code uses this
+ *    to detect "feature not available" without a separate
+ *    `isPluginEnabled` round-trip.
+ *  - Installed with no config saved yet → `{}`. The plugin row
+ *    exists but the operator hasn't filled in any settings.
+ *  - Installed with config → the typed object.
+ *
+ * The generic parameter is unchecked at runtime — callers should
+ * Zod-validate before trusting the shape if the plugin's config
+ * schema isn't owned by them. We don't know the plugin's schema
+ * here.
+ */
+export async function getPluginConfig<T = Record<string, unknown>>(
+  pluginId: string,
+): Promise<T | null> {
   try {
     const db = getDb();
     const rows = await db
@@ -306,13 +330,17 @@ async function loadPluginConfig(pluginId: string): Promise<Record<string, unknow
       .where(eq(npPlugins.id, pluginId))
       .limit(1);
     const row = rows[0] as { config?: unknown } | undefined;
-    if (row && row.config && typeof row.config === "object" && !Array.isArray(row.config)) {
-      return row.config as Record<string, unknown>;
+    if (!row) return null;
+    if (row.config && typeof row.config === "object" && !Array.isArray(row.config)) {
+      return row.config as T;
     }
+    // Row exists but config is null / non-object — treat as empty.
+    return {} as T;
   } catch {
-    // DB not ready or row missing — fall through to empty config.
+    // DB not ready — caller is asking before bootstrap. Same
+    // signal as "no row".
+    return null;
   }
-  return {};
 }
 
 async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {

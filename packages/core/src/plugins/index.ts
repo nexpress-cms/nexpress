@@ -4,6 +4,7 @@ export {
   runHookAndCollect,
   getPluginRoutes,
   getPluginRegistration,
+  getPluginConfig,
   getAllPluginIds,
   getPluginAdminExtension,
   getCollectionTabsForSlug,
