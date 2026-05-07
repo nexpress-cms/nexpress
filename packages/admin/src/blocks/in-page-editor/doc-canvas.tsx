@@ -18,13 +18,21 @@ import {
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
 import type { EditorAction } from "../editor-engine/index.js";
-import { npFetch } from "../../lib/api-client.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 import { PaletteModal } from "../shared/palette-modal.js";
 
 import { BlockSettingsDialog } from "./block-settings-dialog.js";
+import {
+  projectRect,
+  resolveBlockAt,
+  unionVisibleRect,
+  type OverlayPosition,
+} from "./iframe-coords.js";
 import { QuickInsertBar } from "./quick-insert-bar.js";
+import { useBlockPreview } from "./use-block-preview.js";
+import { useDocCanvasDrag } from "./use-doc-canvas-drag.js";
+import { useHoverDebounce } from "./use-hover-debounce.js";
 
 export interface DocCanvasProps {
   blocks: NpBlockInstance[];
@@ -39,15 +47,6 @@ export interface DocCanvasProps {
   onSelectBlock: (id: string | null) => void;
 }
 
-const PREVIEW_ENDPOINT = "/api/admin/preview-blocks";
-const DEBOUNCE_MS = 400;
-
-interface OverlayPosition {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-}
 
 /**
  * Document-mode canvas: a server-rendered preview iframe with a
@@ -84,68 +83,12 @@ export function DocCanvas({
 }: DocCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [html, setHtml] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { html, loading, error } = useBlockPreview(blocks);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverRect, setHoverRect] = useState<OverlayPosition | null>(null);
   const [settingsTargetId, setSettingsTargetId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-
-  // Debounced server-side preview render. Same shape as the
-  // existing PreviewPanel: post the (unsaved) blocks to the
-  // preview API, render the resulting HTML inside an iframe.
-  const debounceRef = useRef<number | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const payload = useMemo(() => JSON.stringify({ blocks }), [blocks]);
-
-  useEffect(() => {
-    if (debounceRef.current !== null) {
-      window.clearTimeout(debounceRef.current);
-    }
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-    debounceRef.current = window.setTimeout(() => {
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setLoading(true);
-      npFetch(PREVIEW_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-        signal: controller.signal,
-      })
-        .then(async (res) => {
-          const text = await res.text();
-          if (!res.ok) {
-            setHtml(text);
-            setError(`Preview returned HTTP ${res.status}.`);
-            return;
-          }
-          setHtml(text);
-          setError(null);
-        })
-        .catch((err: unknown) => {
-          if (err instanceof DOMException && err.name === "AbortError") return;
-          setError(err instanceof Error ? err.message : "Preview fetch failed.");
-        })
-        .finally(() => {
-          if (abortRef.current === controller) {
-            abortRef.current = null;
-            setLoading(false);
-          }
-        });
-    }, DEBOUNCE_MS);
-    return () => {
-      if (debounceRef.current !== null) {
-        window.clearTimeout(debounceRef.current);
-      }
-    };
-  }, [payload]);
 
   // Walk every recursive block in the tree so the overlay can
   // resolve a hovered id to its definition + parent context.
@@ -181,80 +124,34 @@ export function DocCanvas({
   // attach always runs against the freshly-parsed document.
   const [iframeLoadCount, setIframeLoadCount] = useState(0);
 
-  // Hide-debounce timer + overlay-pin ref. When the cursor leaves
-  // the iframe (e.g. crossing into the parent-doc rail), schedule
-  // the hide on a 120 ms debounce; the rail's mouseEnter cancels
-  // it AND pins the overlay so any racing iframe `mouseleave`
-  // (which would re-arm a stray timer) is short-circuited. See
-  // #467 follow-ups for the original race investigation.
-  const hideTimerRef = useRef<number | null>(null);
-  const overlayHoverRef = useRef(false);
-  const cancelHide = useCallback(() => {
-    if (hideTimerRef.current !== null) {
-      window.clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  }, []);
-  const scheduleHide = useCallback(() => {
-    if (overlayHoverRef.current) return;
-    cancelHide();
-    hideTimerRef.current = window.setTimeout(() => {
+  // 120 ms hide debounce with a "pin while cursor is on the rail"
+  // escape hatch — see use-hover-debounce.ts for the race
+  // investigation that drove this pattern.
+  const { cancelHide, scheduleHide, pinHover, releaseHover } = useHoverDebounce(
+    () => {
       setHoveredId(null);
       setHoverRect(null);
-      hideTimerRef.current = null;
-    }, 120);
-  }, [cancelHide]);
-  useEffect(
-    () => () => {
-      if (hideTimerRef.current !== null) {
-        window.clearTimeout(hideTimerRef.current);
-        hideTimerRef.current = null;
-      }
     },
-    [],
   );
 
-  // Resolve a parent-doc point (clientX / clientY) back to a block
-  // id + visible rect inside the iframe. Reused by the hover-track
-  // effect AND the drag-shield mousemove. Returns null when no
-  // block is under the cursor.
-  const resolveBlockAt = useCallback(
-    (
-      clientX: number,
-      clientY: number,
-    ): { id: string; rect: DOMRect; iframeRect: DOMRect } | null => {
+  // Thin wrapper around `iframe-coords.ts`'s pure helpers — pulls
+  // the iframe + container refs from the closure so call sites
+  // stay one-liners. Returns null when refs aren't ready or the
+  // point isn't over a block.
+  const resolveHit = useCallback(
+    (clientX: number, clientY: number) => {
       const iframe = iframeRef.current;
-      const doc = iframe?.contentDocument;
-      if (!iframe || !doc) return null;
-      const iframeRect = iframe.getBoundingClientRect();
-      const x = clientX - iframeRect.left;
-      const y = clientY - iframeRect.top;
-      if (x < 0 || y < 0 || x > iframeRect.width || y > iframeRect.height) {
-        return null;
-      }
-      const el = doc.elementFromPoint(x, y);
-      if (!el) return null;
-      const blockEl = el.closest<HTMLElement>("[data-np-block-id]");
-      if (!blockEl) return null;
-      const id = blockEl.dataset.npBlockId;
-      if (!id) return null;
-      return { id, rect: unionVisibleRect(blockEl), iframeRect };
+      if (!iframe) return null;
+      return resolveBlockAt(iframe, clientX, clientY);
     },
     [],
   );
 
-  // Project a block rect (iframe-local) into the overlay container's
-  // coordinate space so the rail aligns flush with the block.
-  const projectRect = useCallback(
+  const projectIntoContainer = useCallback(
     (blockRect: DOMRect, iframeRect: DOMRect): OverlayPosition | null => {
       const containerRect = containerRef.current?.getBoundingClientRect();
       if (!containerRect) return null;
-      return {
-        top: iframeRect.top - containerRect.top + blockRect.top,
-        left: iframeRect.left - containerRect.left + blockRect.left,
-        width: blockRect.width,
-        height: blockRect.height,
-      };
+      return projectRect(containerRect, blockRect, iframeRect);
     },
     [],
   );
@@ -286,7 +183,10 @@ export function DocCanvas({
       const id = blockEl.dataset.npBlockId;
       if (!id) return;
       const iframeRect = iframe.getBoundingClientRect();
-      const projected = projectRect(unionVisibleRect(blockEl), iframeRect);
+      const projected = projectIntoContainer(
+        unionVisibleRect(blockEl),
+        iframeRect,
+      );
       if (!projected) return;
       cancelHide();
       setHoveredId(id);
@@ -301,7 +201,7 @@ export function DocCanvas({
       doc.removeEventListener("mouseleave", scheduleHide);
       iframe.removeEventListener("mouseleave", scheduleHide);
     };
-  }, [iframeLoadCount, cancelHide, scheduleHide, projectRect]);
+  }, [iframeLoadCount, cancelHide, scheduleHide, projectIntoContainer]);
 
   // Recompute hover rect on parent scroll/resize so the overlay
   // icons stay glued to the hovered block as the page scrolls.
@@ -316,7 +216,10 @@ export function DocCanvas({
       );
       if (!blockEl) return;
       const iframeRect = iframe.getBoundingClientRect();
-      const projected = projectRect(unionVisibleRect(blockEl), iframeRect);
+      const projected = projectIntoContainer(
+        unionVisibleRect(blockEl),
+        iframeRect,
+      );
       if (projected) setHoverRect(projected);
     };
     window.addEventListener("scroll", recompute, true);
@@ -325,7 +228,7 @@ export function DocCanvas({
       window.removeEventListener("scroll", recompute, true);
       window.removeEventListener("resize", recompute);
     };
-  }, [hoveredId, projectRect]);
+  }, [hoveredId, projectIntoContainer]);
 
   const settingsBlock = settingsTargetId
     ? (blocksById.get(settingsTargetId) ?? null)
@@ -391,92 +294,23 @@ export function DocCanvas({
     });
   };
 
-  // ---- Drag-reorder (top-level only) ------------------------------
-  // Grip mousedown starts the drag; we mount a transparent shield
-  // over the iframe so subsequent mousemove + mouseup events fire
-  // in the parent doc (the iframe wouldn't bubble them out
-  // otherwise). On mouseup, dispatch MOVE_WITHIN_PARENT when source
-  // and target are both top-level and distinct; otherwise no-op.
-  const dragSourceRef = useRef<string | null>(null);
-  const dragOverIdRef = useRef<string | null>(null);
-  const dragSideRef = useRef<"before" | "after">("before");
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [dragOverRect, setDragOverRect] = useState<OverlayPosition | null>(null);
-  const [dragSide, setDragSide] = useState<"before" | "after">("before");
-
-  // Single stable handler — the dragged id comes from the button's
-  // `data-block-id` attribute rather than a per-render curry. Keeps
-  // the ref accesses inside one closure that ESLint cleanly
-  // identifies as an event handler.
-  const onGripMouseDown = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      const id = event.currentTarget.dataset.blockId;
-      if (!id || !topLevelIds.has(id)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      dragSourceRef.current = id;
-      setDraggingId(id);
-      overlayHoverRef.current = false;
-
-      const onShieldMove = (e: MouseEvent) => {
-        const hit = resolveBlockAt(e.clientX, e.clientY);
-        if (!hit || !topLevelIds.has(hit.id)) {
-          dragOverIdRef.current = null;
-          setDragOverId(null);
-          setDragOverRect(null);
-          return;
-        }
-        // Pick the drop side from the cursor's vertical position
-        // relative to the target's midpoint. Top half → "before",
-        // bottom half → "after". The reducer adjusts the toIndex
-        // accordingly so the visual indicator matches the outcome
-        // regardless of drag direction.
-        const midpointY = hit.iframeRect.top + hit.rect.top + hit.rect.height / 2;
-        const side = e.clientY < midpointY ? "before" : "after";
-        dragOverIdRef.current = hit.id;
-        dragSideRef.current = side;
-        setDragOverId(hit.id);
-        setDragSide(side);
-        const projected = projectRect(hit.rect, hit.iframeRect);
-        if (projected) setDragOverRect(projected);
-      };
-      const cleanup = () => {
-        window.removeEventListener("mousemove", onShieldMove, true);
-        window.removeEventListener("mouseup", onShieldUp, true);
-        window.removeEventListener("keydown", onEscape, true);
-        dragSourceRef.current = null;
-        dragOverIdRef.current = null;
-        setDraggingId(null);
-        setDragOverId(null);
-        setDragOverRect(null);
-      };
-      const onShieldUp = () => {
-        const source = dragSourceRef.current;
-        const target = dragOverIdRef.current;
-        const side = dragSideRef.current;
-        cleanup();
-        if (source && target && source !== target) {
-          dispatch({
-            type: "MOVE_WITHIN_PARENT",
-            parentId: null,
-            fromId: source,
-            toId: target,
-            side,
-          });
-        }
-      };
-      const onEscape = (e: KeyboardEvent) => {
-        if (e.key === "Escape") cleanup();
-      };
-
-      window.addEventListener("mousemove", onShieldMove, true);
-      window.addEventListener("mouseup", onShieldUp, true);
-      window.addEventListener("keydown", onEscape, true);
-    },
-    [dispatch, projectRect, resolveBlockAt, topLevelIds],
-  );
-
-  const isDragging = draggingId !== null;
+  const {
+    draggingId,
+    dragOverId,
+    dragOverRect,
+    dragSide,
+    onGripMouseDown,
+    isDragging,
+  } = useDocCanvasDrag({
+    dispatch,
+    topLevelIds,
+    resolveHit,
+    projectIntoContainer,
+    // Release the hover pin when drag starts so the rail unmounts
+    // cleanly behind the drag shield. Without this a stale pin
+    // keeps the rail alive after drag ends.
+    onDragStart: releaseHover,
+  });
   // While dragging, the shield captures pointer events so cursor
   // movement above the iframe still fires mousemove on the parent.
   // The shield sits above the iframe (z-30) and the rail (z-10).
@@ -546,14 +380,10 @@ export function DocCanvas({
               "dark:border-neutral-800/80",
             )}
             onMouseEnter={() => {
-              overlayHoverRef.current = true;
-              cancelHide();
+              pinHover();
               onSelectBlock(hoveredId);
             }}
-            onMouseLeave={() => {
-              overlayHoverRef.current = false;
-              scheduleHide();
-            }}
+            onMouseLeave={releaseHover}
           >
             <Button
               type="button"
@@ -704,37 +534,3 @@ export function DocCanvas({
   );
 }
 
-/**
- * Compute the union bounding rect of an element AND its
- * descendants. The block-marker divs ship `style="display:
- * contents"` so they don't disturb upstream grid / flex layouts —
- * but a `display: contents` element generates no boxes, so its
- * own `getBoundingClientRect()` is `0×0`. Walk down until we hit
- * elements that DO produce boxes, union their rects, and return
- * a real visible bound. Falls back to the original element's
- * rect when nothing visible is found.
- */
-function unionVisibleRect(el: Element): DOMRect {
-  const direct = el.getBoundingClientRect();
-  if (direct.width > 0 || direct.height > 0) return direct;
-
-  let top = Infinity;
-  let left = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  const visit = (node: Element) => {
-    const rect = node.getBoundingClientRect();
-    if (rect.width > 0 || rect.height > 0) {
-      top = Math.min(top, rect.top);
-      left = Math.min(left, rect.left);
-      right = Math.max(right, rect.right);
-      bottom = Math.max(bottom, rect.bottom);
-      return;
-    }
-    for (const child of Array.from(node.children)) visit(child);
-  };
-  for (const child of Array.from(el.children)) visit(child);
-
-  if (top === Infinity) return direct;
-  return new DOMRect(left, top, right - left, bottom - top);
-}
