@@ -8,6 +8,11 @@
  */
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./registry.js";
+export { resolveLocale, getCurrentLocale } from "./locale-resolver.js";
+export type {
+  NpResolveLocaleInput,
+  NpResolveLocaleResult,
+} from "./locale-resolver.js";
 export {
   addStrings,
   setStrings,

@@ -32,6 +32,7 @@ behavior they describe changes.
 | [releasing.md](releasing.md) | Changesets release and npm publish checklist |
 | [scheduled-publishing.md](scheduled-publishing.md) | Scheduled publish flow |
 | [testing.md](testing.md) | Unit + integration test setup |
+| [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme |
 | [theme-authoring.md](theme-authoring.md) | Authoring a theme |
 | [wordpress-import-guide.md](wordpress-import-guide.md) | Running the WP importer |
 
