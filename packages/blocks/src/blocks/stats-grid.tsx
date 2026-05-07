@@ -38,7 +38,6 @@ export const statsGridBlock: NpBlockDefinition = {
   description: "Numbers + labels in a horizontal strip. For trust signals and headline metrics.",
   icon: "BarChart3",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Content",
   source: "built-in",

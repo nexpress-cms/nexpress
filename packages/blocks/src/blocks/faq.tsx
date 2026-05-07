@@ -50,7 +50,6 @@ export const faqBlock: NpBlockDefinition = {
   description: "Expandable questions and answers for support, sales, or onboarding content.",
   icon: "HelpCircle",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Content",
   source: "built-in",

@@ -1,27 +1,24 @@
 /**
- * In-page editor — the Notion-style canvas (Doc view) of the
- * page-builder. Sits beside the form-card row layout
- * (`form-editor/`) under one orchestrator: same `useEditorState`,
- * same `availableBlocks`, same `NpBlockInstance[]` tree.
+ * In-page editor — the Doc view of the page-builder. Sits beside
+ * the form-card row layout (`form-editor/`) under one orchestrator:
+ * same `useEditorState`, same `availableBlocks`, same
+ * `NpBlockInstance[]` tree.
  *
- * The orchestrator routes between Doc and Page views via the
- * shared `<ModeSwitch>`. Doc view dispatches engine actions for
- * structural changes; the view is essentially an alternate
- * row-render surface for the same data.
+ * Doc view renders blocks via the server-side preview pipeline
+ * (`/api/admin/preview-blocks`) inside an iframe — operators see
+ * the page exactly as it would appear on the public site (theme
+ * CSS + plugin blocks resolved). Hovering a block surfaces a
+ * settings / delete control overlay; clicking settings opens a
+ * props-schema-driven dialog. Block insertion routes through the
+ * shared `<PaletteModal>` Page builder uses — same picker, same
+ * dispatch flow.
  */
 
 export { DocCanvas, type DocCanvasProps } from "./doc-canvas.js";
-export { BlockRow, type BlockRowProps } from "./block-row.js";
-export { BlockBodyRenderer, type BlockBodyRendererProps } from "./block-body-renderer.js";
-export { BlockActionsPopover } from "./block-actions-popover.js";
-export { EditorToolbar, type EditorToolbarProps } from "./editor-toolbar.js";
-export { SlashMenu, type SlashMenuProps, type SlashMenuPosition } from "./slash-menu.js";
 export {
-  InlineSelectionToolbar,
-  type InlineSelectionToolbarProps,
-} from "./inline-selection-toolbar.js";
-export { wrapInlineMark } from "./wrap-inline-mark.js";
-export { AutoGrowTextarea, type AutoGrowTextareaProps } from "./auto-grow-textarea.js";
+  BlockSettingsDialog,
+  type BlockSettingsDialogProps,
+} from "./block-settings-dialog.js";
 export {
   useContainerDropZone,
   useRowDrag,

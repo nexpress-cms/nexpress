@@ -11,7 +11,6 @@ export const heroBlock: NpBlockDefinition = {
   description: "Large introductory section with headline, supporting copy, and a call to action.",
   icon: "Sunrise",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["title"],
   category: "Content",
   source: "built-in",

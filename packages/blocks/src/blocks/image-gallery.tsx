@@ -83,7 +83,6 @@ export const imageGalleryBlock: NpBlockDefinition = {
   description: "Responsive gallery block for portfolios, campaigns, or product storytelling.",
   icon: "Images",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Media",
   source: "built-in",

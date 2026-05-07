@@ -106,7 +106,6 @@ export const pricingBlock: NpBlockDefinition = {
   description: "Structured pricing cards for subscription tiers or service packages.",
   icon: "CreditCard",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Commerce",
   source: "built-in",

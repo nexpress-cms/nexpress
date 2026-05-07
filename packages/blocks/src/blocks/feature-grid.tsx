@@ -69,7 +69,6 @@ export const featureGridBlock: NpBlockDefinition = {
   description: "Highlights key product capabilities in a flexible multi-column layout.",
   icon: "LayoutGrid",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Content",
   source: "built-in",

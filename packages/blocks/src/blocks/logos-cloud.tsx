@@ -38,7 +38,6 @@ export const logosCloudBlock: NpBlockDefinition = {
   description: "Grayscale strip of customer / partner logos. Use for trust signals.",
   icon: "Building2",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Content",
   source: "built-in",

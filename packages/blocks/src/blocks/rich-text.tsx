@@ -13,7 +13,6 @@ export const richTextBlock: NpBlockDefinition = {
   description: "Server-rendered Lexical content for long-form text, lists, and formatting.",
   icon: "FileText",
   iconKind: "lucide",
-  docBodyKind: "rich-text",
   category: "Content",
   source: "built-in",
   keywords: ["text", "paragraph", "body", "long-form", "article"],

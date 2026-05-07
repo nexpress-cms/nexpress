@@ -13,15 +13,11 @@ export { statsGridBlock } from "./stats-grid.js";
 export { logosCloudBlock } from "./logos-cloud.js";
 export { tabsBlock } from "./tabs.js";
 
-// Atom blocks — building blocks for the in-page editor's Doc
-// view. They round-trip through Page builder as plain row cards
-// (props form), so a paragraph authored in Doc renders as a
-// row in Page. Doc-friendly via `docBodyKind`.
-export { paragraphBlock } from "./paragraph.js";
-export { headingBlock } from "./heading.js";
-export { quoteBlock } from "./quote.js";
-export { listBlock } from "./list.js";
-export { dividerBlock } from "./divider.js";
-export { codeBlock } from "./code.js";
-export { calloutBlock } from "./callout.js";
-export { imageBlock } from "./image.js";
+// Atom blocks (paragraph / heading / quote / list / code / callout
+// / image / divider) lived here briefly during the in-page editor's
+// initial design. The rich-text block covers all of these via
+// Lexical (paragraphs, headings, lists, code, image, HR + inline
+// marks — all in one editor surface), so shipping separate atom
+// blocks duplicated the same content types under a different wire
+// format. Removed before #511 merged; rich-text is the canonical
+// content surface for prose / structured text.

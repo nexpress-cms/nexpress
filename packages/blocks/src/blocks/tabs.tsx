@@ -39,7 +39,6 @@ export const tabsBlock: NpBlockDefinition = {
   description: "Exclusive accordion (one panel open at a time). Use for product features or docs sections.",
   icon: "LayoutPanelTop",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Content",
   source: "built-in",

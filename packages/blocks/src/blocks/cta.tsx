@@ -14,7 +14,6 @@ export const ctaBlock: NpBlockDefinition = {
   description: "Focused conversion block with a single message and button.",
   icon: "Megaphone",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading", "buttonText"],
   category: "Content",
   source: "built-in",

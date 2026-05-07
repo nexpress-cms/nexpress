@@ -21,7 +21,6 @@ export const sectionHeaderBlock: NpBlockDefinition = {
   description: "Eyebrow + heading + subtitle. Use as the intro for any content section.",
   icon: "Heading",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading", "eyebrow"],
   category: "Content",
   source: "built-in",

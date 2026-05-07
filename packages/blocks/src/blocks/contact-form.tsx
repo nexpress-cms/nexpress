@@ -46,7 +46,6 @@ export const contactFormBlock: NpBlockDefinition = {
   description: "Lead capture placeholder with configurable fields and contact destination.",
   icon: "Mail",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Community",
   source: "built-in",

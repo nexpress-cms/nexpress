@@ -43,7 +43,6 @@ export const testimonialsBlock: NpBlockDefinition = {
   description: "Customer quote cards. Use as social proof under a hero or above a CTA.",
   icon: "MessageSquareQuote",
   iconKind: "lucide",
-  docBodyKind: "complex",
   summaryFields: ["heading"],
   category: "Content",
   source: "built-in",

@@ -3,171 +3,95 @@
 "@nexpress/blocks": minor
 ---
 
-Block editor refresh — design alignment + new in-page editor view.
+Block editor refresh — design alignment + new Document view.
 
-## Form-card editor refresh (every operator gets this)
+## Page builder refresh (every operator gets this)
 
-The form-card page-builder editor (mounted by `BlockPageEditor`) gets
-a coordinated visual + interaction pass and a new alongside view:
+- **Modal block palette** — popover replaced by a centered Dialog
+  with categorized sections (Layout / Content / Media / Commerce
+  / Community / Plugin / Other), search + favorites + recent,
+  source (built-in / plugin / theme) + container badges on every
+  card. Same data-flow as before; deeper UI.
+- **Hairline + rounded-2xl row cards** with refined source /
+  container badges in the row header.
+- **Outline panel + Container warnings panel** mounted via portal
+  in the host's sticky right sidebar, so the editor canvas keeps
+  full width. Outline = recursive block tree (click → scroll +
+  focus); warnings surface `minChildren` / `maxChildren` /
+  `allowedChildTypes` violations with click-to-scroll.
+- **Status bar** in the editor footer — registry size, total
+  block count, warnings count, active-block chip, autosave pulse
+  with a custom box-shadow ripple keyframe matching the design's
+  `.be-pulse`.
 
-- **Document view (new)** — a Notion-style inline canvas reachable
-  from a header toggle. Renders the same `NpBlockInstance[]` tree
-  as a flat sequence of inline-editable rows: paragraph / heading
-  (h1-3) / quote / code / callout / list / image / divider. Hover
-  reveals the row rail (add-below, actions popover). Typing `/` in
-  an empty atom body opens a slash-menu of doc-friendly types
-  (filtered by label / type / category / keywords). Picking an item
-  swaps the source row in place via the new `REPLACE_TYPE` engine
-  action. Containers / hero / pricing etc. render as read-only
-  summary cards in Doc view — operators switch to Page builder to
-  edit those.
+## Document view (new)
 
-- **Page builder refresh** — every operator sees this on next deploy.
-  The popover-style block palette is replaced with a centered Dialog
-  that surfaces source (`built-in` / `plugin` / `theme`) and
-  `container` badges, larger cards with descriptions, and a footer
-  showing total registry size + keyboard hints. The row card adopts
-  hairline (`border-neutral-200/80`) borders + `rounded-2xl` corners
-  + `bg-white/95 backdrop-blur-sm` per the design tokens. A new side
-  outline panel and footer status bar mount alongside the row list,
-  driven by the existing `useEditorState` hook plus a new
-  `evaluateContainerWarnings(tree, defs)` helper that surfaces
-  `min` / `max` / `allowedChildTypes` violations as inline alerts
-  and a side warnings panel.
+A second view alongside Page builder, picked by a header toggle
+(Document / Page builder). Doc view renders the page **as a
+server-side preview** — the same `/api/admin/preview-blocks`
+pipeline the existing PreviewPanel uses, but now the operator's
+primary editing surface. Theme CSS, plugin blocks, async data
+all resolve correctly so what the operator sees matches what
+visitors will see.
 
-- **Lucide icon migration** — the 13 built-in blocks switch from
-  emoji `icon` strings to Lucide icon names (`"Sunrise"`, `"LayoutGrid"`,
-  `"FileText"`, etc.) and add `iconKind: "lucide"`. The new
-  `BlockIcon` resolver maps Lucide names to `lucide-react` SVG
-  components; an `EMOJI_TO_LUCIDE` alias map keeps un-migrated
-  plugin blocks rendering as proper SVGs (`📝` → `FileText`) without
-  any plugin API change.
+Hovering any block in the canvas surfaces a small action rail:
 
-- **8 new built-in atom blocks** — `paragraph`, `heading`, `quote`,
-  `code`, `callout`, `list`, `image`, `divider`. Public block types
-  with full `propsSchema` / `render` / `defaultProps`; round-trip
-  cleanly through Page builder as row cards. Each carries a
-  `docBodyKind` that the in-page editor's body renderer consumes.
+- **Settings (gear)** — opens a `BlockSettingsDialog` modal that
+  walks the block's `propsSchema` and renders one `FieldControl`
+  per field. Honors `hiddenWhen` / `visibleWhen` predicates the
+  same way the form-card editor does. Save dispatches
+  `REPLACE_PROPS`; Cancel discards.
+- **Delete (trash)** — dispatches `DELETE` for the hovered block.
 
-Type extensions on `NpBlockMetadata` (additive — adding optional
-fields is non-breaking per the v0.1 stability rules):
+Block insertion routes through the same `<PaletteModal>` Page
+builder uses — Doc and Page modes share one picker.
 
-- `iconKind?: "lucide" | "emoji"` — resolver hint.
-- `docBodyKind?: "paragraph" | "heading" | "heading-2" | "heading-3" | "quote" | "code" | "callout" | "list" | "image" | "divider" | "rich-text" | "complex"`
-  — picks the in-page editor body component.
+The view choice persists per `<collection>.<field>` in
+localStorage. Default lands on Page builder; opting into Doc is
+one click.
 
-`EditorAction` gains a new variant: `REPLACE_TYPE` (id, newType,
-preserveText?) — used by the slash menu and the toolbar's
-block-level buttons. Adding to a discriminated union is non-breaking.
+## Engine extension — `REPLACE_TYPE`
 
-The view toggle persists per `<collection-slug>.<field-name>` in
-localStorage. Default lands on Page builder so existing operators
-see no behavior change until they opt in. The dispatcher in
-`field-renderer.tsx` passes `viewScope` through automatically.
+`EditorAction` gains one new variant — `REPLACE_TYPE` — used by
+the form-card editor's bulk "Convert to" flow. Adding to a
+discriminated union is non-breaking. Reducer behavior:
 
-`BlockPalette` is preserved as a thin shell around the new
-`PaletteModal` — plugin authors importing it directly keep
-working. New code should reach for `PaletteModal` from
-`@nexpress/admin/src/blocks/shared/palette-modal.js`.
+- Locate by id; no-op if missing.
+- Honor parent's `allowedChildTypes` contract.
+- Optional `preserveText` (default true) carries the source's
+  primary text-shaped prop into the new block's matching slot.
+- Container children carry over when both old and new types
+  accept children.
 
-## In-page Doc view — full edit parity
+## Lucide icon migration
 
-The Doc view ships editing-complete:
+The 14 built-in blocks switched from emoji `icon` strings to
+Lucide icon names (`"Sunrise"`, `"LayoutGrid"`, `"FileText"`,
+etc.) and added `iconKind: "lucide"`. New `BlockIcon` resolver
+maps Lucide names to `lucide-react` SVG components; an
+`EMOJI_TO_LUCIDE` alias map keeps un-migrated plugin blocks
+rendering as proper SVGs without API churn.
 
-- **Autosave** — `SaveEventsProvider` mounted in `CollectionEditView`
-  emits `"saving"` / `"saved"` / `"error"` around the form's
-  submitWithStatus. The orchestrator subscribes via `useSaveEvents`
-  and forwards into `useAutosaveStatus`, so the status-bar pulse
-  cycles dirty → saving → saved → idle. Errors stay dirty.
-- **HTML5 drag-and-drop reorder** — same-parent reorder via the
-  row's grip handle. Module-scoped `activeDragSource` carries the
-  source's parentId so cross-parent drops are filtered visually
-  (no silent reducer no-ops). Drop indicator anchors above /
-  below the target row.
-- **Lexical body in Doc view** — `RichTextBody` lazy-loads
-  `NpRichTextEditor` from `@nexpress/editor/client`. Same wire
-  format as Page builder; the body container's
-  `data-np-rich-text-body` marker drives the toolbar's
-  inline-mark gating.
-- **Container nesting** — `acceptsChildren` blocks render with a
-  dashed children area; nested rows use the same `BlockRow`
-  component recursively. Inline insert honors the parent's
-  `allowedChildTypes` and `maxChildren` contracts; at-cap
-  containers swap the "Add into …" button for a cap notice.
+## CSRF + autosave
 
-## Atom block public-site CSS
+- All admin mutations now route through `npFetch` so the proxy's
+  auto-CSRF check (#281) succeeds: PreviewPanel
+  (`/api/admin/preview-blocks`), patterns service
+  (`/api/admin/patterns`), and the block image picker upload
+  (`/api/media`). Raw `fetch(POST, ...)` was returning 403
+  CSRF_INVALID and silently breaking those flows.
+- New `SaveEventsProvider` mounted in `CollectionEditView` emits
+  `"saving"` / `"saved"` / `"error"` around the form's submit
+  flow. The block-editor orchestrator subscribes via
+  `useSaveEvents` and forwards to its autosave indicator —
+  status-bar pulse cycles dirty → saving → saved → idle as
+  expected.
 
-The 8 atom blocks now ship default styles in `@layer np-blocks`
-(`apps/web/src/app/globals.css`): paragraph spacing, heading sizes,
-quote left-border, code block pre/code styling, callout tone
-backgrounds, list bullet/decimal markers, image figcaption
-treatment, divider hairline. Themes can override via
-`@layer np-theme`.
+## Type extensions on `NpBlockMetadata`
 
-## Cross-parent drag (MOVE_INTO)
+- `iconKind?: "lucide" | "emoji"` — advisory hint for the icon
+  resolver. Optional and additive.
 
-The container's children area is a drop zone. Drags from a row
-whose parent ISN'T this container highlight the area in primary;
-on drop the engine dispatches `MOVE_INTO`. The reducer's existing
-cycle / contract guards (allowedChildTypes, maxChildren,
-descendant rejection) gate the actual move; bad drops are silent
-no-ops.
-
-Same-parent reorder still uses `useRowDrag` with the above /
-below indicator — the two paths don't overlap because the row
-hook gates on `parentId === source.parentId` and the container
-zone gates on the inverse.
-
-## Markdown-style inline marks on atom blocks
-
-Atom blocks (paragraph / heading / quote / list / callout) now
-support a small markdown subset for inline formatting at render
-time:
-
-- `**bold**` → `<strong>`
-- `*italic*` → `<em>`
-- `_underline_` → `<u>`
-- `~~strike~~` → `<s>`
-- `` `code` `` → `<code>`
-
-The toolbar's Bold / Italic / Underline / Strikethrough /
-Inline-code buttons wrap the active textarea's selection in the
-matching delimiter (no selection → inserts paired delimiters with
-the caret between them). New helper exported from
-`@nexpress/blocks`: `renderInlineMarks(text)` for theme authors
-who want to reuse the parser.
-
-The wire format stays a plain `string` (no marks-array shape) —
-operators see the syntax while editing but the public-site render
-resolves it into spans. For full WYSIWYG with arbitrary nested
-formatting, the rich-text block (Lexical) remains the right
-surface.
-
-## Slash menu — container-aware
-
-Typing `/` in an atom row inside a container now opens the slash
-menu the same way it does at top level. The picker's type list
-respects the parent container's `allowedChildTypes` contract, so
-operators only see types the reducer would accept.
-
-## Engine actions + tests
-
-- `EditorAction` gains `REPLACE_TYPE` (id, newType, preserveText?).
-  Adding to a discriminated union is non-breaking.
-- 51 unit tests in `apps/web/tests/in-page-editor.unit.test.tsx`
-  (DB-free, runs via `pnpm --filter @nexpress/web run test`).
-  Covers atom registration, Lucide migration, server-render
-  output, the new `REPLACE_TYPE` reducer (id preservation,
-  preserveText, container children carry-over, parent contract
-  rejection, REPLACE_TYPE ↔ UPDATE_PROPS composition), and the
-  inline-marks parser (bold / italic / underline / strike / code
-  + nesting + unmatched-delimiter fallthrough).
-
-## Atom block default styles
-
-`apps/web/src/app/globals.css` ships default rules for every
-atom block class (`np-paragraph`, `np-heading-1/2/3`, `np-quote`,
-`np-code`, `np-callout-info|warning|success`, `np-list`,
-`np-image`, `np-divider`) inside `@layer np-blocks`. Themes can
-override via `@layer np-theme` — the cascade picks theme over
-default.
+(`docBodyKind` was added during the design pass and removed
+before merge — Doc view uses server-side preview now, no
+per-block kind hint required.)
