@@ -192,8 +192,16 @@ export function DocCanvas({
     };
 
     const onMove = (event: Event) => {
-      if (!(event.target instanceof HTMLElement)) return;
-      updateRect(event.target);
+      // `event.target instanceof HTMLElement` is FALSE here even
+      // when the target is a real element — the iframe runs in
+      // its own JavaScript realm, so the parent's `HTMLElement`
+      // constructor is a different reference from the iframe's.
+      // Cross-realm `instanceof` always returns false. Probe by
+      // capability (`nodeType === 1` + `closest` method) instead.
+      const target = event.target as Element | null;
+      if (!target || target.nodeType !== 1) return;
+      if (typeof (target as HTMLElement).closest !== "function") return;
+      updateRect(target as HTMLElement);
     };
     const onLeave = () => {
       setHoveredId(null);
