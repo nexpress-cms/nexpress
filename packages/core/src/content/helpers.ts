@@ -226,7 +226,7 @@ function mapNavItem(
 
 export async function getPageBySlug(
   slug: string,
-  options?: { draft?: boolean },
+  options?: { draft?: boolean; locale?: string },
 ): Promise<Record<string, unknown> | null> {
   const where: Record<string, unknown> = { slug: slug || "/" };
 
@@ -234,8 +234,14 @@ export async function getPageBySlug(
     where.status = "published";
   }
 
+  // Locale-scoped lookup — when the caller supplies a locale, the
+  // findDocuments query restricts to rows in that locale (matches
+  // the `(site_id, locale, slug)` unique index on i18n collections).
+  // Single-locale collections ignore the option, so callers can
+  // pass it unconditionally.
   const result = await findDocuments("pages", {
     where,
+    locale: options?.locale,
     limit: 1,
   });
 

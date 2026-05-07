@@ -225,6 +225,13 @@
       "when": 1777996800000,
       "tag": "0031_nosy_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1778164991826,
+      "tag": "0032_pages_i18n",
+      "breakpoints": true
     }
   ]
 }

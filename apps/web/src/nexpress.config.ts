@@ -20,7 +20,6 @@ import { magazineTheme } from "@nexpress/theme-magazine";
 import { minimalTheme } from "@nexpress/theme-minimal";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
 
-import { localizedPagesCollection } from "./collections/localized-pages";
 import { pagesCollection } from "./collections/pages";
 import { postsCollection } from "./collections/posts";
 import { taxonomiesCollection } from "./collections/taxonomies";
@@ -63,15 +62,15 @@ export default defineConfig({
   collections: [
     postsCollection,
     pagesCollection,
-    localizedPagesCollection,
     taxonomiesCollection,
     discussionsCollection,
   ],
   // Phase 12.1 — i18n config. Required when any collection
-  // sets `i18n: true`. The reference app uses this to
-  // demonstrate the new primitive on `localized_pages`; sites
-  // that don't need multi-language content can drop this block
-  // and remove their localized collections.
+  // sets `i18n: true`. `pagesCollection` opts in: each row
+  // carries a locale + translation_group_id, and the admin
+  // surfaces TranslationTabs on the edit screen so operators
+  // create language variants of the same logical page in one
+  // place.
   //
   // Sourced from `./i18n.config` so the middleware (which can't
   // load core) can read the same locale list at request-parse

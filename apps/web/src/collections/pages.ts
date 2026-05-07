@@ -20,9 +20,18 @@ export const pagesCollection = defineCollection({
   slug: "pages",
   labels: { singular: "Page", plural: "Pages" },
   slugField: { useField: "title", unique: true },
+  // Multi-language editing lives on the page edit screen itself
+  // (TranslationTabs auto-mount when `i18n: true`). Each row carries
+  // a `locale` and a `translation_group_id`; siblings of the same
+  // logical page share the group id so the edit view can switch
+  // between language variants without a separate "Localized Pages"
+  // menu entry. The slug uniqueness key flips from `(site_id, slug)`
+  // to `(site_id, locale, slug)` so the same slug can resolve to
+  // different documents per locale.
+  i18n: true,
   admin: {
     group: "Content",
-    listColumns: ["title", "slug", "status", "updatedAt"],
+    listColumns: ["title", "slug", "locale", "status", "updatedAt"],
     defaultSort: "title",
     description: "Static pages — composed from blocks.",
     navMembership: true,
@@ -56,12 +65,17 @@ export const pagesCollection = defineCollection({
     urlPath: (doc) => {
       const slug = typeof doc.slug === "string" ? doc.slug : null;
       if (!slug) return null;
+      const locale = typeof doc.locale === "string" ? doc.locale : null;
       // Pages use the catch-all `(site)/[[...slug]]` route. The
-      // home page slug is "/" and maps to "/", every other slug
-      // maps to "/{slug}". A leading slash on a non-root slug is
-      // a data quirk we tolerate by stripping it.
-      if (slug === "/") return "/";
-      return `/${slug.replace(/^\/+/, "")}`;
+      // home page slug is "/" and maps to the locale's root,
+      // every other slug maps to `/{locale}/{slug}`. A leading
+      // slash on a non-root slug is a data quirk we tolerate by
+      // stripping it. The middleware (`apps/web/src/proxy.ts`)
+      // strips the locale prefix before the lookup, so storage
+      // keys aren't polluted with locale.
+      const localePrefix = locale ? `/${locale}` : "";
+      if (slug === "/") return localePrefix || "/";
+      return `${localePrefix}/${slug.replace(/^\/+/, "")}`;
     },
     changefreq: "weekly",
     priority: 0.8,

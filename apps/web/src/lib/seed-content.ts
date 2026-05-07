@@ -514,7 +514,7 @@ function buildHomePageBlocks(): unknown[] {
             icon: "🌍",
             title: "i18n",
             description:
-              "Per-site locale registry, translatable collections, RTL, and a localized-pages collection that keeps source / translation pairs aligned.",
+              "Per-site locale registry, translatable collections, RTL, and Translation Tabs in the page editor that keep source / translation pairs aligned.",
           },
           {
             icon: "🛡️",
