@@ -16,12 +16,52 @@ import type { NpPattern } from "../patterns.js";
  */
 export type EditorAction =
   | { type: "RESET"; blocks: NpBlockInstance[] }
-  | { type: "ADD"; blockType: string; parentId?: string }
-  | { type: "INSERT_BEFORE"; targetId: string; blockType: string }
-  | { type: "INSERT_AFTER"; targetId: string; blockType: string }
+  // Append a new block (top-level when `parentId` is omitted, into
+  // the named container otherwise). Initial props default to the
+  // definition's `defaultProps`; the optional `props` override
+  // shallow-merges on top, used by surfaces that need to seed
+  // content at insertion time (e.g. DocCanvas's plain-text → rich-
+  // text shortcut, where the new block lands with its Lexical
+  // body already populated).
+  | {
+      type: "ADD";
+      blockType: string;
+      parentId?: string;
+      props?: Record<string, unknown>;
+    }
+  | {
+      type: "INSERT_BEFORE";
+      targetId: string;
+      blockType: string;
+      props?: Record<string, unknown>;
+    }
+  | {
+      type: "INSERT_AFTER";
+      targetId: string;
+      blockType: string;
+      props?: Record<string, unknown>;
+    }
   | { type: "DELETE"; id: string }
   | { type: "DUPLICATE"; id: string }
-  | { type: "MOVE_WITHIN_PARENT"; parentId: string | null; fromId: string; toId: string }
+  // Reorder a sibling pair within their shared parent.
+  //
+  // Without `side`, the reducer falls through to plain `arrayMove`
+  // semantics (dnd-kit-style) — that's how the form-editor's drag
+  // path has always wired it. The asymmetry is deliberate there:
+  // dnd-kit's sortable already computes the adjusted target index.
+  //
+  // With `side`, the reducer interprets the drop as "land source
+  // BEFORE target" or "land source AFTER target" regardless of
+  // drag direction. The DocCanvas drag-shield uses this so its
+  // top-edge / bottom-edge drop indicator matches the actual
+  // outcome both forward and backward.
+  | {
+      type: "MOVE_WITHIN_PARENT";
+      parentId: string | null;
+      fromId: string;
+      toId: string;
+      side?: "before" | "after";
+    }
   | { type: "MOVE_UP"; id: string }
   | { type: "MOVE_DOWN"; id: string }
   // Cross-hierarchy moves (#467 phase 4). All three preserve

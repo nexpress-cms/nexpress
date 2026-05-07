@@ -73,6 +73,9 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           }
         }
         const next = createBlockInstance(definition);
+        if (action.props) {
+          next.props = { ...next.props, ...action.props };
+        }
         return updateContainerChildren(state, parentId, (siblings) => [
           ...siblings,
           next,
@@ -103,6 +106,9 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           }
         }
         const next = createBlockInstance(definition);
+        if (action.props) {
+          next.props = { ...next.props, ...action.props };
+        }
         const offset = action.type === "INSERT_AFTER" ? 1 : 0;
         return updateContainerChildren(state, loc.parentId, (siblings) => [
           ...siblings.slice(0, loc.index + offset),
@@ -133,7 +139,30 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
           if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
             return siblings;
           }
-          return arrayMove(siblings, fromIndex, toIndex);
+          // `arrayMove` does splice(from, 1) THEN splice(to, 0, item),
+          // so the same toId resolves to different visual outcomes
+          // depending on drag direction. dnd-kit clients live with
+          // this because they pre-adjust toIndex themselves; the
+          // DocCanvas drag-shield doesn't, so an explicit `side`
+          // pins the drop visually:
+          //
+          //   side: "before"
+          //     forward drag (from < to)   → adjusted = to - 1
+          //     backward drag (from > to)  → adjusted = to
+          //
+          //   side: "after"
+          //     forward drag               → adjusted = to
+          //     backward drag              → adjusted = to + 1
+          //
+          // Without `side`, fall through to plain arrayMove for
+          // dnd-kit compatibility.
+          let adjusted = toIndex;
+          if (action.side === "before") {
+            adjusted = fromIndex < toIndex ? toIndex - 1 : toIndex;
+          } else if (action.side === "after") {
+            adjusted = fromIndex < toIndex ? toIndex : toIndex + 1;
+          }
+          return arrayMove(siblings, fromIndex, adjusted);
         });
       }
       case "MOVE_UP": {

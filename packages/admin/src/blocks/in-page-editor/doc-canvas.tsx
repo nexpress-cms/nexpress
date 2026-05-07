@@ -354,6 +354,9 @@ export function DocCanvas({
     // Plain text → rich-text block at the bottom. The rich-text
     // editor stores Lexical JSON; the simplest valid root for a
     // bare text run is one paragraph node carrying one text node.
+    // ADD's optional `props` slot threads the content in at
+    // insertion time so we don't need a post-dispatch hydration
+    // race to find the new block's id.
     const lexicalRoot = {
       root: {
         type: "root",
@@ -383,75 +386,12 @@ export function DocCanvas({
         ],
       },
     };
-    // Append to top level then patch the new block's content via
-    // REPLACE_PROPS — ADD seeds defaults but doesn't take a
-    // payload, and INSERT_AFTER doesn't either. Since we don't
-    // know the new id up front, scan top-level after dispatch.
-    dispatch({ type: "ADD", blockType: "rich-text" });
-    // Defer the prop patch so React applies the ADD reducer first;
-    // the new block is the last top-level entry. Without the
-    // queueMicrotask, the dispatch chain would race against React's
-    // commit and we'd patch a phantom id from the previous render.
-    queueMicrotask(() => {
-      // We can't reach the next state from here directly — the
-      // engine's reducer is owned upstream — so leave the ADD to
-      // pre-seed an empty rich-text and write the actual content
-      // via a synthetic UPDATE on the matching id. The orchestrator
-      // catches the ADD and re-renders; on next paint we read the
-      // freshest blocks via a custom event handler. v1 limitation:
-      // if the operator types fast enough to insert two before
-      // re-render, only the most recent one carries the text.
-      const event = new CustomEvent<{ text: string; content: unknown }>(
-        "np-doc-canvas:hydrate-rich-text",
-        { detail: { text, content: lexicalRoot } },
-      );
-      window.dispatchEvent(event);
+    dispatch({
+      type: "ADD",
+      blockType: "rich-text",
+      props: { content: lexicalRoot },
     });
   };
-
-  // Listen for the synthetic hydrate event we fire after a
-  // text-shortcut ADD so the freshly-inserted rich-text block
-  // gets its content patched in. Reads the latest `blocks` via a
-  // ref so the event handler doesn't go stale across renders.
-  const blocksRef = useRef(blocks);
-  useEffect(() => {
-    blocksRef.current = blocks;
-  }, [blocks]);
-  useEffect(() => {
-    const onHydrate = (event: Event) => {
-      const detail = (event as CustomEvent<{ content: unknown }>).detail;
-      if (!detail) return;
-      const arr = blocksRef.current;
-      // Find the most recent rich-text block at top level whose
-      // content is still the default (empty/undefined). It's
-      // almost always the last one we just appended.
-      for (let i = arr.length - 1; i >= 0; i--) {
-        const candidate = arr[i];
-        if (candidate.type !== "rich-text") continue;
-        const existing = (candidate.props as { content?: unknown }).content;
-        const isEmpty =
-          !existing ||
-          (typeof existing === "object" &&
-            existing !== null &&
-            JSON.stringify(existing).length < 80);
-        if (isEmpty) {
-          dispatch({
-            type: "REPLACE_PROPS",
-            id: candidate.id,
-            props: { ...candidate.props, content: detail.content },
-          });
-          break;
-        }
-      }
-    };
-    window.addEventListener("np-doc-canvas:hydrate-rich-text", onHydrate);
-    return () => {
-      window.removeEventListener(
-        "np-doc-canvas:hydrate-rich-text",
-        onHydrate,
-      );
-    };
-  }, [dispatch]);
 
   // ---- Drag-reorder (top-level only) ------------------------------
   // Grip mousedown starts the drag; we mount a transparent shield
@@ -461,8 +401,10 @@ export function DocCanvas({
   // and target are both top-level and distinct; otherwise no-op.
   const dragSourceRef = useRef<string | null>(null);
   const dragOverIdRef = useRef<string | null>(null);
+  const dragSideRef = useRef<"before" | "after">("before");
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [dragOverRect, setDragOverRect] = useState<OverlayPosition | null>(null);
+  const [dragSide, setDragSide] = useState<"before" | "after">("before");
 
   // Single stable handler — the dragged id comes from the button's
   // `data-block-id` attribute rather than a per-render curry. Keeps
@@ -486,8 +428,17 @@ export function DocCanvas({
           setDragOverRect(null);
           return;
         }
+        // Pick the drop side from the cursor's vertical position
+        // relative to the target's midpoint. Top half → "before",
+        // bottom half → "after". The reducer adjusts the toIndex
+        // accordingly so the visual indicator matches the outcome
+        // regardless of drag direction.
+        const midpointY = hit.iframeRect.top + hit.rect.top + hit.rect.height / 2;
+        const side = e.clientY < midpointY ? "before" : "after";
         dragOverIdRef.current = hit.id;
+        dragSideRef.current = side;
         setDragOverId(hit.id);
+        setDragSide(side);
         const projected = projectRect(hit.rect, hit.iframeRect);
         if (projected) setDragOverRect(projected);
       };
@@ -504,6 +455,7 @@ export function DocCanvas({
       const onShieldUp = () => {
         const source = dragSourceRef.current;
         const target = dragOverIdRef.current;
+        const side = dragSideRef.current;
         cleanup();
         if (source && target && source !== target) {
           dispatch({
@@ -511,6 +463,7 @@ export function DocCanvas({
             parentId: null,
             fromId: source,
             toId: target,
+            side,
           });
         }
       };
@@ -682,8 +635,15 @@ export function DocCanvas({
             height: dragOverRect.height,
           }}
         >
-          <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary" />
-          <div className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 bg-primary" />
+          <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary/70" />
+          {/* Drop bar — top edge for "before", bottom edge for
+              "after" — so the visual matches the reducer's actual
+              MOVE_WITHIN_PARENT outcome. */}
+          {dragSide === "before" ? (
+            <div className="pointer-events-none absolute -top-1 left-0 right-0 h-1 rounded-full bg-primary" />
+          ) : (
+            <div className="pointer-events-none absolute -bottom-1 left-0 right-0 h-1 rounded-full bg-primary" />
+          )}
         </div>
       ) : null}
 
