@@ -73,6 +73,22 @@ export function useEditorState({
   const canUndo = history.past.length > 0;
   const canRedo = history.future.length > 0;
 
+  // Track the current present's JSON shape so the reset-on-prop-
+  // change effect below can tell our own onChange echo from a real
+  // external swap. Without this, every dispatch killed undo/redo:
+  //
+  //   1. dispatch → present updates, history grows
+  //   2. onChange(present) → parent setState → re-renders us
+  //   3. parent passes the same tree back as `initialBlocks`
+  //   4. `initialBlocksKey` changes → reset effect blew past away
+  //
+  // The ref is updated BEFORE the reset effect runs (effects fire
+  // in declaration order) so the comparison sees the latest present.
+  const presentKeyRef = useRef(JSON.stringify(initialBlocks));
+  useEffect(() => {
+    presentKeyRef.current = JSON.stringify(blocks);
+  }, [blocks]);
+
   // Reset history whenever the upstream `initialBlocks` swaps
   // (route nav, server reload). We compare on a stable key
   // (JSON snapshot) instead of reference identity since the
@@ -82,6 +98,10 @@ export function useEditorState({
     [initialBlocks],
   );
   useEffect(() => {
+    // Self-echo guard: when the new initialBlocks already matches
+    // our current present, the parent is just bouncing our own
+    // dispatch back. Skip the reset so undo/redo stays intact.
+    if (initialBlocksKey === presentKeyRef.current) return;
     historyDispatch({ type: "RESET_HISTORY", blocks: initialBlocks });
     lastUpdateRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
