@@ -154,11 +154,14 @@ export function DocCanvas({
   // Hide-debounce timer — when the cursor leaves the iframe (e.g.
   // crossing into the parent-doc overlay rail), we schedule the
   // hide instead of firing it immediately. The overlay's
-  // `onMouseEnter` cancels the pending hide so the rail stays
-  // alive while the operator clicks Settings / Delete. Without
-  // this, the iframe `mouseleave` would tear down the overlay
-  // mid-handoff and the buttons would never be reachable.
+  // `onMouseEnter` cancels the pending hide AND sets
+  // `overlayHoverRef` so any later `scheduleHide` (from a
+  // racing iframe `mouseleave` that fires AFTER the rail's
+  // `mouseenter` on the same handoff) refuses to queue. Without
+  // the ref guard, event ordering between iframe and parent doc
+  // would let a stray scheduleHide tear down the rail mid-click.
   const hideTimerRef = useRef<number | null>(null);
+  const overlayHoverRef = useRef(false);
   const cancelHide = () => {
     if (hideTimerRef.current !== null) {
       window.clearTimeout(hideTimerRef.current);
@@ -166,6 +169,7 @@ export function DocCanvas({
     }
   };
   const scheduleHide = () => {
+    if (overlayHoverRef.current) return;
     cancelHide();
     hideTimerRef.current = window.setTimeout(() => {
       setHoveredId(null);
@@ -363,18 +367,22 @@ export function DocCanvas({
           <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary/60" />
           <div
             className="pointer-events-auto absolute right-2 top-2 flex items-center gap-1 rounded-full border border-neutral-200/80 bg-background/95 px-1 py-0.5 shadow-md backdrop-blur dark:border-neutral-800/80"
-            // Cancel any pending hide as the cursor enters the rail.
-            // The iframe's `mouseleave` would otherwise schedule a
-            // hide the moment the operator leaves the iframe — and
-            // that window is exactly when they're moving toward
-            // these buttons. mouseLeave on the rail re-arms the
-            // hide so the overlay clears once focus moves
-            // elsewhere.
+            // Pin the overlay while the cursor sits on the rail.
+            // `overlayHoverRef` short-circuits any racing
+            // scheduleHide() that the iframe's `mouseleave` may
+            // fire on the same handoff frame; cancelHide() drops
+            // any timer already armed before the cursor arrived.
+            // mouseLeave clears the pin and re-arms the debounce
+            // so the rail dismisses naturally on real exit.
             onMouseEnter={() => {
+              overlayHoverRef.current = true;
               cancelHide();
               onSelectBlock(hoveredId);
             }}
-            onMouseLeave={scheduleHide}
+            onMouseLeave={() => {
+              overlayHoverRef.current = false;
+              scheduleHide();
+            }}
           >
             <Button
               type="button"
