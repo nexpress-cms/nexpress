@@ -52,8 +52,8 @@ The companion docs:
 ## 1. Bootstrap
 
 Every server route or RSC that touches `@nexpress/core` data must
-call `ensureFor(intent)` first. Without it, `getDb()` returns
-`null` and reads crash.
+call `ensureFor(intent)` first. Without it, `getDb()` throws
+`"Database not initialized"` and the request 500s.
 
 ```ts
 // apps/web/src/app/(site)/blog/page.tsx
@@ -303,20 +303,41 @@ Three flavors of "current user," depending on what you need:
 
 | Helper | Returns | When |
 | --- | --- | --- |
-| `requireAuth(request)` | `NpAuthUser` (throws on absence) | Staff-gated routes / pages. From `@nexpress/next` (per-app helper). |
-| `optionalAuth(request)` | `NpAuthUser \| null` | Pages that render differently for staff but don't require it. |
-| Member session | `{ memberId } \| null` | Public-facing member-only pages (`/members/me`). Use the per-app member auth helpers. |
+| `requireAuth(request)` | `NpAuthUser` (throws on absence) | Staff-gated **API routes** (need a `NextRequest`). From the per-app `createAuthHelpers()` output. |
+| `optionalAuth(request)` | `NpAuthUser \| null` | API routes that render differently for staff but don't require it. |
+| `getSiteMember()` | `NpMemberAuthRow \| null` | RSC pages that show member-only content. App-level helper around `optionalMember(request)`. |
+
+API routes get the request directly:
 
 ```ts
-// app/(site)/members/me/page.tsx
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { ensureFor } from "@/lib/init-core";
-import { requireMemberAuth } from "@/lib/auth-helpers"; // app-level helper
+// app/api/posts/draft/route.ts
+import { can, NpForbiddenError } from "@nexpress/core";
+import { requireAuth } from "@/lib/auth-helpers";
+import type { NextRequest } from "next/server";
 
-export default async function MyAccount() {
+export async function GET(request: NextRequest) {
+  const user = await requireAuth(request);
+  if (!can(user, "content.author")) {
+    throw new NpForbiddenError("posts", "draft");
+  }
+  // ...
+}
+```
+
+RSC pages don't have a `NextRequest`; reach for `getSiteMember()`
+(an app-level wrapper that pulls the cookie out of `cookies()`)
+and `redirect()` manually if the page is gated:
+
+```tsx
+// app/(site)/members/me/notifications/page.tsx
+import { redirect } from "next/navigation";
+import { getSiteMember } from "@/lib/site-member";
+import { ensureFor } from "@/lib/init-core";
+
+export default async function NotificationSettings() {
   await ensureFor("read");
-  const member = await requireMemberAuth(); // redirects to /members/login if not signed in
+  const member = await getSiteMember();
+  if (!member) redirect("/members/login?next=/members/me/notifications");
   return <h1>Welcome, @{member.handle}</h1>;
 }
 ```
