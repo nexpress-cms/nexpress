@@ -42,14 +42,15 @@ export const postsCollection = defineCollection({
       },
     },
     {
-      type: "upload",
-      name: "coverImage",
-      relationTo: "media",
-    },
-    {
       type: "richText",
       name: "content",
       required: true,
+    },
+    {
+      type: "upload",
+      name: "coverImage",
+      relationTo: "media",
+      admin: { position: "sidebar" },
     },
     {
       type: "date",
@@ -60,6 +61,7 @@ export const postsCollection = defineCollection({
       type: "relationship",
       name: "author",
       relationTo: "users",
+      admin: { position: "sidebar" },
     },
     {
       // Phase 21.11 — preserves the original WP byline when the
@@ -70,7 +72,10 @@ export const postsCollection = defineCollection({
       // by …" lines read this field as a fallback.
       type: "text",
       name: "wpOriginalAuthor",
-      admin: { description: "WP author byline preserved from import — read-only in admin." },
+      admin: {
+        position: "sidebar",
+        description: "WP author byline preserved from import — read-only in admin.",
+      },
     },
     {
       type: "relationship",
@@ -78,6 +83,7 @@ export const postsCollection = defineCollection({
       relationTo: "taxonomies",
       hasMany: true,
       filterOptions: { taxonomy: "category" },
+      admin: { position: "sidebar" },
     },
     {
       type: "relationship",
@@ -85,6 +91,7 @@ export const postsCollection = defineCollection({
       relationTo: "taxonomies",
       hasMany: true,
       filterOptions: { taxonomy: "post_tag" },
+      admin: { position: "sidebar" },
     },
   ],
 });

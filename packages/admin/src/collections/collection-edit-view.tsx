@@ -224,12 +224,14 @@ const isTitleField = (field: NpFieldConfig): boolean => {
   return field.admin?.kind === "title";
 };
 
-// Block fields don't need a Card wrapper either — the editor's
-// own canvas (toolbar / row cards / iframe) already provides the
-// visual containment, and double-wrapping crowds the layout.
+// Writing-surface fields (blocks editor, rich-text editor, title)
+// don't need a Card wrapper — they ship their own bordered canvas
+// and stacking another card on top reads as nested chrome. Naked
+// rendering lets title → body flow as one continuous editing
+// composition.
 const isUnwrappedField = (field: NpFieldConfig): boolean => {
   if (field.type === "row" || field.type === "collapsible") return false;
-  return field.type === "blocks" || isTitleField(field);
+  return field.type === "blocks" || field.type === "richText" || isTitleField(field);
 };
 
 const isVisibleField = (field: NpFieldConfig): boolean => {
