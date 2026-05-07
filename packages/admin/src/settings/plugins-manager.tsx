@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { NpFieldConfig } from "@nexpress/core";
 import {
+  ChevronDown,
+  ChevronRight,
   Copy,
   ExternalLink,
   Loader2,
@@ -16,6 +18,7 @@ import { useForm } from "react-hook-form";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
 import { npFetch } from "../lib/api-client.js";
+import { cn } from "../ui/utils.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -29,7 +32,6 @@ import {
 } from "../ui/dialog.js";
 import { Form } from "../ui/form.js";
 import { Input } from "../ui/input.js";
-import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
 import { PageHeader } from "../layout/page-header.js";
@@ -78,6 +80,190 @@ function getErrorMessage(payload: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+/**
+ * One-line summary string shown in the "Installed" card header.
+ * Mirrors the design's `5 active · 1 update available` shape, but
+ * we don't have an update-detection feed yet, so the string
+ * surfaces the three states the API actually exposes:
+ *
+ *   active           → enabled && loaded
+ *   pending restart  → enabled && !loaded
+ *   disabled         → !enabled
+ */
+function summarizePluginCounts(items: PluginItem[]): string {
+  let active = 0;
+  let pending = 0;
+  let disabled = 0;
+  for (const p of items) {
+    if (!p.enabled) disabled += 1;
+    else if (!p.loaded) pending += 1;
+    else active += 1;
+  }
+  const parts: string[] = [];
+  if (active > 0) parts.push(`${active} active`);
+  if (pending > 0) parts.push(`${pending} pending restart`);
+  if (disabled > 0) parts.push(`${disabled} disabled`);
+  return parts.length > 0 ? parts.join(" · ") : `${items.length} installed`;
+}
+
+interface PluginRowProps {
+  plugin: PluginItem;
+  isFirst: boolean;
+  togglingId: string | null;
+  onToggle: (plugin: PluginItem, nextEnabled: boolean) => void | Promise<void>;
+  onOpenConfig: (plugin: PluginItem) => void;
+}
+
+/**
+ * Compact plugin row — design's `plugin-row` shape: name + slug
+ * (`@nexpress/<id>@<version>`) + description on the left, status
+ * pill in the middle, Configure / Open admin / Switch on the
+ * right. Capabilities / Hooks / Routes hide behind a
+ * "Show details" disclosure so the row stays compact for the
+ * common "I just want to toggle a plugin" path.
+ */
+function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: PluginRowProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const hasDetails =
+    plugin.capabilities.length > 0 || plugin.hooks.length > 0 || plugin.routes.length > 0;
+
+  const status: "active" | "pending" | "disabled" = !plugin.enabled
+    ? "disabled"
+    : plugin.loaded
+      ? "active"
+      : "pending";
+
+  const slug = plugin.id.startsWith("@") ? plugin.id : `@nexpress/${plugin.id}`;
+  const slugLabel = plugin.version ? `${slug}@${plugin.version}` : slug;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:gap-4 sm:px-6 sm:py-4",
+        !isFirst && "border-t border-border/60",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-sm font-semibold text-foreground">{plugin.name}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{slugLabel}</span>
+        </div>
+        {plugin.description ? (
+          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">{plugin.description}</p>
+        ) : null}
+        {hasDetails ? (
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={detailsOpen}
+          >
+            {detailsOpen ? (
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="h-3 w-3" aria-hidden="true" />
+            )}
+            {detailsOpen ? "Hide details" : "Show details"}
+          </button>
+        ) : null}
+        {detailsOpen ? (
+          <div className="mt-2 space-y-2 rounded-md bg-muted/40 px-3 py-2 text-xs">
+            {plugin.capabilities.length > 0 ? (
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Capabilities
+                </span>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {plugin.capabilities.map((cap) => (
+                    <Badge key={cap} variant="secondary" className="font-mono text-[10px]">
+                      {cap}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {plugin.hooks.length > 0 ? (
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Hooks
+                </span>
+                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                  {plugin.hooks.join(", ")}
+                </p>
+              </div>
+            ) : null}
+            {plugin.routes.length > 0 ? (
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Routes
+                </span>
+                <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
+                  {plugin.routes.map((route) => (
+                    <li key={`${route.method} ${route.path}`}>
+                      <span className="font-semibold">{route.method}</span> /api/plugins/
+                      {plugin.id}
+                      {route.path}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <PluginStatusBadge status={status} />
+
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        {plugin.hasAdmin ? (
+          <Button type="button" variant="outline" size="sm" asChild>
+            <Link href={`/admin/plugins/${plugin.id}`}>
+              <ExternalLink className="size-3.5" />
+              Open admin
+            </Link>
+          </Button>
+        ) : null}
+        <Button type="button" variant="outline" size="sm" onClick={() => onOpenConfig(plugin)}>
+          <Settings2 className="size-3.5" />
+          Configure
+        </Button>
+        <Switch
+          checked={plugin.enabled}
+          disabled={togglingId !== null}
+          onCheckedChange={(checked) => {
+            void onToggle(plugin, checked);
+          }}
+          aria-label={`Toggle ${plugin.name}`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PluginStatusBadge({ status }: { status: "active" | "pending" | "disabled" }) {
+  if (status === "active") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-200 sm:self-center">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+        Active
+      </span>
+    );
+  }
+  if (status === "pending") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-200 sm:self-center">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+        Pending restart
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground sm:self-center">
+      Inactive
+    </span>
+  );
 }
 
 export function PluginsManager() {
@@ -199,17 +385,15 @@ export function PluginsManager() {
     setToast(null);
     try {
       const response = await npFetch("/api/admin/plugins/reload", { method: "POST" });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            reloaded?: boolean;
-            schedules?: {
-              added: number;
-              updated: number;
-              removed: number;
-              workerOwnsRegistrations: boolean | null;
-            } | null;
-          }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        reloaded?: boolean;
+        schedules?: {
+          added: number;
+          updated: number;
+          removed: number;
+          workerOwnsRegistrations: boolean | null;
+        } | null;
+      } | null;
       if (!response.ok) {
         setToast({
           type: "error",
@@ -312,115 +496,30 @@ export function PluginsManager() {
         </Card>
       ) : null}
 
-      {state.kind === "ready" && state.items.length > 0
-        ? state.items.map((plugin) => (
-            <Card key={plugin.id}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                <div className="space-y-1">
-                  <CardTitle className="flex items-center gap-2">
-                    {plugin.name}
-                    {plugin.version ? (
-                      <span className="text-xs font-normal text-muted-foreground">
-                        v{plugin.version}
-                      </span>
-                    ) : null}
-                    {plugin.enabled && !plugin.loaded ? (
-                      <Badge
-                        variant="secondary"
-                        className="bg-amber-500/15 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                      >
-                        pending restart
-                      </Badge>
-                    ) : null}
-                    {!plugin.enabled ? (
-                      <Badge variant="secondary">disabled</Badge>
-                    ) : null}
-                  </CardTitle>
-                  {plugin.description ? (
-                    <p className="text-sm text-muted-foreground">{plugin.description}</p>
-                  ) : null}
-                  <p className="text-xs text-muted-foreground">
-                    <code>{plugin.id}</code>
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {plugin.hasAdmin ? (
-                    <Button type="button" variant="outline" size="sm" asChild>
-                      <Link href={`/admin/plugins/${plugin.id}`}>
-                        <ExternalLink className="size-3.5" />
-                        Open admin
-                      </Link>
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openConfigDialog(plugin)}
-                  >
-                    <Settings2 className="size-3.5" />
-                    Config
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={`enabled-${plugin.id}`} className="text-xs text-muted-foreground">
-                      {plugin.enabled ? "Enabled" : "Disabled"}
-                    </Label>
-                    <Switch
-                      id={`enabled-${plugin.id}`}
-                      checked={plugin.enabled}
-                      disabled={togglingId !== null}
-                      onCheckedChange={(checked) => {
-                        void handleToggle(plugin, checked);
-                      }}
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {plugin.capabilities.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Capabilities
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {plugin.capabilities.map((cap) => (
-                        <Badge key={cap} variant="secondary" className="font-mono text-xs">
-                          {cap}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {plugin.hooks.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Hooks
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      {plugin.hooks.join(", ")}
-                    </p>
-                  </div>
-                ) : null}
-                {plugin.routes.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Routes
-                    </p>
-                    <ul className="mt-1 space-y-0.5 font-mono text-xs text-muted-foreground">
-                      {plugin.routes.map((route) => (
-                        <li key={`${route.method} ${route.path}`}>
-                          <span className="font-semibold">{route.method}</span>{" "}
-                          /api/plugins/{plugin.id}
-                          {route.path}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))
-        : null}
+      {state.kind === "ready" && state.items.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Installed</CardTitle>
+              <span className="text-xs text-muted-foreground">
+                {summarizePluginCounts(state.items)}
+              </span>
+            </div>
+          </CardHeader>
+          <div className="border-t border-border/60">
+            {state.items.map((plugin, index) => (
+              <PluginRow
+                key={plugin.id}
+                plugin={plugin}
+                isFirst={index === 0}
+                togglingId={togglingId}
+                onToggle={handleToggle}
+                onOpenConfig={openConfigDialog}
+              />
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <DiscoverPanel />
 
@@ -535,9 +634,9 @@ function PluginConfigForm({
         body: JSON.stringify({ config: values }),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setErrorMessage(payload?.error?.message ?? "Failed to save settings.");
         return;
       }
@@ -623,9 +722,10 @@ function DiscoverPanel() {
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
       const response = await npFetch(`/api/admin/plugins/discover?${params.toString()}`);
-      const payload = (await response.json().catch(() => null)) as
-        | { items?: DiscoveredPlugin[]; error?: { message?: string } | string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        items?: DiscoveredPlugin[];
+        error?: { message?: string } | string;
+      } | null;
       if (!response.ok) {
         const message =
           (payload && typeof payload.error === "object" && payload.error?.message) ||
@@ -698,23 +798,22 @@ function DiscoverPanel() {
               onChange={(event) => setQuery(event.target.value)}
             />
             <Button type="submit" variant="outline" size="sm" disabled={loading}>
-              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+              {loading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Search className="size-3.5" />
+              )}
               Search
             </Button>
           </form>
-          {error ? (
-            <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p>
-          ) : null}
+          {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
           {items && items.length === 0 && !loading && !error ? (
             <p className="text-sm text-muted-foreground">No matching plugins on the registry.</p>
           ) : null}
           {items && items.length > 0 ? (
             <div className="space-y-2">
               {items.map((plugin) => (
-                <div
-                  key={plugin.name}
-                  className="rounded-xl border border-border/60 p-3"
-                >
+                <div key={plugin.name} className="rounded-xl border border-border/60 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-sm font-medium">
