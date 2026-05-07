@@ -63,11 +63,15 @@ function HeadingBody({ block, dispatch, onFocus, onKeyDown }: BodyProps) {
       onFocus={onFocus}
       onKeyDown={onKeyDown}
       placeholder={placeholder}
+      // Sizes match the design's `.be-h1` / `.be-h2` / `.be-h3`
+      // (26 / 20 / 16 px). Tailwind's preset text-{2xl,xl,base}
+      // came in too tall (30 / 24 / 20); use arbitrary values to
+      // pin the exact pixel scale the design system specifies.
       className={cn(
-        "font-semibold tracking-tight text-foreground",
-        level === 1 && "text-3xl",
-        level === 2 && "text-2xl",
-        level === 3 && "text-xl",
+        "font-semibold leading-tight text-foreground",
+        level === 1 && "text-[26px] tracking-[-0.02em] leading-[1.25]",
+        level === 2 && "text-[20px] tracking-[-0.015em] leading-[1.3]",
+        level === 3 && "text-[16px] tracking-[-0.01em] leading-[1.35]",
       )}
     />
   );

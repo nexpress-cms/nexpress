@@ -474,6 +474,47 @@ export function BlockPageEditor({
     return n;
   }, [blocks]);
 
+  // Doc-mode word count — flatten every atom block's text-shaped
+  // prop into one string and count whitespace-separated tokens.
+  // Mirrors the design's `EditorScreen` formula. Computed
+  // unconditionally (cheap), surfaced only in Doc view via the
+  // status bar's `wordCount` prop.
+  const docWordCount = useMemo(() => {
+    const collect = (arr: NpBlockInstance[]): string[] => {
+      const out: string[] = [];
+      for (const b of arr) {
+        const text = b.props.text;
+        if (typeof text === "string") out.push(text);
+        const heading = b.props.heading;
+        if (typeof heading === "string") out.push(heading);
+        const items = b.props.items;
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            if (typeof item === "string") out.push(item);
+          }
+        }
+        const code = b.props.code;
+        if (typeof code === "string") out.push(code);
+        const caption = b.props.caption;
+        if (typeof caption === "string") out.push(caption);
+        if (b.children) out.push(...collect(b.children));
+      }
+      return out;
+    };
+    const joined = collect(blocks).join(" ").trim();
+    if (joined.length === 0) return 0;
+    return joined.split(/\s+/).filter(Boolean).length;
+  }, [blocks]);
+
+  // Reading-time minutes — the design uses 220 wpm
+  // (`Math.max(1, Math.round(wordCount / 220))`). Stays at the
+  // floor of 1 minute even for empty docs so the status bar reads
+  // sensibly on first mount.
+  const docReadingMinutes = useMemo(
+    () => Math.max(1, Math.round(docWordCount / 220)),
+    [docWordCount],
+  );
+
   const activeBlockMeta = selectedBlockId
     ? (definitions.get(findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? "") ?? null)
     : null;
@@ -991,8 +1032,16 @@ export function BlockPageEditor({
 
       <StatusBar
         totalBlocks={totalBlocks}
-        registrySize={availableBlocks.length}
-        warningsCount={containerWarnings.length}
+        // Doc view → words / blocks / reading time (matches the
+        // design's `be-statusbar` Doc layout).
+        // Page view → blocks total / in registry / warnings.
+        // The status bar drops segments whose props aren't passed,
+        // so toggling view rotates the surfaced stats without a
+        // separate component per mode.
+        wordCount={view === "doc" ? docWordCount : undefined}
+        readingMinutes={view === "doc" ? docReadingMinutes : undefined}
+        registrySize={view === "page" ? availableBlocks.length : undefined}
+        warningsCount={view === "page" ? containerWarnings.length : undefined}
         activeMeta={activeBlockMeta}
         activeType={activeBlockType}
         savedLabel={autosave.savedLabel}

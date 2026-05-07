@@ -237,7 +237,10 @@ export function DocCanvas({
     <div
       ref={containerRef}
       className={cn(
-        "relative flex flex-col gap-1.5 rounded-2xl border border-neutral-200/80 bg-white/95 p-7 shadow-sm backdrop-blur-sm",
+        // `gap-0.5` (2 px) matches the design's tight `.be-canvas`
+        // row spacing. Looser gaps make the canvas feel like a
+        // form rather than a Notion-style document.
+        "relative flex flex-col gap-0.5 rounded-2xl border border-neutral-200/80 bg-white/95 p-7 shadow-sm backdrop-blur-sm",
         "dark:border-neutral-800/80 dark:bg-neutral-950/95",
       )}
     >

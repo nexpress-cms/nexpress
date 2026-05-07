@@ -171,7 +171,11 @@ export function EditorToolbar({ activeBlock, inRichText, dispatch }: EditorToolb
       // (This is the same pattern Lexical's toolbar plugin uses.)
       onMouseDown={(e) => e.preventDefault()}
       className={cn(
-        "sticky top-2 z-10 flex items-center gap-0.5 rounded-lg border border-neutral-200/80 bg-white/90 px-1 py-1 shadow-sm backdrop-blur-md",
+        // Stick under the admin topbar (height 57px) with a
+        // 3-px breath, matching the design's `.be-toolbar`
+        // `top: 60px`. With a smaller offset the toolbar slides
+        // behind the topbar on scroll.
+        "sticky top-[60px] z-10 flex items-center gap-0.5 rounded-lg border border-neutral-200/80 bg-white/90 px-1 py-1 shadow-sm backdrop-blur-md",
         "dark:border-neutral-800/80 dark:bg-neutral-950/90",
       )}
     >

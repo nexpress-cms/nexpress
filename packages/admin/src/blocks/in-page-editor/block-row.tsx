@@ -174,7 +174,12 @@ export function BlockRow({
 
       <div
         className={cn(
-          "sticky top-16 flex h-6 w-7 shrink-0 items-center gap-0.5 pt-1.5 opacity-0 transition-opacity",
+          // Stick the rail below the EditorToolbar (60 px) plus the
+          // toolbar's own height (~38 px) plus a small gap — total
+          // ~110 px, matching the design's `.be-rail` `top: 110px`.
+          // With a shorter offset the rail's `+`/grip buttons slide
+          // behind the toolbar as the operator scrolls.
+          "sticky top-[110px] flex h-6 w-7 shrink-0 items-center gap-0.5 pt-1.5 opacity-0 transition-opacity",
           "group-hover/row:opacity-100 group-focus-within/row:opacity-100",
           isFocused && "opacity-100",
         )}
