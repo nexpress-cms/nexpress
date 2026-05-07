@@ -151,6 +151,41 @@ export function DocCanvas({
   // attach always runs against the freshly-parsed document.
   const [iframeLoadCount, setIframeLoadCount] = useState(0);
 
+  // Hide-debounce timer — when the cursor leaves the iframe (e.g.
+  // crossing into the parent-doc overlay rail), we schedule the
+  // hide instead of firing it immediately. The overlay's
+  // `onMouseEnter` cancels the pending hide so the rail stays
+  // alive while the operator clicks Settings / Delete. Without
+  // this, the iframe `mouseleave` would tear down the overlay
+  // mid-handoff and the buttons would never be reachable.
+  const hideTimerRef = useRef<number | null>(null);
+  const cancelHide = () => {
+    if (hideTimerRef.current !== null) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  };
+  const scheduleHide = () => {
+    cancelHide();
+    hideTimerRef.current = window.setTimeout(() => {
+      setHoveredId(null);
+      setHoverRect(null);
+      hideTimerRef.current = null;
+    }, 120);
+  };
+  // Clean up the pending timer on unmount — otherwise React warns
+  // about a setState on an unmounted component when the canvas
+  // tears down between schedule and fire.
+  useEffect(
+    () => () => {
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
   // Wire iframe hover → overlay rect. Re-runs after every iframe
   // load (each preview refetch swaps the document) so the hover
   // surface keeps tracking the freshly-rendered tree.
@@ -182,6 +217,7 @@ export function DocCanvas({
       if (!containerRect) return;
       // Block rect is relative to the iframe's viewport; project
       // back into the container's coordinate space.
+      cancelHide();
       setHoveredId(id);
       setHoverRect({
         top: iframeRect.top - containerRect.top + blockRect.top,
@@ -203,18 +239,14 @@ export function DocCanvas({
       if (typeof (target as HTMLElement).closest !== "function") return;
       updateRect(target as HTMLElement);
     };
-    const onLeave = () => {
-      setHoveredId(null);
-      setHoverRect(null);
-    };
 
     doc.addEventListener("mousemove", onMove);
-    doc.addEventListener("mouseleave", onLeave);
-    iframe.addEventListener("mouseleave", onLeave);
+    doc.addEventListener("mouseleave", scheduleHide);
+    iframe.addEventListener("mouseleave", scheduleHide);
     return () => {
       doc.removeEventListener("mousemove", onMove);
-      doc.removeEventListener("mouseleave", onLeave);
-      iframe.removeEventListener("mouseleave", onLeave);
+      doc.removeEventListener("mouseleave", scheduleHide);
+      iframe.removeEventListener("mouseleave", scheduleHide);
     };
   }, [iframeLoadCount]);
 
@@ -331,9 +363,18 @@ export function DocCanvas({
           <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary/60" />
           <div
             className="pointer-events-auto absolute right-2 top-2 flex items-center gap-1 rounded-full border border-neutral-200/80 bg-background/95 px-1 py-0.5 shadow-md backdrop-blur dark:border-neutral-800/80"
-            // Block parent scroll handlers / iframe pointer events
-            // from stealing clicks meant for the overlay buttons.
-            onMouseEnter={() => onSelectBlock(hoveredId)}
+            // Cancel any pending hide as the cursor enters the rail.
+            // The iframe's `mouseleave` would otherwise schedule a
+            // hide the moment the operator leaves the iframe — and
+            // that window is exactly when they're moving toward
+            // these buttons. mouseLeave on the rail re-arms the
+            // hide so the overlay clears once focus moves
+            // elsewhere.
+            onMouseEnter={() => {
+              cancelHide();
+              onSelectBlock(hoveredId);
+            }}
+            onMouseLeave={scheduleHide}
           >
             <Button
               type="button"
