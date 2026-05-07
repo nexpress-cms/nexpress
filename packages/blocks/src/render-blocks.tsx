@@ -215,15 +215,51 @@ function renderBlock(
   // the editor's iframe parent can find it by id. Marker is added
   // BEFORE the grid-cell wrap so the cell's grid-column rule
   // applies to the actual visible element, not the marker.
+  //
+  // Empty-container fallback: when the block declares
+  // `acceptsChildren` but has no children yet (operator just added
+  // a Grid via the Doc canvas, hasn't dropped anything inside), the
+  // real render emits a 0-height wrapper — nothing to hover, so the
+  // operator can't reach the rail to delete it or open settings. In
+  // preview-marker mode we substitute a dashed placeholder so the
+  // marker has a real layout box. Non-preview renders are
+  // unaffected; this is editor scaffolding, not public output.
+  const isEmptyContainer =
+    previewMarkers &&
+    Boolean(definition.acceptsChildren) &&
+    (!Array.isArray(instance.children) || instance.children.length === 0);
+
   const markedNode = previewMarkers ? (
-    <div
-      key={instance.id}
-      data-np-block-id={instance.id}
-      data-np-block-type={instance.type}
-      style={{ display: "contents" }}
-    >
-      {node}
-    </div>
+    isEmptyContainer ? (
+      <div
+        key={instance.id}
+        data-np-block-id={instance.id}
+        data-np-block-type={instance.type}
+        data-np-empty-container="true"
+        style={{
+          display: "block",
+          minHeight: "80px",
+          border: "2px dashed rgba(100, 116, 139, 0.35)",
+          borderRadius: "8px",
+          padding: "1.5rem 1rem",
+          margin: "0.5rem 0",
+          color: "rgba(71, 85, 105, 0.8)",
+          textAlign: "center",
+          fontSize: "0.85rem",
+        }}
+      >
+        Empty {definition.label ?? instance.type} — switch to Page builder to drop blocks inside.
+      </div>
+    ) : (
+      <div
+        key={instance.id}
+        data-np-block-id={instance.id}
+        data-np-block-type={instance.type}
+        style={{ display: "contents" }}
+      >
+        {node}
+      </div>
+    )
   ) : (
     node
   );
