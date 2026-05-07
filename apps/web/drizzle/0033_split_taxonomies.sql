@@ -17,7 +17,11 @@
 -- runtime ORM rejected on first read.
 
 -- ── Create categories ──────────────────────────────────────────
-CREATE TABLE "np_c_categories" (
+-- `IF NOT EXISTS` on every CREATE so a partial-fail of a later
+-- statement (drizzle-kit runs each `--> statement-breakpoint`
+-- block in its own transaction, NOT the whole file) doesn't
+-- block a re-run by clashing with already-committed creates.
+CREATE TABLE IF NOT EXISTS "np_c_categories" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "status" text DEFAULT 'draft' NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -31,12 +35,12 @@ CREATE TABLE "np_c_categories" (
   "site_id" text DEFAULT 'default' NOT NULL,
   "search_vector" tsvector
 );--> statement-breakpoint
-CREATE INDEX "np_c_categories_status_idx" ON "np_c_categories" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "np_c_categories_site_slug_idx" ON "np_c_categories" USING btree ("site_id","slug");--> statement-breakpoint
-CREATE INDEX "np_c_categories_site_idx" ON "np_c_categories" USING btree ("site_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "np_c_categories_status_idx" ON "np_c_categories" USING btree ("status");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "np_c_categories_site_slug_idx" ON "np_c_categories" USING btree ("site_id","slug");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "np_c_categories_site_idx" ON "np_c_categories" USING btree ("site_id");--> statement-breakpoint
 
 -- ── Create tags ────────────────────────────────────────────────
-CREATE TABLE "np_c_tags" (
+CREATE TABLE IF NOT EXISTS "np_c_tags" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "status" text DEFAULT 'draft' NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -50,9 +54,9 @@ CREATE TABLE "np_c_tags" (
   "site_id" text DEFAULT 'default' NOT NULL,
   "search_vector" tsvector
 );--> statement-breakpoint
-CREATE INDEX "np_c_tags_status_idx" ON "np_c_tags" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "np_c_tags_site_slug_idx" ON "np_c_tags" USING btree ("site_id","slug");--> statement-breakpoint
-CREATE INDEX "np_c_tags_site_idx" ON "np_c_tags" USING btree ("site_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "np_c_tags_status_idx" ON "np_c_tags" USING btree ("status");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "np_c_tags_site_slug_idx" ON "np_c_tags" USING btree ("site_id","slug");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "np_c_tags_site_idx" ON "np_c_tags" USING btree ("site_id");--> statement-breakpoint
 
 -- ── Copy rows preserving id ────────────────────────────────────
 -- The legacy taxonomies table is conditionally present (fresh
