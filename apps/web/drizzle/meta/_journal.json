@@ -232,6 +232,13 @@
       "when": 1778164991826,
       "tag": "0032_pages_i18n",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1778251200000,
+      "tag": "0033_split_taxonomies",
+      "breakpoints": true
     }
   ]
 }

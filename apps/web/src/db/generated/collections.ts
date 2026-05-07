@@ -49,7 +49,7 @@ export const postsCategoriesTable = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     postsId: uuid("posts_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
-    targetId: uuid("target_id").notNull().references(() => taxonomiesTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id").notNull().references(() => categoriesTable.id, { onDelete: "cascade" }),
     order: integer("order").default(0).notNull(),
   },
   (table) => [index("np_c_posts__categories_posts_id_idx").on(table.postsId), uniqueIndex("np_c_posts__categories_parent_target_uidx").on(table.postsId, table.targetId)],
@@ -57,7 +57,7 @@ export const postsCategoriesTable = pgTable(
 
 export const postsCategoriesTableRelations = relations(postsCategoriesTable, ({ many, one }) => ({
   parent: one(postsTable, { fields: [postsCategoriesTable.postsId], references: [postsTable.id] }),
-  target: one(taxonomiesTable, { fields: [postsCategoriesTable.targetId], references: [taxonomiesTable.id] }),
+  target: one(categoriesTable, { fields: [postsCategoriesTable.targetId], references: [categoriesTable.id] }),
 }));
 
 export const postsTagsTable = pgTable(
@@ -65,7 +65,7 @@ export const postsTagsTable = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     postsId: uuid("posts_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
-    targetId: uuid("target_id").notNull().references(() => taxonomiesTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id").notNull().references(() => tagsTable.id, { onDelete: "cascade" }),
     order: integer("order").default(0).notNull(),
   },
   (table) => [index("np_c_posts__tags_posts_id_idx").on(table.postsId), uniqueIndex("np_c_posts__tags_parent_target_uidx").on(table.postsId, table.targetId)],
@@ -73,7 +73,7 @@ export const postsTagsTable = pgTable(
 
 export const postsTagsTableRelations = relations(postsTagsTable, ({ many, one }) => ({
   parent: one(postsTable, { fields: [postsTagsTable.postsId], references: [postsTable.id] }),
-  target: one(taxonomiesTable, { fields: [postsTagsTable.targetId], references: [taxonomiesTable.id] }),
+  target: one(tagsTable, { fields: [postsTagsTable.targetId], references: [tagsTable.id] }),
 }));
 
 export const pagesTable = pgTable(
@@ -105,8 +105,8 @@ export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
   updatedByUser: one(npUsers, { fields: [pagesTable.updatedBy], references: [npUsers.id] }),
 }));
 
-export const taxonomiesTable = pgTable(
-  "np_c_taxonomies",
+export const categoriesTable = pgTable(
+  "np_c_categories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
@@ -116,18 +116,41 @@ export const taxonomiesTable = pgTable(
     updatedBy: uuid("updated_by").references(() => npUsers.id),
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
     name: text("name").notNull(),
-    taxonomy: text("taxonomy").notNull(),
     description: text("description"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_taxonomies_status_idx").on(table.status), uniqueIndex("np_c_taxonomies_site_slug_idx").on(table.siteId, table.slug), index("np_c_taxonomies_site_idx").on(table.siteId)],
+  (table) => [index("np_c_categories_status_idx").on(table.status), uniqueIndex("np_c_categories_site_slug_idx").on(table.siteId, table.slug), index("np_c_categories_site_idx").on(table.siteId)],
 );
 
-export const taxonomiesTableRelations = relations(taxonomiesTable, ({ many, one }) => ({
-  createdByUser: one(npUsers, { fields: [taxonomiesTable.createdBy], references: [npUsers.id] }),
-  updatedByUser: one(npUsers, { fields: [taxonomiesTable.updatedBy], references: [npUsers.id] }),
+export const categoriesTableRelations = relations(categoriesTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [categoriesTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [categoriesTable.updatedBy], references: [npUsers.id] }),
+}));
+
+export const tagsTable = pgTable(
+  "np_c_tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [index("np_c_tags_status_idx").on(table.status), uniqueIndex("np_c_tags_site_slug_idx").on(table.siteId, table.slug), index("np_c_tags_site_idx").on(table.siteId)],
+);
+
+export const tagsTableRelations = relations(tagsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [tagsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [tagsTable.updatedBy], references: [npUsers.id] }),
 }));
 
 export const discussionsTable = pgTable(

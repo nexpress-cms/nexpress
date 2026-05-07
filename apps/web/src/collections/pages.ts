@@ -35,6 +35,7 @@ export const pagesCollection = defineCollection({
     defaultSort: "title",
     description: "Static pages — composed from blocks.",
     navMembership: true,
+    icon: "FileStack",
   },
   versions: { drafts: true, max: 20 },
   hooks: {

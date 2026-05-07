@@ -42,8 +42,9 @@ export interface SeedPostsResult {
   skipped: boolean;
 }
 
-export interface SeedTaxonomiesResult {
-  created: number;
+export interface SeedTermsResult {
+  tagsCreated: number;
+  categoriesCreated: number;
   skipped: boolean;
 }
 
@@ -55,7 +56,7 @@ export interface SeedNavigationResult {
 }
 
 export interface SeedAllResult {
-  taxonomies: SeedTaxonomiesResult;
+  terms: SeedTermsResult;
   pages: SeedPagesResult;
   posts: SeedPostsResult;
   navigation: SeedNavigationResult;
@@ -89,28 +90,45 @@ const TAG_SAMPLES: TagSample[] = [
   },
 ];
 
-export async function seedTaxonomies(
-  actor: NpAuthUser,
-): Promise<SeedTaxonomiesResult> {
-  const existing = await findDocuments("taxonomies", { limit: 1 });
-  if (existing.docs.length > 0) {
-    return { created: 0, skipped: true };
+interface CategorySample {
+  name: string;
+  description: string;
+}
+
+const CATEGORY_SAMPLES: CategorySample[] = [
+  { name: "Engineering", description: "Architecture, internals, and tooling." },
+  { name: "Product", description: "Roadmap, decisions, and announcements." },
+];
+
+export async function seedTerms(actor: NpAuthUser): Promise<SeedTermsResult> {
+  // Both collections are checked together — if the operator has
+  // touched EITHER side, treat the seed as already-run so we don't
+  // half-overwrite.
+  const tagsExisting = await findDocuments("tags", { limit: 1 });
+  const categoriesExisting = await findDocuments("categories", { limit: 1 });
+  if (tagsExisting.docs.length > 0 || categoriesExisting.docs.length > 0) {
+    return { tagsCreated: 0, categoriesCreated: 0, skipped: true };
   }
 
   for (const sample of TAG_SAMPLES) {
-    await saveDocument(
-      "taxonomies",
-      null,
-      { ...sample, taxonomy: "post_tag" },
-      actor,
-      { status: "published" },
-    );
+    await saveDocument("tags", null, { ...sample }, actor, {
+      status: "published",
+    });
   }
-  return { created: TAG_SAMPLES.length, skipped: false };
+  for (const sample of CATEGORY_SAMPLES) {
+    await saveDocument("categories", null, { ...sample }, actor, {
+      status: "published",
+    });
+  }
+  return {
+    tagsCreated: TAG_SAMPLES.length,
+    categoriesCreated: CATEGORY_SAMPLES.length,
+    skipped: false,
+  };
 }
 
 async function tagIdsByName(): Promise<Map<string, string>> {
-  const result = await findDocuments("taxonomies", { limit: 50 });
+  const result = await findDocuments("tags", { limit: 50 });
   const ids = new Map<string, string>();
   for (const doc of result.docs) {
     const name = typeof doc.name === "string" ? doc.name : null;
@@ -372,15 +390,15 @@ export async function seedNavigation(
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Orchestrator — taxonomies first so post tag refs resolve.
+// Orchestrator — terms first so post tag/category refs resolve.
 // ──────────────────────────────────────────────────────────────────
 
 export async function seedAll(actor: NpAuthUser): Promise<SeedAllResult> {
-  const taxonomies = await seedTaxonomies(actor);
+  const terms = await seedTerms(actor);
   const pages = await seedPages(actor);
   const posts = await seedPosts(actor);
   const navigation = await seedNavigation(actor);
-  return { taxonomies, pages, posts, navigation };
+  return { terms, pages, posts, navigation };
 }
 
 // ──────────────────────────────────────────────────────────────────
