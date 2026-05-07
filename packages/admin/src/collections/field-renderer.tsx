@@ -633,5 +633,40 @@ export function FieldRenderer({
     );
   }
 
+  // Title-kind text fields render as a large borderless headline
+  // that sits flush above the editor canvas. The label is omitted
+  // (the field is its own visual cue); placeholder fills in for
+  // empty states. The edit view skips the surrounding Card wrapper
+  // so the title flows into whatever follows (typically a blocks
+  // editor) with no card seam between them.
+  if (
+    "name" in field &&
+    field.type === "text" &&
+    field.admin?.kind === "title"
+  ) {
+    return (
+      <FormField
+        control={control}
+        name={buildFieldName(field.name, namePrefix)}
+        render={({ field: rhField }) => (
+          <FormItem className="px-1">
+            <FormLabel className="sr-only">{field.label ?? field.name}</FormLabel>
+            <FormControl>
+              <input
+                {...rhField}
+                value={typeof rhField.value === "string" ? rhField.value : ""}
+                placeholder={field.admin?.placeholder ?? "Untitled"}
+                aria-label={field.label ?? field.name}
+                className="w-full bg-transparent px-0 py-2 text-3xl font-semibold leading-tight tracking-[-0.02em] text-neutral-950 outline-none placeholder:text-neutral-300 focus:outline-none dark:text-neutral-50 dark:placeholder:text-neutral-700 sm:text-[2rem]"
+                disabled={field.admin?.readOnly}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    );
+  }
+
   return renderNamedField(field, control, namePrefix, collectionSlug);
 }

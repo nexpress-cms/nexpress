@@ -1,7 +1,14 @@
 "use client";
 
-import { Loader2, Plus, Settings, Trash2 } from "lucide-react";
 import {
+  GripVertical,
+  Loader2,
+  Plus,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,13 +24,18 @@ import { cn } from "../../ui/utils.js";
 import { PaletteModal } from "../shared/palette-modal.js";
 
 import { BlockSettingsDialog } from "./block-settings-dialog.js";
+import { QuickInsertBar } from "./quick-insert-bar.js";
 
 export interface DocCanvasProps {
   blocks: NpBlockInstance[];
   definitions: ReadonlyMap<string, NpBlockMetadata>;
   availableBlocks: NpBlockMetadata[];
   dispatch: Dispatch<EditorAction>;
-  selectedBlockId: string | null;
+  // Kept for parity with the orchestrator's PageBuilderCanvas prop
+  // shape — DocCanvas's selection is hover-driven, but accepting
+  // the same prop set keeps the mode switch trivial. Future
+  // additions (e.g. a persistent active ring) can read it.
+  selectedBlockId?: string | null;
   onSelectBlock: (id: string | null) => void;
 }
 
@@ -39,29 +51,35 @@ interface OverlayPosition {
 
 /**
  * Document-mode canvas: a server-rendered preview iframe with a
- * hover affordance overlay. Operators see the page exactly as it
- * would render on the public site (theme CSS + plugin blocks all
- * resolved server-side via `/api/admin/preview-blocks`); hovering
- * a block surfaces a settings / delete control, clicking
- * settings opens a propsSchema-driven dialog.
+ * hover affordance overlay anchored to the LEFT edge of every
+ * block. Operators see the page exactly as it would render on the
+ * public site (theme CSS + plugin blocks resolve server-side via
+ * `/api/admin/preview-blocks`); hovering a block surfaces a four-
+ * button rail — insert-below / drag-handle / settings / delete.
  *
  * The iframe is `srcDoc` + same-origin sandbox so the parent can
  * read `contentDocument` and observe mouse events inside the
- * iframe. Overlay icons render in PARENT, absolute-positioned at
- * (iframe rect + block rect) — keeping the icons in the parent
- * document means React state and Radix dialogs work normally
- * without postMessage gymnastics.
+ * iframe. The rail itself renders in the PARENT document,
+ * absolute-positioned at (iframe rect + block rect) — keeping the
+ * controls in the parent means React state and Radix dialogs work
+ * normally without postMessage gymnastics.
+ *
+ * Drag-reorder (top-level only in v1): mousedown on the grip mounts
+ * a transparent drag-shield over the iframe; its mousemove resolves
+ * the block under cursor via `iframe.contentDocument.elementFromPoint`,
+ * mouseup dispatches `MOVE_WITHIN_PARENT`. Cross-container moves
+ * still live in Page builder.
  *
  * Block insertion routes through the same `<PaletteModal>` Page
- * Builder uses — Doc and Page modes pick from one shared add-
- * block surface.
+ * builder uses — Doc and Page modes share one picker. The
+ * `<QuickInsertBar>` underneath the canvas adds a `/`-triggered
+ * slash menu and a plain-text → rich-text shortcut.
  */
 export function DocCanvas({
   blocks,
   definitions,
   availableBlocks,
   dispatch,
-  selectedBlockId,
   onSelectBlock,
 }: DocCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -73,6 +91,8 @@ export function DocCanvas({
   const [hoverRect, setHoverRect] = useState<OverlayPosition | null>(null);
   const [settingsTargetId, setSettingsTargetId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   // Debounced server-side preview render. Same shape as the
   // existing PreviewPanel: post the (unsaved) blocks to the
@@ -141,6 +161,16 @@ export function DocCanvas({
     return map;
   }, [blocks]);
 
+  // Top-level ids — used to scope MOVE_WITHIN_PARENT during drag.
+  // The engine's `MOVE_WITHIN_PARENT` action takes a parentId; for
+  // v1 doc-canvas drag we only support top-level reordering, so any
+  // dragged block must resolve to a top-level id and the drop
+  // target must too. Cross-container moves stay in Page builder.
+  const topLevelIds = useMemo(
+    () => new Set(blocks.map((b) => b.id)),
+    [blocks],
+  );
+
   // Bumps on every iframe `load` event — replaces the old
   // `[html]`-dependent listener attach. `srcDoc` is set
   // synchronously when the state changes, but the iframe parses
@@ -151,24 +181,21 @@ export function DocCanvas({
   // attach always runs against the freshly-parsed document.
   const [iframeLoadCount, setIframeLoadCount] = useState(0);
 
-  // Hide-debounce timer — when the cursor leaves the iframe (e.g.
-  // crossing into the parent-doc overlay rail), we schedule the
-  // hide instead of firing it immediately. The overlay's
-  // `onMouseEnter` cancels the pending hide AND sets
-  // `overlayHoverRef` so any later `scheduleHide` (from a
-  // racing iframe `mouseleave` that fires AFTER the rail's
-  // `mouseenter` on the same handoff) refuses to queue. Without
-  // the ref guard, event ordering between iframe and parent doc
-  // would let a stray scheduleHide tear down the rail mid-click.
+  // Hide-debounce timer + overlay-pin ref. When the cursor leaves
+  // the iframe (e.g. crossing into the parent-doc rail), schedule
+  // the hide on a 120 ms debounce; the rail's mouseEnter cancels
+  // it AND pins the overlay so any racing iframe `mouseleave`
+  // (which would re-arm a stray timer) is short-circuited. See
+  // #467 follow-ups for the original race investigation.
   const hideTimerRef = useRef<number | null>(null);
   const overlayHoverRef = useRef(false);
-  const cancelHide = () => {
+  const cancelHide = useCallback(() => {
     if (hideTimerRef.current !== null) {
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-  };
-  const scheduleHide = () => {
+  }, []);
+  const scheduleHide = useCallback(() => {
     if (overlayHoverRef.current) return;
     cancelHide();
     hideTimerRef.current = window.setTimeout(() => {
@@ -176,16 +203,58 @@ export function DocCanvas({
       setHoverRect(null);
       hideTimerRef.current = null;
     }, 120);
-  };
-  // Clean up the pending timer on unmount — otherwise React warns
-  // about a setState on an unmounted component when the canvas
-  // tears down between schedule and fire.
+  }, [cancelHide]);
   useEffect(
     () => () => {
       if (hideTimerRef.current !== null) {
         window.clearTimeout(hideTimerRef.current);
         hideTimerRef.current = null;
       }
+    },
+    [],
+  );
+
+  // Resolve a parent-doc point (clientX / clientY) back to a block
+  // id + visible rect inside the iframe. Reused by the hover-track
+  // effect AND the drag-shield mousemove. Returns null when no
+  // block is under the cursor.
+  const resolveBlockAt = useCallback(
+    (
+      clientX: number,
+      clientY: number,
+    ): { id: string; rect: DOMRect; iframeRect: DOMRect } | null => {
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (!iframe || !doc) return null;
+      const iframeRect = iframe.getBoundingClientRect();
+      const x = clientX - iframeRect.left;
+      const y = clientY - iframeRect.top;
+      if (x < 0 || y < 0 || x > iframeRect.width || y > iframeRect.height) {
+        return null;
+      }
+      const el = doc.elementFromPoint(x, y);
+      if (!el) return null;
+      const blockEl = el.closest<HTMLElement>("[data-np-block-id]");
+      if (!blockEl) return null;
+      const id = blockEl.dataset.npBlockId;
+      if (!id) return null;
+      return { id, rect: unionVisibleRect(blockEl), iframeRect };
+    },
+    [],
+  );
+
+  // Project a block rect (iframe-local) into the overlay container's
+  // coordinate space so the rail aligns flush with the block.
+  const projectRect = useCallback(
+    (blockRect: DOMRect, iframeRect: DOMRect): OverlayPosition | null => {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return null;
+      return {
+        top: iframeRect.top - containerRect.top + blockRect.top,
+        left: iframeRect.left - containerRect.left + blockRect.left,
+        width: blockRect.width,
+        height: blockRect.height,
+      };
     },
     [],
   );
@@ -199,8 +268,16 @@ export function DocCanvas({
     const doc = iframe.contentDocument;
     if (!doc) return;
 
-    const updateRect = (target: HTMLElement) => {
-      const blockEl = target.closest<HTMLElement>("[data-np-block-id]");
+    const onMove = (event: Event) => {
+      // Cross-realm `instanceof` always returns false because the
+      // iframe's HTMLElement constructor differs from the parent's.
+      // Probe by capability instead.
+      const target = event.target as Element | null;
+      if (!target || target.nodeType !== 1) return;
+      if (typeof (target as HTMLElement).closest !== "function") return;
+      const blockEl = (target as HTMLElement).closest<HTMLElement>(
+        "[data-np-block-id]",
+      );
       if (!blockEl) {
         setHoveredId(null);
         setHoverRect(null);
@@ -209,39 +286,11 @@ export function DocCanvas({
       const id = blockEl.dataset.npBlockId;
       if (!id) return;
       const iframeRect = iframe.getBoundingClientRect();
-      const containerRect = containerRef.current?.getBoundingClientRect();
-      // The preview markers wrap each block with `style="display:
-      // contents"` so the marker doesn't disturb grid / flex
-      // layouts upstream — but a `display: contents` element has
-      // NO layout box of its own, so `getBoundingClientRect()`
-      // returns 0×0. Resolve the visible rect by walking the
-      // marker's descendants and unioning their client rects;
-      // that's what the operator actually sees on screen.
-      const blockRect = unionVisibleRect(blockEl);
-      if (!containerRect) return;
-      // Block rect is relative to the iframe's viewport; project
-      // back into the container's coordinate space.
+      const projected = projectRect(unionVisibleRect(blockEl), iframeRect);
+      if (!projected) return;
       cancelHide();
       setHoveredId(id);
-      setHoverRect({
-        top: iframeRect.top - containerRect.top + blockRect.top,
-        left: iframeRect.left - containerRect.left + blockRect.left,
-        width: blockRect.width,
-        height: blockRect.height,
-      });
-    };
-
-    const onMove = (event: Event) => {
-      // `event.target instanceof HTMLElement` is FALSE here even
-      // when the target is a real element — the iframe runs in
-      // its own JavaScript realm, so the parent's `HTMLElement`
-      // constructor is a different reference from the iframe's.
-      // Cross-realm `instanceof` always returns false. Probe by
-      // capability (`nodeType === 1` + `closest` method) instead.
-      const target = event.target as Element | null;
-      if (!target || target.nodeType !== 1) return;
-      if (typeof (target as HTMLElement).closest !== "function") return;
-      updateRect(target as HTMLElement);
+      setHoverRect(projected);
     };
 
     doc.addEventListener("mousemove", onMove);
@@ -252,11 +301,10 @@ export function DocCanvas({
       doc.removeEventListener("mouseleave", scheduleHide);
       iframe.removeEventListener("mouseleave", scheduleHide);
     };
-  }, [iframeLoadCount]);
+  }, [iframeLoadCount, cancelHide, scheduleHide, projectRect]);
 
-  // Recompute the hover rect on parent scroll / resize so the
-  // overlay icons stay glued to the hovered block as the page
-  // scrolls. Cheap — only fires when there's an active hover.
+  // Recompute hover rect on parent scroll/resize so the overlay
+  // icons stay glued to the hovered block as the page scrolls.
   useEffect(() => {
     if (!hoveredId) return;
     const recompute = () => {
@@ -268,15 +316,8 @@ export function DocCanvas({
       );
       if (!blockEl) return;
       const iframeRect = iframe.getBoundingClientRect();
-      const containerRect = containerRef.current?.getBoundingClientRect();
-      if (!containerRect) return;
-      const blockRect = unionVisibleRect(blockEl);
-      setHoverRect({
-        top: iframeRect.top - containerRect.top + blockRect.top,
-        left: iframeRect.left - containerRect.left + blockRect.left,
-        width: blockRect.width,
-        height: blockRect.height,
-      });
+      const projected = projectRect(unionVisibleRect(blockEl), iframeRect);
+      if (projected) setHoverRect(projected);
     };
     window.addEventListener("scroll", recompute, true);
     window.addEventListener("resize", recompute);
@@ -284,7 +325,7 @@ export function DocCanvas({
       window.removeEventListener("scroll", recompute, true);
       window.removeEventListener("resize", recompute);
     };
-  }, [hoveredId]);
+  }, [hoveredId, projectRect]);
 
   const settingsBlock = settingsTargetId
     ? (blocksById.get(settingsTargetId) ?? null)
@@ -293,17 +334,201 @@ export function DocCanvas({
     ? (definitions.get(settingsBlock.type) ?? null)
     : null;
 
-  const docFriendly = availableBlocks; // No filtering — Doc mode picks from the same registry as Page builder.
+  const docFriendly = availableBlocks; // Doc mode picks from the same registry as Page builder.
 
-  // Append a fresh block at the top level. Doc mode doesn't
-  // surface "insert at position" affordances yet; the operator
-  // can drag the new block around in Page builder, or use the
-  // hover-actions Move-up / Move-down once it lands.
+  // Adding from the bottom inserter or quick-insert bar appends to
+  // the top level. Adding from a hovered block's `+` rail inserts
+  // the new block AFTER that block so the picked type slots into
+  // the operator's reading flow.
   const handleAdd = (type: string) => {
-    dispatch({ type: "ADD", blockType: type });
+    if (insertAfterId) {
+      dispatch({ type: "INSERT_AFTER", targetId: insertAfterId, blockType: type });
+    } else {
+      dispatch({ type: "ADD", blockType: type });
+    }
     setPaletteOpen(false);
+    setInsertAfterId(null);
   };
 
+  const handleInsertText = (text: string) => {
+    // Plain text → rich-text block at the bottom. The rich-text
+    // editor stores Lexical JSON; the simplest valid root for a
+    // bare text run is one paragraph node carrying one text node.
+    const lexicalRoot = {
+      root: {
+        type: "root",
+        version: 1,
+        format: "" as const,
+        indent: 0,
+        direction: "ltr" as const,
+        children: [
+          {
+            type: "paragraph",
+            version: 1,
+            format: "" as const,
+            indent: 0,
+            direction: "ltr" as const,
+            children: [
+              {
+                type: "text",
+                version: 1,
+                format: 0,
+                style: "",
+                mode: "normal" as const,
+                text,
+                detail: 0,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    // Append to top level then patch the new block's content via
+    // REPLACE_PROPS — ADD seeds defaults but doesn't take a
+    // payload, and INSERT_AFTER doesn't either. Since we don't
+    // know the new id up front, scan top-level after dispatch.
+    dispatch({ type: "ADD", blockType: "rich-text" });
+    // Defer the prop patch so React applies the ADD reducer first;
+    // the new block is the last top-level entry. Without the
+    // queueMicrotask, the dispatch chain would race against React's
+    // commit and we'd patch a phantom id from the previous render.
+    queueMicrotask(() => {
+      // We can't reach the next state from here directly — the
+      // engine's reducer is owned upstream — so leave the ADD to
+      // pre-seed an empty rich-text and write the actual content
+      // via a synthetic UPDATE on the matching id. The orchestrator
+      // catches the ADD and re-renders; on next paint we read the
+      // freshest blocks via a custom event handler. v1 limitation:
+      // if the operator types fast enough to insert two before
+      // re-render, only the most recent one carries the text.
+      const event = new CustomEvent<{ text: string; content: unknown }>(
+        "np-doc-canvas:hydrate-rich-text",
+        { detail: { text, content: lexicalRoot } },
+      );
+      window.dispatchEvent(event);
+    });
+  };
+
+  // Listen for the synthetic hydrate event we fire after a
+  // text-shortcut ADD so the freshly-inserted rich-text block
+  // gets its content patched in. Reads the latest `blocks` via a
+  // ref so the event handler doesn't go stale across renders.
+  const blocksRef = useRef(blocks);
+  useEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
+  useEffect(() => {
+    const onHydrate = (event: Event) => {
+      const detail = (event as CustomEvent<{ content: unknown }>).detail;
+      if (!detail) return;
+      const arr = blocksRef.current;
+      // Find the most recent rich-text block at top level whose
+      // content is still the default (empty/undefined). It's
+      // almost always the last one we just appended.
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const candidate = arr[i];
+        if (candidate.type !== "rich-text") continue;
+        const existing = (candidate.props as { content?: unknown }).content;
+        const isEmpty =
+          !existing ||
+          (typeof existing === "object" &&
+            existing !== null &&
+            JSON.stringify(existing).length < 80);
+        if (isEmpty) {
+          dispatch({
+            type: "REPLACE_PROPS",
+            id: candidate.id,
+            props: { ...candidate.props, content: detail.content },
+          });
+          break;
+        }
+      }
+    };
+    window.addEventListener("np-doc-canvas:hydrate-rich-text", onHydrate);
+    return () => {
+      window.removeEventListener(
+        "np-doc-canvas:hydrate-rich-text",
+        onHydrate,
+      );
+    };
+  }, [dispatch]);
+
+  // ---- Drag-reorder (top-level only) ------------------------------
+  // Grip mousedown starts the drag; we mount a transparent shield
+  // over the iframe so subsequent mousemove + mouseup events fire
+  // in the parent doc (the iframe wouldn't bubble them out
+  // otherwise). On mouseup, dispatch MOVE_WITHIN_PARENT when source
+  // and target are both top-level and distinct; otherwise no-op.
+  const dragSourceRef = useRef<string | null>(null);
+  const dragOverIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dragOverRect, setDragOverRect] = useState<OverlayPosition | null>(null);
+
+  // Single stable handler — the dragged id comes from the button's
+  // `data-block-id` attribute rather than a per-render curry. Keeps
+  // the ref accesses inside one closure that ESLint cleanly
+  // identifies as an event handler.
+  const onGripMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const id = event.currentTarget.dataset.blockId;
+      if (!id || !topLevelIds.has(id)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragSourceRef.current = id;
+      setDraggingId(id);
+      overlayHoverRef.current = false;
+
+      const onShieldMove = (e: MouseEvent) => {
+        const hit = resolveBlockAt(e.clientX, e.clientY);
+        if (!hit || !topLevelIds.has(hit.id)) {
+          dragOverIdRef.current = null;
+          setDragOverId(null);
+          setDragOverRect(null);
+          return;
+        }
+        dragOverIdRef.current = hit.id;
+        setDragOverId(hit.id);
+        const projected = projectRect(hit.rect, hit.iframeRect);
+        if (projected) setDragOverRect(projected);
+      };
+      const cleanup = () => {
+        window.removeEventListener("mousemove", onShieldMove, true);
+        window.removeEventListener("mouseup", onShieldUp, true);
+        window.removeEventListener("keydown", onEscape, true);
+        dragSourceRef.current = null;
+        dragOverIdRef.current = null;
+        setDraggingId(null);
+        setDragOverId(null);
+        setDragOverRect(null);
+      };
+      const onShieldUp = () => {
+        const source = dragSourceRef.current;
+        const target = dragOverIdRef.current;
+        cleanup();
+        if (source && target && source !== target) {
+          dispatch({
+            type: "MOVE_WITHIN_PARENT",
+            parentId: null,
+            fromId: source,
+            toId: target,
+          });
+        }
+      };
+      const onEscape = (e: KeyboardEvent) => {
+        if (e.key === "Escape") cleanup();
+      };
+
+      window.addEventListener("mousemove", onShieldMove, true);
+      window.addEventListener("mouseup", onShieldUp, true);
+      window.addEventListener("keydown", onEscape, true);
+    },
+    [dispatch, projectRect, resolveBlockAt, topLevelIds],
+  );
+
+  const isDragging = draggingId !== null;
+  // While dragging, the shield captures pointer events so cursor
+  // movement above the iframe still fires mousemove on the parent.
+  // The shield sits above the iframe (z-30) and the rail (z-10).
   return (
     <div ref={containerRef} className="relative">
       <div
@@ -329,9 +554,7 @@ export function DocCanvas({
           // overlay UI doesn't need it.
           sandbox="allow-same-origin"
           // Bump on every load so the hover-observer effect re-runs
-          // against the freshly-parsed document. Without this hook
-          // the listeners would attach to the prior document (or
-          // null mid-swap) and the hover overlay never fires.
+          // against the freshly-parsed document.
           onLoad={() => setIframeLoadCount((n) => n + 1)}
           style={{
             width: "100%",
@@ -349,12 +572,12 @@ export function DocCanvas({
         </div>
       ) : null}
 
-      {/* Hover overlay — a thin highlight ring around the
-          currently-hovered block, with a small action rail anchored
-          to the block's top-right. Click "Settings" → open the
-          props dialog; click "Delete" → dispatch DELETE. Operators
-          who want full reorder reach for Page builder. */}
-      {hoverRect && hoveredId ? (
+      {/* Hover overlay — outline ring + LEFT rail anchored to the
+          block's top-left edge. Rail floats just OUTSIDE the
+          block's left margin so it doesn't cover content. The four
+          buttons (insert below / drag / settings / delete) all live
+          here per the design's "everything in one place" rail. */}
+      {hoverRect && hoveredId && !isDragging ? (
         <div
           className="pointer-events-none absolute z-10"
           style={{
@@ -364,16 +587,13 @@ export function DocCanvas({
             height: hoverRect.height,
           }}
         >
-          <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary/60" />
+          <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary/40" />
           <div
-            className="pointer-events-auto absolute right-2 top-2 flex items-center gap-1 rounded-full border border-neutral-200/80 bg-background/95 px-1 py-0.5 shadow-md backdrop-blur dark:border-neutral-800/80"
-            // Pin the overlay while the cursor sits on the rail.
-            // `overlayHoverRef` short-circuits any racing
-            // scheduleHide() that the iframe's `mouseleave` may
-            // fire on the same handoff frame; cancelHide() drops
-            // any timer already armed before the cursor arrived.
-            // mouseLeave clears the pin and re-arms the debounce
-            // so the rail dismisses naturally on real exit.
+            className={cn(
+              "pointer-events-auto absolute -left-12 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5",
+              "rounded-full border border-neutral-200/80 bg-background/95 px-1 py-1 shadow-md backdrop-blur",
+              "dark:border-neutral-800/80",
+            )}
             onMouseEnter={() => {
               overlayHoverRef.current = true;
               cancelHide();
@@ -384,6 +604,37 @@ export function DocCanvas({
               scheduleHide();
             }}
           >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              aria-label="Insert block below"
+              onClick={() => {
+                setInsertAfterId(hoveredId);
+                setPaletteOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+            <button
+              type="button"
+              aria-label="Drag to reorder"
+              data-block-id={hoveredId}
+              className={cn(
+                "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground",
+                "hover:bg-neutral-100 hover:text-foreground dark:hover:bg-neutral-800",
+                topLevelIds.has(hoveredId) ? "cursor-grab" : "cursor-not-allowed opacity-40",
+              )}
+              onMouseDown={onGripMouseDown}
+              title={
+                topLevelIds.has(hoveredId)
+                  ? "Drag to reorder"
+                  : "Reorder lives in Page builder for nested blocks"
+              }
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
             <Button
               type="button"
               variant="ghost"
@@ -417,24 +668,67 @@ export function DocCanvas({
         </div>
       ) : null}
 
-      {/* Trailing inserter — opens the same palette modal Page
-          builder uses. Doc mode doesn't pre-filter the block list;
-          operators pick from the full registry. */}
-      <div className="mt-3 flex justify-center">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setPaletteOpen(true)}
+      {/* Drag indicator — outline + accent ring on the drop target
+          while the operator is dragging the grip. The hover rail
+          unmounts during drag (above) so it doesn't compete with
+          this indicator visually. */}
+      {isDragging && dragOverRect && dragOverId !== draggingId ? (
+        <div
+          className="pointer-events-none absolute z-10"
+          style={{
+            top: dragOverRect.top,
+            left: dragOverRect.left,
+            width: dragOverRect.width,
+            height: dragOverRect.height,
+          }}
         >
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Add block
-        </Button>
+          <div className="pointer-events-none absolute inset-0 rounded-md outline outline-2 outline-primary" />
+          <div className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 bg-primary" />
+        </div>
+      ) : null}
+
+      {/* Drag-shield — spans the iframe area, captures all mouse
+          events while dragging so the cursor doesn't fall into the
+          iframe (which wouldn't bubble events back out). */}
+      {isDragging ? (
+        <div
+          className="absolute inset-0 z-30 cursor-grabbing"
+          aria-hidden="true"
+        />
+      ) : null}
+
+      {/* Trailing add area — a quick-insert prompt + the standard
+          palette trigger. Keeps the inline `/`-menu and the plain-
+          text → rich-text shortcut close to the canvas without
+          forcing the operator into a modal for the common case. */}
+      <div className="mt-4 flex flex-col gap-3">
+        <QuickInsertBar
+          definitions={definitions}
+          dispatch={dispatch}
+          onInsertText={handleInsertText}
+        />
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setInsertAfterId(null);
+              setPaletteOpen(true);
+            }}
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Browse all blocks
+          </Button>
+        </div>
       </div>
 
       <PaletteModal
         open={paletteOpen}
-        onOpenChange={setPaletteOpen}
+        onOpenChange={(open) => {
+          setPaletteOpen(open);
+          if (!open) setInsertAfterId(null);
+        }}
         availableBlocks={docFriendly}
         onAdd={handleAdd}
       />
@@ -460,8 +754,7 @@ export function DocCanvas({
  * own `getBoundingClientRect()` is `0×0`. Walk down until we hit
  * elements that DO produce boxes, union their rects, and return
  * a real visible bound. Falls back to the original element's
- * rect when nothing visible is found (e.g. an empty container
- * with `display: none` children).
+ * rect when nothing visible is found.
  */
 function unionVisibleRect(el: Element): DOMRect {
   const direct = el.getBoundingClientRect();
@@ -478,8 +771,6 @@ function unionVisibleRect(el: Element): DOMRect {
       left = Math.min(left, rect.left);
       right = Math.max(right, rect.right);
       bottom = Math.max(bottom, rect.bottom);
-      // Don't recurse into already-measurable children; their
-      // outer rect already covers their subtree.
       return;
     }
     for (const child of Array.from(node.children)) visit(child);

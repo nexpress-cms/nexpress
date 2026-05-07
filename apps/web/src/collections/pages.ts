@@ -71,11 +71,15 @@ export const pagesCollection = defineCollection({
       type: "text",
       name: "title",
       required: true,
+      admin: { kind: "title" },
     },
     {
       type: "textarea",
       name: "seoDescription",
-      admin: { description: "Meta description shown in search results." },
+      admin: {
+        position: "sidebar",
+        description: "Meta description shown in search results.",
+      },
     },
     {
       // Phase 11.3 — template id chosen for this page. The
@@ -87,6 +91,7 @@ export const pagesCollection = defineCollection({
       name: "template",
       admin: {
         kind: "templatePicker",
+        position: "sidebar",
         description:
           "Page layout template. Defaults to the active theme's `default` when blank.",
       },

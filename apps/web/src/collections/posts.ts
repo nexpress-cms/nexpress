@@ -31,12 +31,15 @@ export const postsCollection = defineCollection({
       type: "text",
       name: "title",
       required: true,
-      admin: { placeholder: "My first post" },
+      admin: { kind: "title", placeholder: "My first post" },
     },
     {
       type: "textarea",
       name: "excerpt",
-      admin: { description: "Short summary shown in lists and social previews." },
+      admin: {
+        position: "sidebar",
+        description: "Short summary shown in lists and social previews.",
+      },
     },
     {
       type: "upload",

@@ -51,11 +51,26 @@ interface NpFieldBase {
      * Optional override for the admin field renderer. The default
      * renderer dispatches on `type` (text → input, textarea →
      * textarea, etc.); `kind` overrides that with a specialized
-     * widget. v1: `templatePicker` (Phase 11.3) replaces the
-     * input with a dropdown sourced from the active theme's
-     * `templates.{collection}` registry.
+     * widget.
+     *   - `templatePicker` (Phase 11.3) replaces the input with a
+     *     dropdown sourced from the active theme's
+     *     `templates.{collection}` registry.
+     *   - `title` renders a large borderless headline input that
+     *     sits above the rest of the form (intended for the
+     *     primary title of a document). The edit view skips the
+     *     Card wrapper around it so the title flows naturally
+     *     into the editor canvas underneath.
      */
-    kind?: "templatePicker";
+    kind?: "templatePicker" | "title";
+    /**
+     * Where the field should land in the edit view's two-column
+     * layout. Defaults to `"main"` (the wide left column). Mark
+     * publishing-related metadata (SEO, template choice, scheduling
+     * inputs) as `"sidebar"` so they group with Status / Slug in
+     * the sticky right column rather than competing with the
+     * primary editing surface.
+     */
+    position?: "main" | "sidebar";
   };
   validate?: NpFieldValidator;
 }

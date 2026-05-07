@@ -48,6 +48,7 @@ export const localizedPagesCollection = defineCollection({
       type: "text",
       name: "title",
       required: true,
+      admin: { kind: "title" },
     },
     {
       type: "textarea",
