@@ -32,6 +32,11 @@ export {
 
 export { canAcceptChild } from "./contracts.js";
 
+export {
+  evaluateContainerWarnings,
+  type ContainerWarning,
+} from "./container-warnings.js";
+
 export { createBlockInstance, createEditorReducer } from "./reducer.js";
 
 export { createHistoryReducer } from "./history.js";

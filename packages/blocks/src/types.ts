@@ -120,6 +120,23 @@ export interface NpBlockMetadata {
    * the cap.
    */
   maxChildren?: number;
+  /**
+   * Hint for the admin's icon resolver. The framework's built-in
+   * blocks set `iconKind: "lucide"` and put a Lucide icon name
+   * (e.g. `"Sunrise"`, `"LayoutGrid"`) in `icon`. Plugin / theme
+   * blocks that still ship an emoji glyph in `icon` can either
+   * leave `iconKind` unset (the resolver falls back to text) or
+   * set `iconKind: "emoji"` to skip the Lucide lookup entirely.
+   *
+   * Resolver behavior:
+   * - When `iconKind` is `"lucide"` (or omitted), the admin tries
+   *   `LUCIDE_ICONS[icon]` first, then `EMOJI_TO_LUCIDE[icon]`,
+   *   then falls back to rendering `icon` as text.
+   * - When `iconKind` is `"emoji"`, the admin renders `icon`
+   *   verbatim — useful for plugin authors who want a glyph that
+   *   doesn't have a Lucide counterpart.
+   */
+  iconKind?: "lucide" | "emoji";
 }
 
 export interface NpBlockDefinition extends NpBlockMetadata {

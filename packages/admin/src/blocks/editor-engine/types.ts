@@ -55,7 +55,24 @@ export type EditorAction =
   | { type: "DUPLICATE_MANY"; ids: string[] }
   | { type: "WRAP_MANY"; ids: string[]; containerType: string }
   | { type: "UPDATE_PROPS"; id: string; props: Record<string, unknown> }
-  | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> };
+  | { type: "REPLACE_PROPS"; id: string; props: Record<string, unknown> }
+  // Replace a block's type in place. Used by the in-page editor's
+  // "Turn into…" affordance and the sticky toolbar's block-level
+  // buttons (Pilcrow / H1-3 / Quote / Code / List / HR). The id
+  // stays the same so undo/redo lands the operator on the same row.
+  //
+  // `preserveText` (default true): when both blocks expose a string-
+  // shaped primary text prop (paragraph `text`, heading `text`, quote
+  // `text`, code `code`, list `items[0]`), the value carries over so
+  // an operator typing `/h1` mid-paragraph doesn't lose their prose.
+  // No-op when the new type isn't registered, the id isn't found, or
+  // when the parent's container contract rejects the new type.
+  | {
+      type: "REPLACE_TYPE";
+      id: string;
+      newType: string;
+      preserveText?: boolean;
+    };
 
 /**
  * Snapshot stack for undo/redo. The history reducer holds the

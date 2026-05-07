@@ -68,10 +68,7 @@ function flattenIdTypes(blocks: NpBlockInstance[]): Map<string, string> {
   return out;
 }
 
-function summarizeApplyDiff(
-  before: NpBlockInstance[],
-  after: NpBlockInstance[],
-): ApplyDiff {
+function summarizeApplyDiff(before: NpBlockInstance[], after: NpBlockInstance[]): ApplyDiff {
   const beforeMap = flattenIdTypes(before);
   const afterMap = flattenIdTypes(after);
   let added = 0;
@@ -94,10 +91,7 @@ function summarizeApplyDiff(
   };
 }
 
-function collectUnknownTypes(
-  blocks: NpBlockInstance[],
-  known: Set<string>,
-): string[] {
+function collectUnknownTypes(blocks: NpBlockInstance[], known: Set<string>): string[] {
   const seen = new Set<string>();
   const walk = (arr: NpBlockInstance[]): void => {
     for (const b of arr) {
@@ -220,9 +214,7 @@ export function PageJsonDialog({
     // `children`), so a paste from another page doesn't bring its
     // source ids along — those would collide with existing rows
     // or carry stale dnd-kit state across sessions.
-    const next = importAsNew
-      ? [...blocks, ...validated.map(cloneBlockDeep)]
-      : validated;
+    const next = importAsNew ? [...blocks, ...validated.map(cloneBlockDeep)] : validated;
     const diff = summarizeApplyDiff(blocks, next);
     setPendingApply({ next, diff, warning: unknownWarning });
     setWarning(unknownWarning);
@@ -244,8 +236,8 @@ export function PageJsonDialog({
         <DialogHeader>
           <DialogTitle>Edit page blocks as JSON</DialogTitle>
           <DialogDescription>
-            Apply replaces the entire block tree. Use this for bulk edits,
-            paste-from-another-page, or recovering from a corrupted state.
+            Apply replaces the entire block tree. Use this for bulk edits, paste-from-another-page,
+            or recovering from a corrupted state.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-center gap-2">
@@ -312,22 +304,16 @@ export function PageJsonDialog({
             role="status"
             className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
           >
-            <div className="font-medium uppercase tracking-wider text-primary">
-              Apply preview
-            </div>
+            <div className="font-medium uppercase tracking-wider text-primary">Apply preview</div>
             <div className="mt-1 text-foreground">
               {pendingApply.diff.totalBefore} block
-              {pendingApply.diff.totalBefore === 1 ? "" : "s"} →{" "}
-              {pendingApply.diff.totalAfter} block
+              {pendingApply.diff.totalBefore === 1 ? "" : "s"} → {pendingApply.diff.totalAfter}{" "}
+              block
               {pendingApply.diff.totalAfter === 1 ? "" : "s"} (
               <span className="text-emerald-600 dark:text-emerald-400">
                 +{pendingApply.diff.added}
-              </span>
-              {" "}
-              <span className="text-rose-600 dark:text-rose-400">
-                −{pendingApply.diff.removed}
-              </span>
-              {" "}
+              </span>{" "}
+              <span className="text-rose-600 dark:text-rose-400">−{pendingApply.diff.removed}</span>{" "}
               <span className="text-amber-600 dark:text-amber-400">
                 ~{pendingApply.diff.modified}
               </span>

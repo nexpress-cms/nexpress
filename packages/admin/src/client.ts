@@ -20,6 +20,8 @@ export type {
 } from "./collections/collection-tabs.js";
 export { FieldRenderer } from "./collections/field-renderer.js";
 export { BlocksRegistryProvider } from "./blocks/registry-context.js";
+export { BlockIcon } from "./blocks/shared/block-icon.js";
+export type { BlockIconProps } from "./blocks/shared/block-icon.js";
 export { RevisionsPanel } from "./collections/revisions-panel.js";
 export { ScheduleDialog } from "./collections/schedule-dialog.js";
 

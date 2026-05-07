@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "NODE_OPTIONS='--max-old-space-size=6144' eslint . --cache --cache-location node_modules/.cache/eslint",
     "clean": "rm -rf .next",
-    "test": "echo 'apps/web has no unit tests — see test:integration' && exit 0",
+    "test": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

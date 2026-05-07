@@ -50,11 +50,7 @@ interface ValidationResult {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -188,9 +184,8 @@ export function PastePatternDialog({
         <DialogHeader>
           <DialogTitle>Paste blocks from JSON</DialogTitle>
           <DialogDescription>
-            Paste a single block, an array of blocks, or a pattern
-            object. New ids are generated on insert so reuse never
-            collides with existing rows.
+            Paste a single block, an array of blocks, or a pattern object. New ids are generated on
+            insert so reuse never collides with existing rows.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -232,11 +227,7 @@ export function PastePatternDialog({
           <Button type="button" variant="ghost" onClick={handleValidate}>
             Validate
           </Button>
-          <Button
-            type="button"
-            onClick={handleApply}
-            disabled={raw.trim().length === 0}
-          >
+          <Button type="button" onClick={handleApply} disabled={raw.trim().length === 0}>
             Insert blocks
           </Button>
         </DialogFooter>

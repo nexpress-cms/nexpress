@@ -706,3 +706,171 @@
   --radius-md: var(--np-radius-md, 0.5rem);
   --radius-lg: var(--np-radius-lg, 0.75rem);
 }
+
+/* ==========================================================================
+   ATOM BLOCK DEFAULTS (np-blocks layer)
+
+   The 8 built-in atom blocks (paragraph / heading / quote / code / callout /
+   list / image / divider) emit these class names from their `render()`. The
+   admin in-page editor styles its bodies inline (Tailwind utilities); these
+   rules cover the PUBLIC site render so a paragraph block authored in
+   Document view looks like a paragraph on the operator's published page.
+
+   Themes can override via `@layer np-theme` (or `@layer np-overrides` for
+   per-page overrides) — these defaults sit at the bottom of the cascade.
+   ========================================================================== */
+@layer np-blocks {
+  .np-paragraph {
+    margin: 0 0 1em;
+    line-height: 1.7;
+    color: var(--np-color-foreground, currentColor);
+  }
+  .np-paragraph:last-child {
+    margin-bottom: 0;
+  }
+
+  .np-heading {
+    margin: 1.5em 0 0.5em;
+    font-family: var(--np-font-heading, inherit);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--np-color-foreground, currentColor);
+  }
+  .np-heading-1 {
+    font-size: clamp(2rem, 4vw, 2.5rem);
+  }
+  .np-heading-2 {
+    font-size: clamp(1.5rem, 3vw, 1.875rem);
+    line-height: 1.3;
+  }
+  .np-heading-3 {
+    font-size: 1.25rem;
+    line-height: 1.35;
+  }
+
+  .np-quote {
+    margin: 1.5em 0;
+    padding: 0.25em 0 0.25em 1rem;
+    border-left: 2px solid var(--np-color-foreground, currentColor);
+    font-style: italic;
+    line-height: 1.6;
+  }
+  .np-quote p {
+    margin: 0;
+  }
+  .np-quote-cite {
+    display: block;
+    margin-top: 0.5em;
+    font-size: 0.875rem;
+    font-style: normal;
+    color: var(--np-color-muted-foreground, #6b7280);
+  }
+
+  .np-code {
+    margin: 1.5em 0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background: var(--np-color-code-bg, #0f0f0e);
+    color: var(--np-color-code-fg, #e6e6e5);
+    font-family: var(--np-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.875rem;
+    line-height: 1.65;
+    overflow-x: auto;
+  }
+  .np-code code {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    background: transparent;
+    padding: 0;
+  }
+
+  .np-callout {
+    margin: 1.5em 0;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid;
+    line-height: 1.55;
+  }
+  .np-callout p {
+    margin: 0;
+  }
+  .np-callout-info {
+    background: oklch(0.975 0.018 240);
+    border-color: oklch(0.92 0.04 240);
+    color: oklch(0.35 0.12 240);
+  }
+  .np-callout-success {
+    background: oklch(0.975 0.04 155);
+    border-color: oklch(0.9 0.07 155);
+    color: oklch(0.4 0.13 155);
+  }
+  .np-callout-warning {
+    background: oklch(0.98 0.05 80);
+    border-color: oklch(0.9 0.09 80);
+    color: oklch(0.45 0.14 60);
+  }
+
+  .np-list {
+    margin: 1em 0;
+    padding-left: 1.5em;
+    line-height: 1.7;
+  }
+  .np-list-bullet {
+    list-style: disc;
+  }
+  .np-list-ordered {
+    list-style: decimal;
+  }
+  .np-list li {
+    margin: 0.25em 0;
+  }
+
+  .np-image {
+    margin: 1.5em 0;
+  }
+  .np-image img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+  }
+  .np-image figcaption {
+    margin-top: 0.5em;
+    text-align: center;
+    font-size: 0.875rem;
+    font-style: italic;
+    color: var(--np-color-muted-foreground, #6b7280);
+  }
+
+  .np-divider {
+    margin: 2em 0;
+    height: 1px;
+    border: 0;
+    background: var(--np-color-border, #e5e7eb);
+  }
+}
+
+/* ==========================================================================
+   IN-PAGE EDITOR — autosave pulse
+
+   Custom box-shadow ripple keyframe used by the in-page editor's
+   status bar to indicate "autosave on / save resolved". Tailwind's
+   built-in `animate-pulse` is opacity-only; the design wants a
+   radiating ring like the form-card's status-pulse preview card.
+   ========================================================================== */
+@keyframes np-autosave-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 167, 100, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 167, 100, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 167, 100, 0);
+  }
+}
+.np-autosave-pulse {
+  animation: np-autosave-pulse 2s ease-out infinite;
+}

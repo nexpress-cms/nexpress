@@ -7,13 +7,7 @@ import { parseFieldInput } from "../editor-engine/index.js";
 import { useCollectionOptions } from "../registry-context.js";
 import { Input } from "../../ui/input.js";
 import { Label } from "../../ui/label.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.js";
 import { Switch } from "../../ui/switch.js";
 import { Textarea } from "../../ui/textarea.js";
 
@@ -61,12 +55,7 @@ export interface FieldControlProps {
  * Both the form-card editor and the (future) in-page floating
  * panel mount this component to render a single block prop.
  */
-export function FieldControl({
-  field,
-  value,
-  onChange,
-  inputId,
-}: FieldControlProps) {
+export function FieldControl({ field, value, onChange, inputId }: FieldControlProps) {
   // Hooks must run unconditionally so the React rules of hooks
   // hold even when the field type is something other than
   // "collection".
@@ -258,32 +247,14 @@ export function FieldControl({
       // saved through the JSON dialog or the API also surface
       // bounds violations as warnings — these here just give
       // operators native browser feedback while typing.
-      min={
-        field.type === "number" && typeof field.min === "number"
-          ? field.min
-          : undefined
-      }
-      max={
-        field.type === "number" && typeof field.max === "number"
-          ? field.max
-          : undefined
-      }
-      step={
-        field.type === "number" && typeof field.step === "number"
-          ? field.step
-          : undefined
-      }
+      min={field.type === "number" && typeof field.min === "number" ? field.min : undefined}
+      max={field.type === "number" && typeof field.max === "number" ? field.max : undefined}
+      step={field.type === "number" && typeof field.step === "number" ? field.step : undefined}
       pattern={
-        (field.type === "text" || field.type === "url") && field.pattern
-          ? field.pattern
-          : undefined
+        (field.type === "text" || field.type === "url") && field.pattern ? field.pattern : undefined
       }
       aria-invalid={requiredMissing || undefined}
-      className={
-        requiredMissing
-          ? "border-rose-500/60 focus-visible:ring-rose-500/40"
-          : undefined
-      }
+      className={requiredMissing ? "border-rose-500/60 focus-visible:ring-rose-500/40" : undefined}
     />
   );
 }

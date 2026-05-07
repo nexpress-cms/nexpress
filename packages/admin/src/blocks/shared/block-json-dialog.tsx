@@ -125,10 +125,7 @@ export function BlockJsonDialog({
       setError("Block props must be a JSON object.");
       return;
     }
-    const lintWarning = lintBlockProps(
-      parsed as Record<string, unknown>,
-      propsSchema,
-    );
+    const lintWarning = lintBlockProps(parsed as Record<string, unknown>, propsSchema);
     if (lintWarning && lintWarning !== warning) {
       // First time seeing this exact warning — show it and pause.
       // The operator clicks Apply again to confirm; the comparison
@@ -146,9 +143,8 @@ export function BlockJsonDialog({
         <DialogHeader>
           <DialogTitle>Edit block props as JSON</DialogTitle>
           <DialogDescription>
-            <span className="font-mono">{blockType}</span> — Apply replaces
-            the entire <code>props</code> object. Keys you remove here will
-            be dropped on save.
+            <span className="font-mono">{blockType}</span> — Apply replaces the entire{" "}
+            <code>props</code> object. Keys you remove here will be dropped on save.
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">

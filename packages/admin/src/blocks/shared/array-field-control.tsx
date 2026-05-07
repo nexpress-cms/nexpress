@@ -80,9 +80,7 @@ export function normalizeArrayValue(
     }
     if (
       firstFieldName !== undefined &&
-      (typeof entry === "string" ||
-        typeof entry === "number" ||
-        typeof entry === "boolean")
+      (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean")
     ) {
       out.push({ [firstFieldName]: entry });
     }
@@ -97,9 +95,7 @@ export function ArrayFieldControl({
   inputId,
   FieldControl,
 }: ArrayFieldControlProps) {
-  const itemSchema = (field.itemSchema ?? []).filter(
-    (sub) => sub.type !== "array",
-  );
+  const itemSchema = (field.itemSchema ?? []).filter((sub) => sub.type !== "array");
   const items = normalizeArrayValue(value, itemSchema);
 
   const buildItemDefault = (): Record<string, unknown> => {
@@ -114,9 +110,7 @@ export function ArrayFieldControl({
   };
 
   const updateAt = (index: number, key: string, next: unknown) => {
-    const updated = items.map((item, i) =>
-      i === index ? { ...item, [key]: next } : item,
-    );
+    const updated = items.map((item, i) => (i === index ? { ...item, [key]: next } : item));
     onChange(updated);
   };
 
@@ -132,10 +126,7 @@ export function ArrayFieldControl({
         </p>
       ) : null}
       {items.map((item, index) => (
-        <div
-          key={index}
-          className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2"
-        >
+        <div key={index} className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               #{index + 1}
@@ -155,9 +146,7 @@ export function ArrayFieldControl({
             const subInputId = `${inputId}-${index}-${sub.name}`;
             return (
               <div key={sub.name} className="grid gap-1.5">
-                {sub.type !== "boolean" ? (
-                  <Label htmlFor={subInputId}>{sub.label}</Label>
-                ) : null}
+                {sub.type !== "boolean" ? <Label htmlFor={subInputId}>{sub.label}</Label> : null}
                 <FieldControl
                   field={sub}
                   value={item[sub.name]}

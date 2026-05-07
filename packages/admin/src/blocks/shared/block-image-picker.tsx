@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { npFetch } from "../../lib/api-client.js";
 import { Button } from "../../ui/button.js";
 import {
   Dialog,
@@ -45,11 +46,7 @@ interface MediaDoc {
 const PAGE_SIZE = 24;
 const UPLOAD_CONCURRENCY = 3;
 
-export function BlockImagePicker({
-  inputId,
-  value,
-  onChange,
-}: BlockImagePickerProps) {
+export function BlockImagePicker({ inputId, value, onChange }: BlockImagePickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -76,49 +73,45 @@ export function BlockImagePicker({
     setPreviewBroken(false);
   }, [value]);
 
-  const loadMedia = useCallback(
-    async (page: number, query: string, mode: "replace" | "append") => {
-      // Cancel any in-flight request so a slow earlier query can't
-      // overwrite the response from a newer query.
-      if (loadAbortRef.current) loadAbortRef.current.abort();
-      const controller = new AbortController();
-      loadAbortRef.current = controller;
+  const loadMedia = useCallback(async (page: number, query: string, mode: "replace" | "append") => {
+    // Cancel any in-flight request so a slow earlier query can't
+    // overwrite the response from a newer query.
+    if (loadAbortRef.current) loadAbortRef.current.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
 
-      const params = new URLSearchParams();
-      params.set("limit", String(PAGE_SIZE));
-      params.set("page", String(page));
-      const trimmed = query.trim();
-      if (trimmed.length > 0) params.set("q", trimmed);
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/media?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`Media load failed (${res.status})`);
-        const payload = (await res.json()) as {
-          docs?: MediaDoc[];
-          totalDocs?: number;
-          totalPages?: number;
-          page?: number;
-        };
-        const next = Array.isArray(payload.docs) ? payload.docs : [];
-        setItems((prev) => (mode === "append" ? [...prev, ...next] : next));
-        const totalPages =
-          typeof payload.totalPages === "number" ? payload.totalPages : page;
-        setHasMore(page < totalPages);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Failed to load media.");
-      } finally {
-        if (loadAbortRef.current === controller) {
-          loadAbortRef.current = null;
-          setLoading(false);
-        }
+    const params = new URLSearchParams();
+    params.set("limit", String(PAGE_SIZE));
+    params.set("page", String(page));
+    const trimmed = query.trim();
+    if (trimmed.length > 0) params.set("q", trimmed);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/media?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`Media load failed (${res.status})`);
+      const payload = (await res.json()) as {
+        docs?: MediaDoc[];
+        totalDocs?: number;
+        totalPages?: number;
+        page?: number;
+      };
+      const next = Array.isArray(payload.docs) ? payload.docs : [];
+      setItems((prev) => (mode === "append" ? [...prev, ...next] : next));
+      const totalPages = typeof payload.totalPages === "number" ? payload.totalPages : page;
+      setHasMore(page < totalPages);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setError(err instanceof Error ? err.message : "Failed to load media.");
+    } finally {
+      if (loadAbortRef.current === controller) {
+        loadAbortRef.current = null;
+        setLoading(false);
       }
-    },
-    [],
-  );
+    }
+  }, []);
 
   // Reset + load page 1 when the dialog opens OR the debounced
   // query changes. Server applies the filter so we re-fetch
@@ -143,10 +136,14 @@ export function BlockImagePicker({
       const uploadOne = async (file: File): Promise<string | null> => {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch("/api/media", {
+        // POST /api/media is a CSRF-gated mutation per proxy.ts;
+        // npFetch reads the np-csrf cookie and attaches the
+        // X-CSRF-Token header. The browser handles Content-Type
+        // for FormData automatically — npFetch's header merging
+        // doesn't touch it.
+        const res = await npFetch("/api/media", {
           method: "POST",
           body: fd,
-          credentials: "same-origin",
         });
         if (!res.ok) {
           throw new Error(`Upload failed (${res.status})`);
@@ -174,10 +171,7 @@ export function BlockImagePicker({
       await Promise.all(workers);
       const failures = results.filter((r) => r.status === "rejected");
       const successfulUrls = results
-        .filter(
-          (r): r is { status: "fulfilled"; value: string | null } =>
-            r.status === "fulfilled",
-        )
+        .filter((r): r is { status: "fulfilled"; value: string | null } => r.status === "fulfilled")
         .map((r) => r.value)
         .filter((url): url is string => typeof url === "string");
       const lastUrl = successfulUrls[successfulUrls.length - 1];
@@ -314,9 +308,7 @@ export function BlockImagePicker({
                     no preview
                   </div>
                 )}
-                <p className="truncate px-2 pb-2 text-xs">
-                  {item.filename ?? item.id}
-                </p>
+                <p className="truncate px-2 pb-2 text-xs">{item.filename ?? item.id}</p>
               </button>
             ))}
           </div>
@@ -328,9 +320,7 @@ export function BlockImagePicker({
                   variant="outline"
                   size="sm"
                   disabled={loading}
-                  onClick={() =>
-                    void loadMedia(currentPage + 1, debouncedQuery, "append")
-                  }
+                  onClick={() => void loadMedia(currentPage + 1, debouncedQuery, "append")}
                 >
                   {loading ? "Loading…" : "Load more"}
                 </Button>

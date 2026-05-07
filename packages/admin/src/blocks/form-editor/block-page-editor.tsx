@@ -9,18 +9,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import {
-  Braces,
-  Copy,
-  Eye,
-  EyeOff,
-  Group,
-  Plus,
-  Redo2,
-  Trash2,
-  Undo2,
-  X,
-} from "lucide-react";
+import { Braces, Copy, Group, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -41,6 +30,7 @@ import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 import { BlockPalette } from "../block-palette.js";
 import {
   collectContainerCandidates,
+  evaluateContainerWarnings,
   findBlockInTreeFlat,
   locateBlock,
   useEditorState,
@@ -56,13 +46,21 @@ import {
   saveServerPattern,
   type NpPattern,
 } from "../patterns.js";
-import { PreviewPanel } from "../preview-panel.js";
 import { useContributedPatterns } from "../registry-context.js";
 import {
   CommandMenu,
+  ContainerWarningsPanel,
+  EditorAsidePortal,
+  ModeSwitch,
+  OutlinePanel,
   PageJsonDialog,
   PastePatternDialog,
+  StatusBar,
+  useAutosaveStatus,
+  usePersistedView,
+  useSaveEvents,
 } from "../shared/index.js";
+import { DocCanvas } from "../in-page-editor/index.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 
@@ -85,12 +83,35 @@ interface BlockPageEditorProps {
   blocks: NpBlockInstance[];
   onChange: (blocks: NpBlockInstance[]) => void;
   availableBlocks: NpBlockMetadata[];
+  /**
+   * Optional persistence scope for the Document / Page builder
+   * view toggle. Pass `<collection>.<field>` (e.g. `"pages.blocks"`)
+   * so the operator's choice survives reloads. When omitted the
+   * toggle still works in-session but the choice doesn't persist.
+   */
+  viewScope?: string;
+  /**
+   * DOM id of a host-provided mount target for the editor aside
+   * (Outline + Container warnings panels). Default
+   * `"np-block-editor-aside"` matches `CollectionEditView`'s
+   * sticky right sidebar. Without the target the panels don't
+   * render — the canvas keeps full width.
+   *
+   * The portal pattern lets the editor share the form's existing
+   * sidebar instead of carving out a nested aside that would
+   * narrow the canvas (the design's `editor-aside` is a single
+   * right column with Status / Slug / Page tree / Warnings stacked
+   * together).
+   */
+  asideMountId?: string;
 }
 
 export function BlockPageEditor({
   blocks: initialBlocks,
   onChange,
   availableBlocks,
+  viewScope,
+  asideMountId,
 }: BlockPageEditorProps) {
   const definitions = useMemo(
     () => new Map(availableBlocks.map((block) => [block.type, block])),
@@ -106,13 +127,12 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  // Currently-focused row id (#467 #1 — selected-block preview).
-  // Tracked via focusin/focusout listeners on the editor section
-  // so any focus surface (row card, popover, dropdown) within a
-  // `[data-np-block-row]` ancestor counts as "this block is the
-  // operator's current target". The PreviewPanel receives the
-  // value and highlights / scrolls to the matching marker in the
-  // iframe.
+  // Currently-focused row id (#467 #1). Tracked via focusin /
+  // focusout listeners on the editor section so any focus surface
+  // (row card, popover, dropdown) within a `[data-np-block-row]`
+  // ancestor counts as "this block is the operator's current
+  // target". The status bar's active-block chip + the outline
+  // panel's highlight both read this value.
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
 
   // Multi-select set (#467 #3). Lives at the orchestrator so a
@@ -161,20 +181,14 @@ export function BlockPageEditor({
       return new Set();
     }
   });
-  const isRowOpen = useCallback(
-    (id: string) => !collapsedIds.has(id),
-    [collapsedIds],
-  );
+  const isRowOpen = useCallback((id: string) => !collapsedIds.has(id), [collapsedIds]);
   const setRowOpen = useCallback((id: string, open: boolean) => {
     setCollapsedIds((current) => {
       const next = new Set(current);
       if (open) next.delete(id);
       else next.add(id);
       try {
-        window.localStorage.setItem(
-          COLLAPSED_KEY,
-          JSON.stringify(Array.from(next)),
-        );
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(next)));
       } catch {
         // Private mode / quota — drop the persistence, keep the
         // in-memory state. The collapsed set just resets next load.
@@ -208,9 +222,7 @@ export function BlockPageEditor({
     for (const id of seen) if (!knownIdsRef.current.has(id)) newIds.push(id);
     knownIdsRef.current = seen;
     if (newIds.length !== 1) return;
-    const target = document.querySelector<HTMLElement>(
-      `[data-np-block-row="${newIds[0]}"]`,
-    );
+    const target = document.querySelector<HTMLElement>(`[data-np-block-row="${newIds[0]}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "nearest" });
     target.focus({ preventScroll: true });
@@ -225,10 +237,7 @@ export function BlockPageEditor({
   // shift-click that crosses parent boundaries falls back to a
   // plain toggle (extending across containers would create a
   // selection no bulk action could honor).
-  const isSelected = useCallback(
-    (id: string) => selectedIds.has(id),
-    [selectedIds],
-  );
+  const isSelected = useCallback((id: string) => selectedIds.has(id), [selectedIds]);
   const toggleSelected = useCallback(
     (id: string, modifiers: { shift: boolean; meta: boolean }) => {
       setSelectedIds((current) => {
@@ -236,23 +245,15 @@ export function BlockPageEditor({
         if (modifiers.shift && selectionAnchorRef.current) {
           const anchorLoc = locateBlock(blocks, selectionAnchorRef.current);
           const targetLoc = locateBlock(blocks, id);
-          if (
-            anchorLoc &&
-            targetLoc &&
-            anchorLoc.parentId === targetLoc.parentId
-          ) {
+          if (anchorLoc && targetLoc && anchorLoc.parentId === targetLoc.parentId) {
             const lo = Math.min(anchorLoc.index, targetLoc.index);
             const hi = Math.max(anchorLoc.index, targetLoc.index);
             // Resolve the parent's sibling array and add every id
             // in [lo..hi]. updateContainerChildren is overkill —
             // we just need a read of the siblings.
             const parentBlock =
-              anchorLoc.parentId === null
-                ? null
-                : findBlockInTreeFlat(blocks, anchorLoc.parentId);
-            const siblings =
-              parentBlock?.children ??
-              (anchorLoc.parentId === null ? blocks : []);
+              anchorLoc.parentId === null ? null : findBlockInTreeFlat(blocks, anchorLoc.parentId);
+            const siblings = parentBlock?.children ?? (anchorLoc.parentId === null ? blocks : []);
             for (let i = lo; i <= hi; i++) {
               const sib = siblings[i];
               if (sib) next.add(sib.id);
@@ -326,10 +327,7 @@ export function BlockPageEditor({
     const migrated = await migrateLocalPatternsToServer(server);
     const finalServer =
       migrated.length > 0
-        ? [
-            ...migrated,
-            ...server.filter((p) => !migrated.some((m) => m.id === p.id)),
-          ]
+        ? [...migrated, ...server.filter((p) => !migrated.some((m) => m.id === p.id))]
         : server;
     const local = getCustomPatterns(); // Re-read post-migration cleanup.
     const serverIds = new Set(finalServer.map((p) => p.id));
@@ -350,9 +348,7 @@ export function BlockPageEditor({
   const patterns = useMemo(() => {
     const builtIns = getBuiltInPatterns();
     const builtInIds = new Set(builtIns.map((p) => p.id));
-    const contributedDeduped = contributedPatterns.filter(
-      (p) => !builtInIds.has(p.id),
-    );
+    const contributedDeduped = contributedPatterns.filter((p) => !builtInIds.has(p.id));
     return [...builtIns, ...contributedDeduped, ...customPatterns];
   }, [contributedPatterns, customPatterns]);
   const handleSaveFocusedAsPattern = useCallback(
@@ -361,9 +357,7 @@ export function BlockPageEditor({
       if (!focused) return;
       const label = window.prompt(
         "Save as pattern — name?",
-        focused.props.title?.toString() ??
-          focused.props.heading?.toString() ??
-          focused.type,
+        focused.props.title?.toString() ?? focused.props.heading?.toString() ?? focused.type,
       );
       if (!label || label.trim().length === 0) return;
       const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -375,10 +369,7 @@ export function BlockPageEditor({
       };
       void saveServerPattern(pattern).then((saved) => {
         if (saved) {
-          setCustomPatterns((current) => [
-            saved,
-            ...current.filter((p) => p.id !== saved.id),
-          ]);
+          setCustomPatterns((current) => [saved, ...current.filter((p) => p.id !== saved.id)]);
           return;
         }
         const next = saveCustomPattern(pattern);
@@ -395,39 +386,135 @@ export function BlockPageEditor({
     setCustomPatterns((current) => current.filter((p) => p.id !== patternId));
   }, []);
 
-  // Live preview toggle. Persisted in localStorage so an operator
-  // who keeps it open across sessions doesn't reflip on every page
-  // load. Defaults to off — preview costs an extra server round
-  // trip per edit.
-  const [previewOpen, setPreviewOpen] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem("np-page-builder.preview");
-      if (stored === "1") setPreviewOpen(true);
-    } catch {
-      // Private-browsing / SSR — fall back to default closed.
-    }
-  }, []);
-  const togglePreview = () => {
-    setPreviewOpen((current) => {
-      const next = !current;
-      try {
-        window.localStorage.setItem(
-          "np-page-builder.preview",
-          next ? "1" : "0",
-        );
-      } catch {
-        // Same as above — silent.
-      }
-      return next;
-    });
-  };
+  // Live preview lived here briefly as a Page-builder-mode toggle
+  // (`Show preview` button + bottom iframe). Removed once Doc view
+  // became a true preview surface — switching to Doc mode IS the
+  // preview now, and a second iframe at the bottom of Page builder
+  // duplicated that for no operator benefit while costing a server
+  // round trip per debounced edit.
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  // Document / Page builder toggle. Persists per `viewScope` in
+  // localStorage when the orchestrator is mounted with one.
+  // Default lands on Page builder (the muscle-memory view) so
+  // existing operators see no behavior change until they opt in.
+  const [view, setView] = usePersistedView(viewScope, "page");
+
+  // Autosave status — driven by `onChange` (any tree mutation
+  // marks the editor dirty). Save coordination lives in the
+  // collection's form layer (react-hook-form's submit) — this
+  // hook just surfaces a "Saved" / pulse cue in the status bar.
+  // The form-card editor doesn't yet observe save resolution,
+  // so for v1 we settle into a steady "Just now" anchor on
+  // every dispatch. Wiring `mark("saved")` to the actual save
+  // resolve lands when the orchestrator grows a save callback.
+  const autosave = useAutosaveStatus();
+  const lastBlocksRef = useRef(initialBlocks);
+  useEffect(() => {
+    if (lastBlocksRef.current !== blocks) {
+      autosave.mark("dirty");
+      lastBlocksRef.current = blocks;
+    }
+  }, [blocks, autosave]);
+  // Bridge form-level save events to the orchestrator's autosave
+  // indicator. The collection edit view emits "saving" before the
+  // network call and "saved" / "error" after it resolves; we
+  // forward the first two into the indicator's state machine.
+  // Errors don't mark "saved" — the editor stays in a dirty state
+  // so operators see they still need to retry the save.
+  useSaveEvents((event) => {
+    if (event === "saving") autosave.mark("saving");
+    else if (event === "saved") autosave.mark("saved");
+  });
+
+  // Container contract warnings — surfaced as a side card and
+  // referenced in the status bar's count. Driven by the engine's
+  // pure `evaluateContainerWarnings`, recomputed on every tree
+  // change (cheap — pages have dozens of blocks at most).
+  const containerWarnings = useMemo(
+    () => evaluateContainerWarnings(blocks, definitions),
+    [blocks, definitions],
+  );
+
+  // Total count across the recursive tree (status-bar telemetry).
+  const totalBlocks = useMemo(() => {
+    let n = 0;
+    const walk = (arr: NpBlockInstance[]): void => {
+      for (const b of arr) {
+        n += 1;
+        if (b.children) walk(b.children);
+      }
+    };
+    walk(blocks);
+    return n;
+  }, [blocks]);
+
+  // Doc-mode word count — flatten every atom block's text-shaped
+  // prop into one string and count whitespace-separated tokens.
+  // Mirrors the design's `EditorScreen` formula. Computed
+  // unconditionally (cheap), surfaced only in Doc view via the
+  // status bar's `wordCount` prop.
+  const docWordCount = useMemo(() => {
+    const collect = (arr: NpBlockInstance[]): string[] => {
+      const out: string[] = [];
+      for (const b of arr) {
+        const text = b.props.text;
+        if (typeof text === "string") out.push(text);
+        const heading = b.props.heading;
+        if (typeof heading === "string") out.push(heading);
+        const items = b.props.items;
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            if (typeof item === "string") out.push(item);
+          }
+        }
+        const code = b.props.code;
+        if (typeof code === "string") out.push(code);
+        const caption = b.props.caption;
+        if (typeof caption === "string") out.push(caption);
+        if (b.children) out.push(...collect(b.children));
+      }
+      return out;
+    };
+    const joined = collect(blocks).join(" ").trim();
+    if (joined.length === 0) return 0;
+    return joined.split(/\s+/).filter(Boolean).length;
+  }, [blocks]);
+
+  // Reading-time minutes — the design uses 220 wpm
+  // (`Math.max(1, Math.round(wordCount / 220))`). Stays at the
+  // floor of 1 minute even for empty docs so the status bar reads
+  // sensibly on first mount.
+  const docReadingMinutes = useMemo(
+    () => Math.max(1, Math.round(docWordCount / 220)),
+    [docWordCount],
+  );
+
+  const activeBlockMeta = selectedBlockId
+    ? (definitions.get(findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? "") ?? null)
+    : null;
+  const activeBlockType = selectedBlockId
+    ? (findBlockInTreeFlat(blocks, selectedBlockId)?.type ?? null)
+    : null;
+
+  /**
+   * Scroll a block row into view + focus it. Reused by the
+   * outline panel's pick handler and the warnings panel's pick
+   * handler — both want the same "find the row, scroll, focus"
+   * effect.
+   */
+  const focusBlockRow = useCallback((id: string) => {
+    setSelectedBlockId(id);
+    if (typeof document === "undefined") return;
+    const target = document.querySelector<HTMLElement>(`[data-np-block-row="${id}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    target.focus({ preventScroll: true });
+  }, []);
 
   // Cmd/Ctrl-Z / Cmd-Shift-Z / Ctrl-Y bound at window level.
   // Skip while focus sits on a text-entry surface so operators
@@ -437,10 +524,7 @@ export function BlockPageEditor({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.matches("input, textarea") || target.isContentEditable)
-      ) {
+      if (target && (target.matches("input, textarea") || target.isContentEditable)) {
         return;
       }
       const meta = event.metaKey || event.ctrlKey;
@@ -472,10 +556,7 @@ export function BlockPageEditor({
   // Locate the active block anywhere in the tree (it may be a
   // top-level block or nested inside a container). The drag
   // overlay just needs the label, so a flat search is enough.
-  const findInTree = (
-    arr: NpBlockInstance[],
-    id: string,
-  ): NpBlockInstance | undefined => {
+  const findInTree = (arr: NpBlockInstance[], id: string): NpBlockInstance | undefined => {
     for (const b of arr) {
       if (b.id === id) return b;
       const inChild = b.children ? findInTree(b.children, id) : undefined;
@@ -492,10 +573,7 @@ export function BlockPageEditor({
   // top-level row.
   function handleKeyboardNav(event: ReactKeyboardEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
-    if (
-      target &&
-      (target.matches("input, textarea") || target.isContentEditable)
-    ) {
+    if (target && (target.matches("input, textarea") || target.isContentEditable)) {
       return;
     }
 
@@ -506,19 +584,12 @@ export function BlockPageEditor({
     }
 
     const key = event.key;
-    if (
-      key !== "ArrowDown" &&
-      key !== "ArrowUp" &&
-      key !== "Home" &&
-      key !== "End"
-    ) {
+    if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Home" && key !== "End") {
       return;
     }
     const root = sectionRef.current;
     if (!root) return;
-    const rows = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-np-block-row]"),
-    );
+    const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-np-block-row]"));
     if (rows.length === 0) return;
     const activeRow = target?.closest<HTMLElement>("[data-np-block-row]");
     const currentIndex = activeRow ? rows.indexOf(activeRow) : -1;
@@ -543,9 +614,7 @@ export function BlockPageEditor({
   // rather than mirroring focus into React state on every move.
   function readFocusedBlockId(): string | null {
     if (typeof document === "undefined") return null;
-    const focusedRow = document.activeElement?.closest<HTMLElement>(
-      "[data-np-block-row]",
-    );
+    const focusedRow = document.activeElement?.closest<HTMLElement>("[data-np-block-row]");
     return focusedRow?.dataset.npBlockRow ?? null;
   }
 
@@ -629,29 +698,32 @@ export function BlockPageEditor({
       className={cn("np-block-page-editor flex flex-col gap-4")}
       onKeyDown={handleKeyboardNav}
     >
-      <div className="flex items-center justify-end gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Undo"
-          onClick={undo}
-          disabled={!canUndo}
-        >
-          <Undo2 className="mr-1.5 h-4 w-4" />
-          Undo
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Redo"
-          onClick={redo}
-          disabled={!canRedo}
-        >
-          <Redo2 className="mr-1.5 h-4 w-4" />
-          Redo
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Undo"
+            onClick={undo}
+            disabled={!canUndo}
+          >
+            <Undo2 className="mr-1.5 h-4 w-4" />
+            Undo
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Redo"
+            onClick={redo}
+            disabled={!canRedo}
+          >
+            <Redo2 className="mr-1.5 h-4 w-4" />
+            Redo
+          </Button>
+        </div>
       </div>
       {/* Bulk-action toolbar (#467 #3). Sticks above the row list
           while a multi-selection is live. Wrap is gated by
@@ -663,9 +735,7 @@ export function BlockPageEditor({
           role="region"
           aria-label="Bulk block actions"
         >
-          <span className="text-xs font-medium text-primary">
-            {selectedIds.size} selected
-          </span>
+          <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-1">
             <div className="relative" ref={wrapPickerRef}>
               <Button
@@ -771,176 +841,190 @@ export function BlockPageEditor({
           </div>
         </div>
       ) : null}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(event) => setActiveId(String(event.active.id))}
-        onDragCancel={() => setActiveId(null)}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={blocks.map((block) => block.id)}
-          strategy={verticalListSortingStrategy}
+      {view === "doc" ? (
+        <DocCanvas
+          blocks={blocks}
+          definitions={definitions}
+          availableBlocks={availableBlocks}
+          dispatch={dispatch}
+          selectedBlockId={selectedBlockId}
+          onSelectBlock={setSelectedBlockId}
+        />
+      ) : null}
+      {view === "page" ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(event) => setActiveId(String(event.active.id))}
+          onDragCancel={() => setActiveId(null)}
+          onDragEnd={handleDragEnd}
         >
-          <div className="flex flex-col gap-3">
-            {blocks.map((block, index) => {
-              const blockDefinition = definitions.get(block.type);
-              const blockLabel = blockDefinition?.label ?? block.type;
-              return (
-                <Fragment key={block.id}>
-                  {index === 0 ? (
+          <SortableContext
+            items={blocks.map((block) => block.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="flex flex-col gap-3">
+              {blocks.map((block, index) => {
+                const blockDefinition = definitions.get(block.type);
+                const blockLabel = blockDefinition?.label ?? block.type;
+                return (
+                  <Fragment key={block.id}>
+                    {index === 0 ? (
+                      <InsertSlot
+                        availableBlocks={availableBlocks}
+                        onInsert={(blockType) => onInsert("before", block.id, blockType)}
+                        ariaLabel={`Insert block before ${blockLabel}`}
+                      />
+                    ) : null}
+                    <SortableBlockItem
+                      block={block}
+                      definition={blockDefinition}
+                      availableBlocks={availableBlocks}
+                      definitions={definitions}
+                      onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
+                      onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
+                      onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
+                      onDelete={(id) => dispatch({ type: "DELETE", id })}
+                      onUpdateProps={(id, props) => dispatch({ type: "UPDATE_PROPS", id, props })}
+                      onReplaceProps={(id, props) => dispatch({ type: "REPLACE_PROPS", id, props })}
+                      onAddChild={(parentId, blockType) =>
+                        dispatch({ type: "ADD", blockType, parentId })
+                      }
+                      onInsert={onInsert}
+                      onMoveOut={(id) => dispatch({ type: "MOVE_OUT", id })}
+                      onMoveInto={(id, targetParentId) =>
+                        dispatch({ type: "MOVE_INTO", id, targetParentId })
+                      }
+                      onWrapIn={(id, containerType) =>
+                        dispatch({ type: "WRAP_IN", id, containerType })
+                      }
+                      getMoveIntoCandidates={(id) =>
+                        collectContainerCandidates(blocks, id, definitions)
+                      }
+                      isOpen={isRowOpen}
+                      onOpenChange={setRowOpen}
+                      isSelected={isSelected}
+                      onToggleSelected={toggleSelected}
+                    />
                     <InsertSlot
                       availableBlocks={availableBlocks}
-                      onInsert={(blockType) =>
-                        onInsert("before", block.id, blockType)
-                      }
-                      ariaLabel={`Insert block before ${blockLabel}`}
+                      onInsert={(blockType) => onInsert("after", block.id, blockType)}
+                      ariaLabel={`Insert block after ${blockLabel}`}
                     />
-                  ) : null}
-                  <SortableBlockItem
-                    block={block}
-                    definition={blockDefinition}
-                    availableBlocks={availableBlocks}
-                    definitions={definitions}
-                    onMoveUp={(id) => dispatch({ type: "MOVE_UP", id })}
-                    onMoveDown={(id) => dispatch({ type: "MOVE_DOWN", id })}
-                    onDuplicate={(id) => dispatch({ type: "DUPLICATE", id })}
-                    onDelete={(id) => dispatch({ type: "DELETE", id })}
-                    onUpdateProps={(id, props) =>
-                      dispatch({ type: "UPDATE_PROPS", id, props })
-                    }
-                    onReplaceProps={(id, props) =>
-                      dispatch({ type: "REPLACE_PROPS", id, props })
-                    }
-                    onAddChild={(parentId, blockType) =>
-                      dispatch({ type: "ADD", blockType, parentId })
-                    }
-                    onInsert={onInsert}
-                    onMoveOut={(id) => dispatch({ type: "MOVE_OUT", id })}
-                    onMoveInto={(id, targetParentId) =>
-                      dispatch({ type: "MOVE_INTO", id, targetParentId })
-                    }
-                    onWrapIn={(id, containerType) =>
-                      dispatch({ type: "WRAP_IN", id, containerType })
-                    }
-                    getMoveIntoCandidates={(id) =>
-                      collectContainerCandidates(blocks, id, definitions)
-                    }
-                    isOpen={isRowOpen}
-                    onOpenChange={setRowOpen}
-                    isSelected={isSelected}
-                    onToggleSelected={toggleSelected}
-                  />
-                  <InsertSlot
-                    availableBlocks={availableBlocks}
-                    onInsert={(blockType) =>
-                      onInsert("after", block.id, blockType)
-                    }
-                    ariaLabel={`Insert block after ${blockLabel}`}
-                  />
-                </Fragment>
-              );
-            })}
-            {blocks.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
-                <p className="mb-4 text-sm text-muted-foreground">
-                  No blocks yet. Pick one to start building the page.
-                </p>
-                {/* Recommended starters (#467 quick-wins). The
+                  </Fragment>
+                );
+              })}
+              {blocks.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
+                  <p className="mb-4 text-sm text-muted-foreground">
+                    No blocks yet. Pick one to start building the page.
+                  </p>
+                  {/* Recommended starters (#467 quick-wins). The
                     preference list is the typical "above the fold"
                     set — operators almost always lead with a
                     hero/heading and a paragraph or grid. We show
                     only blocks the host actually registered so a
                     plugin-light setup doesn't see broken buttons. */}
-                <div className="flex flex-wrap justify-center gap-2">
-                  {(() => {
-                    const preferred = ["hero", "heading", "text", "grid", "cta"];
-                    const pickList: NpBlockMetadata[] = [];
-                    for (const type of preferred) {
-                      const def = definitions.get(type);
-                      if (def) pickList.push(def);
-                      if (pickList.length >= 4) break;
-                    }
-                    if (pickList.length < 4) {
-                      for (const def of availableBlocks) {
-                        if (pickList.includes(def)) continue;
-                        if (def.acceptsChildren) continue;
-                        pickList.push(def);
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {(() => {
+                      const preferred = ["hero", "heading", "text", "grid", "cta"];
+                      const pickList: NpBlockMetadata[] = [];
+                      for (const type of preferred) {
+                        const def = definitions.get(type);
+                        if (def) pickList.push(def);
                         if (pickList.length >= 4) break;
                       }
-                    }
-                    return pickList.map((def) => (
-                      <Button
-                        key={def.type}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          dispatch({ type: "ADD", blockType: def.type })
+                      if (pickList.length < 4) {
+                        for (const def of availableBlocks) {
+                          if (pickList.includes(def)) continue;
+                          if (def.acceptsChildren) continue;
+                          pickList.push(def);
+                          if (pickList.length >= 4) break;
                         }
-                      >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        {def.label}
-                      </Button>
-                    ));
-                  })()}
+                      }
+                      return pickList.map((def) => (
+                        <Button
+                          key={def.type}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => dispatch({ type: "ADD", blockType: def.type })}
+                        >
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          {def.label}
+                        </Button>
+                      ));
+                    })()}
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
-        </SortableContext>
-        <DragOverlay>
-          <DragPreview
-            block={activeBlock}
-            definition={activeBlock ? definitions.get(activeBlock.type) : undefined}
-          />
-        </DragOverlay>
-      </DndContext>
-
-      <div className="flex items-center justify-center gap-2">
-        <BlockPalette
-          availableBlocks={availableBlocks}
-          onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
-          trigger={
-            <Button type="button" variant="outline" size="sm">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add block
-            </Button>
-          }
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setPageJsonOpen(true)}
-        >
-          <Braces className="mr-1.5 h-4 w-4" />
-          Edit JSON
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-pressed={previewOpen}
-          onClick={togglePreview}
-        >
-          {previewOpen ? (
-            <>
-              <EyeOff className="mr-1.5 h-4 w-4" />
-              Hide preview
-            </>
-          ) : (
-            <>
-              <Eye className="mr-1.5 h-4 w-4" />
-              Show preview
-            </>
-          )}
-        </Button>
-      </div>
-
-      {previewOpen ? (
-        <PreviewPanel blocks={blocks} selectedBlockId={selectedBlockId} />
+              ) : null}
+            </div>
+          </SortableContext>
+          <DragOverlay>
+            <DragPreview
+              block={activeBlock}
+              definition={activeBlock ? definitions.get(activeBlock.type) : undefined}
+            />
+          </DragOverlay>
+        </DndContext>
       ) : null}
+
+      {view === "page" ? (
+        <div className="flex items-center justify-center gap-2">
+          <BlockPalette
+            availableBlocks={availableBlocks}
+            onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
+            trigger={
+              <Button type="button" variant="outline" size="sm">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add block
+              </Button>
+            }
+          />
+          <Button type="button" variant="ghost" size="sm" onClick={() => setPageJsonOpen(true)}>
+            <Braces className="mr-1.5 h-4 w-4" />
+            Edit JSON
+          </Button>
+        </div>
+      ) : null}
+
+      <StatusBar
+        totalBlocks={totalBlocks}
+        // Doc view → words / blocks / reading time (matches the
+        // design's `be-statusbar` Doc layout).
+        // Page view → blocks total / in registry / warnings.
+        // The status bar drops segments whose props aren't passed,
+        // so toggling view rotates the surfaced stats without a
+        // separate component per mode.
+        wordCount={view === "doc" ? docWordCount : undefined}
+        readingMinutes={view === "doc" ? docReadingMinutes : undefined}
+        registrySize={view === "page" ? availableBlocks.length : undefined}
+        warningsCount={view === "page" ? containerWarnings.length : undefined}
+        activeMeta={activeBlockMeta}
+        activeType={activeBlockType}
+        savedLabel={autosave.savedLabel}
+        status={autosave.status}
+      />
+
+      {/* Outline + container warnings live in the host's
+              sidebar via a portal so the canvas above keeps full
+              width. CollectionEditView mounts the matching
+              `<div id="np-block-editor-aside" />`; if no host has
+              mounted the target, EditorAsidePortal renders nothing
+              (a console warning fires in dev). */}
+      <EditorAsidePortal targetId={asideMountId}>
+        <div className="flex flex-col gap-4">
+          <OutlinePanel
+            blocks={blocks}
+            definitions={definitions}
+            activeId={selectedBlockId}
+            onPick={focusBlockRow}
+            title="Page tree"
+            footer="page.blocks · NpBlockInstance[] · live"
+          />
+          <ContainerWarningsPanel warnings={containerWarnings} onPick={focusBlockRow} />
+        </div>
+      </EditorAsidePortal>
 
       <PageJsonDialog
         open={pageJsonOpen}

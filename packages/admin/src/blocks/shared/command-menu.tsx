@@ -62,10 +62,7 @@ export interface CommandMenuProps {
   onDeletePattern: (patternId: string) => void;
 }
 
-function filterCommandActions(
-  actions: CommandAction[],
-  query: string,
-): CommandAction[] {
+function filterCommandActions(actions: CommandAction[], query: string): CommandAction[] {
   const q = query.trim().toLowerCase();
   if (q.length === 0) return actions;
   return actions.filter((a) => {
@@ -129,12 +126,8 @@ export function CommandMenu({
     return undefined;
   }, [open]);
 
-  const focusedBlock = focusedBlockId
-    ? findBlockInTreeFlat(blocks, focusedBlockId)
-    : null;
-  const focusedDefinition = focusedBlock
-    ? definitions.get(focusedBlock.type)
-    : null;
+  const focusedBlock = focusedBlockId ? findBlockInTreeFlat(blocks, focusedBlockId) : null;
+  const focusedDefinition = focusedBlock ? definitions.get(focusedBlock.type) : null;
   const focusedLabel = focusedDefinition?.label ?? focusedBlock?.type ?? null;
 
   const actions: CommandAction[] = [];
@@ -188,8 +181,7 @@ export function CommandMenu({
         label: `Move ${focusedLabel} into ${candidate.label}`,
         hint: candidate.id.slice(0, 8),
         group: "Block",
-        run: () =>
-          dispatch({ type: "MOVE_INTO", id, targetParentId: candidate.id }),
+        run: () => dispatch({ type: "MOVE_INTO", id, targetParentId: candidate.id }),
       });
     }
     for (const def of availableBlocks) {
@@ -312,9 +304,7 @@ export function CommandMenu({
             onChange={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={handleInputKeyDown}
             placeholder={
-              focusedLabel
-                ? `Run a command for ${focusedLabel}…`
-                : "Type to filter commands…"
+              focusedLabel ? `Run a command for ${focusedLabel}…` : "Type to filter commands…"
             }
             aria-label="Filter commands"
           />
