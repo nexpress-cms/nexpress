@@ -31,9 +31,13 @@ export const tagsCollection = defineCollection({
       admin: { kind: "title" },
     },
     {
+      // Description plays the role of body copy here — it's the
+      // primary content of a Tag row. Stays in the main column
+      // under the title (no `position: "sidebar"`) so the edit
+      // screen reads as title → body, the same composition posts
+      // and pages use.
       type: "textarea",
       name: "description",
-      admin: { position: "sidebar" },
     },
   ],
 });
