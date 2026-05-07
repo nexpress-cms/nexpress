@@ -24,8 +24,8 @@ export const postsTable = pgTable(
     visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
     title: text("title").notNull(),
     excerpt: text("excerpt"),
-    coverImage: uuid("cover_image").references(() => npMedia.id),
     content: jsonb("content").notNull(),
+    coverImage: uuid("cover_image").references(() => npMedia.id),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     author: uuid("author").references(() => npUsers.id),
     wpOriginalAuthor: text("wp_original_author"),
@@ -91,43 +91,18 @@ export const pagesTable = pgTable(
     template: text("template"),
     blocks: jsonb("blocks"),
     slug: text("slug").notNull(),
-    siteId: text("site_id").default("default").notNull(),
-    _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
-    searchVector: tsvector("search_vector"),
-  },
-  (table) => [index("np_c_pages_status_idx").on(table.status), uniqueIndex("np_c_pages_site_slug_idx").on(table.siteId, table.slug), index("np_c_pages_site_idx").on(table.siteId)],
-);
-
-export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
-  createdByUser: one(npUsers, { fields: [pagesTable.createdBy], references: [npUsers.id] }),
-  updatedByUser: one(npUsers, { fields: [pagesTable.updatedBy], references: [npUsers.id] }),
-}));
-
-export const localizedPagesTable = pgTable(
-  "np_c_localized-pages",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => npUsers.id),
-    updatedBy: uuid("updated_by").references(() => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
-    title: text("title").notNull(),
-    body: text("body"),
-    slug: text("slug").notNull(),
     locale: text("locale").notNull(),
     translationGroupId: uuid("translation_group_id").notNull(),
     siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
     searchVector: tsvector("search_vector"),
   },
-  (table) => [index("np_c_localized-pages_status_idx").on(table.status), uniqueIndex("np_c_localized-pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug), index("np_c_localized-pages_translation_group_idx").on(table.translationGroupId), index("np_c_localized-pages_locale_idx").on(table.locale), index("np_c_localized-pages_site_idx").on(table.siteId)],
+  (table) => [index("np_c_pages_status_idx").on(table.status), uniqueIndex("np_c_pages_site_locale_slug_idx").on(table.siteId, table.locale, table.slug), index("np_c_pages_translation_group_idx").on(table.translationGroupId), index("np_c_pages_locale_idx").on(table.locale), index("np_c_pages_site_idx").on(table.siteId)],
 );
 
-export const localizedPagesTableRelations = relations(localizedPagesTable, ({ many, one }) => ({
-  createdByUser: one(npUsers, { fields: [localizedPagesTable.createdBy], references: [npUsers.id] }),
-  updatedByUser: one(npUsers, { fields: [localizedPagesTable.updatedBy], references: [npUsers.id] }),
+export const pagesTableRelations = relations(pagesTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [pagesTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [pagesTable.updatedBy], references: [npUsers.id] }),
 }));
 
 export const taxonomiesTable = pgTable(

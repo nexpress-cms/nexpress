@@ -1,7 +1,6 @@
 import {
   buildPageMetadata,
   buildWebSiteJsonLd,
-  findDocuments,
   findSlugRedirect,
   getPageBySlug,
   getPluginTemplatesForCollection,
@@ -71,7 +70,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
   const { locale, path } = splitLocaleFromPath(rawPath);
-  const page = await getPageBySlug(path);
+  const page = await getPageBySlug(path, { locale });
 
   // hreflang alternates: any path that resolves under i18n
   // routing gets one alternate per configured locale plus
@@ -115,27 +114,15 @@ export default async function CatchAllPage({ params }: PageProps) {
   const { locale: requestedLocale, path } = splitLocaleFromPath(rawPath);
   const { isEnabled: isDraft } = await draftMode();
 
-  // Try the (single-locale) `pages` collection first. Pages
-  // doesn't opt into i18n today; the same row serves every
-  // locale URL.
-  let page = await getPageBySlug(path, { draft: isDraft });
-
-  // Fall through to `localized-pages` (i18n collection) when
-  // the pages lookup misses. The slug match is locale-scoped
-  // because the (locale, slug) unique index lives on the
-  // localized table — the same slug can resolve to different
-  // documents depending on which locale the visitor asked for.
-  if (!page && path !== "/") {
-    const result = await findDocuments("localized-pages", {
-      where: {
-        slug: path.replace(/^\/+/, ""),
-        ...(isDraft ? {} : { _status: "published" }),
-      },
-      locale: requestedLocale,
-      limit: 1,
-    });
-    page = result.docs[0] ?? null;
-  }
+  // Locale-scoped lookup: `pages` is i18n-enabled, so the unique
+  // index is `(site_id, locale, slug)` — the same slug resolves
+  // to different rows depending on the visitor's locale. The
+  // middleware (`apps/web/src/proxy.ts`) already stripped the
+  // locale prefix from `path` for us.
+  const page = await getPageBySlug(path, {
+    draft: isDraft,
+    locale: requestedLocale,
+  });
 
   if (!page) {
     // The site root is special: a fresh install with no pages
@@ -157,10 +144,7 @@ export default async function CatchAllPage({ params }: PageProps) {
     // Slug rename history — when a page used to live at this path
     // but got renamed, walk `np_slug_history` to the current
     // target and 301. Search-engine indices, external links, and
-    // bookmarks survive the rename. Only the `pages` collection is
-    // checked here; the localized-pages branch above handles its
-    // own slugs separately and isn't currently in the history
-    // table (single-locale pages cover the common case).
+    // bookmarks survive the rename.
     const slugWithoutLeadingSlash = path.replace(/^\/+/, "");
     const target = await findSlugRedirect("pages", slugWithoutLeadingSlash);
     if (target) {
