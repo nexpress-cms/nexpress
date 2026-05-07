@@ -1,14 +1,16 @@
 ---
 "@nexpress/core": minor
+"@nexpress/next": minor
 "@nexpress/web": patch
 ---
 
 **Phase C dogfood pass — fixes found while migrating real pages onto the new primitives.**
 
-Wrote `/u/[handle]` and `/discussions` against the primitives
-shipped in #531; the migration surfaced two friction points that
-are worth fixing in the primitive surface (rather than working
-around them in every caller) and one cookbook gap.
+Wrote `/u/[handle]`, `/u/[handle]/discussions`, and `/discussions`
+against the primitives shipped in #531; the migration surfaced
+three friction points worth fixing in the primitive surface
+(rather than working around them in every caller) and one
+cookbook gap.
 
 - **`getMemberProfile(idOrHandle)` now lowercases the input.**
   Member handles are stored lowercase by the registration path
@@ -34,6 +36,14 @@ around them in every caller) and one cookbook gap.
   a profile to a client component crosses the JSON boundary —
   call `.toISOString()` first, or accept `string` on the client
   and parse there.
+
+- **`@nexpress/next` re-exports `buildPageMetadata`** as a
+  thin Next-typed wrapper so `generateMetadata` accepts the
+  result without an `as Metadata` cast. The core function still
+  exists (framework-agnostic, returns `NpPageMetadata`) for
+  static-site exporters and other non-Next consumers.
+  Reference-app pages migrated. Cookbook updated to recommend
+  the wrapper for page authors.
 
 The dogfood pass also fixed a pre-existing bug in
 `/u/[handle]/page.tsx`: the old code passed `member.avatar` (a

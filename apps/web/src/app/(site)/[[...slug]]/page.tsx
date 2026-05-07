@@ -1,12 +1,11 @@
 import {
-  buildPageMetadata,
   buildWebSiteJsonLd,
   findSlugRedirect,
   getPageBySlug,
   getPluginTemplatesForCollection,
   resolveTemplateComponent,
 } from "@nexpress/core";
-import { createDefaultBlockRenderContext } from "@nexpress/next";
+import { buildPageMetadata, createDefaultBlockRenderContext } from "@nexpress/next";
 import { getCachedActiveTheme } from "@/lib/cached-theme";
 import { renderBlocks } from "@nexpress/blocks";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
@@ -83,14 +82,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   // Pages without a published row fall back to site-wide
   // defaults; that's also what the `DefaultHomePage` empty-state
   // surface uses, so the meta tags still describe the brand.
-  const metadata = (await buildPageMetadata({
+  const metadata = await buildPageMetadata({
     title: typeof page?.title === "string" ? page.title : null,
     description:
       typeof page?.seoDescription === "string" ? page.seoDescription : null,
     path: rawPath === "/" ? "/" : `/${rawPath}`,
     ogType: "website",
     locale,
-  })) as Metadata;
+  });
 
   return {
     ...metadata,

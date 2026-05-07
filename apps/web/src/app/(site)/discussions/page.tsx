@@ -1,4 +1,5 @@
-import { buildPageMetadata, findDocuments, getMemberProfiles } from "@nexpress/core";
+import { findDocuments, getMemberProfiles } from "@nexpress/core";
+import { buildPageMetadata } from "@nexpress/next";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -11,11 +12,11 @@ interface DiscussionsListPageProps {
 
 export async function generateMetadata(): Promise<Metadata> {
   await ensureFor("read");
-  return (await buildPageMetadata({
+  return buildPageMetadata({
     title: "Discussions",
     description: "Member-authored discussion threads.",
     path: "/discussions",
-  })) as Metadata;
+  });
 }
 
 const STATUS_LABELS: Record<string, string> = {

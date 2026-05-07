@@ -1,10 +1,10 @@
 import {
   buildDiscussionForumPostingJsonLd,
-  buildPageMetadata,
   findDocuments,
   getSiteSeoSettings,
   npMembers,
 } from "@nexpress/core";
+import { buildPageMetadata } from "@nexpress/next";
 import { renderRichText } from "@nexpress/editor/server";
 import { eq } from "drizzle-orm";
 import type { Metadata } from "next";
@@ -38,7 +38,7 @@ export async function generateMetadata({
   // "Discussion not found" title — `notFound()` in the page
   // body will turn the response into a 404 anyway, but search
   // crawlers fetching just the head still need a sane title.
-  return (await buildPageMetadata({
+  return buildPageMetadata({
     title:
       typeof doc?.title === "string" ? (doc.title) : "Discussion",
     description:
@@ -51,7 +51,7 @@ export async function generateMetadata({
       doc?.createdAt instanceof Date ? (doc.createdAt) : null,
     modifiedTime:
       doc?.updatedAt instanceof Date ? (doc.updatedAt) : null,
-  })) as Metadata;
+  });
 }
 
 const STATUS_LABELS: Record<string, string> = {

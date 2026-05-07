@@ -511,12 +511,12 @@ augmented blocks.
 
 ```ts
 import {
-  buildPageMetadata,
   buildArticleJsonLd,
   buildWebSiteJsonLd,
   buildAtomFeed,
   buildSitemap,
 } from "@nexpress/core";
+import { buildPageMetadata } from "@nexpress/next";
 import type { Metadata } from "next";
 
 export async function generateMetadata({ params }): Promise<Metadata> {
@@ -535,6 +535,15 @@ export async function generateMetadata({ params }): Promise<Metadata> {
   });
 }
 ```
+
+> **Two `buildPageMetadata`s, pick the right one.**
+> `@nexpress/core` exports a framework-agnostic version returning
+> `NpPageMetadata` (no `next` types in core). `@nexpress/next`
+> re-exports a thin wrapper that returns `Promise<Metadata>` so
+> `generateMetadata` accepts it without an `as Metadata` cast.
+> Pages should always import from `@nexpress/next`. Server-side
+> tools that don't depend on Next (e.g. a static-site exporter)
+> can keep using the core form.
 
 JSON-LD as a child component:
 
