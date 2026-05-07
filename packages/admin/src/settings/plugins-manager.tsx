@@ -4,10 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { NpFieldConfig } from "@nexpress/core";
 import {
+  ChevronDown,
+  ChevronRight,
   Copy,
   ExternalLink,
+  Globe,
   Loader2,
-  Package,
+  Plus,
   RefreshCw,
   Search,
   Settings2,
@@ -16,6 +19,7 @@ import { useForm } from "react-hook-form";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
 import { npFetch } from "../lib/api-client.js";
+import { cn } from "../ui/utils.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -29,7 +33,6 @@ import {
 } from "../ui/dialog.js";
 import { Form } from "../ui/form.js";
 import { Input } from "../ui/input.js";
-import { Label } from "../ui/label.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
 import { PageHeader } from "../layout/page-header.js";
@@ -80,6 +83,195 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * One-line summary string shown in the "Installed" card header.
+ * Mirrors the design's `5 active · 1 update available` shape, but
+ * we don't have an update-detection feed yet, so the string
+ * surfaces the three states the API actually exposes:
+ *
+ *   active           → enabled && loaded
+ *   pending restart  → enabled && !loaded
+ *   disabled         → !enabled
+ */
+function summarizePluginCounts(items: PluginItem[]): string {
+  let active = 0;
+  let pending = 0;
+  let disabled = 0;
+  for (const p of items) {
+    if (!p.enabled) disabled += 1;
+    else if (!p.loaded) pending += 1;
+    else active += 1;
+  }
+  const parts: string[] = [];
+  if (active > 0) parts.push(`${active} active`);
+  if (pending > 0) parts.push(`${pending} pending restart`);
+  if (disabled > 0) parts.push(`${disabled} disabled`);
+  return parts.length > 0 ? parts.join(" · ") : `${items.length} installed`;
+}
+
+interface PluginRowProps {
+  plugin: PluginItem;
+  isFirst: boolean;
+  togglingId: string | null;
+  onToggle: (plugin: PluginItem, nextEnabled: boolean) => void | Promise<void>;
+  onOpenConfig: (plugin: PluginItem) => void;
+}
+
+/**
+ * Compact plugin row — design's `plugin-row` shape: name + slug
+ * (`@nexpress/<id>@<version>`) + description on the left, status
+ * pill in the middle, Configure / Open admin / Switch on the
+ * right. Capabilities / Hooks / Routes hide behind a
+ * "Show details" disclosure so the row stays compact for the
+ * common "I just want to toggle a plugin" path.
+ */
+function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: PluginRowProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const hasDetails =
+    plugin.capabilities.length > 0 || plugin.hooks.length > 0 || plugin.routes.length > 0;
+
+  const status: "active" | "pending" | "disabled" = !plugin.enabled
+    ? "disabled"
+    : plugin.loaded
+      ? "active"
+      : "pending";
+
+  // Render the plugin's own id verbatim — the API hands back
+  // the manifest id (e.g. `"reading-time"`), NOT the npm package
+  // name. Fabricating an `@nexpress/` scope here would misrepresent
+  // third-party plugins and even mis-spell first-party ones (their
+  // npm names go through a `plugin-` prefix the manifest id
+  // doesn't carry). Append the version when present.
+  const slugLabel = plugin.version ? `${plugin.id}@${plugin.version}` : plugin.id;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:gap-4 sm:px-6 sm:py-4",
+        !isFirst && "border-t border-border/60",
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-sm font-semibold text-foreground">{plugin.name}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{slugLabel}</span>
+        </div>
+        {plugin.description ? (
+          <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">{plugin.description}</p>
+        ) : null}
+        {hasDetails ? (
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={detailsOpen}
+          >
+            {detailsOpen ? (
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="h-3 w-3" aria-hidden="true" />
+            )}
+            {detailsOpen ? "Hide details" : "Show details"}
+          </button>
+        ) : null}
+        {detailsOpen ? (
+          <div className="mt-2 space-y-2 rounded-md bg-muted/40 px-3 py-2 text-xs">
+            {plugin.capabilities.length > 0 ? (
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Capabilities
+                </span>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {plugin.capabilities.map((cap) => (
+                    <Badge key={cap} variant="secondary" className="font-mono text-[10px]">
+                      {cap}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {plugin.hooks.length > 0 ? (
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Hooks
+                </span>
+                <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                  {plugin.hooks.join(", ")}
+                </p>
+              </div>
+            ) : null}
+            {plugin.routes.length > 0 ? (
+              <div>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Routes
+                </span>
+                <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
+                  {plugin.routes.map((route) => (
+                    <li key={`${route.method} ${route.path}`}>
+                      <span className="font-semibold">{route.method}</span> /api/plugins/
+                      {plugin.id}
+                      {route.path}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <PluginStatusBadge status={status} />
+
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        {plugin.hasAdmin ? (
+          <Button type="button" variant="outline" size="sm" asChild>
+            <Link href={`/admin/plugins/${plugin.id}`}>
+              <ExternalLink className="size-3.5" />
+              Open admin
+            </Link>
+          </Button>
+        ) : null}
+        <Button type="button" variant="outline" size="sm" onClick={() => onOpenConfig(plugin)}>
+          <Settings2 className="size-3.5" />
+          Configure
+        </Button>
+        <Switch
+          checked={plugin.enabled}
+          disabled={togglingId !== null}
+          onCheckedChange={(checked) => {
+            void onToggle(plugin, checked);
+          }}
+          aria-label={`Toggle ${plugin.name}`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PluginStatusBadge({ status }: { status: "active" | "pending" | "disabled" }) {
+  if (status === "active") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+        Active
+      </span>
+    );
+  }
+  if (status === "pending") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+        Pending restart
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      Inactive
+    </span>
+  );
+}
+
 export function PluginsManager() {
   const [state, setState] = useState<PanelState>({ kind: "loading" });
   const [toast, setToast] = useState<ToastState>(null);
@@ -89,6 +281,15 @@ export function PluginsManager() {
   const [configError, setConfigError] = useState<string | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [reloading, setReloading] = useState(false);
+  // Browse-registry modal — Discover panel content lives in a
+  // Dialog now instead of inline on the page (matches the design's
+  // pagehead-action pattern).
+  const [browseOpen, setBrowseOpen] = useState(false);
+  // Install-plugin guide modal — explains the manual install flow
+  // (npm install → add to nexpress.config.ts → restart). The
+  // framework doesn't ship runtime install today, so this is the
+  // honest UI for the "Install plugin" CTA.
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
 
   const loadPlugins = useCallback(async () => {
     try {
@@ -199,17 +400,15 @@ export function PluginsManager() {
     setToast(null);
     try {
       const response = await npFetch("/api/admin/plugins/reload", { method: "POST" });
-      const payload = (await response.json().catch(() => null)) as
-        | {
-            reloaded?: boolean;
-            schedules?: {
-              added: number;
-              updated: number;
-              removed: number;
-              workerOwnsRegistrations: boolean | null;
-            } | null;
-          }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        reloaded?: boolean;
+        schedules?: {
+          added: number;
+          updated: number;
+          removed: number;
+          workerOwnsRegistrations: boolean | null;
+        } | null;
+      } | null;
       if (!response.ok) {
         setToast({
           type: "error",
@@ -261,21 +460,36 @@ export function PluginsManager() {
           title="Plugins"
           description="Toggle and configure installed plugins. Enable / disable applies to the next request; new plugins still need a server restart to register hooks and routes."
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void reloadAllPlugins()}
-          disabled={reloading}
-          title="Reset the plugin registry and re-run setup() on every plugin"
-        >
-          {reloading ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-          Reload all
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void reloadAllPlugins()}
+            disabled={reloading}
+            title="Reset the plugin registry and re-run setup() on every plugin"
+          >
+            {reloading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            Reload all
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setBrowseOpen(true)}>
+            <Globe className="size-3.5" />
+            Browse registry
+          </Button>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => setInstallGuideOpen(true)}
+          >
+            <Plus className="size-3.5" />
+            Install plugin
+          </Button>
+        </div>
       </div>
 
       {toast ? (
@@ -312,117 +526,33 @@ export function PluginsManager() {
         </Card>
       ) : null}
 
-      {state.kind === "ready" && state.items.length > 0
-        ? state.items.map((plugin) => (
-            <Card key={plugin.id}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                <div className="space-y-1">
-                  <CardTitle className="flex items-center gap-2">
-                    {plugin.name}
-                    {plugin.version ? (
-                      <span className="text-xs font-normal text-muted-foreground">
-                        v{plugin.version}
-                      </span>
-                    ) : null}
-                    {plugin.enabled && !plugin.loaded ? (
-                      <Badge
-                        variant="secondary"
-                        className="bg-amber-500/15 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                      >
-                        pending restart
-                      </Badge>
-                    ) : null}
-                    {!plugin.enabled ? (
-                      <Badge variant="secondary">disabled</Badge>
-                    ) : null}
-                  </CardTitle>
-                  {plugin.description ? (
-                    <p className="text-sm text-muted-foreground">{plugin.description}</p>
-                  ) : null}
-                  <p className="text-xs text-muted-foreground">
-                    <code>{plugin.id}</code>
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {plugin.hasAdmin ? (
-                    <Button type="button" variant="outline" size="sm" asChild>
-                      <Link href={`/admin/plugins/${plugin.id}`}>
-                        <ExternalLink className="size-3.5" />
-                        Open admin
-                      </Link>
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openConfigDialog(plugin)}
-                  >
-                    <Settings2 className="size-3.5" />
-                    Config
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={`enabled-${plugin.id}`} className="text-xs text-muted-foreground">
-                      {plugin.enabled ? "Enabled" : "Disabled"}
-                    </Label>
-                    <Switch
-                      id={`enabled-${plugin.id}`}
-                      checked={plugin.enabled}
-                      disabled={togglingId !== null}
-                      onCheckedChange={(checked) => {
-                        void handleToggle(plugin, checked);
-                      }}
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {plugin.capabilities.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Capabilities
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {plugin.capabilities.map((cap) => (
-                        <Badge key={cap} variant="secondary" className="font-mono text-xs">
-                          {cap}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {plugin.hooks.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Hooks
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      {plugin.hooks.join(", ")}
-                    </p>
-                  </div>
-                ) : null}
-                {plugin.routes.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Routes
-                    </p>
-                    <ul className="mt-1 space-y-0.5 font-mono text-xs text-muted-foreground">
-                      {plugin.routes.map((route) => (
-                        <li key={`${route.method} ${route.path}`}>
-                          <span className="font-semibold">{route.method}</span>{" "}
-                          /api/plugins/{plugin.id}
-                          {route.path}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))
-        : null}
+      {state.kind === "ready" && state.items.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Installed</CardTitle>
+              <span className="text-xs text-muted-foreground">
+                {summarizePluginCounts(state.items)}
+              </span>
+            </div>
+          </CardHeader>
+          <div className="border-t border-border/60">
+            {state.items.map((plugin, index) => (
+              <PluginRow
+                key={plugin.id}
+                plugin={plugin}
+                isFirst={index === 0}
+                togglingId={togglingId}
+                onToggle={handleToggle}
+                onOpenConfig={openConfigDialog}
+              />
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
-      <DiscoverPanel />
+      <BrowseRegistryDialog open={browseOpen} onOpenChange={setBrowseOpen} />
+      <InstallGuideDialog open={installGuideOpen} onOpenChange={setInstallGuideOpen} />
 
       <Dialog
         open={configPlugin !== null}
@@ -535,9 +665,9 @@ function PluginConfigForm({
         body: JSON.stringify({ config: values }),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         setErrorMessage(payload?.error?.message ?? "Failed to save settings.");
         return;
       }
@@ -608,8 +738,20 @@ interface DiscoveredPlugin {
   author: string | null;
 }
 
-function DiscoverPanel() {
-  const [open, setOpen] = useState(false);
+interface BrowseRegistryDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * "Browse registry" — large modal listing every npm package
+ * tagged `keywords:nexpress-plugin`. Replaces the inline
+ * DiscoverPanel; the same `/api/admin/plugins/discover`
+ * endpoint feeds the result list. Picks an initial empty
+ * search the first time the modal opens so operators see a
+ * full list before typing anything.
+ */
+function BrowseRegistryDialog({ open, onOpenChange }: BrowseRegistryDialogProps) {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<DiscoveredPlugin[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -623,9 +765,10 @@ function DiscoverPanel() {
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
       const response = await npFetch(`/api/admin/plugins/discover?${params.toString()}`);
-      const payload = (await response.json().catch(() => null)) as
-        | { items?: DiscoveredPlugin[]; error?: { message?: string } | string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        items?: DiscoveredPlugin[];
+        error?: { message?: string } | string;
+      } | null;
       if (!response.ok) {
         const message =
           (payload && typeof payload.error === "object" && payload.error?.message) ||
@@ -642,8 +785,18 @@ function DiscoverPanel() {
     }
   }, []);
 
+  // First open → kick off an empty search so the modal shows a
+  // populated list before the operator types anything. We don't
+  // re-fetch on every reopen; the result set is stable enough
+  // that operators can refresh manually via the search button.
+  useEffect(() => {
+    if (open && items === null && !loading) {
+      void search("");
+    }
+  }, [open, items, loading, search]);
+
   const copy = async (packageName: string) => {
-    const command = `nexpress plugin add ${packageName}`;
+    const command = `pnpm add ${packageName}`;
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         await navigator.clipboard.writeText(command);
@@ -657,68 +810,74 @@ function DiscoverPanel() {
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="flex items-center gap-2">
-          <Package className="size-4" />
-          Discover plugins
-        </CardTitle>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const next = !open;
-            setOpen(next);
-            if (next && items === null && !loading) void search("");
-          }}
-        >
-          {open ? "Hide" : "Browse npm"}
-        </Button>
-      </CardHeader>
-      {open ? (
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Globe className="size-4" />
+            Browse plugin registry
+          </DialogTitle>
+          <DialogDescription>
             Searches packages on the npm registry tagged with{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
               keywords:nexpress-plugin
             </code>
-            . Click <em>Copy install command</em> and run it from your project root.
-          </p>
-          <form
-            className="flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void search(query);
-            }}
-          >
-            <Input
-              placeholder="Filter by name or keyword (e.g. seo)"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <Button type="submit" variant="outline" size="sm" disabled={loading}>
-              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
-              Search
-            </Button>
-          </form>
-          {error ? (
-            <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p>
+            . Copy the install command and run it from your project root, then add the plugin to{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">plugins</code> in{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+              nexpress.config.ts
+            </code>
+            .
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void search(query);
+          }}
+        >
+          <Input
+            placeholder="Filter by name or keyword (e.g. seo, oauth, forum)"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            autoFocus
+          />
+          <Button type="submit" variant="outline" size="sm" disabled={loading}>
+            {loading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Search className="size-3.5" />
+            )}
+            Search
+          </Button>
+        </form>
+
+        <div className="max-h-[60vh] overflow-y-auto pr-1">
+          {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
+          {!error && loading && items === null ? (
+            <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Searching the registry…
+            </div>
           ) : null}
-          {items && items.length === 0 && !loading && !error ? (
-            <p className="text-sm text-muted-foreground">No matching plugins on the registry.</p>
+          {!error && items && items.length === 0 && !loading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No matching plugins on the registry.
+            </p>
           ) : null}
           {items && items.length > 0 ? (
             <div className="space-y-2">
               {items.map((plugin) => (
                 <div
                   key={plugin.name}
-                  className="rounded-xl border border-border/60 p-3"
+                  className="rounded-xl border border-border/60 bg-card/40 p-3"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        {plugin.name}
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                        <span>{plugin.name}</span>
                         {plugin.version ? (
                           <Badge variant="secondary" className="font-mono text-[10px]">
                             v{plugin.version}
@@ -729,7 +888,7 @@ function DiscoverPanel() {
                         <p className="text-xs text-muted-foreground">{plugin.description}</p>
                       ) : null}
                       <p className="font-mono text-[10px] text-muted-foreground">
-                        nexpress plugin add {plugin.name}
+                        pnpm add {plugin.name}
                       </p>
                       {plugin.author || plugin.publishedAt ? (
                         <p className="text-[11px] text-muted-foreground">
@@ -741,7 +900,7 @@ function DiscoverPanel() {
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex shrink-0 flex-col gap-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -765,8 +924,172 @@ function DiscoverPanel() {
               ))}
             </div>
           ) : null}
-        </CardContent>
-      ) : null}
-    </Card>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface InstallGuideDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * "Install plugin" — guide modal. NexPress doesn't ship a runtime
+ * plugin installer (plugins are npm packages added to
+ * `nexpress.config.ts`'s `plugins` array, then loaded at boot).
+ * This modal walks the operator through that flow honestly:
+ *
+ *   1. Install via package manager
+ *   2. Register in nexpress.config.ts
+ *   3. Restart dev / redeploy
+ *
+ * The "Browse registry" CTA at the bottom routes to the registry
+ * modal so an operator who clicked Install first lands in the
+ * right place anyway.
+ */
+function InstallGuideDialog({ open, onOpenChange }: InstallGuideDialogProps) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = async (text: string, key: string) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        setCopied(key);
+        setTimeout(() => setCopied(null), 2_000);
+      }
+    } catch {
+      // Clipboard may be blocked. The snippet stays visible inline.
+    }
+  };
+
+  // Reflect how plugins are actually wired in the reference app:
+  // a static `definePlugin()` object passed directly into the
+  // `plugins:` array. Per-plugin options live in the admin's
+  // Configure dialog (handlers receive them via `ctx.config`),
+  // NOT as a factory-call argument here.
+  const configSnippet = `import { defineConfig } from "@nexpress/core";
+import { yourPlugin } from "@nexpress/plugin-your-name";
+
+export default defineConfig({
+  plugins: [
+    yourPlugin,
+  ],
+});`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="size-4" />
+            Install a plugin
+          </DialogTitle>
+          <DialogDescription>
+            NexPress plugins are npm packages. There&apos;s no runtime install — the three steps
+            below are the whole flow.
+          </DialogDescription>
+        </DialogHeader>
+
+        <ol className="space-y-4 text-sm">
+          <li className="space-y-2">
+            <div className="flex items-baseline gap-2">
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                1
+              </span>
+              <div className="font-medium">Install the package</div>
+            </div>
+            <div className="ml-7 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                Run the install in your project root. Use <strong>Browse registry</strong> to find
+                packages tagged{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                  keywords:nexpress-plugin
+                </code>
+                .
+              </p>
+              <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs">
+                <span className="flex-1 select-all">pnpm add @nexpress/plugin-&lt;name&gt;</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void copy("pnpm add @nexpress/plugin-<name>", "install")}
+                  aria-label="Copy install command"
+                >
+                  <Copy className="size-3.5" />
+                  {copied === "install" ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+            </div>
+          </li>
+
+          <li className="space-y-2">
+            <div className="flex items-baseline gap-2">
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                2
+              </span>
+              <div className="font-medium">
+                Register the plugin in <code className="font-mono">nexpress.config.ts</code>
+              </div>
+            </div>
+            <div className="ml-7 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                Add it to the <code className="font-mono">plugins</code> array. Most plugins export
+                a factory function — pass the options it expects.
+              </p>
+              <div className="rounded-lg border border-border/60 bg-muted/40">
+                <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <span className="font-mono normal-case">nexpress.config.ts</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void copy(configSnippet, "config")}
+                    aria-label="Copy config snippet"
+                  >
+                    <Copy className="size-3.5" />
+                    {copied === "config" ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto px-3 py-2 font-mono text-[11px] leading-relaxed">
+                  {configSnippet}
+                </pre>
+              </div>
+            </div>
+          </li>
+
+          <li className="space-y-2">
+            <div className="flex items-baseline gap-2">
+              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                3
+              </span>
+              <div className="font-medium">Restart and verify</div>
+            </div>
+            <div className="ml-7 space-y-1.5 text-xs text-muted-foreground">
+              <p>
+                Restart your dev server (or redeploy in production) so the bootstrap picks up the
+                new plugin. The plugin will appear in the{" "}
+                <strong className="font-medium text-foreground">Installed</strong> list above with
+                status <em>Active</em> once its <code className="font-mono">setup()</code> runs
+                cleanly.
+              </p>
+              <p>
+                If a plugin you registered shows as <em>Pending restart</em>, the dev server
+                hasn&apos;t reloaded yet — stop and restart{" "}
+                <code className="font-mono">pnpm dev</code>.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

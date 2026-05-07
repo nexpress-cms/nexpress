@@ -111,7 +111,15 @@ export function SubscribeForm({
   }
 
   return (
-    <form onSubmit={onSubmit} style={wrapperStyle}>
+    <form
+      onSubmit={(event) => {
+        // The handler is async; React's `onSubmit` type expects a
+        // void return, so wrap with `void` to satisfy
+        // `@typescript-eslint/no-misused-promises`.
+        void onSubmit(event);
+      }}
+      style={wrapperStyle}
+    >
       <div style={rowStyle}>
         <input
           type="email"
