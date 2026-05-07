@@ -116,9 +116,11 @@ export default async function CatchAllPage({ params }: PageProps) {
 
   // Locale-scoped lookup: `pages` is i18n-enabled, so the unique
   // index is `(site_id, locale, slug)` — the same slug resolves
-  // to different rows depending on the visitor's locale. The
-  // middleware (`apps/web/src/proxy.ts`) already stripped the
-  // locale prefix from `path` for us.
+  // to different rows depending on the visitor's locale.
+  // `splitLocaleFromPath` (above) peeled the URL's locale segment
+  // off `path`; the middleware (`apps/web/src/proxy.ts`)
+  // propagates the locale via header but does NOT rewrite the
+  // URL, so the strip has to happen here on the server route.
   const page = await getPageBySlug(path, {
     draft: isDraft,
     locale: requestedLocale,
