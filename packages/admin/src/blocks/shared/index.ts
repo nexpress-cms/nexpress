@@ -37,6 +37,10 @@ export {
   ContainerWarningsPanel,
   type ContainerWarningsPanelProps,
 } from "./container-warnings-panel.js";
+export {
+  EditorAsidePortal,
+  type EditorAsidePortalProps,
+} from "./editor-aside-portal.js";
 export { StatusBar, type StatusBarProps, type AutosaveStatus } from "./status-bar.js";
 export {
   ModeSwitch,

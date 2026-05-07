@@ -667,6 +667,16 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                 />
               ) : null}
 
+              {/* Block-editor aside mount. The in-page block
+                  editor portals its Outline + Container-warnings
+                  panels here so they stack with the form's
+                  Publishing card — matches the design's
+                  `editor-aside` (Status / Slug / Page tree /
+                  Warnings in a single right column). The div is
+                  always present even on collections without a
+                  blocks field; it's empty in that case. */}
+              <div id="np-block-editor-aside" />
+
               {doc?.id && config.versions ? (
                 <RevisionsPanel
                   collectionSlug={collectionSlug}
