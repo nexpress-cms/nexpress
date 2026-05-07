@@ -136,8 +136,13 @@ function PluginRow({ plugin, isFirst, togglingId, onToggle, onOpenConfig }: Plug
       ? "active"
       : "pending";
 
-  const slug = plugin.id.startsWith("@") ? plugin.id : `@nexpress/${plugin.id}`;
-  const slugLabel = plugin.version ? `${slug}@${plugin.version}` : slug;
+  // Render the plugin's own id verbatim — the API hands back
+  // the manifest id (e.g. `"reading-time"`), NOT the npm package
+  // name. Fabricating an `@nexpress/` scope here would misrepresent
+  // third-party plugins and even mis-spell first-party ones (their
+  // npm names go through a `plugin-` prefix the manifest id
+  // doesn't carry). Append the version when present.
+  const slugLabel = plugin.version ? `${plugin.id}@${plugin.version}` : plugin.id;
 
   return (
     <div
@@ -959,12 +964,17 @@ function InstallGuideDialog({ open, onOpenChange }: InstallGuideDialogProps) {
     }
   };
 
+  // Reflect how plugins are actually wired in the reference app:
+  // a static `definePlugin()` object passed directly into the
+  // `plugins:` array. Per-plugin options live in the admin's
+  // Configure dialog (handlers receive them via `ctx.config`),
+  // NOT as a factory-call argument here.
   const configSnippet = `import { defineConfig } from "@nexpress/core";
 import { yourPlugin } from "@nexpress/plugin-your-name";
 
 export default defineConfig({
   plugins: [
-    yourPlugin({ /* options */ }),
+    yourPlugin,
   ],
 });`;
 
