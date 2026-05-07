@@ -9,7 +9,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Braces, Copy, Eye, EyeOff, Group, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
+import { Braces, Copy, Group, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -46,7 +46,6 @@ import {
   saveServerPattern,
   type NpPattern,
 } from "../patterns.js";
-import { PreviewPanel } from "../preview-panel.js";
 import { useContributedPatterns } from "../registry-context.js";
 import {
   CommandMenu,
@@ -128,13 +127,12 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  // Currently-focused row id (#467 #1 — selected-block preview).
-  // Tracked via focusin/focusout listeners on the editor section
-  // so any focus surface (row card, popover, dropdown) within a
-  // `[data-np-block-row]` ancestor counts as "this block is the
-  // operator's current target". The PreviewPanel receives the
-  // value and highlights / scrolls to the matching marker in the
-  // iframe.
+  // Currently-focused row id (#467 #1). Tracked via focusin /
+  // focusout listeners on the editor section so any focus surface
+  // (row card, popover, dropdown) within a `[data-np-block-row]`
+  // ancestor counts as "this block is the operator's current
+  // target". The status bar's active-block chip + the outline
+  // panel's highlight both read this value.
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
 
   // Multi-select set (#467 #3). Lives at the orchestrator so a
@@ -388,31 +386,12 @@ export function BlockPageEditor({
     setCustomPatterns((current) => current.filter((p) => p.id !== patternId));
   }, []);
 
-  // Live preview toggle. Persisted in localStorage so an operator
-  // who keeps it open across sessions doesn't reflip on every page
-  // load. Defaults to off — preview costs an extra server round
-  // trip per edit.
-  const [previewOpen, setPreviewOpen] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem("np-page-builder.preview");
-      if (stored === "1") setPreviewOpen(true);
-    } catch {
-      // Private-browsing / SSR — fall back to default closed.
-    }
-  }, []);
-  const togglePreview = () => {
-    setPreviewOpen((current) => {
-      const next = !current;
-      try {
-        window.localStorage.setItem("np-page-builder.preview", next ? "1" : "0");
-      } catch {
-        // Same as above — silent.
-      }
-      return next;
-    });
-  };
+  // Live preview lived here briefly as a Page-builder-mode toggle
+  // (`Show preview` button + bottom iframe). Removed once Doc view
+  // became a true preview surface — switching to Doc mode IS the
+  // preview now, and a second iframe at the bottom of Page builder
+  // duplicated that for no operator benefit while costing a server
+  // round trip per debounced edit.
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1006,29 +985,8 @@ export function BlockPageEditor({
             <Braces className="mr-1.5 h-4 w-4" />
             Edit JSON
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-pressed={previewOpen}
-            onClick={togglePreview}
-          >
-            {previewOpen ? (
-              <>
-                <EyeOff className="mr-1.5 h-4 w-4" />
-                Hide preview
-              </>
-            ) : (
-              <>
-                <Eye className="mr-1.5 h-4 w-4" />
-                Show preview
-              </>
-            )}
-          </Button>
         </div>
       ) : null}
-
-      {previewOpen ? <PreviewPanel blocks={blocks} selectedBlockId={selectedBlockId} /> : null}
 
       <StatusBar
         totalBlocks={totalBlocks}

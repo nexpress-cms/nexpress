@@ -2,7 +2,6 @@
 
 import { Loader2, Plus, Settings, Trash2 } from "lucide-react";
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -142,16 +141,24 @@ export function DocCanvas({
     return map;
   }, [blocks]);
 
+  // Bumps on every iframe `load` event — replaces the old
+  // `[html]`-dependent listener attach. `srcDoc` is set
+  // synchronously when the state changes, but the iframe parses
+  // it asynchronously; if we attach to `contentDocument` right
+  // when `html` updates, the doc is the PRIOR document (or null
+  // mid-swap) and the listeners get torn down before the new
+  // document mounts. Tracking load count instead means the
+  // attach always runs against the freshly-parsed document.
+  const [iframeLoadCount, setIframeLoadCount] = useState(0);
+
   // Wire iframe hover → overlay rect. Re-runs after every iframe
   // load (each preview refetch swaps the document) so the hover
-  // surface keeps tracking the freshly-rendered tree. Cleanup
-  // removes listeners; the iframe's contentDocument may be null
-  // mid-swap, guard each access.
-  const attachHoverObserver = useCallback(() => {
+  // surface keeps tracking the freshly-rendered tree.
+  useEffect(() => {
     const iframe = iframeRef.current;
-    if (!iframe) return () => undefined;
+    if (!iframe) return;
     const doc = iframe.contentDocument;
-    if (!doc) return () => undefined;
+    if (!doc) return;
 
     const updateRect = (target: HTMLElement) => {
       const blockEl = target.closest<HTMLElement>("[data-np-block-id]");
@@ -194,17 +201,7 @@ export function DocCanvas({
       doc.removeEventListener("mouseleave", onLeave);
       iframe.removeEventListener("mouseleave", onLeave);
     };
-  }, []);
-
-  // Re-attach the observer when the iframe document changes
-  // (every successful preview refresh swaps the doc) AND on
-  // resize / scroll so the overlay rect tracks the new geometry.
-  // The dependency on `html` covers the swap; the resize / scroll
-  // listeners cover viewport changes.
-  useEffect(() => {
-    const cleanup = attachHoverObserver();
-    return cleanup;
-  }, [attachHoverObserver, html]);
+  }, [iframeLoadCount]);
 
   // Recompute the hover rect on parent scroll / resize so the
   // overlay icons stay glued to the hovered block as the page
@@ -280,6 +277,11 @@ export function DocCanvas({
           // preview shouldn't execute client-side block JS, and the
           // overlay UI doesn't need it.
           sandbox="allow-same-origin"
+          // Bump on every load so the hover-observer effect re-runs
+          // against the freshly-parsed document. Without this hook
+          // the listeners would attach to the prior document (or
+          // null mid-swap) and the hover overlay never fires.
+          onLoad={() => setIframeLoadCount((n) => n + 1)}
           style={{
             width: "100%",
             minHeight: "640px",
