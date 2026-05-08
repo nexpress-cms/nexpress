@@ -514,6 +514,51 @@ when to redirect already-signed-in users, what success banners
 to show on `?verified=1`, etc.). The framework owns the wire
 protocol; sites own the experience.
 
+### 6.2 OAuth providers
+
+`@nexpress/oauth-providers` ships factory functions for the most
+common providers — Google, GitHub, Discord. Each takes
+`{ clientId, clientSecret }` and returns an `OAuthProvider`
+ready for `registerOAuthProvider()`:
+
+```ts
+import { registerOAuthProvider } from "@nexpress/core";
+import {
+  createGoogleOAuthProvider,
+  createDiscordOAuthProvider,
+} from "@nexpress/oauth-providers";
+
+if (process.env.NP_OAUTH_GOOGLE_CLIENT_ID && process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET) {
+  registerOAuthProvider(
+    createGoogleOAuthProvider({
+      clientId: process.env.NP_OAUTH_GOOGLE_CLIENT_ID,
+      clientSecret: process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET,
+    }),
+  );
+}
+```
+
+Each provider strictly honors `email_verified` (Google, Discord)
+or falls back to `/user/emails` for verified primary (GitHub).
+**Unverified emails never reach the framework's email-match
+identity-resolution path** — that closes a hijack vector where
+an attacker controlling an OAuth account with a victim's email
+could otherwise claim the victim's NexPress account.
+
+The bundled `@nexpress/plugin-oauth-google` and
+`@nexpress/plugin-oauth-github` packages are thin wrappers
+around the factories — sites that prefer plugin lifecycle (one
+line in `nexpressConfig.plugins` instead of an explicit
+`registerOAuthProvider()` call) keep using them. Sites that
+want the registration in their own boot code reach for
+`@nexpress/oauth-providers` directly.
+
+Once registered, a single provider is shared across staff
+(`/api/auth/oauth/{provider}/...`) and member
+(`/api/members/oauth/{provider}/...`) flows — the routes pick
+which user pool to resolve to, the provider just identifies the
+authenticating human.
+
 ---
 
 ## 7. Plugins

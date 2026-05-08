@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createGitHubOAuthProvider, fetchGitHubProfile } from "./index.js";
+import { createGitHubOAuthProvider, fetchGitHubProfile } from "./github.js";
 
 type FetchCall = { url: string; init?: RequestInit };
 

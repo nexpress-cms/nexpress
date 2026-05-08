@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createGoogleOAuthProvider, fetchGoogleProfile } from "./index.js";
+import { createGoogleOAuthProvider, fetchGoogleProfile } from "./google.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -37,8 +37,6 @@ describe("createGoogleOAuthProvider (factory guards)", () => {
   });
 });
 
-// Profile + email_verified handling is the Google-specific logic worth
-// covering. Token exchange + PKCE live in `arctic`.
 describe("fetchGoogleProfile (verified-email enforcement)", () => {
   it("returns the verified profile when email_verified === true", async () => {
     const responses = new Map<string, Response | (() => Response)>([
