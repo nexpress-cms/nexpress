@@ -150,6 +150,21 @@ export async function findPosts(
       const set = new Set(matched[i]);
       ids = ids.filter((id) => set.has(id));
     }
+
+    // Honor any pre-existing user id constraint. Without this,
+    // `where: { id: someId, categories: catId }` would silently
+    // drop the user's id filter and return every post in that
+    // category — a real foot-gun. Intersect instead.
+    const existingId = (where as Record<string, unknown>).id;
+    if (typeof existingId === "string") {
+      ids = ids.includes(existingId) ? [existingId] : [];
+    } else if (Array.isArray(existingId)) {
+      const allowed = new Set(
+        existingId.filter((v): v is string => typeof v === "string"),
+      );
+      ids = ids.filter((id) => allowed.has(id));
+    }
+
     if (ids.length === 0) {
       return {
         docs: [],

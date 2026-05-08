@@ -71,6 +71,33 @@ describe("generateDocumentsModule — hasMany filter wrapper", () => {
     expect(out).toMatch(/totalDocs: 0/);
   });
 
+  it("intersects hasMany matches with any user-provided `id` constraint (string)", () => {
+    const out = generateDocumentsModule([
+      collection("posts", [
+        { type: "relationship", name: "categories", relationTo: "categories", hasMany: true },
+      ]),
+    ]);
+    // The wrapper must check `where.id` BEFORE assigning the
+    // join-resolved id list. Otherwise a query like
+    // `{ id: "x", categories: catId }` silently drops the
+    // user's id and returns every post in catId. The string-
+    // intersection branch picks the existing id only if it's
+    // in the matched set.
+    expect(out).toMatch(/typeof existingId === "string"/);
+    expect(out).toMatch(/ids\.includes\(existingId\)/);
+  });
+
+  it("intersects hasMany matches with any user-provided `id` array constraint", () => {
+    const out = generateDocumentsModule([
+      collection("posts", [
+        { type: "relationship", name: "categories", relationTo: "categories", hasMany: true },
+      ]),
+    ]);
+    // Same guard for `id: ["a", "b"]` arrays.
+    expect(out).toMatch(/Array\.isArray\(existingId\)/);
+    expect(out).toMatch(/allowed\.has\(id\)/);
+  });
+
   it("imports `getDb` only when at least one collection has hasMany fields", () => {
     const without = generateDocumentsModule([
       collection("pages", [{ type: "text", name: "title", required: true }]),
