@@ -29,6 +29,27 @@ services:
     profiles:
       - s3
 
+  # Mailpit — local SMTP server + browser inbox for development.
+  # The framework's SmtpEmailAdapter speaks plain SMTP, so this
+  # container is a drop-in replacement for Resend / SendGrid /
+  # Postmark during dev: same wire protocol, same code path,
+  # different destination. Open the inbox at http://localhost:8025
+  # to see every email the app would have sent.
+  #
+  # Started by default (no `profiles:` gate) because the auth
+  # flows (`/members/register`, `/members/forgot-password`)
+  # silently drop their email when the SMTP env isn't configured,
+  # which makes "is my code broken or did the email just not
+  # arrive" a confusing thing to debug for newcomers.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "${NEXPRESS_SMTP_PORT:-1025}:1025"
+      - "${NEXPRESS_MAILPIT_WEB_PORT:-8025}:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
 volumes:
   pgdata:
   minio-data:

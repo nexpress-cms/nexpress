@@ -195,6 +195,25 @@ async function saveEnv(body: SetupBody): Promise<void> {
   } else {
     lines.push("# NP_STORAGE_ADAPTER=local (default)");
   }
+
+  // Email — defaults to the Mailpit container in
+  // `docker/docker-compose.yml`. Next.js reads `.env` from
+  // `apps/web/`, not the monorepo root, so the block has to live
+  // here for `next dev` to pick it up — duplicating root `.env`
+  // doesn't help. Operators swap the four `NP_SMTP_*` values
+  // when they wire a real provider for staging / production.
+  lines.push(
+    "",
+    "# Email (Mailpit dev — `docker compose up -d` boots it; inbox http://localhost:8025)",
+    "NP_EMAIL_ADAPTER=smtp",
+    "NP_SMTP_HOST=localhost",
+    "NP_SMTP_PORT=1025",
+    "NP_SMTP_USER=dev",
+    "NP_SMTP_PASS=dev",
+    `NP_SMTP_FROM="${body.siteUrl ? new URL(body.siteUrl).hostname : "nexpress.local"} <noreply@nexpress.local>"`,
+    "NP_SMTP_SECURE=false",
+  );
+
   await writeFile(ENV_PATH, `${lines.join("\n")}\n`, "utf8");
 }
 
