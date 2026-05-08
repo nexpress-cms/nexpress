@@ -9,3 +9,11 @@ export type {
   NpAuthErrorCode,
   NpAuthMember,
 } from "./types.js";
+
+export { createStaffAuthRoutes } from "./staff-factory.js";
+export type {
+  StaffAuthRoutes,
+  StaffAuthRoutesConfig,
+  StaffAuthRoutesOptions,
+  StaffAuthHelpersForRoutes,
+} from "./staff-types.js";
