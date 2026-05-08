@@ -21,8 +21,13 @@ Two requirements drive every decision below:
 - **Theme developer**: any content-centric site shape buildable
   in React, with no waiting on framework-level layout primitives.
 - **Site operator**: from `pnpm install` through "site live and
-  customized", **the only CLI step is `pnpm nexpress
-  theme:install`**. Everything else happens in admin. Zero code.
+  customized", **the operator never opens a code editor**. CLI
+  use is limited to two commands: `pnpm nexpress theme:install
+  <pkg>` (code-mod) followed by `pnpm db:migrate` (schema apply).
+  Everything else happens in admin. Auto-chaining migrate inside
+  `theme:install` is recorded as a v0.3 candidate (see §10) — the
+  v0.2 contract keeps DB-write boundary explicit so the operator
+  can review the staged collection diff before it touches the DB.
 
 These pull in opposite directions — operator-no-code requires
 themes to expose machine-readable contracts, theme-developer-
@@ -165,14 +170,35 @@ interface NpThemeArchives {
 **Dispatch precedence** (in `apps/web/(site)/[[...slug]]`):
 1. App-explicit Next.js route file → Next routes natively, framework
    never sees the request.
-2. Theme `routes` (declared order, first match wins) → invoke
+2. **Page document slug lookup** → operator's authored pages always
+   win when the URL matches an existing slug. This means an operator
+   who creates a page with slug `lookbook` overrides the theme's
+   `/lookbook` route. Operator-first is the right stance for the
+   no-code promise — theme can't silently shadow a CMS page.
+3. Theme `routes` (declared order, first match wins) → invoke
    component.
-3. Theme `archives` sugar (expanded into routes by framework) →
+4. Theme `archives` sugar (expanded into routes by framework) →
    invoke component.
-4. Page document slug lookup → existing fallback.
+5. → 404.
 
-App overrides remain authoritative — this preserves operators'
-right to write custom Next.js routes when needed (escape hatch).
+App overrides at level 1 are an escape hatch for custom Next.js
+work; level 2 ensures theme contributions never silently shadow
+operator-authored content. Theme routes remain useful for
+parameterized patterns (`/category/:slug`) which page slugs can't
+match anyway, and for static slugs the operator chooses *not* to
+author as a page.
+
+**Page-slug check is exact-match only.** A page with slug
+`lookbook` does not match a theme route declared as
+`/lookbook/:section`. Parameterized URLs always fall through to
+the theme route layer, since page documents don't have parameter
+semantics.
+
+**`generateMetadata` shares the dispatcher.** The catch-all's
+`generateMetadata` consults the same dispatcher: if a theme route
+matches and declares `metadata`, that builder is invoked. Without
+this sharing, `/category/foo` would render the theme component
+but emit framework-fallback SEO — a real bug.
 
 **Data fetching**: the route component fetches its own data via
 `findDocuments` / typed wrappers. Operator tunability comes from
@@ -218,8 +244,23 @@ Zod schema serves three roles:
 Each field accepts `.default(value)` and `.describe("Help text")`
 which the form generator surfaces.
 
-**Storage**: `np_settings.themeSettings: Record<themeId, unknown>`.
-On read, validated against current `settingsSchema`. Validation
+**Storage**: one `np_settings` row per theme per site. The
+existing schema is `(siteId, key) → jsonb value` with a composite
+primary key, so each theme's settings live at:
+
+```
+siteId = "<site>", key = "theme.settings:<themeId>",
+value = z.infer<typeof settingsSchema>
+```
+
+Per-theme rows (rather than a single `key = "theme.settings"`
+row holding a `Record<themeId, …>`) buy three things: writes
+on one theme don't lock the whole settings blob; per-theme
+revalidation tags can be granular (`np-theme-settings:<themeId>`);
+and theme switching reads only the active theme's row, not every
+installed theme's data.
+
+On read, validated against the current `settingsSchema`. Validation
 failure surfaces as an admin warning toast and falls back to
 schema defaults.
 
@@ -254,9 +295,24 @@ impl: {
 }
 ```
 
-**Registration**: bootstrap registers theme blocks alongside
-plugin blocks via `getSharedRegistry()`. Theme deactivation
-de-registers them.
+**Registration model — installed vs active.** The shared block
+registry is process-global (single Node process serves multiple
+sites). It MUST hold blocks from every *installed* theme module,
+not only the currently-active one for a given site, because:
+
+- Multiple sites in the same process can each have a different
+  active theme. Site A active = `magazine`, Site B active =
+  `portfolio`. Both themes' blocks must be available in-process.
+- Deactivating a theme on Site A by purging its blocks from the
+  registry would also break rendering for Site B if it's using
+  the same theme — and would break stale instances on Site A.
+
+**The activation filter lives at admin/render time, not at
+registry write time.** When admin lists "available block types
+for the page builder" or `renderBlocks` resolves a `type` string,
+the filter is "blocks contributed by themes/plugins active *for
+the current site context*". Registry stays append-only; the active-
+theme query is what gates visibility.
 
 **Stale instance handling**: when an operator deactivates a theme,
 existing pages may have block instances of that theme's types.
@@ -354,8 +410,8 @@ impl: {
   notFound?: ComponentType;
   error?: ComponentType<{ error: Error & { digest?: string }; reset: () => void }>;
   seo?: {
-    sitemapItems?: () => Promise<NpSitemapItem[]>;
-    feedItems?: () => Promise<NpFeedItem[]>;
+    sitemapEntries?: () => Promise<NpSitemapEntry[]>;
+    feedEntries?: () => Promise<NpFeedEntry[]>;
     robotsTxt?: () => string | Promise<string>;
   };
 }
@@ -364,7 +420,21 @@ impl: {
 `apps/web/(site)/not-found.tsx` and `error.tsx` (Next conventions)
 delegate to the active theme's component when defined; otherwise
 render the framework default. Sitemap/feed/robots helpers compose
-with `@nexpress/core/seo`'s existing item builders.
+with `@nexpress/core/seo`'s existing entry builders (the public
+types are `NpSitemapEntry` and `NpFeedEntry` — no rename in v0.2).
+
+**Cache invalidation.** Sitemap and feed are site-scoped cached
+(`revalidateTag('np-sitemap:<siteId>')`, `np-feed:<siteId>`).
+When theme SEO hooks read theme settings or active-theme state,
+the following events MUST invalidate both tags:
+
+- Theme switch (`np_settings:theme` row write).
+- Theme settings save (`np_settings:theme.settings:<themeId>` row
+  write) — only when the theme contributes SEO hooks; pure-style
+  settings changes don't need to bust SEO cache.
+
+The framework wires these invalidations in the settings save path;
+themes don't have to think about it.
 
 ### 4.8 Phase F.8 — `pnpm nexpress theme:install`
 
@@ -572,8 +642,8 @@ existing phase before declaring done.
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Admin UI volume balloons (auto-form + pattern picker + nav locations + install dialog) | 🟡 Medium | Share primitives across surfaces (zod-form for theme + plugin config). Build admin patterns library if scope grows. |
-| Catch-all route priority bug (app vs theme vs slug) hides pages or bypasses access checks | 🔴 High | Integration tests covering each precedence level. Explicit precedence table in code comments. |
-| Stale block instances after theme deactivation confuse operators | 🟢 Low | Placeholder + red card is acceptable; bulk cleanup tool deferred. |
+| Catch-all route priority bug (app vs slug vs theme) hides pages or bypasses access checks | 🔴 High | Precedence locked as **app > page slug > theme route > 404** so theme contributions can never silently shadow operator-authored pages. Integration tests cover each level. Both `Page` render and `generateMetadata` share the dispatcher. |
+| Stale block instances after theme deactivation confuse operators | 🟢 Low | Registry stays append-only; activation filter at admin/render layer. Stale instances render as placeholder + red card; bulk cleanup tool deferred to v0.3. |
 | settingsSchema evolution breaks operator data on theme upgrade | 🟡 Medium | Strict parse + reset-to-defaults banner in v0.2. Migration helpers in v0.3 if F.9 surfaces real demand. |
 | CLI AST patch corrupts operator collection files | 🔴 High | Add-only, abort-on-conflict, dry-run, git-staging before next step. Never DB-writes. Heavy unit + integration tests on patcher. |
 | Theme/plugin block-type collisions silently overwrite | 🟡 Medium | Convention-driven prefixes, dev-mode lint, `source` field on registry entries. |
@@ -594,6 +664,12 @@ existing phase before declaring done.
 
 Per the agreement to track everything we postpone:
 
+- **`theme:install` auto-chains `db:migrate`** — v0.2 keeps the
+  DB-write boundary explicit so the operator reviews the staged
+  collection diff (and the generated migration SQL) before it
+  hits the database. A `--apply` flag (or default-on with
+  `--no-apply` opt-out) is a clean v0.3 addition once the safety
+  story for AST patching has shipped real-world miles.
 - **`theme:uninstall` CLI** — removing collection fields without
   data loss requires a confirmation flow and possibly a backup
   step. Out of scope for F.8.
