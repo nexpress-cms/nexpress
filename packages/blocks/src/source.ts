@@ -24,9 +24,11 @@ import type {
  */
 
 export interface NpBlockSource {
-  kind: "core" | "theme" | "plugin";
+  kind: "core" | "theme" | "plugin" | "custom";
   /** Concrete id when present. Broad legacy labels yield
-   *  `id: undefined`, which the filter treats as always active. */
+   *  `id: undefined`, which the filter treats as always active.
+   *  `custom` (operator-saved patterns) never carries an id —
+   *  per-operator/per-site customs are stored elsewhere. */
   id?: string;
 }
 
@@ -40,6 +42,13 @@ export function parseBlockSource(
   }
   if (source === "core" || source === "built-in") {
     return { kind: "core" };
+  }
+  if (source === "custom") {
+    // Operator-saved pattern (NpPattern union member). Custom
+    // sources never have a concrete id — they're filed per-
+    // operator outside the source registry — and the filter
+    // always passes them.
+    return { kind: "custom" };
   }
   if (source === "plugin") {
     return { kind: "plugin" };
@@ -97,7 +106,7 @@ export function isBlockSourceActive(
     if (parsed.id === undefined) return true;
     return parsed.id === ctx.themeId;
   }
-  // core / plugin: always pass per the rules above.
+  // core / plugin / custom: always pass per the rules above.
   return true;
 }
 

@@ -41,6 +41,10 @@ describe("parseBlockSource", () => {
     expect(parseBlockSource("theme")).toEqual({ kind: "theme" });
   });
 
+  it("recognizes custom kind (operator-saved patterns)", () => {
+    expect(parseBlockSource("custom")).toEqual({ kind: "custom" });
+  });
+
   it("parses concrete identity", () => {
     expect(parseBlockSource("theme:magazine")).toEqual({
       kind: "theme",
