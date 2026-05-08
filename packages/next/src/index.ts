@@ -58,3 +58,5 @@ export {
 export { resolveAvailableLocales } from "./locale-siblings.js";
 
 export { createDefaultBlockRenderContext } from "./block-render-context.js";
+
+export { buildPageMetadata } from "./page-metadata.js";

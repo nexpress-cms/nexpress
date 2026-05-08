@@ -617,6 +617,7 @@ export {
   buildDigestEmail,
   runDigestSweep,
   getMemberProfile,
+  getMemberProfiles,
 } from "./community/index.js";
 export type {
   CommunityCapability,
