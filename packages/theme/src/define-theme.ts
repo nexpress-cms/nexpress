@@ -124,6 +124,117 @@ export type NpThemeTemplates = Record<
   Record<string, NpThemeTemplate>
 >;
 
+/**
+ * Phase F.2 — props passed to a theme route component.
+ *
+ * `params` are extracted from the URL pattern (`/category/:slug`
+ * → `{ slug: "politics" }`). `searchParams` are the URL query
+ * string. `blockCtx` is the same server-built context page
+ * templates already receive — pass it on to `renderBlocks` if
+ * the route renders any blocks.
+ */
+export interface NpRouteRenderProps {
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[] | undefined>;
+  blockCtx: NpBlockRenderContext;
+}
+
+/**
+ * Phase F.2 — one declared dynamic route on a theme.
+ *
+ * The pattern syntax is a simplified path-to-regexp subset:
+ * literal segments must match exactly, `:name` matches a single
+ * segment and captures it as a param, and `:name(regex)`
+ * constrains the captured segment to the regex. Examples:
+ *
+ *   "/category/:slug"
+ *   "/author/:id"
+ *   "/:year(\\d{4})/:month(\\d{2})"
+ *   "/search"
+ *   "/lookbook"
+ *
+ * Patterns with multiple segments are matched left-to-right and
+ * must consume the entire request path (no glob/wildcard in
+ * v0.2). Theme routes are checked AFTER the page-document slug
+ * lookup, so an operator who creates a page with the same slug
+ * always wins — see `docs/design/theme-v0.2-extension.md` §4.2.
+ */
+export interface NpThemeRoute {
+  pattern: string;
+  component: ComponentType<NpRouteRenderProps>;
+  /**
+   * Optional metadata builder. The framework's `generateMetadata`
+   * uses the same dispatcher; if a route matches and declares
+   * `metadata`, this builder runs in place of the page-fallback.
+   * Without it, theme-rendered routes would emit framework-default
+   * SEO — a real bug.
+   */
+  metadata?: (
+    ctx: NpRouteRenderProps,
+  ) => Promise<import("next").Metadata> | import("next").Metadata;
+  // Note: a `revalidate` hint was considered but dropped from
+  // v0.2 — Next's route-segment `revalidate` export is static
+  // and can't vary per URL pattern from a single catch-all.
+  // Theme routes that want caching wrap their data fetches in
+  // `unstable_cache(...)` themselves. Per-route revalidation
+  // semantics are tracked as a v0.3 candidate.
+}
+
+/**
+ * Phase F.2 — sugar layer over `routes` for the most common
+ * archive shapes. Each entry expands into a route at boot:
+ *
+ *   archives: {
+ *     posts: {
+ *       byCategory: { component: CategoryArchive },
+ *       byTag:      { component: TagArchive },
+ *       byAuthor:   { component: AuthorArchive },
+ *       byDate:     { component: DateArchive, granularity: "month" },
+ *       search:     { component: SearchResults },
+ *     },
+ *   }
+ *
+ * Default patterns (overridable per entry via `pattern`):
+ *
+ *   byCategory → "/category/:slug"
+ *   byTag      → "/tag/:slug"
+ *   byAuthor   → "/author/:id"
+ *   byDate     → "/:year(\\d{4})/:month(\\d{2})" (granularity: month)
+ *   search     → "/search"
+ */
+export interface NpThemeArchiveEntry {
+  component: ComponentType<NpRouteRenderProps>;
+  /** Override the default pattern for this archive kind. */
+  pattern?: string;
+  metadata?: NpThemeRoute["metadata"];
+}
+
+export interface NpThemeDateArchiveEntry extends NpThemeArchiveEntry {
+  granularity: "year" | "month" | "day";
+}
+
+export interface NpThemeArchives {
+  /**
+   * Multi-collection note: the default patterns
+   * (`/category/:slug`, `/tag/:slug`, `/author/:id`, `/search`)
+   * don't include the collection name, so a theme that uses the
+   * same archive kind for multiple collections (e.g. both
+   * `posts.byCategory` AND `products.byCategory`) MUST override
+   * the `pattern` for at least N-1 of them — otherwise both
+   * register the same default pattern and only the first
+   * declared one is reachable. The framework logs a one-time
+   * dev warning when it detects pattern collisions in
+   * `collectThemeRoutes`.
+   */
+  [collectionSlug: string]: {
+    byCategory?: NpThemeArchiveEntry;
+    byTag?: NpThemeArchiveEntry;
+    byAuthor?: NpThemeArchiveEntry;
+    byDate?: NpThemeDateArchiveEntry;
+    search?: NpThemeArchiveEntry;
+  };
+}
+
 export interface NpThemeImpl {
   /** Site-wide shell. Wraps every (site) route. */
   shell?: ComponentType<NpThemeShellProps>;
@@ -166,6 +277,20 @@ export interface NpThemeImpl {
    *   }
    */
   i18n?: Record<string, Record<string, string>>;
+  /**
+   * Phase F.2 — declared dynamic routes the framework's
+   * catch-all should dispatch to. Linear match order; first
+   * pattern to match wins. Checked AFTER app-explicit Next.js
+   * routes and the page-document slug lookup.
+   */
+  routes?: NpThemeRoute[];
+  /**
+   * Phase F.2 — sugar over `routes` for the common archive
+   * patterns (`byCategory` / `byTag` / `byAuthor` / `byDate` /
+   * `search`). The framework expands these into routes at boot
+   * with sensible default patterns.
+   */
+  archives?: NpThemeArchives;
 }
 
 export interface NpTheme extends NpRegisteredTheme {

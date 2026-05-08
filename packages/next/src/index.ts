@@ -18,6 +18,13 @@ export { npSuccessResponse, npErrorResponse, type NpApiError } from "./response.
 export { readJsonBody } from "./safe-json.js";
 
 export {
+  collectThemeRoutes,
+  dispatchThemeRoute,
+  buildRouteRenderProps,
+  type NpThemeRouteMatch,
+} from "./route-dispatcher.js";
+
+export {
   createCollectionHelpers,
   type CollectionHelpers,
   type CollectionHelpersOptions,

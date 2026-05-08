@@ -20,6 +20,11 @@ export type {
   NpThemeTemplate,
   NpThemeTemplates,
   NpTemplateRenderProps,
+  NpRouteRenderProps,
+  NpThemeRoute,
+  NpThemeArchives,
+  NpThemeArchiveEntry,
+  NpThemeDateArchiveEntry,
 } from "./define-theme.js";
 
 export { getActiveTheme, getRegisteredThemes, getThemeById } from "./registry-typed.js";

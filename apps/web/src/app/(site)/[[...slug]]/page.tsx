@@ -5,7 +5,12 @@ import {
   getPluginTemplatesForCollection,
   resolveTemplateComponent,
 } from "@nexpress/core";
-import { buildPageMetadata, createDefaultBlockRenderContext } from "@nexpress/next";
+import {
+  buildPageMetadata,
+  buildRouteRenderProps,
+  createDefaultBlockRenderContext,
+  dispatchThemeRoute,
+} from "@nexpress/next";
 import { getCachedActiveTheme } from "@/lib/cached-theme";
 import { renderBlocks } from "@nexpress/blocks";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
@@ -62,9 +67,13 @@ import {
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PageProps): Promise<Metadata> {
   await ensureFor("read");
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
@@ -78,6 +87,37 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const alternates = buildHreflangAlternates(path === "/" ? "" : path);
   const xDefault =
     path === "/" ? "/" : `/${path}`;
+
+  // Phase F.2 — when no page document matches but a theme route
+  // does, defer to the route's `metadata` builder. Without this,
+  // theme-rendered URLs (e.g. `/category/foo`) would emit
+  // page-fallback SEO based on whatever DefaultHomePage carries
+  // — a real bug the design doc §4.2 calls out explicitly.
+  // Page lookup wins over theme route, mirroring the renderer.
+  if (!page) {
+    const activeTheme = await getCachedActiveTheme();
+    const match = dispatchThemeRoute(activeTheme, path);
+    if (match?.route.metadata) {
+      const sp = await searchParams;
+      const themeMetadata = await match.route.metadata(
+        buildRouteRenderProps({
+          match,
+          searchParams: sp,
+          blockCtx: createDefaultBlockRenderContext(),
+        }),
+      );
+      return {
+        ...themeMetadata,
+        alternates: {
+          ...(themeMetadata.alternates ?? {}),
+          languages: {
+            ...Object.fromEntries(alternates.map((a) => [a.hreflang, a.href])),
+            "x-default": xDefault,
+          },
+        },
+      };
+    }
+  }
 
   // Pages without a published row fall back to site-wide
   // defaults; that's also what the `DefaultHomePage` empty-state
@@ -103,7 +143,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function CatchAllPage({ params }: PageProps) {
+export default async function CatchAllPage({
+  params,
+  searchParams,
+}: PageProps) {
   await ensureFor("plugins");
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
@@ -126,31 +169,15 @@ export default async function CatchAllPage({ params }: PageProps) {
   });
 
   if (!page) {
-    // The site root is special: a fresh install with no pages
-    // would 404 on `/` and look broken. Surface a default landing
-    // page that confirms NexPress is running and points the
-    // operator at /admin. Once an admin publishes a real
-    // `pages` row with slug `/`, the lookup above succeeds and
-    // this branch never runs.
-    if (path === "/") {
-      const websiteJsonLd = await buildWebSiteJsonLd();
-      return (
-        <>
-          <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
-          <DefaultHomePage />
-        </>
-      );
-    }
-
     // Slug rename history — when a page used to live at this path
     // but got renamed, walk `np_slug_history` to the current
     // target and 301. Search-engine indices, external links, and
-    // bookmarks survive the rename.
+    // bookmarks survive the rename. Slug history is a specific
+    // operator-intent record (this URL used to point somewhere)
+    // so it wins over a generic theme route match.
     const slugWithoutLeadingSlash = path.replace(/^\/+/, "");
     const target = await findSlugRedirect("pages", slugWithoutLeadingSlash);
     if (target) {
-      // Preserve the operator-visible locale prefix when
-      // redirecting; only the slug segment changes.
       const localePrefix =
         rawPath.startsWith(`${requestedLocale}/`) || rawPath === requestedLocale
           ? `/${requestedLocale}`
@@ -162,6 +189,43 @@ export default async function CatchAllPage({ params }: PageProps) {
       // to 307 — fine for app routing but wrong for slug renames
       // search-engine-wise.
       permanentRedirect(`${localePrefix}${targetPath}`);
+    }
+
+    // Phase F.2 — theme route dispatcher. Precedence after page
+    // slug + slug-redirect, before the `/` empty-state and 404.
+    // Operator-authored content (existing pages, redirects from
+    // renamed pages) always wins over theme contributions, so
+    // a theme can never silently shadow a CMS page or its
+    // history. See `docs/design/theme-v0.2-extension.md` §4.2.
+    const activeTheme = await getCachedActiveTheme();
+    const match = dispatchThemeRoute(activeTheme, path);
+    if (match) {
+      const blockCtx = createDefaultBlockRenderContext();
+      const RouteComponent = match.route.component;
+      const sp = await searchParams;
+      const props = buildRouteRenderProps({
+        match,
+        searchParams: sp,
+        blockCtx,
+      });
+      return <RouteComponent {...props} />;
+    }
+
+    // The site root is special: a fresh install with no pages
+    // and no theme route for `/` would 404 and look broken.
+    // Surface a default landing page that confirms NexPress is
+    // running and points the operator at /admin. Once an admin
+    // publishes a real `pages` row with slug `/` OR the active
+    // theme declares a `/` route, the lookup above succeeds and
+    // this branch never runs.
+    if (path === "/") {
+      const websiteJsonLd = await buildWebSiteJsonLd();
+      return (
+        <>
+          <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
+          <DefaultHomePage />
+        </>
+      );
     }
 
     notFound();

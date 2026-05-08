@@ -39,7 +39,8 @@
   },
   "dependencies": {
     "@nexpress/blocks": "workspace:*",
-    "@nexpress/core": "workspace:*"
+    "@nexpress/core": "workspace:*",
+    "@nexpress/theme": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
