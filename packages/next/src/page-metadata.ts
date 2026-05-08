@@ -23,5 +23,5 @@ import type { Metadata } from "next";
 export async function buildPageMetadata(
   input: NpPageMetadataInput = {},
 ): Promise<Metadata> {
-  return (await buildCorePageMetadata(input)) as unknown as Metadata;
+  return (await buildCorePageMetadata(input)) as Metadata;
 }

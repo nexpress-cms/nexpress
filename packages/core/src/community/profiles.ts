@@ -11,11 +11,13 @@ import { getMediaUrl } from "../media/url.js";
  * surfaces (`/u/[handle]` etc.) get a safe-to-render shape without
  * having to remember which columns are sensitive.
  *
- * Banned / suspended / deleted members are filtered out — calling
+ * Suspended / deleted members are filtered out — calling
  * `getMemberProfile` for a hidden member returns `null`. The
  * "imported" status (Phase 21 WordPress-import provisional members)
  * IS exposed because those profiles are visible on the public site
- * by design.
+ * by design. Bans are a separate, scope-based concept (`np_bans`)
+ * and don't hide the profile shell — they restrict posting; the
+ * profile page itself stays reachable like Reddit / Discourse.
  */
 export interface NpMemberProfile {
   id: string;
