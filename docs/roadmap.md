@@ -3,8 +3,8 @@
 **Last updated:** 2026-05-02
 
 This is the working roadmap from 0.1 toward 1.0. It is not a contract — it is
-the running shortlist that captures *what's done*, *what's next*, and *what's
-deferred*. Update it as work lands or priorities shift.
+the running shortlist that captures _what's done_, _what's next_, and _what's
+deferred_. Update it as work lands or priorities shift.
 
 For the v0.1 stability commitments themselves, see the **STABILITY (v0.1)**
 section in [`AGENTS.md`](../AGENTS.md) at the repo root. This file is the
@@ -78,7 +78,35 @@ limitations called out in `AGENTS.md`.
   export. Operations runbook covers incidents; the inverse (planned
   maintenance) is thin.
 
-### 3. Plugin v2 (deferred — likely 1.x)
+### 3. Agent-operated operations CLI
+
+The current agent surface is strong for content APIs, but deployment and
+post-deploy operations are still split across docs, template scripts, and
+admin screens. To support the positioning that an AI agent can develop,
+deploy, and manage a NexPress site with low token usage, add deterministic
+CLI contracts for the operational lifecycle. See
+[`agent-operated-ops.md`](agent-operated-ops.md) for the detailed plan and
+copy-pasteable issue backlog.
+
+- **`nexpress ops status` / `doctor`** — one compact health contract with
+  `--json`, `--brief`, `--prod`, `--fix-plan`, stable check IDs, and clear
+  exit codes.
+- **`nexpress deploy plan`** — machine-readable recipes for Docker, Vercel,
+  and Fly.io, including required env vars, target-specific blockers, storage
+  compatibility checks, and ordered commands.
+- **Safe migrations** — `migrate status`, `plan`, `apply --safe`, and
+  `rollback-plan`, with destructive SQL detection, advisory locking, backup
+  gating, and readiness verification.
+- **Backup / restore** — executable DB + media backup manifests, verification,
+  restore plans, and production confirmation gates.
+- **Jobs / storage / plugins** — operational subcommands for stale workers,
+  queue backlog, media drift, S3 migration, plugin route conflicts, and v1
+  rebuild / restart requirements.
+- **Release and runbooks** — `release check/plan/apply/verify` plus
+  `nexpress runbook <incident>` commands that return diagnosis, evidence,
+  next commands, and rollback notes.
+
+### 4. Plugin v2 (deferred — likely 1.x)
 
 Current v1 is npm-package + rebuild, full Node access, no runtime collection
 definition. The 0.1 cycle hardened the v1 surface (host hardening, schedule
@@ -156,7 +184,7 @@ Probably 1.x, not 1.0. Calling it out so it doesn't accidentally creep into
 quality-of-life work that 1.x can absorb in stages; runtime sandboxing is
 the structural change that defines a v2.
 
-### 4. Developer experience & ecosystem
+### 5. Developer experience & ecosystem
 
 What a new developer sees in their first hour with NexPress.
 
@@ -173,7 +201,7 @@ What a new developer sees in their first hour with NexPress.
 - Migration UI for the WordPress importer — CLI exists; admins want a
   drag-and-drop WXR uploader with progress.
 
-### 5. API completeness
+### 6. API completeness
 
 Surface gaps where v0.1 ships scaffolding but not the production-grade
 implementation.
@@ -189,7 +217,7 @@ implementation.
 - **Notifications** — digest job exists; per-member preferences UI is
   partial.
 
-### 6. Stability promotion (Experimental → Stable)
+### 7. Stability promotion (Experimental → Stable)
 
 Items currently listed as Experimental in `AGENTS.md` that we'd like to
 promote before 1.0. Each promotion is a contract decision.
@@ -205,7 +233,7 @@ promote before 1.0. Each promotion is a contract decision.
   `@nexpress/core/bootstrap` subpath or mark `@internal`. They're public
   today only because `@nexpress/next` needs them.
 
-### 7. Multi-tenant features (deferred — partial 1.0)
+### 8. Multi-tenant features (deferred — partial 1.0)
 
 Multi-site scoping is in. The product features that ride on top of it are
 not.
@@ -216,11 +244,11 @@ not.
 - Billing hooks (out of scope for the open-source core; document the
   extension point).
 
-### 8. Plugin marketplace (deferred — 1.x)
+### 9. Plugin marketplace (deferred — 1.x)
 
 A first-party way to discover, vet, and install plugins. The v1 plugin
 model is npm-package + rebuild, so a marketplace today is a curated
-list, not an installer. Building this properly depends on category 3
+list, not an installer. Building this properly depends on category 4
 (Plugin v2) for the install-without-rebuild and trust pieces.
 
 - **Discovery** — a `plugins.nexpress.dev`-style index pulling from a
@@ -239,11 +267,11 @@ list, not an installer. Building this properly depends on category 3
   an external billing provider. Out of scope for the open-source core;
   document the extension point.
 
-The MVP could ship on top of v1 as a *curated index page* that just deep-
+The MVP could ship on top of v1 as a _curated index page_ that just deep-
 links to `npm install` instructions — that's a reasonable 1.0 step, with
 the install-flow work waiting for Plugin v2.
 
-### 9. First vertical: e-commerce / shop plugin (deferred — 1.x)
+### 10. First vertical: e-commerce / shop plugin (deferred — 1.x)
 
 A reference vertical plugin that proves the plugin model can carry a
 real product domain, not just blog/community. Ship as a plugin package
@@ -264,8 +292,9 @@ real product domain, not just blog/community. Ship as a plugin package
   not a full ruleset (region-specific).
 
 Open questions before committing:
-- Does this stay a plugin, or does the product catalog *collection
-  pattern* prove general enough to belong in core (and the rest of
+
+- Does this stay a plugin, or does the product catalog _collection
+  pattern_ prove general enough to belong in core (and the rest of
   e-commerce stays a plugin)?
 - Payment adapter contract — single shared interface, or per-plugin
   implementation? The latter is simpler; the former lets users swap
@@ -275,7 +304,7 @@ This is the strongest signal that the v1 plugin model "works for real
 verticals." If shop hits a wall the v1 plugin couldn't get over, that
 becomes a Plugin v2 design input.
 
-### 10. Docs & marketing
+### 11. Docs & marketing
 
 What a non-developer evaluator sees before they install.
 
@@ -288,16 +317,18 @@ What a non-developer evaluator sees before they install.
 
 ## Recommended next phase
 
-Of the ten categories, **1 + 2 + 4** is the natural Phase 23 cluster:
+Of the eleven categories, **1 + 2 + 3 + 5** is the natural Phase 23 cluster:
 
 1. Publish 0.1 and watch what breaks for real users.
 2. Fix the production-hardening items those users hit first.
+3. Add the first agent-operated ops contracts (`ops status`, `doctor`, and
+   `deploy plan`) so the AI-operated positioning is demonstrable.
 4. Tighten DX so a curious evaluator becomes a contributor.
 
-3, 6, 7, 8, 9 are 1.x candidates. 5 and 10 are continuous — they advance
-one issue at a time as 1, 2, 4 surface gaps. Category 8 (marketplace)
-has an MVP path that *can* land in 1.0 as a curated index; the install-
-flow piece waits on category 3.
+4, 7, 8, 9, 10 are 1.x candidates. 6 and 11 are continuous — they advance
+one issue at a time as 1, 2, 3, and 5 surface gaps. Category 9 (marketplace)
+has an MVP path that _can_ land in 1.0 as a curated index; the install-flow
+piece waits on category 4.
 
 ## Open questions
 
@@ -311,14 +342,14 @@ formally opens, because they shape the work inside it.
 - **Demo deploy** — Vercel? Self-hosted? Where does the URL go?
 - **Plugin v2 timing** — confirm 1.x, not 1.0. Locking that in now lets
   Phase 23 ignore plugin internals.
-- **Stability promotion** — pick *one* item from category 6 to land in
+- **Stability promotion** — pick _one_ item from category 7 to land in
   Phase 23 so we keep momentum on the contract surface; defer the rest.
 - **Marketplace MVP timing** — does the curated-index version of
-  category 8 land in 1.0 (alongside 1, 2, 4), or stay parked until
+  category 9 land in 1.0 (alongside 1, 2, 3, 5), or stay parked until
   Plugin v2? Trade-off: shipping a curated index early gives the
   ecosystem a focal point; shipping after Plugin v2 means one
   install-UX, not two.
-- **Shop plugin status** — confirm category 9 is a *plugin*, not a core
+- **Shop plugin status** — confirm category 10 is a _plugin_, not a core
   module. Locking that now keeps the e-commerce work from leaking
   into core APIs.
 

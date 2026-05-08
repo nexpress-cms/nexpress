@@ -1,0 +1,606 @@
+# Agent-operated ops CLI plan
+
+**Status:** planning backlog, not implemented. This page turns the product
+positioning from the agent integration guide into executable work items for a
+future `nexpress ops` / `nexpress deploy` / `nexpress release` CLI surface.
+
+NexPress already exposes agent-friendly content APIs through OpenAPI, auth,
+plugin discovery, and stable error codes. The missing piece is the operating
+surface after a site is live: status checks, deployment planning, migration
+safety, backups, worker health, storage verification, and incident runbooks.
+
+The goal is a low-token operating contract:
+
+> An AI agent should be able to scaffold, configure, deploy, migrate, monitor,
+> back up, and recover a NexPress site by calling deterministic CLI commands
+> with stable JSON output, instead of re-reading long docs and reconstructing
+> ad-hoc shell recipes.
+
+---
+
+## Product promise
+
+The public positioning this unlocks:
+
+- **Korean:** NexPress는 AI agent가 운영하기 쉬운 CMS입니다. 프로젝트 생성부터
+  배포, 마이그레이션, 헬스체크, 백업, 복구까지 짧고 안정적인 CLI 명령으로
+  처리합니다.
+- **English:** NexPress is built for AI-operated publishing: scaffold,
+  configure, deploy, migrate, monitor, back up, and recover a production CMS
+  through deterministic low-token CLI contracts.
+
+This is intentionally **not** an in-product AI engine. NexPress should expose
+clear contracts that any agent, CI runner, or human operator can call.
+
+---
+
+## Current baseline
+
+Today, operators can already piece together the lifecycle from existing
+surfaces:
+
+- `create-nexpress` scaffolds a project and installs template scripts.
+- Template scripts include setup / doctor / worker / database commands.
+- Deployment docs cover Docker, Vercel, Fly.io, health endpoints, multi-node
+  caveats, storage, jobs, and rate limiting.
+- Operations docs and backup / restore docs describe incident procedures and
+  disaster-recovery order.
+- Admin jobs and observability surfaces expose worker heartbeats, job logs,
+  queue state, pause / resume, and archived jobs.
+- The agent integration guide documents OpenAPI, auth, plugin discovery, and
+  content read/write flows.
+
+The gap is that these are spread across scripts, docs, and app endpoints. An
+agent still has to spend tokens discovering which commands apply, how to parse
+output, which failures are blocking, and which actions are safe to retry.
+
+---
+
+## Design principles
+
+### 1. Stable machine contracts before clever automation
+
+Every command that an agent may call must support:
+
+```bash
+--json
+--brief
+--no-color
+--dry-run
+```
+
+JSON output should carry a schema version from day one:
+
+```json
+{
+  "schemaVersion": "np.ops.v1",
+  "ok": false,
+  "summary": "2 blocking checks failed",
+  "checks": []
+}
+```
+
+### 2. Human output and agent output are different products
+
+Human output can be explanatory. Agent output should be compact, structured,
+and stable. A failing check needs an ID, severity, evidence, and suggested next
+steps instead of only prose.
+
+### 3. Plan before apply
+
+Dangerous actions default to dry-run / plan mode. Applying production changes
+requires explicit flags such as `--apply`, `--yes`, or a task-specific
+confirmation like `--confirm-production`.
+
+### 4. Idempotence is a feature
+
+Agents retry. Commands should be safe to run twice when possible:
+
+```bash
+nexpress ops migrate apply --if-pending
+nexpress ops backup create --if-needed
+nexpress ops storage migrate --resume
+```
+
+### 5. Audit anything destructive
+
+Migration, restore, storage migration, queue drain, plugin enable / disable,
+and release commands should emit audit records that can be inspected from the
+admin or logs. The audit record should include who / what ran it, the command,
+input hash, resources touched, result, and rollback hints.
+
+### 6. Local CLI first, remote ops API later
+
+Start with a local CLI that runs beside the project and uses environment
+variables / direct database access. Remote operations endpoints are useful, but
+they are security-sensitive and should wait until the local contracts settle.
+
+---
+
+## Target command surface
+
+### Project setup
+
+```bash
+create-nexpress my-site --yes --docker
+nexpress setup
+nexpress doctor --prod --json
+```
+
+### Deploy
+
+```bash
+nexpress deploy plan --target docker --json
+nexpress deploy plan --target vercel --json
+nexpress deploy plan --target fly --json
+nexpress deploy apply --target fly
+```
+
+### Status and diagnostics
+
+```bash
+nexpress ops status --json
+nexpress ops doctor --prod --json
+nexpress ops doctor --prod --fix-plan --json
+nexpress ops health
+nexpress ops logs --since 10m --level error --json
+nexpress ops config explain --json
+nexpress ops env diff --target production --json
+```
+
+### Database migrations
+
+```bash
+nexpress ops migrate status --json
+nexpress ops migrate plan --json
+nexpress ops migrate apply --safe
+nexpress ops migrate rollback-plan --json
+```
+
+### Backup and restore
+
+```bash
+nexpress ops backup create --json
+nexpress ops backup list --json
+nexpress ops backup verify latest --json
+nexpress ops restore plan latest --json
+nexpress ops restore apply latest --confirm-production
+nexpress ops restore smoke-test latest
+```
+
+### Jobs and workers
+
+```bash
+nexpress ops jobs status --json
+nexpress ops jobs queues --json
+nexpress ops jobs pause <queue>
+nexpress ops jobs resume <queue>
+nexpress ops jobs retry <jobId>
+nexpress ops jobs drain --timeout 120s
+nexpress ops jobs heartbeat --json
+```
+
+### Storage
+
+```bash
+nexpress ops storage status --json
+nexpress ops storage test --json
+nexpress ops storage verify --json
+nexpress ops storage migrate --from local --to s3 --dry-run --json
+nexpress ops storage orphaned-files --json
+nexpress ops storage missing-files --json
+```
+
+### Plugins
+
+```bash
+nexpress ops plugins list --json
+nexpress ops plugins inspect <pluginId> --json
+nexpress ops plugins doctor --json
+nexpress ops plugins enable <pluginId>
+nexpress ops plugins disable <pluginId>
+nexpress ops plugins upgrade-plan --json
+```
+
+### Release
+
+```bash
+nexpress release check --json
+nexpress release plan --json
+nexpress release apply
+nexpress release verify --json
+```
+
+### Runbooks
+
+```bash
+nexpress runbook migration-crashed --json
+nexpress runbook storage-local-to-s3 --json
+nexpress runbook backup-restore-drill --json
+nexpress runbook worker-not-draining --json
+```
+
+---
+
+## Shared JSON schema sketch
+
+All command families should reuse the same envelope so agents can build one
+parser:
+
+```ts
+interface NpOpsResult {
+  schemaVersion: "np.ops.v1";
+  command: string;
+  ok: boolean;
+  status: "ok" | "warning" | "error";
+  summary: string;
+  target?: string;
+  generatedAt: string;
+  checks?: NpOpsCheck[];
+  actions?: NpOpsAction[];
+  artifacts?: NpOpsArtifact[];
+  audit?: NpOpsAuditRef;
+}
+
+interface NpOpsCheck {
+  id: string;
+  severity: "info" | "warning" | "error";
+  status: "pass" | "fail" | "skip";
+  summary: string;
+  evidence?: string[];
+  docs?: string[];
+  fix?: NpOpsFix;
+}
+
+interface NpOpsAction {
+  id: string;
+  title: string;
+  risk: "low" | "medium" | "high";
+  automatic: boolean;
+  command?: string;
+  steps?: string[];
+  requiresApproval?: boolean;
+}
+```
+
+Example compact failure:
+
+```json
+{
+  "schemaVersion": "np.ops.v1",
+  "command": "nexpress ops doctor --prod",
+  "ok": false,
+  "status": "error",
+  "summary": "1 blocking check failed, 1 warning",
+  "generatedAt": "2026-05-07T00:00:00.000Z",
+  "checks": [
+    {
+      "id": "storage.local.multinode",
+      "severity": "error",
+      "status": "fail",
+      "summary": "Local storage is unsafe when more than one app instance can serve traffic.",
+      "evidence": ["NP_STORAGE_ADAPTER=local", "NP_REPLICAS=2"],
+      "fix": {
+        "command": "nexpress ops storage migrate --from local --to s3 --dry-run --json",
+        "requiresApproval": true
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Error and check IDs
+
+Use stable IDs that can be documented and grepped. Suggested initial catalog:
+
+| ID                                   | Severity | Meaning                                                                |
+| ------------------------------------ | -------- | ---------------------------------------------------------------------- |
+| `db.unreachable`                     | error    | `DATABASE_URL` cannot be reached.                                      |
+| `db.pending_migrations`              | error    | Code has migrations that are not applied.                              |
+| `db.destructive_migration`           | error    | Migration plan includes potentially destructive SQL.                   |
+| `secret.missing`                     | error    | `NP_SECRET` is not set.                                                |
+| `secret.weak`                        | error    | `NP_SECRET` is too short or known-placeholder value.                   |
+| `site_url.invalid`                   | error    | `SITE_URL` is missing or not a valid URL.                              |
+| `site_url.production_not_https`      | error    | Production `SITE_URL` is not HTTPS.                                    |
+| `storage.unreachable`                | error    | Configured storage adapter cannot read/write/delete a probe object.    |
+| `storage.local.multinode`            | error    | Local uploads are used in a multi-node or ephemeral filesystem target. |
+| `storage.media_missing`              | warning  | Database media rows point to missing files / objects.                  |
+| `storage.orphaned_files`             | warning  | Files / objects exist without media rows.                              |
+| `jobs.worker_stale`                  | warning  | Worker heartbeat is older than the configured threshold.               |
+| `jobs.queue_backlog`                 | warning  | Queue depth exceeds threshold.                                         |
+| `jobs.failed_recent`                 | warning  | Recent failed jobs need inspection.                                    |
+| `scheduler.token_missing`            | warning  | Internal scheduler endpoint token is unset.                            |
+| `plugins.route_conflict`             | error    | Two plugins claim the same route / action.                             |
+| `plugins.block_conflict`             | warning  | Later plugin registration overwrites an existing block type.           |
+| `deploy.target_missing_env`          | error    | Target-specific required env var is missing.                           |
+| `deploy.target_storage_incompatible` | error    | Target requires S3 or equivalent durable storage.                      |
+| `backup.stale`                       | warning  | No verified backup exists within the configured window.                |
+| `backup.restore_unverified`          | warning  | Latest backup has not passed restore verification.                     |
+
+---
+
+## Phased implementation plan
+
+### Phase A — `ops status` and `ops doctor`
+
+Ship the smallest useful contract first.
+
+Scope:
+
+- Create the `nexpress` runtime CLI entrypoint or extend the current CLI
+  package with subcommands that can run inside a generated app.
+- Extract template `doctor` checks into reusable functions.
+- Add `--json`, `--brief`, `--prod`, `--fix-plan`, and `--no-color`.
+- Check app version, Node / pnpm versions, env presence, database reachability,
+  migration state, storage adapter sanity, worker heartbeat freshness, `SITE_URL`,
+  scheduler token, readiness endpoint, and backup recency when configured.
+- Document the JSON schema and check IDs.
+
+Exit-code rule:
+
+- `0` when all checks pass.
+- `1` when one or more error-severity checks fail.
+- `2` for CLI usage / unexpected internal failures.
+
+### Phase B — `deploy plan`
+
+Turn deployment docs into machine-readable recipes.
+
+Scope:
+
+- Implement target recipes for `docker`, `vercel`, and `fly`.
+- Output required env vars, blocking checks, generated files, and ordered
+  commands.
+- Refuse targets with incompatible storage defaults, such as local uploads on
+  ephemeral platforms.
+- Keep `deploy apply` out of scope until `plan` is stable.
+
+### Phase C — safe migrations
+
+Wrap `db:migrate` in a plan / backup / apply / verify flow.
+
+Scope:
+
+- Detect current migration version and pending files.
+- Flag destructive SQL patterns for manual review.
+- Acquire a migration lock before apply.
+- Require or recommend a fresh backup before production apply.
+- Run readiness verification after migration.
+- Emit rollback-plan hints without promising automatic rollback for arbitrary
+  schema changes.
+
+### Phase D — backup and restore
+
+Make disaster recovery runnable instead of only documented.
+
+Scope:
+
+- `backup create`, `backup list`, `backup verify`.
+- `restore plan`, `restore apply`, `restore smoke-test`.
+- `pg_dump --format=custom` for DB.
+- Local uploads archive or S3 manifest / sync plan for media.
+- Manifest tying DB dump, media snapshot, migration version, app version, and
+  verification status together.
+
+### Phase E — jobs, storage, plugins, release, runbooks
+
+Broaden operational coverage after the core loops are stable.
+
+Scope:
+
+- Job queue status, pause / resume, retry, drain, heartbeat checks.
+- Storage verification, orphan / missing file scans, local-to-S3 migration.
+- Plugin inventory, manifest inspection, route / block conflict checks,
+  enable / disable plans that state when rebuild / restart is required.
+- `release check` that composes typecheck, tests, build, migration status,
+  env readiness, storage safety, worker readiness, and backup recency.
+- Executable runbooks that diagnose incident states and return next commands.
+
+---
+
+## Security posture for a future remote ops API
+
+A remote API is useful for hosted agents, but it must not be the first version.
+When added, it should be scoped to read-only status first and require stricter
+controls for actions:
+
+- Admin capability gate.
+- CSRF for browser-originated calls or a separate short-lived service token for
+  machine clients.
+- Rate limiting and audit logging.
+- Two-step confirmation for destructive actions.
+- Optional IP allowlist / signed command payload in production.
+- No secrets in responses; return presence, hashes, or redacted values only.
+
+Candidate read endpoints:
+
+```text
+GET /api/admin/ops/status
+GET /api/admin/ops/doctor
+GET /api/admin/ops/jobs
+GET /api/admin/ops/storage
+```
+
+Candidate action endpoints, only after the CLI contract is proven:
+
+```text
+POST /api/admin/ops/cache/revalidate
+POST /api/admin/ops/jobs/drain
+POST /api/admin/ops/backup
+POST /api/admin/ops/runbook/{id}
+```
+
+---
+
+## Issue-ready backlog
+
+The following issue bodies are intentionally copy-pasteable into GitHub. Keep
+one user-visible outcome per issue and land them in order unless a later issue
+is needed to unblock testing.
+
+### Issue 1 — Add `nexpress ops status` / `doctor` JSON contract
+
+**Title:** Add agent-friendly `nexpress ops status` and `doctor` commands
+
+**Goal:** Give agents and operators one low-token command to understand whether
+a NexPress deployment is healthy enough to read, write, and serve traffic.
+
+**Scope:**
+
+- Add a runtime CLI entrypoint for `nexpress ops status` and
+  `nexpress ops doctor`.
+- Support `--json`, `--brief`, `--prod`, `--fix-plan`, and `--no-color`.
+- Emit `schemaVersion: "np.ops.v1"`.
+- Implement initial checks for Node, pnpm, required env vars, DB reachability,
+  pending migrations, storage adapter probe, `SITE_URL`, scheduler token, job
+  heartbeat, and readiness endpoint.
+- Define stable check IDs and exit-code behavior.
+- Add unit tests for pass / fail output and JSON schema shape.
+- Update docs with command examples.
+
+**Acceptance criteria:**
+
+- `nexpress ops doctor --prod --json` returns valid JSON with deterministic
+  check IDs.
+- A missing `DATABASE_URL` produces an error-severity check and exit code `1`.
+- `--brief` emits one compact line per check.
+- `--fix-plan --json` includes suggested next commands for fixable checks.
+
+### Issue 2 — Add `nexpress deploy plan` recipes
+
+**Title:** Add machine-readable deployment plans for Docker, Vercel, and Fly.io
+
+**Goal:** Convert deployment documentation into target-specific plans that an
+agent can inspect before applying changes.
+
+**Scope:**
+
+- Add `nexpress deploy plan --target docker|vercel|fly`.
+- Output required environment variables, generated file expectations,
+  pre-deploy checks, ordered commands, and blocking incompatibilities.
+- Detect storage / target incompatibilities such as local uploads on ephemeral
+  filesystems.
+- Support `--json`, `--brief`, and `--no-color`.
+- Keep provider API mutation out of scope; this issue is plan-only.
+
+**Acceptance criteria:**
+
+- `--target vercel --json` reports S3 as required durable media storage.
+- `--target docker --json` includes build, migrate, health, and worker notes.
+- Plans include docs links and stable blocking check IDs.
+
+### Issue 3 — Add safe migration workflow
+
+**Title:** Add `nexpress ops migrate plan/apply --safe`
+
+**Goal:** Make production database migrations agent-operable without allowing
+blind destructive changes.
+
+**Scope:**
+
+- Add `migrate status`, `migrate plan`, `migrate apply --safe`, and
+  `migrate rollback-plan`.
+- Detect pending migrations and current database migration version.
+- Flag destructive SQL patterns for manual approval.
+- Acquire an advisory migration lock before apply.
+- Require a fresh backup or an explicit override for production apply.
+- Verify readiness after apply.
+
+**Acceptance criteria:**
+
+- No-op when there are no pending migrations and `--if-pending` is used.
+- Destructive SQL causes a blocking check in `plan`.
+- `apply --safe` refuses production without a verified backup or explicit
+  documented override.
+
+### Issue 4 — Add backup / restore CLI
+
+**Title:** Add `nexpress ops backup` and `restore` commands with manifests
+
+**Goal:** Make the documented DB + media disaster-recovery workflow executable
+and verifiable.
+
+**Scope:**
+
+- Add `backup create`, `backup list`, `backup verify latest`.
+- Add `restore plan latest`, `restore apply latest`, and `restore smoke-test`.
+- Generate a manifest containing backup ID, DB dump path, media snapshot,
+  migration version, app version, created-at timestamp, and verification state.
+- Support local uploads archives and S3 snapshot / sync manifests.
+- Require `--confirm-production` for destructive production restore.
+
+**Acceptance criteria:**
+
+- Backups tie DB and media artifacts to one manifest.
+- `verify latest --json` reports whether DB dump and media artifacts are
+  present and restorable enough for a smoke test.
+- Restore plan prints exact ordered steps before apply.
+
+### Issue 5 — Add jobs / storage / plugin ops checks
+
+**Title:** Add operational subcommands for jobs, storage, and plugins
+
+**Goal:** Cover the high-frequency post-deploy incidents agents need to triage:
+stale workers, media drift, and plugin conflicts.
+
+**Scope:**
+
+- Add `ops jobs status|queues|pause|resume|retry|drain|heartbeat`.
+- Add `ops storage status|test|verify|orphaned-files|missing-files|migrate`.
+- Add `ops plugins list|inspect|doctor|enable|disable|upgrade-plan`.
+- Use shared `np.ops.v1` result envelope and check IDs.
+- Document which plugin actions require rebuild / restart in v1.
+
+**Acceptance criteria:**
+
+- Stale worker heartbeat is reported with a stable warning check ID.
+- Storage verify can detect a missing media object and an orphaned object.
+- Plugin doctor can identify route conflicts and block type overwrites.
+
+### Issue 6 — Add `release check/plan/verify`
+
+**Title:** Add release orchestration commands for agent-safe deploys
+
+**Goal:** Give agents one preflight / postflight contract around tests, builds,
+migrations, backups, and readiness.
+
+**Scope:**
+
+- Add `nexpress release check`, `release plan`, `release apply`, and
+  `release verify`.
+- Compose existing test, typecheck, build, migration, backup, env, storage,
+  worker, and readiness checks.
+- `release apply` should only run commands included in the previous plan or a
+  freshly generated equivalent plan.
+- Persist an audit artifact for each release attempt.
+
+**Acceptance criteria:**
+
+- `release check --json` returns a compact pass / fail summary with links to
+  failing command output artifacts.
+- Pending migrations and stale backups block production release plans.
+- `release verify --json` can run after deployment and report readiness.
+
+### Issue 7 — Add executable runbook commands
+
+**Title:** Add `nexpress runbook` diagnostics for common incidents
+
+**Goal:** Turn operations docs into command-driven incident recipes that return
+diagnosis, evidence, next commands, risk, and rollback notes.
+
+**Scope:**
+
+- Add runbooks for `migration-crashed`, `storage-local-to-s3`,
+  `backup-restore-drill`, and `worker-not-draining`.
+- Each runbook should collect evidence using existing ops checks and return a
+  short diagnosis.
+- Support `--json`, `--brief`, and docs links.
+- Do not auto-apply destructive steps in the first version.
+
+**Acceptance criteria:**
+
+- `nexpress runbook worker-not-draining --json` reports heartbeat age, queue
+  backlog, likely cause, and next commands.
+- Runbooks share the same `np.ops.v1` envelope.
