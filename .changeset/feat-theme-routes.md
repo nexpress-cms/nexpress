@@ -90,6 +90,23 @@ Total `@nexpress/next` tests: 62.
   framework doesn't pre-resolve search hits for it (theme
   component calls `searchCollections` directly).
 - `getArchiveQuery` helper — see open-question resolution above.
+- **Per-route `revalidate` cache hint** — considered, dropped.
+  Next's route-segment `revalidate` is a static export; we
+  can't vary it per URL pattern from a single catch-all. Theme
+  routes that want caching wrap their data fetches in
+  `unstable_cache(...)` themselves. Tracked as a v0.3 candidate
+  if a future SSG pass needs it.
+
+### Multi-collection archive collision
+
+`archives.posts.byCategory` and `archives.products.byCategory`
+both default to `/category/:slug`, so without a per-entry
+`pattern` override only the first declaration matches. The
+framework now logs a one-time dev warning when
+`collectThemeRoutes` detects two routes sharing the same
+pattern. Themes with multi-collection archive sugar must
+override the pattern for at least N-1 of the collisions
+(documented in the `NpThemeArchives` JSDoc).
 
 ### Dependency note
 

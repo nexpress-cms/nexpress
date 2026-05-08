@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NpTheme, NpThemeRoute } from "@nexpress/theme";
 
 import {
+  __resetCollisionWarnings,
   collectThemeRoutes,
   dispatchThemeRoute,
 } from "./route-dispatcher.js";
@@ -175,5 +176,59 @@ describe("collectThemeRoutes — archives expansion", () => {
 
   it("empty when neither routes nor archives declared", () => {
     expect(collectThemeRoutes(themeWith({}))).toEqual([]);
+  });
+});
+
+describe("collectThemeRoutes — pattern collision warning", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    __resetCollisionWarnings();
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  it("warns when two archive entries on different collections produce the same default pattern", () => {
+    const theme = themeWith({
+      archives: {
+        posts: { byCategory: { component: StubComponent } },
+        products: { byCategory: { component: StubComponent } },
+      },
+    });
+    collectThemeRoutes(theme);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("/category/:slug");
+  });
+
+  it("does not warn when patterns differ via per-entry override", () => {
+    const theme = themeWith({
+      archives: {
+        posts: { byCategory: { component: StubComponent } },
+        products: {
+          byCategory: {
+            component: StubComponent,
+            pattern: "/products/category/:slug",
+          },
+        },
+      },
+    });
+    collectThemeRoutes(theme);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("warns once per process per pattern even across multiple collectThemeRoutes calls", () => {
+    const theme = themeWith({
+      archives: {
+        posts: { byCategory: { component: StubComponent } },
+        products: { byCategory: { component: StubComponent } },
+      },
+    });
+    collectThemeRoutes(theme);
+    collectThemeRoutes(theme);
+    collectThemeRoutes(theme);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -172,11 +172,12 @@ export interface NpThemeRoute {
   metadata?: (
     ctx: NpRouteRenderProps,
   ) => Promise<import("next").Metadata> | import("next").Metadata;
-  /**
-   * Optional cache hint passed to Next's revalidate machinery.
-   * Defaults to the framework default (dynamic) when omitted.
-   */
-  revalidate?: number | false;
+  // Note: a `revalidate` hint was considered but dropped from
+  // v0.2 — Next's route-segment `revalidate` export is static
+  // and can't vary per URL pattern from a single catch-all.
+  // Theme routes that want caching wrap their data fetches in
+  // `unstable_cache(...)` themselves. Per-route revalidation
+  // semantics are tracked as a v0.3 candidate.
 }
 
 /**
@@ -213,6 +214,18 @@ export interface NpThemeDateArchiveEntry extends NpThemeArchiveEntry {
 }
 
 export interface NpThemeArchives {
+  /**
+   * Multi-collection note: the default patterns
+   * (`/category/:slug`, `/tag/:slug`, `/author/:id`, `/search`)
+   * don't include the collection name, so a theme that uses the
+   * same archive kind for multiple collections (e.g. both
+   * `posts.byCategory` AND `products.byCategory`) MUST override
+   * the `pattern` for at least N-1 of them — otherwise both
+   * register the same default pattern and only the first
+   * declared one is reachable. The framework logs a one-time
+   * dev warning when it detects pattern collisions in
+   * `collectThemeRoutes`.
+   */
   [collectionSlug: string]: {
     byCategory?: NpThemeArchiveEntry;
     byTag?: NpThemeArchiveEntry;

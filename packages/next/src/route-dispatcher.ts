@@ -93,17 +93,54 @@ function expandArchives(archives: NpThemeArchives): NpThemeRoute[] {
 }
 
 /**
+ * Module-level set tracking patterns we've already warned about,
+ * so the multi-collection collision warning fires once per
+ * pattern per process (not per request). Reset is exposed for
+ * tests via `__resetCollisionWarnings`.
+ */
+const warnedPatterns = new Set<string>();
+
+/** Test hook — resets the warning de-dup set. */
+export function __resetCollisionWarnings(): void {
+  warnedPatterns.clear();
+}
+
+function detectAndWarnCollisions(routes: NpThemeRoute[]): void {
+  const seen = new Map<string, number>();
+  for (const r of routes) {
+    seen.set(r.pattern, (seen.get(r.pattern) ?? 0) + 1);
+  }
+  for (const [pattern, count] of seen) {
+    if (count > 1 && !warnedPatterns.has(pattern)) {
+      warnedPatterns.add(pattern);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[nexpress/theme] route pattern "${pattern}" is declared ${count} ` +
+          `times in the active theme — only the first declaration will ` +
+          `match. Override \`pattern\` on archive entries when using the ` +
+          `same archive kind across multiple collections.`,
+      );
+    }
+  }
+}
+
+/**
  * Concatenate explicit `routes` and expanded `archives` into a
  * single ordered list. Explicit routes come first so a theme
  * that declares both can override the archive sugar's default
- * pattern by adding an explicit route earlier.
+ * pattern by adding an explicit route earlier. Logs a one-time
+ * dev warning when two routes share the same pattern (a real
+ * foot-gun for themes using archive sugar across multiple
+ * collections — see `NpThemeArchives` JSDoc).
  */
 export function collectThemeRoutes(theme: NpTheme): NpThemeRoute[] {
   const explicit = theme.impl.routes ?? [];
   const expanded = theme.impl.archives
     ? expandArchives(theme.impl.archives)
     : [];
-  return [...explicit, ...expanded];
+  const all = [...explicit, ...expanded];
+  detectAndWarnCollisions(all);
+  return all;
 }
 
 /**
