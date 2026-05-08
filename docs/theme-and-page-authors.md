@@ -213,6 +213,56 @@ const { isEnabled: preview } = await draftMode();
 const post = await getPostBySlug(slug, { draft: preview });
 ```
 
+### Filtering by `hasMany` relationships
+
+A `hasMany` relationship like `posts.categories` lives in a
+join table (`np_c_posts__categories`) — there's no `categories`
+column on `np_c_posts`. As of Phase E, the codegen-emitted
+typed wrappers handle the join transparently:
+
+```ts
+import { findPosts } from "@/db/generated/documents";
+
+// Single target — natural one-category-page case.
+const result = await findPosts({
+  where: { status: "published", categories: category.id },
+  sort: "-publishedAt",
+  page: pageNum,
+  limit: 20,
+});
+
+// Array — OR semantics across multiple targets.
+const wide = await findPosts({
+  where: { tags: [tagA.id, tagB.id, tagC.id] },
+});
+
+// Multiple hasMany filters — AND across categories AND tags.
+const both = await findPosts({
+  where: { categories: catId, tags: tagId },
+});
+```
+
+The wrapper subqueries the join table for matching parent ids,
+intersects across multiple hasMany filters, and delegates to
+`findDocuments` with `id: idList`. **All the gates findDocuments
+applies — `siteId`, `visibility`, `access.read` — run as usual.**
+You shouldn't need raw Drizzle for the standard listing path.
+
+Reference implementation: `apps/web/src/app/(site)/blog/category/[slug]/page.tsx`.
+
+#### When you still need raw Drizzle
+
+The wrapper covers the join-table case. For more exotic shapes
+— full-text search ranking, JSON-column queries, custom CTEs —
+you still drop into Drizzle directly. Just remember to re-apply
+the `findDocuments` gates manually:
+
+- `eq(table.siteId, await getCurrentSiteId() ?? "default")`
+- `eq(table.visibility, "public")` for anonymous viewers
+- `access.read` callbacks have no equivalent in raw queries —
+  collections that gate on the current user must go through
+  `findDocuments`, full stop.
+
 ---
 
 ## 3. Media & images
@@ -513,6 +563,51 @@ shells (`app/(site)/members/login/page.tsx` etc., which decide
 when to redirect already-signed-in users, what success banners
 to show on `?verified=1`, etc.). The framework owns the wire
 protocol; sites own the experience.
+
+### 6.2 OAuth providers
+
+`@nexpress/oauth-providers` ships factory functions for the most
+common providers — Google, GitHub, Discord. Each takes
+`{ clientId, clientSecret }` and returns an `OAuthProvider`
+ready for `registerOAuthProvider()`:
+
+```ts
+import { registerOAuthProvider } from "@nexpress/core";
+import {
+  createGoogleOAuthProvider,
+  createDiscordOAuthProvider,
+} from "@nexpress/oauth-providers";
+
+if (process.env.NP_OAUTH_GOOGLE_CLIENT_ID && process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET) {
+  registerOAuthProvider(
+    createGoogleOAuthProvider({
+      clientId: process.env.NP_OAUTH_GOOGLE_CLIENT_ID,
+      clientSecret: process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET,
+    }),
+  );
+}
+```
+
+Each provider strictly honors `email_verified` (Google, Discord)
+or falls back to `/user/emails` for verified primary (GitHub).
+**Unverified emails never reach the framework's email-match
+identity-resolution path** — that closes a hijack vector where
+an attacker controlling an OAuth account with a victim's email
+could otherwise claim the victim's NexPress account.
+
+The bundled `@nexpress/plugin-oauth-google` and
+`@nexpress/plugin-oauth-github` packages are thin wrappers
+around the factories — sites that prefer plugin lifecycle (one
+line in `nexpressConfig.plugins` instead of an explicit
+`registerOAuthProvider()` call) keep using them. Sites that
+want the registration in their own boot code reach for
+`@nexpress/oauth-providers` directly.
+
+Once registered, a single provider is shared across staff
+(`/api/auth/oauth/{provider}/...`) and member
+(`/api/members/oauth/{provider}/...`) flows — the routes pick
+which user pool to resolve to, the provider just identifies the
+authenticating human.
 
 ### 6.3 Staff auth pages — same model, different pool
 

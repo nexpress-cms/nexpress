@@ -37,8 +37,8 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*",
-    "arctic": "^3.7.0"
+    "@nexpress/oauth-providers": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -5,6 +5,31 @@ export function generateTypeScript(collections: NpCollectionConfig[]): string {
   return interfaces.join("\n\n");
 }
 
+interface HasManyDescriptor {
+  /** Field name on the collection (the where clause key). */
+  fieldName: string;
+  /** Generated join-table import name (e.g., `postsCategoriesTable`). */
+  joinTable: string;
+  /** Parent FK column on the join table (e.g., `postsId`). */
+  parentColumn: string;
+}
+
+function collectHasManyFields(collection: NpCollectionConfig): HasManyDescriptor[] {
+  const collCamel = toCamelCase(collection.slug);
+  const parentColumn = `${collCamel}Id`;
+  const out: HasManyDescriptor[] = [];
+  // Only top-level fields participate. Nested hasMany (inside row /
+  // collapsible / group / array) is rare in practice and the join-
+  // table naming convention doesn't carry through nesting cleanly.
+  for (const field of collection.fields) {
+    if (field.type === "relationship" && field.hasMany === true) {
+      const joinTable = `${collCamel}${toPascalCase(field.name)}Table`;
+      out.push({ fieldName: field.name, joinTable, parentColumn });
+    }
+  }
+  return out;
+}
+
 /**
  * Renders a complete `documents.ts` module: imports from
  * `@nexpress/core`, per-collection `${Pascal}Document` interfaces,
@@ -12,49 +37,225 @@ export function generateTypeScript(collections: NpCollectionConfig[]): string {
  * `get${Pascal}Document`) that bind the type generic so call sites
  * don't have to.
  *
+ * Collections with hasMany relationship fields get a smarter
+ * wrapper: when the caller's `where` clause names a hasMany
+ * field, the wrapper queries the join table for matching parent
+ * ids first, intersects across multiple hasMany filters, and
+ * delegates to `findDocuments` with `id: idList`. That covers
+ * the friction surfaced in #540's category-page dogfood — a
+ * `where: { categories: id }` filter looked typed but failed at
+ * runtime because `categories` isn't a column on the parent
+ * table; this wrapper makes it work.
+ *
  * The output is meant for `apps/<app>/src/db/generated/documents.ts`
  * and is a direct counterpart to `generateDrizzleSchema`'s
  * `collections.ts` (Drizzle schema). Both files come from the same
  * `nexpressConfig.collections` source so they stay in sync.
  */
 export function generateDocumentsModule(collections: NpCollectionConfig[]): string {
-  const imports = [
+  const hasManyByCollection = new Map(
+    collections.map((c) => [c.slug, collectHasManyFields(c)]),
+  );
+  const anyHasMany = Array.from(hasManyByCollection.values()).some(
+    (list) => list.length > 0,
+  );
+
+  const coreImports = [
     `import {`,
     `  findDocuments,`,
+    ...(anyHasMany ? [`  getDb,`] : []),
     `  getDocumentById,`,
     `  type NpAuthUser,`,
     `  type NpFindOptions,`,
     `  type NpFindResult,`,
     `} from "@nexpress/core";`,
-    ``,
   ].join("\n");
 
-  const interfaces = collections.map((c) => renderCollectionInterface(c)).join("\n\n");
-  const helpers = collections.map((c) => renderReadHelpers(c)).join("\n\n");
+  // Drizzle + join-table imports only when at least one collection
+  // has a hasMany relationship — keeps the file lean for sites
+  // that don't use them.
+  const drizzleImports = anyHasMany
+    ? [
+        `import { inArray } from "drizzle-orm";`,
+        `import type { NodePgDatabase } from "drizzle-orm/node-postgres";`,
+      ].join("\n")
+    : "";
+  const joinTables = Array.from(
+    new Set(
+      Array.from(hasManyByCollection.values())
+        .flat()
+        .map((d) => d.joinTable),
+    ),
+  ).sort();
+  const joinTableImports =
+    joinTables.length > 0
+      ? `import { ${joinTables.join(", ")} } from "./collections.js";`
+      : "";
 
-  return [imports, interfaces, "", helpers, ""].join("\n");
+  const imports = [coreImports, drizzleImports, joinTableImports]
+    .filter(Boolean)
+    .join("\n");
+
+  const interfaces = collections.map((c) => renderCollectionInterface(c)).join("\n\n");
+  const helpers = collections
+    .map((c) => renderReadHelpers(c, hasManyByCollection.get(c.slug) ?? []))
+    .join("\n\n");
+
+  return [imports, "", interfaces, "", helpers, ""].join("\n");
 }
 
-function renderReadHelpers(collection: NpCollectionConfig): string {
+function renderReadHelpers(
+  collection: NpCollectionConfig,
+  hasMany: HasManyDescriptor[],
+): string {
   const docType = `${toPascalCase(collection.slug)}Document`;
   const findFnName = `find${toPascalCase(collection.slug)}`;
   const getFnName = `get${toPascalCase(collection.slug)}Document`;
   const slug = JSON.stringify(collection.slug);
+
+  const findFn =
+    hasMany.length === 0
+      ? renderSimpleFindFn(findFnName, slug, docType, collection.slug)
+      : renderHasManyFindFn(findFnName, slug, docType, collection.slug, hasMany);
+
   return [
-    `/** Typed listing query for the \`${collection.slug}\` collection. */`,
-    `export function ${findFnName}(`,
-    `  options: NpFindOptions<${docType}> = {},`,
-    `  user?: NpAuthUser,`,
-    `): Promise<NpFindResult<${docType}>> {`,
-    `  return findDocuments<${docType}>(${slug}, options, user);`,
-    `}`,
-    ``,
+    findFn,
+    "",
     `/** Typed by-id fetch for the \`${collection.slug}\` collection. */`,
     `export function ${getFnName}(`,
     `  id: string,`,
     `  user?: NpAuthUser,`,
     `): Promise<${docType} | null> {`,
     `  return getDocumentById<${docType}>(${slug}, id, user);`,
+    `}`,
+  ].join("\n");
+}
+
+function renderSimpleFindFn(
+  findFnName: string,
+  slug: string,
+  docType: string,
+  slugLabel: string,
+): string {
+  return [
+    `/** Typed listing query for the \`${slugLabel}\` collection. */`,
+    `export function ${findFnName}(`,
+    `  options: NpFindOptions<${docType}> = {},`,
+    `  user?: NpAuthUser,`,
+    `): Promise<NpFindResult<${docType}>> {`,
+    `  return findDocuments<${docType}>(${slug}, options, user);`,
+    `}`,
+  ].join("\n");
+}
+
+function renderHasManyFindFn(
+  findFnName: string,
+  slug: string,
+  docType: string,
+  slugLabel: string,
+  hasMany: HasManyDescriptor[],
+): string {
+  // Build a literal array of `{ field, table, column }` for
+  // runtime iteration. Keep it inline (instead of a loose const)
+  // so the wrapper is one self-contained function — no helpers
+  // bleed into consumer code completion.
+  const descriptors = hasMany
+    .map(
+      (d) =>
+        `    { field: ${JSON.stringify(d.fieldName)}, table: ${d.joinTable}, parent: ${d.joinTable}.${d.parentColumn} },`,
+    )
+    .join("\n");
+
+  return [
+    `/**`,
+    ` * Typed listing query for the \`${slugLabel}\` collection.`,
+    ` *`,
+    ` * Pre-resolves hasMany relationship filters in the where`,
+    ` * clause (${hasMany.map((d) => `\`${d.fieldName}\``).join(", ")}) by`,
+    ` * subquerying the join table for matching parent ids. Each`,
+    ` * field accepts a single target id (most common) or an array`,
+    ` * of target ids (OR semantics). Multiple hasMany filters`,
+    ` * intersect — \`where: { categories: catId, tags: tagId }\``,
+    ` * matches rows that have BOTH.`,
+    ` */`,
+    `export async function ${findFnName}(`,
+    `  options: NpFindOptions<${docType}> = {},`,
+    `  user?: NpAuthUser,`,
+    `): Promise<NpFindResult<${docType}>> {`,
+    `  const where = options.where ? { ...options.where } : {};`,
+    `  const hasManyDescriptors = [`,
+    descriptors,
+    `  ];`,
+    ``,
+    `  const matched: string[][] = [];`,
+    `  let touchedHasMany = false;`,
+    `  for (const { field, table, parent } of hasManyDescriptors) {`,
+    `    const value = (where as Record<string, unknown>)[field];`,
+    `    if (value === undefined) continue;`,
+    `    touchedHasMany = true;`,
+    `    delete (where as Record<string, unknown>)[field];`,
+    `    const targets = (Array.isArray(value) ? value : [value]).filter(`,
+    `      (v): v is string => typeof v === "string" && v.length > 0,`,
+    `    );`,
+    `    if (targets.length === 0) {`,
+    `      // Empty array short-circuits to no rows — match the`,
+    `      // pipeline's array-where semantics.`,
+    `      matched.push([]);`,
+    `      continue;`,
+    `    }`,
+    `    // Cast getDb() to NodePgDatabase so the drizzle builder`,
+    `    // chain (.select.from.where) carries proper return types.`,
+    `    // The empty-schema generic narrows the return shape away`,
+    `    // from any specific tables; the explicit \`{ id: string }[]\` `,
+    `    // cast at the end matches the projection.`,
+    `    const db = getDb() as unknown as NodePgDatabase<Record<string, never>>;`,
+    `    const rows = (await db`,
+    `      .select({ id: parent })`,
+    `      .from(table)`,
+    `      .where(inArray(table.targetId, targets))) as Array<{ id: string }>;`,
+    `    matched.push(rows.map((r) => r.id));`,
+    `  }`,
+    ``,
+    `  if (touchedHasMany) {`,
+    `    // Intersect across all hasMany filters. Empty intersection`,
+    `    // → return immediately; findDocuments would short-circuit`,
+    `    // on the empty-array where clause anyway, but the early`,
+    `    // exit saves a round-trip.`,
+    `    let ids = matched[0] ?? [];`,
+    `    for (let i = 1; i < matched.length; i++) {`,
+    `      const set = new Set(matched[i]);`,
+    `      ids = ids.filter((id) => set.has(id));`,
+    `    }`,
+    ``,
+    `    // Honor any pre-existing user id constraint. Without this,`,
+    `    // \`where: { id: someId, categories: catId }\` would silently`,
+    `    // drop the user's id filter and return every post in that`,
+    `    // category — a real foot-gun. Intersect instead.`,
+    `    const existingId = (where as Record<string, unknown>).id;`,
+    `    if (typeof existingId === "string") {`,
+    `      ids = ids.includes(existingId) ? [existingId] : [];`,
+    `    } else if (Array.isArray(existingId)) {`,
+    `      const allowed = new Set(`,
+    `        existingId.filter((v): v is string => typeof v === "string"),`,
+    `      );`,
+    `      ids = ids.filter((id) => allowed.has(id));`,
+    `    }`,
+    ``,
+    `    if (ids.length === 0) {`,
+    `      return {`,
+    `        docs: [],`,
+    `        totalDocs: 0,`,
+    `        totalPages: 0,`,
+    `        page: options.page ?? 1,`,
+    `        limit: options.limit ?? 20,`,
+    `        hasNextPage: false,`,
+    `        hasPrevPage: false,`,
+    `      };`,
+    `    }`,
+    `    (where as Record<string, unknown>).id = ids;`,
+    `  }`,
+    ``,
+    `  return findDocuments<${docType}>(${slug}, { ...options, where }, user);`,
     `}`,
   ].join("\n");
 }

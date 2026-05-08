@@ -1,23 +1,25 @@
 {
-  "name": "@nexpress/plugin-oauth-github",
+  "name": "@nexpress/oauth-providers",
   "version": "0.1.0",
-  "description": "GitHub OAuth provider plugin for NexPress.",
+  "description": "OAuth provider factories for NexPress — Google, GitHub, Discord. Framework-shipped, plugin-free.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/hahabsw/nexpress#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/hahabsw/nexpress.git",
-    "directory": "packages/plugins/oauth-github"
+    "directory": "packages/oauth-providers"
   },
   "bugs": {
     "url": "https://github.com/hahabsw/nexpress/issues"
   },
   "keywords": [
     "nexpress",
-    "plugin",
     "oauth",
-    "github"
+    "google",
+    "github",
+    "discord",
+    "auth"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -37,8 +39,7 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "@nexpress/oauth-providers": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*"
+    "arctic": "^3.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
