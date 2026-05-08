@@ -390,6 +390,28 @@ export type {
 } from "./themes/requirements.js";
 
 export {
+  getThemeSettings,
+  getThemeSettingsWithStatus,
+  setThemeSettings,
+  activeThemeContributesSeo,
+} from "./themes/settings.js";
+export type { NpThemeSettingsResult } from "./themes/settings.js";
+
+export { introspectThemeSettingsSchema } from "./themes/settings-schema.js";
+export type {
+  NpThemeSettingsField,
+  NpThemeSettingsTextField,
+  NpThemeSettingsUrlField,
+  NpThemeSettingsColorField,
+  NpThemeSettingsNumberField,
+  NpThemeSettingsBooleanField,
+  NpThemeSettingsEnumField,
+  NpThemeSettingsArrayField,
+  NpThemeSettingsObjectField,
+  NpThemeSettingsUnsupportedField,
+} from "./themes/settings-schema.js";
+
+export {
   registerPluginTemplates,
   resetPluginTemplates,
   getPluginTemplatesForCollection,

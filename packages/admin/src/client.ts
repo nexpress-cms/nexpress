@@ -63,6 +63,7 @@ export { LocalesTab } from "./settings/locales-tab.js";
 export { StringsTab } from "./settings/strings-tab.js";
 export { ThemeEditor } from "./settings/theme-editor.js";
 export { ThemeSwitcher } from "./settings/theme-switcher.js";
+export { ThemeSettingsPanel } from "./settings/theme-settings-panel.js";
 export { TranslationTabs } from "./collections/translation-tabs.js";
 export { NavigationEditor } from "./settings/navigation-editor.js";
 export { CustomRoutesList } from "./settings/custom-routes-list.js";

@@ -545,6 +545,37 @@ export interface NpThemeManifest {
   requires?: {
     collections?: Record<string, NpThemeCollectionRequirement>;
   };
+  /**
+   * Phase F.3 (theme v0.2) — operator-tunable theme options.
+   *
+   * A Zod schema describing settings the admin should expose as
+   * a form. The framework generates the form fields from the
+   * schema (no per-theme admin UI code), persists submissions in
+   * `np_settings` keyed by `theme.settings:<themeId>`, and
+   * exposes the parsed value to theme components via
+   * `getThemeSettings()`.
+   *
+   * Supported field types in v0.2:
+   *   - z.string() / z.string().url() / z.string().regex(...)
+   *   - z.number().int().min().max()
+   *   - z.boolean()
+   *   - z.enum([...])
+   *   - z.array(z.object({...}))
+   *   - z.object({...})
+   *
+   * Use `.default(value)` for initial form values and
+   * `.describe("Help text")` for the field label/description
+   * the admin auto-form picks up.
+   *
+   * Typed as `unknown` here so `@nexpress/core` doesn't have to
+   * re-export Zod type unions through every public surface;
+   * theme authors writing `defineTheme({ manifest: { ... } })`
+   * still get the proper Zod typing because they construct the
+   * schema with `z.object(...)` themselves. The framework
+   * narrows back to `ZodTypeAny` at the call site that runs
+   * introspection / validation.
+   */
+  settingsSchema?: unknown;
 }
 
 /**
