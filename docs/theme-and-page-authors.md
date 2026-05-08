@@ -213,73 +213,55 @@ const { isEnabled: preview } = await draftMode();
 const post = await getPostBySlug(slug, { draft: preview });
 ```
 
-### Filtering by `hasMany` relationships — raw Drizzle
+### Filtering by `hasMany` relationships
 
-`findDocuments` (and the typed wrappers) only filter by direct
-columns. A `hasMany` relationship like `posts.categories` lives
-in a join table (`np_c_posts__categories`); there's no
-`categories` column on `np_c_posts`. The typed wrapper's where
-clause LET YOU SPELL `categories: [id]` (it's on
-`PostsDocument`), but the runtime ignores the field.
+A `hasMany` relationship like `posts.categories` lives in a
+join table (`np_c_posts__categories`) — there's no `categories`
+column on `np_c_posts`. As of Phase E, the codegen-emitted
+typed wrappers handle the join transparently:
 
-Until the framework grows hasMany filtering, drop into the join
-table directly:
+```ts
+import { findPosts } from "@/db/generated/documents";
 
-```tsx
-import { getCurrentSiteId } from "@nexpress/core";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
-import { postsCategoriesTable, postsTable } from "@/db/generated/collections";
-import { findCategories, type PostsDocument } from "@/db/generated/documents";
-import { getDb } from "@/lib/bootstrap";
+// Single target — natural one-category-page case.
+const result = await findPosts({
+  where: { status: "published", categories: category.id },
+  sort: "-publishedAt",
+  page: pageNum,
+  limit: 20,
+});
 
-// Step 1 — typed lookup of the category by slug. Phase D wrapper
-// handles this part, no friction.
-const result = await findCategories({ where: { slug }, limit: 1 });
-const category = result.docs[0];
-if (!category) notFound();
+// Array — OR semantics across multiple targets.
+const wide = await findPosts({
+  where: { tags: [tagA.id, tagB.id, tagC.id] },
+});
 
-// Step 2 — subquery the join table for matching post ids.
-const db = getDb();
-const siteId = (await getCurrentSiteId()) ?? "default";
-const postIdSubquery = db
-  .select({ id: postsCategoriesTable.postsId })
-  .from(postsCategoriesTable)
-  .where(eq(postsCategoriesTable.targetId, category.id));
-
-// Step 3 — fetch + count posts whose id is in that subquery.
-//
-// CRITICAL: dropping into raw Drizzle bypasses the gates
-// `findDocuments` applies automatically. Re-add at minimum:
-//   - `siteId` — multi-site scoping. Multi-tenant instances
-//     would otherwise leak sibling-site rows.
-//   - `visibility = "public"` — anonymous viewers must not see
-//     private rows. Authenticated paths can broaden this.
-// `access.read` callbacks ALSO aren't re-applied — for
-// collections that gate on the current user, `findDocuments`
-// is the only safe path. Public-read collections like `posts`
-// (`access: { read: () => true }`) are fine without it.
-const filter = and(
-  eq(postsTable.status, "published"),
-  eq(postsTable.visibility, "public"),
-  eq(postsTable.siteId, siteId),
-  inArray(postsTable.id, postIdSubquery),
-);
-const [docs, totalRow] = await Promise.all([
-  db.select().from(postsTable).where(filter)
-    .orderBy(desc(postsTable.publishedAt))
-    .limit(20).offset(offset),
-  db.select({ total: count() }).from(postsTable).where(filter),
-]);
-const posts = docs as unknown as PostsDocument[];
+// Multiple hasMany filters — AND across categories AND tags.
+const both = await findPosts({
+  where: { categories: catId, tags: tagId },
+});
 ```
+
+The wrapper subqueries the join table for matching parent ids,
+intersects across multiple hasMany filters, and delegates to
+`findDocuments` with `id: idList`. **All the gates findDocuments
+applies — `siteId`, `visibility`, `access.read` — run as usual.**
+You shouldn't need raw Drizzle for the standard listing path.
 
 Reference implementation: `apps/web/src/app/(site)/blog/category/[slug]/page.tsx`.
 
-> **Phase E candidate.** A typed `findPostsByCategory(categoryId)`
-> generated alongside the existing `find${Pascal}` wrappers
-> would hide this boilerplate. Tracking issue welcome — for
-> now, the raw Drizzle pattern works and is the same shape
-> across every hasMany relationship in the schema.
+#### When you still need raw Drizzle
+
+The wrapper covers the join-table case. For more exotic shapes
+— full-text search ranking, JSON-column queries, custom CTEs —
+you still drop into Drizzle directly. Just remember to re-apply
+the `findDocuments` gates manually:
+
+- `eq(table.siteId, await getCurrentSiteId() ?? "default")`
+- `eq(table.visibility, "public")` for anonymous viewers
+- `access.read` callbacks have no equivalent in raw queries —
+  collections that gate on the current user must go through
+  `findDocuments`, full stop.
 
 ---
 

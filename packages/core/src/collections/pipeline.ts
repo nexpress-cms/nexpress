@@ -1862,6 +1862,20 @@ function buildQueryConditions(table: PgTable, options: NpFindOptions): QueryCond
         continue;
       }
 
+      // Array values → `IN (...)`. Empty array means "match
+      // nothing" — emit a tautologically-false condition so the
+      // overall query short-circuits to zero rows. (Without this
+      // guard, Drizzle's `inArray(col, [])` produces `col IN ()`,
+      // which Postgres rejects with a syntax error.)
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          conditions.push(sql`false`);
+        } else {
+          conditions.push(inArray(getTableColumn(table, field), value));
+        }
+        continue;
+      }
+
       conditions.push(eq(getTableColumn(table, field), value));
     }
   }

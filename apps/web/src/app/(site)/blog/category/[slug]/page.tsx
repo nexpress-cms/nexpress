@@ -1,21 +1,14 @@
-import { getCurrentSiteId } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PaginationNav } from "@/components/pagination-nav";
 import {
-  postsCategoriesTable,
-  postsTable,
-} from "@/db/generated/collections";
-import {
   findCategories,
+  findPosts,
   type CategoriesDocument,
-  type PostsDocument,
 } from "@/db/generated/documents";
-import { getDb } from "@/lib/bootstrap";
 import { ensureFor } from "@/lib/init-core";
 
 interface CategoryPageProps {
@@ -60,71 +53,22 @@ export default async function CategoryPage({
   const { page: pageRaw } = await searchParams;
   const pageNum = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
 
-  // ─── hasMany relationship filter — raw Drizzle ────────────────
-  //
-  // findPosts (and findDocuments under it) only filter by direct
-  // columns. The `categories` field on a post is a hasMany
-  // relationship stored in `np_c_posts__categories` — there's no
-  // `categories` column on `np_c_posts`. Until the framework
-  // grows hasMany filtering on findDocuments, the join has to be
-  // explicit. The pattern: subquery the join table for matching
-  // post ids, then filter the posts query by `id IN (...)`.
-  //
-  // The codegen typed wrappers don't help here — they generate
-  // `where: Partial<PostsDocument>` which lets you SAY
-  // `categories: [id]` but the runtime ignores the field. Phase
-  // E candidate: detect hasMany fields at codegen and emit a
-  // helper.
-  //
-  // **Important**: dropping into raw Drizzle bypasses the gates
-  // findDocuments applies automatically. We restore the two
-  // every public listing relies on:
-  //
-  //   - `siteId` — multi-site scoping. Without this, a multi-
-  //     tenant instance leaks posts from sibling sites into
-  //     this page.
-  //   - `visibility = "public"` — anonymous viewers must not
-  //     see `visibility = "private"` rows. (Authenticated paths
-  //     would broaden this; this page renders to anonymous, so
-  //     the strict filter is correct.)
-  //
-  // The `access.read` callback is NOT re-checked here — for
-  // collections that gate read access on the user (the posts
-  // collection allows anonymous reads via `access: { read: () =>
-  // true }`), the rendered list lines up with what
-  // `findPosts({ where: { categories } })` would have returned
-  // if the framework supported the filter.
-  const db = getDb();
-  const siteId = (await getCurrentSiteId()) ?? "default";
-  const offset = (pageNum - 1) * PAGE_SIZE;
-  const postIdSubquery = db
-    .select({ id: postsCategoriesTable.postsId })
-    .from(postsCategoriesTable)
-    .where(eq(postsCategoriesTable.targetId, category.id));
-
-  const filter = and(
-    eq(postsTable.status, "published"),
-    eq(postsTable.visibility, "public"),
-    eq(postsTable.siteId, siteId),
-    inArray(postsTable.id, postIdSubquery),
-  );
-
-  const [docs, totalRow] = await Promise.all([
-    db
-      .select()
-      .from(postsTable)
-      .where(filter)
-      .orderBy(desc(postsTable.publishedAt))
-      .limit(PAGE_SIZE)
-      .offset(offset),
-    db.select({ total: count() }).from(postsTable).where(filter),
-  ]);
-  const totalDocs = Number(totalRow[0]?.total ?? 0);
-  const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / PAGE_SIZE);
-  // The rows come from `postsTable` directly so they're already
-  // shaped like `PostsDocument` — same projection the typed
-  // wrappers return.
-  const posts = docs as unknown as PostsDocument[];
+  // hasMany filter — Phase E made this work natively. The
+  // codegen wrapper for `findPosts` detects `categories` as a
+  // hasMany relationship, subqueries `np_c_posts__categories`
+  // for matching post ids, and delegates to `findDocuments` with
+  // an `id: idList` filter. siteId / visibility / access.read
+  // gates are all preserved (we're going through findDocuments,
+  // not raw Drizzle).
+  const result = await findPosts({
+    where: {
+      status: "published",
+      categories: category.id,
+    },
+    sort: "-publishedAt",
+    page: pageNum,
+    limit: PAGE_SIZE,
+  });
 
   return (
     <article
@@ -158,17 +102,17 @@ export default async function CategoryPage({
             fontSize: "0.875rem",
           }}
         >
-          {totalDocs} {totalDocs === 1 ? "post" : "posts"}
+          {result.totalDocs} {result.totalDocs === 1 ? "post" : "posts"}
         </p>
       </header>
 
-      {posts.length === 0 ? (
+      {result.docs.length === 0 ? (
         <p style={{ color: "#64748b" }}>
           No posts in {category.name} yet.
         </p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0 }}>
-          {posts.map((doc) => (
+          {result.docs.map((doc) => (
             <li
               key={doc.id}
               style={{ padding: "1rem 0", borderBottom: "1px solid #e2e8f0" }}
@@ -201,9 +145,9 @@ export default async function CategoryPage({
 
       <PaginationNav
         page={pageNum}
-        totalPages={totalPages}
-        hasPrevPage={pageNum > 1 && totalDocs > 0}
-        hasNextPage={pageNum < totalPages}
+        totalPages={result.totalPages}
+        hasPrevPage={result.hasPrevPage}
+        hasNextPage={result.hasNextPage}
         hrefForPage={(p) => `/blog/category/${category.slug}?page=${p}`}
       />
     </article>
