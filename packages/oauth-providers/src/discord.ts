@@ -108,7 +108,12 @@ export function createDiscordOAuthProvider(
     {
       id: "discord",
       label: "Discord",
-      pkce: false,
+      // arctic's `Discord.createAuthorizationURL` signature is
+      // `(state, codeVerifier, scopes)` — PKCE-only. Setting
+      // `pkce: false` would dispatch through the non-PKCE branch
+      // in `fromArctic`, which passes `(state, scopes)` and ends
+      // up with the scopes array in the codeVerifier slot.
+      pkce: true,
       scopes: options.scopes ?? DEFAULT_SCOPES,
       fetchProfile: (accessToken) => fetchDiscordProfile(accessToken, fetchImpl),
     },
