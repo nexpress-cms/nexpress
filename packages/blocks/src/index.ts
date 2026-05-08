@@ -30,6 +30,7 @@ export {
   isBlockSourceActive,
   getRegisteredBlocksForActiveSources,
   getRegisteredBlockMetadataForActiveSources,
+  getRegisteredPatternsForActiveSources,
   type NpBlockSource,
   type NpActiveSourceContext,
 } from "./source.js";

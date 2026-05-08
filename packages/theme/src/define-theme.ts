@@ -1,6 +1,10 @@
 import type { ComponentType, ReactNode } from "react";
 
-import type { NpBlockDefinition, NpBlockRenderContext } from "@nexpress/blocks";
+import type {
+  NpBlockDefinition,
+  NpBlockRenderContext,
+  NpPattern,
+} from "@nexpress/blocks";
 import type {
   NpRegisteredTheme,
   NpThemeColors,
@@ -311,6 +315,21 @@ export interface NpThemeImpl {
    * in the same process.
    */
   blocks?: NpBlockDefinition[];
+  /**
+   * Phase F.5 — theme-shipped block patterns.
+   *
+   * Themes can register pre-shaped block subtrees that appear
+   * in the page-builder's pattern picker (Cmd-K → "Pattern"
+   * group today; a categorized + thumbnailed picker is tracked
+   * as F.5.1 follow-up). Operators drop a pattern in one click,
+   * the editor deep-clones it with fresh ids, and the resulting
+   * blocks are regular editable instances.
+   *
+   * Bootstrap auto-stamps `source: "theme:<manifest.id>"` on
+   * each pattern so the active-source filter scopes patterns
+   * the same way it scopes blocks (multi-site safe).
+   */
+  patterns?: NpPattern[];
 }
 
 export interface NpTheme extends NpRegisteredTheme {

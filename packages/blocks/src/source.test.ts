@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { registerBlock, resetSharedBlockRegistry } from "./registry.js";
+import {
+  registerBlock,
+  registerPattern,
+  resetSharedBlockRegistry,
+  resetSharedPatternRegistry,
+} from "./registry.js";
 import {
   getRegisteredBlockMetadataForActiveSources,
   getRegisteredBlocksForActiveSources,
+  getRegisteredPatternsForActiveSources,
   isBlockSourceActive,
   parseBlockSource,
 } from "./source.js";
-import type { NpBlockDefinition } from "./types.js";
+import type { NpBlockDefinition, NpPattern } from "./types.js";
 
 const stub = (
   type: string,
@@ -130,5 +136,63 @@ describe("getRegisteredBlocks*ForActiveSources — integration with shared regis
     }).map((d) => d.type);
     expect(types).not.toContain("magazine.hero");
     expect(types).not.toContain("portfolio.grid");
+  });
+});
+
+const stubPattern = (
+  id: string,
+  source: NpPattern["source"],
+  extras?: Partial<NpPattern>,
+): NpPattern => ({
+  id,
+  label: id,
+  source,
+  blocks: [],
+  ...extras,
+});
+
+describe("getRegisteredPatternsForActiveSources — theme pattern filter", () => {
+  it("filters theme patterns by active theme id", () => {
+    resetSharedPatternRegistry();
+    registerPattern(stubPattern("magazine.hero-cta", "theme:magazine"));
+    registerPattern(stubPattern("portfolio.grid-3", "theme:portfolio"));
+    registerPattern(stubPattern("plugin.email-cta", "plugin:reading-time"));
+    registerPattern(stubPattern("custom.saved", "custom"));
+
+    const ids = getRegisteredPatternsForActiveSources({
+      themeId: "magazine",
+    }).map((p) => p.id);
+    expect(ids).toContain("magazine.hero-cta");
+    expect(ids).not.toContain("portfolio.grid-3");
+    expect(ids).toContain("plugin.email-cta");
+    expect(ids).toContain("custom.saved");
+  });
+
+  it("filters out all theme patterns when no theme active", () => {
+    resetSharedPatternRegistry();
+    registerPattern(stubPattern("magazine.hero-cta", "theme:magazine"));
+    registerPattern(stubPattern("plugin.email-cta", "plugin:reading-time"));
+
+    const ids = getRegisteredPatternsForActiveSources({
+      themeId: null,
+    }).map((p) => p.id);
+    expect(ids).not.toContain("magazine.hero-cta");
+    expect(ids).toContain("plugin.email-cta");
+  });
+
+  it("preserves preview + category fields through the filter", () => {
+    resetSharedPatternRegistry();
+    registerPattern(
+      stubPattern("magazine.hero-cta", "theme:magazine", {
+        preview: "/themes/magazine/preview.png",
+        category: "homepage",
+      }),
+    );
+
+    const filtered = getRegisteredPatternsForActiveSources({
+      themeId: "magazine",
+    });
+    expect(filtered[0]?.preview).toBe("/themes/magazine/preview.png");
+    expect(filtered[0]?.category).toBe("homepage");
   });
 });

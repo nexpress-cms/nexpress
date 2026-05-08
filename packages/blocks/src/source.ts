@@ -1,5 +1,9 @@
-import { getSharedRegistry } from "./registry.js";
-import type { NpBlockDefinition, NpBlockMetadata } from "./types.js";
+import { getRegisteredPatterns, getSharedRegistry } from "./registry.js";
+import type {
+  NpBlockDefinition,
+  NpBlockMetadata,
+  NpPattern,
+} from "./types.js";
 
 /**
  * Phase F.4 — block source identity model.
@@ -127,4 +131,18 @@ export function getRegisteredBlockMetadataForActiveSources(
     void _render;
     return metadata;
   });
+}
+
+/**
+ * Phase F.5 — sister filter for patterns. Same rules as the
+ * block filter (`isBlockSourceActive`): theme patterns are
+ * scoped by `themeId`, plugin / built-in / custom patterns
+ * always pass. The admin layout uses this so the page builder's
+ * pattern picker only shows patterns for the current site's
+ * active theme.
+ */
+export function getRegisteredPatternsForActiveSources(
+  ctx: NpActiveSourceContext,
+): NpPattern[] {
+  return getRegisteredPatterns().filter((p) => isBlockSourceActive(p.source, ctx));
 }

@@ -69,6 +69,22 @@ function themeBlocks(theme: { impl: unknown }): NpBlockDefinition[] {
   );
 }
 
+// Phase F.5 — sister narrowing for theme-shipped patterns.
+// Same loose-shape approach: id + label + blocks suffice.
+function themePatterns(theme: { impl: unknown }): NpPattern[] {
+  const impl = theme.impl as { patterns?: unknown } | undefined;
+  const patterns = impl?.patterns;
+  if (!Array.isArray(patterns)) return [];
+  return patterns.filter(
+    (p): p is NpPattern =>
+      p !== null &&
+      typeof p === "object" &&
+      typeof (p as { id?: unknown }).id === "string" &&
+      typeof (p as { label?: unknown }).label === "string" &&
+      Array.isArray((p as { blocks?: unknown }).blocks),
+  );
+}
+
 // Sister to `pluginBlocks` — narrows a plugin's `patterns` field
 // without forcing core to depend on the pattern type. Same loose-
 // shape duck-typing pattern (id + label + blocks). Source defaults
@@ -430,10 +446,20 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // active on any site in this process); the registry stays
       // append-only and the activation filter at admin/render
       // layer scopes by site context.
+      //
+      // Phase F.5 — same for theme-shipped patterns; both use
+      // concrete `theme:<id>` source identity so the activation
+      // filter scopes them per site.
       for (const theme of config.themes ?? []) {
         for (const block of themeBlocks(theme)) {
           registerBlock({
             ...block,
+            source: `theme:${theme.manifest.id}`,
+          });
+        }
+        for (const pattern of themePatterns(theme)) {
+          registerPattern({
+            ...pattern,
             source: `theme:${theme.manifest.id}`,
           });
         }
@@ -505,14 +531,21 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           registerPattern({ ...pattern, source: `plugin:${pluginId}` });
         }
       }
-      // Re-register theme blocks after the registry reset above
-      // (resetSharedBlockRegistry only reseeds built-in defaults).
-      // Theme blocks don't change between reloads, but they live
-      // in the same registry so we have to put them back.
+      // Re-register theme blocks + patterns after the registry
+      // resets above (resetSharedBlockRegistry / Pattern only
+      // reseed built-in defaults). Theme contributions don't
+      // change between reloads, but they live in the same
+      // process-global registries so we have to put them back.
       for (const theme of config.themes ?? []) {
         for (const block of themeBlocks(theme)) {
           registerBlock({
             ...block,
+            source: `theme:${theme.manifest.id}`,
+          });
+        }
+        for (const pattern of themePatterns(theme)) {
+          registerPattern({
+            ...pattern,
             source: `theme:${theme.manifest.id}`,
           });
         }
