@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
 import {
   can,
-  getActiveThemeId,
   npUsers,
   verifyTokenFull,
 } from "@nexpress/core";
@@ -12,6 +11,7 @@ import {
   getRegisteredBlockMetadataForActiveSources,
   getRegisteredPatterns,
 } from "@nexpress/blocks";
+import { getCachedActiveTheme } from "@/lib/cached-theme";
 import nexpressConfig from "@/nexpress.config";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
@@ -80,9 +80,17 @@ export default async function AdminLayout({
   // processes don't surface every installed theme's blocks in
   // the Add-block popover. Plugin and built-in blocks are
   // always included; only theme blocks are gated by themeId.
-  const activeThemeId = await getActiveThemeId();
+  //
+  // Use `getCachedActiveTheme()` (which falls back to the first
+  // registered theme when `np_settings.activeTheme` is unset)
+  // so admin and renderer agree on the active theme — without
+  // the fallback, a fresh install would render the first theme's
+  // shell while the admin's Add-block popover shows zero theme
+  // blocks. Cached version also participates in `nx:theme`
+  // invalidation, matching the renderer's invalidation path.
+  const activeTheme = await getCachedActiveTheme();
   const blocksMetadata = getRegisteredBlockMetadataForActiveSources({
-    themeId: activeThemeId,
+    themeId: activeTheme?.manifest.id ?? null,
   });
   // Same trick for plugin / theme contributed patterns — they land
   // in the SERVER instance of the shared pattern registry during
