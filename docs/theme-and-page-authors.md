@@ -213,6 +213,59 @@ const { isEnabled: preview } = await draftMode();
 const post = await getPostBySlug(slug, { draft: preview });
 ```
 
+### Filtering by `hasMany` relationships — raw Drizzle
+
+`findDocuments` (and the typed wrappers) only filter by direct
+columns. A `hasMany` relationship like `posts.categories` lives
+in a join table (`np_c_posts__categories`); there's no
+`categories` column on `np_c_posts`. The typed wrapper's where
+clause LET YOU SPELL `categories: [id]` (it's on
+`PostsDocument`), but the runtime ignores the field.
+
+Until the framework grows hasMany filtering, drop into the join
+table directly:
+
+```tsx
+import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { postsCategoriesTable, postsTable } from "@/db/generated/collections";
+import { findCategories, type PostsDocument } from "@/db/generated/documents";
+import { getDb } from "@/lib/bootstrap";
+
+// Step 1 — typed lookup of the category by slug. Phase D wrapper
+// handles this part, no friction.
+const result = await findCategories({ where: { slug }, limit: 1 });
+const category = result.docs[0];
+if (!category) notFound();
+
+// Step 2 — subquery the join table for matching post ids.
+const db = getDb();
+const postIdSubquery = db
+  .select({ id: postsCategoriesTable.postsId })
+  .from(postsCategoriesTable)
+  .where(eq(postsCategoriesTable.targetId, category.id));
+
+// Step 3 — fetch + count posts whose id is in that subquery.
+const filter = and(
+  eq(postsTable.status, "published"),
+  inArray(postsTable.id, postIdSubquery),
+);
+const [docs, totalRow] = await Promise.all([
+  db.select().from(postsTable).where(filter)
+    .orderBy(desc(postsTable.publishedAt))
+    .limit(20).offset(offset),
+  db.select({ total: count() }).from(postsTable).where(filter),
+]);
+const posts = docs as unknown as PostsDocument[];
+```
+
+Reference implementation: `apps/web/src/app/(site)/blog/category/[slug]/page.tsx`.
+
+> **Phase E candidate.** A typed `findPostsByCategory(categoryId)`
+> generated alongside the existing `find${Pascal}` wrappers
+> would hide this boilerplate. Tracking issue welcome — for
+> now, the raw Drizzle pattern works and is the same shape
+> across every hasMany relationship in the schema.
+
 ---
 
 ## 3. Media & images
