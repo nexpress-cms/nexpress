@@ -202,6 +202,12 @@ async function saveEnv(body: SetupBody): Promise<void> {
   // here for `next dev` to pick it up — duplicating root `.env`
   // doesn't help. Operators swap the four `NP_SMTP_*` values
   // when they wire a real provider for staging / production.
+  let fromHost = "nexpress.local";
+  try {
+    if (body.siteUrl) fromHost = new URL(body.siteUrl).hostname;
+  } catch {
+    // Malformed siteUrl — fall through to the safe default.
+  }
   lines.push(
     "",
     "# Email (Mailpit dev — `docker compose up -d` boots it; inbox http://localhost:8025)",
@@ -210,7 +216,7 @@ async function saveEnv(body: SetupBody): Promise<void> {
     "NP_SMTP_PORT=1025",
     "NP_SMTP_USER=dev",
     "NP_SMTP_PASS=dev",
-    `NP_SMTP_FROM="${body.siteUrl ? new URL(body.siteUrl).hostname : "nexpress.local"} <noreply@nexpress.local>"`,
+    `NP_SMTP_FROM="${fromHost} <noreply@nexpress.local>"`,
     "NP_SMTP_SECURE=false",
   );
 

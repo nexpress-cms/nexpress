@@ -196,6 +196,15 @@ async function saveEnv(body: SetupBody): Promise<void> {
   // staging / production. Same code path runs either way; the
   // `SmtpEmailAdapter` doesn't care whether it's pointed at
   // Mailpit or Resend.
+  let fromHost = "nexpress.local";
+  try {
+    if (body.siteUrl) fromHost = new URL(body.siteUrl).hostname;
+  } catch {
+    // Malformed siteUrl from the wizard — fall through to the
+    // safe default. The wizard validates URLs client-side, so
+    // this only fires on genuinely broken input that snuck
+    // past (e.g., an environment-variable override).
+  }
   lines.push(
     "",
     "# Email (Mailpit dev — `docker compose up -d` boots it; inbox http://localhost:8025)",
@@ -204,7 +213,7 @@ async function saveEnv(body: SetupBody): Promise<void> {
     "NP_SMTP_PORT=1025",
     "NP_SMTP_USER=dev",
     "NP_SMTP_PASS=dev",
-    `NP_SMTP_FROM="${body.siteUrl ? new URL(body.siteUrl).hostname : "nexpress.local"} <noreply@nexpress.local>"`,
+    `NP_SMTP_FROM="${fromHost} <noreply@nexpress.local>"`,
     "NP_SMTP_SECURE=false",
   );
 
