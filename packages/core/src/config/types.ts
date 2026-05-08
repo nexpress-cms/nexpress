@@ -649,12 +649,52 @@ export type NpJobType =
   | "members:sendPasswordReset"
   | "notifications:sendDigest";
 
-export interface NpFindOptions {
+/**
+ * System-level filters that aren't part of any collection's
+ * document shape but still belong on the `where` clause: tenant
+ * scoping, visibility gating, locale narrowing. Kept separate
+ * from the document type so `Partial<T>` can stay tight while
+ * advanced callers (admin queries, bulk exports) can pass these
+ * escape-hatch tokens.
+ */
+export interface NpFindWhereSystemTokens {
+  /**
+   * Multi-site scoping. Defaults to the resolved current site.
+   * Pass `"*"` to query across every site (admin / migration
+   * use only — leaks cross-site rows).
+   */
+  siteId?: string;
+  /**
+   * Visibility gate. Anonymous traffic is auto-restricted to
+   * `"public"`. Pass `"*"` to bypass (the pipeline drops the
+   * filter when a user is also passed).
+   */
+  visibility?: "public" | "private" | "*";
+  /**
+   * `where: { locale: "ko" }` is equivalent to the top-level
+   * `locale` option. Listed here so a typed where clause can
+   * still pass it without the document type having to declare
+   * a `locale` field (only i18n-enabled collections do).
+   */
+  locale?: string;
+}
+
+/**
+ * Per-row filter. With the default `T = Record<string, unknown>`,
+ * any keys are allowed (back-compat). With a typed `T` (the
+ * generated wrapper functions pass their `${Pascal}Document`
+ * here), only document fields plus the system tokens above are
+ * accepted — typos against field names become compile errors.
+ */
+export type NpFindWhere<T extends object = Record<string, unknown>> = Partial<T> &
+  NpFindWhereSystemTokens;
+
+export interface NpFindOptions<T extends object = Record<string, unknown>> {
   page?: number;
   limit?: number;
   sort?: string;
   search?: string;
-  where?: Record<string, unknown>;
+  where?: NpFindWhere<T>;
   /**
    * Phase 12.1 — restrict the result set to one locale on
    * i18n-enabled collections. Equivalent to passing

@@ -44,6 +44,7 @@ The companion docs:
 9. [Theme tokens & active theme](#9-theme-tokens)
 10. [Block & rich-text rendering](#10-block-rendering)
 11. [SEO — metadata, sitemap, JSON-LD, feeds](#11-seo)
+11. [Pagination](#115-pagination)
 12. [What NOT to import from a theme / page](#12-anti-patterns)
 13. [Where to ask for new helpers](#13-feedback)
 
@@ -93,11 +94,64 @@ page renders blocks that plugins extend.
 
 > `getPageBySlug` / `getPostBySlug` / `findPosts` /
 > `getAllPageSlugs` are convenience helpers hardcoded to the
-> `pages` and `posts` collections. For your own collection, call
-> `findDocuments("yourCollection", options)` and
-> `getDocumentById("yourCollection", id)` directly.
+> `pages` and `posts` collections and return
+> `Record<string, unknown>` — fields require casts at the read
+> site. For typed reads, see [§2.1](#21-typed-reads-recommended).
 
 All from `@nexpress/core`.
+
+### 2.1 Typed reads (recommended)
+
+`pnpm db:generate` emits `apps/<app>/src/db/generated/documents.ts`
+alongside the Drizzle schema. The file declares one
+`${Pascal}Document` interface per collection plus `find${Pascal}`
+and `get${Pascal}Document` wrappers that bind the type generic so
+your call sites don't have to:
+
+```ts
+// app/(site)/u/[handle]/discussions/page.tsx
+import { findDiscussions } from "@/db/generated/documents";
+
+const result = await findDiscussions({
+  where: { memberAuthorId: profile.id, status: "published" },
+  sort: "-createdAt",
+  page: pageNum,
+  limit: 20,
+});
+
+result.docs.map((doc) => (
+  <li key={doc.id}>
+    <a href={`/discussions/${doc.slug}`}>{doc.title}</a>
+    <time>{doc.createdAt.toLocaleDateString()}</time>
+  </li>
+));
+```
+
+No `as string` / `as Date` casts. The `where` clause is
+`Partial<DiscussionsDocument>` — typo on a field name (e.g.
+`memberAutorId`) is a compile error, not a silent 0-result query.
+
+System-level filters (`siteId`, `visibility`, `locale`) live on
+the where clause too without being collection fields — they're
+declared on `NpFindWhereSystemTokens` and merged into the typed
+shape. So this works:
+
+```ts
+import type { NpFindWhere } from "@nexpress/core";
+import type { DiscussionsDocument } from "@/db/generated/documents";
+
+const where: NpFindWhere<DiscussionsDocument> = {
+  memberAuthorId: member.id,  // typed (collection field)
+  visibility: "*",            // typed (system token)
+};
+```
+
+The untyped `findDocuments(slug, options)` from `@nexpress/core`
+still works for back-compat (and stays the right call when you
+genuinely need an untyped escape hatch — e.g. building admin
+tooling that doesn't know which collections exist at compile
+time). Default consumers should reach for the generated typed
+wrappers.
 
 ```ts
 // app/(site)/blog/page.tsx
@@ -464,6 +518,52 @@ to an ISO string — call `.toISOString()` (or format) yourself
 before crossing the boundary, or accept `string` on the client
 side and parse with `new Date(...)`.
 
+### Per-request dedup with React `cache()`
+
+A typical page calls `getMemberProfile` twice — once in
+`generateMetadata` for the title, once in the page export for
+the body. Each call hits the DB independently. React's `cache()`
+deduplicates by argument tuple, so wrap once at the app boundary:
+
+```ts
+// apps/web/src/lib/cached-content.ts
+import { getMemberProfile } from "@nexpress/core";
+import { cache } from "react";
+
+export const getCachedMemberProfile: typeof getMemberProfile = cache(getMemberProfile);
+```
+
+Then both `generateMetadata` and the page import the wrapped
+version:
+
+```tsx
+import { getCachedMemberProfile } from "@/lib/cached-content";
+
+export async function generateMetadata({ params }) {
+  const { handle } = await params;
+  const profile = await getCachedMemberProfile(handle); // fetch
+  // ...
+}
+
+export default async function ProfilePage({ params }) {
+  const { handle } = await params;
+  const profile = await getCachedMemberProfile(handle); // cached, no fetch
+  // ...
+}
+```
+
+Caveat: caching is keyed on the FULL argument tuple. A page that
+passes `{ avatarVariant: "thumbnail" }` in metadata and
+`{ avatarVariant: "original" }` in the body will issue two
+fetches — that's correct (different sizes mean different
+fetches). Pages that genuinely want one fetch should pass the
+same options at both call sites, or rely on the default.
+
+The same pattern works for any read primitive: `getMediaUrl`,
+`getPluginConfig`, `getNavigation`, `findPosts`, the generated
+`findDiscussions` etc. Wrap the ones your pages call twice;
+leave the others alone.
+
 ---
 
 ## 9. Theme tokens
@@ -569,6 +669,33 @@ For sitemap and Atom feed entry points, the reference app already
 exposes `/sitemap.xml` and `/feed.xml` — see
 `apps/web/src/app/sitemap.xml/route.ts` and
 `apps/web/src/app/feed.xml/route.ts` for the wiring.
+
+---
+
+## 11.5 Pagination
+
+`NpFindResult` already gives you everything: `page`, `totalPages`,
+`hasPrevPage`, `hasNextPage`. The framework intentionally doesn't
+ship a `<Pagination />` component because the visual treatment is
+theme territory. The reference app has a small one at
+`apps/web/src/components/pagination-nav.tsx` that you can copy
+and restyle:
+
+```tsx
+import { PaginationNav } from "@/components/pagination-nav";
+
+<PaginationNav
+  page={pageNum}
+  totalPages={result.totalPages}
+  hasPrevPage={result.hasPrevPage}
+  hasNextPage={result.hasNextPage}
+  hrefForPage={(p) => `/discussions?page=${p}`}
+/>
+```
+
+The caller composes URLs (so extra search params like
+`?author=me` survive untouched). The component renders nothing
+when `totalPages <= 1` — no need to gate the include.
 
 ---
 

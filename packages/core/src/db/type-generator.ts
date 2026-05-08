@@ -5,6 +5,60 @@ export function generateTypeScript(collections: NpCollectionConfig[]): string {
   return interfaces.join("\n\n");
 }
 
+/**
+ * Renders a complete `documents.ts` module: imports from
+ * `@nexpress/core`, per-collection `${Pascal}Document` interfaces,
+ * and typed read-helper wrappers (`find${Pascal}` /
+ * `get${Pascal}Document`) that bind the type generic so call sites
+ * don't have to.
+ *
+ * The output is meant for `apps/<app>/src/db/generated/documents.ts`
+ * and is a direct counterpart to `generateDrizzleSchema`'s
+ * `collections.ts` (Drizzle schema). Both files come from the same
+ * `nexpressConfig.collections` source so they stay in sync.
+ */
+export function generateDocumentsModule(collections: NpCollectionConfig[]): string {
+  const imports = [
+    `import {`,
+    `  findDocuments,`,
+    `  getDocumentById,`,
+    `  type NpAuthUser,`,
+    `  type NpFindOptions,`,
+    `  type NpFindResult,`,
+    `} from "@nexpress/core";`,
+    ``,
+  ].join("\n");
+
+  const interfaces = collections.map((c) => renderCollectionInterface(c)).join("\n\n");
+  const helpers = collections.map((c) => renderReadHelpers(c)).join("\n\n");
+
+  return [imports, interfaces, "", helpers, ""].join("\n");
+}
+
+function renderReadHelpers(collection: NpCollectionConfig): string {
+  const docType = `${toPascalCase(collection.slug)}Document`;
+  const findFnName = `find${toPascalCase(collection.slug)}`;
+  const getFnName = `get${toPascalCase(collection.slug)}Document`;
+  const slug = JSON.stringify(collection.slug);
+  return [
+    `/** Typed listing query for the \`${collection.slug}\` collection. */`,
+    `export function ${findFnName}(`,
+    `  options: NpFindOptions<${docType}> = {},`,
+    `  user?: NpAuthUser,`,
+    `): Promise<NpFindResult<${docType}>> {`,
+    `  return findDocuments<${docType}>(${slug}, options, user);`,
+    `}`,
+    ``,
+    `/** Typed by-id fetch for the \`${collection.slug}\` collection. */`,
+    `export function ${getFnName}(`,
+    `  id: string,`,
+    `  user?: NpAuthUser,`,
+    `): Promise<${docType} | null> {`,
+    `  return getDocumentById<${docType}>(${slug}, id, user);`,
+    `}`,
+  ].join("\n");
+}
+
 function renderCollectionInterface(collection: NpCollectionConfig): string {
   const interfaceName = `${toPascalCase(collection.slug)}Document`;
   const fields = [

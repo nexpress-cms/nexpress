@@ -43,6 +43,8 @@ export type {
   NpJobType,
   NpFindOptions,
   NpFindResult,
+  NpFindWhere,
+  NpFindWhereSystemTokens,
   NpSaveOptions,
   NpSaveResult,
   NpDocumentStatus,
@@ -182,7 +184,7 @@ export { createDbConnection } from "./db/connection.js";
 export { setDb, getDb } from "./db/runtime.js";
 export * from "./db/schema/index.js";
 export { generateDrizzleSchema } from "./db/generator.js";
-export { generateTypeScript } from "./db/type-generator.js";
+export { generateTypeScript, generateDocumentsModule } from "./db/type-generator.js";
 
 export { signToken, verifyToken, isTokenVerificationError } from "./auth/token.js";
 export type { NpTokenPayload } from "./auth/token.js";

@@ -1444,11 +1444,11 @@ async function deleteDocumentImpl(
   );
 }
 
-export async function findDocuments(
+export async function findDocuments<T extends object = Record<string, unknown>>(
   collection: string,
-  options: NpFindOptions,
+  options: NpFindOptions<NoInfer<T>>,
   user?: NpAuthUser,
-): Promise<NpFindResult> {
+): Promise<NpFindResult<T>> {
   const config = getCollectionConfig(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
@@ -1522,7 +1522,13 @@ export async function findDocuments(
   const totalPages = totalDocs === 0 ? 0 : Math.ceil(totalDocs / limit);
 
   return {
-    docs: docs,
+    // Runtime rows are `Record<string, unknown>`; the generic `T`
+    // is a structural promise — generated wrapper functions narrow
+    // it to the per-collection document shape. We don't validate
+    // at runtime (Drizzle has already shaped the row to the table
+    // schema, which the generator derived from the same field
+    // configs T was generated from).
+    docs: docs as unknown as T[],
     totalDocs,
     totalPages,
     page,
@@ -1532,11 +1538,11 @@ export async function findDocuments(
   };
 }
 
-export async function getDocumentById(
+export async function getDocumentById<T extends object = Record<string, unknown>>(
   collection: string,
   id: string,
   user?: NpAuthUser,
-): Promise<Record<string, unknown> | null> {
+): Promise<T | null> {
   const config = getCollectionConfig(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
@@ -1568,7 +1574,7 @@ export async function getDocumentById(
     }
   }
 
-  return doc;
+  return doc as unknown as T;
 }
 
 async function assertWriteAccess(
