@@ -38,6 +38,8 @@ export type {
   NpNavItem,
   NpConfig,
   NpThemeManifest,
+  NpThemeCollectionRequirement,
+  NpThemeFieldRequirement,
   NpRegisteredTheme,
   NpI18nConfig,
   NpJobType,
@@ -378,6 +380,14 @@ export {
   resolveTemplateComponent,
 } from "./themes/registry.js";
 export type { NpThemeTemplateSummary } from "./themes/registry.js";
+
+export { checkThemeRequirements } from "./themes/requirements.js";
+export type {
+  NpThemeRequirementResult,
+  NpThemeRequirementMissingField,
+  NpThemeRequirementTypeConflict,
+  NpThemeRequirementRelationConflict,
+} from "./themes/requirements.js";
 
 export {
   registerPluginTemplates,

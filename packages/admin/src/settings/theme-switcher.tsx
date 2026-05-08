@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Sparkles } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -37,6 +37,62 @@ interface ThemeSummary {
   description?: string;
   author?: { name: string; url?: string };
   isActive: boolean;
+  /** Phase F.1 — manifest.requires check result. */
+  requirements?: {
+    hasMismatches: boolean;
+    hasHardMismatches: boolean;
+    missingCollections: Array<{ collection: string; createIfAbsent: boolean }>;
+    missingFields: Array<{
+      collection: string;
+      field: string;
+      hard: boolean;
+    }>;
+    typeConflicts: Array<{
+      collection: string;
+      field: string;
+      expected: string;
+      actual: string;
+      hard: boolean;
+    }>;
+    relationConflicts: Array<{
+      collection: string;
+      field: string;
+      hard: boolean;
+    }>;
+  };
+}
+
+function summarizeMismatches(req: NonNullable<ThemeSummary["requirements"]>): string {
+  const parts: string[] = [];
+  if (req.missingCollections.length > 0) {
+    parts.push(
+      `${req.missingCollections.length} missing collection${
+        req.missingCollections.length === 1 ? "" : "s"
+      }`,
+    );
+  }
+  if (req.missingFields.length > 0) {
+    parts.push(
+      `${req.missingFields.length} missing field${
+        req.missingFields.length === 1 ? "" : "s"
+      }`,
+    );
+  }
+  if (req.typeConflicts.length > 0) {
+    parts.push(
+      `${req.typeConflicts.length} type conflict${
+        req.typeConflicts.length === 1 ? "" : "s"
+      }`,
+    );
+  }
+  if (req.relationConflicts.length > 0) {
+    parts.push(
+      `${req.relationConflicts.length} relation conflict${
+        req.relationConflicts.length === 1 ? "" : "s"
+      }`,
+    );
+  }
+  return parts.join(", ");
 }
 
 export function ThemeSwitcher({
@@ -188,6 +244,21 @@ export function ThemeSwitcher({
                       <Check className="h-3 w-3" /> Active
                     </span>
                   ) : null}
+                  {theme.requirements?.hasMismatches ? (
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        theme.requirements.hasHardMismatches
+                          ? "bg-destructive/10 text-destructive"
+                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}
+                      title={summarizeMismatches(theme.requirements)}
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      {theme.requirements.hasHardMismatches
+                        ? "Requirements unmet"
+                        : "Soft requirements"}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   v{theme.version}
@@ -196,6 +267,21 @@ export function ThemeSwitcher({
                 {theme.description ? (
                   <p className="text-sm text-muted-foreground">
                     {theme.description}
+                  </p>
+                ) : null}
+                {theme.requirements?.hasMismatches ? (
+                  <p
+                    className={`text-xs ${
+                      theme.requirements.hasHardMismatches
+                        ? "text-destructive"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {summarizeMismatches(theme.requirements)}. Run{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                      pnpm nexpress theme:install {theme.id}
+                    </code>{" "}
+                    to resolve.
                   </p>
                 ) : null}
               </div>

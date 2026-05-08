@@ -523,6 +523,71 @@ export interface NpThemeManifest {
   author?: { name: string; url?: string };
   /** Optional minimum NexPress version this theme requires. */
   nexpress?: { minVersion?: string };
+  /**
+   * Phase F.1 (theme v0.2) — declared data-shape requirements.
+   *
+   * Themes whose components assume specific collection fields
+   * (e.g. magazine theme reads `posts.featured`) declare them
+   * here. Two consumers read this:
+   *
+   * 1. Admin theme switcher (this phase): compares against the
+   *    site's registered collections at activation time and
+   *    surfaces mismatches to the operator BEFORE they click
+   *    "activate" — so they don't end up with a theme that
+   *    silently renders fallbacks for missing fields.
+   * 2. `pnpm nexpress theme:install` (Phase F.8, deferred):
+   *    reads this to AST-patch the operator's
+   *    `src/collections/*.ts` files and run codegen + migrate.
+   *
+   * F.1 ships only the type + admin warning surface. The CLI
+   * patcher is its own phase.
+   */
+  requires?: {
+    collections?: Record<string, NpThemeCollectionRequirement>;
+  };
+}
+
+/**
+ * One collection's worth of theme requirements. The collection
+ * may exist (admin checks fields) or not (admin flags as missing
+ * — the CLI in F.8 will create it if `createIfAbsent` is set).
+ */
+export interface NpThemeCollectionRequirement {
+  fields?: Record<string, NpThemeFieldRequirement>;
+  /** True → CLI in F.8 creates this collection if absent.
+   *  Admin still warns at activation; the operator must run the
+   *  CLI to actually create it. */
+  createIfAbsent?: boolean;
+}
+
+/**
+ * One field's requirement. The `type` matches an `NpFieldConfig`
+ * variant's `type` string exactly so the activation check can
+ * compare without translation.
+ */
+export interface NpThemeFieldRequirement {
+  type:
+    | "text"
+    | "textarea"
+    | "richText"
+    | "number"
+    | "checkbox"
+    | "date"
+    | "select"
+    | "upload"
+    | "relationship"
+    | "blocks";
+  /** For `relationship` — the collection slug it points to. */
+  relationTo?: string | string[];
+  /** For `relationship` / `select` — accepts list values. */
+  hasMany?: boolean;
+  required?: boolean;
+  /**
+   * Default `true`. Set `false` for "nice to have, theme degrades
+   * gracefully without it" — admin warning shows but at lower
+   * severity, and a future F.8 may treat it as opt-in patch.
+   */
+  hard?: boolean;
 }
 
 export interface NpRegisteredTheme {
