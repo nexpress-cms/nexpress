@@ -140,4 +140,20 @@ describe("introspectThemeSettingsSchema", () => {
     );
     expect(fields[0]?.type).toBe("unsupported");
   });
+
+  it("unwraps top-level .default() wrapper around the schema", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({ tag: z.string() }).default({ tag: "" }),
+    );
+    expect(fields).toHaveLength(1);
+    expect(fields[0]).toMatchObject({ name: "tag", type: "text" });
+  });
+
+  it("unwraps top-level .optional() wrapper around the schema", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({ tag: z.string() }).optional(),
+    );
+    expect(fields).toHaveLength(1);
+    expect(fields[0]?.name).toBe("tag");
+  });
 });

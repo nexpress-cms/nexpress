@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { NpThemeSettingsField } from "@nexpress/core";
 import { Trash2, Plus } from "lucide-react";
 
@@ -30,17 +30,28 @@ export interface ZodFormProps {
  * parent via `onChange` so the parent can wire submit handling
  * (which lives outside the form generator — different consumers
  * have different submit endpoints).
+ *
+ * `initialValue` is read once on mount (standard `useState`
+ * semantics); to reset the form when switching to a different
+ * source schema, parents must remount via `key={...}`. The
+ * theme settings panel keys on `themeId` for this reason.
  */
 export function ZodForm({ fields, initialValue, onChange }: ZodFormProps) {
   const [value, setValue] = useState<ZodFormValue>(initialValue);
 
+  // Mirror the live value into a ref so `update` can compute
+  // the next state synchronously and call `onChange` exactly
+  // once per edit. Calling onChange inside a setState updater
+  // function (the prior approach) violates React's purity
+  // contract and double-fires under StrictMode.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
   const update = useCallback(
     (name: string, fieldValue: unknown) => {
-      setValue((prev) => {
-        const next = { ...prev, [name]: fieldValue };
-        onChange(next);
-        return next;
-      });
+      const next = { ...valueRef.current, [name]: fieldValue };
+      setValue(next);
+      onChange(next);
     },
     [onChange],
   );

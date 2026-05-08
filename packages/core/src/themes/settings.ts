@@ -55,6 +55,19 @@ function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
  * `themeId` defaults to the active theme. Pass an explicit id
  * to read another installed theme's settings (used by the
  * admin settings page).
+ *
+ * Return type is `unknown` because core can't type-narrow to
+ * a specific theme's `z.infer<typeof schema>` — the schema
+ * lives in the theme package, not in core. Theme components
+ * should cast at the call site, ideally against an exported
+ * type alias from the theme package itself:
+ *
+ *   // packages/themes/magazine/src/index.ts
+ *   export const settingsSchema = z.object({ ... });
+ *   export type MagazineSettings = z.infer<typeof settingsSchema>;
+ *
+ *   // a theme component
+ *   const settings = (await getThemeSettings()) as MagazineSettings;
  */
 export async function getThemeSettings(
   themeId?: string,
@@ -143,8 +156,16 @@ export async function getThemeSettingsWithStatus(
  * Validate and persist a theme's settings. Throws
  * `NpValidationError` when `value` doesn't pass the schema —
  * the admin form must surface field-level errors before
- * calling this. Reuses the existing `nx:theme:<siteId>` cache
- * tag (theme settings live on the same read paths as tokens).
+ * calling this.
+ *
+ * **Cache invalidation is the caller's responsibility.** This
+ * function writes to `np_settings` only; it doesn't import
+ * `next/cache`. The admin API route (`PUT
+ * /api/admin/themes/[id]/settings`) busts `nx:theme:<siteId>`
+ * (and `nx:sitemap:*` / `nx:feed:*` when `impl.seo` is
+ * declared) after a successful write. Other callers — jobs,
+ * scripts, server actions — must do the same to avoid stale
+ * cached reads.
  */
 export async function setThemeSettings(
   themeId: string,

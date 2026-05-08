@@ -146,14 +146,28 @@ export function ThemeSettingsPanel({ themeId }: { themeId: string }) {
 
         {data ? (
           <>
+            {/* `key={data.themeId}` forces ZodForm remount when
+                the operator switches active theme — without it,
+                the form's internal `useState(initialValue)` only
+                takes effect on first mount and would render the
+                previous theme's draft against the new theme's
+                schema. */}
             <ZodForm
+              key={data.themeId}
               fields={data.fields}
               initialValue={data.value}
               onChange={setDraft}
             />
             {data.fields.length > 0 ? (
               <div className="flex justify-end">
-                <Button onClick={() => void save()} disabled={saving}>
+                {/* Disable save while loading the next theme's
+                    schema — otherwise a click during the load
+                    transition would PUT the previous theme's
+                    draft to the new theme's settings row. */}
+                <Button
+                  onClick={() => void save()}
+                  disabled={saving || !data}
+                >
                   {saving ? (
                     <>
                       <Loader2 className="mr-2 h-3 w-3 animate-spin" />

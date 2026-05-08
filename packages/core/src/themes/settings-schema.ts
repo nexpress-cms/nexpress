@@ -269,7 +269,11 @@ export function introspectThemeSettingsSchema(
   schema: ZodTypeAny | undefined,
 ): NpThemeSettingsField[] {
   if (!schema) return [];
-  const node = schema as unknown as ZodNode;
-  if (node._def.type !== "object" || !node._def.shape) return [];
-  return introspectShape(node._def.shape);
+  // Strip any top-level default/optional/nullable wrapper before
+  // checking for object shape — themes that wrap their whole
+  // schema in `.default({...})` are unusual but valid; without
+  // unwrap we'd silently render an empty form.
+  const { inner } = unwrap(schema as unknown as ZodNode);
+  if (inner._def.type !== "object" || !inner._def.shape) return [];
+  return introspectShape(inner._def.shape);
 }
