@@ -255,12 +255,13 @@ value = z.infer<typeof settingsSchema>
 ```
 
 Per-theme rows (rather than a single `key = "theme.settings"`
-row holding a `Record<themeId, …>`) buy three things: writes
-on one theme don't lock the whole settings blob; per-theme
-revalidation tags can be granular (`nx:theme-settings:<themeId>`,
-following the existing `nx:*` cache-tag namespace — see §4.7
-note); and theme switching reads only the active theme's row,
-not every installed theme's data.
+row holding a `Record<themeId, …>`) buy two things: writes on
+one theme don't lock the whole settings blob, and theme switching
+reads only the active theme's row, not every installed theme's
+data. Cache invalidation reuses the existing `nx:theme:<siteId>`
+tag (see §5.3) rather than introducing a per-theme tag — only
+the active theme is read at request time, so per-theme tag
+granularity wouldn't pay for itself.
 
 **Coexistence with existing settings rows.** Three settings keys
 participate in theme state, each with a distinct purpose:
@@ -496,9 +497,9 @@ invalidate the relevant `nx:sitemap:*` / `nx:feed:*` tags:
 | Theme tokens save | `key = "theme"` | no — tokens don't affect sitemap/feed content |
 
 The framework wires these invalidations in the settings save path
-based on the active theme's manifest (`seo.*` declared → SEO
-tags participate). Themes don't have to think about it, but
-they do have to declare their SEO hooks at manifest time so the
+based on the active theme's implementation (`impl.seo` declared
+→ SEO tags participate). Themes don't have to think about it,
+but they do have to declare their SEO hooks on `impl.seo` so the
 framework knows whether to bust SEO cache on settings save.
 
 ### 4.8 Phase F.8 — `pnpm nexpress theme:install`
@@ -513,21 +514,21 @@ git-staged for review.
 ```
 $ pnpm nexpress theme:install @nexpress/theme-magazine
 ✓ Loaded @nexpress/theme-magazine 0.1.0
-  
+
   Required collections:
     posts (existing) — adding fields:
       + featured: boolean (default false)
       + coverImage: relationship → media (required)
     categories (existing) — no changes
     authors (NEW) — creating with 3 fields
-  
+
   Continue? [y/N] y
 
 ✓ Patched src/collections/posts.ts
 ✓ Wrote src/collections/authors.ts
 ✓ Generated src/db/generated/collections.ts
 ✓ Generated drizzle migration: drizzle/0042_add_magazine_fields.sql
-  
+
   Next:
     1. Review the staged changes (git diff --staged)
     2. Run `pnpm db:migrate`
@@ -615,8 +616,13 @@ per pattern. **Defer optimization until measured pain.**
 ### 5.3 Theme settings caching
 
 **Decision**: settings fetched once per request from `np_settings`,
-parsed by zod, memoized for the request lifetime. Settings change
-in admin invalidates via `revalidateTag('np-settings')`.
+parsed by zod, memoized for the request lifetime. Settings save
+in admin reuses the existing `nx:theme:<siteId>` cache tag (which
+already covers tokens + active theme id from v0.1) — theme
+settings are read on the same code paths that read tokens, so a
+shared bust is correct and avoids fragmenting the tag namespace.
+SEO tags (`nx:sitemap:*` / `nx:feed:*`) additionally participate
+only when the active theme declares `impl.seo.*` hooks (see §4.7).
 
 zod parse cost is ~tens of microseconds for typical schemas —
 not the bottleneck. Per-request memoization is enough.
