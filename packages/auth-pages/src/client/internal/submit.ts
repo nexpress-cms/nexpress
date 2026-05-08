@@ -72,7 +72,13 @@ export async function submitJson<T>(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      credentials: "same-origin",
+      // Match the reference app's prior behavior — `include` sends
+      // the auth + CSRF cookies even on cross-origin POSTs (when
+      // the server's CORS config explicitly allows credentials).
+      // Same-origin requests behave identically either way; sites
+      // embedding the hook in a cross-origin widget rely on
+      // `include` to keep the session cookie flowing.
+      credentials: "include",
     });
   } catch {
     return { ok: false, code: "NETWORK", message: messages.NETWORK };

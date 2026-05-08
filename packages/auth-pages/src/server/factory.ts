@@ -573,6 +573,17 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       return oauthFail(request, "resolve_failed");
     }
 
+    // Suspended / deleted / pending members can't sign in even via
+    // OAuth. `resolveMemberOAuthLogin` deliberately returns
+    // non-active rows as-is and expects the route to gate them
+    // here — see the comment in oauth-resolve-member.ts (~L170).
+    // Without this check an attacker who controls an OAuth account
+    // matching a victim's email could complete sign-in for a
+    // suspended account.
+    if (resolved.member.status !== "active") {
+      return oauthFail(request, "member_inactive");
+    }
+
     const member = resolved.member;
     const access = await signMemberToken(member, secret, tokenExpiration, "access");
     const refreshTok = await signMemberToken(member, secret, refreshTokenExpiration, "refresh");
@@ -712,12 +723,24 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
         .update(npMembers)
         .set({
           status: "deleted",
+          // Append the id to email + handle so the unique constraints
+          // free up the original strings — re-registration with the
+          // same email works for the same human if they ever come
+          // back.
           email: `deleted+${member.id}@deleted.local`,
           handle: `deleted-${member.id.slice(0, 8)}`,
           displayName: "Deleted member",
           password: null,
           bio: null,
           avatar: null,
+          // Clear pending verify / reset tokens too — defense in
+          // depth so a stale email link from before the delete
+          // can't be redeemed against the soft-deleted row.
+          emailVerified: false,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          emailVerifyTokenHash: null,
+          emailVerifyExpiresAt: null,
           updatedAt: new Date(),
         })
         .where(eq(npMembers.id, member.id));
