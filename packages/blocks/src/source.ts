@@ -1,5 +1,9 @@
-import { getSharedRegistry } from "./registry.js";
-import type { NpBlockDefinition, NpBlockMetadata } from "./types.js";
+import { getRegisteredPatterns, getSharedRegistry } from "./registry.js";
+import type {
+  NpBlockDefinition,
+  NpBlockMetadata,
+  NpPattern,
+} from "./types.js";
 
 /**
  * Phase F.4 — block source identity model.
@@ -20,9 +24,11 @@ import type { NpBlockDefinition, NpBlockMetadata } from "./types.js";
  */
 
 export interface NpBlockSource {
-  kind: "core" | "theme" | "plugin";
+  kind: "core" | "theme" | "plugin" | "custom";
   /** Concrete id when present. Broad legacy labels yield
-   *  `id: undefined`, which the filter treats as always active. */
+   *  `id: undefined`, which the filter treats as always active.
+   *  `custom` (operator-saved patterns) never carries an id —
+   *  per-operator/per-site customs are stored elsewhere. */
   id?: string;
 }
 
@@ -36,6 +42,13 @@ export function parseBlockSource(
   }
   if (source === "core" || source === "built-in") {
     return { kind: "core" };
+  }
+  if (source === "custom") {
+    // Operator-saved pattern (NpPattern union member). Custom
+    // sources never have a concrete id — they're filed per-
+    // operator outside the source registry — and the filter
+    // always passes them.
+    return { kind: "custom" };
   }
   if (source === "plugin") {
     return { kind: "plugin" };
@@ -93,7 +106,7 @@ export function isBlockSourceActive(
     if (parsed.id === undefined) return true;
     return parsed.id === ctx.themeId;
   }
-  // core / plugin: always pass per the rules above.
+  // core / plugin / custom: always pass per the rules above.
   return true;
 }
 
@@ -127,4 +140,18 @@ export function getRegisteredBlockMetadataForActiveSources(
     void _render;
     return metadata;
   });
+}
+
+/**
+ * Phase F.5 — sister filter for patterns. Same rules as the
+ * block filter (`isBlockSourceActive`): theme patterns are
+ * scoped by `themeId`, plugin / built-in / custom patterns
+ * always pass. The admin layout uses this so the page builder's
+ * pattern picker only shows patterns for the current site's
+ * active theme.
+ */
+export function getRegisteredPatternsForActiveSources(
+  ctx: NpActiveSourceContext,
+): NpPattern[] {
+  return getRegisteredPatterns().filter((p) => isBlockSourceActive(p.source, ctx));
 }

@@ -9,7 +9,7 @@ import {
 import { AdminShell, BlocksRegistryProvider } from "@nexpress/admin/client";
 import {
   getRegisteredBlockMetadataForActiveSources,
-  getRegisteredPatterns,
+  getRegisteredPatternsForActiveSources,
 } from "@nexpress/blocks";
 import { getCachedActiveTheme } from "@/lib/cached-theme";
 import nexpressConfig from "@/nexpress.config";
@@ -89,13 +89,13 @@ export default async function AdminLayout({
   // blocks. Cached version also participates in `nx:theme`
   // invalidation, matching the renderer's invalidation path.
   const activeTheme = await getCachedActiveTheme();
-  const blocksMetadata = getRegisteredBlockMetadataForActiveSources({
-    themeId: activeTheme?.manifest.id ?? null,
-  });
-  // Same trick for plugin / theme contributed patterns — they land
-  // in the SERVER instance of the shared pattern registry during
-  // bootstrap and need to ride props to the browser-side editor.
-  const patterns = getRegisteredPatterns();
+  const sourceContext = { themeId: activeTheme?.manifest.id ?? null };
+  const blocksMetadata = getRegisteredBlockMetadataForActiveSources(sourceContext);
+  // Phase F.5 — same active-source filter for patterns. Theme
+  // patterns from the inactive theme(s) are filtered out so the
+  // page builder's pattern picker only shows the current site's
+  // patterns. Plugin / built-in / custom patterns always pass.
+  const patterns = getRegisteredPatternsForActiveSources(sourceContext);
   // Same trick for collection-slug options used by `propsSchema`
   // entries with `type: "collection"`. The picker can't ask the
   // browser for the registered slugs (block render runs on the

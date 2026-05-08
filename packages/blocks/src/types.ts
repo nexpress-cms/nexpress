@@ -376,6 +376,23 @@ export interface NpPattern {
   description?: string;
   source: "built-in" | "custom" | "plugin" | "theme" | (string & {});
   blocks: NpBlockInstance[];
+  /**
+   * Phase F.5 — optional preview image path. Themes can ship a
+   * thumbnail (typically under the theme package's `public/` so
+   * Next can serve it directly) so the page-builder picker can
+   * render a visual representation. Picker UI thumbnail
+   * rendering is tracked as F.5.1 follow-up; the field
+   * persists today regardless.
+   */
+  preview?: string;
+  /**
+   * Phase F.5 — optional grouping label. The picker can group
+   * patterns by category in a future redesign; today it's
+   * surfaced as plain metadata. Theme authors typically use
+   * `"homepage" | "page" | "section"` but the union is
+   * intentionally loose.
+   */
+  category?: "homepage" | "page" | "section" | (string & {});
 }
 
 void (0 as ReactNode | undefined);
