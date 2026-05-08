@@ -53,6 +53,15 @@ NP_SMTP_FROM="NexPress dev <noreply@nexpress.local>"
 NP_SMTP_SECURE=false
 ```
 
+> **Two `.env` files, both need this.** Next.js reads `.env` from
+> the project root (`apps/web/`), but monorepo-level scripts like
+> `drizzle.config.ts` load the repo-root `.env` directly via
+> dotenv. The SMTP block has to live in **`apps/web/.env`** for
+> `next dev` to see it; root `.env` only matters for monorepo
+> tooling. `pnpm run setup` writes both automatically — manual
+> setups need to copy the block into `apps/web/.env` after
+> `cp .env.example .env`.
+
 The `MP_SMTP_AUTH_ACCEPT_ANY` flag on the container accepts any
 credentials, so you don't need to provision a real SMTP user
 during dev. Trigger an email (register, forgot-password) and
