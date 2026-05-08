@@ -346,6 +346,9 @@ importers:
       '@nexpress/admin':
         specifier: workspace:*
         version: link:../admin
+      '@nexpress/auth-pages':
+        specifier: workspace:*
+        version: link:../auth-pages
       '@nexpress/blocks':
         specifier: workspace:*
         version: link:../blocks
