@@ -680,14 +680,46 @@ export interface NpFindWhereSystemTokens {
 }
 
 /**
+ * Strip `null` and unwrap arrays so a hasMany field like
+ * `categories: string[] | null` reads as a `string` for the
+ * single-target filter case.
+ */
+type NpFindWhereUnwrap<V> = V extends (infer U)[] | null
+  ? U
+  : V extends (infer U)[]
+    ? U
+    : V extends infer U | null
+      ? U
+      : V;
+
+/**
+ * The accepted value shape for a single where field. Either the
+ * unwrapped scalar (single match) or an array (IN match). Array
+ * with zero elements short-circuits the query to no rows; the
+ * pipeline guards against the SQL syntax error this would
+ * otherwise produce.
+ */
+type NpFindWhereValue<V> = NpFindWhereUnwrap<V> | NpFindWhereUnwrap<V>[];
+
+/**
  * Per-row filter. With the default `T = Record<string, unknown>`,
  * any keys are allowed (back-compat). With a typed `T` (the
  * generated wrapper functions pass their `${Pascal}Document`
  * here), only document fields plus the system tokens above are
  * accepted — typos against field names become compile errors.
+ *
+ * Each field accepts a single value (matched with `=`) or an
+ * array (matched with `IN (...)`). For hasMany relationships
+ * (where the document's field type is `string[] | null`), the
+ * single-value form is the common case — "posts in this one
+ * category" — and the array form picks up the `OR` semantics
+ * across multiple targets — "posts in any of these categories".
  */
-export type NpFindWhere<T extends object = Record<string, unknown>> = Partial<T> &
-  NpFindWhereSystemTokens;
+export type NpFindWhere<T extends object = Record<string, unknown>> = {
+  [K in keyof T]?: NpFindWhereValue<T[K]>;
+} & {
+  [K in keyof NpFindWhereSystemTokens]?: NpFindWhereSystemTokens[K];
+};
 
 export interface NpFindOptions<T extends object = Record<string, unknown>> {
   page?: number;
