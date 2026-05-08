@@ -29,8 +29,8 @@ Package manager is pnpm (v10.33, required). Node >=20.
 
 ```bash
 pnpm install
-docker compose -f docker/docker-compose.yml up -d db   # Postgres 16 on :5433
-cp .env.example .env                                    # DATABASE_URL, NP_SECRET, SITE_URL
+docker compose -f docker/docker-compose.yml up -d       # Postgres :5433 + Mailpit (SMTP :1025, inbox http://localhost:8025)
+cp .env.example .env                                    # DATABASE_URL, NP_SECRET, SITE_URL, SMTP defaults pointing at Mailpit
 pnpm build                                              # build all packages (dist/) — needed before dev
 pnpm dev                                                # turbo watch: tsup --watch per pkg + next dev + collection schema:gen on src/collections/* changes
 ```

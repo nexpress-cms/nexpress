@@ -28,6 +28,41 @@ STARTTLS ports (587 / 25). Apps using the adapter must include
 `nodemailer` in their dependencies — it's an optional peer of
 `@nexpress/core`.
 
+### Local development — Mailpit
+
+`docker/docker-compose.yml` ships a Mailpit service that boots
+alongside Postgres. Use it to capture every email the app sends
+during development without hitting a real provider:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+# Mailpit is now listening:
+#   SMTP        :1025
+#   Web inbox   http://localhost:8025
+```
+
+Point `.env` at it (this is the default in `.env.example`):
+
+```dotenv
+NP_EMAIL_ADAPTER=smtp
+NP_SMTP_HOST=localhost
+NP_SMTP_PORT=1025
+NP_SMTP_USER=dev
+NP_SMTP_PASS=dev
+NP_SMTP_FROM="NexPress dev <noreply@nexpress.local>"
+NP_SMTP_SECURE=false
+```
+
+The `MP_SMTP_AUTH_ACCEPT_ANY` flag on the container accepts any
+credentials, so you don't need to provision a real SMTP user
+during dev. Trigger an email (register, forgot-password) and
+the message appears in the inbox at `http://localhost:8025` —
+including raw headers, HTML render, and plain-text version.
+
+Switching to a real provider for staging / production is just
+swapping the four `NP_SMTP_*` values; the application code path
+is identical.
+
 ### Provider examples
 
 **Resend**
