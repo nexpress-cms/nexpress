@@ -6,6 +6,7 @@ import {
   getRegisteredThemes,
   getTheme,
   getThemeById,
+  getThemeSettings,
 } from "@nexpress/core";
 import type {
   NpNavItem,
@@ -87,6 +88,32 @@ export async function getCachedActiveThemeId(): Promise<string | null> {
     return await cached();
   } catch (error) {
     if (isMissingIncrementalCache(error)) return getActiveThemeId();
+    throw error;
+  }
+}
+
+/**
+ * Phase F.3 — cached read of a theme's operator settings.
+ *
+ * Reuses the existing `nx:theme:<siteId>` cache tag (settings
+ * live on the same read paths as tokens / active id; bust them
+ * together to keep the tag namespace tight). The `themeId`
+ * keyParts entry ensures different themes' settings are
+ * cached separately within the same site.
+ */
+export async function getCachedThemeSettings(
+  themeId?: string,
+): Promise<unknown> {
+  const siteId = await resolveSiteId();
+  const cached = unstable_cache(
+    () => getThemeSettings(themeId),
+    ["nx:theme:settings", siteId, themeId ?? ""],
+    { tags: [themeCacheTag(siteId)], revalidate: REVALIDATE_SECONDS },
+  );
+  try {
+    return await cached();
+  } catch (error) {
+    if (isMissingIncrementalCache(error)) return getThemeSettings(themeId);
     throw error;
   }
 }
