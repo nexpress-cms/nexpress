@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
-import type { NpBlockRenderContext } from "@nexpress/blocks";
+import type { NpBlockDefinition, NpBlockRenderContext } from "@nexpress/blocks";
 import type {
   NpRegisteredTheme,
   NpThemeColors,
@@ -291,6 +291,26 @@ export interface NpThemeImpl {
    * with sensible default patterns.
    */
   archives?: NpThemeArchives;
+  /**
+   * Phase F.4 — theme-shipped block types.
+   *
+   * Themes can register their own block definitions (e.g.
+   * `magazine.hero-feature`, `magazine.three-col-grid`) that
+   * appear in the page-builder's Add-block popover and resolve
+   * during server render exactly like plugin blocks. The
+   * framework auto-stamps each block's `source` with the
+   * concrete `theme:<manifest.id>` identity at registration so
+   * the active-source filter can distinguish (e.g.) magazine's
+   * blocks from portfolio's in a multi-site process.
+   *
+   * Type prefix on block `type` strings (e.g. `magazine.hero-
+   * feature`) is convention; `source` identity is the contract
+   * the activation filter uses. See design doc §4.4 for the
+   * append-only-registry / filter-at-read-time model that lets
+   * site A active=magazine and site B active=portfolio coexist
+   * in the same process.
+   */
+  blocks?: NpBlockDefinition[];
 }
 
 export interface NpTheme extends NpRegisteredTheme {

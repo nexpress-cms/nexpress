@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { readGridChildLayout } from "./blocks/grid.js";
 import { getSharedRegistry } from "./registry.js";
+import { isBlockSourceActive } from "./source.js";
 import type {
   NpBlockDefinition,
   NpBlockInstance,
@@ -182,6 +183,40 @@ function renderBlock(
         Unknown block type: {instance.type}
       </div>
     );
+  }
+
+  // Phase F.4 — when ctx supplies the active-source set and the
+  // block's `source` isn't in it, the block came from an inactive
+  // theme/plugin (e.g. operator switched themes; old instance
+  // remains in the page document). Render a "from inactive
+  // theme" placeholder instead of the block. Without ctx
+  // (legacy callers), this guard is skipped — all registered
+  // blocks render unconditionally.
+  if (ctx?.activeSources) {
+    const active = isBlockSourceActive(definition.source, ctx.activeSources);
+    if (!active) {
+      return (
+        <div
+          key={instance.id}
+          className="np-block-stale"
+          data-block-type={instance.type}
+          style={{
+            margin: "0.5rem 0",
+            padding: "0.625rem 0.875rem",
+            borderRadius: "0.375rem",
+            border: "1px dashed rgba(148, 163, 184, 0.5)",
+            backgroundColor: "rgba(241, 245, 249, 0.5)",
+            color: "rgba(71, 85, 105, 0.85)",
+            fontSize: "0.8125rem",
+            fontFamily:
+              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          }}
+        >
+          Block <strong>{instance.type}</strong> is from a theme or plugin
+          that isn't active for this site.
+        </div>
+      );
+    }
   }
 
   let rendered: React.ReactNode = null;

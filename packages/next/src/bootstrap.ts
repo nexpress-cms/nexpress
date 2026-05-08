@@ -53,6 +53,22 @@ function pluginBlocks(plugin: NpPluginConfig | NpResolvedPluginLike): NpBlockDef
   );
 }
 
+// Phase F.4 — same narrowing for theme-shipped blocks. The theme
+// `impl` is opaque from core's perspective (`unknown`), so we
+// duck-type the array shape here.
+function themeBlocks(theme: { impl: unknown }): NpBlockDefinition[] {
+  const impl = theme.impl as { blocks?: unknown } | undefined;
+  const blocks = impl?.blocks;
+  if (!Array.isArray(blocks)) return [];
+  return blocks.filter(
+    (b): b is NpBlockDefinition =>
+      b !== null &&
+      typeof b === "object" &&
+      typeof (b as { type?: unknown }).type === "string" &&
+      typeof (b as { render?: unknown }).render === "function",
+  );
+}
+
 // Sister to `pluginBlocks` — narrows a plugin's `patterns` field
 // without forcing core to depend on the pattern type. Same loose-
 // shape duck-typing pattern (id + label + blocks). Source defaults
@@ -395,18 +411,31 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // `registerBlock` overwrites on duplicate type, so HMR /
       // re-bootstrap on the same process don't blow up.
       for (const plugin of enabled) {
+        const pluginId = resolvePluginId(plugin);
         for (const block of pluginBlocks(plugin)) {
-          // Default `source: "plugin"` (#467) so the admin's Add-
-          // block popover can group plugin contributions under
-          // their own header. Authors who set `source` explicitly
-          // (theme-bundled blocks, etc.) keep their value.
-          registerBlock({ ...block, source: block.source ?? "plugin" });
+          // Phase F.4 — auto-stamp concrete source identity
+          // (`plugin:<pluginId>`) so the activation filter can
+          // distinguish each plugin's blocks. Author-supplied
+          // `source` is overridden unconditionally per design
+          // doc §4.4 ("authors don't pass source manually").
+          registerBlock({ ...block, source: `plugin:${pluginId}` });
         }
         for (const pattern of pluginPatterns(plugin)) {
-          // Same source-default tagging — patterns ship under
-          // `"plugin"` unless the author overrode it (a theme-
-          // bundled plugin might want `"theme"`).
-          registerPattern({ ...pattern, source: pattern.source ?? "plugin" });
+          // Same concrete-identity stamping for patterns.
+          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
+        }
+      }
+      // Phase F.4 — register theme-shipped blocks too. Themes are
+      // process-global installed (any of `config.themes` may be
+      // active on any site in this process); the registry stays
+      // append-only and the activation filter at admin/render
+      // layer scopes by site context.
+      for (const theme of config.themes ?? []) {
+        for (const block of themeBlocks(theme)) {
+          registerBlock({
+            ...block,
+            source: `theme:${theme.manifest.id}`,
+          });
         }
       }
       pluginsLoaded = true;
@@ -467,12 +496,25 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const enabled = configured.filter((plugin) => !disabledIds.has(resolvePluginId(plugin)));
       await loadPlugins(enabled);
       for (const plugin of enabled) {
+        const pluginId = resolvePluginId(plugin);
         for (const block of pluginBlocks(plugin)) {
-          // Same source-default tagging as `ensurePluginsLoaded`.
-          registerBlock({ ...block, source: block.source ?? "plugin" });
+          // Same concrete-source stamping as `ensurePluginsLoaded`.
+          registerBlock({ ...block, source: `plugin:${pluginId}` });
         }
         for (const pattern of pluginPatterns(plugin)) {
-          registerPattern({ ...pattern, source: pattern.source ?? "plugin" });
+          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
+        }
+      }
+      // Re-register theme blocks after the registry reset above
+      // (resetSharedBlockRegistry only reseeds built-in defaults).
+      // Theme blocks don't change between reloads, but they live
+      // in the same registry so we have to put them back.
+      for (const theme of config.themes ?? []) {
+        for (const block of themeBlocks(theme)) {
+          registerBlock({
+            ...block,
+            source: `theme:${theme.manifest.id}`,
+          });
         }
       }
       pluginsLoaded = true;

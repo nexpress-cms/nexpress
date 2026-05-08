@@ -1,9 +1,17 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { count, eq } from "drizzle-orm";
-import { can, npUsers, verifyTokenFull } from "@nexpress/core";
+import {
+  can,
+  getActiveThemeId,
+  npUsers,
+  verifyTokenFull,
+} from "@nexpress/core";
 import { AdminShell, BlocksRegistryProvider } from "@nexpress/admin/client";
-import { getRegisteredBlockMetadata, getRegisteredPatterns } from "@nexpress/blocks";
+import {
+  getRegisteredBlockMetadataForActiveSources,
+  getRegisteredPatterns,
+} from "@nexpress/blocks";
 import nexpressConfig from "@/nexpress.config";
 import { ensureFor } from "@/lib/init-core";
 import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
@@ -67,7 +75,15 @@ export default async function AdminLayout({
   // Block metadata snapshot — server-side, so plugin-registered
   // blocks (which only land in the SERVER module-instance during
   // bootstrap) reach the browser editor through React props.
-  const blocksMetadata = getRegisteredBlockMetadata();
+  //
+  // Phase F.4 — filter by the active theme so multi-site
+  // processes don't surface every installed theme's blocks in
+  // the Add-block popover. Plugin and built-in blocks are
+  // always included; only theme blocks are gated by themeId.
+  const activeThemeId = await getActiveThemeId();
+  const blocksMetadata = getRegisteredBlockMetadataForActiveSources({
+    themeId: activeThemeId,
+  });
   // Same trick for plugin / theme contributed patterns — they land
   // in the SERVER instance of the shared pattern registry during
   // bootstrap and need to ride props to the browser-side editor.

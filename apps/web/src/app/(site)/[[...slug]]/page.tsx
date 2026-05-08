@@ -8,7 +8,7 @@ import {
 import {
   buildPageMetadata,
   buildRouteRenderProps,
-  createDefaultBlockRenderContext,
+  createSiteScopedBlockRenderContext,
   dispatchThemeRoute,
 } from "@nexpress/next";
 import { getCachedActiveTheme } from "@/lib/cached-theme";
@@ -103,7 +103,11 @@ export async function generateMetadata({
         buildRouteRenderProps({
           match,
           searchParams: sp,
-          blockCtx: createDefaultBlockRenderContext(),
+          // metadata builders rarely render blocks, but pass the
+          // site-scoped ctx for symmetry with the Page render
+          // path so any theme that does dispatch blocks from
+          // metadata gets the same source filtering.
+          blockCtx: await createSiteScopedBlockRenderContext(),
         }),
       );
       return {
@@ -200,7 +204,7 @@ export default async function CatchAllPage({
     const activeTheme = await getCachedActiveTheme();
     const match = dispatchThemeRoute(activeTheme, path);
     if (match) {
-      const blockCtx = createDefaultBlockRenderContext();
+      const blockCtx = await createSiteScopedBlockRenderContext();
       const RouteComponent = match.route.component;
       const sp = await searchParams;
       const props = buildRouteRenderProps({
@@ -263,7 +267,13 @@ export default async function CatchAllPage({
   // blocks) render the "ctx unavailable" placeholder instead of
   // querying content. Theme packages no longer have to import
   // `@nexpress/next` themselves — the ctx arrives as a prop.
-  const blockCtx = createDefaultBlockRenderContext();
+  //
+  // Phase F.4 — use the site-scoped variant so block instances
+  // belonging to inactive themes (operator switched themes; old
+  // page documents still carry magazine.* blocks under a
+  // portfolio-active site) render as the "from inactive theme"
+  // placeholder instead of mis-rendering with missing CSS.
+  const blockCtx = await createSiteScopedBlockRenderContext();
 
   return (
     <>

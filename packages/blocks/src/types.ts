@@ -21,6 +21,22 @@ export interface NpBlockRenderContext {
     findOne(collection: string, id: string): Promise<Record<string, unknown> | null>;
     count(collection: string): Promise<number>;
   };
+  /**
+   * Phase F.4 — active source context. When present, `renderBlocks`
+   * filters block instances whose `source` doesn't belong to the
+   * active set, rendering a "from inactive theme" placeholder
+   * instead of the block. Without this field, all registered
+   * blocks render unconditionally (back-compat with pre-F.4
+   * callers that don't build ctx with active sources).
+   *
+   * v0.2 only carries `themeId` — plugins are process-global
+   * and already pruned at registry-write time, so a plugin
+   * block reaching the renderer is necessarily from an enabled
+   * plugin. See `source.ts` `isBlockSourceActive` for the rules.
+   */
+  readonly activeSources?: {
+    themeId: string | null;
+  };
 }
 
 /**
