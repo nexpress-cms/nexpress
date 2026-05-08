@@ -124,6 +124,50 @@ describe("getProjectFiles", () => {
     expect(dockerfile).toMatch(/NP_SECRET=placeholder/);
   });
 
+  it("ships lib/auth-routes.ts wired to createStaffAuthRoutes", () => {
+    const files = getProjectFiles(baseConfig);
+    const authRoutes = files["src/lib/auth-routes.ts"];
+    expect(authRoutes).toBeDefined();
+    expect(authRoutes).toMatch(/createStaffAuthRoutes/);
+    expect(authRoutes).toMatch(/@nexpress\/auth-pages\/server/);
+  });
+
+  it("api/auth route files are 2-line factory re-exports (not hand-coded)", () => {
+    const files = getProjectFiles(baseConfig);
+    const login = files["src/app/api/auth/login/route.ts"];
+    const logout = files["src/app/api/auth/logout/route.ts"];
+    const me = files["src/app/api/auth/me/route.ts"];
+    expect(login).toBeDefined();
+    expect(logout).toBeDefined();
+    expect(me).toBeDefined();
+    // Each route imports the bootstrapped handlers and re-exports.
+    expect(login).toMatch(/staffAuthRoutes\.login/);
+    expect(logout).toMatch(/staffAuthRoutes\.logout/);
+    expect(me).toMatch(/staffAuthRoutes\.meGet/);
+    // None of them should still carry the legacy hand-coded body.
+    expect(login).not.toMatch(/verifyPassword|signToken|hashPassword/);
+    expect(logout).not.toMatch(/optionalAuth|runHook/);
+    expect(me).not.toMatch(/requireAuth|npSuccessResponse/);
+  });
+
+  it("docker-compose ships Mailpit alongside Postgres for local SMTP capture", () => {
+    const files = getProjectFiles(baseConfig);
+    const compose = files["docker/docker-compose.yml"];
+    expect(compose).toBeDefined();
+    expect(compose).toMatch(/mailpit/i);
+    expect(compose).toMatch(/8025/);
+    expect(compose).toMatch(/1025/);
+  });
+
+  it(".env.example points NP_SMTP_* at Mailpit by default", () => {
+    const files = getProjectFiles(baseConfig);
+    const env = files[".env.example"];
+    expect(env).toBeDefined();
+    expect(env).toMatch(/NP_EMAIL_ADAPTER=smtp/);
+    expect(env).toMatch(/NP_SMTP_HOST=localhost/);
+    expect(env).toMatch(/NP_SMTP_PORT=1025/);
+  });
+
   it("emits vercel.json with the scheduled-publish cron entry", () => {
     const files = getProjectFiles(baseConfig);
     const vercel = files["vercel.json"];

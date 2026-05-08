@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@nexpress/admin": "workspace:*",
+    "@nexpress/auth-pages": "workspace:*",
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
     "@nexpress/next": "workspace:*",
