@@ -1,23 +1,3 @@
-import { consumeMemberEmailVerifyToken } from "@nexpress/core";
-import { readJsonBody } from "@nexpress/next";
-import type { NextRequest } from "next/server";
+import { memberAuthRoutes } from "@/lib/auth-routes";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
-
-export async function POST(request: NextRequest) {
-  try {
-    await ensureFor("write");
-    const body = (await readJsonBody(request)) as { token?: unknown } | null;
-    const token = typeof body?.token === "string" ? body.token : "";
-    const result = await consumeMemberEmailVerifyToken(getDb(), token);
-    return npSuccessResponse({
-      memberId: result.memberId,
-      handle: result.handle,
-      email: result.email,
-    });
-  } catch (error) {
-    return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
-  }
-}
+export const POST = memberAuthRoutes.verifyEmail;

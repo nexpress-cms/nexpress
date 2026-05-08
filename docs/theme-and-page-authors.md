@@ -408,6 +408,112 @@ if (!can(user, "admin.manage")) throw new NpForbiddenError("settings", "view");
 Capability strings are stable in v0.1 — see `AGENTS.md`'s
 **Stability** section.
 
+### 6.1 Member auth pages — framework-owned
+
+Sites typically need login / register / forgot-password / reset-
+password / verify-email / OAuth flows. The framework ships
+`@nexpress/auth-pages` so each route file is two lines and
+each page is a hook + your own JSX.
+
+**Routes** — bootstrap once, mount everywhere:
+
+```ts
+// apps/<app>/src/lib/auth-routes.ts
+import { createMemberAuthRoutes } from "@nexpress/auth-pages/server";
+import { getDb } from "@/lib/bootstrap";
+import { ensureFor, nexpressConfig } from "@/lib/init-core";
+import {
+  clearMemberAuthCookies,
+  getMemberAuthRuntimeConfig,
+  requireMember,
+  setMemberAuthCookies,
+} from "@/lib/member-auth-helpers";
+
+export const memberAuthRoutes = createMemberAuthRoutes({
+  getDb,
+  ensureFor,
+  authHelpers: {
+    setMemberAuthCookies,
+    clearMemberAuthCookies,
+    getMemberAuthRuntimeConfig,
+    requireMember,
+  },
+  site: { name: nexpressConfig.site.name, url: process.env.SITE_URL ?? null },
+});
+```
+
+```ts
+// app/api/members/login/route.ts
+import { memberAuthRoutes } from "@/lib/auth-routes";
+export const POST = memberAuthRoutes.login;
+```
+
+The factory returns 12 handlers covering every flow: `login`,
+`register`, `logout`, `refresh`, `verifyEmail`, `forgotPassword`,
+`resetPassword`, `oauthStart`, `oauthCallback`, `meGet`,
+`mePatch`, `meDelete`. Each one is a `(request, ctx?) =>
+Promise<NextResponse>` you re-export as the route file's HTTP
+verb.
+
+**Hooks** — headless React hooks for the page side:
+
+```tsx
+// apps/<app>/src/components/login-form.tsx
+"use client";
+import { useMemberLogin } from "@nexpress/auth-pages/client";
+import { useRouter } from "next/navigation";
+
+export function LoginForm({ next }: { next: string }) {
+  const router = useRouter();
+  const { fields, errors, isSubmitting, submit } = useMemberLogin({
+    onSuccess: () => router.push(next),
+  });
+  return (
+    <form onSubmit={submit}>
+      <input type="email" {...fields.email} />
+      {errors.email && <p>{errors.email}</p>}
+      <input type="password" {...fields.password} />
+      {errors.password && <p>{errors.password}</p>}
+      {errors._form && <p>{errors._form}</p>}
+      <button disabled={isSubmitting}>Sign in</button>
+    </form>
+  );
+}
+```
+
+Six hooks cover the six form pages: `useMemberLogin`,
+`useMemberRegister`, `useMemberForgotPassword`,
+`useMemberResetPassword`, `useMemberVerifyEmail`,
+`useMemberLogout`. Each returns `{ fields, errors, isSubmitting,
+isSuccess, submit }` (verify is auto-on-mount, logout has no
+form).
+
+**Customization knobs** — every hook accepts `{ endpoint?,
+messages?, onSuccess?, onError? }`. The `messages` option
+overrides user-facing strings per error code:
+
+```tsx
+useMemberLogin({
+  messages: {
+    INVALID_CREDENTIALS: "이메일 또는 비밀번호가 올바르지 않습니다.",
+    NETWORK: "네트워크 오류. 다시 시도해주세요.",
+  },
+});
+```
+
+Untouched codes fall back to the framework default (English).
+The full code list:
+`INVALID_CREDENTIALS | ACCOUNT_LOCKED | REGISTRATION_DISABLED |
+VALIDATION | RATE_LIMITED | TOKEN_INVALID | TOKEN_EXPIRED |
+NETWORK | SERVER_ERROR | UNAUTHORIZED`.
+
+**What still belongs to your app** — the JSX, copy, OAuth
+provider list, `safeNext` policy, email templates, and the page
+shells (`app/(site)/members/login/page.tsx` etc., which decide
+when to redirect already-signed-in users, what success banners
+to show on `?verified=1`, etc.). The framework owns the wire
+protocol; sites own the experience.
+
 ---
 
 ## 7. Plugins

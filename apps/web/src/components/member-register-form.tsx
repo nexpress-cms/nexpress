@@ -1,65 +1,13 @@
 "use client";
 
-import { useState } from "react";
-
-interface ApiErrorBody {
-  error?: { message?: string; details?: Array<{ field?: string; message?: string }> };
-}
-
-function extractMessage(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const err = (body as ApiErrorBody).error;
-  if (!err) return null;
-  const detail = err.details?.[0]?.message;
-  if (typeof detail === "string") return detail;
-  if (typeof err.message === "string") return err.message;
-  return null;
-}
+import { useMemberRegister } from "@nexpress/auth-pages/client";
 
 const HANDLE_RE = /^[a-z0-9][a-z0-9_-]{2,29}$/;
 
 export function RegisterForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [handle, setHandle] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const { fields, errors, isSubmitting, isSuccess, submit } = useMemberRegister();
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/members/register", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          handle: handle.trim().toLowerCase(),
-          displayName: displayName.trim(),
-        }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as unknown;
-        setError(extractMessage(body) ?? "Registration failed");
-        return;
-      }
-      // The API responds 200 even when the email/handle was already
-      // taken (anti-enumeration). The honest UX is to always show
-      // the same "check your email" confirmation regardless.
-      setSubmitted(true);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (submitted) {
+  if (isSuccess) {
     return (
       <div className="np-members-form">
         <div className="np-form-success" role="status">
@@ -67,40 +15,26 @@ export function RegisterForm() {
             <strong>Check your email.</strong>
           </p>
           <p>
-            We sent a verification link to <code>{email}</code>. Click it to
-            activate your account; the link expires in 24 hours.
+            We sent a verification link to <code>{fields.email.value}</code>.
+            Click it to activate your account; the link expires in 24 hours.
           </p>
           <p className="np-form-help">
-            Didn&apos;t get the email? Check your spam folder, or{" "}
-            <button
-              type="button"
-              className="np-text-button"
-              onClick={() => {
-                setSubmitted(false);
-                setError(null);
-              }}
-            >
-              try again
-            </button>
-            .
+            Didn&apos;t get the email? Check your spam folder, or refresh to
+            try again.
           </p>
         </div>
       </div>
     );
   }
 
-  const handleValid = handle === "" || HANDLE_RE.test(handle);
+  const handleValid =
+    fields.handle.value === "" || HANDLE_RE.test(fields.handle.value);
 
   return (
-    <form
-      onSubmit={(e) => {
-        void onSubmit(e);
-      }}
-      className="np-members-form"
-    >
-      {error ? (
+    <form onSubmit={(e) => { void submit(e); }} className="np-members-form">
+      {errors._form ? (
         <div role="alert" className="np-form-error">
-          {error}
+          {errors._form}
         </div>
       ) : null}
       <label className="np-form-field">
@@ -109,11 +43,11 @@ export function RegisterForm() {
           type="email"
           required
           autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={submitting}
+          {...fields.email}
+          disabled={isSubmitting}
           className="np-form-input"
         />
+        {errors.email ? <span className="np-form-error">{errors.email}</span> : null}
       </label>
       <label className="np-form-field">
         <span className="np-form-label">Display name</span>
@@ -122,11 +56,13 @@ export function RegisterForm() {
           required
           maxLength={80}
           autoComplete="name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          disabled={submitting}
+          {...fields.displayName}
+          disabled={isSubmitting}
           className="np-form-input"
         />
+        {errors.displayName ? (
+          <span className="np-form-error">{errors.displayName}</span>
+        ) : null}
       </label>
       <label className="np-form-field">
         <span className="np-form-label">Handle</span>
@@ -137,9 +73,14 @@ export function RegisterForm() {
           maxLength={30}
           pattern="[a-z0-9][a-z0-9_-]{2,29}"
           autoComplete="username"
-          value={handle}
-          onChange={(e) => setHandle(e.target.value.toLowerCase())}
-          disabled={submitting}
+          value={fields.handle.value}
+          onChange={(e) =>
+            fields.handle.onChange({
+              ...e,
+              target: { ...e.target, value: e.target.value.toLowerCase() },
+            } as typeof e)
+          }
+          disabled={isSubmitting}
           className="np-form-input"
         />
         <small className="np-form-help">
@@ -147,6 +88,7 @@ export function RegisterForm() {
             ? "3–30 chars: lowercase letters, digits, underscore, dash. Must start with a letter or digit."
             : "Invalid format — see rules below."}
         </small>
+        {errors.handle ? <span className="np-form-error">{errors.handle}</span> : null}
       </label>
       <label className="np-form-field">
         <span className="np-form-label">Password</span>
@@ -155,26 +97,26 @@ export function RegisterForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={submitting}
+          {...fields.password}
+          disabled={isSubmitting}
           className="np-form-input"
         />
         <small className="np-form-help">At least 8 characters.</small>
+        {errors.password ? <span className="np-form-error">{errors.password}</span> : null}
       </label>
       <div className="np-form-actions">
         <button
           type="submit"
           className="np-button-primary"
           disabled={
-            submitting ||
-            !email.trim() ||
-            password.length < 8 ||
-            !HANDLE_RE.test(handle) ||
-            displayName.trim().length === 0
+            isSubmitting ||
+            !fields.email.value.trim() ||
+            fields.password.value.length < 8 ||
+            !HANDLE_RE.test(fields.handle.value) ||
+            fields.displayName.value.trim().length === 0
           }
         >
-          {submitting ? "Creating account…" : "Create account"}
+          {isSubmitting ? "Creating account…" : "Create account"}
         </button>
       </div>
     </form>

@@ -71,7 +71,7 @@ export default tseslint.config(
   },
 
   {
-    files: ["packages/admin/**/*.{ts,tsx}", "packages/editor/**/*.{ts,tsx}", "packages/blocks/**/*.{ts,tsx}", "packages/theme/**/*.{ts,tsx}", "apps/web/**/*.{ts,tsx}"],
+    files: ["packages/admin/**/*.{ts,tsx}", "packages/editor/**/*.{ts,tsx}", "packages/blocks/**/*.{ts,tsx}", "packages/theme/**/*.{ts,tsx}", "packages/auth-pages/**/*.{ts,tsx}", "apps/web/**/*.{ts,tsx}"],
     plugins: {
       "react-hooks": reactHooks,
     },
