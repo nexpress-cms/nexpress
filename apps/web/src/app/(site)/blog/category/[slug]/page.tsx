@@ -1,3 +1,4 @@
+import { getCurrentSiteId } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
@@ -74,7 +75,27 @@ export default async function CategoryPage({
   // `categories: [id]` but the runtime ignores the field. Phase
   // E candidate: detect hasMany fields at codegen and emit a
   // helper.
+  //
+  // **Important**: dropping into raw Drizzle bypasses the gates
+  // findDocuments applies automatically. We restore the two
+  // every public listing relies on:
+  //
+  //   - `siteId` — multi-site scoping. Without this, a multi-
+  //     tenant instance leaks posts from sibling sites into
+  //     this page.
+  //   - `visibility = "public"` — anonymous viewers must not
+  //     see `visibility = "private"` rows. (Authenticated paths
+  //     would broaden this; this page renders to anonymous, so
+  //     the strict filter is correct.)
+  //
+  // The `access.read` callback is NOT re-checked here — for
+  // collections that gate read access on the user (the posts
+  // collection allows anonymous reads via `access: { read: () =>
+  // true }`), the rendered list lines up with what
+  // `findPosts({ where: { categories } })` would have returned
+  // if the framework supported the filter.
   const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? "default";
   const offset = (pageNum - 1) * PAGE_SIZE;
   const postIdSubquery = db
     .select({ id: postsCategoriesTable.postsId })
@@ -83,6 +104,8 @@ export default async function CategoryPage({
 
   const filter = and(
     eq(postsTable.status, "published"),
+    eq(postsTable.visibility, "public"),
+    eq(postsTable.siteId, siteId),
     inArray(postsTable.id, postIdSubquery),
   );
 

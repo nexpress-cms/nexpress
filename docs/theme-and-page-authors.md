@@ -226,6 +226,7 @@ Until the framework grows hasMany filtering, drop into the join
 table directly:
 
 ```tsx
+import { getCurrentSiteId } from "@nexpress/core";
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { postsCategoriesTable, postsTable } from "@/db/generated/collections";
 import { findCategories, type PostsDocument } from "@/db/generated/documents";
@@ -239,14 +240,28 @@ if (!category) notFound();
 
 // Step 2 — subquery the join table for matching post ids.
 const db = getDb();
+const siteId = (await getCurrentSiteId()) ?? "default";
 const postIdSubquery = db
   .select({ id: postsCategoriesTable.postsId })
   .from(postsCategoriesTable)
   .where(eq(postsCategoriesTable.targetId, category.id));
 
 // Step 3 — fetch + count posts whose id is in that subquery.
+//
+// CRITICAL: dropping into raw Drizzle bypasses the gates
+// `findDocuments` applies automatically. Re-add at minimum:
+//   - `siteId` — multi-site scoping. Multi-tenant instances
+//     would otherwise leak sibling-site rows.
+//   - `visibility = "public"` — anonymous viewers must not see
+//     private rows. Authenticated paths can broaden this.
+// `access.read` callbacks ALSO aren't re-applied — for
+// collections that gate on the current user, `findDocuments`
+// is the only safe path. Public-read collections like `posts`
+// (`access: { read: () => true }`) are fine without it.
 const filter = and(
   eq(postsTable.status, "published"),
+  eq(postsTable.visibility, "public"),
+  eq(postsTable.siteId, siteId),
   inArray(postsTable.id, postIdSubquery),
 );
 const [docs, totalRow] = await Promise.all([
