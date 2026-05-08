@@ -24,3 +24,12 @@ export {
 } from "./registry.js";
 export { renderBlocks } from "./render-blocks.js";
 export type { NpRenderBlocksOptions } from "./render-blocks.js";
+
+export {
+  parseBlockSource,
+  isBlockSourceActive,
+  getRegisteredBlocksForActiveSources,
+  getRegisteredBlockMetadataForActiveSources,
+  type NpBlockSource,
+  type NpActiveSourceContext,
+} from "./source.js";

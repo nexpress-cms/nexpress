@@ -5,6 +5,8 @@ import {
 } from "@nexpress/core";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
 
+import { getCachedActiveThemeId } from "./cache.js";
+
 /**
  * Forces a `status = "published"` filter when the caller didn't already
  * specify one on `where.status`. The block-render ctx is meant for
@@ -85,5 +87,26 @@ export function createDefaultBlockRenderContext(): NpBlockRenderContext {
         return result.totalDocs;
       },
     },
+  };
+}
+
+/**
+ * Phase F.4 — async variant that resolves the active theme id
+ * for the current site and embeds it in `activeSources`.
+ * `renderBlocks` filters block instances whose `source` doesn't
+ * match, rendering a placeholder instead. Sites in a multi-
+ * tenant process get per-site filtering for free.
+ *
+ * Kept distinct from the sync builder above so existing
+ * callers that don't need source filtering (older themes,
+ * unit tests) don't have to await. The catch-all `[[...slug]]`
+ * and theme route components use this async one.
+ */
+export async function createSiteScopedBlockRenderContext(): Promise<NpBlockRenderContext> {
+  const themeId = await getCachedActiveThemeId();
+  const base = createDefaultBlockRenderContext();
+  return {
+    ...base,
+    activeSources: { themeId },
   };
 }
