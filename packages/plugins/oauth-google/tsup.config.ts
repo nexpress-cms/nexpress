@@ -8,5 +8,5 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   sourcemap: !fast,
-  external: ["@nexpress/core", "@nexpress/plugin-sdk", "arctic"],
+  external: ["@nexpress/core", "@nexpress/oauth-providers", "@nexpress/plugin-sdk"],
 });
