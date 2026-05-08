@@ -397,6 +397,9 @@ export {
 } from "./themes/settings.js";
 export type { NpThemeSettingsResult } from "./themes/settings.js";
 
+export { getActiveThemeNavLocations } from "./themes/nav-locations.js";
+export type { NpThemeNavLocationDescriptor } from "./themes/nav-locations.js";
+
 export { introspectThemeSettingsSchema } from "./themes/settings-schema.js";
 export type {
   NpThemeSettingsField,

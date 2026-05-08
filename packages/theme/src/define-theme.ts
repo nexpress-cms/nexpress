@@ -330,6 +330,43 @@ export interface NpThemeImpl {
    * the same way it scopes blocks (multi-site safe).
    */
   patterns?: NpPattern[];
+  /**
+   * Phase F.6 — declared nav menu mount points.
+   *
+   * Themes name the semantic nav locations they consume in
+   * their shell / slot components (e.g. `primary` for the
+   * header nav, `footerLinks` for the footer column, etc.).
+   * The admin nav editor reads this to populate its location
+   * dropdown with friendly labels operator-side, instead of
+   * forcing the operator to type a string that has to match
+   * the theme's expectation.
+   *
+   * Theme components consume the mounted menu via
+   * `<NavMenu location="primary" />` from `@nexpress/next` —
+   * the component reads `getNavigation(locationKey)` for the
+   * current site and renders the items.
+   *
+   * The location keys are free-form per theme; declared keys
+   * appear alongside the framework's hardcoded defaults
+   * (`header` / `footer` / `main`) and any custom locations the
+   * operator has authored. Theme-provided labels win on key
+   * collision (e.g. theme declares `header` with label "Site
+   * Header" — the editor shows that instead of the default).
+   */
+  navLocations?: Record<string, NpThemeNavLocation>;
+}
+
+/**
+ * Phase F.6 — one declared nav location.
+ *
+ * `label` is the human-readable name shown in admin (e.g.
+ * "Primary header nav"). `description` and `maxItems` are
+ * advisory hints surfaced in the location's edit panel.
+ */
+export interface NpThemeNavLocation {
+  label: string;
+  description?: string;
+  maxItems?: number;
 }
 
 export interface NpTheme extends NpRegisteredTheme {
