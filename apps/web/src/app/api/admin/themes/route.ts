@@ -1,6 +1,9 @@
 import {
   NpForbiddenError,
+  checkThemeRequirements,
   getActiveThemeId,
+  getAllCollectionSlugs,
+  getCollectionConfig,
   getRegisteredThemes,
   can,
 } from "@nexpress/core";
@@ -40,14 +43,33 @@ export async function GET(request: NextRequest) {
     // that behavior in the listing so the UI's "active" badge
     // matches what `getActiveTheme()` would return.
     const effectiveActiveId = activeId ?? themes[0]?.manifest.id ?? null;
-    const docs = themes.map((theme) => ({
-      id: theme.manifest.id,
-      name: theme.manifest.name,
-      version: theme.manifest.version,
-      description: theme.manifest.description,
-      author: theme.manifest.author,
-      isActive: theme.manifest.id === effectiveActiveId,
-    }));
+    // Phase F.1 — surface theme manifest.requires mismatches so
+    // the admin switcher can warn the operator before activation.
+    // The check is cheap (in-memory only, no DB) so we run it for
+    // every listed theme; the future Phase F.8 CLI consumes the
+    // same data shape.
+    const collections = getAllCollectionSlugs().map((slug) =>
+      getCollectionConfig(slug),
+    );
+    const docs = themes.map((theme) => {
+      const check = checkThemeRequirements(theme.manifest, collections);
+      return {
+        id: theme.manifest.id,
+        name: theme.manifest.name,
+        version: theme.manifest.version,
+        description: theme.manifest.description,
+        author: theme.manifest.author,
+        isActive: theme.manifest.id === effectiveActiveId,
+        requirements: {
+          hasMismatches: check.hasMismatches,
+          hasHardMismatches: check.hasHardMismatches,
+          missingCollections: check.missingCollections,
+          missingFields: check.missingFields,
+          typeConflicts: check.typeConflicts,
+          relationConflicts: check.relationConflicts,
+        },
+      };
+    });
     return npSuccessResponse({ docs });
   } catch (error) {
     return npErrorResponse(
