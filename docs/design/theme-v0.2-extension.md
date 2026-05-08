@@ -49,8 +49,9 @@ Resolved before this doc was written; restated for the record.
 
 - Theme developer can express any content-centric site shape using
   arbitrary React + Next.js composition inside the contract.
-- Site operator never opens a code editor after running
-  `pnpm nexpress theme:install <pkg>`.
+- Site operator never opens a code editor. CLI use is limited
+  to `pnpm nexpress theme:install <pkg>` followed by `pnpm
+  db:migrate` (consistent with §0; auto-chain deferred to v0.3).
 - Existing `defineTheme()` callers stay green. All v0.2 fields are
   additive options on `NpThemeImpl` / `NpThemeManifest`.
 - Plugin and theme contributions (blocks, patterns, routes) merge
@@ -256,9 +257,23 @@ value = z.infer<typeof settingsSchema>
 Per-theme rows (rather than a single `key = "theme.settings"`
 row holding a `Record<themeId, …>`) buy three things: writes
 on one theme don't lock the whole settings blob; per-theme
-revalidation tags can be granular (`np-theme-settings:<themeId>`);
-and theme switching reads only the active theme's row, not every
-installed theme's data.
+revalidation tags can be granular (`nx:theme-settings:<themeId>`,
+following the existing `nx:*` cache-tag namespace — see §4.7
+note); and theme switching reads only the active theme's row,
+not every installed theme's data.
+
+**Coexistence with existing settings rows.** Three settings keys
+participate in theme state, each with a distinct purpose:
+
+| Key | Purpose | Phase |
+|-----|---------|-------|
+| `activeTheme` | Active theme id for the site (existing) | v0.1 |
+| `theme` | Token overrides — colors / typography / shape (existing) | v0.1 |
+| `theme.settings:<themeId>` | New per-theme settings blob (this phase) | v0.2 |
+
+The new key is namespaced with a colon to avoid collision with
+the v0.1 `theme` row, and keyed by theme id so multiple installed
+themes' settings coexist without clobbering each other.
 
 On read, validated against the current `settingsSchema`. Validation
 failure surfaces as an admin warning toast and falls back to
@@ -313,6 +328,41 @@ for the page builder" or `renderBlocks` resolves a `type` string,
 the filter is "blocks contributed by themes/plugins active *for
 the current site context*". Registry stays append-only; the active-
 theme query is what gates visibility.
+
+**Source identity contract — required for the filter to work.**
+The activation filter compares each registry entry's `source`
+against the site's currently-active theme id and enabled plugin
+ids. For this to actually distinguish (e.g.) `magazine` blocks
+from `portfolio` blocks when both themes are installed in the
+same process, the `source` field MUST carry the concrete
+contributor id, not a broad category label:
+
+| Contributor | `source` value | Example |
+|-------------|----------------|---------|
+| Theme | `theme:<manifest.id>` | `theme:magazine` |
+| Plugin | `plugin:<manifest.id>` | `plugin:reading-time` |
+| Built-in | `core` | `core` |
+
+The framework's bootstrap auto-stamps `source` based on the
+registration call path: `registerBlock` invoked from
+`loadThemes` → stamps `theme:<themeId>`; from `loadPlugins` →
+`plugin:<pluginId>`. Theme/plugin authors don't pass `source`
+manually.
+
+The activation filter compares concrete ids. Broad labels
+(`"theme"` / `"plugin"`) can appear in admin UI groupings ("All
+theme blocks") but never as filter keys — using a broad label as
+a filter would lump every installed theme together and re-create
+the multi-site collision the append-only registry is designed to
+avoid.
+
+**Migration impact.** The existing block registry's `source`
+field (used by some plugin blocks today) accepts broader values.
+F.4 tightens the contract: registrations through
+`loadThemes`/`loadPlugins` go through the auto-stamping path;
+direct `registerBlock` calls with a broad `source` continue to
+work but won't filter correctly under multi-site. A dev-mode
+console warning catches the latter.
 
 **Stale instance handling**: when an operator deactivates a theme,
 existing pages may have block instances of that theme's types.
@@ -424,17 +474,32 @@ with `@nexpress/core/seo`'s existing entry builders (the public
 types are `NpSitemapEntry` and `NpFeedEntry` — no rename in v0.2).
 
 **Cache invalidation.** Sitemap and feed are site-scoped cached
-(`revalidateTag('np-sitemap:<siteId>')`, `np-feed:<siteId>`).
-When theme SEO hooks read theme settings or active-theme state,
-the following events MUST invalidate both tags:
+under the **existing `nx:*` cache-tag namespace** (the `np`
+prefix migration intentionally left Next.js cache tags as
+`nx:*` — they're internal cache infrastructure, not part of the
+public API surface). The actual tags written by `revalidate.ts`
+today are:
 
-- Theme switch (`np_settings:theme` row write).
-- Theme settings save (`np_settings:theme.settings:<themeId>` row
-  write) — only when the theme contributes SEO hooks; pure-style
-  settings changes don't need to bust SEO cache.
+- `nx:sitemap:<siteId>` (per-site sitemap)
+- `nx:sitemap` (global sitemap index)
+- `nx:feed:<siteId>` (per-site feed root)
+- `nx:feed:<siteId>:<collection>` (per-collection feed)
 
-The framework wires these invalidations in the settings save path;
-themes don't have to think about it.
+When a theme contributes SEO hooks (`seo.sitemapEntries` /
+`seo.feedEntries`), the following settings-row writes MUST also
+invalidate the relevant `nx:sitemap:*` / `nx:feed:*` tags:
+
+| Settings event | Row written | Invalidates |
+|----------------|-------------|-------------|
+| Active-theme switch | `key = "activeTheme"` | `nx:sitemap:<siteId>`, `nx:feed:<siteId>` |
+| Theme settings save | `key = "theme.settings:<themeId>"` | same — only if the theme declares `seo.*` hooks; pure-style settings (e.g. `accentColor`) skip the bust |
+| Theme tokens save | `key = "theme"` | no — tokens don't affect sitemap/feed content |
+
+The framework wires these invalidations in the settings save path
+based on the active theme's manifest (`seo.*` declared → SEO
+tags participate). Themes don't have to think about it, but
+they do have to declare their SEO hooks at manifest time so the
+framework knows whether to bust SEO cache on settings save.
 
 ### 4.8 Phase F.8 — `pnpm nexpress theme:install`
 
@@ -509,8 +574,10 @@ absorbed as `theme-magazine` settings variants (`layout: "default" |
 "minimal"`).
 
 **Validation gate**: each theme + a recorded demo where an operator
-goes `pnpm create nexpress my-site → pnpm nexpress theme:install →
-admin only → live customized site`. If any of the three can't
+goes `pnpm create nexpress my-site → pnpm nexpress theme:install
+<theme> → pnpm db:migrate → admin only → live customized site`.
+The two CLI steps match §0; everything after `db:migrate` happens
+in admin without touching code. If any of the three themes can't
 complete that loop, the contract is incomplete and we file a
 follow-up phase before declaring v0.2 done.
 
@@ -583,16 +650,24 @@ writes git-staged before next step.
 
 ### 5.8 Plugin / theme name collisions
 
-**Decision**: namespacing is convention, not contract.
-- Block types: theme blocks SHOULD prefix with theme id, plugin
-  blocks SHOULD prefix with plugin id. Admin lint warns in dev.
+**Decision**: type-name prefixing is convention; **`source`
+identity is contract** (see §4.4 for the registry-side rule).
+- Block `type` strings: theme blocks SHOULD prefix with theme id,
+  plugin blocks SHOULD prefix with plugin id (admin lint warns
+  in dev). This is convention because two themes shipping the
+  same unprefixed type still resolve via `source` at filter time.
+- Block `source` field: framework auto-stamps `theme:<id>` /
+  `plugin:<id>` based on registration call path. Activation
+  filter compares against these concrete ids, not broad labels.
+  This is contract — required for multi-site correctness.
 - Routes: theme routes evaluated before plugin routes; both
-  evaluated after app-explicit. First match wins, with dev-mode
-  warning if a pattern is shadowed.
-- Patterns: each registered with `source: "theme:magazine"` or
-  `source: "plugin:reading-time"` for admin UI grouping. Same id
-  from two sources = silent overwrite (last-loaded wins),
-  with dev warning.
+  evaluated after app-explicit and after page-slug lookup
+  (precedence locked in §4.2). First match wins, with dev-mode
+  warning if a pattern is shadowed by an earlier layer.
+- Patterns: registered with `source: "theme:<id>"` /
+  `source: "plugin:<id>"` (same auto-stamping). Same pattern
+  `id` from two sources = silent overwrite (last-loaded wins)
+  with dev warning. Pattern `source` doubles as admin UI grouping.
 
 ## 6. Phase ordering
 
