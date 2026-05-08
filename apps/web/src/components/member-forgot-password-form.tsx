@@ -1,59 +1,13 @@
 "use client";
 
-import { useState } from "react";
-
-interface ApiErrorBody {
-  error?: { message?: string; details?: Array<{ message?: string }> };
-}
-
-function extractMessage(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const err = (body as ApiErrorBody).error;
-  if (!err) return null;
-  const detail = err.details?.[0]?.message;
-  if (typeof detail === "string") return detail;
-  if (typeof err.message === "string") return err.message;
-  return null;
-}
+import { useMemberForgotPassword } from "@nexpress/auth-pages/client";
 
 export function ForgotPasswordForm() {
-  const [email, setEmail] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const { fields, errors, isSubmitting, isSuccess, submit } = useMemberForgotPassword();
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/members/forgot-password", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      if (!res.ok) {
-        // Validation-level errors only (malformed email). The
-        // endpoint always 200s on a valid email shape, regardless
-        // of whether it matched a member — anti-enumeration. So
-        // anything we surface here is a client-side input issue.
-        const body = (await res.json().catch(() => null)) as unknown;
-        setError(extractMessage(body) ?? "Couldn't send the reset email.");
-        return;
-      }
-      setSubmitted(true);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (submitted) {
+  if (isSuccess) {
     // Constant confirmation regardless of whether the email matched
-    // a member — matches the API's anti-enumeration policy. We
-    // never reveal whether the email is registered.
+    // a member — matches the API's anti-enumeration policy.
     return (
       <div className="np-members-form">
         <div className="np-form-success" role="status">
@@ -61,22 +15,12 @@ export function ForgotPasswordForm() {
             <strong>Check your email.</strong>
           </p>
           <p>
-            If <code>{email}</code> matches an account, we&apos;ve sent a
-            reset link. The link expires in 1 hour.
+            If <code>{fields.email.value}</code> matches an account, we&apos;ve
+            sent a reset link. The link expires in 1 hour.
           </p>
           <p className="np-form-help">
-            Didn&apos;t get the email? Check your spam folder, or{" "}
-            <button
-              type="button"
-              className="np-text-button"
-              onClick={() => {
-                setSubmitted(false);
-                setError(null);
-              }}
-            >
-              try again
-            </button>
-            .
+            Didn&apos;t get the email? Check your spam folder, or refresh to
+            try again.
           </p>
         </div>
       </div>
@@ -84,15 +28,10 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form
-      onSubmit={(e) => {
-        void onSubmit(e);
-      }}
-      className="np-members-form"
-    >
-      {error ? (
+    <form onSubmit={(e) => { void submit(e); }} className="np-members-form">
+      {errors._form ? (
         <div role="alert" className="np-form-error">
-          {error}
+          {errors._form}
         </div>
       ) : null}
       <label className="np-form-field">
@@ -101,19 +40,19 @@ export function ForgotPasswordForm() {
           type="email"
           required
           autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={submitting}
+          {...fields.email}
+          disabled={isSubmitting}
           className="np-form-input"
         />
+        {errors.email ? <span className="np-form-error">{errors.email}</span> : null}
       </label>
       <div className="np-form-actions">
         <button
           type="submit"
           className="np-button-primary"
-          disabled={submitting || !email.trim()}
+          disabled={isSubmitting || !fields.email.value.trim()}
         >
-          {submitting ? "Sending…" : "Send reset link"}
+          {isSubmitting ? "Sending…" : "Send reset link"}
         </button>
       </div>
     </form>
