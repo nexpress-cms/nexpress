@@ -1,9 +1,11 @@
-import { findDocuments, getMemberProfile } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { PaginationNav } from "@/components/pagination-nav";
+import { findDiscussions } from "@/db/generated/documents";
+import { getCachedMemberProfile } from "@/lib/cached-content";
 import { ensureFor } from "@/lib/init-core";
 
 interface ProfileDiscussionsPageProps {
@@ -18,7 +20,7 @@ export async function generateMetadata({
 }: ProfileDiscussionsPageProps): Promise<Metadata> {
   await ensureFor("read");
   const { handle } = await params;
-  const profile = await getMemberProfile(handle);
+  const profile = await getCachedMemberProfile(handle);
   if (!profile) return {};
   return buildPageMetadata({
     title: `Discussions by @${profile.handle}`,
@@ -33,7 +35,7 @@ export default async function ProfileDiscussionsPage({
 }: ProfileDiscussionsPageProps) {
   await ensureFor("read");
   const { handle } = await params;
-  const profile = await getMemberProfile(handle);
+  const profile = await getCachedMemberProfile(handle);
   if (!profile) notFound();
 
   const { page: pageRaw } = await searchParams;
@@ -42,7 +44,7 @@ export default async function ProfileDiscussionsPage({
   // Public profile view shows only published threads — pending /
   // draft / archived rows are private to the author and the
   // /discussions index already handles those via `?author=me`.
-  const result = await findDocuments("discussions", {
+  const result = await findDiscussions({
     where: {
       memberAuthorId: profile.id,
       status: "published",
@@ -88,19 +90,16 @@ export default async function ProfileDiscussionsPage({
           style={{ listStyle: "none", padding: 0, marginTop: "2rem" }}
         >
           {result.docs.map((doc) => {
-            const slug = doc.slug as string;
-            const title = doc.title as string;
-            const createdAt = doc.createdAt as Date;
             return (
               <li
-                key={doc.id as string}
+                key={doc.id}
                 style={{
                   padding: "1rem 0",
                   borderBottom: "1px solid #e2e8f0",
                 }}
               >
                 <h2 style={{ fontSize: "1rem", margin: 0 }}>
-                  <Link href={`/discussions/${slug}`}>{title}</Link>
+                  <Link href={`/discussions/${doc.slug}`}>{doc.title}</Link>
                 </h2>
                 <p
                   style={{
@@ -109,8 +108,8 @@ export default async function ProfileDiscussionsPage({
                     fontSize: "0.8125rem",
                   }}
                 >
-                  <time dateTime={createdAt.toISOString()}>
-                    {createdAt.toLocaleDateString()}
+                  <time dateTime={doc.createdAt.toISOString()}>
+                    {doc.createdAt.toLocaleDateString()}
                   </time>
                 </p>
               </li>
@@ -119,37 +118,13 @@ export default async function ProfileDiscussionsPage({
         </ul>
       )}
 
-      {result.totalPages > 1 ? (
-        <nav
-          aria-label="Pagination"
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: "2rem",
-            color: "#64748b",
-            fontSize: "0.875rem",
-          }}
-        >
-          {result.hasPrevPage ? (
-            <Link href={`/u/${profile.handle}/discussions?page=${pageNum - 1}`}>
-              ← Previous
-            </Link>
-          ) : (
-            <span />
-          )}
-          <span>
-            Page {pageNum} of {result.totalPages}
-          </span>
-          {result.hasNextPage ? (
-            <Link href={`/u/${profile.handle}/discussions?page=${pageNum + 1}`}>
-              Next →
-            </Link>
-          ) : (
-            <span />
-          )}
-        </nav>
-      ) : null}
+      <PaginationNav
+        page={pageNum}
+        totalPages={result.totalPages}
+        hasPrevPage={result.hasPrevPage}
+        hasNextPage={result.hasNextPage}
+        hrefForPage={(p) => `/u/${profile.handle}/discussions?page=${p}`}
+      />
     </article>
   );
 }

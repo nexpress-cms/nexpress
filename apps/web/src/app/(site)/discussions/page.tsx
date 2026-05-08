@@ -1,8 +1,12 @@
-import { findDocuments, getMemberProfiles } from "@nexpress/core";
+import { getMemberProfiles } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import type { NpFindWhere } from "@nexpress/core";
+
+import { PaginationNav } from "@/components/pagination-nav";
+import { findDiscussions, type DiscussionsDocument } from "@/db/generated/documents";
 import { ensureFor } from "@/lib/init-core";
 import { getSiteMember } from "@/lib/site-member";
 
@@ -38,14 +42,14 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
   // member viewing `?author=me` sees ALL their own docs (including
   // pending) — they need to track what they submitted before a mod
   // reviews it.
-  const where: Record<string, unknown> = {};
+  const where: NpFindWhere<DiscussionsDocument> = {};
   if (showMine && member) {
     where.memberAuthorId = member.id;
   } else {
     where.status = "published";
   }
 
-  const result = await findDocuments("discussions", {
+  const result = await findDiscussions({
     where,
     sort: "-createdAt",
     page: pageNum,
@@ -56,7 +60,7 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
   // "by @handle" without N round-trips. Anonymous-authored rows (the
   // staff-side path) leave `memberAuthorId` null and skip the lookup.
   const authorIds = result.docs
-    .map((d) => (d.memberAuthorId as string | null) ?? null)
+    .map((d) => d.memberAuthorId)
     .filter((v): v is string => typeof v === "string" && v.length > 0);
   const authorById = await getMemberProfiles(authorIds);
 
@@ -103,14 +107,11 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
       ) : (
         <ul className="np-discussions-list">
           {result.docs.map((doc) => {
-            const authorId = (doc.memberAuthorId as string | null) ?? null;
-            const author = authorId ? authorById.get(authorId) : null;
-            const slug = doc.slug as string;
-            const status = doc.status as string;
+            const author = doc.memberAuthorId ? authorById.get(doc.memberAuthorId) : null;
             return (
-              <li key={doc.id as string} className="np-discussions-card">
+              <li key={doc.id} className="np-discussions-card">
                 <h2>
-                  <Link href={`/discussions/${slug}`}>{doc.title as string}</Link>
+                  <Link href={`/discussions/${doc.slug}`}>{doc.title}</Link>
                 </h2>
                 <div className="np-discussions-meta">
                   {author ? (
@@ -137,14 +138,14 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
                     <span className="np-discussions-author">staff</span>
                   )}
                   <span aria-hidden="true">·</span>
-                  <time dateTime={(doc.createdAt as Date).toISOString()}>
-                    {(doc.createdAt as Date).toLocaleDateString()}
+                  <time dateTime={doc.createdAt.toISOString()}>
+                    {doc.createdAt.toLocaleDateString()}
                   </time>
-                  {status !== "published" ? (
+                  {doc.status !== "published" ? (
                     <>
                       <span aria-hidden="true">·</span>
                       <span className="np-discussions-status-badge">
-                        {STATUS_LABELS[status] ?? status}
+                        {STATUS_LABELS[doc.status] ?? doc.status}
                       </span>
                     </>
                   ) : null}
@@ -155,33 +156,19 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
         </ul>
       )}
 
-      {result.totalPages > 1 ? (
-        <nav className="np-discussions-pagination" aria-label="Pagination">
-          {result.hasPrevPage ? (
-            <Link
-              href={`/discussions?${new URLSearchParams({
-                ...(showMine ? { author: "me" } : {}),
-                page: String(pageNum - 1),
-              }).toString()}`}
-            >
-              ← Previous
-            </Link>
-          ) : null}
-          <span>
-            Page {pageNum} of {result.totalPages}
-          </span>
-          {result.hasNextPage ? (
-            <Link
-              href={`/discussions?${new URLSearchParams({
-                ...(showMine ? { author: "me" } : {}),
-                page: String(pageNum + 1),
-              }).toString()}`}
-            >
-              Next →
-            </Link>
-          ) : null}
-        </nav>
-      ) : null}
+      <PaginationNav
+        page={pageNum}
+        totalPages={result.totalPages}
+        hasPrevPage={result.hasPrevPage}
+        hasNextPage={result.hasNextPage}
+        className="np-discussions-pagination"
+        hrefForPage={(p) =>
+          `/discussions?${new URLSearchParams({
+            ...(showMine ? { author: "me" } : {}),
+            page: String(p),
+          }).toString()}`
+        }
+      />
     </div>
   );
 }
