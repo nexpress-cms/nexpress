@@ -102,6 +102,14 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   // ─── login ──────────────────────────────────────────────────
   const login = async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // The pre-migration login route called `getDb()` directly
+      // without `ensureFor` and relied on cold-start ordering
+      // (proxy.ts middleware happening to init first). Make the
+      // dependency explicit — `"write"` covers DB + email +
+      // pg-boss producer, all of which the login flow ends up
+      // touching (DB writes, the runHook below may fan out to a
+      // plugin that enqueues a job).
+      await ensureFor("write");
       const { email, password } = validateLoginBody(await readJsonBody(request));
       const db = asRawDb(getDb());
       const cfg = authHelpers.getAuthRuntimeConfig();
@@ -157,8 +165,8 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
 
       // Plugin hook — async so a slow plugin can't stall the
       // response. The member-auth flow has no equivalent (members
-      // don't trigger admin-side hooks).
-      await ensureFor("plugins");
+      // don't trigger admin-side hooks). Plugins are already
+      // loaded by the top-of-handler `ensureFor("write")`.
       await runHook("auth:afterLogin", {
         user: { id: user.id, email: user.email, role: user.role },
       });
@@ -172,6 +180,12 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   // ─── logout ─────────────────────────────────────────────────
   const logout = async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // `optionalAuth` reads `np-session`, verifies the JWT, and
+      // checks `tokenVersion` against the DB row — the DB hit
+      // was implicit before. Make it explicit. Upgraded to
+      // `"plugins"` so the runHook path below has plugins
+      // loaded without a separate ensureFor.
+      await ensureFor("plugins");
       const user = await authHelpers.optionalAuth(request);
 
       // Per-device logout only — clears local cookies, doesn't
@@ -179,7 +193,6 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
       // a separate explicit flow attached to password change /
       // reset, not routine sign-out (#74).
       if (user) {
-        await ensureFor("plugins");
         await runHook("auth:beforeLogout", {
           user: { id: user.id, email: user.email, role: user.role },
         });
@@ -200,6 +213,9 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   // ─── refresh ────────────────────────────────────────────────
   const refresh = async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // `verifyTokenFull` does a DB lookup against `np_users`;
+      // make the init dependency explicit.
+      await ensureFor("read");
       const refreshToken = request.cookies.get("np-refresh")?.value;
       if (!refreshToken) throw new NpAuthError();
 
@@ -281,6 +297,9 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   // ─── change-password (authenticated) ────────────────────────
   const changePassword = async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // Writes to `np_users.password` + bumps `tokenVersion` via
+      // `invalidateAllSessions`. `"write"` is the right intent.
+      await ensureFor("write");
       const user = await authHelpers.requireAuth(request);
       const { currentPassword, newPassword } = validateChangeBody(
         await readJsonBody(request),
@@ -469,6 +488,8 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
   // ─── /me ────────────────────────────────────────────────────
   const meGet = async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // `requireAuth` queries `np_users` to validate the session.
+      await ensureFor("read");
       const user = await authHelpers.requireAuth(request);
       return npSuccessResponse({
         user: { id: user.id, email: user.email, name: user.name, role: user.role },
