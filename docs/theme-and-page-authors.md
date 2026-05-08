@@ -514,6 +514,62 @@ when to redirect already-signed-in users, what success banners
 to show on `?verified=1`, etc.). The framework owns the wire
 protocol; sites own the experience.
 
+### 6.3 Staff auth pages — same model, different pool
+
+`createStaffAuthRoutes()` is the parallel factory for the
+admin (`/api/auth/*`) user pool — different table (`np_users`),
+different cookie names (`np-session` / `np-refresh` /
+`np-csrf`), no registration flow (staff are admin-provisioned),
+no email verification (staff are auto-active), but with a
+`changePassword` endpoint for the authenticated-user flow that
+member's `/me` PATCH covers.
+
+```ts
+// apps/<app>/src/lib/auth-routes.ts
+import { createStaffAuthRoutes } from "@nexpress/auth-pages/server";
+import { getDb } from "@/lib/bootstrap";
+import { ensureFor, nexpressConfig } from "@/lib/init-core";
+import {
+  clearAuthCookies, getAuthRuntimeConfig,
+  optionalAuth, requireAuth, setAuthCookies,
+} from "@/lib/auth-helpers";
+
+export const staffAuthRoutes = createStaffAuthRoutes({
+  getDb,
+  ensureFor,
+  authHelpers: {
+    setAuthCookies,
+    clearAuthCookies,
+    getAuthRuntimeConfig,
+    requireAuth,
+    optionalAuth,
+  },
+  site: { name: nexpressConfig.site.name, url: process.env.SITE_URL ?? null },
+});
+```
+
+```ts
+// app/api/auth/login/route.ts
+import { staffAuthRoutes } from "@/lib/auth-routes";
+export const POST = staffAuthRoutes.login;
+```
+
+Nine handlers cover every flow: `login`, `logout`, `refresh`,
+`forgotPassword`, `resetPassword`, `changePassword`,
+`oauthStart`, `oauthCallback`, `meGet`. Behavior is byte-for-byte
+identical to the reference app's prior `apps/web/src/app/api/auth/*`
+implementation — same lockout config (env-driven via
+`NP_MAX_LOGIN_ATTEMPTS` / `NP_LOCKOUT_DURATION`), same OAuth
+state cookies, same `auth:afterLogin` / `auth:beforeLogout`
+plugin hooks, same `np-admin-site` cookie clear on logout.
+
+Staff client forms (`/admin/login`, `/admin/forgot-password`,
+`/admin/set-password`) still ship hand-coded fetch logic for
+now — headless React hooks for the staff side are a separate
+follow-up. The route factory is the higher-impact part (security
+patches flow through the package version) and is shippable
+independently.
+
 ---
 
 ## 7. Plugins

@@ -1,5 +1,15 @@
-import { createMemberAuthRoutes } from "@nexpress/auth-pages/server";
+import {
+  createMemberAuthRoutes,
+  createStaffAuthRoutes,
+} from "@nexpress/auth-pages/server";
 
+import {
+  clearAuthCookies,
+  getAuthRuntimeConfig,
+  optionalAuth,
+  requireAuth,
+  setAuthCookies,
+} from "@/lib/auth-helpers";
 import { getDb } from "@/lib/bootstrap";
 import { ensureFor, nexpressConfig } from "@/lib/init-core";
 import {
@@ -36,6 +46,32 @@ export const memberAuthRoutes = createMemberAuthRoutes({
   },
   options: {
     emailVerify: { tokenTtlMs: verifyTtlMs },
+    forgotPassword: { tokenTtlMs: resetTtlMs },
+  },
+});
+
+/**
+ * Bootstrapped staff-auth route handlers — same model as
+ * `memberAuthRoutes`, but for the admin (`/api/auth/*`) user pool.
+ * Different table (`np_users`), different cookie names, no
+ * registration / email-verify flow, plus a `changePassword`
+ * endpoint that the member side covers via `/me` PATCH.
+ */
+export const staffAuthRoutes = createStaffAuthRoutes({
+  getDb,
+  ensureFor,
+  authHelpers: {
+    setAuthCookies,
+    clearAuthCookies,
+    getAuthRuntimeConfig,
+    requireAuth,
+    optionalAuth,
+  },
+  site: {
+    name: nexpressConfig.site.name,
+    url: process.env.SITE_URL ?? null,
+  },
+  options: {
     forgotPassword: { tokenTtlMs: resetTtlMs },
   },
 });
