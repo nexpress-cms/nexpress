@@ -35,8 +35,9 @@ function ArchiveLayout({
   subtitle,
   result,
 }: ArchiveLayoutProps): React.ReactElement {
+  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
   return (
-    <main
+    <div
       className="np-magazine-archive"
       style={{ maxWidth: 720, margin: "3rem auto", padding: "0 1.5rem" }}
     >
@@ -119,7 +120,7 @@ function ArchiveLayout({
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }
 

@@ -47,18 +47,18 @@ export async function DocsSearch({
 
   if (query.length === 0) {
     return (
-      <main className="np-docs-search">
+      <div className="np-docs-search">
         <h1>Search</h1>
         <p style={{ color: "var(--np-color-muted-foreground)" }}>
           Enter a query in the masthead search box to find pages.
         </p>
-      </main>
+      </div>
     );
   }
 
   const result = await searchCollections({ q: query, limit: 20 });
   return (
-    <main className="np-docs-search">
+    <div className="np-docs-search">
       <h1>Search results for &ldquo;{query}&rdquo;</h1>
       {result.results.length === 0 ? (
         <p style={{ color: "var(--np-color-muted-foreground)" }}>No matches.</p>
@@ -112,6 +112,6 @@ export async function DocsSearch({
           })}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

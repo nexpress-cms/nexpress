@@ -40,8 +40,9 @@ interface MagazineErrorProps {
 }
 
 export default function MagazineError({ error, reset }: MagazineErrorProps) {
+  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
   return (
-    <main
+    <div
       className="np-magazine np-magazine-error"
       style={{
         maxWidth: 720,
@@ -108,6 +109,6 @@ export default function MagazineError({ error, reset }: MagazineErrorProps) {
       >
         Reload the page
       </button>
-    </main>
+    </div>
   );
 }

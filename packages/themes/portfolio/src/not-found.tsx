@@ -7,8 +7,9 @@ import * as React from "react";
  * line of copy + return-home link, centered.
  */
 export function PortfolioNotFound(): React.ReactElement {
+  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
   return (
-    <main
+    <div
       className="np-portfolio-not-found"
       style={{
         minHeight: "60vh",
@@ -66,6 +67,6 @@ export function PortfolioNotFound(): React.ReactElement {
       >
         See selected work →
       </a>
-    </main>
+    </div>
   );
 }
