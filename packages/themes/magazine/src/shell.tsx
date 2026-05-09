@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
@@ -10,35 +10,29 @@ import { resolveMagazineSettings } from "./settings-helpers.js";
  * it here.
  *
  * Phase F.9.1-B — `settings.accentColor` (hex) overrides the
- * `--np-color-primary` token via inline `<style>`. Unlike a
- * static token override (which would require an admin save +
- * cache bust to take effect across the site), the inline
- * variable is set per-request so the operator's hex flows
- * through immediately. Tokens still win on theme switch +
- * settings save (the existing `nx:theme` invalidation covers
- * both since `getThemeSettings` reuses that tag).
+ * `--np-color-primary` token via the wrapper's inline `style`
+ * (which sets a CSS custom property that cascades to
+ * descendants). The schema regex (`/^#[0-9a-f]{6}$/i`)
+ * validates at write + read; React escapes `style` values, so
+ * the path is safe end-to-end. Per-request application means
+ * operator changes show on next reload — no full build / token
+ * save round-trip needed.
  */
 export async function MagazineShell({ children }: { children: ReactNode }) {
   const settings = await resolveMagazineSettings();
+  const styleVars: Record<string, string> = {};
+  if (settings.accentColor) {
+    styleVars["--np-color-primary"] = settings.accentColor;
+  }
   return (
-    <div className="np-magazine">
-      {settings.accentColor ? (
-        <style
-          // Scoped under `.np-magazine` so a multi-theme dev
-          // preview (admin theme switcher with side-by-side)
-          // doesn't leak the override outside the magazine
-          // shell. The CSS specificity tradeoff: an admin
-          // tokens panel that sets `--np-color-primary` at
-          // `:root` still wins (more general selector loses to
-          // class-scoped one is incorrect — class is more
-          // specific, so the override here wins, which is the
-          // intended UX since accentColor IS the operator's
-          // pick).
-          dangerouslySetInnerHTML={{
-            __html: `.np-magazine { --np-color-primary: ${settings.accentColor}; }`,
-          }}
-        />
-      ) : null}
+    <div
+      className="np-magazine"
+      style={
+        Object.keys(styleVars).length > 0
+          ? (styleVars as CSSProperties)
+          : undefined
+      }
+    >
       {children}
     </div>
   );
