@@ -152,6 +152,17 @@ export interface NpCachedThemeFetchOptions {
  *   - Falls back to the uncached read when Next's incremental
  *     cache isn't reachable (integration tests, scripts).
  *
+ * **Key namespacing** — prefix the first key part with a
+ * theme/plugin id so two themes (or a theme + a plugin) using
+ * the same route name don't collide on the cache. Convention:
+ * `["<theme-id>.<route-name>", ...inputs]`.
+ *
+ * **Include every fetcher input in `keyParts`** — the cache
+ * keys ONLY by what's in `keyParts`, not by what the fetcher
+ * closes over. A `slug`, `pageSize`, or `locale` the fetcher
+ * uses MUST appear in `keyParts` or different inputs will
+ * silently share a cache entry.
+ *
  * Example:
  *
  * ```ts
@@ -159,24 +170,26 @@ export interface NpCachedThemeFetchOptions {
  *
  * export async function CategoryArchive({ params }) {
  *   const data = await cachedThemeFetch(
- *     ["category-archive", params.slug],
+ *     ["magazine.category-archive", params.slug, String(pageSize)],
  *     async () => {
  *       const cats = await findDocuments("categories", {...});
  *       const posts = await findDocuments("posts", {...});
  *       return { cats, posts };
  *     },
- *     { revalidate: 60 },
+ *     {
+ *       revalidate: 60,
+ *       extraTags: ["nx:collection:posts", "nx:collection:categories"],
+ *     },
  *   );
  *   return <ArchiveLayout posts={data.posts.docs} />;
  * }
  * ```
  *
  * `extraTags` is the escape hatch for authors who want a
- * collection edit to also bust the cached archive — pass
- * `["nx:collection:posts"]` and a posts revision invalidates
- * the matching archive entries on its next save (when the
- * framework routes a posts save through `revalidateCollection`,
- * which already calls `revalidateTag("nx:collection:<slug>")`).
+ * collection edit to also bust the cached archive — pass a
+ * `nx:collection:<slug>` tag for EVERY collection the fetcher
+ * reads from. The framework's `revalidateCollection` (called
+ * inside `saveDocument`) fires those tags on every write.
  */
 export async function cachedThemeFetch<T>(
   keyParts: string[],

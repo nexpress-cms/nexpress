@@ -132,9 +132,16 @@ export async function CategoryArchive({
   // `cachedThemeFetch` so /category/<slug> shares cache entries
   // per slug. The `nx:theme:<siteId>` tag (auto-applied) busts
   // on theme switch / settings save / theme uninstall.
-  // `nx:collection:posts` busts when an author publishes a new
-  // post (saveDocument calls revalidateCollection internally),
-  // so the archive stays fresh without operator action.
+  //
+  // extraTags cover BOTH collections this archive reads:
+  //   - `nx:collection:posts`     — new published post under
+  //     this category re-renders the listing
+  //   - `nx:collection:categories` — newly-created / renamed
+  //     category invalidates the "not found" branch and lets
+  //     `name`/`description` updates land within seconds
+  // saveDocument fires `revalidateTag("nx:collection:<slug>")`
+  // on every write through revalidateCollection, so this is
+  // automatic — operators don't have to think about it.
   const data = await cachedThemeFetch(
     ["magazine.category-archive", slug, String(settings.postsPerPage)],
     async () => {
@@ -156,7 +163,10 @@ export async function CategoryArchive({
       });
       return { category, posts };
     },
-    { revalidate: 60, extraTags: ["nx:collection:posts"] },
+    {
+      revalidate: 60,
+      extraTags: ["nx:collection:posts", "nx:collection:categories"],
+    },
   );
 
   if (!data.category) {
@@ -189,10 +199,11 @@ export async function AuthorArchive({
   const id = params.id ?? "";
   const settings = await resolveMagazineSettings();
   // v0.3 (H) — same caching shape as CategoryArchive. /author/<id>
-  // shares one entry per id; new post under that author busts via
-  // the `nx:collection:posts` tag (revalidateCollection wires it
-  // on saveDocument), and theme switch / settings save bust via
-  // the auto-applied `nx:theme:<siteId>` tag.
+  // shares one entry per id. extraTags cover both reads:
+  //   - `nx:collection:posts`   — author publishes a new post
+  //   - `nx:collection:authors` — author renames / updates bio
+  // and the auto-applied `nx:theme:<siteId>` covers theme switch
+  // / settings save / uninstall.
   const data = await cachedThemeFetch(
     ["magazine.author-archive", id, String(settings.postsPerPage)],
     async () => {
@@ -208,7 +219,10 @@ export async function AuthorArchive({
       });
       return { author, posts };
     },
-    { revalidate: 60, extraTags: ["nx:collection:posts"] },
+    {
+      revalidate: 60,
+      extraTags: ["nx:collection:posts", "nx:collection:authors"],
+    },
   );
 
   const displayName =
