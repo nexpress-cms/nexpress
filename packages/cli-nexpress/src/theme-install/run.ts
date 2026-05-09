@@ -1,26 +1,38 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
 import pc from "picocolors";
 
+import {
+  checkThemeRequirements,
+  type NpCollectionConfig,
+} from "@nexpress/core";
+
+import { extractCollectionFromFile } from "./ast/extract-collection.js";
+import { renderNewCollectionFile } from "./ast/generate-collection.js";
+import {
+  CollectionPatchError,
+  patchCollectionFile,
+} from "./ast/patch-collection.js";
 import { formatThemeInstallPlan } from "./format.js";
-import { planThemeInstall } from "./plan.js";
+import { planThemeInstall, type ThemeInstallPlan } from "./plan.js";
 
 /**
- * F.8-A runner — loads the theme package, derives existing
- * collection slugs from `src/collections/*.ts` filenames, runs
- * the pure planner, prints the plan, and exits.
+ * F.8-B runner — full apply phase.
  *
- * F.8-A only ships the planner. The mutation phase (AST-patch
- * existing collection files, write new ones, run drizzle-kit
- * generate) lands in F.8-B as a separate PR — kept apart
- * because that piece carries the highest risk in the v0.2
- * extension and benefits from a focused review.
- *
- * Slug discovery: we list `.ts` files under `src/collections/`
- * and use the basename as the slug. Most projects follow that
- * convention from the create-nexpress scaffold; full config
- * loading (which would surface field-level diffs) requires
- * tsx-based dynamic import and ships in F.8-B.
+ * Flow:
+ *   1. Load theme module via dynamic import.
+ *   2. Walk src/collections/*.ts; AST-extract slug + fields.
+ *   3. Run checkThemeRequirements against extracted configs.
+ *   4. Plan steps + blockers.
+ *   5. Print plan; abort on blockers; --dry-run exits here.
+ *   6. Confirm interactively (skip with --yes).
+ *   7. Apply: AST-patch existing files / write new ones.
+ *   8. Best-effort spawn `pnpm db:generate` so the drizzle
+ *      migration lands alongside the staged collection edits.
+ *   9. Print operator's next steps (review + db:migrate).
  */
 
 interface RunInput {
@@ -30,37 +42,38 @@ interface RunInput {
 
 const COLLECTIONS_DIR = "src/collections";
 
-function discoverExistingSlugs(cwd: string): string[] {
+interface DiscoveredCollection {
+  filePath: string;
+  config: NpCollectionConfig;
+}
+
+function discoverCollections(cwd: string): DiscoveredCollection[] {
   const dir = resolve(cwd, COLLECTIONS_DIR);
   if (!existsSync(dir)) return [];
-  const slugs: string[] = [];
+  const out: DiscoveredCollection[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
     if (!entry.name.endsWith(".ts")) continue;
     if (entry.name === "index.ts") continue;
     const filePath = join(dir, entry.name);
-    const content = readFileSync(filePath, "utf8");
-    if (!/defineCollection\s*\(/.test(content)) continue;
-    // Prefer the actual `slug: "..."` declaration over the
-    // filename — operators who diverge from the scaffold's
-    // file=slug convention shouldn't see a wrong report. First
-    // `slug: "..."` literal in the file wins; F.8-B's full-config
-    // loader will replace this regex with proper AST extraction.
-    const slugMatch = content.match(/\bslug\s*:\s*["']([^"']+)["']/);
-    slugs.push(slugMatch ? slugMatch[1]! : entry.name.replace(/\.ts$/, ""));
+    const extracted = extractCollectionFromFile(filePath);
+    if (extracted) {
+      // The extractor returns a partial NpCollectionConfig
+      // (slug + labels + fields). The check function reads
+      // only those, so the cast is safe.
+      out.push({
+        filePath: extracted.filePath,
+        config: extracted.config as unknown as NpCollectionConfig,
+      });
+    }
   }
-  return slugs;
+  return out;
 }
 
 async function loadThemeManifest(
   themePackage: string,
 ): Promise<Record<string, unknown>> {
-  // Node resolves theme packages from the operator's site project
-  // (where `pnpm nexpress` runs). The theme MUST be installed —
-  // pnpm add @nexpress/theme-magazine before this command.
   const mod = (await import(themePackage)) as Record<string, unknown>;
-  // Theme packages typically default-export their `defineTheme`
-  // result. Look for a few conventional shapes before giving up.
   const candidate =
     (mod as { default?: unknown }).default ??
     (Object.values(mod).find(
@@ -78,6 +91,112 @@ async function loadThemeManifest(
     );
   }
   return manifest as Record<string, unknown>;
+}
+
+async function confirm(message: string): Promise<boolean> {
+  if (!stdin.isTTY) return false;
+  const rl = createInterface({ input: stdin, output: stdout });
+  try {
+    const answer = await rl.question(`${message} [y/N] `);
+    return answer.trim().toLowerCase().startsWith("y");
+  } finally {
+    rl.close();
+  }
+}
+
+function applyPlan(
+  cwd: string,
+  plan: ThemeInstallPlan,
+): { patched: number; created: number; skipped: number } {
+  let patched = 0;
+  let created = 0;
+  let skipped = 0;
+  for (const step of plan.steps) {
+    if (step.kind === "create-collection") {
+      const target = resolve(cwd, COLLECTIONS_DIR, `${step.collection}.ts`);
+      writeFileSync(
+        target,
+        renderNewCollectionFile(step.collection, step.requirement),
+      );
+      console.log(pc.green("✓") + ` Wrote ${pc.cyan(target)}`);
+      created += 1;
+    } else if (step.kind === "patch-collection") {
+      const target = resolve(cwd, COLLECTIONS_DIR, `${step.collection}.ts`);
+      try {
+        const result = patchCollectionFile(
+          target,
+          step.addFields.map((f) => ({
+            name: f.name,
+            requirement: f.requirement,
+          })),
+        );
+        if (result.added.length > 0) {
+          console.log(
+            pc.green("✓") +
+              ` Patched ${pc.cyan(target)} — added: ${result.added.join(", ")}`,
+          );
+          patched += 1;
+        }
+        if (result.skipped.length > 0) {
+          console.log(
+            pc.dim(
+              `  (idempotent skip: ${result.skipped.join(", ")})`,
+            ),
+          );
+          skipped += 1;
+        }
+      } catch (error) {
+        if (error instanceof CollectionPatchError) {
+          throw error;
+        }
+        throw new Error(
+          `Patcher failed on ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    // warn-soft-mismatch — informational; no apply action.
+  }
+  return { patched, created, skipped };
+}
+
+function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
+  // Mirrors the helper in `index.ts` (top of file). Duplicated
+  // here to avoid an internal import cycle through the bin
+  // entry; both helpers are tiny.
+  if (existsSync(resolve(cwd, "pnpm-lock.yaml"))) return "pnpm";
+  if (existsSync(resolve(cwd, "yarn.lock"))) return "yarn";
+  return "npm";
+}
+
+async function runDrizzleGenerate(cwd: string): Promise<boolean> {
+  // Best-effort. Detect the operator's package manager first
+  // so `pnpm db:generate` doesn't run on a yarn/npm site. Fall
+  // back to direct drizzle-kit invocation when the script isn't
+  // wired up. If neither works, return false and the caller
+  // prints a manual-step note.
+  const pm = detectPackageManager(cwd);
+  const runScript: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["db:generate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["db:generate"]]
+        : ["npm", ["run", "db:generate"]];
+  const directDrizzle: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["drizzle-kit", "generate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["exec", "drizzle-kit", "generate"]]
+        : ["npx", ["drizzle-kit", "generate"]];
+
+  for (const [bin, args] of [runScript, directDrizzle]) {
+    const ok = await new Promise<boolean>((resolveFn) => {
+      const child = spawn(bin, args, { cwd, stdio: "inherit" });
+      child.on("error", () => resolveFn(false));
+      child.on("exit", (code) => resolveFn(code === 0));
+    });
+    if (ok) return true;
+  }
+  return false;
 }
 
 export async function runThemeInstall(input: RunInput): Promise<number> {
@@ -100,43 +219,107 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
     return 2;
   }
 
-  const existingSlugs = discoverExistingSlugs(cwd);
+  // Phase F.8-B — full extraction + check.
+  const discovered = discoverCollections(cwd);
+  const existingSlugs = discovered.map((d) => d.config.slug);
+  const configs = discovered.map((d) => d.config);
+
+  const check = checkThemeRequirements(
+    manifest as unknown as Parameters<typeof checkThemeRequirements>[0],
+    configs,
+  );
 
   const plan = planThemeInstall({
     manifest: manifest as unknown as Parameters<
       typeof planThemeInstall
     >[0]["manifest"],
     existingCollectionSlugs: existingSlugs,
-    // F.8-A: no field-level check (would require loading full
-    // config). F.8-B passes the real `checkThemeRequirements`
-    // result and the planner extends with patch-collection +
-    // blocker steps.
-    check: {
-      themeId: (manifest.id as string) ?? input.themePackage,
-      hasMismatches: false,
-      hasHardMismatches: false,
-      missingCollections: [],
-      missingFields: [],
-      typeConflicts: [],
-      relationConflicts: [],
-    },
+    check,
   });
 
   console.log("");
   console.log(formatThemeInstallPlan(plan));
   console.log("");
 
+  if (plan.blockers.length > 0) {
+    console.error(
+      pc.red(
+        "Refusing to apply: the conflicts above require manual reconciliation.",
+      ),
+    );
+    return 1;
+  }
+
   if (plan.isNoop) return 0;
 
-  console.log(
-    pc.yellow(
-      "Note: F.8-A ships the planner only. The apply phase " +
-        "(AST-patch collection files, write new ones, run " +
-        "drizzle-kit generate) lands in F.8-B.",
-    ),
-  );
   if (input.flags.dryRun) {
     console.log(pc.dim("--dry-run: exiting without applying."));
+    return 0;
   }
+
+  if (!input.flags.yes) {
+    if (!stdin.isTTY) {
+      // Non-TTY (CI, piped invocation) without --yes is almost
+      // always a mistake — silently aborting would let an
+      // automation run "succeed" without applying the changes
+      // the operator expects. Refuse with a clear next step
+      // instead.
+      console.error(
+        pc.red(
+          "error: theme:install needs interactive confirmation, but stdin isn't a TTY.",
+        ),
+      );
+      console.error(
+        pc.dim("  Re-run with --yes to skip the prompt non-interactively."),
+      );
+      return 2;
+    }
+    const ok = await confirm("Continue?");
+    if (!ok) {
+      console.log(pc.dim("Aborted."));
+      return 0;
+    }
+  }
+
+  let summary;
+  try {
+    summary = applyPlan(cwd, plan);
+  } catch (error) {
+    if (error instanceof CollectionPatchError) {
+      console.error(pc.red("error: ") + error.message);
+      console.error(
+        pc.dim(`  File untouched. Reconcile manually then re-run.`),
+      );
+      return 1;
+    }
+    throw error;
+  }
+
+  console.log("");
+  console.log(
+    `${pc.green("✓")} Applied: ${summary.created} new, ${summary.patched} patched, ${summary.skipped} idempotent.`,
+  );
+  console.log("");
+
+  console.log(pc.dim("Generating drizzle migration…"));
+  const migrated = await runDrizzleGenerate(cwd);
+  console.log("");
+
+  if (migrated) {
+    console.log(`${pc.green("✓")} Drizzle migration generated.`);
+  } else {
+    console.log(
+      pc.yellow(
+        "Drizzle migration step couldn't run automatically. Run `pnpm db:generate` manually.",
+      ),
+    );
+  }
+
+  console.log("");
+  console.log("Next:");
+  console.log("  1. Review the changes (`git diff`)");
+  console.log("  2. Run `pnpm db:migrate` to apply the migration");
+  console.log("  3. Activate the theme in admin → Settings → Theme");
+
   return 0;
 }

@@ -25,7 +25,9 @@ const HELP_TEXT = `nexpress — project-side CLI
 Usage:
   nexpress plugin add <package>                       Install a plugin and register it
   nexpress plugin remove <package>                    Uninstall a plugin and unregister it
-  nexpress theme:install <package>                    Preview a theme's data-shape requirements (F.8-A planner)
+  nexpress theme:install <package>                    Install a theme: AST-patch collection files for declared requirements
+  nexpress theme:install <package> --dry-run          Same, but print the plan and exit without mutating
+  nexpress theme:install <package> --yes              Same, but skip the interactive confirm prompt
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
