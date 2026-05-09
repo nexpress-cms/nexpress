@@ -408,6 +408,7 @@ export {
   getActiveThemeError,
   getActiveThemeSeoHooks,
 } from "./themes/error-seo.js";
+export type { NpThemeSeoHooksExtracted } from "./themes/error-seo.js";
 
 export { introspectThemeSettingsSchema } from "./themes/settings-schema.js";
 export type {

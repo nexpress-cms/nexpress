@@ -15,14 +15,16 @@ import { getActiveTheme } from "./registry.js";
  * is delegated.
  */
 
+export interface NpThemeSeoHooksExtracted {
+  sitemapEntries?: () => Promise<NpSitemapEntry[]> | NpSitemapEntry[];
+  feedEntries?: () => Promise<NpFeedEntry[]> | NpFeedEntry[];
+  robotsTxt?: () => string | Promise<string>;
+}
+
 interface ImplShape {
   notFound?: unknown;
   error?: unknown;
-  seo?: {
-    sitemapEntries?: () => Promise<NpSitemapEntry[]> | NpSitemapEntry[];
-    feedEntries?: () => Promise<NpFeedEntry[]> | NpFeedEntry[];
-    robotsTxt?: () => string | Promise<string>;
-  };
+  seo?: NpThemeSeoHooksExtracted;
 }
 
 export function extractNotFoundComponent(impl: unknown): unknown {
@@ -35,15 +37,11 @@ export function extractErrorComponent(impl: unknown): unknown {
   return typeof shape?.error === "function" ? shape.error : null;
 }
 
-export function extractSeoHooks(impl: unknown): {
-  sitemapEntries?: () => Promise<NpSitemapEntry[]> | NpSitemapEntry[];
-  feedEntries?: () => Promise<NpFeedEntry[]> | NpFeedEntry[];
-  robotsTxt?: () => string | Promise<string>;
-} {
+export function extractSeoHooks(impl: unknown): NpThemeSeoHooksExtracted {
   const shape = impl as ImplShape | undefined;
   const seo = shape?.seo;
   if (!seo || typeof seo !== "object") return {};
-  const out: ReturnType<typeof extractSeoHooks> = {};
+  const out: NpThemeSeoHooksExtracted = {};
   if (typeof seo.sitemapEntries === "function") {
     out.sitemapEntries = seo.sitemapEntries;
   }
@@ -74,9 +72,7 @@ export async function getActiveThemeError(): Promise<unknown> {
   return extractErrorComponent(theme.impl);
 }
 
-export async function getActiveThemeSeoHooks(): Promise<
-  ReturnType<typeof extractSeoHooks>
-> {
+export async function getActiveThemeSeoHooks(): Promise<NpThemeSeoHooksExtracted> {
   const theme = await getActiveTheme();
   if (!theme) return {};
   return extractSeoHooks(theme.impl);
