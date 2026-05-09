@@ -79,6 +79,7 @@ for (const block of defaultBlocks) sharedDefinitions.set(block.type, block);
 
 const sharedRegistry: NpBlockRegistry = {
   register(definition) {
+    detectAndWarnBlockCollision(sharedDefinitions.get(definition.type), definition);
     sharedDefinitions.set(definition.type, definition);
   },
   get(type) {
@@ -91,6 +92,53 @@ const sharedRegistry: NpBlockRegistry = {
     return sharedDefinitions.has(type);
   },
 };
+
+/**
+ * Phase F.4 follow-up — warn when a block registration overwrites
+ * an existing entry from a DIFFERENT contributor.
+ *
+ * Allowed (no warning):
+ *   - First registration (no existing entry)
+ *   - Same source registering same type again (HMR / re-boot)
+ *   - Built-in default getting overridden (intentional override
+ *     by theme/plugin; existing source is undefined or "core" /
+ *     "built-in")
+ *
+ * Warned (collision):
+ *   - Two different non-default sources register the same type.
+ *     Last-loaded still wins (registry's append-only contract);
+ *     warning fires once per type per process so dev consoles
+ *     don't spam.
+ */
+const warnedBlockTypes = new Set<string>();
+
+/** Test hook — resets the per-process dedup set. */
+export function __resetBlockCollisionWarnings(): void {
+  warnedBlockTypes.clear();
+}
+
+function isBuiltInSource(source: NpBlockDefinition["source"]): boolean {
+  return !source || source === "core" || source === "built-in";
+}
+
+function detectAndWarnBlockCollision(
+  existing: NpBlockDefinition | undefined,
+  incoming: NpBlockDefinition,
+): void {
+  if (!existing) return;
+  if (existing.source === incoming.source) return;
+  if (isBuiltInSource(existing.source)) return;
+  if (warnedBlockTypes.has(incoming.type)) return;
+  warnedBlockTypes.add(incoming.type);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[nexpress/blocks] block type "${incoming.type}" registered by ` +
+      `"${incoming.source ?? "(no source)"}" is overwriting an earlier ` +
+      `registration from "${existing.source ?? "(no source)"}". Last-loaded ` +
+      `wins; consider namespacing block types with the contributor id ` +
+      `(e.g. "magazine.hero" instead of "hero") to avoid the conflict.`,
+  );
+}
 
 /**
  * Adds a block to the shared registry. Plugins call this (via the
@@ -152,6 +200,40 @@ export const getSharedRegistry = (): NpBlockRegistry => sharedRegistry;
 const sharedPatterns = new Map<string, NpPattern>();
 
 /**
+ * Phase F.4 follow-up — same collision-warning policy for patterns.
+ * Last-loaded still wins; warning fires once per id per process
+ * when two different non-default sources register the same id.
+ */
+const warnedPatternIds = new Set<string>();
+
+/** Test hook — resets the per-process dedup set. */
+export function __resetPatternCollisionWarnings(): void {
+  warnedPatternIds.clear();
+}
+
+function isBuiltInPatternSource(source: NpPattern["source"]): boolean {
+  return source === "built-in" || source === "core";
+}
+
+function detectAndWarnPatternCollision(
+  existing: NpPattern | undefined,
+  incoming: NpPattern,
+): void {
+  if (!existing) return;
+  if (existing.source === incoming.source) return;
+  if (isBuiltInPatternSource(existing.source)) return;
+  if (warnedPatternIds.has(incoming.id)) return;
+  warnedPatternIds.add(incoming.id);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[nexpress/blocks] pattern id "${incoming.id}" registered by ` +
+      `"${incoming.source}" is overwriting an earlier registration from ` +
+      `"${existing.source}". Last-loaded wins; namespace pattern ids by ` +
+      `contributor (e.g. "magazine.hero-grid") to avoid the conflict.`,
+  );
+}
+
+/**
  * Adds a pattern to the shared registry. Plugins / themes call
  * this (via the bootstrap, not directly) so their patterns appear
  * in the page-builder's command-menu pattern picker. Overwrites on
@@ -159,6 +241,7 @@ const sharedPatterns = new Map<string, NpPattern>();
  * registration wins, mirroring `registerBlock`.
  */
 export const registerPattern = (pattern: NpPattern): void => {
+  detectAndWarnPatternCollision(sharedPatterns.get(pattern.id), pattern);
   sharedPatterns.set(pattern.id, pattern);
 };
 
