@@ -51,6 +51,7 @@ export { LinkedIdentitiesPanel } from "./auth/linked-identities-panel.js";
 export type { LinkedIdentity } from "./auth/linked-identities-panel.js";
 
 export { JobsView } from "./jobs/jobs-view.js";
+export { ThemeCleanupView } from "./themes/cleanup-view.js";
 export { SitesView } from "./sites/sites-view.js";
 export { SitePicker } from "./sites/site-picker.js";
 export { MembershipsView } from "./sites/memberships-view.js";
