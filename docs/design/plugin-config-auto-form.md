@@ -1,8 +1,8 @@
 # Plugin Config Auto-Form — Design Plan
 
-> Version: 0.2 (Locked — ready for implementation)
-> Date: 2026-05-09
-> Status: Decisions locked. G.1 ready to implement.
+> Version: 0.3 (G track shipped — G.3 deferred)
+> Date: 2026-05-10
+> Status: G.1 / G.2.1 / G.2.2 / G.2.3 / G.docs merged. G.3 (hybrid composition) deferred without a real consumer; see § 5.3 for re-lock criteria.
 > Prerequisites:
 >   - F.3 introspector (`packages/core/src/themes/settings-schema.ts`)
 >     — already shipping for theme settings
@@ -260,44 +260,49 @@ Each migration:
 
 Doc the migration recipe in `docs/plugin-quickstart.md`.
 
-### 5.3 Phase G.3 — Documented escape hatch for hybrid plugins
+### 5.3 Phase G.3 — Documented escape hatch for hybrid plugins (DEFERRED)
 
-> **G.3 contract is sketch-only in this doc.** The exact
-> shape (new `admin.settings.panels` array? extend the
-> existing `admin.actions` slot?) is NOT locked. G.3 starts
-> with its own decision-locking pass, the same way G.1 did.
-> Listed here only so reviewers see the intent.
+> **G.3 deferred 2026-05-10**. At G.3 entry we audited the
+> repo for a real hybrid consumer and found none — `forum`,
+> the only candidate the design doc had named, ships a single
+> dashboard widget + action and has no `admin.settings.fields`
+> form to compose with. The "test moderation rules" button was
+> aspirational. Building the hybrid API surface now (custom
+> panel slot, mount keywords) without a consumer is YAGNI; the
+> contract gets pinned by whatever the first real hybrid
+> plugin actually needs, not by a guess from this doc.
 
-Use case: plugins with mostly-simple config plus a bespoke
-imperative panel — e.g., forum's "test moderation rules"
-button, or oauth's "verify credentials" round-trip.
+Original intent (kept here as a marker for the next time this
+comes up): plugins with mostly-simple config plus a bespoke
+imperative panel — e.g., a "verify credentials" round-trip
+button next to the oauth client-id form, or a "test moderation
+rules" preview alongside forum thresholds.
 
-Sketch — actual API will be locked at the start of G.3:
+When a real consumer lands, G.3 entry should re-lock:
 
-```ts
-// SKETCH — not a current API surface
-definePlugin({
-  manifest: {
-    id: "forum",
-    configSchema: z.object({ ... }),
-    // ...
-  },
-  admin: {
-    settings: { fields: [] },          // legacy field list left empty
-    // a NEW slot to be added in G.3 — name TBD:
-    customPanels: [
-      { component: TestModerationButton, mountAfter: "auto-form" },
-    ],
-  },
-});
-```
+1. **Slot field name** — `admin.settings.panels`?
+   `admin.customPanels`? extend `admin.actions` with a
+   `mountAfter` field? The right answer depends on whether
+   the consumer wants per-panel rendering (component) or
+   per-action button-style (just an actionId).
+2. **Component serialization** — admin extensions cross the
+   server/client boundary. Today they're declarative JSON
+   (widget kind + actionId). A custom panel that needs a
+   React component breaks that — either a new "client-only"
+   surface that the framework bundles separately, or a
+   constrained "card with a button" shape that stays
+   declarative.
+3. **Mount keyword space** — G.1 ships `"auto-form"` only
+   (locked answer Q4). `top` / `bottom` / `mountBefore` are
+   not reserved; G.3 entry adds the ones a real consumer
+   needs and locks them then.
+4. **Precedence vs `admin.settings.fields`** — § 5.1.1 covers
+   the configSchema-vs-fields case; the new slot needs its
+   own precedence rule.
 
-Mount keyword space (locked answer Q4): G.1 ships
-`"auto-form"` only. No other slot keywords (`top` / `bottom`
-/ `mountBefore`) are reserved. G.3 may add more — and lock
-them at G.3 entry — if a plugin's needs require it; today
-only `forum` is on the inventory and a single `auto-form`
-anchor covers its case.
+Until then: plugins that need an imperative panel keep using
+the existing `admin.actions` array (button-style with
+confirmation prompt) and live without auto-form composition.
 
 ## 6. Reference implementation plan
 
@@ -317,13 +322,14 @@ Sequence:
    PR for both since they share the schema shape.
 4. **G.2 remaining plugins** — seo-audit only (newsletter dropped
    per § 1 inventory revision).
-5. **G.3 forum hybrid** — proves the auto-form + custom panel
-   composition (the only `mountAfter: "auto-form"` consumer
-   in the inventory).
+5. **G.3 forum hybrid — DEFERRED**. Audit at G.3 entry found no
+   real hybrid consumer; see § 5.3 for the re-lock criteria when
+   one lands.
 6. **Docs** — update plugin-quickstart.md with the configSchema
-   path, mark hand-coded UIs as legacy / opt-out.
+   path, mark hand-coded UIs as legacy / opt-out, document
+   non-manifest definition fields in plugin-manifest.md.
 
-Total: 6 PRs, ~2050 LOC.
+Total: 5 PRs shipped (G.1, G.2.1, G.2.2, G.2.3, G.docs), ~1650 LOC. G.3 deferred without a consumer.
 
 ## 7. Cache + invalidation
 
@@ -348,7 +354,7 @@ with the same per-key cache shape, auto-tagged with
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Plugin author needs a widget the F.3 introspector doesn't support (file upload, color picker, …) | 🟡 Medium | Phase G.3 escape hatch — declare `configSchema` for the parts that work, ship a custom panel for the rest |
+| Plugin author needs a widget the F.3 introspector doesn't support (file upload, color picker, …) | 🟡 Medium | Pre-G.3-deferral plan was a custom-panel slot; today the workaround is the existing `admin.actions` array (button-style with confirmation) and a separate page if a richer surface is needed. The custom-panel slot re-locks at the next hybrid plugin (§ 5.3). |
 | Sensitive fields (secrets, tokens) need masked input | 🟢 Resolved | G.1 adds `.meta({ sensitive: true })` to the F.3 introspector + form-renderer (~30 LOC). Locked answer Q1. |
 | Plugin schema evolution leaves data behind | 🟢 Low | configMigrate / configVersion mirror theme settings v0.3 D — same migration story |
 | Plugins that DON'T migrate look out of place next to migrated peers | 🟢 Low | Both surfaces work; admin lists "uses auto-form" / "custom panel" tag for transparency. Migration is incremental |
@@ -362,10 +368,11 @@ with the same per-key cache shape, auto-tagged with
 | **G.2.1** | Pilot — `reading-time` migration | 1 PR, ~150 LOC |
 | **G.2.2** | OAuth plugins (github + google together) — exercises the `sensitive` widget end-to-end | 1 PR, ~250 LOC |
 | **G.2.3** | seo-audit (newsletter dropped — block-only, no plugin config) | 1 PR, ~300 LOC |
-| **G.3** | Hybrid composition (forum) | 1 PR, ~400 LOC |
-| **G.docs** | plugin-quickstart.md + plugin-manifest.md updates | 1 PR, ~200 LOC |
+| ~~**G.3**~~ | ~~Hybrid composition (forum)~~ — **deferred 2026-05-10**; no real consumer in repo | — |
+| **G.docs** | plugin-quickstart.md + plugin-manifest.md updates + design-doc closeout | 1 PR, ~200 LOC |
 
-Total: 6 PRs, ~2050 LOC. G.1 unblocks all subsequent phases.
+Total: 5 PRs shipped, ~1650 LOC. G.3 deferred per § 5.3 — re-locks
+when a real hybrid plugin lands.
 
 ## 10. Deferred (recorded, not abandoned)
 
@@ -399,8 +406,10 @@ Total: 6 PRs, ~2050 LOC. G.1 unblocks all subsequent phases.
 - **Introspector `array(string)` support** — surfaced in G.2.2
   while writing oauth schemas. Plugin scopes are
   `z.array(z.string())`, but the introspector currently only
-  handles `array(object)` — emits `unsupported`. Operators can't
-  edit oauth scopes via the form today. ~15 LOC follow-up.
+  handles `array(object)` — emits `unsupported`. Operators
+  fall back to the raw-JSON textarea editor (functional but
+  awkward — `["read:user","user:email"]` typed by hand). A typed
+  string-array editor would be ~15 LOC follow-up.
 
 ## 11. Locked answers
 
