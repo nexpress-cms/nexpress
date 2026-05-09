@@ -1,6 +1,8 @@
 import * as React from "react";
 import type { NpBlockDefinition } from "@nexpress/blocks";
 
+import { resolvePortfolioSettings } from "./settings-helpers.js";
+
 /**
  * Phase F.9-C — portfolio-specific block types.
  *
@@ -217,4 +219,109 @@ export const portfolioBlocks: NpBlockDefinition[] = [
     ],
     render: (props) => <ImageGrid {...props} />,
   },
+  {
+    type: "portfolio.client-logos",
+    label: "Client logos strip",
+    iconKind: "lucide",
+    icon: "users",
+    keywords: ["clients", "logos", "portfolio", "selected work"],
+    defaultProps: {
+      heading: "Selected clients",
+    },
+    propsSchema: [
+      { name: "heading", label: "Section heading", type: "text" },
+    ],
+    // Async render — reads `settings.clientLogos` so the
+    // operator manages logos in admin's Theme settings panel
+    // (a single canonical source) rather than re-typing per
+    // block instance. Block props only carry the heading.
+    render: async (props) => <ClientLogosStrip {...(props as { heading?: string })} />,
+  },
 ];
+
+interface ClientLogosStripProps {
+  heading?: string;
+}
+
+async function ClientLogosStrip({
+  heading,
+}: ClientLogosStripProps): Promise<React.ReactElement> {
+  const settings = await resolvePortfolioSettings();
+  const logos = settings.clientLogos;
+  if (logos.length === 0) {
+    return (
+      <section
+        className="np-portfolio-client-logos"
+        style={{
+          margin: "3rem 0",
+          padding: "1.5rem",
+          textAlign: "center",
+          color: "var(--np-color-muted-foreground)",
+          fontSize: "0.875rem",
+          border: "1px dashed var(--np-color-border)",
+          borderRadius: "0.375rem",
+        }}
+      >
+        No client logos configured. Add them in admin → Theme settings.
+      </section>
+    );
+  }
+  return (
+    <section
+      className="np-portfolio-client-logos"
+      style={{
+        margin: "3rem 0",
+      }}
+    >
+      {heading ? (
+        <h2
+          style={{
+            margin: "0 0 1.5rem",
+            fontSize: "0.8125rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
+            color: "var(--np-color-muted-foreground)",
+            textAlign: "center",
+          }}
+        >
+          {heading}
+        </h2>
+      ) : null}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`,
+          gap: "2rem",
+          alignItems: "center",
+          justifyItems: "center",
+        }}
+      >
+        {logos.map((logo, i) => {
+          const img = (
+            <img
+              src={logo.logoUrl}
+              alt={logo.name}
+              style={{
+                maxHeight: "48px",
+                maxWidth: "100%",
+                opacity: 0.7,
+                transition: "opacity 0.2s ease",
+              }}
+            />
+          );
+          return (
+            <div key={`portfolio-logo-${i.toString()}`}>
+              {logo.link ? (
+                <a href={logo.link} target="_blank" rel="noreferrer">
+                  {img}
+                </a>
+              ) : (
+                img
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
