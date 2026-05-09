@@ -1,11 +1,15 @@
 import { resolvePortfolioSettings } from "./settings-helpers.js";
 
 /**
- * Studio footer — three rows on a thin top rule:
- *   1. Contact line  (NP_SOCIAL_EMAIL → mailto, or generic blurb)
- *   2. Social mini-strip (NP_SOCIAL_GITHUB / TWITTER / LINKEDIN /
+ * Studio footer — rows on a thin top rule:
+ *   1. Optional bio (`settings.aboutCopy`) — short studio
+ *      description rendered above the contact line. Operators
+ *      who want a fuller about page do that through the page
+ *      builder; this is the ambient bio surfaced on every page.
+ *   2. Contact line  (NP_SOCIAL_EMAIL → mailto, or generic blurb)
+ *   3. Social mini-strip (NP_SOCIAL_GITHUB / TWITTER / LINKEDIN /
  *      MASTODON, all optional, hidden when none are configured)
- *   3. Colophon — year + framework credit, toggled by
+ *   4. Colophon — year + framework credit, toggled by
  *      `settings.showFooterCredit`. `settings.copyrightYear`
  *      overrides the auto-detected year (some studios pin to
  *      "2024" for an "established" feel).
@@ -29,6 +33,19 @@ export async function PortfolioFooter() {
   return (
     <footer className="np-site-footer np-portfolio-footer">
       <div className="np-portfolio-footer-inner">
+        {settings.aboutCopy.length > 0 ? (
+          <p
+            className="np-portfolio-footer-bio"
+            style={{
+              maxWidth: "60ch",
+              fontSize: "0.875rem",
+              color: "var(--np-color-muted-foreground)",
+              margin: "0 0 1.25rem",
+            }}
+          >
+            {settings.aboutCopy}
+          </p>
+        ) : null}
         <div className="np-portfolio-footer-contact">
           {email ? (
             <a
