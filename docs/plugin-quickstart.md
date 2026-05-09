@@ -184,6 +184,109 @@ reference and [`plugin-capabilities.md`](plugin-capabilities.md) for
 the capabilities `definePlugin` can't auto-derive (such as
 `storage:kv` or `network:fetch`).
 
+## Step 2b — Operator-tunable config (optional)
+
+If your plugin has settings the operator should tune at runtime
+(e.g., a words-per-minute reading speed, an auto-lock threshold,
+an OAuth client secret), declare a `configSchema` on the plugin
+definition. The framework introspects it into a labeled form on
+`/admin/plugins/[pluginId]` — no per-plugin form component
+required.
+
+```ts
+import { definePlugin } from "@nexpress/plugin-sdk";
+import { z } from "zod";
+
+const configSchema = z.object({
+  wordsPerMinute: z
+    .number()
+    .int()
+    .min(50)
+    .max(800)
+    .default(220)
+    .describe("Words per minute"),
+});
+
+export type MyPluginConfig = z.infer<typeof configSchema>;
+
+export default definePlugin<MyPluginConfig>({
+  manifest: { /* ... */ },
+  configSchema,
+  hooks: {
+    "content:afterCreate": ({ data, ctx }) => {
+      // ctx.config is typed Readonly<MyPluginConfig>
+      const minutes = wordCount / ctx.config.wordsPerMinute;
+      // ...
+    },
+  },
+});
+```
+
+### What you get
+
+| Surface | Behavior |
+|---|---|
+| `/admin/plugins/<id>` | Auto-form rendered above any other admin extensions, persists to `np_settings (key="plugin.config:<id>")` on save. |
+| `ctx.config` (in hooks / routes / actions) | Typed `Readonly<MyPluginConfig>`. The framework reads + validates on every dispatch (no restart for config changes). |
+| Reading from outside the plugin | `import { getPluginConfig } from "@nexpress/core"; const c = (await getPluginConfig("my-plugin")) as MyPluginConfig;` |
+
+### Field types the introspector supports today
+
+| Zod node | Form widget |
+|---|---|
+| `z.string()` | `<input type="text">` |
+| `z.string().url()` | `<input type="url">` |
+| `z.string().regex(/^#…/)` matching a hex pattern | color picker |
+| `z.string().meta({ widget: "textarea", rows: N })` | `<textarea>` |
+| `z.string().meta({ sensitive: true })` | `<input type="password">` |
+| `z.number().int().min().max()` | `<input type="number">` with bounds |
+| `z.boolean()` | `<Switch>` |
+| `z.enum([...])` | `<select>` |
+| `z.array(z.object({...}))` | repeated nested object form |
+| `z.object({...})` | nested fieldset |
+
+Anything else introspects as `unsupported` and the form skips it
+— the value lives in storage but the operator can't edit it via
+the auto-form. Known gaps tracked in
+[`docs/design/plugin-config-auto-form.md`](design/plugin-config-auto-form.md)
+§ 10:
+- `z.array(z.string())` (e.g., OAuth scopes) — deferred follow-up
+- `.refine()` cross-field validation — deferred follow-up
+
+### Schema migrations (configVersion / configMigrate)
+
+When you change the schema in a non-additive way (rename a field,
+remove one, tighten a default), bump `configVersion` and pair it
+with a `configMigrate(old, fromVersion)` callback. The framework
+runs the migrator lazily on first cold read after upgrade,
+mirroring the theme-settings migration pipeline.
+
+```ts
+definePlugin<MyPluginConfig>({
+  manifest: { /* ... */ },
+  configSchema,
+  configVersion: 2,
+  configMigrate: (old, fromVersion) => {
+    if (fromVersion === 1) {
+      const o = old as { wpm?: number };
+      return { wordsPerMinute: o.wpm ?? 220 };
+    }
+    return old;
+  },
+});
+```
+
+### Legacy `admin.settings.fields` precedence
+
+Plugins authored before configSchema landed may have an
+`admin.settings.fields` array on their `admin` block. When BOTH
+are declared on the same plugin, the auto-form wins and the
+legacy field list is ignored at render time (with a console
+warning at boot). Migrating: remove `admin.settings.fields` in
+the same diff that adds `configSchema`. Other admin extensions
+(widgets, actions, tables, dashboardWidgets, collectionTabs)
+keep working independently.
+
 ## Step 3 — Wire it into the app
 
 Open `apps/web/src/nexpress.config.ts` and add your plugin to the
@@ -322,7 +425,7 @@ practice":
 
 | Plugin                                             | Demonstrates                                                       |
 | -------------------------------------------------- | ------------------------------------------------------------------ |
-| `packages/plugins/reading-time`                    | Hooks, routes, plain handler                                       |
-| `packages/plugins/seo-audit`                       | More elaborate routes, admin extension, capabilities               |
+| `packages/plugins/reading-time`                    | Hooks, routes, plain handler, **`configSchema` (single-field auto-form)** |
+| `packages/plugins/seo-audit`                       | More elaborate routes, admin extension, capabilities, **`configSchema` (mixed number / boolean fields)** |
 | `packages/plugins/forum`                           | Defining a collection from a plugin (`defineDiscussionsCollection`)|
-| `packages/plugins/oauth-github`, `oauth-google`    | OAuth provider wiring through plugin routes                        |
+| `packages/plugins/oauth-github`, `oauth-google`    | OAuth provider wiring through plugin routes, **`configSchema` with `.meta({ sensitive: true })` masked secret + hybrid env-or-admin credentials** |

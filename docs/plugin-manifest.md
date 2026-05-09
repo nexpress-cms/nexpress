@@ -128,6 +128,58 @@ would be a privilege footgun. List them explicitly when you call
 The host throws at registration time if a hook / route hits a
 namespace you didn't declare.
 
+## Non-manifest definition fields
+
+Some operator-facing surfaces live on the plugin **definition** —
+the object you pass to `definePlugin()` — rather than the
+manifest, because they carry runtime values (Zod schemas,
+functions) that don't fit the manifest's "metadata-only" shape.
+
+```ts
+definePlugin<MyPluginConfig>({
+  manifest: { /* the metadata block — id, version, name, etc. */ },
+
+  // Non-manifest, definition-level fields:
+  configSchema,                  // Zod schema → admin auto-form
+  configVersion: 2,              // bump on non-additive schema change
+  configMigrate: (old, from) => /* ... */,
+
+  hooks: { /* ... */ },
+  routes: [ /* ... */ ],
+  blocks: [ /* ... */ ],
+  admin: { /* widgets, actions, tables, dashboardWidgets, collectionTabs */ },
+  setup: (ctx) => { /* ... */ },
+  // ...
+});
+```
+
+The full list:
+
+| Definition field | Purpose | When to use |
+|---|---|---|
+| `configSchema` | Zod schema for operator-tunable plugin config. Renders an auto-form on `/admin/plugins/<id>`. | When you want the operator to tune plugin behavior at runtime. See [`plugin-quickstart.md`](plugin-quickstart.md) Step 2b. |
+| `configVersion` | Schema version (defaults to 1). | Bump when `configSchema` changes shape non-additively. |
+| `configMigrate` | `(old, fromVersion) => current` migrator. | Pair with a `configVersion` bump so existing operator data upgrades on first cold read. |
+| `hooks` | Lifecycle hook handlers keyed by hook name. | Most plugins start here. |
+| `routes` | Plugin API routes mounted under `/api/plugins/<id>`. | When the plugin needs an HTTP surface. |
+| `blocks` | Block definitions for the page builder. | Block-shipping plugins. |
+| `admin` | Declarative admin extension (widgets, actions, tables, dashboard, collectionTabs). | When the plugin contributes UI to `/admin`. |
+| `setup` | `(ctx) => …` invoked once per plugin load. | Register actions, validate environment, log a startup line. |
+| `teardown` | Cleanup callback for graceful shutdown. | When the plugin holds long-lived resources. |
+| `i18n` | Locale string bundles. | When the plugin renders user-facing copy. |
+| `templates` | Page-template contributions per collection. | Plugins that ship templates for the dispatcher. |
+| `patterns` | Page-builder pattern presets. | When the plugin ships pre-shaped block trees. |
+| `fields` | Custom field types for the admin field renderer. | Plugins extending the field-config vocabulary. |
+| `scheduled` | Cron-style scheduled tasks. | Background jobs the plugin owns. |
+
+`admin.settings.fields` (a hand-rolled NpFieldConfig array) is
+the legacy version of `configSchema`. When BOTH are declared on
+the same plugin, the auto-form wins and `admin.settings.fields`
+is ignored — see
+[`docs/design/plugin-config-auto-form.md`](design/plugin-config-auto-form.md)
+§ 5.1.1 for the precedence contract. New plugins should use
+`configSchema` exclusively.
+
 ## See also
 
 - [`plugin-quickstart.md`](plugin-quickstart.md) — step-by-step from
