@@ -20,6 +20,7 @@ import type { ZodTypeAny } from "zod";
 
 export type NpThemeSettingsField =
   | NpThemeSettingsTextField
+  | NpThemeSettingsTextareaField
   | NpThemeSettingsUrlField
   | NpThemeSettingsColorField
   | NpThemeSettingsNumberField
@@ -42,6 +43,14 @@ interface NpThemeSettingsFieldBase {
 
 export interface NpThemeSettingsTextField extends NpThemeSettingsFieldBase {
   type: "text";
+}
+
+export interface NpThemeSettingsTextareaField extends NpThemeSettingsFieldBase {
+  type: "textarea";
+  /** Optional row count hint for the rendered `<textarea>`.
+   *  Theme authors set this via `.meta({ widget: "textarea",
+   *  rows: 6 })`. Defaults to 4 when unset. */
+  rows?: number;
 }
 
 export interface NpThemeSettingsUrlField extends NpThemeSettingsFieldBase {
@@ -175,6 +184,20 @@ function detectStringFormat(
   return "text";
 }
 
+/**
+ * Phase F.3 follow-up — pull `.meta()` off a Zod node when
+ * present. Used to read theme-author hints like
+ * `{ widget: "textarea", rows: 6 }` that don't fit Zod's
+ * narrow widget matrix (z.string() has no textarea variant
+ * built in).
+ */
+function readMeta(node: ZodNode): Record<string, unknown> | undefined {
+  const fn = (node as unknown as { meta?: () => unknown }).meta;
+  if (typeof fn !== "function") return undefined;
+  const out = fn.call(node);
+  return out && typeof out === "object" ? (out as Record<string, unknown>) : undefined;
+}
+
 function detectNumberConstraints(
   checks: ZodCheck[] | undefined,
 ): { int?: boolean; min?: number; max?: number } {
@@ -209,6 +232,31 @@ function introspectField(
 
   switch (innerDef.type) {
     case "string": {
+      // Phase F.3 follow-up — `.meta({ widget: "textarea" })`
+      // opts a `z.string()` into multi-line rendering. Theme
+      // authors pair it with `.describe()` for the field
+      // label; row count is optional (defaults to 4).
+      //
+      // Check `node` (outer) first then `inner` because Zod v4's
+      // `.meta()` returns a new instance, so the meta lives at
+      // whichever level the author called .meta() at:
+      //
+      //   z.string().meta({...}).optional()  → meta on inner string
+      //   z.string().optional().meta({...})  → meta on outer optional
+      //
+      // Both patterns are valid in author code; both should work.
+      const meta = readMeta(node) ?? readMeta(inner);
+      if (meta && meta.widget === "textarea") {
+        const rows =
+          typeof meta.rows === "number" && meta.rows > 0
+            ? meta.rows
+            : undefined;
+        return {
+          ...base,
+          type: "textarea",
+          ...(rows !== undefined ? { rows } : {}),
+        };
+      }
       const fmt = detectStringFormat(innerDef.checks);
       return { ...base, type: fmt };
     }

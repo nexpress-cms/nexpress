@@ -7,6 +7,7 @@ import { Trash2, Plus } from "lucide-react";
 import { Button } from "../ui/button.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
+import { Textarea } from "../ui/textarea.js";
 import {
   Select,
   SelectContent,
@@ -88,6 +89,8 @@ function FieldDispatch({ field, value, onChange }: FieldProps) {
   switch (field.type) {
     case "text":
       return <TextField field={field} value={value} onChange={onChange} />;
+    case "textarea":
+      return <TextareaField field={field} value={value} onChange={onChange} />;
     case "url":
       return <UrlField field={field} value={value} onChange={onChange} />;
     case "color":
@@ -130,6 +133,20 @@ function TextField({ field, value, onChange }: FieldProps) {
       <Input
         id={field.name}
         type="text"
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </FieldShell>
+  );
+}
+
+function TextareaField({ field, value, onChange }: FieldProps) {
+  const f = field as Extract<NpThemeSettingsField, { type: "textarea" }>;
+  return (
+    <FieldShell name={field.name} description={field.description ?? field.name}>
+      <Textarea
+        id={field.name}
+        rows={f.rows ?? 4}
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
       />

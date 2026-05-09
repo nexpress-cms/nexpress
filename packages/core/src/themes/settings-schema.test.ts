@@ -156,4 +156,71 @@ describe("introspectThemeSettingsSchema", () => {
     expect(fields).toHaveLength(1);
     expect(fields[0]?.name).toBe("tag");
   });
+
+  it("emits textarea field when meta({ widget: 'textarea' }) set", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        bio: z.string().meta({ widget: "textarea" }).describe("Bio"),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "bio",
+      type: "textarea",
+    });
+  });
+
+  it("textarea field carries optional rows hint from meta", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        bio: z.string().meta({ widget: "textarea", rows: 6 }),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "bio",
+      type: "textarea",
+      rows: 6,
+    });
+  });
+
+  it("textarea unwraps through .default() and .optional()", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        bio: z
+          .string()
+          .meta({ widget: "textarea" })
+          .default(""),
+      }),
+    );
+    expect(fields[0]?.type).toBe("textarea");
+  });
+
+  it("ignores meta when widget isn't 'textarea'", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        tag: z.string().meta({ something: "else" }),
+      }),
+    );
+    expect(fields[0]?.type).toBe("text");
+  });
+
+  it("detects textarea when .meta() is the LAST link in the chain (after .optional())", () => {
+    // .meta() last — Zod v4 returns a new instance for .meta(),
+    // so meta lives on the OUTER optional, not the inner string.
+    // Both author conventions must produce textarea:
+    //   z.string().meta({...}).optional()
+    //   z.string().optional().meta({...})
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        bio: z
+          .string()
+          .optional()
+          .meta({ widget: "textarea", rows: 8 }),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "bio",
+      type: "textarea",
+      rows: 8,
+    });
+  });
 });
