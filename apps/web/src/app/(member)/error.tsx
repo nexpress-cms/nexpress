@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { ComponentType, LazyExoticComponent } from "react";
 
 /**
@@ -39,8 +39,9 @@ const THEME_MEMBER_ERRORS: Record<
   string,
   LazyExoticComponent<ComponentType<ErrorPageProps>>
 > = {
-  // Empty until a theme ships a `./components/members-error`
-  // subpath. Reference theme migration lands in M.ref.
+  magazine: lazy(
+    () => import("@nexpress/theme-magazine/components/members-error"),
+  ),
 };
 
 /** See `(site)/error.tsx` for the rationale on the lazy-init

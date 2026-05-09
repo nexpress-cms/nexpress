@@ -29,6 +29,10 @@
     "./components/error": {
       "types": "./dist/components/error.d.ts",
       "import": "./dist/components/error.js"
+    },
+    "./components/members-error": {
+      "types": "./dist/components/members-error.d.ts",
+      "import": "./dist/components/members-error.js"
     }
   },
   "files": [

@@ -25,6 +25,7 @@ export default defineConfig([
       "components/mobile-nav": "src/components/mobile-nav.tsx",
       "components/newsletter-form": "src/components/newsletter-form.tsx",
       "components/error": "src/components/error.tsx",
+      "components/members-error": "src/components/members-error.tsx",
     },
     format: ["esm"],
     dts: true,

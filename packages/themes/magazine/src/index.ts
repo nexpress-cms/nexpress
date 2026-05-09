@@ -5,6 +5,8 @@ import { magazineArchives } from "./archives.js";
 import { magazineBlocks } from "./blocks.js";
 import { MagazineFooter } from "./footer.js";
 import { MagazineHeader } from "./header.js";
+import { MagazineMembersNotFound } from "./members-not-found.js";
+import { MagazineMembersShell } from "./members-shell.js";
 import { MagazineNotFound } from "./not-found.js";
 import { magazinePatterns } from "./patterns.js";
 import { magazineSettingsSchema } from "./settings.js";
@@ -189,6 +191,25 @@ export const magazineTheme = defineTheme({
     // archive routes (operator's collection walk doesn't produce
     // /category/foo etc. on its own).
     notFound: MagazineNotFound,
+    // Phase M.ref — member surface adoption.
+    //
+    // - `shell` wraps (member)/members/* routes in the magazine
+    //   masthead + footer (narrow auth-form column, separate from
+    //   the editorial column width). Reuses MagazineHeader /
+    //   MagazineFooter so a chrome bump applies to both surfaces.
+    // - `notFound` swaps the public-site "story isn't in the
+    //   archive" voice for a "verification link expired" framing
+    //   with a sign-in CTA. The auth-link expiry is the dominant
+    //   404 cause inside `/members/*`.
+    // - `error` is a forward-compat type marker; the actual
+    //   render goes through `./components/members-error`'s
+    //   client subpath, lazy-imported by
+    //   `apps/web/src/app/(member)/error.tsx`'s registry. F.7.1
+    //   delegation pattern (Next mandates `error.tsx` is "use client").
+    members: {
+      shell: MagazineMembersShell,
+      notFound: MagazineMembersNotFound,
+    },
     seo: {
       sitemapEntries: async () => {
         // Re-query categories to surface every category archive
