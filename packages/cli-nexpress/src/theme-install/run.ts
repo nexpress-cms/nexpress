@@ -159,16 +159,36 @@ function applyPlan(
   return { patched, created, skipped };
 }
 
+function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
+  // Mirrors the helper in `index.ts` (top of file). Duplicated
+  // here to avoid an internal import cycle through the bin
+  // entry; both helpers are tiny.
+  if (existsSync(resolve(cwd, "pnpm-lock.yaml"))) return "pnpm";
+  if (existsSync(resolve(cwd, "yarn.lock"))) return "yarn";
+  return "npm";
+}
+
 async function runDrizzleGenerate(cwd: string): Promise<boolean> {
-  // Best-effort: try `pnpm db:generate` first (the script
-  // create-nexpress scaffolds), then fall back to direct
-  // `drizzle-kit generate`. If neither works, return false
-  // and the caller prints a manual-step note.
-  const candidates: Array<[string, string[]]> = [
-    ["pnpm", ["db:generate"]],
-    ["pnpm", ["exec", "drizzle-kit", "generate"]],
-  ];
-  for (const [bin, args] of candidates) {
+  // Best-effort. Detect the operator's package manager first
+  // so `pnpm db:generate` doesn't run on a yarn/npm site. Fall
+  // back to direct drizzle-kit invocation when the script isn't
+  // wired up. If neither works, return false and the caller
+  // prints a manual-step note.
+  const pm = detectPackageManager(cwd);
+  const runScript: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["db:generate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["db:generate"]]
+        : ["npm", ["run", "db:generate"]];
+  const directDrizzle: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["drizzle-kit", "generate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["exec", "drizzle-kit", "generate"]]
+        : ["npx", ["drizzle-kit", "generate"]];
+
+  for (const [bin, args] of [runScript, directDrizzle]) {
     const ok = await new Promise<boolean>((resolveFn) => {
       const child = spawn(bin, args, { cwd, stdio: "inherit" });
       child.on("error", () => resolveFn(false));
@@ -238,6 +258,22 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
   }
 
   if (!input.flags.yes) {
+    if (!stdin.isTTY) {
+      // Non-TTY (CI, piped invocation) without --yes is almost
+      // always a mistake — silently aborting would let an
+      // automation run "succeed" without applying the changes
+      // the operator expects. Refuse with a clear next step
+      // instead.
+      console.error(
+        pc.red(
+          "error: theme:install needs interactive confirmation, but stdin isn't a TTY.",
+        ),
+      );
+      console.error(
+        pc.dim("  Re-run with --yes to skip the prompt non-interactively."),
+      );
+      return 2;
+    }
     const ok = await confirm("Continue?");
     if (!ok) {
       console.log(pc.dim("Aborted."));
