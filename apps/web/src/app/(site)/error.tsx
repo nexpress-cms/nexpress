@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 /**
  * Phase F.7 / F.7.1 — public-site error boundary fallback.
@@ -46,19 +46,28 @@ const THEME_ERRORS: Record<
 };
 
 /** Read the active theme id from the `<style data-np-theme>` tag
- *  emitted by the (site) layout. Returns null on the first paint
- *  (before useEffect fires) and on routes that never rendered the
- *  theme style (e.g. a layout error caught before the style went
- *  out — rare). */
+ *  emitted by the (site) layout.
+ *
+ *  Uses `useState`'s lazy initializer (function form) so the DOM
+ *  read happens SYNCHRONOUSLY during the first render — this
+ *  avoids the brief DefaultError flash that would otherwise
+ *  appear before a `useEffect`-based read fires. error.tsx is
+ *  Next-mandated `"use client"` so `document` is always available
+ *  by the time the boundary's render runs. The `typeof document`
+ *  guard is defensive against any future SSR pre-render of the
+ *  client error component (Next currently doesn't do this for
+ *  `error.tsx` but the contract may evolve).
+ *
+ *  Returns null on routes that never rendered the theme style
+ *  (e.g. a layout error caught before the style went out — rare). */
 function useActiveThemeId(): string | null {
-  const [themeId, setThemeId] = useState<string | null>(null);
-  useEffect(() => {
+  const [themeId] = useState<string | null>(() => {
+    if (typeof document === "undefined") return null;
     const styleTag = document.querySelector<HTMLStyleElement>(
       "style[data-np-theme]",
     );
-    const id = styleTag?.dataset.npTheme ?? null;
-    setThemeId(id);
-  }, []);
+    return styleTag?.dataset.npTheme ?? null;
+  });
   return themeId;
 }
 
