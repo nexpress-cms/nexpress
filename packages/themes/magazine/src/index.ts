@@ -1,3 +1,4 @@
+import { findDocuments } from "@nexpress/core";
 import { defineTheme } from "@nexpress/theme";
 
 import { magazineArchives } from "./archives.js";
@@ -193,7 +194,6 @@ export const magazineTheme = defineTheme({
         // Re-query categories to surface every category archive
         // page in the sitemap. Lightweight (categories collection
         // is small and capped); runs once per cache window.
-        const { findDocuments } = await import("@nexpress/core");
         const result = await findDocuments<Record<string, unknown>>(
           "categories",
           { where: { status: "published" }, limit: 200 },

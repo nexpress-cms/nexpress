@@ -169,6 +169,19 @@ export async function AuthorArchive({
   params,
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const id = params.id ?? "";
+  // Look up the author's display name so the page reads
+  // "Stories by Jane Doe" instead of "Stories by <uuid>".
+  // The authors collection is required by the theme manifest;
+  // a missing row returns null and we fall back to the id.
+  const authorRes = await findDocuments<Record<string, unknown>>("authors", {
+    where: { id },
+    limit: 1,
+  });
+  const author = authorRes.docs[0];
+  const displayName =
+    typeof author?.name === "string" && author.name.length > 0
+      ? author.name
+      : id;
   const result = await findDocuments<Record<string, unknown>>("posts", {
     where: { status: "published", author: id },
     sort: "-publishedAt",
@@ -176,8 +189,12 @@ export async function AuthorArchive({
   });
   return (
     <ArchiveLayout
-      title={`Stories by ${id}`}
-      subtitle="Recent posts from this author."
+      title={`Stories by ${displayName}`}
+      subtitle={
+        typeof author?.bio === "string" && author.bio.length > 0
+          ? author.bio
+          : "Recent posts from this author."
+      }
       result={result}
     />
   );
