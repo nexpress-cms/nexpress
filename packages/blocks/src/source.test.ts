@@ -15,6 +15,8 @@ import {
 } from "./source.js";
 import type { NpBlockDefinition, NpPattern } from "./types.js";
 
+const StubRender = (() => null) as unknown as NpBlockDefinition["render"];
+
 const stub = (
   type: string,
   source: NpBlockDefinition["source"],
@@ -26,7 +28,7 @@ const stub = (
   source,
   defaultProps: {},
   propsSchema: [],
-  render: () => null,
+  render: StubRender,
 });
 
 describe("parseBlockSource", () => {
