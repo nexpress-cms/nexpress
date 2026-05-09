@@ -306,4 +306,34 @@ describe("introspectThemeSettingsSchema", () => {
     );
     expect(fields[0]?.type).toBe("unsupported");
   });
+
+  // Phase G follow-up — `.refine()` is a no-op for introspection
+  // because Zod 4 implements it as a `checks` array on the same
+  // object (NOT an effects/pipe wrapper). The introspector walks
+  // the shape unchanged. Pin this so future Zod upgrades don't
+  // regress quietly.
+  it("introspects a `.refine()` schema like a plain object", () => {
+    const schema = z
+      .object({
+        min: z.number().default(10),
+        max: z.number().default(100),
+      })
+      .refine((v) => v.min <= v.max, { message: "min <= max" });
+    const fields = introspectThemeSettingsSchema(schema as never);
+    expect(fields).toHaveLength(2);
+    expect(fields[0]?.name).toBe("min");
+    expect(fields[1]?.name).toBe("max");
+  });
+
+  it("introspects through chained `.refine()` calls", () => {
+    const schema = z
+      .object({
+        a: z.number().default(1),
+        b: z.number().default(2),
+      })
+      .refine((v) => v.a < v.b)
+      .refine((v) => v.b > 0);
+    const fields = introspectThemeSettingsSchema(schema as never);
+    expect(fields).toHaveLength(2);
+  });
 });

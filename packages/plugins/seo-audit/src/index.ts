@@ -13,55 +13,71 @@ import { z } from "zod";
  * into the audit logic via `ctx.config` and replaces the legacy
  * declarative form with the auto-form.
  */
-// Note: cross-field validation (titleMin <= titleMax, descriptionMin
-// <= descriptionMax) would naturally live as `.refine()` calls on the
-// outer object — but adding a top-level effect/pipe wrapper currently
-// breaks the F.3 introspector, which only unwraps default / optional
-// / nullable. The form would render zero fields. Deferred until the
-// introspector grows refine-passthrough; until then a misconfigured
-// min/max pair is silently uncaught (the audit just never enters the
-// "long-X" branch because "short-X" always wins).
-const configSchema = z.object({
-  titleMin: z
-    .number()
-    .int()
-    .min(0)
-    .max(200)
-    .default(30)
-    .describe("Minimum recommended title length (chars)"),
-  titleMax: z
-    .number()
-    .int()
-    .min(10)
-    .max(300)
-    .default(60)
-    .describe("Maximum recommended title length (chars)"),
-  descriptionMin: z
-    .number()
-    .int()
-    .min(0)
-    .max(500)
-    .default(70)
-    .describe("Minimum recommended description length (chars)"),
-  descriptionMax: z
-    .number()
-    .int()
-    .min(50)
-    .max(500)
-    .default(160)
-    .describe("Maximum recommended description length (chars)"),
-  minBodyWords: z
-    .number()
-    .int()
-    .min(0)
-    .max(10000)
-    .default(250)
-    .describe("Minimum body word count before triggering a thin-content warning"),
-  includeDescription: z
-    .boolean()
-    .default(true)
-    .describe("Audit the meta description in addition to title and body"),
-});
+// Cross-field validation: a min/max pair where min > max is a
+// misconfiguration the audit logic can't recover from cleanly
+// (the "short-X" branch always wins for any value < min, so the
+// "long-X" branch is unreachable). Reject at save time so the
+// operator notices immediately rather than wondering why long-
+// title warnings never fire.
+//
+// Earlier versions of this plugin punted on `.refine()` on the
+// theory that the F.3 introspector would render an empty form;
+// that diagnosis was wrong. Zod 4 implements `.refine()` as a
+// `checks` array on the same object, NOT as an effects/pipe
+// wrapper, so `_def.type` stays `"object"` and the introspector
+// walks the shape unchanged.
+const configSchema = z
+  .object({
+    titleMin: z
+      .number()
+      .int()
+      .min(0)
+      .max(200)
+      .default(30)
+      .describe("Minimum recommended title length (chars)"),
+    titleMax: z
+      .number()
+      .int()
+      .min(10)
+      .max(300)
+      .default(60)
+      .describe("Maximum recommended title length (chars)"),
+    descriptionMin: z
+      .number()
+      .int()
+      .min(0)
+      .max(500)
+      .default(70)
+      .describe("Minimum recommended description length (chars)"),
+    descriptionMax: z
+      .number()
+      .int()
+      .min(50)
+      .max(500)
+      .default(160)
+      .describe("Maximum recommended description length (chars)"),
+    minBodyWords: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .default(250)
+      .describe(
+        "Minimum body word count before triggering a thin-content warning",
+      ),
+    includeDescription: z
+      .boolean()
+      .default(true)
+      .describe("Audit the meta description in addition to title and body"),
+  })
+  .refine((c) => c.titleMin <= c.titleMax, {
+    message: "titleMin must be less than or equal to titleMax",
+    path: ["titleMin"],
+  })
+  .refine((c) => c.descriptionMin <= c.descriptionMax, {
+    message: "descriptionMin must be less than or equal to descriptionMax",
+    path: ["descriptionMin"],
+  });
 
 export type SeoAuditConfig = z.infer<typeof configSchema>;
 

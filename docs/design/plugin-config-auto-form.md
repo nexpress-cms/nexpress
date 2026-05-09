@@ -390,19 +390,16 @@ when a real hybrid plugin lands.
   site-scoped via `np_settings`. The discriminator only matters
   if multi-site sites want different per-site config. Already
   works via existing siteId filter.
-- **Introspector `.refine()` passthrough** — surfaced in G.2.3
-  while writing the seo-audit schema. Cross-field constraints
-  (e.g. `titleMin <= titleMax`) naturally live as `.refine()` on
-  the outer `z.object`, but the F.3 introspector's `unwrap()`
-  only handles `default / optional / nullable` wrappers. Adding
-  `.refine()` turns the schema into a refine/effects/pipe wrapper
-  whose `_def.type` isn't `"object"`, so the introspector returns
-  an empty field list and the form renders blank. Needs an
-  additional unwrap step that walks past refine wrappers and
-  reads the inner object's shape. ~20 LOC in
-  `packages/core/src/themes/settings-schema.ts`. Plugins that
-  want cross-field validation today have to re-parse the raw
-  config in their `setup()` — out-of-band check.
+- ~~**Introspector `.refine()` passthrough**~~ — **closed
+  without code changes** (post-G.docs investigation). The G.2.3
+  diagnosis was wrong: Zod 4 implements `.refine()` as a
+  `checks` array on the same `z.object`, NOT as an
+  effects / pipe wrapper. `_def.type` stays `"object"`, the
+  introspector walks the shape unchanged, and the form renders
+  every field. seo-audit's cross-field validation
+  (`titleMin <= titleMax` etc.) was added in #589. Two
+  regression tests cover refine + chained refine schemas in
+  `packages/core/src/themes/settings-schema.test.ts`.
 - ~~**Introspector `array(string)` support**~~ — **shipped**
   post-G.docs in #588 (~30 LOC). `z.array(z.string())` now
   emits a dedicated `string-array` widget rendering as a
