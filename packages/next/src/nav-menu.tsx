@@ -1,22 +1,29 @@
-import { getNavigation } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
 import * as React from "react";
+
+import { getCachedNavigation } from "./cache.js";
 
 /**
  * Phase F.6 — `<NavMenu location="primary" />`.
  *
  * Server component for theme shells / slot components. Reads
- * the navigation row at `(siteId, location)` and renders the
+ * the navigation row at `(siteId, location)` through the cached
+ * helper (`nx:nav:<siteId>:<location>` tag) and renders the
  * items as a plain `<ul>` of links. Themes that need richer
- * markup (mega-menus, mobile drawer, etc.) call `getNavigation`
- * themselves and own the rendering — this component is the
- * sensible default for the common case.
+ * markup (mega-menus, mobile drawer, etc.) call
+ * `getCachedNavigation` themselves and own the rendering —
+ * this component is the sensible default for the common case.
  *
  * `location` matches one of the theme's declared `navLocations`
  * keys (or any of the framework defaults: `header` / `footer`
  * / `main`). Empty navigation rows render `null` so themes can
  * safely place this in a slot without leaving an empty `<ul>`
  * behind on first-install.
+ *
+ * Caching: each `(siteId, location)` pair gets its own cache
+ * entry tagged `nx:nav:<siteId>:<location>`. The nav editor's
+ * save endpoint busts the matching tag so saved changes
+ * propagate immediately on the next render.
  */
 
 export interface NpNavMenuProps {
@@ -43,7 +50,7 @@ export async function NavMenu({
   className,
   renderItem = defaultRenderItem,
 }: NpNavMenuProps): Promise<React.ReactElement | null> {
-  const items = await getNavigation(location);
+  const items = await getCachedNavigation(location);
   if (items.length === 0) return null;
   return (
     <ul className={className ?? `np-nav-${location}`}>
