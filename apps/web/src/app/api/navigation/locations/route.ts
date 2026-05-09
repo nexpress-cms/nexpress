@@ -1,6 +1,7 @@
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
+  type NpNavItem,
   can,
   getActiveThemeNavLocations,
   getCurrentSiteId,
@@ -23,6 +24,10 @@ interface LocationOption {
    *  framework defaults from theme-declared from operator-
    *  authored entries. */
   source: "default" | "theme" | "custom";
+  /** Phase F.6.1 — total item count (top-level + children) for
+   *  this location, or `0` when no row exists yet. Drives the
+   *  "Empty" badge + maxItems warning in the assignments panel. */
+  itemCount: number;
 }
 
 /**
@@ -45,10 +50,25 @@ interface LocationOption {
  * the response shape changing.
  */
 const DEFAULT_LOCATIONS: LocationOption[] = [
-  { value: "header", label: "Header", source: "default" },
-  { value: "footer", label: "Footer", source: "default" },
-  { value: "main", label: "Main", source: "default" },
+  { value: "header", label: "Header", source: "default", itemCount: 0 },
+  { value: "footer", label: "Footer", source: "default", itemCount: 0 },
+  { value: "main", label: "Main", source: "default", itemCount: 0 },
 ];
+
+/** Recursively count nav items (top-level + nested children).
+ *  Children are bounded to a single level by the editor today, but
+ *  walk recursively so the count stays correct if depth grows. */
+function countNavItems(items: NpNavItem[] | null | undefined): number {
+  if (!Array.isArray(items)) return 0;
+  let total = 0;
+  for (const item of items) {
+    total += 1;
+    if (Array.isArray(item.children)) {
+      total += countNavItems(item.children);
+    }
+  }
+  return total;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,10 +84,18 @@ export async function GET(request: NextRequest) {
     await ensureFor("read");
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    // Phase F.6.1 — pull `items` alongside `location` so the
+    // assignments panel can show "X items" / "Empty" / "over
+    // limit" without a follow-up round trip per location.
     const rows = await db
-      .select({ location: npNavigation.location })
+      .select({ location: npNavigation.location, items: npNavigation.items })
       .from(npNavigation)
       .where(eq(npNavigation.siteId, siteId));
+
+    const countByLocation = new Map<string, number>();
+    for (const row of rows) {
+      countByLocation.set(row.location, countNavItems(row.items));
+    }
 
     // Phase F.6 — pull theme-declared nav locations into the
     // editor's dropdown so operators see friendly labels (and
@@ -78,7 +106,9 @@ export async function GET(request: NextRequest) {
     const themeLocations = await getActiveThemeNavLocations();
 
     const byKey = new Map<string, LocationOption>();
-    for (const def of DEFAULT_LOCATIONS) byKey.set(def.value, def);
+    for (const def of DEFAULT_LOCATIONS) {
+      byKey.set(def.value, { ...def, itemCount: countByLocation.get(def.value) ?? 0 });
+    }
     for (const t of themeLocations) {
       byKey.set(t.key, {
         value: t.key,
@@ -86,6 +116,7 @@ export async function GET(request: NextRequest) {
         description: t.description,
         maxItems: t.maxItems,
         source: "theme",
+        itemCount: countByLocation.get(t.key) ?? 0,
       });
     }
     for (const row of rows) {
@@ -94,6 +125,7 @@ export async function GET(request: NextRequest) {
         value: row.location,
         label: titleCase(row.location),
         source: "custom",
+        itemCount: countByLocation.get(row.location) ?? 0,
       });
     }
 
