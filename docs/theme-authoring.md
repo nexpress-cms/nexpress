@@ -471,6 +471,33 @@ implementation reference.
 | `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches with precedence: app-explicit > page-slug > theme route. |
 | `impl.notFound` / `impl.seo` | 404 page + sitemap/feed/robots contributions. Theme switch + settings save bust SEO cache tags appropriately. |
 
+### Member surface (M.*) cheat-sheet
+
+For full design rationale see [`docs/design/member-surface-skinning.md`](./design/member-surface-skinning.md). The magazine reference (`packages/themes/magazine`) is the live implementation reference for every M.* surface listed below.
+
+| Surface | What it does |
+|---|---|
+| `impl.members.shell` | Wraps the framework-owned `(member)/members/*` route tree (login / register / forgot-password / reset-password / verify / me/notifications) in the theme's chrome. Receives an opaque `children` prop — themes don't depend on the framework body internals. Falls back through `impl.shell` to a transparent fragment when omitted (M.1). |
+| `impl.members.pageTitle?.{login,register,…}` | Theme-provided variants of the framework's default member-page chrome strings. Operator i18n bundles override on top via the existing UI-string registry. Optional cosmetic (M.1). |
+| `--np-member-form-*` tokens | CSS custom properties on the form input / button / error surface (`.np-members-form` scope). Themes restyle member auth forms by overriding these tokens in `impl.css` rather than replacing components (M.2). |
+| `--np-member-oauth-{google,github}-*` | Forward-compat tokens for the OAuth button surface (no consumer renders today; `/api/members/oauth/{provider}/start` runs the flow directly). Declared so themes can pre-style for when buttons land (M.2). |
+| `impl.members.notFound` | Member-tree 404 component. Server-rendered. Falls back to `impl.notFound` (top-level), then to a member-tuned framework default (`/members/login` CTA — most 404s inside `/members/*` are stale auth links) (M.3). |
+| `impl.members.error` + `./components/members-error` subpath | Forward-compat type marker on the manifest; the actual render lives at a separate client subpath the theme ships at `./components/members-error`. The operator's `(member)/error.tsx` lazy-imports the active theme's chunk based on the `<style data-np-theme>` tag the layout already emitted. F.7.1 delegation pattern (Next mandates `error.tsx` is `"use client"`) (M.3). |
+
+### Member surface migration recipe
+
+The shortest end-to-end migration is `theme-magazine` (M.ref). Recipe in five files:
+
+1. **`src/members-shell.tsx`** — server component, wraps `children` in your masthead + footer. Use a `<div>` (not `<main>`) — the framework layout already emits the page's single `<main>` landmark.
+2. **`src/members-not-found.tsx`** — server component for the member-tree 404. Tone the copy for stale-auth-link cases; CTA points to `/members/login`.
+3. **`src/components/members-error.tsx`** — `"use client"` component for the error boundary. Same delegation pattern as `./components/error`. Add `"Back to sign in"` alongside `"Try again"`.
+4. **`src/styles.ts`** (or your theme CSS) — override `--np-member-form-*` tokens scoped under `.<your-theme-root> .np-members-form`. Discussion / comment forms keep their global look; member forms pick up your theme's edge.
+5. **`src/index.ts`** — declare `impl.members.{shell, notFound}`.
+
+Then **register your theme in `apps/web/src/app/(member)/error.tsx`'s `THEME_MEMBER_ERRORS`** map (`<your-theme-id>: lazy(() => import("@nexpress/theme-<id>/components/members-error"))`), and **add the subpath to `package.json` exports + `tsup.config.ts`**.
+
+When omitted, the fallback chain ensures the public-site shell + 404 + error apply — themes that don't migrate keep working unchanged.
+
 ---
 
 ## 12. Plugins Can Register Templates Too

@@ -1,8 +1,11 @@
 # Member/Community Surface Skinning — Design Plan
 
-> Version: 0.2 (Locked — ready for implementation)
+> Version: 0.3 (F-track shipped)
 > Date: 2026-05-10
-> Status: Decisions locked. M.1 ready to implement.
+> Status: M.1 / M.2 / M.3 / M.ref / M.docs all merged. Magazine
+> reference impl proves every surface end-to-end. portfolio /
+> docs adoption deferred — fallback chain keeps them working
+> unchanged until they migrate.
 > Prerequisites:
 >   - `docs/design/theme-v0.2-extension.md` (theme contract v0.2,
 >     deferred this surface to a separate track per §3 / §10)
@@ -307,17 +310,19 @@ component state; no server-cache invalidation concern.
 | i18n drift between theme-provided pageTitle and framework strings | 🟢 Low | Theme strings layered under operator i18n overrides per existing pattern |
 | Auth flow form changes (e.g. captcha row) break theme assumptions | 🟢 Low | Slot contract is opaque `children`; theme doesn't see internals. The risk is purely visual (new row in unfamiliar style); rare enough to fix per release |
 
-## 9. Phasing
+## 9. Phasing — final
 
-| Phase | Scope | PR-size estimate |
-|---|---|---|
-| **M.1** | `impl.members.shell` slot + `(member)` route group restructure (locked decision E) + framework wiring | 1 PR, ~330 LOC |
-| **M.2** | `--np-member-form-*` tokens + framework default CSS | 1 PR, ~150 LOC |
-| **M.3** | `impl.members.notFound` / `error` (mirror F.7 / F.7.1) | 1 PR, ~200 LOC |
-| **M.ref** | Magazine reference impl (shell + form tokens + error) | 1 PR, ~300 LOC |
-| **M.docs** | Theme-authoring cookbook updates | 1 PR, ~150 LOC |
+| Phase | PR | Scope | Estimate | Actual |
+|---|---|---|---|---|
+| **M.1** | #581 | `impl.members.shell` slot + `(member)` route group restructure + framework wiring | ~330 LOC | shipped |
+| **M.2** | #582 | `--np-member-form-*` tokens + framework default CSS | ~150 LOC | shipped |
+| **M.3** | #583 | `impl.members.notFound` / `error` (mirror F.7 / F.7.1) | ~200 LOC | shipped |
+| **M.ref** | #584 | Magazine reference impl (shell + form tokens + members.notFound + members-error subpath) | ~300 LOC | shipped |
+| **M.docs** | this PR | Theme-authoring cookbook member-surface section + cheat-sheet row + design-doc closeout | ~150 LOC | shipping |
 
-Total: 5 PRs, ~1130 LOC (was ~1050; M.1 +80 LOC for the route-group restructure per locked decision E). Each phase ships independently.
+5 PRs shipped. Track total ~1130 LOC. Each phase shipped independently with operator-visible changes; magazine end-to-end adoption (M.ref) proves the contract works in practice.
+
+`portfolio` / `docs` reference theme adoption is deferred — when those themes legitimately need member-surface skinning, the same recipe used in M.ref applies (cookbook entry in `theme-authoring.md`).
 
 ## 10. Deferred to a later track
 
