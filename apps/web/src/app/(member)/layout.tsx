@@ -38,22 +38,43 @@ export default async function MemberLayout({
   const active = await getCachedActiveTheme();
 
   // Fallback chain per design doc § 5.1:
-  //   1. `impl.members.shell` truthy → use it
-  //   2. `impl.members.shell === null` → opt out (bare)
-  //   3. `impl.members.shell === undefined` → fall back to top shell
-  //   4. `impl.shell === undefined` → fragment
+  //   1. `impl.members.shell` truthy → use it (theme owns its own chrome)
+  //   2. `impl.members.shell === null` → opt out (bare body)
+  //   3. `impl.members.shell === undefined` → fall back to top
+  //      shell, which expects Header + main + Footer per
+  //      `(site)/layout.tsx`'s contract. We must include the
+  //      slots in `inner` so themes whose `impl.shell` opens a
+  //      `<body>` wrapper around its `children` see the Header
+  //      and Footer they expect — otherwise member pages would
+  //      lose chrome entirely on themes that haven't migrated to
+  //      `impl.members.shell` yet.
+  //   4. Both shells absent → fragment
   const memberShell = active?.impl.members?.shell;
-  const Shell =
-    memberShell === null
-      ? null // explicit opt-out — render bare
-      : memberShell !== undefined
-        ? memberShell
-        : (active?.impl.shell ?? null);
+  let Shell: NonNullable<typeof active>["impl"]["shell"] | null;
+  let includeChromeSlots: boolean;
+  if (memberShell === null) {
+    Shell = null;
+    includeChromeSlots = false; // explicit opt-out — render bare
+  } else if (memberShell !== undefined) {
+    Shell = memberShell;
+    includeChromeSlots = false; // theme's member shell owns chrome
+  } else {
+    Shell = active?.impl.shell ?? null;
+    includeChromeSlots = true; // mirror (site) layout's expectation
+  }
 
+  const Header = includeChromeSlots ? active?.impl.slots?.header : undefined;
+  const Footer = includeChromeSlots ? active?.impl.slots?.footer : undefined;
   const themeCss = active?.impl.css;
   const themeId = active?.manifest.id;
 
-  const inner = <main className="np-member-main">{children}</main>;
+  const inner = (
+    <>
+      {Header ? <Header /> : null}
+      <main className="np-member-main">{children}</main>
+      {Footer ? <Footer /> : null}
+    </>
+  );
 
   return (
     <>
