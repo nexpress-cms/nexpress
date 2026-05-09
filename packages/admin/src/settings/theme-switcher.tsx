@@ -107,6 +107,12 @@ export function ThemeSwitcher({
   const [error, setError] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // v0.3 (E) — after a successful theme switch, show a hint
+  // pointing to the cleanup tool. The previous theme's
+  // contributed blocks are still in the page-tree; the render
+  // layer shows them as placeholder cards until the operator
+  // strips them via /admin/themes/cleanup.
+  const [showCleanupHint, setShowCleanupHint] = useState(false);
 
   useEffect(() => {
     void load();
@@ -149,11 +155,16 @@ export function ThemeSwitcher({
         return;
       }
       const activated = themes?.find((t) => t.id === id);
+      const previousActive = themes?.find((t) => t.isActive && t.id !== id);
       setMessage(
         activated
           ? `Activated ${activated.name}. The public site will pick it up on the next request.`
           : "Theme activated.",
       );
+      // Only show the hint when there WAS a previous active
+      // theme (skip on first-boot where no prior theme
+      // contributed blocks to clean up).
+      if (previousActive) setShowCleanupHint(true);
       // Update local state optimistically; a full refetch is
       // unnecessary because the server confirmed the new id.
       setThemes((current) =>
@@ -213,6 +224,23 @@ export function ThemeSwitcher({
         {message ? (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
             {message}
+          </div>
+        ) : null}
+        {showCleanupHint ? (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            <p className="font-medium">Theme switched — check for stale blocks?</p>
+            <p className="mt-1 text-xs opacity-80">
+              The previous theme may have contributed blocks (e.g.{" "}
+              <code className="font-mono">magazine.hero-feature</code>) that
+              are still embedded in your pages. The public site shows them
+              as placeholder cards until you run cleanup.{" "}
+              <a
+                href="/admin/themes/cleanup"
+                className="underline underline-offset-2 hover:no-underline"
+              >
+                Open cleanup tool →
+              </a>
+            </p>
           </div>
         ) : null}
 
