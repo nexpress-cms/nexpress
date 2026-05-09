@@ -40,6 +40,30 @@ interface HeroFeatureProps {
 
 type HeroStyle = "featured" | "carousel" | "grid";
 
+/**
+ * Parse a textarea-driven items prop. The admin's JSON-textarea
+ * field-control stores its value AS A STRING — so when an operator
+ * edits `items` in the props form, what comes back at render time
+ * is the JSON string, not a parsed array. Newly-inserted blocks
+ * still hit the `defaultProps` array branch (no operator edit yet),
+ * so we have to handle both shapes.
+ *
+ * Returns `[]` for any unparseable input — the block surfaces an
+ * "Add items" placeholder, never throws on malformed JSON.
+ */
+function parseItems(raw: unknown): HeroItem[] {
+  if (Array.isArray(raw)) return raw as HeroItem[];
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as HeroItem[];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 async function HeroFeature(
   props: Record<string, unknown>,
 ): Promise<React.ReactElement> {
@@ -49,9 +73,9 @@ async function HeroFeature(
     ctaText,
     ctaUrl,
     imageUrl,
-    items = [],
     styleOverride = "auto",
   } = props as unknown as HeroFeatureProps;
+  const items = parseItems(props.items);
 
   // Resolve the layout: per-block override wins, otherwise pull
   // from theme settings. The cached read shares one DB hit
@@ -297,8 +321,22 @@ interface SectionStripProps {
   items: SectionStripItem[];
 }
 
+function parseSectionStripItems(raw: unknown): SectionStripItem[] {
+  if (Array.isArray(raw)) return raw as SectionStripItem[];
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as SectionStripItem[];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 function SectionStrip(props: Record<string, unknown>): React.ReactElement {
-  const { heading, items } = props as unknown as SectionStripProps;
+  const { heading } = props as unknown as SectionStripProps;
+  const items = parseSectionStripItems(props.items);
   return (
     <section
       className="np-magazine-section-strip"
