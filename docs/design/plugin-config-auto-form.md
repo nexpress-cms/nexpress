@@ -63,7 +63,7 @@ Existing plugins by config UI shape:
 | block-callout | No (block props only) | n/a |
 | block-embed | No (block props only) | n/a |
 | block-latest-posts | No (block props only) | n/a |
-| block-newsletter | Yes (provider keys) | Small — text + secret fields |
+| block-newsletter | No (block-only — per-instance `propsSchema`) | n/a (revised after code inspection) |
 | block-pricing | No (block props only) | n/a |
 | block-stats | No | n/a |
 | oauth-github | Yes | Small — client id + secret + scopes |
@@ -249,8 +249,8 @@ Pilot the surface against simple plugins:
 | `reading-time` | `z.object({ wordsPerMinute: z.number().int().min(50).max(800).default(220) })` |
 | `oauth-github` | `z.object({ clientId, clientSecret, scopes })` |
 | `oauth-google` | same shape |
-| `block-newsletter` | `z.object({ provider: z.enum(["mailchimp","convertkit","substack"]).default("mailchimp"), apiKey: z.string().min(1).meta({ sensitive: true }), listId: z.string().min(1) })` |
-| `seo-audit` | rule toggles (checkboxes) — `z.object({ requireMetaDescription: z.boolean().default(true), maxTitleLength: z.number().int().min(40).max(80).default(60), … })` |
+| ~~`block-newsletter`~~ | _Removed during G.2.3 — code inspection showed the plugin is block-only with per-instance `propsSchema`. No plugin-global config to migrate._ |
+| `seo-audit` | `z.object({ titleMin: z.number().int().min(0).max(200).default(30), titleMax: z.number().int().min(10).max(300).default(60), descriptionMin / Max, minBodyWords: z.number().default(250), includeDescription: z.boolean().default(true) })` |
 
 Each migration:
 1. Add `configSchema` to the manifest
@@ -315,8 +315,8 @@ Sequence:
 3. **G.2 oauth-github + oauth-google** — proves the
    `sensitive` widget end-to-end (clientSecret masked). One
    PR for both since they share the schema shape.
-4. **G.2 remaining plugins** — newsletter + seo-audit, one per
-   PR.
+4. **G.2 remaining plugins** — seo-audit only (newsletter dropped
+   per § 1 inventory revision).
 5. **G.3 forum hybrid** — proves the auto-form + custom panel
    composition (the only `mountAfter: "auto-form"` consumer
    in the inventory).
@@ -361,7 +361,7 @@ with the same per-key cache shape, auto-tagged with
 | **G.1** | Manifest fields (`configSchema` / `configVersion` / `configMigrate`); `getPluginConfig` + `getPluginConfigWithStatus` + `setPluginConfig` + `getCachedPluginConfig`; `np_plugins.config` → `np_settings` storage migration; `sensitive` widget hint; auto-form injection into the existing plugin detail page | 1 PR, ~750 LOC |
 | **G.2.1** | Pilot — `reading-time` migration | 1 PR, ~150 LOC |
 | **G.2.2** | OAuth plugins (github + google together) — exercises the `sensitive` widget end-to-end | 1 PR, ~250 LOC |
-| **G.2.3** | Newsletter + seo-audit | 1 PR, ~300 LOC |
+| **G.2.3** | seo-audit (newsletter dropped — block-only, no plugin config) | 1 PR, ~300 LOC |
 | **G.3** | Hybrid composition (forum) | 1 PR, ~400 LOC |
 | **G.docs** | plugin-quickstart.md + plugin-manifest.md updates | 1 PR, ~200 LOC |
 
@@ -383,6 +383,24 @@ Total: 6 PRs, ~2050 LOC. G.1 unblocks all subsequent phases.
   site-scoped via `np_settings`. The discriminator only matters
   if multi-site sites want different per-site config. Already
   works via existing siteId filter.
+- **Introspector `.refine()` passthrough** — surfaced in G.2.3
+  while writing the seo-audit schema. Cross-field constraints
+  (e.g. `titleMin <= titleMax`) naturally live as `.refine()` on
+  the outer `z.object`, but the F.3 introspector's `unwrap()`
+  only handles `default / optional / nullable` wrappers. Adding
+  `.refine()` turns the schema into a refine/effects/pipe wrapper
+  whose `_def.type` isn't `"object"`, so the introspector returns
+  an empty field list and the form renders blank. Needs an
+  additional unwrap step that walks past refine wrappers and
+  reads the inner object's shape. ~20 LOC in
+  `packages/core/src/themes/settings-schema.ts`. Plugins that
+  want cross-field validation today have to re-parse the raw
+  config in their `setup()` — out-of-band check.
+- **Introspector `array(string)` support** — surfaced in G.2.2
+  while writing oauth schemas. Plugin scopes are
+  `z.array(z.string())`, but the introspector currently only
+  handles `array(object)` — emits `unsupported`. Operators can't
+  edit oauth scopes via the form today. ~15 LOC follow-up.
 
 ## 11. Locked answers
 
