@@ -20,7 +20,7 @@ content-centric site shape" claim.
 | Phase | Surface |
 |---|---|
 | F.1 | \`requires\`: posts collection with \`heroImage\` (upload), optional \`client\`/\`year\`/\`role\` (text/number, hard:false) |
-| F.3 | **10-field settingsSchema** — gridColumns (number range), cardAspect (enum), hoverStyle (enum), galleryGutter (number range), showProjectMeta (boolean), showProjectTags (boolean), accentColor (color regex), studioName (text), aboutCopy (textarea), showFooterCredit (boolean), copyrightYear (optional number), clientLogos (array of objects with required URL sub-fields) |
+| F.3 | **12-field settingsSchema** — gridColumns + galleryGutter + copyrightYear (number, range-constrained), cardAspect + hoverStyle (enum), showProjectMeta + showProjectTags + showFooterCredit (boolean), accentColor (color regex), studioName + aboutCopy (text — textarea support for `z.string()` is F.5.1/F.3 follow-up), clientLogos (array of objects with required URL sub-fields) |
 | F.4 | 2 blocks: \`portfolio.case-study-hero\` + \`portfolio.image-grid\` |
 | F.6 | 2 navLocations: \`primary\` + \`footerSocial\` |
 | F.7 | \`notFound\`: dark/sparse 404 styled to surface palette |
@@ -29,7 +29,7 @@ content-centric site shape" claim.
 
 | Axis | magazine | docs | portfolio |
 |---|---|---|---|
-| Settings shape | enum/array-heavy | text-heavy (5 fields) | every widget type (10 fields) |
+| Settings shape | enum/array-heavy | text-heavy (5 fields) | broad (12 fields, every supported widget except textarea) |
 | Patterns | yes (2) | no | no |
 | Archives | yes (byCategory + byAuthor) | no (uses routes) | no |
 | Routes | no | yes (/search) | no |
@@ -37,13 +37,16 @@ content-centric site shape" claim.
 | Blocks | 2 | 0 | 2 |
 
 Combined coverage: every contract surface exercised by at least
-one theme, the auto-form generator validated against every
-widget type, both archives + routes paths through F.2, F.4 +
-F.5 patterns covered.
+one theme; auto-form generator validated against every supported
+widget type (text, url, color, number with range, boolean,
+enum, object, array of objects). Multi-line textarea support
+for `z.string()` is the only widget gap, recorded as F.5.1
+follow-up. Both archives + routes paths through F.2 covered;
+F.4 + F.5 patterns covered.
 
 ### What's not in this PR (F.9.1 follow-up)
 
-- **Theme components reading getThemeSettings**: the 10-field
+- **Theme components reading getThemeSettings**: the 12-field
   schema exists and validates, but the existing portfolio
   components still render with hardcoded defaults. Wiring 
   `settings.gridColumns` / `settings.hoverStyle` etc. through

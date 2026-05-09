@@ -63,7 +63,7 @@ export const portfolioSettingsSchema = z.object({
     .string()
     .default("")
     .describe(
-      "Optional short bio for the about page sidebar. Plain text, no markdown.",
+      "Optional short bio for the about page sidebar. Renders as a plain text input in v0.2 — multi-line textarea support for `z.string()` is tracked as F.5.1/F.3 follow-up.",
     ),
   // Footer
   showFooterCredit: z
