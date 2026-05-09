@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   extractErrorComponent,
+  extractMembersNotFoundComponent,
   extractNotFoundComponent,
   extractSeoHooks,
 } from "./error-seo.js";
@@ -22,6 +23,45 @@ describe("extractNotFoundComponent / extractErrorComponent", () => {
     const ErrorComp = () => null;
     expect(extractNotFoundComponent({ notFound: NotFound })).toBe(NotFound);
     expect(extractErrorComponent({ error: ErrorComp })).toBe(ErrorComp);
+  });
+});
+
+describe("extractMembersNotFoundComponent", () => {
+  it("returns null when impl is undefined", () => {
+    expect(extractMembersNotFoundComponent(undefined)).toBeNull();
+  });
+
+  it("returns null when neither member-level nor top-level notFound is declared", () => {
+    expect(extractMembersNotFoundComponent({})).toBeNull();
+    expect(extractMembersNotFoundComponent({ members: {} })).toBeNull();
+  });
+
+  it("prefers `impl.members.notFound` when both are declared", () => {
+    const TopNotFound = () => null;
+    const MemberNotFound = () => null;
+    expect(
+      extractMembersNotFoundComponent({
+        notFound: TopNotFound,
+        members: { notFound: MemberNotFound },
+      }),
+    ).toBe(MemberNotFound);
+  });
+
+  it("falls back to `impl.notFound` when `impl.members.notFound` is omitted", () => {
+    const TopNotFound = () => null;
+    expect(
+      extractMembersNotFoundComponent({ notFound: TopNotFound }),
+    ).toBe(TopNotFound);
+  });
+
+  it("falls back to `impl.notFound` when `impl.members.notFound` is non-function", () => {
+    const TopNotFound = () => null;
+    expect(
+      extractMembersNotFoundComponent({
+        notFound: TopNotFound,
+        members: { notFound: "not a function" },
+      }),
+    ).toBe(TopNotFound);
   });
 });
 

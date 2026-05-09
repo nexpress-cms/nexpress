@@ -24,6 +24,10 @@ export interface NpThemeSeoHooksExtracted {
 interface ImplShape {
   notFound?: unknown;
   error?: unknown;
+  members?: {
+    notFound?: unknown;
+    error?: unknown;
+  };
   seo?: NpThemeSeoHooksExtracted;
 }
 
@@ -35,6 +39,22 @@ export function extractNotFoundComponent(impl: unknown): unknown {
 export function extractErrorComponent(impl: unknown): unknown {
   const shape = impl as ImplShape | undefined;
   return typeof shape?.error === "function" ? shape.error : null;
+}
+
+/**
+ * Phase M.3 — member-tree 404 component, with fallback to the
+ * top-level `impl.notFound`. Returns `null` when neither the
+ * member-specific nor the top-level component is declared (the
+ * caller renders the framework default). Same opacity contract
+ * as `extractNotFoundComponent` — typed as `unknown` here, the
+ * consumer in `apps/web/src/app/(member)/not-found.tsx` casts
+ * to `ComponentType` at the JSX site.
+ */
+export function extractMembersNotFoundComponent(impl: unknown): unknown {
+  const shape = impl as ImplShape | undefined;
+  const memberLevel = shape?.members?.notFound;
+  if (typeof memberLevel === "function") return memberLevel;
+  return typeof shape?.notFound === "function" ? shape.notFound : null;
 }
 
 export function extractSeoHooks(impl: unknown): NpThemeSeoHooksExtracted {
@@ -70,6 +90,17 @@ export async function getActiveThemeError(): Promise<unknown> {
   const theme = await getActiveTheme();
   if (!theme) return null;
   return extractErrorComponent(theme.impl);
+}
+
+/**
+ * Phase M.3 — async sugar for the member-tree 404. Returns the
+ * theme's `impl.members.notFound` when declared, falling back
+ * to its `impl.notFound` (top-level), then `null`.
+ */
+export async function getActiveThemeMembersNotFound(): Promise<unknown> {
+  const theme = await getActiveTheme();
+  if (!theme) return null;
+  return extractMembersNotFoundComponent(theme.impl);
 }
 
 export async function getActiveThemeSeoHooks(): Promise<NpThemeSeoHooksExtracted> {

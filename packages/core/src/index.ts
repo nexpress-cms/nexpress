@@ -403,9 +403,11 @@ export type { NpThemeNavLocationDescriptor } from "./themes/nav-locations.js";
 export {
   extractNotFoundComponent,
   extractErrorComponent,
+  extractMembersNotFoundComponent,
   extractSeoHooks,
   getActiveThemeNotFound,
   getActiveThemeError,
+  getActiveThemeMembersNotFound,
   getActiveThemeSeoHooks,
 } from "./themes/error-seo.js";
 export type { NpThemeSeoHooksExtracted } from "./themes/error-seo.js";
