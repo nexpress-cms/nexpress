@@ -86,8 +86,9 @@ export default function SiteError(props: ErrorPageProps) {
 }
 
 function DefaultError({ error, reset }: ErrorPageProps) {
+  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
   return (
-    <main
+    <div
       className="np-error"
       style={{
         maxWidth: 480,
@@ -117,6 +118,6 @@ function DefaultError({ error, reset }: ErrorPageProps) {
       >
         Try again
       </button>
-    </main>
+    </div>
   );
 }

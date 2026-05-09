@@ -8,8 +8,9 @@ import * as React from "react";
  * when the active theme contributes notFound.
  */
 export function MagazineNotFound(): React.ReactElement {
+  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
   return (
-    <main
+    <div
       className="np-magazine-not-found"
       style={{
         maxWidth: 560,
@@ -64,6 +65,6 @@ export function MagazineNotFound(): React.ReactElement {
       >
         Return to the homepage
       </a>
-    </main>
+    </div>
   );
 }

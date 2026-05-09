@@ -20,8 +20,12 @@ export default async function SiteNotFound() {
     | ComponentType
     | null;
   if (NotFound) return <NotFound />;
+  // `<div>` not `<main>` — (site)/layout.tsx already emits
+  // `<main className="np-site-main">` as the page's single
+  // landmark; nesting another <main> here would violate
+  // "one main per page" (HTML spec) + break landmark navigation.
   return (
-    <main
+    <div
       className="np-not-found"
       style={{
         maxWidth: 480,
@@ -34,6 +38,6 @@ export default async function SiteNotFound() {
       <p style={{ margin: "1rem 0 0", color: "#64748b" }}>
         The page you're looking for doesn't exist or has moved.
       </p>
-    </main>
+    </div>
   );
 }
