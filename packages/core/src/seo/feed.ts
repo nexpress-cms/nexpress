@@ -44,6 +44,15 @@ export interface BuildAtomFeedOptions {
    * via custom site settings hooks.
    */
   locale?: string;
+  /**
+   * Phase F.7 — extra entries to merge into the feed alongside
+   * the collection walk. Supplied by the active theme's
+   * `impl.seo.feedEntries` hook through the route handler.
+   * Deduplicated against the collection-walk output by `id`
+   * (collection-walk wins on collision); the final list is
+   * sorted by `updated` desc and capped by `limit`.
+   */
+  extraEntries?: NpFeedEntry[];
 }
 
 const DEFAULT_FEED_LIMIT = 50;
@@ -119,6 +128,21 @@ export async function buildAtomFeed(
           (doc as { createdAt?: unknown }).createdAt,
       ),
     });
+  }
+
+  // Phase F.7 — merge in theme-supplied extra entries, dedup by
+  // id (collection-walk wins on collision), sort newest-first,
+  // cap at the same limit.
+  const extras = options.extraEntries ?? [];
+  if (extras.length > 0) {
+    const seenIds = new Set(entries.map((e) => e.id));
+    for (const extra of extras) {
+      if (seenIds.has(extra.id)) continue;
+      seenIds.add(extra.id);
+      entries.push(extra);
+    }
+    entries.sort((a, b) => (a.updated < b.updated ? 1 : -1));
+    if (entries.length > limit) entries.length = limit;
   }
 
   return { entries, collection };

@@ -2,6 +2,7 @@ import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   NpValidationError,
+  activeThemeContributesSeo,
   getActiveThemeId,
   getCurrentSiteId,
   getThemeById,
@@ -89,6 +90,18 @@ export async function PUT(request: NextRequest) {
       const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
       const { revalidatePath, revalidateTag } = await import("next/cache");
       revalidateTag(themeCacheTag(siteId), "default");
+      // Phase F.7 — when the (newly) active theme contributes
+      // SEO hooks (`impl.seo.sitemapEntries` / `feedEntries`),
+      // bust the per-site sitemap and feed tags so theme
+      // entries appear immediately rather than waiting for the
+      // 10-minute revalidate window. `activeThemeContributesSeo`
+      // resolves the active theme via the registry — at this
+      // point the row write has already landed, so the call
+      // sees the new theme.
+      if (await activeThemeContributesSeo()) {
+        revalidateTag(`nx:sitemap:${siteId}`, "default");
+        revalidateTag(`nx:feed:${siteId}`, "default");
+      }
       revalidatePath("/", "layout");
     } catch {
       // ignore — see comment above

@@ -5,6 +5,41 @@ import type {
   NpBlockRenderContext,
   NpPattern,
 } from "@nexpress/blocks";
+
+/**
+ * Local mirrors of `NpSitemapEntry` / `NpFeedEntry` from
+ * `@nexpress/core` — same workaround as `NpThemeTokensOverlay`
+ * elsewhere in this file. tsup's DTS bundler intermittently
+ * fails to resolve named types across the `@nexpress/core`
+ * boundary even when the symbols are present in the consumed
+ * `dist/index.d.ts`. The structural mirror keeps theme authors
+ * able to author hooks against the same shape; the runtime
+ * passes values through unchanged so the structural identity
+ * is enough.
+ */
+type LocalNpSitemapEntry = {
+  loc: string;
+  lastmod?: string;
+  changefreq?:
+    | "always"
+    | "hourly"
+    | "daily"
+    | "weekly"
+    | "monthly"
+    | "yearly"
+    | "never";
+  priority?: number;
+};
+
+type LocalNpFeedEntry = {
+  id: string;
+  title: string;
+  summary: string | null;
+  link: string;
+  author: string | null;
+  updated: string;
+  published: string | null;
+};
 import type {
   NpRegisteredTheme,
   NpThemeColors,
@@ -354,6 +389,65 @@ export interface NpThemeImpl {
    * Header" — the editor shows that instead of the default).
    */
   navLocations?: Record<string, NpThemeNavLocation>;
+  /**
+   * Phase F.7 — error / 404 page chrome.
+   *
+   * `notFound` renders for `(site)/not-found.tsx` (any 404
+   * inside the public site). `error` is the Next error
+   * boundary fallback for `(site)/error.tsx` — its props
+   * follow Next's `ErrorBoundary` shape.
+   *
+   * Both fall back to framework defaults when omitted, so
+   * themes can opt into one or both without forcing the other.
+   */
+  notFound?: ComponentType;
+  error?: ComponentType<NpThemeErrorProps>;
+  /**
+   * Phase F.7 — SEO surface contributions.
+   *
+   * Themes can extend the framework-built sitemap and feed
+   * with their own dynamic entries (e.g. magazine archive
+   * pages that aren't in the regular collection walk) or
+   * override the `robots.txt` body. The framework merges
+   * `sitemapEntries` / `feedEntries` results into the standard
+   * output; `robotsTxt` (when present) replaces the framework
+   * default entirely.
+   *
+   * Cache invalidation: when the active theme contributes any
+   * of these hooks, theme switches and theme settings saves
+   * additionally bust the `nx:sitemap:<siteId>` and
+   * `nx:feed:<siteId>` tags so the SEO output stays in sync.
+   * The framework wires this — themes don't have to opt in.
+   */
+  seo?: NpThemeSeoHooks;
+}
+
+/**
+ * Phase F.7 — props passed to a theme `error` component. Mirrors
+ * Next's error boundary shape so themes can drop in a
+ * function-shaped component without translation.
+ */
+export interface NpThemeErrorProps {
+  error: Error & { digest?: string };
+  reset: () => void;
+}
+
+export interface NpThemeSeoHooks {
+  /** Extra sitemap entries beyond the framework's collection
+   *  walk. Returned entries are deduplicated by `loc` against
+   *  the framework output (framework wins on collision). */
+  sitemapEntries?: () =>
+    | Promise<LocalNpSitemapEntry[]>
+    | LocalNpSitemapEntry[];
+  /** Extra feed entries beyond the framework's collection feed.
+   *  Same dedup behavior. */
+  feedEntries?: () =>
+    | Promise<LocalNpFeedEntry[]>
+    | LocalNpFeedEntry[];
+  /** Replace the framework's default `robots.txt` body. Returns
+   *  the full body string. Omitting falls back to the framework
+   *  default. */
+  robotsTxt?: () => string | Promise<string>;
 }
 
 /**

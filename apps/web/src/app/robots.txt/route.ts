@@ -1,5 +1,6 @@
 import {
   NP_DEFAULT_SITE_ID,
+  getActiveThemeSeoHooks,
   getCurrentSiteId,
   getSiteById,
 } from "@nexpress/core";
@@ -42,6 +43,26 @@ async function resolveSiteOrigin(): Promise<string> {
 export async function GET(): Promise<Response> {
   await ensureFor("read");
   const origin = await resolveSiteOrigin();
+
+  // Phase F.7 — when the active theme contributes a `robotsTxt`
+  // hook, that hook OWNS the response body completely. Sites
+  // with strict crawl policies (staging no-index, AI bot
+  // blocks, multi-sitemap announcements) author it once on
+  // the theme; the framework default below is the
+  // sensible-fallback shape.
+  const seoHooks = await getActiveThemeSeoHooks();
+  if (seoHooks.robotsTxt) {
+    const themeBody = await seoHooks.robotsTxt();
+    return new Response(themeBody, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control":
+          "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+      },
+    });
+  }
+
   const body = [
     "User-agent: *",
     "Allow: /",
