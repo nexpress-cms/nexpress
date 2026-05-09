@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { NpFieldConfig } from "@nexpress/core";
+import type { NpFieldConfig, NpThemeSettingsField } from "@nexpress/core";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, Play } from "lucide-react";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
+import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 import { PageHeader } from "../layout/page-header.js";
 import { useForm } from "react-hook-form";
 
@@ -74,6 +75,18 @@ interface PluginAdminPageProps {
    *  plugin doesn't declare scheduled tasks; absent when the queue isn't
    *  wired (e.g. dev without pg-boss). */
   schedules?: ScheduleDef[];
+  /** G.1 — introspected metadata from the plugin's `configSchema`.
+   *  When non-empty, an auto-form replaces the legacy
+   *  `admin.settings.fields` form (per design doc § 5.1.1
+   *  precedence). Server-side introspection happens in the route
+   *  loader; client just renders. */
+  configFields?: NpThemeSettingsField[];
+  /** G.1 — initial value for the auto-form. Comes from
+   *  `getPluginConfig(pluginId)` (versioned envelope unwrapped,
+   *  schema defaults filled in for unsaved fields). Distinct from
+   *  `initialConfig` (legacy `np_plugins.config` style) although
+   *  both currently mirror each other. */
+  initialAutoConfig?: unknown;
 }
 
 type ActionResult = { ok: boolean; data?: unknown; error?: string };
@@ -97,9 +110,16 @@ export function PluginAdminPage({
   admin,
   initialConfig,
   schedules,
+  configFields,
+  initialAutoConfig,
 }: PluginAdminPageProps) {
-  const sections: Array<"settings" | "widgets" | "actions" | "tables" | "schedules"> = [];
-  if (admin.settings) sections.push("settings");
+  const hasAutoForm = (configFields?.length ?? 0) > 0;
+  const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> = [];
+  if (hasAutoForm) sections.push("autoForm");
+  // G.1 § 5.1.1 — auto-form wins; the legacy admin.settings.fields
+  // form is hidden when configSchema is also declared. Host-side
+  // console.warn already names both sources for the operator.
+  if (admin.settings && !hasAutoForm) sections.push("settings");
   if (admin.widgets?.length) sections.push("widgets");
   if (admin.actions?.length) sections.push("actions");
   if (admin.tables?.length) sections.push("tables");
@@ -120,7 +140,17 @@ export function PluginAdminPage({
         </div>
       ) : null}
 
-      {admin.settings ? (
+      {hasAutoForm ? (
+        <ConfigAutoFormCard
+          pluginId={pluginId}
+          fields={configFields!}
+          initialValue={
+            initialAutoConfig && typeof initialAutoConfig === "object"
+              ? (initialAutoConfig as ZodFormValue)
+              : {}
+          }
+        />
+      ) : admin.settings ? (
         <SettingsCard
           pluginId={pluginId}
           settings={admin.settings}
@@ -163,6 +193,84 @@ export function PluginAdminPage({
 // ────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ────────────────────────────────────────────────────────────────────────
+
+function ConfigAutoFormCard({
+  pluginId,
+  fields,
+  initialValue,
+}: {
+  pluginId: string;
+  fields: NpThemeSettingsField[];
+  initialValue: ZodFormValue;
+}) {
+  const [value, setValue] = useState<ZodFormValue>(initialValue);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const handleSubmit = useCallback(async () => {
+    setSaving(true);
+    setToast(null);
+    try {
+      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setToast({
+          type: "error",
+          message: payload?.error?.message ?? "Failed to save config.",
+        });
+        return;
+      }
+      setToast({ type: "success", message: "Config saved." });
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to save config.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [pluginId, value]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {toast ? (
+          <div
+            className={
+              toast.type === "success"
+                ? "mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+            }
+          >
+            {toast.message}
+          </div>
+        ) : null}
+        <ZodForm fields={fields} initialValue={initialValue} onChange={setValue} />
+        <div className="mt-4 flex justify-end">
+          <Button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              void handleSubmit();
+            }}
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Save settings
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SettingsCard({
   pluginId,

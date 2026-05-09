@@ -91,6 +91,8 @@ function FieldDispatch({ field, value, onChange }: FieldProps) {
       return <TextField field={field} value={value} onChange={onChange} />;
     case "textarea":
       return <TextareaField field={field} value={value} onChange={onChange} />;
+    case "password":
+      return <PasswordField field={field} value={value} onChange={onChange} />;
     case "url":
       return <UrlField field={field} value={value} onChange={onChange} />;
     case "color":
@@ -147,6 +149,20 @@ function TextareaField({ field, value, onChange }: FieldProps) {
       <Textarea
         id={field.name}
         rows={f.rows ?? 4}
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </FieldShell>
+  );
+}
+
+function PasswordField({ field, value, onChange }: FieldProps) {
+  return (
+    <FieldShell name={field.name} description={field.description ?? field.name}>
+      <Input
+        id={field.name}
+        type="password"
+        autoComplete="new-password"
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
       />

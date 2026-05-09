@@ -515,6 +515,9 @@ export {
   getPluginRoutes,
   getPluginRegistration,
   getPluginConfig,
+  getPluginConfigWithStatus,
+  setPluginConfig,
+  pluginConfigCacheTag,
   getAllPluginIds,
   getPluginAdminExtension,
   getCollectionTabsForSlug,
@@ -534,6 +537,8 @@ export {
   compareSemver,
   getFrameworkVersion,
 } from "./plugins/index.js";
+
+export type { NpPluginConfigResult } from "./plugins/index.js";
 export type {
   PluginHookHandler,
   PluginRouteHandler,

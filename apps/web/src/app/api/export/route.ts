@@ -7,6 +7,7 @@ import {
   npSettings,
   npNavigation,
   getAllCollectionSlugs,
+  getPluginConfig,
   getPluginRegistration,
   findDocuments,
   can,
@@ -104,15 +105,22 @@ export async function GET(request: NextRequest) {
     // itself is managed via nexpress.config.ts. Skipped entirely when a
     // collection filter is active (partial export = content only).
     const pluginRows = partial ? [] : await db.select().from(npPlugins);
-    const plugins = pluginRows.map((row) => {
-      const registration = getPluginRegistration(row.id);
-      return {
-        id: row.id,
-        enabled: row.enabled,
-        config: row.config,
-        manifestVersion: registration?.version ?? null,
-      };
-    });
+    // G.1 — plugin config moved to np_settings; resolve per-plugin via
+    // `getPluginConfig` which unwraps the versioned envelope. Promise.all
+    // is fine here because the query count grows linearly with installed
+    // plugin count (currently ≤ 11) and exports are rare admin actions.
+    const plugins = await Promise.all(
+      pluginRows.map(async (row) => {
+        const registration = getPluginRegistration(row.id);
+        const config = (await getPluginConfig(row.id)) ?? {};
+        return {
+          id: row.id,
+          enabled: row.enabled,
+          config,
+          manifestVersion: registration?.version ?? null,
+        };
+      }),
+    );
 
     return npSuccessResponse({
       version: EXPORT_VERSION,

@@ -308,10 +308,16 @@ export const npSites = pgTable(
   (table) => [unique("np_sites_hostname_idx").on(table.hostname)],
 );
 
+/**
+ * G.1 — lean meta row. Plugin config moved to `np_settings` rows
+ * keyed by `plugin.config:<id>` (see decision E in
+ * `docs/design/plugin-config-auto-form.md`); the legacy `config`
+ * jsonb column was dropped. Reads / writes go through
+ * `getPluginConfig` / `setPluginConfig` in the config module.
+ */
 export const npPlugins = pgTable("np_plugins", {
   id: text("id").primaryKey(),
   enabled: boolean("enabled").default(true).notNull(),
-  config: jsonb("config").$type<unknown>().notNull(),
   installedAt: timestamp("installed_at", { withTimezone: true, mode: "date" })
     .defaultNow()
     .notNull(),

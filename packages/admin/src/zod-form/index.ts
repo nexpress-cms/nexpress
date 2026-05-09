@@ -5,8 +5,9 @@
  * (introspected server-side from a theme's Zod settingsSchema)
  * without requiring zod in the browser bundle.
  *
- * Used by the theme settings panel today; plugin config UIs
- * will migrate as a follow-up (design doc §4.3 deferred list).
+ * G.1 — also drives plugin config forms
+ * (`packages/core/src/plugins/config.ts`); the metadata shape
+ * is shared since both surfaces produce the same JSON.
  */
 
 export { ZodForm, type ZodFormProps, type ZodFormValue } from "./form-renderer.js";

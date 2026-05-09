@@ -26,6 +26,7 @@ export {
 
 export {
   getCachedThemeSettings,
+  getCachedPluginConfig,
   cachedThemeFetch,
   type NpCachedThemeFetchOptions,
 } from "./cache.js";

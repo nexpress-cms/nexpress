@@ -21,6 +21,7 @@ import type { ZodTypeAny } from "zod";
 export type NpThemeSettingsField =
   | NpThemeSettingsTextField
   | NpThemeSettingsTextareaField
+  | NpThemeSettingsPasswordField
   | NpThemeSettingsUrlField
   | NpThemeSettingsColorField
   | NpThemeSettingsNumberField
@@ -51,6 +52,10 @@ export interface NpThemeSettingsTextareaField extends NpThemeSettingsFieldBase {
    *  Theme authors set this via `.meta({ widget: "textarea",
    *  rows: 6 })`. Defaults to 4 when unset. */
   rows?: number;
+}
+
+export interface NpThemeSettingsPasswordField extends NpThemeSettingsFieldBase {
+  type: "password";
 }
 
 export interface NpThemeSettingsUrlField extends NpThemeSettingsFieldBase {
@@ -246,6 +251,9 @@ function introspectField(
       //
       // Both patterns are valid in author code; both should work.
       const meta = readMeta(node) ?? readMeta(inner);
+      if (meta && meta.sensitive === true) {
+        return { ...base, type: "password" };
+      }
       if (meta && meta.widget === "textarea") {
         const rows =
           typeof meta.rows === "number" && meta.rows > 0

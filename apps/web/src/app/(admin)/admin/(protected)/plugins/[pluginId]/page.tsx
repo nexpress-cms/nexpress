@@ -3,11 +3,14 @@ import { notFound } from "next/navigation";
 import {
   getOptionalJobQueue,
   getPluginAdminExtension,
+  getPluginConfigWithStatus,
   getPluginRegistration,
   getPluginState,
+  introspectThemeSettingsSchema,
   verifyTokenFull,
   can,
   type NpPluginScheduleStats,
+  type NpThemeSettingsField,
 } from "@nexpress/core";
 import { PluginAdminPage } from "@nexpress/admin/client";
 
@@ -36,7 +39,14 @@ export default async function PluginAdminRoute({ params }: PageProps) {
   const adminExt = getPluginAdminExtension(pluginId);
   const state = await getPluginState(getDb(), pluginId);
 
-  if (!registration || !adminExt) {
+  // G.1 — a plugin that declares only `configSchema` (no
+  // `admin.settings.fields`, no widgets/actions/tables) wouldn't
+  // currently get an admin entry because `getPluginAdminExtension`
+  // returns undefined. Allow the detail page to load whenever the
+  // plugin is registered AND has either an admin extension or a
+  // configSchema. The admin extension shape that gets passed down
+  // can be the empty object in the configSchema-only case.
+  if (!registration || (!adminExt && !registration.configSchema)) {
     notFound();
   }
 
@@ -75,13 +85,31 @@ export default async function PluginAdminRoute({ params }: PageProps) {
     })
     .sort((a, b) => a.taskId.localeCompare(b.taskId));
 
+  // G.1 — when configSchema is declared, introspect server-side
+  // (zod schema lives in the plugin package's server bundle; we
+  // don't ship it to the browser) and pull the initial value from
+  // np_settings via getPluginConfigWithStatus. The auto-form
+  // mounts above any legacy admin.settings.fields, which is also
+  // suppressed at render time per § 5.1.1.
+  let configFields: NpThemeSettingsField[] | undefined;
+  let initialAutoConfig: unknown | undefined;
+  if (registration.configSchema) {
+    configFields = introspectThemeSettingsSchema(
+      registration.configSchema as Parameters<typeof introspectThemeSettingsSchema>[0],
+    );
+    const status = await getPluginConfigWithStatus(pluginId);
+    initialAutoConfig = status.value;
+  }
+
   return (
     <PluginAdminPage
       pluginId={pluginId}
       pluginName={registration.name}
-      admin={adminExt}
-      initialConfig={state?.config ?? {}}
+      admin={adminExt ?? {}}
+      initialConfig={(initialAutoConfig as Record<string, unknown>) ?? {}}
       schedules={schedules}
+      configFields={configFields}
+      initialAutoConfig={initialAutoConfig}
     />
   );
 }

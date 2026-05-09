@@ -4,17 +4,24 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { npPlugins } from "../db/schema/system.js";
 import { invalidatePluginEnabled } from "./enabled-gate.js";
 
+/**
+ * G.1 — `np_plugins` is now a lean meta row: `(id, enabled,
+ * installed_at, updated_at)`. The legacy `config` jsonb column was
+ * dropped in favor of `np_settings` rows keyed by `plugin.config:<id>`
+ * (see `packages/core/src/plugins/config.ts` and decision E in
+ * `docs/design/plugin-config-auto-form.md`). Read / write plugin
+ * config through `getPluginConfig` / `setPluginConfig` from the
+ * config module — `getPluginState` only knows about the enable flag.
+ */
 export interface NpPluginState {
   id: string;
   enabled: boolean;
-  config: Record<string, unknown>;
   installedAt: Date;
   updatedAt: Date;
 }
 
 export interface NpPluginStateUpdate {
   enabled?: boolean;
-  config?: Record<string, unknown>;
 }
 
 interface DrizzleDb {
@@ -23,24 +30,15 @@ interface DrizzleDb {
   update: NodePgDatabase<Record<string, unknown>>["update"];
 }
 
-function normalizeConfig(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, unknown>;
-}
-
 function toState(row: {
   id: string;
   enabled: boolean;
-  config: unknown;
   installedAt: Date;
   updatedAt: Date;
 }): NpPluginState {
   return {
     id: row.id,
     enabled: row.enabled,
-    config: normalizeConfig(row.config),
     installedAt: row.installedAt,
     updatedAt: row.updatedAt,
   };
@@ -52,7 +50,6 @@ export async function listPluginStates(
   const rows = (await (db as unknown as DrizzleDb).select().from(npPlugins)) as Array<{
     id: string;
     enabled: boolean;
-    config: unknown;
     installedAt: Date;
     updatedAt: Date;
   }>;
@@ -71,7 +68,6 @@ export async function getPluginState(
     .limit(1)) as Array<{
     id: string;
     enabled: boolean;
-    config: unknown;
     installedAt: Date;
     updatedAt: Date;
   }>;
@@ -81,8 +77,8 @@ export async function getPluginState(
 
 /**
  * Ensures every known plugin id has a row in `np_plugins`. Missing rows are
- * inserted with `enabled=true` and an empty config. Existing rows are never
- * touched — this is called on boot and must not clobber operator edits.
+ * inserted with `enabled=true`. Existing rows are never touched — this is
+ * called on boot and must not clobber operator edits.
  *
  * Uses a single INSERT … ON CONFLICT DO NOTHING so concurrent boots (multi-
  * process deployments) can all race safely without unique-key violations.
@@ -100,7 +96,6 @@ export async function syncPluginRegistrations(
       pluginIds.map((id) => ({
         id,
         enabled: true,
-        config: {},
         installedAt: now,
         updatedAt: now,
       })),
@@ -120,9 +115,6 @@ export async function updatePluginState(
   if (patch.enabled !== undefined) {
     values.enabled = patch.enabled;
   }
-  if (patch.config !== undefined) {
-    values.config = patch.config;
-  }
 
   const rows = (await (db as unknown as DrizzleDb)
     .update(npPlugins)
@@ -131,7 +123,6 @@ export async function updatePluginState(
     .returning()) as Array<{
     id: string;
     enabled: boolean;
-    config: unknown;
     installedAt: Date;
     updatedAt: Date;
   }>;

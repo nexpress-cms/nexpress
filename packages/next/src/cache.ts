@@ -3,10 +3,12 @@ import {
   getActiveThemeId,
   getCurrentSiteId,
   getNavigation,
+  getPluginConfig,
   getRegisteredThemes,
   getTheme,
   getThemeById,
   getThemeSettings,
+  pluginConfigCacheTag,
 } from "@nexpress/core";
 import type {
   NpNavItem,
@@ -114,6 +116,36 @@ export async function getCachedThemeSettings(
     return await cached();
   } catch (error) {
     if (isMissingIncrementalCache(error)) return getThemeSettings(themeId);
+    throw error;
+  }
+}
+
+/**
+ * G.1 — cached read of a plugin's operator config.
+ *
+ * Tag scheme uses `np:plugin:<id>` (per CLAUDE.md "Naming
+ * convention" the framework's owned-identifier prefix is `np`;
+ * the legacy `nx:theme:*` tags above predate the prefix
+ * migration and are NOT the convention for new tags). Bust on
+ * save in the admin route handler.
+ *
+ * `siteId` keyParts entry keeps multi-tenant deployments scoped
+ * — the same plugin id can have different config per site, and
+ * cache entries shouldn't cross.
+ */
+export async function getCachedPluginConfig(
+  pluginId: string,
+): Promise<unknown> {
+  const siteId = await resolveSiteId();
+  const cached = unstable_cache(
+    () => getPluginConfig(pluginId),
+    ["np:plugin:config", siteId, pluginId],
+    { tags: [pluginConfigCacheTag(pluginId)], revalidate: REVALIDATE_SECONDS },
+  );
+  try {
+    return await cached();
+  } catch (error) {
+    if (isMissingIncrementalCache(error)) return getPluginConfig(pluginId);
     throw error;
   }
 }

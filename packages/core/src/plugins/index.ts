@@ -4,7 +4,6 @@ export {
   runHookAndCollect,
   getPluginRoutes,
   getPluginRegistration,
-  getPluginConfig,
   getAllPluginIds,
   getPluginAdminExtension,
   getCollectionTabsForSlug,
@@ -28,6 +27,17 @@ export type {
   ResolvedCollectionTab,
   ResolvedDashboardWidget,
 } from "./host.js";
+
+export {
+  getPluginConfig,
+  getPluginConfigWithStatus,
+  setPluginConfig,
+  pluginConfigCacheTag,
+  applyPluginConfigMigration,
+  isVersionedPluginConfig,
+} from "./config.js";
+
+export type { NpPluginConfigResult, NpVersionedPluginConfig } from "./config.js";
 
 export {
   listPluginStates,
