@@ -576,6 +576,62 @@ export interface NpThemeManifest {
    * introspection / validation.
    */
   settingsSchema?: unknown;
+  /**
+   * v0.3 (D) — settings schema version, used by the migration
+   * pipeline to detect when stored settings need upgrading.
+   *
+   * Theme authors bump this whenever `settingsSchema` changes
+   * shape in a non-additive way (renaming a field, removing one,
+   * tightening a default). Adding a NEW optional field is
+   * compatible without bumping — Zod fills the missing key with
+   * the field's default on parse.
+   *
+   * The framework treats absent / undefined as `1` (the v0.2
+   * baseline). Themes that never bump stay forever at v1, no
+   * migration ever runs.
+   */
+  settingsVersion?: number;
+  /**
+   * v0.3 (D) — migration function that brings a value persisted
+   * under an older `settingsVersion` up to the current shape.
+   *
+   * Called on read when stored version < `settingsVersion`. The
+   * function receives the OLD value (whatever shape v(N-1) had)
+   * and the version it came from (so multi-step migrations can
+   * branch). Returns a value that matches the CURRENT
+   * `settingsSchema`. The framework re-parses the result and
+   * falls back to schema defaults if the migration's output
+   * still doesn't validate (defensive — a buggy migrate fn
+   * shouldn't blow up the public site).
+   *
+   * The framework persists the migrated value back on the
+   * operator's NEXT save through the admin form. Read paths
+   * don't auto-write; the migration is recomputed on each read
+   * until the operator triggers a save. That keeps read paths
+   * pure (matches every other cached read in the framework).
+   *
+   * Example for a `accent` → `accentColor` rename at v2:
+   *
+   * ```ts
+   * defineTheme({
+   *   manifest: {
+   *     settingsSchema: z.object({
+   *       accentColor: z.string().regex(...).optional(),
+   *       ...
+   *     }),
+   *     settingsVersion: 2,
+   *     settingsMigrate: (old, from) => {
+   *       if (from === 1) {
+   *         const o = old as { accent?: string };
+   *         return { ...o, accentColor: o.accent };
+   *       }
+   *       return old;
+   *     },
+   *   }
+   * })
+   * ```
+   */
+  settingsMigrate?: (old: unknown, fromVersion: number) => unknown;
 }
 
 /**
