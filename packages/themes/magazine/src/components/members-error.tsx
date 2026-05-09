@@ -29,8 +29,12 @@ export default function MagazineMembersError({
   error,
   reset,
 }: MagazineMembersErrorProps) {
+  // `<div>` rather than `<main>` because (member)/error.tsx is
+  // rendered as the body of (member)/layout.tsx's
+  // `<main className="np-member-main">` — second `<main>`
+  // would nest semantic landmarks.
   return (
-    <main
+    <div
       className="np-magazine np-magazine-members-error"
       style={{
         maxWidth: 560,
@@ -125,6 +129,6 @@ export default function MagazineMembersError({
           Back to sign in
         </a>
       </div>
-    </main>
+    </div>
   );
 }

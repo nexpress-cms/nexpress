@@ -28,6 +28,13 @@ export async function MagazineMembersShell({ children }: { children: ReactNode }
   if (settings.accentColor) {
     styleVars["--np-color-primary"] = settings.accentColor;
   }
+  // Note: this wrapper uses `<div>` not `<main>` for the
+  // membership zone. The (member)/layout.tsx already emits a
+  // `<main className="np-member-main">` inside `children`, so a
+  // second `<main>` here would nest two semantic landmarks
+  // (HTML spec: one `<main>` per page). Matches the pattern
+  // `MagazineShell` uses for the public site — shells stay
+  // structural, the `<main>` lives one level deeper in `children`.
   return (
     <div
       className="np-magazine"
@@ -38,9 +45,9 @@ export async function MagazineMembersShell({ children }: { children: ReactNode }
       }
     >
       <MagazineHeader />
-      <main className="np-magazine-members">
+      <div className="np-magazine-members">
         <div className="np-magazine-members-column">{children}</div>
-      </main>
+      </div>
       <MagazineFooter />
     </div>
   );

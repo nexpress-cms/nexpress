@@ -74,8 +74,11 @@ export default function MemberError(props: ErrorPageProps) {
 }
 
 function DefaultMemberError({ error, reset }: ErrorPageProps) {
+  // `<div>` rather than `<main>` because (member)/layout.tsx
+  // already emits a `<main className="np-member-main">` wrapping
+  // this body — second `<main>` would nest semantic landmarks.
   return (
-    <main
+    <div
       className="np-error np-error-member"
       style={{
         maxWidth: 480,
@@ -120,6 +123,6 @@ function DefaultMemberError({ error, reset }: ErrorPageProps) {
           Back to sign in
         </a>
       </div>
-    </main>
+    </div>
   );
 }

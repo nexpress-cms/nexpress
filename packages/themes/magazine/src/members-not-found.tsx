@@ -13,8 +13,13 @@ import * as React from "react";
  * declared.
  */
 export function MagazineMembersNotFound(): React.ReactElement {
+  // `<div>` rather than `<main>` because (member)/not-found.tsx
+  // is rendered as the body of (member)/layout.tsx's
+  // `<main className="np-member-main">` — emitting another
+  // `<main>` here would nest semantic landmarks (HTML spec:
+  // one `<main>` per page).
   return (
-    <main
+    <div
       className="np-magazine-members-not-found"
       style={{
         maxWidth: 560,
@@ -70,6 +75,6 @@ export function MagazineMembersNotFound(): React.ReactElement {
       >
         Go to sign in
       </a>
-    </main>
+    </div>
   );
 }

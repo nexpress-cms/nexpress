@@ -25,8 +25,12 @@ export default async function MemberNotFound() {
     | ComponentType
     | null;
   if (NotFound) return <NotFound />;
+  // `<div>` rather than `<main>` because (member)/layout.tsx
+  // already emits a `<main className="np-member-main">` wrapping
+  // this body — second `<main>` would nest semantic landmarks
+  // (HTML spec: one `<main>` per page).
   return (
-    <main
+    <div
       className="np-not-found np-not-found-member"
       style={{
         maxWidth: 480,
@@ -56,6 +60,6 @@ export default async function MemberNotFound() {
           Go to sign in
         </a>
       </p>
-    </main>
+    </div>
   );
 }
