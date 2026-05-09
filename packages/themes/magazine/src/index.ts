@@ -1,7 +1,13 @@
+import { findDocuments } from "@nexpress/core";
 import { defineTheme } from "@nexpress/theme";
 
+import { magazineArchives } from "./archives.js";
+import { magazineBlocks } from "./blocks.js";
 import { MagazineFooter } from "./footer.js";
 import { MagazineHeader } from "./header.js";
+import { MagazineNotFound } from "./not-found.js";
+import { magazinePatterns } from "./patterns.js";
+import { magazineSettingsSchema } from "./settings.js";
 import { MagazineShell } from "./shell.js";
 import { magazineCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
@@ -31,6 +37,46 @@ export const magazineTheme = defineTheme({
       "Editorial magazine layout. Display-serif masthead with mobile drawer, three-column footer with newsletter, feature-article post template with drop cap, magazine-style index with lead piece + archive grid.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
+    // Phase F.1 — declared data-shape requirements. F.8's CLI
+    // (`pnpm nexpress theme:install @nexpress/theme-magazine`)
+    // patches operator collections to satisfy these; admin
+    // surfaces mismatches before activation.
+    requires: {
+      collections: {
+        posts: {
+          fields: {
+            featured: { type: "checkbox" },
+            coverImage: { type: "upload" },
+            categories: {
+              type: "relationship",
+              relationTo: "categories",
+              hasMany: true,
+            },
+            author: {
+              type: "relationship",
+              relationTo: "authors",
+              hard: false,
+            },
+          },
+        },
+        categories: {
+          createIfAbsent: true,
+          fields: {
+            name: { type: "text", required: true },
+            description: { type: "textarea", hard: false },
+          },
+        },
+        authors: {
+          createIfAbsent: true,
+          fields: {
+            name: { type: "text", required: true },
+            bio: { type: "textarea", hard: false },
+          },
+        },
+      },
+    },
+    // Phase F.3 — operator-tunable settings.
+    settingsSchema: magazineSettingsSchema,
   },
   impl: {
     shell: MagazineShell,
@@ -111,6 +157,61 @@ export const magazineTheme = defineTheme({
             "Magazine-style index — lead piece on top, two-up secondary row, archive grid below.",
           component: PostListTemplate,
         },
+      },
+    },
+    // Phase F.2 — sugar archive routes for posts.
+    archives: magazineArchives,
+    // Phase F.4 — magazine-shipped block types.
+    blocks: magazineBlocks,
+    // Phase F.5 — magazine-shipped patterns.
+    patterns: magazinePatterns,
+    // Phase F.6 — declared nav locations the editor surfaces
+    // with friendly labels.
+    navLocations: {
+      primary: {
+        label: "Masthead nav",
+        description: "Sections shown in the masthead header.",
+        maxItems: 6,
+      },
+      footerSections: {
+        label: "Footer sections",
+        description: "Sections column in the three-column footer.",
+        maxItems: 8,
+      },
+      footerColophon: {
+        label: "Footer colophon",
+        description: "About / contact links beside the colophon.",
+        maxItems: 6,
+      },
+    },
+    // Phase F.7 — error / 404 + SEO contributions. The magazine
+    // 404 styled to match editorial chrome; sitemap exposes the
+    // archive routes (operator's collection walk doesn't produce
+    // /category/foo etc. on its own).
+    notFound: MagazineNotFound,
+    seo: {
+      sitemapEntries: async () => {
+        // Re-query categories to surface every category archive
+        // page in the sitemap. Lightweight (categories collection
+        // is small and capped); runs once per cache window.
+        const result = await findDocuments<Record<string, unknown>>(
+          "categories",
+          { where: { status: "published" }, limit: 200 },
+        );
+        return result.docs
+          .filter((d) => typeof d.slug === "string")
+          .map((d) => {
+            const updatedAt = d.updatedAt;
+            return {
+              loc: `/category/${d.slug as string}`,
+              lastmod:
+                updatedAt instanceof Date
+                  ? updatedAt.toISOString()
+                  : undefined,
+              changefreq: "daily" as const,
+              priority: 0.7,
+            };
+          });
       },
     },
   },
