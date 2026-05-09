@@ -420,6 +420,45 @@ export interface NpThemeImpl {
   notFound?: ComponentType;
   error?: ComponentType<NpThemeErrorProps>;
   /**
+   * Phase M.1 — member surface skinning.
+   *
+   * Optional override slots for the `(member)/members/*` route
+   * tree (login / register / forgot-password / reset-password /
+   * verify / me/notifications). Lets a theme wrap the
+   * framework-owned auth pages in the same masthead + footer it
+   * uses for the public site, without rewriting the form-submit
+   * + email-verification + OAuth flows that live in the framework.
+   *
+   * **Fallback chain** at the `(member)/layout.tsx` level:
+   *   1. `impl.members.shell` truthy → use it
+   *   2. `impl.members.shell === null` → opt out explicitly
+   *      (member pages render bare, no shell wrap — useful for
+   *      themes where the public-site shell would clash with
+   *      narrow auth forms)
+   *   3. `impl.members.shell === undefined` → fall back to
+   *      `impl.shell` (the public-site shell)
+   *   4. `impl.shell === undefined` → transparent fragment
+   *
+   * `pageTitle` carries theme-provided variants of the framework's
+   * default member chrome strings ("Sign in", "Create account",
+   * etc.). Operators with the i18n package layer per-locale
+   * overrides on top via the existing UI-string registry.
+   *
+   * See `docs/design/member-surface-skinning.md` for the contract
+   * + reference implementation plan.
+   */
+  members?: {
+    shell?: ComponentType<NpThemeShellProps> | null;
+    pageTitle?: {
+      login?: string;
+      register?: string;
+      forgotPassword?: string;
+      resetPassword?: string;
+      verify?: string;
+      notifications?: string;
+    };
+  };
+  /**
    * Phase F.7 — SEO surface contributions.
    *
    * Themes can extend the framework-built sitemap and feed
