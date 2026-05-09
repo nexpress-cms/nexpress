@@ -457,6 +457,34 @@ export interface NpThemeImpl {
       verify?: string;
       notifications?: string;
     };
+    /**
+     * Phase M.3 — member-tree 404. Mirrors `impl.notFound` for
+     * the `(member)/members/*` route subtree. Server-rendered;
+     * core resolves it via `getActiveThemeMembersNotFound()` and
+     * `apps/web/src/app/(member)/not-found.tsx` casts to
+     * `ComponentType` at the JSX site.
+     *
+     * Falls back to `impl.notFound` when omitted (which itself
+     * falls back to the framework default). Set explicitly when
+     * the member surface needs a different 404 voice — e.g. a
+     * "this auth link expired" tone vs the public site's "this
+     * post no longer exists" tone.
+     */
+    notFound?: ComponentType;
+    /**
+     * Phase M.3 — member-tree error boundary. Forward-compat
+     * type marker; behaves the same way `impl.error` does for
+     * the public site (F.7.1 delegation pattern: themes ship a
+     * `./components/members-error` client subpath, the operator's
+     * `(member)/error.tsx` lazy-imports it based on the active
+     * theme id from the `<style data-np-theme>` tag).
+     *
+     * Falls back to `impl.error` when omitted; ultimately to the
+     * framework default. The runtime registry of theme-id → lazy
+     * import lives in `apps/web/src/app/(member)/error.tsx`;
+     * adding a theme means adding an entry there.
+     */
+    error?: ComponentType<NpThemeErrorProps>;
   };
   /**
    * Phase F.7 — SEO surface contributions.
