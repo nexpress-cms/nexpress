@@ -24,7 +24,11 @@ export {
   type NpThemeRouteMatch,
 } from "./route-dispatcher.js";
 
-export { getCachedThemeSettings } from "./cache.js";
+export {
+  getCachedThemeSettings,
+  cachedThemeFetch,
+  type NpCachedThemeFetchOptions,
+} from "./cache.js";
 
 export {
   createCollectionHelpers,

@@ -4,6 +4,7 @@ import {
   findDocuments,
   type NpFindResult,
 } from "@nexpress/core";
+import { cachedThemeFetch } from "@nexpress/next";
 
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
@@ -127,45 +128,69 @@ export async function CategoryArchive({
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const slug = params.slug ?? "";
   const settings = await resolveMagazineSettings();
-  // Find category by slug. The category collection is required by
-  // the manifest (see settings.ts/manifest.requires); operators
-  // who skip `pnpm nexpress theme:install` see an empty result.
-  const cats = await findDocuments<Record<string, unknown>>("categories", {
-    where: { slug },
-    limit: 1,
-  });
-  const category = cats.docs[0];
-  if (!category) {
-    return (
-      <ArchiveLayout
-        title="Category not found"
-        result={{
-          docs: [],
-          totalDocs: 0,
-          totalPages: 0,
-          page: 1,
-          limit: settings.postsPerPage,
-          hasNextPage: false,
-          hasPrevPage: false,
-        }}
-      />
-    );
-  }
-  const result = await findDocuments<Record<string, unknown>>("posts", {
-    where: {
-      status: "published",
-      categories: category.id as string,
+  // v0.3 (H) — wrap the category + posts fetch in
+  // `cachedThemeFetch` so /category/<slug> shares cache entries
+  // per slug. The `nx:theme:<siteId>` tag (auto-applied) busts
+  // on theme switch / settings save / theme uninstall.
+  //
+  // extraTags cover BOTH collections this archive reads:
+  //   - `nx:collection:posts`     — new published post under
+  //     this category re-renders the listing
+  //   - `nx:collection:categories` — newly-created / renamed
+  //     category invalidates the "not found" branch and lets
+  //     `name`/`description` updates land within seconds
+  // saveDocument fires `revalidateTag("nx:collection:<slug>")`
+  // on every write through revalidateCollection, so this is
+  // automatic — operators don't have to think about it.
+  const data = await cachedThemeFetch(
+    ["magazine.category-archive", slug, String(settings.postsPerPage)],
+    async () => {
+      const cats = await findDocuments<Record<string, unknown>>(
+        "categories",
+        { where: { slug }, limit: 1 },
+      );
+      const category = cats.docs[0];
+      if (!category) {
+        return { category: null, posts: emptyResult(settings.postsPerPage) };
+      }
+      const posts = await findDocuments<Record<string, unknown>>("posts", {
+        where: {
+          status: "published",
+          categories: category.id as string,
+        },
+        sort: "-publishedAt",
+        limit: settings.postsPerPage,
+      });
+      return { category, posts };
     },
-    sort: "-publishedAt",
-    limit: settings.postsPerPage,
-  });
+    {
+      revalidate: 60,
+      extraTags: ["nx:collection:posts", "nx:collection:categories"],
+    },
+  );
+
+  if (!data.category) {
+    return <ArchiveLayout title="Category not found" result={data.posts} />;
+  }
   return (
     <ArchiveLayout
-      title={(category.name as string) ?? slug}
-      subtitle={category.description as string | undefined}
-      result={result}
+      title={(data.category.name as string) ?? slug}
+      subtitle={data.category.description as string | undefined}
+      result={data.posts}
     />
   );
+}
+
+function emptyResult(limit: number): NpFindResult<Record<string, unknown>> {
+  return {
+    docs: [],
+    totalDocs: 0,
+    totalPages: 0,
+    page: 1,
+    limit,
+    hasNextPage: false,
+    hasPrevPage: false,
+  };
 }
 
 export async function AuthorArchive({
@@ -173,33 +198,46 @@ export async function AuthorArchive({
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const id = params.id ?? "";
   const settings = await resolveMagazineSettings();
-  // Look up the author's display name so the page reads
-  // "Stories by Jane Doe" instead of "Stories by <uuid>".
-  // The authors collection is required by the theme manifest;
-  // a missing row returns null and we fall back to the id.
-  const authorRes = await findDocuments<Record<string, unknown>>("authors", {
-    where: { id },
-    limit: 1,
-  });
-  const author = authorRes.docs[0];
+  // v0.3 (H) — same caching shape as CategoryArchive. /author/<id>
+  // shares one entry per id. extraTags cover both reads:
+  //   - `nx:collection:posts`   — author publishes a new post
+  //   - `nx:collection:authors` — author renames / updates bio
+  // and the auto-applied `nx:theme:<siteId>` covers theme switch
+  // / settings save / uninstall.
+  const data = await cachedThemeFetch(
+    ["magazine.author-archive", id, String(settings.postsPerPage)],
+    async () => {
+      const authorRes = await findDocuments<Record<string, unknown>>(
+        "authors",
+        { where: { id }, limit: 1 },
+      );
+      const author = authorRes.docs[0] ?? null;
+      const posts = await findDocuments<Record<string, unknown>>("posts", {
+        where: { status: "published", author: id },
+        sort: "-publishedAt",
+        limit: settings.postsPerPage,
+      });
+      return { author, posts };
+    },
+    {
+      revalidate: 60,
+      extraTags: ["nx:collection:posts", "nx:collection:authors"],
+    },
+  );
+
   const displayName =
-    typeof author?.name === "string" && author.name.length > 0
-      ? author.name
+    typeof data.author?.name === "string" && data.author.name.length > 0
+      ? data.author.name
       : id;
-  const result = await findDocuments<Record<string, unknown>>("posts", {
-    where: { status: "published", author: id },
-    sort: "-publishedAt",
-    limit: settings.postsPerPage,
-  });
   return (
     <ArchiveLayout
       title={`Stories by ${displayName}`}
       subtitle={
-        typeof author?.bio === "string" && author.bio.length > 0
-          ? author.bio
+        typeof data.author?.bio === "string" && data.author.bio.length > 0
+          ? data.author.bio
           : "Recent posts from this author."
       }
-      result={result}
+      result={data.posts}
     />
   );
 }

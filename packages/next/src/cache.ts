@@ -118,6 +118,102 @@ export async function getCachedThemeSettings(
   }
 }
 
+export interface NpCachedThemeFetchOptions {
+  /** Cache TTL in seconds. Defaults to 60 — theme route data
+   *  (archives, search results, etc.) tends to be a lot more
+   *  dynamic than tokens / active id, so a tight default keeps
+   *  freshness reasonable while still cutting the per-request
+   *  DB hit when traffic spikes on the same URL. Theme authors
+   *  can pass a longer value for low-churn routes. */
+  revalidate?: number;
+  /** Extra tags to add alongside the always-on
+   *  `nx:theme:<siteId>` so theme-switch / settings-save still
+   *  bust this entry. Use for collection-scoped tags like
+   *  `nx:collection:posts` so a content edit busts the relevant
+   *  cached archive too. */
+  extraTags?: string[];
+}
+
+/**
+ * v0.3 (H) — per-route cache helper for theme route data
+ * fetching.
+ *
+ * Theme routes (archives, custom URL patterns) render through
+ * the framework's catch-all dispatcher, which doesn't expose
+ * Next's route-segment `revalidate` at a per-pattern grain
+ * (`/category/:slug` and `/author/:slug` share one segment).
+ * This helper lets theme authors wrap their data fetches with
+ * a per-key `unstable_cache` entry that:
+ *
+ *   - Auto-tags with `nx:theme:<siteId>` so theme switch /
+ *     settings save / theme uninstall bust the cache.
+ *   - Keys by site + author-supplied parts so `/category/tech`
+ *     and `/category/design` cache independently.
+ *   - Falls back to the uncached read when Next's incremental
+ *     cache isn't reachable (integration tests, scripts).
+ *
+ * **Key namespacing** — prefix the first key part with a
+ * theme/plugin id so two themes (or a theme + a plugin) using
+ * the same route name don't collide on the cache. Convention:
+ * `["<theme-id>.<route-name>", ...inputs]`.
+ *
+ * **Include every fetcher input in `keyParts`** — the cache
+ * keys ONLY by what's in `keyParts`, not by what the fetcher
+ * closes over. A `slug`, `pageSize`, or `locale` the fetcher
+ * uses MUST appear in `keyParts` or different inputs will
+ * silently share a cache entry.
+ *
+ * Example:
+ *
+ * ```ts
+ * import { cachedThemeFetch } from "@nexpress/next";
+ *
+ * export async function CategoryArchive({ params }) {
+ *   const data = await cachedThemeFetch(
+ *     ["magazine.category-archive", params.slug, String(pageSize)],
+ *     async () => {
+ *       const cats = await findDocuments("categories", {...});
+ *       const posts = await findDocuments("posts", {...});
+ *       return { cats, posts };
+ *     },
+ *     {
+ *       revalidate: 60,
+ *       extraTags: ["nx:collection:posts", "nx:collection:categories"],
+ *     },
+ *   );
+ *   return <ArchiveLayout posts={data.posts.docs} />;
+ * }
+ * ```
+ *
+ * `extraTags` is the escape hatch for authors who want a
+ * collection edit to also bust the cached archive — pass a
+ * `nx:collection:<slug>` tag for EVERY collection the fetcher
+ * reads from. The framework's `revalidateCollection` (called
+ * inside `saveDocument`) fires those tags on every write.
+ */
+export async function cachedThemeFetch<T>(
+  keyParts: string[],
+  fetcher: () => Promise<T>,
+  options?: NpCachedThemeFetchOptions,
+): Promise<T> {
+  const siteId = await resolveSiteId();
+  const tags = [themeCacheTag(siteId), ...(options?.extraTags ?? [])];
+  const cached = unstable_cache(
+    fetcher,
+    ["nx:theme-fetch", siteId, ...keyParts],
+    {
+      tags,
+      revalidate: options?.revalidate ?? 60,
+    },
+  );
+  try {
+    return await cached();
+  } catch (error) {
+    if (isMissingIncrementalCache(error)) return fetcher();
+    throw error;
+  }
+}
+
 /**
  * Cached active-theme lookup. Mirrors core's
  * `getActiveTheme()` semantics — falls back to the first
