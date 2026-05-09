@@ -525,4 +525,136 @@ export const magazineCss = `
   letter-spacing: 0.16em;
   color: var(--np-color-muted-foreground, #64748b);
 }
+
+/* ----------------------------------------------------------------
+ * Hero variants (F.9.2). Featured layout uses inline styles in
+ * blocks.tsx (background-image-driven hero); carousel and grid
+ * variants share a common header treatment defined here. The
+ * \`data-hero-style\` attribute on the section element makes
+ * variant-specific overrides possible without class explosion.
+ * --------------------------------------------------------------- */
+.np-magazine-hero-feature[data-hero-style="carousel"],
+.np-magazine-hero-feature[data-hero-style="grid"] {
+  margin: 2rem 0;
+  padding: 1.5rem 0;
+  border-top: 3px double var(--np-color-foreground, #0f172a);
+  border-bottom: 1px solid var(--np-color-border, #e2e8f0);
+}
+.np-magazine-hero-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.5rem 1.25rem;
+}
+.np-magazine-hero-header h1 {
+  font-family: var(--np-font-heading, "Fraunces", Georgia, serif);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  margin: 0;
+  line-height: 1.1;
+}
+.np-magazine-hero-header p {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--np-color-muted-foreground, #64748b);
+  max-width: 60ch;
+}
+.np-magazine-hero-cta {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+  padding: 0.4rem 1rem;
+  border-radius: 0.25rem;
+  background: var(--np-color-primary, #0f172a);
+  color: var(--np-color-primary-foreground, #fff);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+.np-magazine-hero-empty {
+  margin: 0;
+  padding: 1.5rem 0.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--np-color-muted-foreground, #64748b);
+  font-style: italic;
+}
+.np-magazine-hero-card-category {
+  margin: 0 0 0.25rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--np-color-primary, #0f172a);
+  font-weight: 600;
+}
+.np-magazine-hero-carousel-track {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 0 0.5rem 1rem;
+  scrollbar-width: thin;
+}
+.np-magazine-hero-carousel-card {
+  flex: 0 0 280px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--np-color-card, #fff);
+}
+.np-magazine-hero-carousel-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 0.25rem;
+}
+.np-magazine-hero-carousel-card h2 {
+  margin: 0;
+  font-family: var(--np-font-heading, "Fraunces", Georgia, serif);
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+.np-magazine-hero-carousel-card a {
+  color: inherit;
+  text-decoration: none;
+}
+.np-magazine-hero-carousel-card a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--np-color-primary, #0f172a);
+}
+.np-magazine-hero-grid-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  padding: 0 0.5rem;
+}
+@media (min-width: 768px) {
+  .np-magazine-hero-grid-tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.np-magazine-hero-grid-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.np-magazine-hero-grid-tile img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 0.25rem;
+}
+.np-magazine-hero-grid-tile h2 {
+  margin: 0;
+  font-family: var(--np-font-heading, "Fraunces", Georgia, serif);
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+.np-magazine-hero-grid-tile a {
+  color: inherit;
+  text-decoration: none;
+}
+.np-magazine-hero-grid-tile a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--np-color-primary, #0f172a);
+}
 `.trim();
