@@ -25,6 +25,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./components/error": {
+      "types": "./dist/components/error.d.ts",
+      "import": "./dist/components/error.js"
     }
   },
   "files": [

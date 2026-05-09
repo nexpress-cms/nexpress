@@ -399,6 +399,23 @@ export interface NpThemeImpl {
    *
    * Both fall back to framework defaults when omitted, so
    * themes can opt into one or both without forcing the other.
+   *
+   * **F.7.1 — `error` delegation pattern**: Next requires
+   * `error.tsx` to be a client component, so the framework
+   * can't transparently consume an `impl.error` declared on a
+   * server-imported registry (the React server→client boundary
+   * blocks it). Themes that want custom error chrome ship a
+   * SEPARATE client component at a `./components/error`
+   * subpath of their package; the operator's `(site)/error.tsx`
+   * lazy-imports it based on the active theme id (read from the
+   * `<style data-np-theme>` tag emitted by the layout). This
+   * `impl.error` slot is kept as a forward-compat type marker —
+   * a future Next API for server-rendered error fallbacks
+   * would let the framework wire it transparently.
+   *
+   * Reference implementation:
+   * `@nexpress/theme-magazine/components/error` +
+   * `apps/web/src/app/(site)/error.tsx`'s registry.
    */
   notFound?: ComponentType;
   error?: ComponentType<NpThemeErrorProps>;
