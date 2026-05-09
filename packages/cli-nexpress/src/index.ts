@@ -19,6 +19,7 @@ import {
 } from "./scaffold-plugin-types.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { runThemeInstall } from "./theme-install/run.js";
+import { runThemeUninstall } from "./theme-uninstall/run.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
@@ -28,6 +29,10 @@ Usage:
   nexpress theme:install <package>                    Install a theme: AST-patch collection files for declared requirements
   nexpress theme:install <package> --dry-run          Same, but print the plan and exit without mutating
   nexpress theme:install <package> --yes              Same, but skip the interactive confirm prompt
+  nexpress theme:uninstall <package>                  Uninstall: AST-remove fields the theme contributed
+  nexpress theme:uninstall <package> --dry-run        Same, but print the plan and exit without mutating
+  nexpress theme:uninstall <package> --yes            Same, but skip the destructive confirm prompt
+  nexpress theme:uninstall <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -238,6 +243,37 @@ async function main(argv: string[]): Promise<number> {
       return 2;
     }
     return runThemeInstall({ themePackage, flags: { dryRun, yes } });
+  }
+
+  if (args[0] === "theme:uninstall") {
+    let themePackage: string | undefined;
+    let dryRun = false;
+    let yes = false;
+    let withCollections = false;
+    for (const arg of args.slice(1)) {
+      if (arg === "--dry-run") dryRun = true;
+      else if (arg === "--yes" || arg === "-y") yes = true;
+      else if (arg === "--with-collections") withCollections = true;
+      else if (arg.startsWith("--")) {
+        process.stderr.write(`Unknown flag for theme:uninstall: ${arg}\n`);
+        return 2;
+      } else if (themePackage === undefined) {
+        themePackage = arg;
+      } else {
+        process.stderr.write(`Unexpected positional: ${arg}\n`);
+        return 2;
+      }
+    }
+    if (!themePackage) {
+      process.stderr.write(
+        `theme:uninstall requires a theme package name. Example: nexpress theme:uninstall @nexpress/theme-magazine\n`,
+      );
+      return 2;
+    }
+    return runThemeUninstall({
+      themePackage,
+      flags: { dryRun, yes, withCollections },
+    });
   }
 
   if (args[0] === "plugin") {
