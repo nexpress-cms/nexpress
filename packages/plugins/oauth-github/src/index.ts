@@ -5,24 +5,36 @@ import {
   type GitHubOAuthOptions,
 } from "@nexpress/oauth-providers";
 import { definePlugin } from "@nexpress/plugin-sdk";
+import { z } from "zod";
 
 /**
  * @nexpress/plugin-oauth-github — adds "Sign in with GitHub" via
- * the plugin lifecycle (env-driven setup). Sites that prefer
- * direct registration can skip this plugin and import
- * `createGitHubOAuthProvider` from `@nexpress/oauth-providers`
- * directly.
+ * the plugin lifecycle.
  *
- * Credentials come from env, NOT `np_plugins.config`:
+ * Credentials can come from EITHER environment variables OR the
+ * admin auto-form (G.1):
  *
- *   NP_OAUTH_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxx
- *   NP_OAUTH_GITHUB_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+ *   1. `NP_OAUTH_GITHUB_CLIENT_ID` + `NP_OAUTH_GITHUB_CLIENT_SECRET`
+ *      env vars (12-factor; recommended for production secret
+ *      management — works with Doppler / 1Password CLI / AWS
+ *      Secrets Manager / Kubernetes secrets).
+ *   2. The admin form at `/admin/plugins/oauth-github` (operator
+ *      self-service; values persist to `np_settings`).
+ *
+ * **Env wins on a tie** — the admin form acts as a fallback so
+ * existing deployments stay unchanged after upgrading. Empty env
+ * with a populated admin form opts into DB-stored credentials.
  *
  * The Authorization callback URL registered in the GitHub OAuth
  * app must be exactly `${SITE_URL}/api/auth/oauth/github/callback`
  * (staff) or `${SITE_URL}/api/members/oauth/github/callback`
  * (member). The provider registry is shared — a single registered
  * GitHub provider works for both pools.
+ *
+ * **Reload required for admin-form changes**: `setup()` reads
+ * config once at boot. If the operator updates credentials via
+ * the admin form, hit `/admin/plugins/reload` (or restart the
+ * process) for the new values to take effect.
  */
 
 // Re-exports kept for back-compat with sites that imported the
@@ -30,13 +42,31 @@ import { definePlugin } from "@nexpress/plugin-sdk";
 // split. New code should import from @nexpress/oauth-providers.
 export { createGitHubOAuthProvider, fetchGitHubProfile, type GitHubOAuthOptions };
 
-export const githubOAuthPlugin = definePlugin({
+const configSchema = z.object({
+  clientId: z
+    .string()
+    .default("")
+    .describe("GitHub OAuth app client ID (Iv1.…)"),
+  clientSecret: z
+    .string()
+    .default("")
+    .meta({ sensitive: true })
+    .describe("GitHub OAuth app client secret"),
+  scopes: z
+    .array(z.string())
+    .default(["read:user", "user:email"])
+    .describe("OAuth scopes requested at authorization"),
+});
+
+export type GitHubOAuthConfig = z.infer<typeof configSchema>;
+
+export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
   manifest: {
     id: "oauth-github",
-    version: "0.2.0",
+    version: "0.3.0",
     name: "GitHub OAuth",
     description:
-      "Adds 'Sign in with GitHub' for staff + member auth. Reads NP_OAUTH_GITHUB_CLIENT_ID + NP_OAUTH_GITHUB_CLIENT_SECRET; logs a warning and registers nothing if either is unset.",
+      "Adds 'Sign in with GitHub' for staff + member auth. Credentials read from env (NP_OAUTH_GITHUB_CLIENT_ID + NP_OAUTH_GITHUB_CLIENT_SECRET) OR the admin auto-form — env wins on a tie. Logs a warning and registers nothing when neither source provides credentials.",
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
@@ -52,24 +82,50 @@ export const githubOAuthPlugin = definePlugin({
     },
     agent: {
       description:
-        "Wires GitHub as an OAuth provider on top of arctic + the framework's /api/{auth,members}/oauth/{provider}/{start,callback} routes.",
+        "Wires GitHub as an OAuth provider. Credentials hybrid env-or-admin (env precedence). Admin form masks the client secret via the G.1 sensitive widget.",
       category: "security",
       tags: ["oauth", "sso", "github", "auth"],
     },
     usesTokens: [],
     styleSlots: {},
   },
+  configSchema,
   setup: (ctx) => {
-    const clientId = process.env.NP_OAUTH_GITHUB_CLIENT_ID;
-    const clientSecret = process.env.NP_OAUTH_GITHUB_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      ctx.log.warn(
-        "GitHub OAuth not configured — set NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET to enable.",
+    // G.2.2 — credentials must come from a single source. Mixing
+    // env-managed clientId with DB-stored clientSecret (or vice
+    // versa) is almost always a misconfiguration — typically a
+    // half-finished migration between env and admin form. Treat
+    // partial-env as an explicit error so the operator notices,
+    // rather than silently registering a Frankenstein credential
+    // pair that's hard to audit later.
+    const envId = process.env.NP_OAUTH_GITHUB_CLIENT_ID;
+    const envSecret = process.env.NP_OAUTH_GITHUB_CLIENT_SECRET;
+    const envHasAny = Boolean(envId || envSecret);
+    const envHasBoth = Boolean(envId && envSecret);
+    if (envHasAny && !envHasBoth) {
+      ctx.log.error(
+        "GitHub OAuth env vars are partial — set BOTH NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or unset both to fall back to the admin form. Refusing to mix env and DB credentials for the same provider.",
       );
       return;
     }
-    registerOAuthProvider(createGitHubOAuthProvider({ clientId, clientSecret }));
-    ctx.log.info("GitHub OAuth provider registered");
+    const clientId = envHasBoth ? envId! : ctx.config.clientId;
+    const clientSecret = envHasBoth ? envSecret! : ctx.config.clientSecret;
+    if (!clientId || !clientSecret) {
+      ctx.log.warn(
+        "GitHub OAuth not configured — set NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-github.",
+      );
+      return;
+    }
+    registerOAuthProvider(
+      createGitHubOAuthProvider({
+        clientId,
+        clientSecret,
+        scopes: ctx.config.scopes,
+      }),
+    );
+    ctx.log.info("GitHub OAuth provider registered", {
+      source: envHasBoth ? "env" : "admin",
+    });
   },
 });
 

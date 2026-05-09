@@ -1,7 +1,8 @@
 # @nexpress/plugin-oauth-github
 
-GitHub OAuth provider plugin for
-[NexPress](https://github.com/hahabsw/nexpress).
+"Sign in with GitHub" plugin for
+[NexPress](https://github.com/hahabsw/nexpress). Wires GitHub as an
+OAuth provider for both staff and member auth pools.
 
 ## Install
 
@@ -9,27 +10,73 @@ GitHub OAuth provider plugin for
 pnpm add @nexpress/plugin-oauth-github
 ```
 
-## Usage
-
 ```ts
 // nexpress.config.ts
-import githubAuth from "@nexpress/plugin-oauth-github";
+import githubOAuth from "@nexpress/plugin-oauth-github";
 
 export default defineConfig({
   // ...
-  plugins: [
-    githubAuth({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    }),
-  ],
+  plugins: [githubOAuth],
 });
 ```
 
-The plugin registers a `github` OAuth provider via
-`registerOAuthProvider`. See
-[docs/agent-integration.md](https://github.com/hahabsw/nexpress/blob/main/docs/agent-integration.md)
-and the `@nexpress/core/auth` OAuth surface.
+## Configuration
+
+Two paths — pick whichever fits the operator's secret-management story.
+
+### 1. Environment variables (recommended for production)
+
+```bash
+NP_OAUTH_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxx
+NP_OAUTH_GITHUB_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Works with Doppler / 1Password CLI / AWS Secrets Manager / Kubernetes
+secrets — anything that injects env at boot. Secrets never touch the
+database.
+
+### 2. Admin auto-form
+
+Open `/admin/plugins/oauth-github` after the framework boots. The G.1
+auto-form renders these editable fields:
+
+| Field         | Type                | Default                          |
+|---------------|---------------------|----------------------------------|
+| Client ID     | text                | _empty_                          |
+| Client secret | password (masked)   | _empty_                          |
+
+Saved values persist to `np_settings (key="plugin.config:oauth-github")`.
+
+> **Scopes are not yet editable in the auto-form.** The schema declares
+> `scopes: z.array(z.string())` with default `["read:user", "user:email"]`,
+> but the F.3 introspector currently only handles `z.array(z.object(...))`
+> — so `scopes` renders as an `unsupported` field that the form skips.
+> The default array is what the plugin actually requests at OAuth
+> handshake. Sites that need different scopes today have two options:
+> fork the plugin, or wait for a future introspector pass that adds
+> `array(string)` support. (Tracked alongside the G-track deferred queue.)
+
+### Precedence
+
+**Env wins on a tie.** When `NP_OAUTH_GITHUB_CLIENT_ID` /
+`NP_OAUTH_GITHUB_CLIENT_SECRET` are non-empty, the admin-form values
+are ignored — env-driven deploys upgrade safely without surprise. Set
+the env vars to empty (or unset them) to switch to admin-form
+control.
+
+### Reload required for admin-form changes
+
+`setup()` reads credentials once at boot. Updating the admin form
+saves to the DB but does NOT re-register the provider; visit
+`/admin/plugins/reload` (or restart the process) for the new values
+to take effect.
+
+## OAuth app callback URL
+
+Register `${SITE_URL}/api/auth/oauth/github/callback` (staff pool)
+and / or `${SITE_URL}/api/members/oauth/github/callback` (member
+pool) in the GitHub OAuth app settings. The provider registry is
+shared — a single registered provider works for both pools.
 
 ## License
 

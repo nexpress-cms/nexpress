@@ -1,7 +1,10 @@
 # @nexpress/plugin-oauth-google
 
-Google OAuth provider plugin for
-[NexPress](https://github.com/hahabsw/nexpress).
+"Sign in with Google" plugin for
+[NexPress](https://github.com/hahabsw/nexpress). Wires Google as an
+OAuth provider for both staff and member auth pools. Honors
+`email_verified` strictly — never links unverified Google addresses
+to existing NexPress users by email.
 
 ## Install
 
@@ -9,25 +12,65 @@ Google OAuth provider plugin for
 pnpm add @nexpress/plugin-oauth-google
 ```
 
-## Usage
-
 ```ts
 // nexpress.config.ts
-import googleAuth from "@nexpress/plugin-oauth-google";
+import googleOAuth from "@nexpress/plugin-oauth-google";
 
 export default defineConfig({
   // ...
-  plugins: [
-    googleAuth({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-  ],
+  plugins: [googleOAuth],
 });
 ```
 
-The plugin registers a `google` OAuth provider via
-`registerOAuthProvider`. See the `@nexpress/core/auth` OAuth surface.
+## Configuration
+
+Two paths — pick whichever fits the operator's secret-management story.
+
+### 1. Environment variables (recommended for production)
+
+```bash
+NP_OAUTH_GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+NP_OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Works with Doppler / 1Password CLI / AWS Secrets Manager / Kubernetes
+secrets. Secrets never touch the database.
+
+### 2. Admin auto-form
+
+Open `/admin/plugins/oauth-google` after the framework boots. The G.1
+auto-form renders these editable fields:
+
+| Field         | Type                | Default                              |
+|---------------|---------------------|--------------------------------------|
+| Client ID     | text                | _empty_                              |
+| Client secret | password (masked)   | _empty_                              |
+
+Saved values persist to `np_settings (key="plugin.config:oauth-google")`.
+
+> **Scopes are not yet editable in the auto-form.** Same limitation as
+> oauth-github — the F.3 introspector handles `z.array(z.object(...))`
+> only, not `z.array(z.string())`. Default `["openid", "email", "profile"]`
+> applies. Forking or a future introspector pass are the workarounds.
+
+### Precedence
+
+**Env wins on a tie.** Set env to empty (or unset) to switch to
+admin-form control.
+
+### Reload required for admin-form changes
+
+`setup()` reads credentials once at boot. Updating the admin form
+saves to the DB but does NOT re-register the provider; visit
+`/admin/plugins/reload` (or restart the process) for the new values
+to take effect.
+
+## OAuth redirect URI
+
+Register `${SITE_URL}/api/auth/oauth/google/callback` (staff pool)
+and / or `${SITE_URL}/api/members/oauth/google/callback` (member
+pool) in Google Cloud Console. The provider registry is shared — a
+single registered provider works for both pools.
 
 ## License
 
