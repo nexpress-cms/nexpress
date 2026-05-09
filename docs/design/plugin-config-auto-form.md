@@ -1,8 +1,8 @@
 # Plugin Config Auto-Form — Design Plan
 
-> Version: 0.1 (Draft — design phase)
+> Version: 0.2 (Locked — ready for implementation)
 > Date: 2026-05-09
-> Status: Design — pending review and decision-locking
+> Status: Decisions locked. G.1 ready to implement.
 > Prerequisites:
 >   - F.3 introspector (`packages/core/src/themes/settings-schema.ts`)
 >     — already shipping for theme settings
@@ -58,17 +58,18 @@ Eight of eleven plugins have an admin config UI; six are
 small-to-medium shapes that map cleanly to F.3's introspector
 output (text / number / boolean / enum / array of objects).
 
-## 2. Locked decisions (proposed)
+## 2. Locked decisions (final)
 
-To be confirmed before implementation.
+Locked 2026-05-09. See § 11 for the four open-question answers
+that fed into these.
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
 | A | Plugin manifest gains optional `configSchema` field | **Yes** | The whole point of the project. |
 | B | Existing hand-coded plugin UIs work unchanged | **Yes** | Migration is per-plugin, not forced. Plugins that opt in delete their hand-coded UI; ones that don't keep theirs. |
-| C | Auto-form supports the same widget set as theme F.3 | **Yes** | Reuse the existing `NpThemeSettingsField` introspector verbatim — rename if the type now serves both is misleading, but keep the surface single-implementation. |
+| C | Auto-form supports the same widget set as theme F.3 + new `sensitive` hint | **Yes** | Reuse the `NpThemeSettingsField` introspector verbatim. G.1 also adds `.meta({ sensitive: true })` → `<Input type="password">` so G.2.2 oauth migrations don't carry the introspector change. |
 | D | Plugin can mix auto-form + custom panels | **Yes** | A plugin with mostly-simple config + one bespoke "test webhook" button stays partially auto-formed via `adminExtensions` overlay. |
-| E | Settings persistence layer | **Reuse `np_settings`** with key `plugin.config:<id>` | Mirrors theme settings (`theme.settings:<id>`); avoids new table. |
+| E | Settings persistence layer | **Drop `np_plugins.config`, store under `np_settings` with key `plugin.config:<id>`** | Repo is pre-1.0 / private — migrating now (data copy + column drop in one migration) trades ~150 LOC for permanent symmetry with theme settings (`theme.settings:<id>`), shared internal helpers (e.g. `getCachedSetting<T>(key)`), and matching function signatures (`getThemeSettings` ↔ `getPluginConfig`). After v1.0 this asymmetry would be locked in. `np_plugins` stays as a lean meta row (`id`, `enabled`, `last_seen`). |
 | F | Versioned envelope (D from v0.3) | **Yes — same `__npVersion` / `__npSettings` shape** | Plugins deserve the same migration story themes got. |
 
 ## 3. Goals
@@ -104,9 +105,9 @@ To be confirmed before implementation.
 Three phases, each adding optional fields to the plugin
 manifest. Existing plugins work unchanged.
 
-### 5.1 Phase G.1 — `manifest.configSchema` + auto-form route
+### 5.1 Phase G.1 — `manifest.configSchema` + auto-form injection
 
-Adds two manifest fields:
+Adds three manifest fields:
 
 ```ts
 interface NpPluginManifest {
@@ -114,16 +115,19 @@ interface NpPluginManifest {
 
   /**
    * Zod schema for operator-tunable plugin config. When
-   * present, the framework auto-generates a settings page at
-   * `/admin/plugins/<id>/settings` using the same introspector
-   * the theme contract uses (F.3). Plugin author doesn't
-   * write a form component.
+   * present, the framework injects an auto-generated form into
+   * the existing `/admin/plugins/<id>` page using the same
+   * introspector the theme contract uses (F.3). Plugin author
+   * doesn't write a form component.
    *
    * Defaults: `.default()` on each field becomes the form's
    * initial value AND the value `getPluginConfig(id)` returns
    * before the operator's first save.
    *
    * Use `.describe()` for the field's label / help text.
+   * Use `.meta({ sensitive: true })` to render `<input
+   * type="password">` (added in G.1 — used by oauth client
+   * secrets, etc.).
    */
   configSchema?: unknown; // typed as unknown for the same
                           // reason theme settingsSchema is —
@@ -140,7 +144,8 @@ interface NpPluginManifest {
 
   /**
    * Migrate a v(N-1) value to the current shape. Same
-   * contract as theme `settingsMigrate` (v0.3 D).
+   * contract as theme `settingsMigrate` (v0.3 D). Runs lazily
+   * on first cold read after a plugin version bump.
    */
   configMigrate?: (old: unknown, fromVersion: number) => unknown;
 }
@@ -150,15 +155,29 @@ Framework implementations:
 
 - `getPluginConfig(pluginId): Promise<unknown>` — read with
   versioning + migration (lifted directly from
-  `getThemeSettings`).
+  `getThemeSettings`). Storage: `np_settings` row with key
+  `plugin.config:<id>` (decision E).
 - `setPluginConfig(pluginId, value, updatedBy?)` — write,
   validate, wrap in versioned envelope.
 - `getCachedPluginConfig(pluginId)` — `unstable_cache` wrapper
   with tag `nx:plugin:<id>` (busted on save).
 
-The `/admin/plugins/<id>/settings` route detects `configSchema`
-on the manifest and renders the auto-form; renders the
-existing custom panel (if any) below.
+The existing `/admin/plugins/[pluginId]/page.tsx` (single-page
+detail view) gains a `configFields` prop on `<PluginAdminPage>`.
+When the manifest declares `configSchema`, the framework
+introspects it and passes the field metadata; the page renders
+the auto-form above the existing custom-panel slot. No new
+URL — locked answer Q2.
+
+Storage migration (decision E): one Drizzle migration moves
+existing `np_plugins.config` jsonb into `np_settings` rows
+(`key = 'plugin.config:<id>'`, value wrapped in the v1
+versioned envelope), then drops the column. Post-migration,
+`np_plugins` is a lean `(id, enabled, last_seen)` meta row.
+`getPluginState` / `updatePluginState` lose the `config`
+field; callers either move to `getPluginConfig` /
+`setPluginConfig` or stop reading config entirely (state is
+just the enable flag).
 
 ### 5.2 Phase G.2 — Migrate 5 small-shape plugins
 
@@ -211,20 +230,26 @@ order wins on tied `mountAfter`).
 Sequence:
 
 1. **G.1 framework** — manifest fields, `getPluginConfig` etc.,
-   admin route auto-detection. ~600 LOC.
+   `np_plugins.config` → `np_settings` storage migration,
+   `sensitive` widget hint, auto-form injection into existing
+   plugin detail page. ~750 LOC (was ~600 — +150 for the
+   storage migration per locked decision E, baseline already
+   includes the `sensitive` widget per locked answer Q1).
 2. **G.2 reading-time pilot** — smallest plugin, single field.
    Validates the path end-to-end. ~150 LOC (mostly DELETE of
    the hand-coded UI).
-3. **G.2 oauth-github** — proves secret-field handling
-   (configSchema with a `.describe("Client secret (sensitive)")`
-   probably wants special UI rendering for masking).
-4. **G.2 remaining 3 plugins** — bulk migration, one per PR.
+3. **G.2 oauth-github + oauth-google** — proves the
+   `sensitive` widget end-to-end (clientSecret masked). One
+   PR for both since they share the schema shape.
+4. **G.2 remaining plugins** — newsletter + seo-audit, one per
+   PR.
 5. **G.3 forum hybrid** — proves the auto-form + custom panel
-   composition.
+   composition (the only `mountAfter: "auto-form"` consumer
+   in the inventory).
 6. **Docs** — update plugin-quickstart.md with the configSchema
    path, mark hand-coded UIs as legacy / opt-out.
 
-Total: ~7 PRs, ~2000 LOC.
+Total: ~6 PRs, ~2050 LOC.
 
 ## 7. Cache + invalidation
 
@@ -241,7 +266,7 @@ with the same per-key cache shape, auto-tagged with
 | Risk | Severity | Mitigation |
 |---|---|---|
 | Plugin author needs a widget the F.3 introspector doesn't support (file upload, color picker, …) | 🟡 Medium | Phase G.3 escape hatch — declare `configSchema` for the parts that work, ship a custom panel for the rest |
-| Sensitive fields (secrets, tokens) need masked input | 🟡 Medium | Add `.meta({ sensitive: true })` hint on the field; renderer treats as password input. Coordinate with F.3 (already supports `.meta({ widget: "textarea" })` from F.3 follow-up) |
+| Sensitive fields (secrets, tokens) need masked input | 🟢 Resolved | G.1 adds `.meta({ sensitive: true })` to the F.3 introspector + form-renderer (~30 LOC). Locked answer Q1. |
 | Plugin schema evolution leaves data behind | 🟢 Low | configMigrate / configVersion mirror theme settings v0.3 D — same migration story |
 | Plugins that DON'T migrate look out of place next to migrated peers | 🟢 Low | Both surfaces work; admin lists "uses auto-form" / "custom panel" tag for transparency. Migration is incremental |
 | `mountAfter` / `mountBefore` ordering becomes unwieldy with N panels | 🟢 Low | v0.3 plugin admin extensions today have at most 2-3 panels per plugin. Add named-slot mounting if a plugin grows past that |
@@ -250,14 +275,14 @@ with the same per-key cache shape, auto-tagged with
 
 | Phase | Scope | PR-size estimate |
 |---|---|---|
-| **G.1** | Manifest fields + `getPluginConfig` + admin route auto-detection | 1 PR, ~600 LOC |
+| **G.1** | Manifest fields + `getPluginConfig` + `np_plugins.config` → `np_settings` storage migration + `sensitive` widget hint + auto-form injection into existing plugin detail page | 1 PR, ~750 LOC |
 | **G.2.1** | Pilot — `reading-time` migration | 1 PR, ~150 LOC |
-| **G.2.2** | OAuth plugins (github + google together) — proves sensitive-field rendering | 1 PR, ~250 LOC |
+| **G.2.2** | OAuth plugins (github + google together) — exercises the `sensitive` widget end-to-end | 1 PR, ~250 LOC |
 | **G.2.3** | Newsletter + seo-audit | 1 PR, ~300 LOC |
 | **G.3** | Hybrid composition (forum) | 1 PR, ~400 LOC |
 | **G.docs** | plugin-quickstart.md + plugin-manifest.md updates | 1 PR, ~200 LOC |
 
-Total: 6 PRs, ~1900 LOC. G.1 unblocks all subsequent phases.
+Total: 6 PRs, ~2050 LOC. G.1 unblocks all subsequent phases.
 
 ## 10. Deferred (recorded, not abandoned)
 
@@ -276,26 +301,41 @@ Total: 6 PRs, ~1900 LOC. G.1 unblocks all subsequent phases.
   if multi-site sites want different per-site config. Already
   works via existing siteId filter.
 
-## 11. Open questions
+## 11. Locked answers
 
-These need answers before phasing locks.
+Locked 2026-05-09 alongside § 2.
 
-1. **`.meta({ sensitive: true })` for secret fields** — does
-   F.3's introspector already support a `sensitive` widget
-   hint? Decide before G.2.2 (oauth migrations need it).
+1. **`.meta({ sensitive: true })` for secret fields** — F.3's
+   introspector today supports `text / textarea / url / color
+   / number / boolean / enum / object / array / unsupported`
+   only (`packages/core/src/themes/settings-schema.ts` widget
+   matrix). **Decision: G.1 adds `sensitive` as a `.meta()`
+   hint** → introspector emits `{ type: "password" }`,
+   form-renderer dispatches to `<Input type="password">`.
+   ~30 LOC. Done in G.1 so G.2.2 oauth migrations stay
+   single-concern.
 2. **Plugin admin route ownership** — today
-   `/admin/plugins/<id>` is a generic plugin detail page.
-   The auto-form lives at `/admin/plugins/<id>/settings`
-   per §5.1; confirm this URL doesn't conflict with the
-   index page's tabs.
-3. **`configMigrate` semantics across plugin versions** — when
-   a plugin npm-upgrades from v0.1.0 to v0.2.0, does the
-   migration run on first cold read post-upgrade? Mirror
-   theme settings (yes, lazy-on-read) and document.
-4. **Custom panel `mountAfter` keyword space** — currently
-   proposed `auto-form`. Reserve other keywords for future
-   slot points (`top` / `bottom`) before the first plugin
-   ships and locks the convention.
+   `/admin/plugins/[pluginId]/page.tsx` is a single-page
+   detail view (87 LOC, no tabs, no `/settings` sub-route).
+   **Decision: do NOT add `/admin/plugins/<id>/settings`.
+   Inject the auto-form into the existing detail page**.
+   `<PluginAdminPage>` gains a `configFields` prop; auto-form
+   mounts above the custom panel slot. Plugins without
+   `configSchema` see no auto-form section, no dead route.
+3. **`configMigrate` semantics across plugin versions** —
+   **Decision: lazy-on-read, mirroring v0.3 D's
+   `getThemeSettings`**. First cold read after a plugin
+   version bump runs `configMigrate(old, fromVersion)`,
+   re-saves the result wrapped in the current envelope, and
+   returns it. Migration failure throws → admin renders error
+   card; framework keeps stale value in cache so the rest of
+   the plugin keeps booting.
+4. **Custom panel `mountAfter` keyword space** — **Decision:
+   G.1 ships `"auto-form"` only**. `"top"` / `"bottom"` are
+   not reserved — defining slot keywords without a real
+   consumer is self-imposed cost. Add them when a hybrid
+   plugin that needs them appears (currently only `forum`
+   in G.3, and it uses `auto-form` alone).
 
 ## 12. NOT in scope (record so it doesn't creep)
 
