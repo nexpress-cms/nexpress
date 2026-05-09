@@ -85,20 +85,29 @@ export default async function PluginAdminRoute({ params }: PageProps) {
     })
     .sort((a, b) => a.taskId.localeCompare(b.taskId));
 
-  // G.1 — when configSchema is declared, introspect server-side
-  // (zod schema lives in the plugin package's server bundle; we
-  // don't ship it to the browser) and pull the initial value from
-  // np_settings via getPluginConfigWithStatus. The auto-form
-  // mounts above any legacy admin.settings.fields, which is also
-  // suppressed at render time per § 5.1.1.
+  // G.1 — read the persisted config every time, regardless of
+  // whether the plugin declares a configSchema. Legacy plugins
+  // (no schema, hand-rolled `admin.settings.fields`) still need
+  // their saved values pre-populated in the SettingsCard form;
+  // skipping this read for them would cause every operator to
+  // see an empty form after the np_plugins.config → np_settings
+  // migration, even though the data is intact.
+  const configStatus = await getPluginConfigWithStatus(pluginId);
+  const configValue =
+    configStatus.value && typeof configStatus.value === "object"
+      ? (configStatus.value as Record<string, unknown>)
+      : {};
+
+  // When configSchema is declared, introspect server-side (zod
+  // lives in the plugin's server bundle; we don't ship it to the
+  // browser) and pass the field metadata to the auto-form. The
+  // auto-form mounts INSTEAD of any legacy admin.settings.fields
+  // form, per the § 5.1.1 precedence rule.
   let configFields: NpThemeSettingsField[] | undefined;
-  let initialAutoConfig: unknown | undefined;
   if (registration.configSchema) {
     configFields = introspectThemeSettingsSchema(
       registration.configSchema as Parameters<typeof introspectThemeSettingsSchema>[0],
     );
-    const status = await getPluginConfigWithStatus(pluginId);
-    initialAutoConfig = status.value;
   }
 
   return (
@@ -106,10 +115,11 @@ export default async function PluginAdminRoute({ params }: PageProps) {
       pluginId={pluginId}
       pluginName={registration.name}
       admin={adminExt ?? {}}
-      initialConfig={(initialAutoConfig as Record<string, unknown>) ?? {}}
+      initialConfig={configValue}
       schedules={schedules}
       configFields={configFields}
-      initialAutoConfig={initialAutoConfig}
+      initialAutoConfig={configStatus.value}
+      configParseError={configStatus.parseError}
     />
   );
 }

@@ -462,11 +462,10 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     plugin.admin?.settings?.fields &&
     plugin.admin.settings.fields.length > 0
   ) {
-    console.warn(
-      `[plugin:${manifest.id}] declares both configSchema and admin.settings.fields — ` +
-        `the auto-form wins; admin.settings.fields is ignored at render time. ` +
-        `Remove admin.settings.fields when migrating to configSchema.`,
-    );
+    getLogger().warn("Plugin declares both configSchema and admin.settings.fields", {
+      pluginId: manifest.id,
+      note: "Auto-form wins; admin.settings.fields is ignored at render time. Remove admin.settings.fields when migrating to configSchema.",
+    });
   }
 
   // Phase 19 — first-class cron schedules. Each entry maps to
