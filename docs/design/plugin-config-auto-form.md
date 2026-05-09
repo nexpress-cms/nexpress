@@ -75,14 +75,14 @@ that fed into these.
 ## 3. Goals
 
 - A new plugin author writes `configSchema: z.object({...})` and
-  gets a working admin settings page at
-  `/admin/plugins/<id>/settings` with no further code.
+  gets a working admin settings form rendered into the existing
+  `/admin/plugins/[pluginId]` detail page with no further code.
 - Existing plugins migrate one at a time, each PR deleting
   their hand-coded UI and adding the schema.
 - Plugin config reads + writes route through the same
   `getCachedPluginConfig` / `setPluginConfig` shape that
   themes use, including the v0.3 versioned envelope (D) and
-  cache invalidation tag (`nx:plugin:<id>`).
+  cache invalidation tag (`np:plugin:<id>`).
 - The auto-form surface in admin reuses
   `packages/admin/src/zod-form/` (already F.3-ready) — no new
   form-renderer code.
@@ -154,13 +154,19 @@ interface NpPluginManifest {
 Framework implementations:
 
 - `getPluginConfig(pluginId): Promise<unknown>` — read with
-  versioning + migration (lifted directly from
-  `getThemeSettings`). Storage: `np_settings` row with key
-  `plugin.config:<id>` (decision E).
+  versioning + lazy migration. Mirrors `getThemeSettings`
+  exactly, including its defensive try/catch and parse-fallback
+  semantics (locked answer Q3). Storage: `np_settings` row
+  with key `plugin.config:<id>` (decision E).
+- `getPluginConfigWithStatus(pluginId): Promise<NpPluginConfigResult>`
+  — same read with `{ value, hasPersisted, parseError? }` shape.
+  Mirror of `getThemeSettingsWithStatus`. Admin uses this to
+  render a "settings were reset" banner when the migrator
+  threw or the post-migrate value failed `safeParse`.
 - `setPluginConfig(pluginId, value, updatedBy?)` — write,
   validate, wrap in versioned envelope.
 - `getCachedPluginConfig(pluginId)` — `unstable_cache` wrapper
-  with tag `nx:plugin:<id>` (busted on save).
+  with tag `np:plugin:<id>` (busted on save).
 
 The existing `/admin/plugins/[pluginId]/page.tsx` (single-page
 detail view) gains a `configFields` prop on `<PluginAdminPage>`.
@@ -253,13 +259,22 @@ Total: ~6 PRs, ~2050 LOC.
 
 ## 7. Cache + invalidation
 
-New tag: `nx:plugin:<id>`. Read paths wrap in `unstable_cache`
+New tag: `np:plugin:<id>`. Read paths wrap in `unstable_cache`
 with this tag; save paths bust it.
 
 `cachedPluginFetch` (parallel to `cachedThemeFetch` from v0.3
 H) — plugin route handlers can wrap their own data fetches
 with the same per-key cache shape, auto-tagged with
-`nx:plugin:<id>`. Out of scope for G.1; tracked as a follow-up.
+`np:plugin:<id>`. Out of scope for G.1; tracked as a follow-up.
+
+> **Prefix note.** Per the framework's owned-identifier policy
+> (CLAUDE.md "Naming convention"), every new framework-owned
+> tag uses the `np` prefix, including this one. The legacy
+> `nx:theme:<siteId>` tag in `packages/core/src/themes/settings.ts`
+> predates the prefix migration and is **not** the convention
+> for new surfaces; G-track does not extend the `nx:` namespace.
+> Renaming the legacy theme tag is a separate cleanup and is
+> not bundled into G.1 to keep the storage migration focused.
 
 ## 8. Risk register
 
@@ -323,13 +338,26 @@ Locked 2026-05-09 alongside § 2.
    mounts above the custom panel slot. Plugins without
    `configSchema` see no auto-form section, no dead route.
 3. **`configMigrate` semantics across plugin versions** —
-   **Decision: lazy-on-read, mirroring v0.3 D's
-   `getThemeSettings`**. First cold read after a plugin
-   version bump runs `configMigrate(old, fromVersion)`,
-   re-saves the result wrapped in the current envelope, and
-   returns it. Migration failure throws → admin renders error
-   card; framework keeps stale value in cache so the rest of
-   the plugin keeps booting.
+   **Decision: match `getThemeSettings` exactly, including
+   its actual error-handling shape** (verified against
+   `packages/core/src/themes/settings.ts` `applyMigration` +
+   `getThemeSettingsWithStatus`). On a read where the stored
+   `__npVersion` is below `manifest.configVersion`:
+   1. Run `configMigrate(rawValue, fromVersion)` inside a
+      defensive `try / catch`. A throwing migrator falls back
+      to the original `rawValue` (not stale cache, not error
+      card).
+   2. `safeParse` the result against the current
+      `configSchema`. On parse success, return the parsed
+      value.
+   3. On parse failure (buggy migrator, schema drift the
+      migrator didn't cover), return schema defaults with
+      `parseError` surfaced via the status variant
+      (`getPluginConfigWithStatus`) so the admin can render a
+      "settings were reset" banner.
+   The read path **does not re-save** the migrated value —
+   themes don't either. Persistence happens only on the next
+   operator save through `setPluginConfig`.
 4. **Custom panel `mountAfter` keyword space** — **Decision:
    G.1 ships `"auto-form"` only**. `"top"` / `"bottom"` are
    not reserved — defining slot keywords without a real
@@ -360,6 +388,6 @@ Locked 2026-05-09 alongside § 2.
 - Adding a new field to an existing plugin's `configSchema`
   surfaces in admin without an admin redeploy (plugin reload
   / process restart only).
-- Operator opening `/admin/plugins/<id>/settings` for any
-  configSchema-bearing plugin sees a form with field labels
-  pulled from `.describe()` calls.
+- Operator opening `/admin/plugins/[pluginId]` for any
+  configSchema-bearing plugin sees a form (above any custom
+  panel) with field labels pulled from `.describe()` calls.
