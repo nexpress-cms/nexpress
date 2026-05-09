@@ -78,7 +78,7 @@ that fed into these.
 | B | Theme contract gains slot for member chrome | **Yes — `impl.members.shell`** | Without this, login pages look default-themed even on Magazine sites. |
 | C | Theme can replace member page bodies wholesale | **No** | Body replacement requires the theme to reimplement form submission, validation messages, and OAuth provider buttons. Slots-only keeps the migration story small. |
 | D | Existing themes work unchanged | **Yes** | All M.* fields are additive optional. |
-| E | Route restructure for clean shell wiring | **Yes — move `members/*` to a new `(member)` route group** | The current `(site)/layout.tsx` already wraps every child in `impl.shell`; nesting `(site)/members/layout.tsx` underneath would double-wrap. Splitting into a sibling `(member)` route group puts member chrome at one layout, no parent-shell to skip. URL stays `/members/...` (route groups don't affect URLs); proxy-based i18n (per `docs/i18n.md` § 4) is unaffected. |
+| E | Route restructure for clean shell wiring | **Yes — move `members/*` to a new `(member)` route group** | The current `(site)/layout.tsx` already wraps every child in `impl.shell`; nesting `(site)/members/layout.tsx` underneath would double-wrap. Splitting into a sibling `(member)` route group puts member chrome at one layout, no parent-shell to skip. URL stays `/members/...` (route groups don't affect URLs); header-based i18n (proxy sets `x-np-locale` without rewriting URL) is unaffected. |
 
 ## 3. Goals
 
@@ -178,20 +178,42 @@ apps/web/src/app/
 ```
 
 URL surface is unchanged — Next.js route groups don't add path
-segments. `/members/login` resolves to `(member)/members/login/page.tsx`
-post-restructure (same as `(site)/members/login/page.tsx` did
-pre-restructure). Proxy-based i18n (per `docs/i18n.md` § 4) is
-unaffected because the locale prefix is stripped by `proxy.ts`
-before any route resolution; `/ko/members/login` and
-`/members/login` both resolve to the same page file in the new
-group. The new `(member)/layout.tsx` reads
-`getCachedActiveTheme()` and renders `impl.members.shell` if
-declared, else `impl.shell`, else a transparent fragment.
+segments. `/members/login` resolves to
+`(member)/members/login/page.tsx` post-restructure (same as
+`(site)/members/login/page.tsx` did pre-restructure).
+
+i18n is unaffected. Per `docs/i18n.md` § 4 the proxy
+(`apps/web/src/proxy.ts`) detects the locale and forwards it via
+`x-np-locale` — but verifying against the actual code, the proxy
+does NOT rewrite the URL (`resolveSiteLocale` returns
+`{ locale, rewrite: null }`). For static routes like
+`/members/login` there's no locale prefix in the URL to begin
+with — operators visit `/members/login` regardless of locale,
+and `headers().get("x-np-locale")` carries the resolved locale.
+The catch-all `(site)/[[...slug]]/page.tsx` does its own
+slug-internal locale stripping via `splitLocaleFromPath()` for
+content URLs; static member routes are locale-agnostic in URL
+form. Restructuring to `(member)` doesn't change any of that.
+
+The new `(member)/layout.tsx` is a sibling of `(site)/layout.tsx`
+(not a child) — Next.js runs ONE of them per request based on
+which route group the URL falls into. So `(member)/layout.tsx`
+needs to duplicate the infrastructure pieces of `(site)/layout.tsx`:
+`ensureFor("read")`, `<NpThemeStyle theme={tokens}>`, the
+theme-owned CSS `<style>` tag, and the `data-np-theme` attribute.
+Differences vs `(site)/layout.tsx`:
+- Wraps content in `impl.members.shell` (or `impl.shell`, or a
+  fragment) instead of `impl.shell` directly.
+- Skips the `<link rel="alternate" type="application/atom+xml">`
+  feed-discovery line — member pages don't carry feed metadata.
 
 LOC accounting: 6 page files moved (~50 LOC of import-path
-adjustments), one new layout file (~30 LOC), the slot field on
-the theme contract (~30 LOC across `@nexpress/core` types and
-the resolved theme registry).
+adjustments), one new layout file (~60 LOC — duplicates
+`(site)/layout.tsx`'s theme-tokens / CSS / bootstrap with the
+shell swap), the slot field on the theme contract (~30 LOC
+across `@nexpress/core` types and the resolved theme registry).
+~140 LOC total for the restructure, on top of the ~190 LOC M.1
+core (slot type, framework wiring, fallback logic, tests).
 
 ### 5.2 Phase M.2 — Member form surface tokens
 
@@ -308,11 +330,16 @@ Locked 2026-05-10 alongside § 2.
    The original framing assumed file-tree i18n (Options A / B
    pivoted on whether `members/layout.tsx` would conflict with
    locale-prefix routing). After verifying against the
-   codebase, **i18n routing is proxy-based, not file-tree-based**
-   — `apps/web/src/proxy.ts` strips the locale prefix and
-   forwards the resolved locale via `x-np-locale`. There's no
-   `[locale]` segment in the file tree (per `docs/i18n.md` § 4),
-   so file-tree layouts are unaffected by locale routing.
+   codebase, **i18n routing is header-based, not file-tree-based**
+   — `apps/web/src/proxy.ts` resolves the locale and forwards
+   it via `x-np-locale` but does NOT rewrite the URL. Static
+   routes like `/members/login` are locale-agnostic in URL
+   form (operators always hit `/members/login`, never
+   `/ko/members/login` — the latter would land on the catch-all
+   and 404). The catch-all `(site)/[[...slug]]/page.tsx` does
+   its own slug-internal locale prefix stripping via
+   `splitLocaleFromPath()` for CMS content URLs; that's
+   independent of file-tree layouts.
    The real constraint is the existing `(site)/layout.tsx` already
    wrapping every child in `impl.shell` — adding
    `(site)/members/layout.tsx` underneath would double-wrap.
