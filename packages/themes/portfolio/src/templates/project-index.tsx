@@ -1,14 +1,20 @@
+import * as React from "react";
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 import {
   PortfolioProjectCard,
   type PortfolioProjectDoc,
 } from "../components/project-card.js";
+import { resolvePortfolioSettings } from "../settings-helpers.js";
 
 /**
- * Project-index template. Big square cards in a 2- / 3-column
- * responsive grid. Title + intro centered above. The grid
- * collapses to one column below ~640px.
+ * Project-index template. Big square cards in a responsive grid.
+ * Title + intro centered above. The grid collapses to one column
+ * below ~640px.
+ *
+ * Phase F.9.1-A — `settings.gridColumns` (1–6) drives the grid
+ * column count via inline `gridTemplateColumns`. Default is 3.
+ * `settings.galleryGutter` drives the gap between cards.
  *
  * Doc shape: `{ docs: PortfolioProjectDoc[], heading?, intro? }`.
  */
@@ -18,11 +24,23 @@ interface IndexDoc {
   intro?: string;
 }
 
-export function ProjectIndexTemplate({ doc }: NpTemplateRenderProps) {
+export async function ProjectIndexTemplate({
+  doc,
+}: NpTemplateRenderProps): Promise<React.ReactElement> {
   const data = doc as IndexDoc;
+  const settings = await resolvePortfolioSettings();
   const heading = data.heading ?? "Selected work";
   const intro = data.intro;
   const docs = data.docs ?? [];
+  // Pass settings as CSS custom properties — the styles.ts
+  // media queries clamp the column count at narrower viewports
+  // so a `gridColumns: 6` setting doesn't crush content on
+  // mobile. Inline `gridTemplateColumns` would beat the media
+  // queries; vars let CSS stay in control of breakpoints.
+  const gridStyle = {
+    "--np-portfolio-grid-cols": settings.gridColumns,
+    "--np-portfolio-grid-gutter": `${settings.galleryGutter}px`,
+  } as React.CSSProperties;
   return (
     <section className="np-portfolio-index">
       <header className="np-portfolio-index-header">
@@ -34,7 +52,7 @@ export function ProjectIndexTemplate({ doc }: NpTemplateRenderProps) {
           Nothing on display yet. Add projects from the admin to fill the grid.
         </p>
       ) : (
-        <div className="np-portfolio-index-grid">
+        <div className="np-portfolio-index-grid" style={gridStyle}>
           {docs.map((project) => (
             <PortfolioProjectCard
               key={project.id ?? project.slug ?? project.title}

@@ -1,14 +1,20 @@
+import { resolvePortfolioSettings } from "./settings-helpers.js";
+
 /**
  * Studio footer — three rows on a thin top rule:
  *   1. Contact line  (NP_SOCIAL_EMAIL → mailto, or generic blurb)
  *   2. Social mini-strip (NP_SOCIAL_GITHUB / TWITTER / LINKEDIN /
  *      MASTODON, all optional, hidden when none are configured)
- *   3. Colophon (year + framework credit)
+ *   3. Colophon — year + framework credit, toggled by
+ *      `settings.showFooterCredit`. `settings.copyrightYear`
+ *      overrides the auto-detected year (some studios pin to
+ *      "2024" for an "established" feel).
  *
  * Stays minimal so the visual focus stays on the work above.
  */
-export function PortfolioFooter() {
-  const year = new Date().getFullYear();
+export async function PortfolioFooter() {
+  const settings = await resolvePortfolioSettings();
+  const year = settings.copyrightYear ?? new Date().getFullYear();
   const email = process.env.NP_SOCIAL_EMAIL;
   const social = [
     { href: process.env.NP_SOCIAL_GITHUB, label: "GitHub" },
@@ -18,6 +24,7 @@ export function PortfolioFooter() {
     { href: process.env.NP_SOCIAL_DRIBBBLE, label: "Dribbble" },
     { href: process.env.NP_SOCIAL_INSTAGRAM, label: "Instagram" },
   ].filter((s): s is { href: string; label: string } => Boolean(s.href));
+  const studio = settings.studioName;
 
   return (
     <footer className="np-site-footer np-portfolio-footer">
@@ -46,7 +53,8 @@ export function PortfolioFooter() {
           </ul>
         ) : null}
         <p className="np-portfolio-footer-mark">
-          © {year.toString()} · Built with NexPress
+          © {year.toString()} · {studio}
+          {settings.showFooterCredit ? " · Built with NexPress" : ""}
         </p>
       </div>
     </footer>

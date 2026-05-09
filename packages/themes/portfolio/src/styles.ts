@@ -279,15 +279,28 @@ export const portfolioCss = `
   opacity: 0.6;
 }
 .np-portfolio-index-grid {
+  /* Phase F.9.1-A — operator's settings.gridColumns
+   * sets --np-portfolio-grid-cols on this element via the
+   * project-index template. Mobile clamps to 1 column
+   * regardless; tablet caps at min(2, --np-portfolio-grid-cols);
+   * desktop honors the operator's choice up to 6. Operator
+   * stays in control without breaking responsive design.
+   */
+  --np-portfolio-grid-cols: 3;
+  --np-portfolio-grid-gutter: 1.5rem;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.5rem;
+  gap: var(--np-portfolio-grid-gutter);
 }
 @media (min-width: 640px) {
-  .np-portfolio-index-grid { grid-template-columns: repeat(2, 1fr); }
+  .np-portfolio-index-grid {
+    grid-template-columns: repeat(min(2, var(--np-portfolio-grid-cols, 3)), 1fr);
+  }
 }
 @media (min-width: 1024px) {
-  .np-portfolio-index-grid { grid-template-columns: repeat(3, 1fr); }
+  .np-portfolio-index-grid {
+    grid-template-columns: repeat(var(--np-portfolio-grid-cols, 3), 1fr);
+  }
 }
 
 /* ----------------------------------------------------------------
