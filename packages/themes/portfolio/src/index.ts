@@ -1,5 +1,6 @@
 import { defineTheme } from "@nexpress/theme";
 
+import { portfolioBlocks } from "./blocks.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
 import {
   PortfolioProjectCard,
@@ -7,6 +8,8 @@ import {
 } from "./components/project-card.js";
 import { PortfolioFooter } from "./footer.js";
 import { PortfolioHeader } from "./header.js";
+import { PortfolioNotFound } from "./not-found.js";
+import { portfolioSettingsSchema } from "./settings.js";
 import { PortfolioShell } from "./shell.js";
 import { portfolioCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
@@ -38,6 +41,25 @@ export const portfolioTheme = defineTheme({
       "Image-led dark theme for studios and designers. Hero-led project detail template, archive grid, gallery and centered page templates.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
+    // Phase F.1 — declared data-shape requirements. The CLI
+    // (`pnpm nexpress theme:install @nexpress/theme-portfolio`)
+    // patches operator collections to satisfy these.
+    requires: {
+      collections: {
+        posts: {
+          fields: {
+            heroImage: { type: "upload" },
+            client: { type: "text", hard: false },
+            year: { type: "number", hard: false },
+            role: { type: "text", hard: false },
+          },
+        },
+      },
+    },
+    // Phase F.3 — operator-tunable settings. Stresses the
+    // auto-form on deep schema (10 fields, range-constrained
+    // numbers, color regex, nested array of objects).
+    settingsSchema: portfolioSettingsSchema,
   },
   impl: {
     shell: PortfolioShell,
@@ -103,6 +125,23 @@ export const portfolioTheme = defineTheme({
         },
       },
     },
+    // Phase F.4 — portfolio-shipped block types.
+    blocks: portfolioBlocks,
+    // Phase F.6 — declared nav locations.
+    navLocations: {
+      primary: {
+        label: "Primary nav",
+        description: "Top nav links (Work / About / Contact).",
+        maxItems: 5,
+      },
+      footerSocial: {
+        label: "Footer social links",
+        description: "Social profile links shown in the footer.",
+        maxItems: 6,
+      },
+    },
+    // Phase F.7 — error chrome.
+    notFound: PortfolioNotFound,
   },
 });
 
@@ -112,6 +151,11 @@ export {
   PortfolioShell,
   PortfolioProjectCard,
   PortfolioMobileNav,
+  PortfolioNotFound,
 };
 export { portfolioCss };
 export type { PortfolioProjectDoc };
+export {
+  portfolioSettingsSchema,
+  type PortfolioSettings,
+} from "./settings.js";
