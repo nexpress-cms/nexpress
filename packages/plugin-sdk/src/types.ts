@@ -625,7 +625,52 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
   hooks?: NpHookRegistration<TConfig>;
   routes?: NpRouteRegistration<TConfig>[];
   scheduled?: NpScheduledTask<TConfig>[];
+  /**
+   * G.1 — Zod schema for operator-tunable plugin config.
+   *
+   * When present, the framework introspects the schema (mirroring
+   * theme `settingsSchema` from F.3) to render an auto-form on the
+   * plugin's admin detail page (`/admin/plugins/[pluginId]`), with
+   * no per-plugin form component required. Defaults from
+   * `.default()` become the form's initial values AND the value
+   * `getPluginConfig(id)` returns before the operator's first save.
+   *
+   * Use `.describe()` for the field's label / help text. Use
+   * `.meta({ sensitive: true })` to render `<input type="password">`
+   * (e.g. oauth client secrets).
+   *
+   * When BOTH `configSchema` and `admin.settings.fields` are
+   * declared, the auto-form wins and `admin.settings.fields` is
+   * ignored at render time (with a console warning). Migrating
+   * plugins should remove `admin.settings.fields` in the same
+   * diff that adds `configSchema`. See `docs/design/plugin-config-auto-form.md`
+   * § 5.1.1 for the precedence rules.
+   */
   configSchema?: ZodType<TConfig>;
+  /**
+   * G.1 — schema version for `configSchema`. Bump when the
+   * schema changes shape in a non-additive way (renaming a field,
+   * removing one, tightening a default). Adding a new optional
+   * field is compatible without bumping — Zod fills the missing
+   * key with the field's default on parse.
+   *
+   * The framework treats absent / undefined as `1`. Plugins that
+   * never bump stay forever at v1 and no migration ever runs.
+   */
+  configVersion?: number;
+  /**
+   * G.1 — migration function bringing a value persisted under an
+   * older `configVersion` up to the current shape. Called lazily
+   * on read when stored version < `configVersion`.
+   *
+   * Mirrors theme `settingsMigrate` exactly: defensive try/catch
+   * around the call (a buggy migrator falls back to the original
+   * value), `safeParse` against the current schema, and the
+   * framework re-parses the result. Migration is recomputed on
+   * each read until the operator's NEXT save through the admin
+   * form persists the migrated value.
+   */
+  configMigrate?: (old: unknown, fromVersion: number) => unknown;
   setup?: (ctx: NpPluginContext<TConfig>) => void | Promise<void>;
   teardown?: () => void | Promise<void>;
   /**

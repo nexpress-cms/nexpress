@@ -239,6 +239,13 @@
       "when": 1778251200000,
       "tag": "0033_split_taxonomies",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1778310600000,
+      "tag": "0034_plugin_config_to_settings",
+      "breakpoints": true
     }
   ]
 }

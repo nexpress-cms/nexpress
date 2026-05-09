@@ -20,7 +20,6 @@ import { getDb } from "../db/runtime.js";
 import {
   NP_GLOBAL_PLUGIN_SITE_ID,
   npPluginStorage,
-  npPlugins,
   npSettings,
 } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
@@ -398,18 +397,51 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return row.value as Record<string, unknown>;
       },
       async getPlugin(): Promise<Record<string, unknown>> {
-        const rows = await db().select().from(npPlugins).where(eq(npPlugins.id, pluginId));
-        const row = rows[0] as { config?: unknown } | undefined;
-        if (!row || !row.config || typeof row.config !== "object" || Array.isArray(row.config)) {
-          return {};
+        // G.1 — plugin config moved from np_plugins.config to
+        // np_settings.(siteId, "plugin.config:<id>"). Read via the
+        // versioned-envelope-aware helper so plugins still see the
+        // unwrapped value.
+        const { getPluginConfig } = await import("./config.js");
+        const value = await getPluginConfig(pluginId);
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          return value as Record<string, unknown>;
         }
-        return row.config as Record<string, unknown>;
+        return {};
       },
       async setPlugin(data: Record<string, unknown>): Promise<void> {
+        // G.1 — plugin config moved to np_settings. When the plugin
+        // declares a configSchema, route through `setPluginConfig`
+        // so the plugin's own schema validates writes coming from
+        // its own setup() / handlers (the same path the admin form
+        // uses). Plugins without configSchema bypass validation and
+        // write the v1 envelope directly — preserves legacy
+        // ctx.settings.setPlugin behavior.
+        const { setPluginConfig } = await import("./config.js");
+        const { getPluginRegistration } = await import("./host.js");
+        const reg = getPluginRegistration(pluginId);
+        if (reg?.configSchema) {
+          await setPluginConfig(pluginId, data, null);
+          return;
+        }
+        const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+        const now = new Date();
         await db()
-          .update(npPlugins)
-          .set({ config: data, updatedAt: new Date() })
-          .where(eq(npPlugins.id, pluginId));
+          .insert(npSettings)
+          .values({
+            siteId,
+            key: `plugin.config:${pluginId}`,
+            value: { __npVersion: 1, __npSettings: data },
+            updatedAt: now,
+            updatedBy: null,
+          })
+          .onConflictDoUpdate({
+            target: [npSettings.siteId, npSettings.key],
+            set: {
+              value: { __npVersion: 1, __npSettings: data },
+              updatedAt: now,
+              updatedBy: null,
+            },
+          });
       },
     },
 

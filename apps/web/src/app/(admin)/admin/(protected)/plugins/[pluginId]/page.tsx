@@ -3,11 +3,14 @@ import { notFound } from "next/navigation";
 import {
   getOptionalJobQueue,
   getPluginAdminExtension,
+  getPluginConfigWithStatus,
   getPluginRegistration,
   getPluginState,
+  introspectThemeSettingsSchema,
   verifyTokenFull,
   can,
   type NpPluginScheduleStats,
+  type NpThemeSettingsField,
 } from "@nexpress/core";
 import { PluginAdminPage } from "@nexpress/admin/client";
 
@@ -36,7 +39,14 @@ export default async function PluginAdminRoute({ params }: PageProps) {
   const adminExt = getPluginAdminExtension(pluginId);
   const state = await getPluginState(getDb(), pluginId);
 
-  if (!registration || !adminExt) {
+  // G.1 — a plugin that declares only `configSchema` (no
+  // `admin.settings.fields`, no widgets/actions/tables) wouldn't
+  // currently get an admin entry because `getPluginAdminExtension`
+  // returns undefined. Allow the detail page to load whenever the
+  // plugin is registered AND has either an admin extension or a
+  // configSchema. The admin extension shape that gets passed down
+  // can be the empty object in the configSchema-only case.
+  if (!registration || (!adminExt && !registration.configSchema)) {
     notFound();
   }
 
@@ -75,13 +85,41 @@ export default async function PluginAdminRoute({ params }: PageProps) {
     })
     .sort((a, b) => a.taskId.localeCompare(b.taskId));
 
+  // G.1 — read the persisted config every time, regardless of
+  // whether the plugin declares a configSchema. Legacy plugins
+  // (no schema, hand-rolled `admin.settings.fields`) still need
+  // their saved values pre-populated in the SettingsCard form;
+  // skipping this read for them would cause every operator to
+  // see an empty form after the np_plugins.config → np_settings
+  // migration, even though the data is intact.
+  const configStatus = await getPluginConfigWithStatus(pluginId);
+  const configValue =
+    configStatus.value && typeof configStatus.value === "object"
+      ? (configStatus.value as Record<string, unknown>)
+      : {};
+
+  // When configSchema is declared, introspect server-side (zod
+  // lives in the plugin's server bundle; we don't ship it to the
+  // browser) and pass the field metadata to the auto-form. The
+  // auto-form mounts INSTEAD of any legacy admin.settings.fields
+  // form, per the § 5.1.1 precedence rule.
+  let configFields: NpThemeSettingsField[] | undefined;
+  if (registration.configSchema) {
+    configFields = introspectThemeSettingsSchema(
+      registration.configSchema as Parameters<typeof introspectThemeSettingsSchema>[0],
+    );
+  }
+
   return (
     <PluginAdminPage
       pluginId={pluginId}
       pluginName={registration.name}
-      admin={adminExt}
-      initialConfig={state?.config ?? {}}
+      admin={adminExt ?? {}}
+      initialConfig={configValue}
       schedules={schedules}
+      configFields={configFields}
+      initialAutoConfig={configStatus.value}
+      configParseError={configStatus.parseError}
     />
   );
 }

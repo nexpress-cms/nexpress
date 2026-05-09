@@ -3,6 +3,7 @@ import {
   NpNotFoundError,
   NpValidationError,
   getOptionalJobQueue,
+  getPluginConfig,
   getPluginRegistration,
   getPluginState,
   updatePluginState,
@@ -78,12 +79,15 @@ async function buildScheduleDetails(pluginId: string): Promise<ScheduleDetail[]>
 async function toDetail(state: {
   id: string;
   enabled: boolean;
-  config: Record<string, unknown>;
   installedAt: Date;
   updatedAt: Date;
 }) {
   const reg = getPluginRegistration(state.id);
   const schedules = await buildScheduleDetails(state.id);
+  // G.1 — config moved to np_settings; read it through the new
+  // service so the response shape (config field) stays the same
+  // for callers (admin detail page, internal scripts).
+  const config = (await getPluginConfig(state.id)) ?? {};
   return {
     id: state.id,
     name: reg?.name ?? state.id,
@@ -100,7 +104,7 @@ async function toDetail(state: {
     admin: reg?.admin ?? null,
     schedules,
     enabled: state.enabled,
-    config: state.config,
+    config,
     installedAt: state.installedAt,
     updatedAt: state.updatedAt,
     loaded: reg !== undefined,
@@ -155,17 +159,23 @@ export async function PATCH(
     }
 
     if (body.config !== undefined) {
-      if (!body.config || typeof body.config !== "object" || Array.isArray(body.config)) {
-        throw new NpValidationError("Invalid input", [
-          { field: "config", message: "Must be a JSON object" },
-        ]);
-      }
-      patch.config = body.config as Record<string, unknown>;
+      // G.1 — plugin config writes moved to a dedicated route
+      // (`PUT /api/admin/plugins/[id]/config`) so they can flow
+      // through `setPluginConfig` (zod validation + envelope wrap +
+      // `np:plugin:<id>` cache invalidation). This route now only
+      // toggles the enable flag; reject `config` patches with a
+      // pointer to the new endpoint so callers update sooner.
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "config",
+          message: "Plugin config writes moved to PUT /api/admin/plugins/<id>/config (G.1)",
+        },
+      ]);
     }
 
-    if (patch.enabled === undefined && patch.config === undefined) {
+    if (patch.enabled === undefined) {
       throw new NpValidationError("Invalid input", [
-        { field: "body", message: "Provide enabled or config to update" },
+        { field: "body", message: "Provide enabled to update" },
       ]);
     }
 

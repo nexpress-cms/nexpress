@@ -64,13 +64,18 @@ describe.skipIf(skipIfNoTestDb())("ctx.settings / ctx.theme (integration)", () =
     expect(await ctx.settings.getSite()).toEqual({ name: "Acme", description: "A site" });
   });
 
-  it("settings.getPlugin/setPlugin round-trip the npPlugins config", async () => {
+  it("settings.getPlugin/setPlugin round-trip plugin config through np_settings", async () => {
+    // G.1 — config moved from np_plugins.config to np_settings
+    // (key="plugin.config:<id>"). setPlugin no longer requires a
+    // pre-existing np_plugins row because the new path uses
+    // INSERT … ON CONFLICT DO UPDATE on np_settings directly.
+    // Seeding the np_plugins row is still done so the plugin
+    // appears in `listPluginStates` for adjacent assertions, but
+    // it's not load-bearing for this test.
     const db = await getTestDb();
-    // seed the plugin row because setPlugin updates, not insert
     await db.insert(npPlugins).values({
       id: "test-plugin",
       enabled: true,
-      config: {},
     });
 
     const ctx = makeCtx();

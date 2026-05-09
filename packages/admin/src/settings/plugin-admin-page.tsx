@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { NpFieldConfig } from "@nexpress/core";
+import type { NpFieldConfig, NpThemeSettingsField } from "@nexpress/core";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, Play } from "lucide-react";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
+import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 import { PageHeader } from "../layout/page-header.js";
 import { useForm } from "react-hook-form";
 
@@ -74,6 +75,24 @@ interface PluginAdminPageProps {
    *  plugin doesn't declare scheduled tasks; absent when the queue isn't
    *  wired (e.g. dev without pg-boss). */
   schedules?: ScheduleDef[];
+  /** G.1 — introspected metadata from the plugin's `configSchema`.
+   *  When non-empty, an auto-form replaces the legacy
+   *  `admin.settings.fields` form (per design doc § 5.1.1
+   *  precedence). Server-side introspection happens in the route
+   *  loader; client just renders. */
+  configFields?: NpThemeSettingsField[];
+  /** G.1 — initial value for the auto-form. Comes from
+   *  `getPluginConfig(pluginId)` (versioned envelope unwrapped,
+   *  schema defaults filled in for unsaved fields). Distinct from
+   *  `initialConfig` (legacy `np_plugins.config` style) although
+   *  both currently mirror each other. */
+  initialAutoConfig?: unknown;
+  /** G.1 — set when the persisted config failed `safeParse`
+   *  (buggy migrator, schema drift the migrator didn't cover).
+   *  The auto-form receives schema defaults as `initialAutoConfig`;
+   *  this prop drives a warning banner so the operator knows their
+   *  saved values were replaced and the next save will overwrite. */
+  configParseError?: string;
 }
 
 type ActionResult = { ok: boolean; data?: unknown; error?: string };
@@ -97,9 +116,17 @@ export function PluginAdminPage({
   admin,
   initialConfig,
   schedules,
+  configFields,
+  initialAutoConfig,
+  configParseError,
 }: PluginAdminPageProps) {
-  const sections: Array<"settings" | "widgets" | "actions" | "tables" | "schedules"> = [];
-  if (admin.settings) sections.push("settings");
+  const hasAutoForm = (configFields?.length ?? 0) > 0;
+  const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> = [];
+  if (hasAutoForm) sections.push("autoForm");
+  // G.1 § 5.1.1 — auto-form wins; the legacy admin.settings.fields
+  // form is hidden when configSchema is also declared. Host-side
+  // console.warn already names both sources for the operator.
+  if (admin.settings && !hasAutoForm) sections.push("settings");
   if (admin.widgets?.length) sections.push("widgets");
   if (admin.actions?.length) sections.push("actions");
   if (admin.tables?.length) sections.push("tables");
@@ -120,7 +147,18 @@ export function PluginAdminPage({
         </div>
       ) : null}
 
-      {admin.settings ? (
+      {hasAutoForm ? (
+        <ConfigAutoFormCard
+          pluginId={pluginId}
+          fields={configFields!}
+          initialValue={
+            initialAutoConfig && typeof initialAutoConfig === "object"
+              ? (initialAutoConfig as ZodFormValue)
+              : {}
+          }
+          parseError={configParseError}
+        />
+      ) : admin.settings ? (
         <SettingsCard
           pluginId={pluginId}
           settings={admin.settings}
@@ -163,6 +201,121 @@ export function PluginAdminPage({
 // ────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ────────────────────────────────────────────────────────────────────────
+
+function ConfigAutoFormCard({
+  pluginId,
+  fields,
+  initialValue,
+  parseError,
+}: {
+  pluginId: string;
+  fields: NpThemeSettingsField[];
+  initialValue: ZodFormValue;
+  parseError?: string;
+}) {
+  const [value, setValue] = useState<ZodFormValue>(initialValue);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  // Once the operator dismisses the banner (or saves over the
+  // schema-default values), the parse-error condition is
+  // resolved on the server; we hide the banner client-side too
+  // so a successful save doesn't leave it stuck.
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const showBanner = !bannerDismissed && Boolean(parseError);
+
+  const handleSubmit = useCallback(async () => {
+    setSaving(true);
+    setToast(null);
+    try {
+      const response = await npFetch(`/api/admin/plugins/${pluginId}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setToast({
+          type: "error",
+          message: payload?.error?.message ?? "Failed to save config.",
+        });
+        return;
+      }
+      setToast({ type: "success", message: "Config saved." });
+      // The save persisted a fresh value over the schema-defaults
+      // shown after the parse error; the banner is no longer
+      // accurate (the next page load won't surface parseError),
+      // so dismiss it client-side too.
+      setBannerDismissed(true);
+    } catch (error) {
+      setToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to save config.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [pluginId, value]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Settings</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {showBanner ? (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+            <div>
+              <div className="font-medium">Saved settings were reset to defaults</div>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                The persisted value didn&rsquo;t match the current schema (likely a plugin upgrade).
+                Saving will overwrite the stored value with what you see below.
+              </p>
+              {parseError ? (
+                <pre className="mt-2 max-h-24 overflow-auto rounded bg-amber-500/10 p-2 text-[11px] leading-snug">
+                  {parseError}
+                </pre>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setBannerDismissed(true)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+        {toast ? (
+          <div
+            className={
+              toast.type === "success"
+                ? "mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-200"
+                : "mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-700 dark:text-rose-200"
+            }
+          >
+            {toast.message}
+          </div>
+        ) : null}
+        <ZodForm fields={fields} initialValue={initialValue} onChange={setValue} />
+        <div className="mt-4 flex justify-end">
+          <Button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              void handleSubmit();
+            }}
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Save settings
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SettingsCard({
   pluginId,

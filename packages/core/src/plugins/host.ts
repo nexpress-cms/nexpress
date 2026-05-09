@@ -1,8 +1,4 @@
-import { eq } from "drizzle-orm";
-
 import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
-import { npPlugins } from "../db/schema/system.js";
-import { getDb } from "../db/runtime.js";
 import { getLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { createPluginRuntimeContext } from "./context.js";
@@ -161,6 +157,19 @@ interface PluginRegistration {
   routes: PluginRouteHandler[];
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
   schedules: Map<string, PluginScheduleHandler>;
+  /**
+   * G.1 — Zod schema describing the plugin's operator-tunable
+   * config. Read by `getPluginConfig` (introspection +
+   * validation) and the admin auto-form. `unknown` here so the
+   * host doesn't pull a hard zod dep into its type surface;
+   * narrowed at the call site (same pattern theme uses for
+   * `settingsSchema`).
+   */
+  configSchema?: unknown;
+  /** G.1 — schema version (defaults to 1). See plugin-sdk types. */
+  configVersion?: number;
+  /** G.1 — migration callback for v(N-1) → current. */
+  configMigrate?: (old: unknown, fromVersion: number) => unknown;
 }
 
 /**
@@ -283,6 +292,12 @@ export interface ResolvedPluginLike {
     auth?: boolean;
   }>;
   admin?: PluginAdminExtension;
+  /** G.1 — runtime zod schema for plugin config (auto-form). */
+  configSchema?: unknown;
+  /** G.1 — schema version for the lazy migration pipeline. */
+  configVersion?: number;
+  /** G.1 — old → current value migrator. */
+  configMigrate?: (old: unknown, fromVersion: number) => unknown;
 }
 
 type ResolvedHookFn = (ctx: {
@@ -297,50 +312,21 @@ type ResolvedRouteFn = (
   ctx: Record<string, unknown>,
 ) => Promise<PluginRouteResponse>;
 
-async function loadPluginConfig(pluginId: string): Promise<Record<string, unknown>> {
-  const config = await getPluginConfig(pluginId);
-  return config ?? {};
-}
-
 /**
- * Read a plugin's persisted config from `np_plugins.config`.
+ * G.1 — read a plugin's persisted config from `np_settings`.
  *
- * Distinguishes three cases that internal callers (which always
- * want the "empty" fallback) couldn't:
- *  - Plugin not installed → `null`. Theme / page code uses this
- *    to detect "feature not available" without a separate
- *    `isPluginEnabled` round-trip.
- *  - Installed with no config saved yet → `{}`. The plugin row
- *    exists but the operator hasn't filled in any settings.
- *  - Installed with config → the typed object.
- *
- * The generic parameter is unchecked at runtime — callers should
- * Zod-validate before trusting the shape if the plugin's config
- * schema isn't owned by them. We don't know the plugin's schema
- * here.
+ * Internal helper for the runtime context builder; external callers
+ * import `getPluginConfig` from `./config.js` directly. We avoid a
+ * cross-module call here so `host.ts` doesn't import from `config.ts`
+ * (one-way: config.ts imports from host.ts via `getPluginRegistration`).
  */
-export async function getPluginConfig<T = Record<string, unknown>>(
-  pluginId: string,
-): Promise<T | null> {
-  try {
-    const db = getDb();
-    const rows = await db
-      .select({ config: npPlugins.config })
-      .from(npPlugins)
-      .where(eq(npPlugins.id, pluginId))
-      .limit(1);
-    const row = rows[0] as { config?: unknown } | undefined;
-    if (!row) return null;
-    if (row.config && typeof row.config === "object" && !Array.isArray(row.config)) {
-      return row.config as T;
-    }
-    // Row exists but config is null / non-object — treat as empty.
-    return {} as T;
-  } catch {
-    // DB not ready — caller is asking before bootstrap. Same
-    // signal as "no row".
-    return null;
+async function loadPluginConfig(pluginId: string): Promise<Record<string, unknown>> {
+  const { getPluginConfig } = await import("./config.js");
+  const value = await getPluginConfig(pluginId);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
+  return {};
 }
 
 async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
@@ -457,9 +443,30 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     routes: [],
     actions: new Map(),
     schedules: new Map(),
+    configSchema: plugin.configSchema,
+    configVersion: plugin.configVersion,
+    configMigrate: plugin.configMigrate,
   };
 
   pluginRegistry.set(manifest.id, registration);
+
+  // G.1 — declaring BOTH `configSchema` (auto-form) and
+  // `admin.settings.fields` (legacy declarative form) is a sign
+  // the plugin is mid-migration. The auto-form wins (per design
+  // doc § 5.1.1); warn so the operator/author notices the
+  // ignored field list. Migrating PRs should remove
+  // `admin.settings.fields` in the same diff that adds
+  // `configSchema`.
+  if (
+    registration.configSchema !== undefined &&
+    plugin.admin?.settings?.fields &&
+    plugin.admin.settings.fields.length > 0
+  ) {
+    getLogger().warn("Plugin declares both configSchema and admin.settings.fields", {
+      pluginId: manifest.id,
+      note: "Auto-form wins; admin.settings.fields is ignored at render time. Remove admin.settings.fields when migrating to configSchema.",
+    });
+  }
 
   // Phase 19 — first-class cron schedules. Each entry maps to
   // one pg-boss schedule. Duplicates within a plugin overwrite

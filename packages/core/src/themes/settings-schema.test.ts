@@ -223,4 +223,48 @@ describe("introspectThemeSettingsSchema", () => {
       rows: 8,
     });
   });
+
+  // G.1 — sensitive widget hint for password / secret fields.
+  it("emits password field when meta({ sensitive: true }) is set", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        clientSecret: z
+          .string()
+          .min(1)
+          .meta({ sensitive: true })
+          .describe("OAuth client secret"),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "clientSecret",
+      type: "password",
+    });
+  });
+
+  it("password takes precedence over textarea hint", () => {
+    // A field that's BOTH sensitive AND multi-line is unusual but
+    // possible (e.g. PEM private keys). Sensitive wins because the
+    // masking guarantee matters more than the line-count UX.
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        privateKey: z
+          .string()
+          .meta({ sensitive: true, widget: "textarea", rows: 6 }),
+      }),
+    );
+    expect(fields[0]?.type).toBe("password");
+  });
+
+  it("password unwraps through .optional() and .default()", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        token: z
+          .string()
+          .meta({ sensitive: true })
+          .optional()
+          .default(""),
+      }),
+    );
+    expect(fields[0]?.type).toBe("password");
+  });
 });
