@@ -455,15 +455,21 @@ copy from; the only constraint is that your theme's
 
 ### v0.2 surfaces cheat-sheet
 
-| Surface | What it does | Cookbook section |
-|---|---|---|
-| `manifest.requires` | Declare collection field expectations; `pnpm nexpress theme:install` patches operator collections to satisfy | F.1 / F.8 |
-| `manifest.settingsSchema` | Zod schema → admin auto-form. Operator tunes per site without editing code | F.3 |
-| `impl.blocks` | Theme-shipped block types. Auto-stamped `source: "theme:<id>"` for active-source filtering | F.4 |
-| `impl.patterns` | Pre-shaped block subtrees the page-builder drops in one click | F.5 |
-| `impl.navLocations` | Declare nav mount points; admin nav editor surfaces with friendly labels | F.6 |
-| `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches | F.2 |
-| `impl.notFound` / `impl.seo` | 404 page + sitemap/feed/robots contributions | F.7 |
+For full design rationale + deferred items per surface see
+[`docs/design/theme-v0.2-extension.md`](./design/theme-v0.2-extension.md)
+(frozen snapshot). The reference themes
+(`packages/themes/{magazine,docs,portfolio}`) are the live
+implementation reference.
+
+| Surface | What it does |
+|---|---|
+| `manifest.requires` | Declare collection field expectations; `pnpm nexpress theme:install <pkg>` AST-patches operator collections to satisfy. Admin warns at activation time when fields are missing. |
+| `manifest.settingsSchema` | Zod schema → admin auto-form. Operator tunes per site without editing code. Reuses `nx:theme:<siteId>` cache tag. |
+| `impl.blocks` | Theme-shipped block types. Bootstrap auto-stamps `source: "theme:<id>"` for active-source filtering in multi-site processes. |
+| `impl.patterns` | Pre-shaped block subtrees the page-builder drops in one click (Cmd-K → Pattern). |
+| `impl.navLocations` | Declare nav mount points with labels; admin nav editor populates its location dropdown from the active theme's declarations. |
+| `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches with precedence: app-explicit > page-slug > theme route. |
+| `impl.notFound` / `impl.seo` | 404 page + sitemap/feed/robots contributions. Theme switch + settings save bust SEO cache tags appropriately. |
 
 ---
 
