@@ -39,6 +39,16 @@ interface CommandAction {
   // Group label for the section header — actions with the same
   // group render together with the group as the header.
   group: "Block" | "Pattern" | "Page" | "Add";
+  /** Phase F.5.1 — optional sub-group (e.g. pattern category)
+   *  rendered as a secondary header within the parent group.
+   *  Patterns use this to show "Homepage" / "Section" / etc.
+   *  bands inside the Pattern group. Other groups ignore it. */
+  subgroup?: string;
+  /** Phase F.5.1 — optional preview image URL. The picker
+   *  renders a small thumbnail to the left of the label when
+   *  present. Theme/plugin-shipped patterns supply this; built-
+   *  in / custom patterns omit and render text-only. */
+  preview?: string;
   run: () => void;
 }
 
@@ -71,9 +81,19 @@ function filterCommandActions(actions: CommandAction[], query: string): CommandA
   });
 }
 
-function groupCommandActions(
-  actions: CommandAction[],
-): { group: CommandAction["group"]; items: CommandAction[] }[] {
+interface CommandSubgroup {
+  /** Sub-header label, or null for actions without a subgroup
+   *  (rendered as the first un-headered band). */
+  subgroup: string | null;
+  items: CommandAction[];
+}
+
+interface CommandGroup {
+  group: CommandAction["group"];
+  subgroups: CommandSubgroup[];
+}
+
+function groupCommandActions(actions: CommandAction[]): CommandGroup[] {
   const order: CommandAction["group"][] = ["Block", "Pattern", "Add", "Page"];
   const buckets = new Map<CommandAction["group"], CommandAction[]>();
   for (const a of actions) {
@@ -83,7 +103,46 @@ function groupCommandActions(
   }
   return order
     .filter((g) => (buckets.get(g)?.length ?? 0) > 0)
-    .map((g) => ({ group: g, items: buckets.get(g) ?? [] }));
+    .map((g) => ({
+      group: g,
+      subgroups: bucketBySubgroup(buckets.get(g) ?? []),
+    }));
+}
+
+/**
+ * Phase F.5.1 — within a group, bucket actions by `subgroup`
+ * key. Items without a subgroup go into the first
+ * (un-headered) band so the existing flat-list UX still
+ * works for groups that don't carry categories.
+ */
+function capitalize(s: string): string {
+  return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function bucketBySubgroup(items: CommandAction[]): CommandSubgroup[] {
+  const order: string[] = [];
+  const byKey = new Map<string | null, CommandAction[]>();
+  for (const item of items) {
+    const key = item.subgroup ?? null;
+    if (!byKey.has(key)) {
+      byKey.set(key, []);
+      order.push(key === null ? "" : key);
+    }
+    byKey.get(key)!.push(item);
+  }
+  // Render un-headered band first; named subgroups follow in
+  // declaration order. Doesn't sort alphabetically — operator
+  // sees patterns in the registration order their themes /
+  // plugins specified.
+  const out: CommandSubgroup[] = [];
+  if (byKey.has(null)) {
+    out.push({ subgroup: null, items: byKey.get(null)! });
+  }
+  for (const k of order) {
+    if (k === "") continue;
+    out.push({ subgroup: k, items: byKey.get(k)! });
+  }
+  return out;
 }
 
 export function CommandMenu({
@@ -224,12 +283,22 @@ export function CommandMenu({
           ? "plugin"
           : pattern.source === "theme"
             ? "theme"
-            : pattern.id;
+            : pattern.source.startsWith("theme:")
+              ? "theme"
+              : pattern.source.startsWith("plugin:")
+                ? "plugin"
+                : pattern.id;
     actions.push({
       id: `pattern.insert.${pattern.id}`,
       label: `Insert pattern: ${pattern.label}`,
       hint: sourceHint,
       group: "Pattern",
+      // Phase F.5.1 — pattern's `category` (homepage / page /
+      // section / ...) renders as a sub-header inside the
+      // Pattern group; `preview` shows a thumbnail next to the
+      // action label.
+      subgroup: pattern.category,
+      preview: pattern.preview,
       run: () => dispatch({ type: "INSERT_PATTERN", pattern }),
     });
   }
@@ -315,33 +384,50 @@ export function CommandMenu({
               No matching commands.
             </p>
           ) : (
-            groups.map(({ group, items }) => (
+            groups.map(({ group, subgroups }) => (
               <div key={group} className="px-2 pt-2">
                 <div className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   {group}
                 </div>
-                <ul className="space-y-0.5">
-                  {items.map((action) => (
-                    <li key={action.id}>
-                      <button
-                        type="button"
-                        onClick={() => runAction(action)}
-                        className={cn(
-                          "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm",
-                          "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
-                          action.hint === "destructive" && "text-destructive",
-                        )}
-                      >
-                        <span className="truncate">{action.label}</span>
-                        {action.hint && action.hint !== "destructive" ? (
-                          <span className="ml-2 truncate font-mono text-[10px] text-muted-foreground">
-                            {action.hint}
-                          </span>
-                        ) : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                {subgroups.map((sub, i) => (
+                  <div key={sub.subgroup ?? `__default-${i.toString()}`}>
+                    {sub.subgroup ? (
+                      <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground/80">
+                        {capitalize(sub.subgroup)}
+                      </div>
+                    ) : null}
+                    <ul className="space-y-0.5">
+                      {sub.items.map((action) => (
+                        <li key={action.id}>
+                          <button
+                            type="button"
+                            onClick={() => runAction(action)}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                              "hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
+                              action.hint === "destructive" && "text-destructive",
+                            )}
+                          >
+                            {action.preview ? (
+                              <img
+                                src={action.preview}
+                                alt=""
+                                className="h-6 w-9 shrink-0 rounded-sm border border-border/40 object-cover"
+                                loading="lazy"
+                              />
+                            ) : null}
+                            <span className="flex-1 truncate">{action.label}</span>
+                            {action.hint && action.hint !== "destructive" ? (
+                              <span className="ml-2 truncate font-mono text-[10px] text-muted-foreground">
+                                {action.hint}
+                              </span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
             ))
           )}
