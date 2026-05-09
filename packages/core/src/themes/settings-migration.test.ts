@@ -42,6 +42,18 @@ describe("isVersionedSettings", () => {
     // we require BOTH sentinels.
     expect(isVersionedSettings({ __npVersion: 2 })).toBe(false);
   });
+
+  it("returns false for NaN / Infinity versions (corrupted DB row guard)", () => {
+    // typeof NaN === "number" — without Number.isFinite, the
+    // version comparison would silently skip the migration
+    // path (NaN >= N is always false).
+    expect(isVersionedSettings({ __npVersion: Number.NaN, __npSettings: {} })).toBe(
+      false,
+    );
+    expect(
+      isVersionedSettings({ __npVersion: Number.POSITIVE_INFINITY, __npSettings: {} }),
+    ).toBe(false);
+  });
 });
 
 describe("applyMigration", () => {

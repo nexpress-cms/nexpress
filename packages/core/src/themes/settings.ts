@@ -52,8 +52,13 @@ export interface NpVersionedSettings {
 export function isVersionedSettings(value: unknown): value is NpVersionedSettings {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<NpVersionedSettings>;
+  // Number.isFinite rejects NaN / Infinity / non-numbers — a
+  // hand-crafted or corrupted DB value with `__npVersion: NaN`
+  // would otherwise pass typeof and trip the migration path's
+  // `>=` comparisons (NaN >= N always false).
   return (
     typeof candidate.__npVersion === "number" &&
+    Number.isFinite(candidate.__npVersion) &&
     "__npSettings" in candidate
   );
 }
