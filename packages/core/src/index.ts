@@ -414,6 +414,7 @@ export { introspectThemeSettingsSchema } from "./themes/settings-schema.js";
 export type {
   NpThemeSettingsField,
   NpThemeSettingsTextField,
+  NpThemeSettingsTextareaField,
   NpThemeSettingsUrlField,
   NpThemeSettingsColorField,
   NpThemeSettingsNumberField,

@@ -62,8 +62,9 @@ export const portfolioSettingsSchema = z.object({
   aboutCopy: z
     .string()
     .default("")
+    .meta({ widget: "textarea", rows: 4 })
     .describe(
-      "Optional short bio for the about page sidebar. Renders as a plain text input in v0.2 — multi-line textarea support for `z.string()` is tracked as F.5.1/F.3 follow-up.",
+      "Optional short bio for the studio. Renders as a multi-line textarea in admin (4 rows) and as a small paragraph above the footer contact line on the public site.",
     ),
   // Footer
   showFooterCredit: z
