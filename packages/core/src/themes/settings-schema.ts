@@ -236,7 +236,16 @@ function introspectField(
       // opts a `z.string()` into multi-line rendering. Theme
       // authors pair it with `.describe()` for the field
       // label; row count is optional (defaults to 4).
-      const meta = readMeta(inner);
+      //
+      // Check `node` (outer) first then `inner` because Zod v4's
+      // `.meta()` returns a new instance, so the meta lives at
+      // whichever level the author called .meta() at:
+      //
+      //   z.string().meta({...}).optional()  → meta on inner string
+      //   z.string().optional().meta({...})  → meta on outer optional
+      //
+      // Both patterns are valid in author code; both should work.
+      const meta = readMeta(node) ?? readMeta(inner);
       if (meta && meta.widget === "textarea") {
         const rows =
           typeof meta.rows === "number" && meta.rows > 0

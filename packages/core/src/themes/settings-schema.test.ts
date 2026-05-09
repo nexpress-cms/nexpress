@@ -202,4 +202,25 @@ describe("introspectThemeSettingsSchema", () => {
     );
     expect(fields[0]?.type).toBe("text");
   });
+
+  it("detects textarea when .meta() is the LAST link in the chain (after .optional())", () => {
+    // .meta() last — Zod v4 returns a new instance for .meta(),
+    // so meta lives on the OUTER optional, not the inner string.
+    // Both author conventions must produce textarea:
+    //   z.string().meta({...}).optional()
+    //   z.string().optional().meta({...})
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        bio: z
+          .string()
+          .optional()
+          .meta({ widget: "textarea", rows: 8 }),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "bio",
+      type: "textarea",
+      rows: 8,
+    });
+  });
 });
