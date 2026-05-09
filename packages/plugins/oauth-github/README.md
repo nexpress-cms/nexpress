@@ -44,17 +44,9 @@ auto-form renders these editable fields:
 |---------------|---------------------|----------------------------------|
 | Client ID     | text                | _empty_                          |
 | Client secret | password (masked)   | _empty_                          |
+| Scopes        | one item per line   | `read:user`<br>`user:email`      |
 
 Saved values persist to `np_settings (key="plugin.config:oauth-github")`.
-
-> **Scopes are not yet editable in the auto-form.** The schema declares
-> `scopes: z.array(z.string())` with default `["read:user", "user:email"]`,
-> but the F.3 introspector currently only handles `z.array(z.object(...))`
-> — so `scopes` renders as an `unsupported` field that the form skips.
-> The default array is what the plugin actually requests at OAuth
-> handshake. Sites that need different scopes today have two options:
-> fork the plugin, or wait for a future introspector pass that adds
-> `array(string)` support. (Tracked alongside the G-track deferred queue.)
 
 ### Precedence
 

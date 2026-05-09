@@ -45,13 +45,9 @@ auto-form renders these editable fields:
 |---------------|---------------------|--------------------------------------|
 | Client ID     | text                | _empty_                              |
 | Client secret | password (masked)   | _empty_                              |
+| Scopes        | one item per line   | `openid`<br>`email`<br>`profile`     |
 
 Saved values persist to `np_settings (key="plugin.config:oauth-google")`.
-
-> **Scopes are not yet editable in the auto-form.** Same limitation as
-> oauth-github — the F.3 introspector handles `z.array(z.object(...))`
-> only, not `z.array(z.string())`. Default `["openid", "email", "profile"]`
-> applies. Forking or a future introspector pass are the workarounds.
 
 ### Precedence
 

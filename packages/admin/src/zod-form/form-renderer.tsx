@@ -107,6 +107,8 @@ function FieldDispatch({ field, value, onChange }: FieldProps) {
       return <ObjectField field={field} value={value} onChange={onChange} />;
     case "array":
       return <ArrayField field={field} value={value} onChange={onChange} />;
+    case "string-array":
+      return <StringArrayField field={field} value={value} onChange={onChange} />;
     case "unsupported":
       return <UnsupportedField field={field} value={value} onChange={onChange} />;
   }
@@ -360,6 +362,38 @@ function ArrayField({ field, value, onChange }: FieldProps) {
           Add item
         </Button>
       </div>
+    </FieldShell>
+  );
+}
+
+function StringArrayField({ field, value, onChange }: FieldProps) {
+  // Phase G follow-up — `z.array(z.string())` editor.
+  //
+  // Renders one item per line in a `<textarea>`. Empty lines are
+  // dropped on commit so trailing returns don't introduce blank
+  // entries. Plugin / theme authors who want richer affordances
+  // (chips, drag-reorder, paste-from-CSV) can still target this
+  // surface — for the common OAuth-scopes / category-list /
+  // tag-allowlist case the line-buffer shape is the simplest
+  // operator-readable representation.
+  const items = Array.isArray(value)
+    ? (value as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
+  return (
+    <FieldShell name={field.name} description={field.description ?? field.name}>
+      <Textarea
+        id={field.name}
+        rows={Math.max(3, items.length + 1)}
+        value={items.join("\n")}
+        onChange={(e) => {
+          const lines = e.target.value
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+          onChange(lines);
+        }}
+        placeholder="One item per line"
+      />
     </FieldShell>
   );
 }

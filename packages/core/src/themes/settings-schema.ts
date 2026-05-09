@@ -28,6 +28,7 @@ export type NpThemeSettingsField =
   | NpThemeSettingsBooleanField
   | NpThemeSettingsEnumField
   | NpThemeSettingsArrayField
+  | NpThemeSettingsStringArrayField
   | NpThemeSettingsObjectField
   | NpThemeSettingsUnsupportedField;
 
@@ -84,9 +85,18 @@ export interface NpThemeSettingsEnumField extends NpThemeSettingsFieldBase {
 
 export interface NpThemeSettingsArrayField extends NpThemeSettingsFieldBase {
   type: "array";
-  /** v0.2 supports `z.array(z.object(...))` only. The element
+  /** v0.2 supports `z.array(z.object(...))`. The element
    *  schema introspects as the array's child fields. */
   element: NpThemeSettingsField[];
+}
+
+/** Phase G follow-up — `z.array(z.string())`. Renders as a
+ *  one-item-per-line input. Surfaced for OAuth scopes and
+ *  similar string-list configs that don't fit the object-array
+ *  shape; previously fell through to the JSON-textarea
+ *  `unsupported` fallback. */
+export interface NpThemeSettingsStringArrayField extends NpThemeSettingsFieldBase {
+  type: "string-array";
 }
 
 export interface NpThemeSettingsObjectField extends NpThemeSettingsFieldBase {
@@ -280,10 +290,17 @@ function introspectField(
     }
     case "array": {
       const element = innerDef.element as ZodNode | undefined;
-      // v0.2 supports z.array(z.object(...)) only.
+      // v0.2 supports z.array(z.object(...)) — typed nested form
+      // for each item.
       if (element?._def.type === "object" && element._def.shape) {
         const childFields = introspectShape(element._def.shape);
         return { ...base, type: "array", element: childFields };
+      }
+      // Phase G follow-up — z.array(z.string()) gets a dedicated
+      // string-array widget (one item per line). Surfaced for
+      // OAuth scopes and similar string-list configs.
+      if (element?._def.type === "string") {
+        return { ...base, type: "string-array" };
       }
       return { ...base, type: "unsupported", zodTypeName: "array" };
     }

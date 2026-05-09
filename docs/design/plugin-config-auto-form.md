@@ -403,13 +403,11 @@ when a real hybrid plugin lands.
   `packages/core/src/themes/settings-schema.ts`. Plugins that
   want cross-field validation today have to re-parse the raw
   config in their `setup()` — out-of-band check.
-- **Introspector `array(string)` support** — surfaced in G.2.2
-  while writing oauth schemas. Plugin scopes are
-  `z.array(z.string())`, but the introspector currently only
-  handles `array(object)` — emits `unsupported`. Operators
-  fall back to the raw-JSON textarea editor (functional but
-  awkward — `["read:user","user:email"]` typed by hand). A typed
-  string-array editor would be ~15 LOC follow-up.
+- ~~**Introspector `array(string)` support**~~ — **shipped**
+  post-G.docs in #588 (~30 LOC). `z.array(z.string())` now
+  emits a dedicated `string-array` widget rendering as a
+  one-item-per-line `<textarea>`. OAuth scopes editable
+  end-to-end through the auto-form.
 
 ## 11. Locked answers
 
