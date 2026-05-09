@@ -174,6 +174,86 @@
     border-radius: var(--np-radius-md, 0.5rem);
   }
 
+  /* Phase M.2 — member form surface tokens.
+   *
+   * Member auth forms (`.np-members-form`) and discussion / comment
+   * forms (`.np-discussion-form`) share the same `.np-form-input`
+   * primitive selector. To let themes restyle MEMBER forms specifically
+   * without touching discussion / comment styling, M.2 scopes a token
+   * layer under `.np-members-form` only — the inner `.np-form-input`
+   * inside a member form reads from `--np-member-form-*` tokens, while
+   * discussion / comment `.np-form-input` keeps the existing
+   * `--np-color-*` reads.
+   *
+   * Tokens fall back to the global theme tokens by default — themes
+   * that don't override get the same look as today. Themes restyle
+   * member forms by overriding the tokens in their `impl.css` (e.g.
+   * `.np-magazine .np-members-form { --np-member-form-input-bg: …; }`).
+   *
+   * See `docs/design/member-surface-skinning.md` § 5.2 for the
+   * contract. OAuth button tokens (`--np-member-oauth-{provider}-*`)
+   * are declared here for forward compatibility — there's no OAuth
+   * button component on the login page today (OAuth login goes
+   * through `/api/members/oauth/{provider}/start` directly), but
+   * shipping the token surface lets themes pre-style for when those
+   * buttons land. */
+  .np-members-form {
+    --np-member-form-input-bg: var(--np-color-background, #fff);
+    --np-member-form-input-border: var(--np-color-input, #e5e7eb);
+    --np-member-form-input-border-focus: var(--np-color-ring, #4f46e5);
+    --np-member-form-input-radius: var(--np-radius-md, 0.5rem);
+    --np-member-form-input-padding: 0.625rem 0.75rem;
+    --np-member-form-input-disabled-bg: var(--np-color-muted, #f8fafc);
+    --np-member-form-button-bg: var(--np-color-primary, #4f46e5);
+    --np-member-form-button-fg: var(--np-color-primary-foreground, #fff);
+    --np-member-form-button-radius: var(--np-radius-md, 0.5rem);
+    --np-member-form-error-color: var(--np-color-destructive, #b91c1c);
+    /* OAuth button tokens — forward-compat surface (no consumer today). */
+    --np-member-oauth-google-bg: #fff;
+    --np-member-oauth-google-fg: #1f2937;
+    --np-member-oauth-google-border: var(--np-color-input, #e5e7eb);
+    --np-member-oauth-google-radius: var(--np-radius-md, 0.5rem);
+    --np-member-oauth-github-bg: #1f2937;
+    --np-member-oauth-github-fg: #fff;
+    --np-member-oauth-github-border: transparent;
+    --np-member-oauth-github-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-members-form .np-form-input,
+  .np-members-form textarea.np-form-input {
+    background: var(--np-member-form-input-bg);
+    border-color: var(--np-member-form-input-border);
+    border-radius: var(--np-member-form-input-radius);
+    padding: var(--np-member-form-input-padding);
+  }
+
+  .np-members-form .np-form-input:focus,
+  .np-members-form textarea.np-form-input:focus {
+    border-color: var(--np-member-form-input-border-focus);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--np-member-form-input-border-focus) 20%, transparent);
+  }
+
+  .np-members-form .np-form-input:disabled {
+    background: var(--np-member-form-input-disabled-bg);
+  }
+
+  .np-members-form .np-form-error {
+    color: var(--np-member-form-error-color);
+    background: color-mix(in oklch, var(--np-member-form-error-color) 8%, transparent);
+    border-color: color-mix(in oklch, var(--np-member-form-error-color) 30%, transparent);
+    border-radius: var(--np-member-form-input-radius);
+  }
+
+  .np-members-form .np-button-primary {
+    background: var(--np-member-form-button-bg);
+    color: var(--np-member-form-button-fg);
+    border-radius: var(--np-member-form-button-radius);
+  }
+
+  .np-members-form .np-button-primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--np-member-form-button-bg) 90%, black);
+  }
+
   .np-form-success {
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
