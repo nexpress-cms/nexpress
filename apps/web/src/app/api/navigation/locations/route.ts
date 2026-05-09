@@ -2,6 +2,7 @@ import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
   can,
+  getActiveThemeNavLocations,
   getCurrentSiteId,
   npNavigation,
 } from "@nexpress/core";
@@ -10,11 +11,18 @@ import { eq } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
 import { getDb } from "@/lib/db";
+import { ensureFor } from "@/lib/init-core";
 import type { NextRequest } from "next/server";
 
 interface LocationOption {
   value: string;
   label: string;
+  description?: string;
+  maxItems?: number;
+  /** Where this location came from. Lets the editor distinguish
+   *  framework defaults from theme-declared from operator-
+   *  authored entries. */
+  source: "default" | "theme" | "custom";
 }
 
 /**
@@ -37,9 +45,9 @@ interface LocationOption {
  * the response shape changing.
  */
 const DEFAULT_LOCATIONS: LocationOption[] = [
-  { value: "header", label: "Header" },
-  { value: "footer", label: "Footer" },
-  { value: "main", label: "Main" },
+  { value: "header", label: "Header", source: "default" },
+  { value: "footer", label: "Footer", source: "default" },
+  { value: "main", label: "Main", source: "default" },
 ];
 
 export async function GET(request: NextRequest) {
@@ -53,6 +61,7 @@ export async function GET(request: NextRequest) {
       throw new NpForbiddenError("navigation", "list-locations");
     }
 
+    await ensureFor("read");
     const db = getDb();
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const rows = await db
@@ -60,15 +69,35 @@ export async function GET(request: NextRequest) {
       .from(npNavigation)
       .where(eq(npNavigation.siteId, siteId));
 
-    const seen = new Set(DEFAULT_LOCATIONS.map((l) => l.value));
-    const locations: LocationOption[] = [...DEFAULT_LOCATIONS];
+    // Phase F.6 — pull theme-declared nav locations into the
+    // editor's dropdown so operators see friendly labels (and
+    // descriptions / maxItems hints) for the slots their active
+    // theme actually consumes. Theme-declared keys win on
+    // collision with framework defaults so e.g. magazine can
+    // relabel "header" → "Site Header".
+    const themeLocations = await getActiveThemeNavLocations();
+
+    const byKey = new Map<string, LocationOption>();
+    for (const def of DEFAULT_LOCATIONS) byKey.set(def.value, def);
+    for (const t of themeLocations) {
+      byKey.set(t.key, {
+        value: t.key,
+        label: t.label,
+        description: t.description,
+        maxItems: t.maxItems,
+        source: "theme",
+      });
+    }
     for (const row of rows) {
-      if (seen.has(row.location)) continue;
-      seen.add(row.location);
-      locations.push({ value: row.location, label: titleCase(row.location) });
+      if (byKey.has(row.location)) continue;
+      byKey.set(row.location, {
+        value: row.location,
+        label: titleCase(row.location),
+        source: "custom",
+      });
     }
 
-    return npSuccessResponse({ locations });
+    return npSuccessResponse({ locations: [...byKey.values()] });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

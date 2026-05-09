@@ -71,4 +71,6 @@ export {
   createSiteScopedBlockRenderContext,
 } from "./block-render-context.js";
 
+export { NavMenu, type NpNavMenuProps } from "./nav-menu.js";
+
 export { buildPageMetadata } from "./page-metadata.js";

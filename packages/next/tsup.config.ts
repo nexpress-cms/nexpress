@@ -8,5 +8,5 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   sourcemap: !fast,
-  external: ["next", "@nexpress/core"],
+  external: ["next", "react", "react/jsx-runtime", "@nexpress/core"],
 });
