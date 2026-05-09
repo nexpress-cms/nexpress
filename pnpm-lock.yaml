@@ -817,6 +817,9 @@ importers:
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -827,6 +830,9 @@ importers:
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.4(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
 
   packages/plugins/seo-audit:
     dependencies:
