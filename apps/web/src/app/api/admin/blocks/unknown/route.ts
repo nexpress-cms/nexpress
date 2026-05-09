@@ -5,6 +5,7 @@ import {
   getAllCollectionSlugs,
   getCollectionConfig,
   saveDocument,
+  type NpAuthUser,
   type NpFieldConfig,
 } from "@nexpress/core";
 import { getRegisteredBlocks, type NpBlockInstance } from "@nexpress/blocks";
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
       throw new NpForbiddenError("blocks/unknown", "scan");
     }
     await ensureFor("plugins");
-    const report = await scanUnknownBlocks();
+    const report = await scanUnknownBlocks(user);
     return npSuccessResponse(report);
   } catch (error) {
     return npErrorResponse(
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
           )
         : null;
 
-    const report = await scanUnknownBlocks();
+    const report = await scanUnknownBlocks(user);
     const targets = report.affected.filter(
       (a) =>
         !filterTypes ||
@@ -149,7 +150,9 @@ function getKnownTypes(): Set<string> {
   return new Set(getRegisteredBlocks().map((b) => b.type));
 }
 
-async function scanUnknownBlocks(): Promise<UnknownBlocksReport> {
+async function scanUnknownBlocks(
+  user: NpAuthUser,
+): Promise<UnknownBlocksReport> {
   const known = getKnownTypes();
   const slugs = getAllCollectionSlugs();
   const affected: AffectedDoc[] = [];
@@ -164,11 +167,13 @@ async function scanUnknownBlocks(): Promise<UnknownBlocksReport> {
     const blocksFields = collectBlocksFieldNames(config.fields);
     if (blocksFields.length === 0) continue;
 
-    // findDocuments without a user runs the readers' default ACL —
-    // for system-wide cleanup we want EVERY doc, regardless of
-    // status / draft. Cap with a generous limit; a future iteration
-    // can paginate when sites cross the threshold.
-    const result = await findDocuments(slug, { limit: 1000 });
+    // Pass the admin user so collections with restricted
+    // `access.read` (e.g. members-only content) still surface in
+    // the scan — without a user, those throw with a forbidden
+    // error and the cleanup view would silently miss them. The
+    // admin.manage capability gate at the route entry already
+    // bounds who can run this.
+    const result = await findDocuments(slug, { limit: 1000 }, user);
     for (const row of result.docs as Record<string, unknown>[]) {
       const docId = typeof row.id === "string" ? row.id : null;
       if (!docId) continue;
