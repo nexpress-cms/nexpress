@@ -32,11 +32,15 @@ export async function ProjectIndexTemplate({
   const heading = data.heading ?? "Selected work";
   const intro = data.intro;
   const docs = data.docs ?? [];
-  const gridStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: `repeat(${settings.gridColumns}, 1fr)`,
-    gap: `${settings.galleryGutter}px`,
-  };
+  // Pass settings as CSS custom properties — the styles.ts
+  // media queries clamp the column count at narrower viewports
+  // so a `gridColumns: 6` setting doesn't crush content on
+  // mobile. Inline `gridTemplateColumns` would beat the media
+  // queries; vars let CSS stay in control of breakpoints.
+  const gridStyle = {
+    "--np-portfolio-grid-cols": settings.gridColumns,
+    "--np-portfolio-grid-gutter": `${settings.galleryGutter}px`,
+  } as React.CSSProperties;
   return (
     <section className="np-portfolio-index">
       <header className="np-portfolio-index-header">

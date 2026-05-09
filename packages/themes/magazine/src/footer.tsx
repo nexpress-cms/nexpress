@@ -4,6 +4,18 @@ import { getCachedNavigation } from "@nexpress/next";
 import { MagazineNewsletterForm } from "./components/newsletter-form.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
+/** Display labels for the supported social platform enum values
+ *  in `magazineSettingsSchema.socialLinks[].platform`. Falls back
+ *  to the raw value (lowercased) if a future platform isn't
+ *  listed here. */
+const SOCIAL_LABELS: Record<string, string> = {
+  twitter: "Twitter",
+  github: "GitHub",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+  rss: "RSS",
+};
+
 /**
  * Editorial footer. Three columns above a thin colophon line:
  *
@@ -76,11 +88,22 @@ export async function MagazineFooter() {
             <br />© {year.toString()} · Built with NexPress
           </p>
           {settings.socialLinks.length > 0 ? (
-            <ul className="np-magazine-footer-social">
+            <ul
+              className="np-magazine-footer-social"
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: "1rem 0 0",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.75rem",
+                fontSize: "0.875rem",
+              }}
+            >
               {settings.socialLinks.map((link, i) => (
                 <li key={`magazine-social-${i.toString()}`}>
                   <a href={link.url} target="_blank" rel="noreferrer">
-                    {link.platform}
+                    {SOCIAL_LABELS[link.platform] ?? link.platform}
                   </a>
                 </li>
               ))}
