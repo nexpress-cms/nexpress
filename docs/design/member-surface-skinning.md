@@ -1,8 +1,8 @@
 # Member/Community Surface Skinning — Design Plan
 
-> Version: 0.1 (Draft — design phase)
-> Date: 2026-05-09
-> Status: Design — pending review and decision-locking
+> Version: 0.2 (Locked — ready for implementation)
+> Date: 2026-05-10
+> Status: Decisions locked. M.1 ready to implement.
 > Prerequisites:
 >   - `docs/design/theme-v0.2-extension.md` (theme contract v0.2,
 >     deferred this surface to a separate track per §3 / §10)
@@ -67,16 +67,18 @@ or imported by site pages):
   posts; already pluggable per `docs/community.md`'s ssr render
   hooks.
 
-## 2. Locked decisions (proposed)
+## 2. Locked decisions (final)
 
-To be confirmed before implementation.
+Locked 2026-05-10. See § 11 for the four open-question answers
+that fed into these.
 
 | # | Decision | Choice | Rationale |
 |---|----------|--------|-----------|
 | A | Member routes stay app-owned (URLs, behavior, API contracts) | **Yes** | Auth + token + email flows belong to the framework. Theme owns presentation only. |
-| B | Theme contract gains slot for member chrome | **Yes** | Without this, login pages look default-themed even on Magazine sites. |
+| B | Theme contract gains slot for member chrome | **Yes — `impl.members.shell`** | Without this, login pages look default-themed even on Magazine sites. |
 | C | Theme can replace member page bodies wholesale | **No** | Body replacement requires the theme to reimplement form submission, validation messages, and OAuth provider buttons. Slots-only keeps the migration story small. |
-| D | Existing themes work unchanged | **Yes** | All v0.3+ fields are additive optional. |
+| D | Existing themes work unchanged | **Yes** | All M.* fields are additive optional. |
+| E | Route restructure for clean shell wiring | **Yes — move `members/*` to a new `(member)` route group** | The current `(site)/layout.tsx` already wraps every child in `impl.shell`; nesting `(site)/members/layout.tsx` underneath would double-wrap. Splitting into a sibling `(member)` route group puts member chrome at one layout, no parent-shell to skip. URL stays `/members/...` (route groups don't affect URLs); header-based i18n (proxy sets `x-np-locale` without rewriting URL) is unaffected. |
 
 ## 3. Goals
 
@@ -151,6 +153,67 @@ narrow contract — `children` is opaque, themes don't depend
 on the framework's body internals. If the framework redesigns
 `/members/login` to add a captcha row, themes don't have to
 ship a new version.
+
+#### 5.1.1 Route restructure — move `members/*` to a `(member)` group
+
+The existing `(site)/layout.tsx` wraps every child route in the
+active theme's top-level `impl.shell`. Adding `members.shell`
+under that nesting double-wraps the member pages (top shell
+around members shell). Locked decision E moves the member tree
+out of `(site)` into a new `(member)` route group:
+
+```
+apps/web/src/app/
+  (site)/                         # existing — public site (blog, search, [[...slug]])
+    layout.tsx                    # impl.shell wrap (unchanged)
+  (member)/                       # NEW
+    layout.tsx                    # impl.members.shell (or fallback)
+    members/
+      login/page.tsx              # moved from (site)/members/login/
+      register/page.tsx           # moved
+      forgot-password/page.tsx    # moved
+      reset-password/page.tsx     # moved
+      verify/page.tsx             # moved
+      me/notifications/page.tsx   # moved
+```
+
+URL surface is unchanged — Next.js route groups don't add path
+segments. `/members/login` resolves to
+`(member)/members/login/page.tsx` post-restructure (same as
+`(site)/members/login/page.tsx` did pre-restructure).
+
+i18n is unaffected. Per `docs/i18n.md` § 4 the proxy
+(`apps/web/src/proxy.ts`) detects the locale and forwards it via
+`x-np-locale` — but verifying against the actual code, the proxy
+does NOT rewrite the URL (`resolveSiteLocale` returns
+`{ locale, rewrite: null }`). For static routes like
+`/members/login` there's no locale prefix in the URL to begin
+with — operators visit `/members/login` regardless of locale,
+and `headers().get("x-np-locale")` carries the resolved locale.
+The catch-all `(site)/[[...slug]]/page.tsx` does its own
+slug-internal locale stripping via `splitLocaleFromPath()` for
+content URLs; static member routes are locale-agnostic in URL
+form. Restructuring to `(member)` doesn't change any of that.
+
+The new `(member)/layout.tsx` is a sibling of `(site)/layout.tsx`
+(not a child) — Next.js runs ONE of them per request based on
+which route group the URL falls into. So `(member)/layout.tsx`
+needs to duplicate the infrastructure pieces of `(site)/layout.tsx`:
+`ensureFor("read")`, `<NpThemeStyle theme={tokens}>`, the
+theme-owned CSS `<style>` tag, and the `data-np-theme` attribute.
+Differences vs `(site)/layout.tsx`:
+- Wraps content in `impl.members.shell` (or `impl.shell`, or a
+  fragment) instead of `impl.shell` directly.
+- Skips the `<link rel="alternate" type="application/atom+xml">`
+  feed-discovery line — member pages don't carry feed metadata.
+
+LOC accounting: 6 page files moved (~50 LOC of import-path
+adjustments), one new layout file (~60 LOC — duplicates
+`(site)/layout.tsx`'s theme-tokens / CSS / bootstrap with the
+shell swap), the slot field on the theme contract (~30 LOC
+across `@nexpress/core` types and the resolved theme registry).
+~140 LOC total for the restructure, on top of the ~190 LOC M.1
+core (slot type, framework wiring, fallback logic, tests).
 
 ### 5.2 Phase M.2 — Member form surface tokens
 
@@ -233,13 +296,13 @@ component state; no server-cache invalidation concern.
 
 | Phase | Scope | PR-size estimate |
 |---|---|---|
-| **M.1** | `impl.members.shell` slot + framework wiring | 1 PR, ~250 LOC |
+| **M.1** | `impl.members.shell` slot + `(member)` route group restructure (locked decision E) + framework wiring | 1 PR, ~330 LOC |
 | **M.2** | `--np-member-form-*` tokens + framework default CSS | 1 PR, ~150 LOC |
 | **M.3** | `impl.members.notFound` / `error` (mirror F.7 / F.7.1) | 1 PR, ~200 LOC |
 | **M.ref** | Magazine reference impl (shell + form tokens + error) | 1 PR, ~300 LOC |
 | **M.docs** | Theme-authoring cookbook updates | 1 PR, ~150 LOC |
 
-Total: 5 PRs, ~1050 LOC. Each phase ships independently.
+Total: 5 PRs, ~1130 LOC (was ~1050; M.1 +80 LOC for the route-group restructure per locked decision E). Each phase ships independently.
 
 ## 10. Deferred to a later track
 
@@ -259,29 +322,62 @@ Total: 5 PRs, ~1050 LOC. Each phase ships independently.
   theme shipping translated strings overlapping with the
   operator's i18n bundles would need a precedence rule.
 
-## 11. Open questions
+## 11. Locked answers
 
-These need answers before phasing locks.
+Locked 2026-05-10 alongside § 2.
 
-1. **Where does the `MemberShell` hook into the route tree**?
-   - Option A: `(site)/members/layout.tsx` — single tree
-     wrap, but conflicts with i18n locale-prefix routing.
-   - Option B: per-page `<MemberShell>` import — verbose but
-     no layout-level coupling. Decide before M.1.
-2. **Can `members.shell` access form state**? Today: no —
-   `children` is opaque. If a theme wants a "Login" header
-   that changes to "Welcome back" post-submit, it can't tell.
-   Decide whether to expose a `<MemberShellContext>` hook
-   that surfaces page identity at minimum.
+1. **Where does the `MemberShell` hook into the route tree?**
+   The original framing assumed file-tree i18n (Options A / B
+   pivoted on whether `members/layout.tsx` would conflict with
+   locale-prefix routing). After verifying against the
+   codebase, **i18n routing is header-based, not file-tree-based**
+   — `apps/web/src/proxy.ts` resolves the locale and forwards
+   it via `x-np-locale` but does NOT rewrite the URL. Static
+   routes like `/members/login` are locale-agnostic in URL
+   form (operators always hit `/members/login`, never
+   `/ko/members/login` — the latter would land on the catch-all
+   and 404). The catch-all `(site)/[[...slug]]/page.tsx` does
+   its own slug-internal locale prefix stripping via
+   `splitLocaleFromPath()` for CMS content URLs; that's
+   independent of file-tree layouts.
+   The real constraint is the existing `(site)/layout.tsx` already
+   wrapping every child in `impl.shell` — adding
+   `(site)/members/layout.tsx` underneath would double-wrap.
+   **Decision: locked-decision E (route restructure) — move
+   `members/*` to a new `(member)` route group with its own
+   layout**. Single wrap point, no parent shell to skip, URL
+   stays `/members/...` (route groups don't change paths).
+   See § 5.1.1 for the file-tree shape.
+2. **Can `members.shell` access form state?** Today: no —
+   `children` is opaque. If a theme wants a "Login" → "Welcome
+   back" dynamic header post-submit, it can't tell.
+   **Decision: keep opaque for M.1**. Expose `<MemberShellContext>`
+   only when a reference theme has a real need (magazine
+   reference impl in M.ref will surface it if so). Adding a
+   context-provider surface speculatively expands the contract;
+   tightening it later is hard. The route's URL is enough signal
+   for "what page are we on" via `usePathname()` if a theme
+   wants a per-route header during M.ref — that's a CLIENT-side
+   read, doesn't break the slot's server-render shape.
 3. **OAuth button styling** — framework owns buttons today
-   (Continue with Google / GitHub markup). Theme override
-   path: tokens (`--np-member-oauth-google-bg`) or full
-   button replacement? Decide at M.2.
-4. **`/members/me/notifications` complexity** — this is closer
-   to a member dashboard than a form. Stay slot-only, or
-   expose a richer `members.notificationsItem` slot for the
-   per-row rendering? Decide at M.1 with a punt to deferred
-   if simplicity wins.
+   (Continue with Google / GitHub markup). **Decision: tokens
+   at M.2**. Phase M.2 ships `--np-member-oauth-google-bg`,
+   `--np-member-oauth-google-fg`, `--np-member-oauth-github-bg`,
+   `--np-member-oauth-github-fg` (and the same `*-border` /
+   `*-radius` pair across both providers). Full button
+   replacement is body-replacement territory (decision C =
+   No, § 10 deferred). Visual coherence with the theme is the
+   goal; OAuth flow ownership stays in `@nexpress/oauth-providers`.
+4. **`/members/me/notifications` complexity** — closer to a
+   member dashboard than a form. **Decision: stay slot-only
+   for M.1**. Single `members.shell` wraps notifications the
+   same way it wraps login. A richer `members.notificationsItem`
+   per-row slot moves to § 10 deferred — add when a reference
+   theme has a real customization need (e.g., magazine reference
+   impl wants per-notification-type icon glyphs). Keeping the
+   shell-only commitment for M.1 means notifications-page
+   migration is the same shape as login-page migration; no
+   special case in the cookbook.
 
 ## 12. NOT in scope (record so it doesn't creep)
 
