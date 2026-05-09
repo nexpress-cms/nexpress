@@ -1,7 +1,10 @@
+import * as React from "react";
 import { renderBlocks } from "@nexpress/blocks";
 import type { NpPageBlocks } from "@nexpress/blocks";
 
 import type { NpTemplateRenderProps } from "@nexpress/theme";
+
+import { resolvePortfolioSettings } from "../settings-helpers.js";
 
 /**
  * Project detail template. Big hero image, large title, optional
@@ -31,8 +34,12 @@ function coverAlt(value: ProjectDoc["cover"], fallback: string): string {
   return fallback;
 }
 
-export function ProjectDetailTemplate({ doc, blockCtx }: NpTemplateRenderProps) {
+export async function ProjectDetailTemplate({
+  doc,
+  blockCtx,
+}: NpTemplateRenderProps): Promise<React.ReactElement> {
   const project = doc as ProjectDoc;
+  const settings = await resolvePortfolioSettings();
   const title = project.title ?? "Untitled";
   const cover = coverUrl(project.cover);
   return (
@@ -47,7 +54,8 @@ export function ProjectDetailTemplate({ doc, blockCtx }: NpTemplateRenderProps) 
         {project.excerpt ? (
           <p className="np-portfolio-project-excerpt">{project.excerpt}</p>
         ) : null}
-        {(project.role || project.year || project.client) ? (
+        {settings.showProjectMeta &&
+        (project.role || project.year || project.client) ? (
           <dl className="np-portfolio-project-meta">
             {project.client ? (
               <>

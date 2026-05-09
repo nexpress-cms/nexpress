@@ -1,8 +1,16 @@
+import * as React from "react";
+
+import { resolvePortfolioSettings } from "../settings-helpers.js";
+
 /**
  * Portfolio "project" card. Visual-first: a large image (1:1
  * by default) with an overlaid title that fades in on hover.
  * Defensive on the doc shape so collections of any kind can
  * be routed through this card.
+ *
+ * Phase F.9.1-B — `settings.showProjectTags` toggles the
+ * category/tag chip below the title. Operators who want a
+ * cleaner card grid flip it off.
  */
 
 export interface PortfolioProjectDoc {
@@ -35,7 +43,10 @@ export interface PortfolioProjectCardProps {
   doc: PortfolioProjectDoc;
 }
 
-export function PortfolioProjectCard({ doc }: PortfolioProjectCardProps) {
+export async function PortfolioProjectCard({
+  doc,
+}: PortfolioProjectCardProps): Promise<React.ReactElement> {
+  const settings = await resolvePortfolioSettings();
   const href = projectHref(doc);
   const cover = coverUrl(doc.cover);
   const title = doc.title ?? "Untitled";
@@ -49,7 +60,7 @@ export function PortfolioProjectCard({ doc }: PortfolioProjectCardProps) {
         )}
         <figcaption className="np-portfolio-project-caption">
           <span className="np-portfolio-project-title">{title}</span>
-          {doc.category ? (
+          {settings.showProjectTags && doc.category ? (
             <span className="np-portfolio-project-category">{doc.category}</span>
           ) : null}
         </figcaption>

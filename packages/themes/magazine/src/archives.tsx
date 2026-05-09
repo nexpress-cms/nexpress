@@ -5,6 +5,8 @@ import {
   type NpFindResult,
 } from "@nexpress/core";
 
+import { resolveMagazineSettings } from "./settings-helpers.js";
+
 /**
  * Phase F.9 — magazine archive components.
  *
@@ -124,6 +126,7 @@ export async function CategoryArchive({
   params,
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const slug = params.slug ?? "";
+  const settings = await resolveMagazineSettings();
   // Find category by slug. The category collection is required by
   // the manifest (see settings.ts/manifest.requires); operators
   // who skip `pnpm nexpress theme:install` see an empty result.
@@ -141,7 +144,7 @@ export async function CategoryArchive({
           totalDocs: 0,
           totalPages: 0,
           page: 1,
-          limit: 10,
+          limit: settings.postsPerPage,
           hasNextPage: false,
           hasPrevPage: false,
         }}
@@ -154,7 +157,7 @@ export async function CategoryArchive({
       categories: category.id as string,
     },
     sort: "-publishedAt",
-    limit: 10,
+    limit: settings.postsPerPage,
   });
   return (
     <ArchiveLayout
@@ -169,6 +172,7 @@ export async function AuthorArchive({
   params,
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const id = params.id ?? "";
+  const settings = await resolveMagazineSettings();
   // Look up the author's display name so the page reads
   // "Stories by Jane Doe" instead of "Stories by <uuid>".
   // The authors collection is required by the theme manifest;
@@ -185,7 +189,7 @@ export async function AuthorArchive({
   const result = await findDocuments<Record<string, unknown>>("posts", {
     where: { status: "published", author: id },
     sort: "-publishedAt",
-    limit: 10,
+    limit: settings.postsPerPage,
   });
   return (
     <ArchiveLayout

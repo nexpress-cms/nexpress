@@ -318,7 +318,10 @@ export const portfolioCss = `
 .np-portfolio-project-cover {
   margin: 0;
   position: relative;
-  aspect-ratio: 4 / 3;
+  /* Phase F.9.1-B — operator-tunable aspect via shell-set
+   * --np-portfolio-card-aspect (square / portrait / landscape /
+   * golden). Falls back to 4/3 when the variable isn't set. */
+  aspect-ratio: var(--np-portfolio-card-aspect, 4 / 3);
   overflow: hidden;
 }
 .np-portfolio-project-cover img {
@@ -326,10 +329,29 @@ export const portfolioCss = `
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.5s ease;
+  transition: transform 0.5s ease, filter 0.4s ease;
 }
-.np-portfolio-project-card:hover .np-portfolio-project-cover img {
+/* Phase F.9.1-B — hoverStyle variants. Selected via the shell's
+ * data-hover-style attribute. Default ("fade") = caption fades in
+ * + image scale; the others swap the image effect.
+ *  - scale: only the image zooms (caption stays subtle)
+ *  - slide: image stays put; caption slides up from below
+ *  - lift: card lifts with shadow; image static
+ */
+.np-portfolio[data-hover-style="fade"] .np-portfolio-project-card:hover .np-portfolio-project-cover img,
+.np-portfolio[data-hover-style="scale"] .np-portfolio-project-card:hover .np-portfolio-project-cover img {
   transform: scale(1.04);
+}
+.np-portfolio[data-hover-style="lift"] .np-portfolio-project-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.np-portfolio[data-hover-style="lift"] .np-portfolio-project-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+.np-portfolio[data-hover-style="slide"] .np-portfolio-project-caption {
+  /* Slide-up reveal — caption starts further below + opacity 0 */
+  transform: translateY(24px);
 }
 .np-portfolio-project-placeholder {
   display: block;
