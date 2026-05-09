@@ -37,7 +37,17 @@ import { planThemeInstall, type ThemeInstallPlan } from "./plan.js";
 
 interface RunInput {
   themePackage: string;
-  flags: { dryRun: boolean; yes: boolean };
+  flags: {
+    dryRun: boolean;
+    yes: boolean;
+    /** v0.3 — when true, auto-chains `db:migrate` after a
+     *  successful `db:generate`. Default false: the operator
+     *  reviews the generated SQL diff before it touches the
+     *  database. With `--apply`, the operator opts into the
+     *  one-shot install (still prompts before applying unless
+     *  combined with `--yes`). */
+    apply: boolean;
+  };
 }
 
 const COLLECTIONS_DIR = "src/collections";
@@ -199,6 +209,40 @@ async function runDrizzleGenerate(cwd: string): Promise<boolean> {
   return false;
 }
 
+/**
+ * v0.3 (`--apply` flag) — run `db:migrate` after a successful
+ * generate. Only gets called when the operator opted into the
+ * one-shot install. Same package-manager detection + drizzle-kit
+ * fallback as `runDrizzleGenerate`. Returns true on success;
+ * false leaves the migration unreflected in the database and
+ * the runner prints a "run pnpm db:migrate manually" hint.
+ */
+async function runDrizzleMigrate(cwd: string): Promise<boolean> {
+  const pm = detectPackageManager(cwd);
+  const runScript: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["db:migrate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["db:migrate"]]
+        : ["npm", ["run", "db:migrate"]];
+  const directDrizzle: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["drizzle-kit", "migrate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["exec", "drizzle-kit", "migrate"]]
+        : ["npx", ["drizzle-kit", "migrate"]];
+
+  for (const [bin, args] of [runScript, directDrizzle]) {
+    const ok = await new Promise<boolean>((resolveFn) => {
+      const child = spawn(bin, args, { cwd, stdio: "inherit" });
+      child.on("error", () => resolveFn(false));
+      child.on("exit", (code) => resolveFn(code === 0));
+    });
+    if (ok) return true;
+  }
+  return false;
+}
+
 export async function runThemeInstall(input: RunInput): Promise<number> {
   const cwd = process.cwd();
   console.log(pc.dim(`Resolving from ${cwd}…`));
@@ -274,7 +318,14 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
       );
       return 2;
     }
-    const ok = await confirm("Continue?");
+    // db:generate runs unconditionally after AST patches; --apply
+    // additionally chains db:migrate. The prompt scopes the
+    // mention to migrate so operators don't read it as
+    // "--apply turns generate on too".
+    const prompt = input.flags.apply
+      ? "Continue? (--apply will also run db:migrate after the staged generate)"
+      : "Continue?";
+    const ok = await confirm(prompt);
     if (!ok) {
       console.log(pc.dim("Aborted."));
       return 0;
@@ -315,10 +366,46 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
     );
   }
 
+  // v0.3 — `--apply` auto-chains db:migrate after a successful
+  // generate. Skipped (and printed as a manual step in the
+  // standard "Next" block) when the flag is off, or when generate
+  // failed (no migration to apply).
+  if (input.flags.apply) {
+    if (!migrated) {
+      console.log("");
+      console.log(
+        pc.yellow(
+          "--apply skipped: db:generate didn't produce a migration. Run `pnpm db:generate && pnpm db:migrate` manually after fixing.",
+        ),
+      );
+    } else {
+      console.log("");
+      console.log(pc.dim("Applying migration to the database…"));
+      const applied = await runDrizzleMigrate(cwd);
+      console.log("");
+      if (applied) {
+        console.log(
+          `${pc.green("✓")} Migration applied. Activate the theme in admin → Settings → Theme.`,
+        );
+      } else {
+        console.log(
+          pc.yellow(
+            "--apply: db:migrate failed. Review the generated SQL (`git diff`) and run `pnpm db:migrate` manually.",
+          ),
+        );
+        return 1;
+      }
+    }
+    return 0;
+  }
+
   console.log("");
   console.log("Next:");
   console.log("  1. Review the changes (`git diff`)");
   console.log("  2. Run `pnpm db:migrate` to apply the migration");
+  console.log(
+    "     (or re-run with --apply to auto-chain db:migrate after generate)",
+  );
   console.log("  3. Activate the theme in admin → Settings → Theme");
 
   return 0;
