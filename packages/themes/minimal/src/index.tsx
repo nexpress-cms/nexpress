@@ -3,9 +3,16 @@ import type { ReactNode } from "react";
 import { defineTheme } from "@nexpress/theme";
 
 /**
- * `@nexpress/theme-minimal` — sparse demo theme. Phase 11.2
- * ships this alongside `@nexpress/theme-default` so the
- * theme-swap UX (11.4) has something to swap to. Visibly
+ * `@nexpress/theme-minimal` — v0.1-era sparse demo theme.
+ *
+ * **Status (v0.2):** kept for back-compat. New sites should
+ * use `theme-magazine` / `theme-docs` / `theme-portfolio` for
+ * v0.2 contract surfaces (settingsSchema, blocks, archives,
+ * etc.). This theme remains a working `defineTheme` caller
+ * but doesn't participate in the v0.2 operator-no-code flow.
+ *
+ * Phase 11.2 shipped this alongside `@nexpress/theme-default`
+ * so the theme-swap UX (11.4) had something to swap to. Visibly
  * different from the default:
  *
  *   - centered single-line header (no nav menu, no search,

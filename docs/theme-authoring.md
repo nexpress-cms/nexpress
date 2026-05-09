@@ -433,17 +433,43 @@ fetch it via an API route.
 
 ## 11. Reference Theme Examples
 
-| Package                       | Role in repo                                       |
-| ----------------------------- | -------------------------------------------------- |
-| `@nexpress/theme-default`     | Full-featured baseline. Use as your starting point. |
-| `@nexpress/theme-minimal`     | Sparse / editorial. Demonstrates a stripped shell. |
-| `@nexpress/theme-magazine`    | Multi-column layout, hero + sidebar templates.     |
-| `@nexpress/theme-portfolio`   | Image-led, gallery-friendly home + project pages.  |
+| Package                       | Role in repo                                       | v0.2 surfaces |
+| ----------------------------- | -------------------------------------------------- | ------------- |
+| `@nexpress/theme-magazine`    | Editorial / blog layout, hero + archives + patterns. | F.1–F.7 (every surface) |
+| `@nexpress/theme-docs`        | Hierarchical docs with sidebar + search route.       | F.1–F.3, F.6, F.7 (no patterns / archives) |
+| `@nexpress/theme-portfolio`   | Image-led dark theme, deep settings (12 fields).     | F.1, F.3, F.4, F.6, F.7 |
+| `@nexpress/theme-default`     | v0.1-era baseline. Pre-v0.2 surfaces only — kept for back-compat. | v0.1 only |
+| `@nexpress/theme-minimal`     | v0.1-era sparse shell. Pre-v0.2 surfaces only.       | v0.1 only |
 
-Copy any of them into a new package directory, rename the
-manifest id, and start tweaking. The contract is the same; the
-only constraint is that your theme's `manifest.id` must be
-unique within the registry.
+For new themes, copy from `theme-magazine` / `theme-docs` /
+`theme-portfolio` — they exercise the v0.2 surfaces (manifest
+requires, settingsSchema, blocks, patterns, navLocations,
+archives, routes, seo). `theme-default` and `theme-minimal`
+are kept for back-compat but don't yet declare v0.2 surfaces;
+they remain valid `defineTheme` callers but skip the operator-
+no-code workflow.
+
+The contract is the same regardless of which template you
+copy from; the only constraint is that your theme's
+`manifest.id` must be unique within the registry.
+
+### v0.2 surfaces cheat-sheet
+
+For full design rationale + deferred items per surface see
+[`docs/design/theme-v0.2-extension.md`](./design/theme-v0.2-extension.md)
+(frozen snapshot). The reference themes
+(`packages/themes/{magazine,docs,portfolio}`) are the live
+implementation reference.
+
+| Surface | What it does |
+|---|---|
+| `manifest.requires` | Declare collection field expectations; `pnpm nexpress theme:install <pkg>` AST-patches operator collections to satisfy. Admin warns at activation time when fields are missing. |
+| `manifest.settingsSchema` | Zod schema → admin auto-form. Operator tunes per site without editing code. Reuses `nx:theme:<siteId>` cache tag. |
+| `impl.blocks` | Theme-shipped block types. Bootstrap auto-stamps `source: "theme:<id>"` for active-source filtering in multi-site processes. |
+| `impl.patterns` | Pre-shaped block subtrees the page-builder drops in one click (Cmd-K → Pattern). |
+| `impl.navLocations` | Declare nav mount points with labels; admin nav editor populates its location dropdown from the active theme's declarations. |
+| `impl.routes` / `impl.archives` | Declared dynamic routes (`/category/:slug`, `/search`, `/lookbook`). Catch-all dispatches with precedence: app-explicit > page-slug > theme route. |
+| `impl.notFound` / `impl.seo` | 404 page + sitemap/feed/robots contributions. Theme switch + settings save bust SEO cache tags appropriately. |
 
 ---
 
