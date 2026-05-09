@@ -380,9 +380,26 @@ export interface NpPattern {
    * Phase F.5 — optional preview image path. Themes can ship a
    * thumbnail (typically under the theme package's `public/` so
    * Next can serve it directly) so the page-builder picker can
-   * render a visual representation. Picker UI thumbnail
-   * rendering is tracked as F.5.1 follow-up; the field
-   * persists today regardless.
+   * render a visual representation. Picker UI thumbnail rendering
+   * shipped in F.5.1 (Cmd-K menu) and F.5.2 (full library
+   * dialog).
+   *
+   * **Recommended convention** (F.5.2): place preview images under
+   * the theme package's `public/themes/<theme-id>/patterns/`
+   * directory and reference them as
+   * `/themes/<theme-id>/patterns/<pattern-id>.png`. Next's static
+   * file serving picks them up automatically. Use:
+   *
+   *   - PNG or WebP (transparent backgrounds OK; admin renders
+   *     on a neutral tile)
+   *   - 800×500px source (admin uses 16:10 cards; the picker
+   *     resizes via `object-cover`)
+   *   - Under ~100 KB per thumbnail so the library dialog stays
+   *     snappy when a theme ships a dozen patterns
+   *
+   * The picker tolerates broken / missing previews — when the
+   * URL 404s or the field is omitted, the admin falls back to a
+   * labeled icon tile (no broken-image glyph reaches operators).
    */
   preview?: string;
   /**

@@ -9,7 +9,17 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Braces, Copy, Group, Plus, Redo2, Trash2, Undo2, X } from "lucide-react";
+import {
+  Braces,
+  Copy,
+  Group,
+  LayoutGrid,
+  Plus,
+  Redo2,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -55,6 +65,7 @@ import {
   OutlinePanel,
   PageJsonDialog,
   PastePatternDialog,
+  PatternLibraryDialog,
   StatusBar,
   useAutosaveStatus,
   usePersistedView,
@@ -127,6 +138,10 @@ export function BlockPageEditor({
   const [pageJsonOpen, setPageJsonOpen] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  // Phase F.5.2 — pattern library dialog (richer browse UI than
+  // the Cmd-K command menu's text lines). Toggled via Cmd-Shift-P
+  // or the toolbar button next to "Save" in the editor header.
+  const [patternLibraryOpen, setPatternLibraryOpen] = useState(false);
   // Currently-focused row id (#467 #1). Tracked via focusin /
   // focusout listeners on the editor section so any focus surface
   // (row card, popover, dropdown) within a `[data-np-block-row]`
@@ -583,6 +598,21 @@ export function BlockPageEditor({
       return;
     }
 
+    // Phase F.5.2 — Cmd-Shift-P opens the pattern library. Picked
+    // Cmd-Shift-P over Cmd-P (which most browsers reserve for
+    // "Print this page") and over Cmd-L (which Chrome uses for
+    // "Focus address bar"); Shift-P is unbound in Chrome / Safari
+    // / Firefox out of the box.
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      event.shiftKey &&
+      event.key.toLowerCase() === "p"
+    ) {
+      event.preventDefault();
+      setPatternLibraryOpen(true);
+      return;
+    }
+
     const key = event.key;
     if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Home" && key !== "End") {
       return;
@@ -701,6 +731,17 @@ export function BlockPageEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
         <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Open pattern library (Cmd-Shift-P)"
+            title="Pattern library (⌘⇧P)"
+            onClick={() => setPatternLibraryOpen(true)}
+          >
+            <LayoutGrid className="mr-1.5 h-4 w-4" />
+            Patterns
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -1061,6 +1102,13 @@ export function BlockPageEditor({
         onOpenChange={setPasteImportOpen}
         knownTypes={availableBlocks.map((b) => b.type)}
         onApply={(pattern) => dispatch({ type: "INSERT_PATTERN", pattern })}
+      />
+
+      <PatternLibraryDialog
+        open={patternLibraryOpen}
+        onOpenChange={setPatternLibraryOpen}
+        patterns={patterns}
+        onInsert={(pattern) => dispatch({ type: "INSERT_PATTERN", pattern })}
       />
     </section>
   );

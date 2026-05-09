@@ -19,6 +19,7 @@ import {
 } from "../../ui/dialog.js";
 import { Input } from "../../ui/input.js";
 import { cn } from "../../ui/utils.js";
+import { PatternPreview } from "./pattern-preview.js";
 
 /**
  * Cmd-K command palette for the page-builder. Built on the
@@ -409,11 +410,10 @@ export function CommandMenu({
                             )}
                           >
                             {action.preview ? (
-                              <img
+                              <PatternPreview
                                 src={action.preview}
                                 alt=""
-                                className="h-6 w-9 shrink-0 rounded-sm border border-border/40 object-cover"
-                                loading="lazy"
+                                size="thumb"
                               />
                             ) : null}
                             <span className="flex-1 truncate">{action.label}</span>
