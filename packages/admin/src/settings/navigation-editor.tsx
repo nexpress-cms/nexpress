@@ -100,15 +100,23 @@ interface CustomRouteOption {
 interface LocationOption {
   value: string;
   label: string;
+  /** Phase F.6.1 — theme-declared metadata (description /
+   *  maxItems / source) and current itemCount for the
+   *  assignments panel. All optional so the editor still
+   *  renders against older endpoint payloads (back-compat). */
+  description?: string;
+  maxItems?: number;
+  source?: "default" | "theme" | "custom";
+  itemCount?: number;
 }
 
 // Baked-in fallbacks shown until the locations endpoint responds.
 // The endpoint always returns these plus any custom locations the
 // operator has added.
 const FALLBACK_LOCATIONS: LocationOption[] = [
-  { value: "header", label: "Header" },
-  { value: "footer", label: "Footer" },
-  { value: "main", label: "Main" },
+  { value: "header", label: "Header", source: "default", itemCount: 0 },
+  { value: "footer", label: "Footer", source: "default", itemCount: 0 },
+  { value: "main", label: "Main", source: "default", itemCount: 0 },
 ];
 
 // Themes look these slugs up by name; the API rejects renames /
@@ -237,7 +245,9 @@ export function NavigationEditor() {
       const payload = (await response.json().catch(() => null)) as unknown;
       if (!response.ok) return;
       if (isRecord(payload) && Array.isArray(payload.locations)) {
-        const next = payload.locations.filter(isLocationOption);
+        const next = payload.locations
+          .map(parseLocationOption)
+          .filter((loc): loc is LocationOption => loc !== null);
         if (next.length > 0) setLocations(next);
       }
     } catch {
@@ -387,6 +397,10 @@ export function NavigationEditor() {
       setSavedSnapshot(JSON.stringify(items));
       setSavedUpdatedAt(extractUpdatedAt(payload));
       setMessage("Navigation saved.");
+      // Refresh the locations list so the assignments panel's
+      // itemCount badges reflect the new save (count + over-limit
+      // states use these values for non-active rows).
+      void loadLocations();
     } catch {
       setError("Unable to save navigation.");
     } finally {
@@ -798,6 +812,16 @@ export function NavigationEditor() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <LocationAssignmentsPanel
+            locations={locations}
+            activeLocation={location}
+            // Active card shows a live count of in-editor items
+            // (incl. unsaved edits) so dragging an item in/out
+            // updates the badge instantly. Other cards stay on
+            // the saved itemCount returned by the API.
+            activeLocationLiveCount={items.length}
+            onSelect={(value) => requestLocationChange(value)}
+          />
           {error ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
@@ -1102,6 +1126,117 @@ export function NavigationEditor() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Phase F.6.1 — "Location assignments" panel.
+ *
+ * Surfaces theme-declared nav slots as clickable cards above the
+ * items list so operators can:
+ *
+ *   - See which slots their active theme actually consumes (no
+ *     more guessing whether the theme calls it `header` or `primary`).
+ *   - Spot empty slots before publish ("the theme expects a
+ *     footer-social menu, you haven't filled it in").
+ *   - Catch over-limit assignments (theme says max 6, operator
+ *     added 8 — the 7th + 8th will silently render past the
+ *     theme's layout and look broken).
+ *
+ * The classic `<Select>` switcher in the header still works for
+ * full-list switching incl. defaults + custom locations; this
+ * panel is purely additive and renders only when the active
+ * theme declares ≥1 location.
+ */
+interface LocationAssignmentsPanelProps {
+  locations: LocationOption[];
+  activeLocation: NavLocation;
+  /** Live count of items in the active location's editor, so the
+   *  card for that location reflects unsaved edits in real time
+   *  rather than the last-saved itemCount returned by the API. */
+  activeLocationLiveCount: number;
+  onSelect: (value: NavLocation) => void;
+}
+
+function LocationAssignmentsPanel({
+  locations,
+  activeLocation,
+  activeLocationLiveCount,
+  onSelect,
+}: LocationAssignmentsPanelProps) {
+  const themeLocations = locations.filter((loc) => loc.source === "theme");
+  if (themeLocations.length === 0) return null;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold">Location assignments</h3>
+        <p className="text-xs text-muted-foreground">
+          Slots your active theme expects you to fill. Click a card to edit
+          that location.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {themeLocations.map((loc) => {
+          const isActive = loc.value === activeLocation;
+          const count = isActive
+            ? activeLocationLiveCount
+            : (loc.itemCount ?? 0);
+          const overLimit =
+            typeof loc.maxItems === "number" && count > loc.maxItems;
+          const isEmpty = count === 0;
+          return (
+            <button
+              key={loc.value}
+              type="button"
+              onClick={() => onSelect(loc.value)}
+              className={cn(
+                "group flex flex-col gap-2 rounded-lg border bg-background/70 p-3 text-left transition",
+                "hover:border-primary/60 hover:bg-background",
+                isActive
+                  ? "border-primary ring-2 ring-primary/30"
+                  : "border-border/60",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium">{loc.label}</div>
+                  <code className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {loc.value}
+                  </code>
+                </div>
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+                    overLimit
+                      ? "bg-destructive/10 text-destructive"
+                      : isEmpty
+                        ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                  )}
+                >
+                  {overLimit
+                    ? `${count} / ${loc.maxItems} over`
+                    : isEmpty
+                      ? "Empty"
+                      : typeof loc.maxItems === "number"
+                        ? `${count} / ${loc.maxItems}`
+                        : `${count} items`}
+                </span>
+              </div>
+              {loc.description ? (
+                <p className="text-xs text-muted-foreground">{loc.description}</p>
+              ) : null}
+              {isActive ? (
+                <span className="text-[10px] uppercase tracking-wider text-primary">
+                  Editing
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1685,10 +1820,21 @@ function labelFor(location: NavLocation, locations: LocationOption[]): string {
   return locations.find((loc) => loc.value === location)?.label ?? location;
 }
 
-function isLocationOption(value: unknown): value is LocationOption {
-  return (
-    isRecord(value) && typeof value.value === "string" && typeof value.label === "string"
-  );
+function parseLocationOption(value: unknown): LocationOption | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.value !== "string" || typeof value.label !== "string") {
+    return null;
+  }
+  // Defensive narrowing — the endpoint adds these fields in
+  // F.6.1 but the editor stays back-compat with the older shape.
+  const next: LocationOption = { value: value.value, label: value.label };
+  if (typeof value.description === "string") next.description = value.description;
+  if (typeof value.maxItems === "number") next.maxItems = value.maxItems;
+  if (value.source === "default" || value.source === "theme" || value.source === "custom") {
+    next.source = value.source;
+  }
+  if (typeof value.itemCount === "number") next.itemCount = value.itemCount;
+  return next;
 }
 
 function createId() {
