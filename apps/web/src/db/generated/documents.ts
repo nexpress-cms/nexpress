@@ -12,7 +12,7 @@ import {
 } from "@nexpress/core";
 import { inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { postsCategoriesTable, postsTagsTable } from "./collections.js";
+import { postsCategoriesTable, postsTagsTable } from "./collections";
 
 export interface PostsDocument {
   id: string;

@@ -87,9 +87,21 @@ export function generateDocumentsModule(collections: NpCollectionConfig[]): stri
         .map((d) => d.joinTable),
     ),
   ).sort();
+  // Emit without the `.js` extension. The reference app's
+  // `apps/web/tsconfig.json` uses `moduleResolution: "Bundler"`
+  // (Next 16's standard); Bundler resolution + Turbopack don't
+  // rewrite `.js` → `.ts` for relative imports the way tsc's
+  // NodeNext resolution does, so the explicit extension breaks
+  // `next build` even though `pnpm typecheck` passes (tsc handles
+  // both shapes). Extension-less imports work under both
+  // resolution strategies — Bundler resolves to the `.ts` file
+  // directly, NodeNext does the same when the file extension
+  // is omitted in TS source. See
+  // https://github.com/vercel/next.js/issues for the long
+  // history of `.js`-extension friction with Turbopack.
   const joinTableImports =
     joinTables.length > 0
-      ? `import { ${joinTables.join(", ")} } from "./collections.js";`
+      ? `import { ${joinTables.join(", ")} } from "./collections";`
       : "";
 
   const imports = [coreImports, drizzleImports, joinTableImports]
