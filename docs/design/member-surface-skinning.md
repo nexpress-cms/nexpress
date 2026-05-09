@@ -223,17 +223,32 @@ restyle inputs by overriding tokens, not by replacing
 components:
 
 ```css
-/* Framework defaults — themes override per their `impl.tokens` */
-.np-member-form {
-  --np-member-form-input-bg:     var(--np-color-background);
-  --np-member-form-input-border: var(--np-color-border);
-  --np-member-form-input-radius: var(--np-radius-md);
-  --np-member-form-input-padding: 0.625rem 0.875rem;
-  --np-member-form-button-bg:    var(--np-color-primary);
-  --np-member-form-button-fg:    var(--np-color-primary-foreground);
-  --np-member-form-error-color:  var(--np-color-destructive);
+/* Framework defaults — themes override per their impl.css */
+.np-members-form {
+  --np-member-form-input-bg:            var(--np-color-background);
+  --np-member-form-input-border:        var(--np-color-input);
+  --np-member-form-input-border-focus:  var(--np-color-ring);
+  --np-member-form-input-radius:        var(--np-radius-md);
+  --np-member-form-input-padding:       0.625rem 0.75rem;
+  --np-member-form-input-disabled-bg:   var(--np-color-muted);
+  --np-member-form-button-bg:           var(--np-color-primary);
+  --np-member-form-button-fg:           var(--np-color-primary-foreground);
+  --np-member-form-button-radius:       var(--np-radius-md);
+  --np-member-form-error-color:         var(--np-color-destructive);
+  /* OAuth — forward-compat tokens, no consumer today */
+  --np-member-oauth-google-bg / -fg / -border / -radius
+  --np-member-oauth-github-bg / -fg / -border / -radius
 }
 ```
+
+Selector note: scoped to `.np-members-form` (existing plural
+class — applied on every member auth `<form>`), not the
+singular `.np-member-form` an earlier draft of this doc
+floated. The existing class name is reused so M.2 doesn't
+churn the hand-coded forms; tokens cascade only inside member
+forms (so `.np-discussion-form` and other shared
+`.np-form-input` consumers keep their existing
+`--np-color-*` reads).
 
 Existing v0.2 reference themes already declare base colors via
 `tokens.colors`; Phase M.2 maps the existing tokens through
