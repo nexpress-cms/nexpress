@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { ZodTypeAny } from "zod";
 
+import type { NpThemeManifest } from "../config/types.js";
 import { getDb } from "../db/index.js";
 import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
@@ -26,6 +27,62 @@ const DEFAULT_SITE = "default";
 
 function settingsKey(themeId: string): string {
   return `theme.settings:${themeId}`;
+}
+
+/**
+ * v0.3 (D) — versioned envelope for persisted theme settings.
+ *
+ * Sentinel keys (`__npVersion`, `__npSettings`) avoid collision
+ * with theme-owned setting fields (themes rarely choose names
+ * starting with `__np`; a `version` / `value` heuristic was
+ * considered but rejected because both names are plausible
+ * theme-author choices for actual settings).
+ *
+ * Legacy unwrapped values (written by v0.2 before this PR) are
+ * detected by the absence of the sentinel keys and migrated
+ * in-place to v1 → current.
+ */
+/** Internal — exported for unit tests only. */
+export interface NpVersionedSettings {
+  __npVersion: number;
+  __npSettings: unknown;
+}
+
+/** Internal — exported for unit tests only. */
+export function isVersionedSettings(value: unknown): value is NpVersionedSettings {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<NpVersionedSettings>;
+  // Number.isFinite rejects NaN / Infinity / non-numbers — a
+  // hand-crafted or corrupted DB value with `__npVersion: NaN`
+  // would otherwise pass typeof and trip the migration path's
+  // `>=` comparisons (NaN >= N always false).
+  return (
+    typeof candidate.__npVersion === "number" &&
+    Number.isFinite(candidate.__npVersion) &&
+    "__npSettings" in candidate
+  );
+}
+
+/** Run the theme's `settingsMigrate` from `from` to current
+ *  schema version. No-op when versions match (or when the theme
+ *  doesn't declare a migrator). Defensive try/catch — a buggy
+ *  migrate fn shouldn't blow up the read path; we fall back to
+ *  the original value and let `safeParse` decide. */
+/** Internal — exported for unit tests only. */
+export function applyMigration(
+  manifest: NpThemeManifest,
+  rawValue: unknown,
+  fromVersion: number,
+): unknown {
+  const target = manifest.settingsVersion ?? 1;
+  if (fromVersion >= target) return rawValue;
+  const migrate = manifest.settingsMigrate;
+  if (typeof migrate !== "function") return rawValue;
+  try {
+    return migrate(rawValue, fromVersion);
+  } catch {
+    return rawValue;
+  }
 }
 
 function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
@@ -131,7 +188,22 @@ export async function getThemeSettingsWithStatus(
     };
   }
 
-  const parsed = schema.safeParse(row.value);
+  // v0.3 (D) — version detection + migration.
+  //
+  // Storage shape options:
+  //   - `{ __npVersion: N, __npSettings: ... }` (v0.3+ wrapped)
+  //   - bare value (legacy v0.2 unwrapped — treated as v1)
+  //
+  // When stored version < manifest.settingsVersion, run the
+  // migrator. Re-parse the result; on parse failure (buggy
+  // migrate, or schema drift the migrator doesn't cover), fall
+  // back to defaults with parseError so the admin surfaces it.
+  const versioned = isVersionedSettings(row.value) ? row.value : null;
+  const storedVersion = versioned ? versioned.__npVersion : 1;
+  const rawValue = versioned ? versioned.__npSettings : row.value;
+  const valueToParse = applyMigration(theme.manifest, rawValue, storedVersion);
+
+  const parsed = schema.safeParse(valueToParse);
   if (parsed.success) {
     return {
       themeId: theme.manifest.id,
@@ -140,10 +212,10 @@ export async function getThemeSettingsWithStatus(
     };
   }
 
-  // Schema mismatch (theme upgrade changed the shape, etc.).
-  // v0.2 falls back to defaults and records the error; the
-  // admin renders a "settings were reset" banner. Migration
-  // helpers tracked as v0.3 candidate (design doc §5.5).
+  // Schema mismatch (theme upgrade changed the shape and either
+  // declared no migrator, or the migrator didn't cover this path).
+  // Fall back to defaults and surface the error; the admin
+  // renders a "settings were reset" banner.
   return {
     themeId: theme.manifest.id,
     value: defaults,
@@ -202,6 +274,15 @@ export async function setThemeSettings(
     );
   }
 
+  // v0.3 (D) — wrap in the versioned envelope so future schema
+  // changes can detect what version produced this row. Themes
+  // that haven't declared `settingsVersion` get `1` (the v0.2
+  // baseline) for forward-compat with the migration pipeline.
+  const wrapped: NpVersionedSettings = {
+    __npVersion: theme.manifest.settingsVersion ?? 1,
+    __npSettings: parsed.data,
+  };
+
   const db = getDb();
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
@@ -210,13 +291,13 @@ export async function setThemeSettings(
     .values({
       siteId,
       key: settingsKey(themeId),
-      value: parsed.data,
+      value: wrapped,
       updatedAt: now,
       updatedBy,
     })
     .onConflictDoUpdate({
       target: [npSettings.siteId, npSettings.key],
-      set: { value: parsed.data, updatedAt: now, updatedBy },
+      set: { value: wrapped, updatedAt: now, updatedBy },
     });
 
   return parsed.data;
