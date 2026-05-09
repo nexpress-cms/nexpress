@@ -38,7 +38,19 @@ import {
 
 interface RunInput {
   themePackage: string;
-  flags: { dryRun: boolean; yes: boolean; withCollections: boolean };
+  flags: {
+    dryRun: boolean;
+    yes: boolean;
+    withCollections: boolean;
+    /** v0.3 — when true, auto-chains `db:migrate` after a
+     *  successful `db:generate`. Default false: the operator
+     *  reviews the generated DROP COLUMN SQL before it touches
+     *  the database. With `--apply`, the operator opts into the
+     *  one-shot uninstall (still prompts before applying unless
+     *  combined with `--yes`). Same flag semantics as
+     *  `theme:install --apply` for consistency. */
+    apply: boolean;
+  };
 }
 
 const COLLECTIONS_DIR = "src/collections";
@@ -151,6 +163,40 @@ async function runDrizzleGenerate(cwd: string): Promise<boolean> {
   return false;
 }
 
+/**
+ * v0.3 (`--apply` flag) — run `db:migrate` after a successful
+ * generate. Same shape as install's helper. The migration here
+ * contains DROP COLUMN statements when uninstall removed
+ * fields, so applying it is genuinely destructive — the
+ * runner's confirm prompt and the plan formatter both warn
+ * about that.
+ */
+async function runDrizzleMigrate(cwd: string): Promise<boolean> {
+  const pm = detectPackageManager(cwd);
+  const runScript: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["db:migrate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["db:migrate"]]
+        : ["npm", ["run", "db:migrate"]];
+  const directDrizzle: [string, string[]] =
+    pm === "yarn"
+      ? ["yarn", ["drizzle-kit", "migrate"]]
+      : pm === "pnpm"
+        ? ["pnpm", ["exec", "drizzle-kit", "migrate"]]
+        : ["npx", ["drizzle-kit", "migrate"]];
+
+  for (const [bin, args] of [runScript, directDrizzle]) {
+    const ok = await new Promise<boolean>((resolveFn) => {
+      const child = spawn(bin, args, { cwd, stdio: "inherit" });
+      child.on("error", () => resolveFn(false));
+      child.on("exit", (code) => resolveFn(code === 0));
+    });
+    if (ok) return true;
+  }
+  return false;
+}
+
 export async function runThemeUninstall(input: RunInput): Promise<number> {
   const cwd = process.cwd();
   console.log(pc.dim(`Resolving from ${cwd}…`));
@@ -204,9 +250,12 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
       );
       return 2;
     }
-    const ok = await confirm(
-      pc.red("Apply these destructive changes?"),
-    );
+    const prompt = input.flags.apply
+      ? pc.red(
+          "Apply these destructive changes? (--apply will also run db:generate AND db:migrate; the latter DROPs columns)",
+        )
+      : pc.red("Apply these destructive changes?");
+    const ok = await confirm(prompt);
     if (!ok) {
       console.log(pc.dim("Aborted."));
       return 0;
@@ -309,13 +358,60 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
     );
   }
 
+  // v0.3 — `--apply` auto-chains db:migrate. The uninstall
+  // migration contains DROP COLUMN statements when fields were
+  // removed, so this step is genuinely destructive. The prompt
+  // above already reflected that.
+  if (input.flags.apply) {
+    if (!migrated) {
+      console.log("");
+      console.log(
+        pc.yellow(
+          "--apply skipped: db:generate didn't produce a migration. Run `pnpm db:generate && pnpm db:migrate` manually after fixing.",
+        ),
+      );
+    } else {
+      console.log("");
+      console.log(pc.dim("Applying migration to the database (DROP COLUMN)…"));
+      const applied = await runDrizzleMigrate(cwd);
+      console.log("");
+      if (applied) {
+        console.log(
+          `${pc.green("✓")} Migration applied. Theme columns dropped from the database.`,
+        );
+        console.log("");
+        console.log("Next:");
+        console.log(
+          `  1. Remove the theme from \`themes:\` in nexpress.config.ts and run \`pnpm remove ${input.themePackage}\`.`,
+        );
+        if (summary.filesDeleted > 0) {
+          console.log(
+            pc.dim(
+              `  2. Remove the matching \`import { … } from "./collections/<slug>"\` lines from nexpress.config.ts ` +
+                `and drop the entries from \`collections: [...]\`.`,
+            ),
+          );
+        }
+        return 0;
+      }
+      console.log(
+        pc.yellow(
+          "--apply: db:migrate failed. Review the generated SQL (`git diff`) and run `pnpm db:migrate` manually after reconciling.",
+        ),
+      );
+      return 1;
+    }
+  }
+
   console.log("");
   console.log("Next:");
   console.log(
     `  1. Review the changes (\`git diff\`) — especially the migration's DROP COLUMN statements.`,
   );
   console.log("  2. Back up your database before migrating.");
-  console.log("  3. Run `pnpm db:migrate` to apply the migration.");
+  console.log(
+    "  3. Run `pnpm db:migrate` to apply the migration (or re-run with --apply to auto-chain after generate).",
+  );
   console.log(
     `  4. Remove the theme from \`themes:\` in nexpress.config.ts and run \`pnpm remove ${input.themePackage}\`.`,
   );

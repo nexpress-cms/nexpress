@@ -29,10 +29,12 @@ Usage:
   nexpress theme:install <package>                    Install a theme: AST-patch collection files for declared requirements
   nexpress theme:install <package> --dry-run          Same, but print the plan and exit without mutating
   nexpress theme:install <package> --yes              Same, but skip the interactive confirm prompt
+  nexpress theme:install <package> --apply            Same, but auto-chain db:migrate after generate (one-shot install)
   nexpress theme:uninstall <package>                  Uninstall: AST-remove fields the theme contributed
   nexpress theme:uninstall <package> --dry-run        Same, but print the plan and exit without mutating
   nexpress theme:uninstall <package> --yes            Same, but skip the destructive confirm prompt
   nexpress theme:uninstall <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
+  nexpress theme:uninstall <package> --apply          Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
   nexpress create block-plugin <slug>                 Scaffold a static block plugin
   nexpress create block-plugin <slug> --interactive   Scaffold with a "use client" form
   nexpress create hook-plugin <slug>                  Scaffold a content-hook plugin
@@ -223,9 +225,11 @@ async function main(argv: string[]): Promise<number> {
     let themePackage: string | undefined;
     let dryRun = false;
     let yes = false;
+    let apply = false;
     for (const arg of args.slice(1)) {
       if (arg === "--dry-run") dryRun = true;
       else if (arg === "--yes" || arg === "-y") yes = true;
+      else if (arg === "--apply") apply = true;
       else if (arg.startsWith("--")) {
         process.stderr.write(`Unknown flag for theme:install: ${arg}\n`);
         return 2;
@@ -242,7 +246,7 @@ async function main(argv: string[]): Promise<number> {
       );
       return 2;
     }
-    return runThemeInstall({ themePackage, flags: { dryRun, yes } });
+    return runThemeInstall({ themePackage, flags: { dryRun, yes, apply } });
   }
 
   if (args[0] === "theme:uninstall") {
@@ -250,10 +254,12 @@ async function main(argv: string[]): Promise<number> {
     let dryRun = false;
     let yes = false;
     let withCollections = false;
+    let apply = false;
     for (const arg of args.slice(1)) {
       if (arg === "--dry-run") dryRun = true;
       else if (arg === "--yes" || arg === "-y") yes = true;
       else if (arg === "--with-collections") withCollections = true;
+      else if (arg === "--apply") apply = true;
       else if (arg.startsWith("--")) {
         process.stderr.write(`Unknown flag for theme:uninstall: ${arg}\n`);
         return 2;
@@ -272,7 +278,7 @@ async function main(argv: string[]): Promise<number> {
     }
     return runThemeUninstall({
       themePackage,
-      flags: { dryRun, yes, withCollections },
+      flags: { dryRun, yes, withCollections, apply },
     });
   }
 
