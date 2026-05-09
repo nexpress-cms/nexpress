@@ -1,6 +1,33 @@
 import * as React from "react";
 import type { NpRouteRenderProps } from "@nexpress/theme";
-import { searchCollections } from "@nexpress/core";
+import { getCollectionConfig, searchCollections } from "@nexpress/core";
+
+/**
+ * Resolves a search-result URL via the collection's
+ * `seo.urlPath` config when available, falling back to
+ * `/<collection>/<slug>` convention. Without this, posts (which
+ * typically live under `/blog/`) would 404 from search hits.
+ * Wrapped in try/catch because `getCollectionConfig` throws for
+ * unknown collections — a search adapter that returns rows from
+ * a no-longer-registered collection shouldn't crash the page.
+ */
+function resolveResultUrl(
+  collection: string,
+  doc: Record<string, unknown>,
+): string {
+  try {
+    const config = getCollectionConfig(collection);
+    const urlPath = config.seo?.urlPath;
+    if (typeof urlPath === "function") {
+      const result = urlPath(doc);
+      if (typeof result === "string" && result.length > 0) return result;
+    }
+  } catch {
+    // Unknown collection or missing seo config — fall through.
+  }
+  const slug = typeof doc.slug === "string" ? doc.slug : "";
+  return slug ? `/${collection}/${slug}` : "#";
+}
 
 /**
  * Phase F.9-B — `/search` route component.
@@ -42,7 +69,7 @@ export async function DocsSearch({
             const slug = typeof doc.slug === "string" ? doc.slug : null;
             const title =
               typeof doc.title === "string" ? doc.title : (slug ?? "Untitled");
-            const url = slug ? `/${item.collection}/${slug}` : "#";
+            const url = resolveResultUrl(item.collection, doc);
             return (
               <li
                 key={`${item.collection}:${(doc.id as string | undefined) ?? i}`}
