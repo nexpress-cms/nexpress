@@ -17,6 +17,7 @@ vi.mock("@nexpress/core", () => ({
 const { unstable_cache } = await import("next/cache");
 const core = await import("@nexpress/core");
 const {
+  cachedThemeFetch,
   getCachedActiveThemeId,
   getCachedNavigation,
   getCachedTheme,
@@ -126,5 +127,99 @@ describe("getCachedNavigation", () => {
       ["nx:nav", "default", "header"],
       expect.objectContaining({ tags: ["nx:nav:default:header"] }),
     );
+  });
+});
+
+describe("cachedThemeFetch", () => {
+  it("registers a per-site cache key with caller-supplied parts", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("blog-jp");
+    const direct = vi.fn(() => Promise.resolve("posts-data"));
+    vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
+
+    await cachedThemeFetch(["category-archive", "tech"], async () => "x");
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      ["nx:theme-fetch", "blog-jp", "category-archive", "tech"],
+      expect.objectContaining({ tags: ["nx:theme:blog-jp"] }),
+    );
+  });
+
+  it("defaults revalidate to 60 seconds", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const direct = vi.fn(() => Promise.resolve("x"));
+    vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
+
+    await cachedThemeFetch(["k"], async () => "x");
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(Array),
+      expect.objectContaining({ revalidate: 60 }),
+    );
+  });
+
+  it("honors caller-supplied revalidate", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const direct = vi.fn(() => Promise.resolve("x"));
+    vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
+
+    await cachedThemeFetch(["k"], async () => "x", { revalidate: 300 });
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(Array),
+      expect.objectContaining({ revalidate: 300 }),
+    );
+  });
+
+  it("appends extraTags after the always-on theme tag", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const direct = vi.fn(() => Promise.resolve("x"));
+    vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
+
+    await cachedThemeFetch(["k"], async () => "x", {
+      extraTags: ["nx:collection:posts", "nx:collection:authors"],
+    });
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(Array),
+      expect.objectContaining({
+        tags: [
+          "nx:theme:default",
+          "nx:collection:posts",
+          "nx:collection:authors",
+        ],
+      }),
+    );
+  });
+
+  it("falls back to uncached fetcher when Next's incremental cache is unavailable", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const cacheError = new Error("incrementalCache missing");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.reject(cacheError)) as never,
+    );
+    const fetcher = vi.fn(() => Promise.resolve("fresh-result"));
+
+    const result = await cachedThemeFetch(["k"], fetcher);
+
+    expect(result).toBe("fresh-result");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates non-incremental-cache errors", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const realError = new Error("DB connection refused");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.reject(realError)) as never,
+    );
+    const fetcher = vi.fn(() => Promise.resolve("x"));
+
+    await expect(
+      cachedThemeFetch(["k"], fetcher),
+    ).rejects.toBe(realError);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
