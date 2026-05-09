@@ -36,18 +36,21 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@nexpress/plugin-sdk": "workspace:*"
+    "@nexpress/plugin-sdk": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
     "prepublishOnly": "pnpm build"
   }

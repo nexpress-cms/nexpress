@@ -1,8 +1,10 @@
 # @nexpress/plugin-reading-time
 
 Reading-time meta plugin for
-[NexPress](https://github.com/hahabsw/nexpress). Stamps a
-`readingMinutes` field onto documents in `content:beforeSave`.
+[NexPress](https://github.com/hahabsw/nexpress). Logs a
+word-count-based reading-time estimate whenever a post is created or
+updated, and exposes a `GET /api/plugins/reading-time/estimate?text=…`
+endpoint that returns the estimated minutes for ad-hoc text.
 
 ## Install
 
@@ -18,23 +20,21 @@ import readingTime from "@nexpress/plugin-reading-time";
 
 export default defineConfig({
   // ...
-  plugins: [readingTime()],
+  plugins: [readingTime],
 });
 ```
 
-Reads the document's rich-text body (or `body` plain text) and writes
-`readingMinutes`. Add the field to the relevant collection if you
-want it persisted:
+## Configuration
 
-```ts
-defineCollection({
-  // ...
-  fields: [
-    /* ... */
-    { name: "readingMinutes", type: "number" },
-  ],
-});
-```
+Open `/admin/plugins/reading-time` after the framework boots — the
+auto-form (G.1) renders a single labeled input:
+
+| Field            | Type   | Default | Range     |
+|------------------|--------|---------|-----------|
+| Words per minute | number | 220     | 50 – 800  |
+
+Operator changes persist to `np_settings (key="plugin.config:reading-time")`
+and are picked up by the next hook / route dispatch (no restart).
 
 ## License
 
