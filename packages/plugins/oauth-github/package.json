@@ -38,7 +38,8 @@
   "dependencies": {
     "@nexpress/core": "workspace:*",
     "@nexpress/oauth-providers": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*"
+    "@nexpress/plugin-sdk": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

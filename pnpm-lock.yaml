@@ -773,6 +773,9 @@ importers:
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -798,6 +801,9 @@ importers:
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
