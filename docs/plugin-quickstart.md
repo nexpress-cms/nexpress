@@ -243,18 +243,16 @@ export default definePlugin<MyPluginConfig>({
 | `z.boolean()` | `<Switch>` |
 | `z.enum([...])` | `<select>` |
 | `z.array(z.object({...}))` | repeated nested object form |
+| `z.array(z.string())` | one-item-per-line `<textarea>` (post-G follow-up) |
 | `z.object({...})` | nested fieldset |
 
 Anything else introspects as `unsupported` and falls back to a
 **raw-JSON textarea editor** — the operator CAN still edit the
-value, but as JSON literal (e.g. `["read:user","user:email"]`
-for an `array(string)` field) rather than a typed widget. The
+value, but as JSON literal rather than a typed widget. The
 schema still validates the parsed value on save. Known gaps
 where a typed widget would be friendlier are tracked in
 [`docs/design/plugin-config-auto-form.md`](design/plugin-config-auto-form.md)
 § 10:
-- `z.array(z.string())` (e.g., OAuth scopes) — deferred
-  introspector follow-up; works today via JSON textarea
 - `.refine()` cross-field validation — deferred introspector
   follow-up; the refine wrapper currently breaks introspection
   entirely (see seo-audit's inline note for the workaround)

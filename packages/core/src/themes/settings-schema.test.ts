@@ -127,9 +127,13 @@ describe("introspectThemeSettingsSchema", () => {
     }
   });
 
-  it("returns unsupported for non-object array element", () => {
+  it("returns unsupported for non-object, non-string array element", () => {
+    // Phase G follow-up changed `z.array(z.string())` from
+    // `unsupported` → `string-array` (covered separately below).
+    // Other element types (numbers, enums, nested arrays) still
+    // fall through to the JSON-textarea fallback.
     const fields = introspectThemeSettingsSchema(
-      z.object({ tags: z.array(z.string()) }),
+      z.object({ counts: z.array(z.array(z.string())) }),
     );
     expect(fields[0]?.type).toBe("unsupported");
   });
@@ -266,5 +270,40 @@ describe("introspectThemeSettingsSchema", () => {
       }),
     );
     expect(fields[0]?.type).toBe("password");
+  });
+
+  // Phase G follow-up — `z.array(z.string())` gets its own
+  // dedicated widget, distinct from the existing
+  // `z.array(z.object(...))` typed-row form.
+  it("emits string-array for z.array(z.string())", () => {
+    const fields = introspectThemeSettingsSchema(
+      z.object({
+        scopes: z.array(z.string()).default(["read:user"]),
+      }),
+    );
+    expect(fields[0]).toMatchObject({
+      name: "scopes",
+      type: "string-array",
+      default: ["read:user"],
+    });
+  });
+
+  it("string-array vs array discriminator on element type", () => {
+    const stringArrField = introspectThemeSettingsSchema(
+      z.object({ tags: z.array(z.string()) }),
+    )[0];
+    const objArrField = introspectThemeSettingsSchema(
+      z.object({ links: z.array(z.object({ url: z.string() })) }),
+    )[0];
+    expect(stringArrField?.type).toBe("string-array");
+    expect(objArrField?.type).toBe("array");
+  });
+
+  it("array of unrecognized element types still falls through to unsupported", () => {
+    // z.array(z.number()) isn't covered by either widget today.
+    const fields = introspectThemeSettingsSchema(
+      z.object({ counts: z.array(z.number()) }),
+    );
+    expect(fields[0]?.type).toBe("unsupported");
   });
 });
