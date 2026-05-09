@@ -52,16 +52,28 @@ type HeroStyle = "featured" | "carousel" | "grid";
  * "Add items" placeholder, never throws on malformed JSON.
  */
 function parseItems(raw: unknown): HeroItem[] {
-  if (Array.isArray(raw)) return raw as HeroItem[];
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as HeroItem[];
-    } catch {
-      return [];
-    }
+  const arr =
+    Array.isArray(raw)
+      ? raw
+      : typeof raw === "string" && raw.trim().length > 0
+        ? safeJsonArray(raw)
+        : [];
+  // Filter to objects only — null / number / string array elements
+  // (e.g. from a malformed operator paste) are dropped silently
+  // rather than tripping `item.title` access on a non-object.
+  return arr.filter(
+    (item): item is HeroItem =>
+      typeof item === "object" && item !== null,
+  );
+}
+
+function safeJsonArray(raw: string): unknown[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
-  return [];
 }
 
 async function HeroFeature(
