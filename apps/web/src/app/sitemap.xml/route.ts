@@ -1,6 +1,7 @@
 import {
   NP_DEFAULT_SITE_ID,
   buildSitemap,
+  getActiveThemeSeoHooks,
   getCurrentSiteId,
   getI18nConfig,
   getSiteById,
@@ -84,6 +85,14 @@ async function buildSitemapDirect(
   locale: string | null,
 ): Promise<string> {
   const dynamicEntries = await buildSitemap(locale ? { locale } : {});
+  // Phase F.7 — pull in theme-contributed entries (e.g. magazine
+  // archive landing pages). Theme entries dedupe against the
+  // framework output; framework wins on `loc` collision so the
+  // theme can't accidentally hide a collection-walk URL.
+  const seoHooks = await getActiveThemeSeoHooks();
+  const themeEntries = seoHooks.sitemapEntries
+    ? await seoHooks.sitemapEntries()
+    : [];
   // Static routes only belong in the default-locale sitemap (or
   // the no-i18n single sitemap). Other locales' sitemaps would
   // re-emit the same path and create duplicates the dedup pass
@@ -95,6 +104,10 @@ async function buildSitemapDirect(
   const all = [
     ...(includeStatic ? STATIC_ROUTES : []),
     ...dynamicEntries,
+    // Theme entries last — the dedup pass below drops a theme
+    // entry whose `loc` matches a framework one, preserving the
+    // framework's metadata (priority, changefreq, lastmod).
+    ...themeEntries,
   ].filter((entry) => {
     if (seen.has(entry.loc)) return false;
     seen.add(entry.loc);

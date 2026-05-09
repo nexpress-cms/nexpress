@@ -400,6 +400,16 @@ export type { NpThemeSettingsResult } from "./themes/settings.js";
 export { getActiveThemeNavLocations } from "./themes/nav-locations.js";
 export type { NpThemeNavLocationDescriptor } from "./themes/nav-locations.js";
 
+export {
+  extractNotFoundComponent,
+  extractErrorComponent,
+  extractSeoHooks,
+  getActiveThemeNotFound,
+  getActiveThemeError,
+  getActiveThemeSeoHooks,
+} from "./themes/error-seo.js";
+export type { NpThemeSeoHooksExtracted } from "./themes/error-seo.js";
+
 export { introspectThemeSettingsSchema } from "./themes/settings-schema.js";
 export type {
   NpThemeSettingsField,

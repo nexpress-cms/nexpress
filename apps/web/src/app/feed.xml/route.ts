@@ -1,5 +1,6 @@
 import {
   NP_DEFAULT_SITE_ID,
+  getActiveThemeSeoHooks,
   getCurrentSiteId,
   renderAtomFeed,
 } from "@nexpress/core";
@@ -39,9 +40,17 @@ async function renderAtomFeedDirect(
   collection: string | undefined,
   locale: string | undefined,
 ): Promise<string | null> {
+  // Phase F.7 — pull theme-contributed extra entries (e.g. theme
+  // archive / curated views that aren't in the collection walk).
+  // Pass them to renderAtomFeed which dedups + re-sorts.
+  const seoHooks = await getActiveThemeSeoHooks();
+  const extraEntries = seoHooks.feedEntries
+    ? await seoHooks.feedEntries()
+    : undefined;
   return await renderAtomFeed({
     ...(collection ? { collection } : {}),
     ...(locale ? { locale } : {}),
+    ...(extraEntries && extraEntries.length > 0 ? { extraEntries } : {}),
   });
 }
 

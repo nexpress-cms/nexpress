@@ -26,6 +26,8 @@ export type {
   NpThemeArchiveEntry,
   NpThemeDateArchiveEntry,
   NpThemeNavLocation,
+  NpThemeErrorProps,
+  NpThemeSeoHooks,
 } from "./define-theme.js";
 
 export { getActiveTheme, getRegisteredThemes, getThemeById } from "./registry-typed.js";
