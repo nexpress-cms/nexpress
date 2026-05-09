@@ -63,3 +63,8 @@ export { DeleteBlockDialog, type DeleteBlockDialogProps } from "./delete-block-d
 export { FieldControl, type FieldControlProps } from "./field-control.js";
 export { PageJsonDialog, type PageJsonDialogProps } from "./page-json-dialog.js";
 export { PastePatternDialog, type PastePatternDialogProps } from "./paste-pattern-dialog.js";
+export {
+  PatternLibraryDialog,
+  type PatternLibraryDialogProps,
+} from "./pattern-library-dialog.js";
+export { PatternPreview, type PatternPreviewProps } from "./pattern-preview.js";
