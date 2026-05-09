@@ -1,0 +1,66 @@
+{
+  "name": "@nexpress/theme-docs",
+  "version": "0.1.0",
+  "description": "Documentation theme for NexPress — hierarchical sidebar, prev/next nav, in-page TOC.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hahabsw/nexpress.git",
+    "directory": "packages/themes/docs"
+  },
+  "bugs": {
+    "url": "https://github.com/hahabsw/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "theme",
+    "docs"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "next": "^15.0.0 || ^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/core": "workspace:*",
+    "@nexpress/editor": "workspace:*",
+    "@nexpress/next": "workspace:*",
+    "@nexpress/theme": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "next": "^16.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
+    "prepublishOnly": "pnpm build"
+  }
+}
