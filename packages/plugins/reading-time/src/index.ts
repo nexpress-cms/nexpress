@@ -25,7 +25,11 @@ const configSchema = z.object({
     .describe("Words per minute"),
 });
 
-export type NpReadingTimeConfig = z.infer<typeof configSchema>;
+// Plugin-owned type — no `Np` prefix (the framework reserves that
+// for its own identifiers per CLAUDE.md "Naming convention"). Sets
+// the precedent for upcoming G.2 migrations (oauth, newsletter,
+// seo-audit) which export their own `<Plugin>Config` aliases.
+export type ReadingTimeConfig = z.infer<typeof configSchema>;
 
 function extractText(node: unknown): string {
   if (!node || typeof node !== "object") return "";
@@ -46,7 +50,8 @@ function extractText(node: unknown): string {
   return "";
 }
 
-function estimateMinutes(text: string, wordsPerMinute: number): number {
+/** Exported for unit tests. Pure function — no side effects. */
+export function estimateMinutes(text: string, wordsPerMinute: number): number {
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
   if (wordCount === 0) return 0;
   return Math.max(1, Math.round(wordCount / wordsPerMinute));
@@ -64,13 +69,13 @@ function extractDocText(doc: Record<string, unknown>): string {
   return `${title} ${excerpt}`;
 }
 
-export const readingTimePlugin = definePlugin<NpReadingTimeConfig>({
+export const readingTimePlugin = definePlugin<ReadingTimeConfig>({
   manifest: {
     id: "reading-time",
     version: "0.2.0",
     name: "Reading Time",
     description:
-      "Logs a word-count-based reading-time estimate whenever a post is created or updated, and exposes an HTTP endpoint that estimates reading time for a provided text.",
+      "Logs a word-count-based reading-time estimate whenever a post is created or updated, and exposes an HTTP endpoint that estimates reading time for a provided text. Reading speed (words per minute) is operator-configurable via the admin auto-form.",
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
@@ -86,7 +91,7 @@ export const readingTimePlugin = definePlugin<NpReadingTimeConfig>({
     },
     agent: {
       description:
-        "Adds a reading-time estimate to the site. Works on any collection with a richText 'content' field; falls back to title + excerpt when content is empty.",
+        "Adds a reading-time estimate to the site. Operator-configurable words-per-minute (50-800, default 220). Works on any collection with a richText 'content' field; falls back to title + excerpt when content is empty.",
       category: "content",
       tags: ["reading-time", "blog", "metadata"],
     },

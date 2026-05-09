@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ZodTypeAny } from "zod";
 
-import { readingTimePlugin } from "./index.js";
+import { estimateMinutes, readingTimePlugin } from "./index.js";
 
 describe("reading-time configSchema", () => {
   // The plugin definition's configSchema is exposed on the
@@ -52,5 +52,36 @@ describe("plugin metadata", () => {
     // assertion here protects against a future regression where
     // someone tries to mix configSchema with hand-rolled fields.
     expect(readingTimePlugin.admin?.settings).toBeUndefined();
+  });
+});
+
+describe("estimateMinutes", () => {
+  // Default-WPM regression guard: the migration from 200 → 220
+  // changes the math by ~10%, so a "200-word post" used to read
+  // as 1 min and now reads as 1 min (Math.max(1, …) floor wins
+  // until we cross word counts). These tests pin the boundary.
+  it("returns 0 for empty input", () => {
+    expect(estimateMinutes("", 220)).toBe(0);
+    expect(estimateMinutes("   \n  ", 220)).toBe(0);
+  });
+
+  it("rounds up to a 1-minute floor for any non-empty text", () => {
+    expect(estimateMinutes("hi there", 220)).toBe(1);
+    expect(estimateMinutes("a".repeat(5).split("").join(" "), 220)).toBe(1);
+  });
+
+  it("scales linearly with WPM (220 vs 440 halves the estimate)", () => {
+    const text = Array.from({ length: 660 }, () => "x").join(" ");
+    expect(estimateMinutes(text, 220)).toBe(3);
+    expect(estimateMinutes(text, 440)).toBe(2); // Math.round(660/440) = 2
+  });
+
+  it("matches the new 220-default for a typical short post", () => {
+    // 440 words → exactly 2 minutes at 220 WPM. Pre-G.2.1 (200 WPM)
+    // the same input would be 2.2 min → rounds to 2 min anyway, so
+    // most short posts read identically. Longer posts diverge: this
+    // test pins the new contract.
+    const text = Array.from({ length: 440 }, () => "x").join(" ");
+    expect(estimateMinutes(text, 220)).toBe(2);
   });
 });

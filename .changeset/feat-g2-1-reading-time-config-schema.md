@@ -19,4 +19,6 @@ Default WPM bumped 200 → 220 to match the design doc § 5.2 reference (also cl
 
 Manifest version bumped to 0.2.0.
 
-8 new unit tests cover the schema (defaults, range validation, fractional rejection, plugin metadata invariants).
+12 new unit tests cover the schema (defaults, range validation, fractional rejection), the plugin metadata invariants, and the `estimateMinutes` math (regression guard for the 200 → 220 default change).
+
+The plugin exports `ReadingTimeConfig` (no `Np` prefix — that prefix is reserved for framework-owned identifiers per CLAUDE.md "Naming convention"; plugin-owned types use the plugin's own namespace).
