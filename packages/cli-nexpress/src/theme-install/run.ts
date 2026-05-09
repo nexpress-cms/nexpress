@@ -318,8 +318,12 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
       );
       return 2;
     }
+    // db:generate runs unconditionally after AST patches; --apply
+    // additionally chains db:migrate. The prompt scopes the
+    // mention to migrate so operators don't read it as
+    // "--apply turns generate on too".
     const prompt = input.flags.apply
-      ? "Continue? (--apply will also run db:generate AND db:migrate)"
+      ? "Continue? (--apply will also run db:migrate after the staged generate)"
       : "Continue?";
     const ok = await confirm(prompt);
     if (!ok) {

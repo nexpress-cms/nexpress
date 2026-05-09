@@ -250,9 +250,12 @@ export async function runThemeUninstall(input: RunInput): Promise<number> {
       );
       return 2;
     }
+    // db:generate runs unconditionally after AST changes; --apply
+    // additionally chains db:migrate, which executes the
+    // generated DROP COLUMN statements.
     const prompt = input.flags.apply
       ? pc.red(
-          "Apply these destructive changes? (--apply will also run db:generate AND db:migrate; the latter DROPs columns)",
+          "Apply these destructive changes? (--apply will also run db:migrate, executing DROP COLUMN)",
         )
       : pc.red("Apply these destructive changes?");
     const ok = await confirm(prompt);
