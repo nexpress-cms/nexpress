@@ -245,27 +245,17 @@ interface ClientLogosStripProps {
 
 async function ClientLogosStrip({
   heading,
-}: ClientLogosStripProps): Promise<React.ReactElement> {
+}: ClientLogosStripProps): Promise<React.ReactElement | null> {
   const settings = await resolvePortfolioSettings();
   const logos = settings.clientLogos;
-  if (logos.length === 0) {
-    return (
-      <section
-        className="np-portfolio-client-logos"
-        style={{
-          margin: "3rem 0",
-          padding: "1.5rem",
-          textAlign: "center",
-          color: "var(--np-color-muted-foreground)",
-          fontSize: "0.875rem",
-          border: "1px dashed var(--np-color-border)",
-          borderRadius: "0.375rem",
-        }}
-      >
-        No client logos configured. Add them in admin → Theme settings.
-      </section>
-    );
-  }
+  // Public site never shows a "configure in admin" placeholder
+  // — visitors don't need to see operator-facing copy. Empty
+  // setting means render nothing; the block instance is invisible
+  // until the operator populates the list. The page builder admin
+  // surface DOES surface the empty state separately (block picker
+  // shows the block's defaultProps); operators see it during
+  // configuration, not visitors.
+  if (logos.length === 0) return null;
   return (
     <section
       className="np-portfolio-client-logos"

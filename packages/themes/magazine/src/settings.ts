@@ -13,7 +13,7 @@ export const magazineSettingsSchema = z.object({
     .enum(["featured", "carousel", "grid"])
     .default("featured")
     .describe(
-      "Layout for the homepage hero — single featured story, scrolling carousel, or 3-column grid. Currently a no-op (F.9.2 follow-up): the magazine theme renders one hero style regardless of this value because the `magazine.hero-feature` block carries a single image and can't shape-shift into a carousel/grid of stories. A future PR ships dedicated hero block variants that read this setting.",
+      "(Deferred — no-op in v0.2.) Layout for the homepage hero — single featured story, scrolling carousel, or 3-column grid. The magazine theme currently renders one hero style regardless: the `magazine.hero-feature` block carries a single image and can't shape-shift into a carousel/grid of stories. A future release ships dedicated hero block variants that consume this setting.",
     ),
   showAuthorByline: z
     .boolean()
