@@ -38,13 +38,16 @@ function discoverExistingSlugs(cwd: string): string[] {
     if (!entry.isFile()) continue;
     if (!entry.name.endsWith(".ts")) continue;
     if (entry.name === "index.ts") continue;
-    // Confirm the file actually defines a collection — bare
-    // utility files in src/collections/ shouldn't surface as
-    // false positives.
     const filePath = join(dir, entry.name);
     const content = readFileSync(filePath, "utf8");
     if (!/defineCollection\s*\(/.test(content)) continue;
-    slugs.push(entry.name.replace(/\.ts$/, ""));
+    // Prefer the actual `slug: "..."` declaration over the
+    // filename — operators who diverge from the scaffold's
+    // file=slug convention shouldn't see a wrong report. First
+    // `slug: "..."` literal in the file wins; F.8-B's full-config
+    // loader will replace this regex with proper AST extraction.
+    const slugMatch = content.match(/\bslug\s*:\s*["']([^"']+)["']/);
+    slugs.push(slugMatch ? slugMatch[1]! : entry.name.replace(/\.ts$/, ""));
   }
   return slugs;
 }
