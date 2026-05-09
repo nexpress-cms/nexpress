@@ -39,15 +39,19 @@ secrets. Secrets never touch the database.
 ### 2. Admin auto-form
 
 Open `/admin/plugins/oauth-google` after the framework boots. The G.1
-auto-form renders three fields:
+auto-form renders these editable fields:
 
 | Field         | Type                | Default                              |
 |---------------|---------------------|--------------------------------------|
 | Client ID     | text                | _empty_                              |
 | Client secret | password (masked)   | _empty_                              |
-| Scopes        | string array        | `["openid", "email", "profile"]`     |
 
 Saved values persist to `np_settings (key="plugin.config:oauth-google")`.
+
+> **Scopes are not yet editable in the auto-form.** Same limitation as
+> oauth-github — the F.3 introspector handles `z.array(z.object(...))`
+> only, not `z.array(z.string())`. Default `["openid", "email", "profile"]`
+> applies. Forking or a future introspector pass are the workarounds.
 
 ### Precedence
 

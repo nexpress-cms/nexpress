@@ -38,15 +38,23 @@ database.
 ### 2. Admin auto-form
 
 Open `/admin/plugins/oauth-github` after the framework boots. The G.1
-auto-form renders three fields:
+auto-form renders these editable fields:
 
 | Field         | Type                | Default                          |
 |---------------|---------------------|----------------------------------|
 | Client ID     | text                | _empty_                          |
 | Client secret | password (masked)   | _empty_                          |
-| Scopes        | string array        | `["read:user", "user:email"]`    |
 
 Saved values persist to `np_settings (key="plugin.config:oauth-github")`.
+
+> **Scopes are not yet editable in the auto-form.** The schema declares
+> `scopes: z.array(z.string())` with default `["read:user", "user:email"]`,
+> but the F.3 introspector currently only handles `z.array(z.object(...))`
+> — so `scopes` renders as an `unsupported` field that the form skips.
+> The default array is what the plugin actually requests at OAuth
+> handshake. Sites that need different scopes today have two options:
+> fork the plugin, or wait for a future introspector pass that adds
+> `array(string)` support. (Tracked alongside the G-track deferred queue.)
 
 ### Precedence
 

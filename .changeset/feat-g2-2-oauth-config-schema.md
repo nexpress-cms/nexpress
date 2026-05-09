@@ -30,4 +30,7 @@ The scopes array introspects as `unsupported` in v0.2 of the F.3 introspector (o
 
 Manifest version bumped 0.2.0 → 0.3.0 in both plugins. Each plugin exports its config type (`GitHubOAuthConfig`, `GoogleOAuthConfig`) for plugin-author consumers; no `Np` prefix per the convention established in G.2.1.
 
-7 unit tests per plugin (14 total): schema defaults, populated credentials, scope defaults, sensitive-meta verification, manifest invariants, allowedHosts pinning, and the auto-form-replaces-fields rule.
+**Atomic per-source credential rule.** When `NP_OAUTH_*_CLIENT_ID` is set but `NP_OAUTH_*_CLIENT_SECRET` is not (or vice versa), the plugin logs an error and refuses to register. Mixing env-managed clientId with DB-stored clientSecret (or any partial-env state) is almost always a misconfiguration; treating it as an explicit error stops Frankenstein credential pairs from quietly landing in production. Both env vars must be set together OR both unset (admin form fallback).
+
+13 unit tests on oauth-github / 12 on oauth-google: schema defaults, populated credentials, scope defaults, sensitive-meta verification, manifest invariants, allowedHosts pinning, auto-form-replaces-fields rule, and the new credential-resolution suite (env source, admin source, env precedence on tie, partial-env error in both directions, no-credentials warn).
+

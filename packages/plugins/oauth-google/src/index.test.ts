@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ZodTypeAny } from "zod";
 
 import { googleOAuthPlugin, type GoogleOAuthConfig } from "./index.js";
+
+vi.mock(import("@nexpress/core"), async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    registerOAuthProvider: vi.fn(),
+  };
+});
+
+import { registerOAuthProvider } from "@nexpress/core";
 
 describe("oauth-google configSchema", () => {
   const schema = googleOAuthPlugin.configSchema as ZodTypeAny;
@@ -64,5 +74,103 @@ describe("plugin metadata", () => {
       "oauth2.googleapis.com",
       "openidconnect.googleapis.com",
     ]);
+  });
+});
+
+describe("setup credential resolution", () => {
+  // See oauth-github's parallel suite for the rationale on each
+  // test — same atomic-per-source rule, same partial-env error.
+  const ORIG_ID = process.env.NP_OAUTH_GOOGLE_CLIENT_ID;
+  const ORIG_SECRET = process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET;
+
+  beforeEach(() => {
+    delete process.env.NP_OAUTH_GOOGLE_CLIENT_ID;
+    delete process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET;
+    vi.mocked(registerOAuthProvider).mockClear();
+  });
+
+  afterEach(() => {
+    if (ORIG_ID === undefined) delete process.env.NP_OAUTH_GOOGLE_CLIENT_ID;
+    else process.env.NP_OAUTH_GOOGLE_CLIENT_ID = ORIG_ID;
+    if (ORIG_SECRET === undefined) delete process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET;
+    else process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET = ORIG_SECRET;
+  });
+
+  function makeCtx(config: GoogleOAuthConfig) {
+    const calls: { level: "warn" | "error" | "info"; msg: string; data?: unknown }[] = [];
+    return {
+      calls,
+      ctx: {
+        config,
+        log: {
+          warn: (msg: string, data?: unknown) => calls.push({ level: "warn", msg, data }),
+          error: (msg: string, data?: unknown) => calls.push({ level: "error", msg, data }),
+          info: (msg: string, data?: unknown) => calls.push({ level: "info", msg, data }),
+        },
+      },
+    };
+  }
+
+  function runSetup(ctx: unknown): void {
+    const setup = googleOAuthPlugin.setup;
+    if (typeof setup !== "function") throw new Error("setup is not a function");
+    void setup(ctx as Parameters<typeof setup>[0]);
+  }
+
+  const validConfig = {
+    clientId: "",
+    clientSecret: "",
+    scopes: ["openid", "email", "profile"],
+  } satisfies GoogleOAuthConfig;
+
+  it("registers the provider when both env vars are set (env source)", () => {
+    process.env.NP_OAUTH_GOOGLE_CLIENT_ID = "1234567890.apps.googleusercontent.com";
+    process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET = "GOCSPX-envsecret";
+    const { ctx, calls } = makeCtx(validConfig);
+    runSetup(ctx);
+    expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
+    expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "env" });
+  });
+
+  it("registers the provider when both admin-form fields are set (admin source)", () => {
+    const { ctx, calls } = makeCtx({
+      clientId: "1234567890.apps.googleusercontent.com",
+      clientSecret: "GOCSPX-adminsecret",
+      scopes: ["openid"],
+    });
+    runSetup(ctx);
+    expect(registerOAuthProvider).toHaveBeenCalledTimes(1);
+    expect(calls.find((c) => c.level === "info")?.data).toEqual({ source: "admin" });
+  });
+
+  it("REFUSES to register when env has clientId but no clientSecret", () => {
+    process.env.NP_OAUTH_GOOGLE_CLIENT_ID = "1234567890.apps.googleusercontent.com";
+    const { ctx, calls } = makeCtx({
+      clientId: "fallback.apps.googleusercontent.com",
+      clientSecret: "GOCSPX-fallback",
+      scopes: ["openid"],
+    });
+    runSetup(ctx);
+    expect(registerOAuthProvider).not.toHaveBeenCalled();
+    expect(calls.find((c) => c.level === "error")?.msg).toMatch(/partial/i);
+  });
+
+  it("REFUSES to register when env has clientSecret but no clientId", () => {
+    process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET = "GOCSPX-leaked";
+    const { ctx, calls } = makeCtx({
+      clientId: "fallback.apps.googleusercontent.com",
+      clientSecret: "GOCSPX-fallback",
+      scopes: ["openid"],
+    });
+    runSetup(ctx);
+    expect(registerOAuthProvider).not.toHaveBeenCalled();
+    expect(calls.find((c) => c.level === "error")).toBeDefined();
+  });
+
+  it("warns and skips when neither env nor admin form provides credentials", () => {
+    const { ctx, calls } = makeCtx(validConfig);
+    runSetup(ctx);
+    expect(registerOAuthProvider).not.toHaveBeenCalled();
+    expect(calls.find((c) => c.level === "warn")).toBeDefined();
   });
 });

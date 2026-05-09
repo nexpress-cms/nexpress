@@ -94,10 +94,21 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
   },
   configSchema,
   setup: (ctx) => {
-    const clientId =
-      process.env.NP_OAUTH_GOOGLE_CLIENT_ID || ctx.config.clientId;
-    const clientSecret =
-      process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET || ctx.config.clientSecret;
+    // G.2.2 — credentials must come from a single source. See the
+    // GitHub plugin for the rationale; same partial-env-is-error
+    // rule applies here.
+    const envId = process.env.NP_OAUTH_GOOGLE_CLIENT_ID;
+    const envSecret = process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET;
+    const envHasAny = Boolean(envId || envSecret);
+    const envHasBoth = Boolean(envId && envSecret);
+    if (envHasAny && !envHasBoth) {
+      ctx.log.error(
+        "Google OAuth env vars are partial — set BOTH NP_OAUTH_GOOGLE_CLIENT_ID and NP_OAUTH_GOOGLE_CLIENT_SECRET, or unset both to fall back to the admin form. Refusing to mix env and DB credentials for the same provider.",
+      );
+      return;
+    }
+    const clientId = envHasBoth ? envId! : ctx.config.clientId;
+    const clientSecret = envHasBoth ? envSecret! : ctx.config.clientSecret;
     if (!clientId || !clientSecret) {
       ctx.log.warn(
         "Google OAuth not configured — set NP_OAUTH_GOOGLE_CLIENT_ID and NP_OAUTH_GOOGLE_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-google.",
@@ -111,7 +122,9 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
         scopes: ctx.config.scopes,
       }),
     );
-    ctx.log.info("Google OAuth provider registered");
+    ctx.log.info("Google OAuth provider registered", {
+      source: envHasBoth ? "env" : "admin",
+    });
   },
 });
 

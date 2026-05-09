@@ -91,10 +91,25 @@ export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
   },
   configSchema,
   setup: (ctx) => {
-    const clientId =
-      process.env.NP_OAUTH_GITHUB_CLIENT_ID || ctx.config.clientId;
-    const clientSecret =
-      process.env.NP_OAUTH_GITHUB_CLIENT_SECRET || ctx.config.clientSecret;
+    // G.2.2 — credentials must come from a single source. Mixing
+    // env-managed clientId with DB-stored clientSecret (or vice
+    // versa) is almost always a misconfiguration — typically a
+    // half-finished migration between env and admin form. Treat
+    // partial-env as an explicit error so the operator notices,
+    // rather than silently registering a Frankenstein credential
+    // pair that's hard to audit later.
+    const envId = process.env.NP_OAUTH_GITHUB_CLIENT_ID;
+    const envSecret = process.env.NP_OAUTH_GITHUB_CLIENT_SECRET;
+    const envHasAny = Boolean(envId || envSecret);
+    const envHasBoth = Boolean(envId && envSecret);
+    if (envHasAny && !envHasBoth) {
+      ctx.log.error(
+        "GitHub OAuth env vars are partial — set BOTH NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or unset both to fall back to the admin form. Refusing to mix env and DB credentials for the same provider.",
+      );
+      return;
+    }
+    const clientId = envHasBoth ? envId! : ctx.config.clientId;
+    const clientSecret = envHasBoth ? envSecret! : ctx.config.clientSecret;
     if (!clientId || !clientSecret) {
       ctx.log.warn(
         "GitHub OAuth not configured — set NP_OAUTH_GITHUB_CLIENT_ID and NP_OAUTH_GITHUB_CLIENT_SECRET, or fill the admin form at /admin/plugins/oauth-github.",
@@ -108,7 +123,9 @@ export const githubOAuthPlugin = definePlugin<GitHubOAuthConfig>({
         scopes: ctx.config.scopes,
       }),
     );
-    ctx.log.info("GitHub OAuth provider registered");
+    ctx.log.info("GitHub OAuth provider registered", {
+      source: envHasBoth ? "env" : "admin",
+    });
   },
 });
 
