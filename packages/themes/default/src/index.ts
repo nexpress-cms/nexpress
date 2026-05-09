@@ -12,7 +12,21 @@ import { PostDefaultTemplate } from "./templates/post-default.js";
 import { PostListTemplate } from "./templates/post-list.js";
 
 /**
- * `@nexpress/theme-default` — the built-in baseline theme.
+ * `@nexpress/theme-default` — v0.1-era baseline theme.
+ *
+ * **Status (v0.2):** kept for back-compat. The v0.2 reference
+ * themes are `theme-magazine` / `theme-docs` / `theme-portfolio`
+ * — they exercise the new contract surfaces (manifest.requires,
+ * settingsSchema, blocks, patterns, navLocations, archives,
+ * routes, seo). New sites should start from one of those.
+ *
+ * `theme-default` doesn't declare v0.2 surfaces: operators using
+ * it skip the no-code-customization workflow (no admin auto-
+ * form for theme settings, no `theme:install` data-shape
+ * checks, no theme-shipped blocks/patterns). It remains a valid
+ * `defineTheme` caller — production sites pinned to v0.1 keep
+ * working — but consider migrating to a v0.2 reference if you
+ * want operator-tunable settings.
  *
  * Production-grade defaults: sticky header with a mobile drawer,
  * a four-column footer (brand / sitemap / resources / newsletter)
@@ -24,8 +38,6 @@ import { PostListTemplate } from "./templates/post-list.js";
  * tag at SSR time — no extra round-trip.
  *
  * Sites brand by overriding the design tokens (`--np-color-*` etc).
- * Ship a competing theme package (see theme-magazine / theme-portfolio)
- * to change layout structure rather than colors.
  */
 export const defaultTheme = defineTheme({
   manifest: {

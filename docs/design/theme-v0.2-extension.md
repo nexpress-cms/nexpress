@@ -1,10 +1,22 @@
 # Theme Contract v0.2 — Extension Plan
 
-> Version: 0.2 (Draft)
-> Date: 2026-05-08
-> Status: Design phase — locked decisions, ready to implement
+> Version: 0.2 (Frozen — shipped)
+> Date: 2026-05-08 (design lock) / 2026-05-09 (phase complete)
+> Status: **Shipped.** Phases F.1 → F.9 merged to main; live
+>   in `@nexpress/core`, `@nexpress/blocks`, `@nexpress/theme`,
+>   `@nexpress/next`, `@nexpress/admin`, `@nexpress/cli`,
+>   `@nexpress/web`, and the three reference themes
+>   (`theme-magazine`, `theme-docs`, `theme-portfolio`).
 > Prerequisites: AGENTS.md theme section + `docs/theme-authoring.md`
 >   (v0.1 contract), issue #541 (theme rethink discussion)
+> Frozen-snapshot note: code samples in this document remained
+>   accurate through implementation. Where shipped behavior
+>   diverged from the design intent (e.g. F.7's `error.tsx`
+>   delegation blocked by Next's client-component constraint;
+>   F.9.1 follow-ups for picker UI / textarea / etc.), the
+>   relevant section's deferred-to-v0.3 list captures it.
+>   Cookbook (`docs/theme-authoring.md`) is the live reference
+>   — read that for the as-shipped API.
 
 ---
 
