@@ -103,7 +103,7 @@ export function PatternLibraryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl gap-3 p-0">
+      <DialogContent className="max-w-4xl gap-3 p-0">
         <DialogHeader className="border-b border-border/60 px-4 py-3">
           <DialogTitle>Pattern library</DialogTitle>
           <DialogDescription>
