@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { ComponentType, LazyExoticComponent } from "react";
 
 /**
@@ -39,8 +39,9 @@ const THEME_MEMBER_ERRORS: Record<
   string,
   LazyExoticComponent<ComponentType<ErrorPageProps>>
 > = {
-  // Empty until a theme ships a `./components/members-error`
-  // subpath. Reference theme migration lands in M.ref.
+  magazine: lazy(
+    () => import("@nexpress/theme-magazine/components/members-error"),
+  ),
 };
 
 /** See `(site)/error.tsx` for the rationale on the lazy-init
@@ -73,8 +74,11 @@ export default function MemberError(props: ErrorPageProps) {
 }
 
 function DefaultMemberError({ error, reset }: ErrorPageProps) {
+  // `<div>` rather than `<main>` because (member)/layout.tsx
+  // already emits a `<main className="np-member-main">` wrapping
+  // this body — second `<main>` would nest semantic landmarks.
   return (
-    <main
+    <div
       className="np-error np-error-member"
       style={{
         maxWidth: 480,
@@ -119,6 +123,6 @@ function DefaultMemberError({ error, reset }: ErrorPageProps) {
           Back to sign in
         </a>
       </div>
-    </main>
+    </div>
   );
 }

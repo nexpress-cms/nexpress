@@ -657,4 +657,57 @@ export const magazineCss = `
   text-decoration: underline;
   text-decoration-color: var(--np-color-primary, #0f172a);
 }
+
+/* ----------------------------------------------------------------
+ * Phase M.ref — member surface (login / register / forgot-password
+ * / reset-password / verify / me/notifications).
+ *
+ * Layout: masthead at top, narrow auth-form column centered, footer
+ * at bottom. The (member)/layout.tsx invokes MagazineMembersShell
+ * which renders np-magazine-members > np-magazine-members-column
+ * around the page body.
+ *
+ * Token overrides (M.2): inputs go from indigo focus to terracotta,
+ * radius 0.25rem (matches the rest of magazine's editorial squareness),
+ * borders hairline. The form button picks up magazine's primary
+ * (terracotta) automatically via the framework defaults — re-declared
+ * here for explicitness.
+ * --------------------------------------------------------------- */
+.np-magazine .np-magazine-members {
+  padding: 3rem 1.5rem 4rem;
+  background: var(--np-color-background, #fafaf7);
+  min-height: 60vh;
+}
+.np-magazine-members-column {
+  max-width: 420px;
+  margin: 0 auto;
+}
+.np-magazine-members-column h1 {
+  font-family: var(--np-font-heading, "Fraunces", Georgia, serif);
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  margin: 0 0 1.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--np-color-border, #e2e8f0);
+  padding-bottom: 1rem;
+}
+.np-magazine-members-column .np-members-auth-alt {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--np-color-muted-foreground, #64748b);
+}
+/* Member form token overrides — magazine's editorial squareness
+ * (smaller radius, hairline borders, terracotta accent). */
+.np-magazine .np-members-form {
+  --np-member-form-input-bg: var(--np-color-background, #fafaf7);
+  --np-member-form-input-border: var(--np-color-border, #d6cfc4);
+  --np-member-form-input-border-focus: var(--np-color-primary, #b75c3a);
+  --np-member-form-input-radius: 0.25rem;
+  --np-member-form-button-radius: 0.25rem;
+}
+.np-magazine .np-members-form .np-form-label {
+  font-family: var(--np-font-body, "Source Serif 4", Georgia, serif);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 `.trim();
