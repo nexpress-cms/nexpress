@@ -117,7 +117,7 @@ describe("auditSeo (with operator-tuned config)", () => {
   });
 
   it("respects custom minBodyWords (raised threshold flags more docs as thin)", () => {
-    const lowConfig: SeoAuditConfig = { ...DEFAULT_CONFIG, minBodyWords: 1000 };
+    const strictConfig: SeoAuditConfig = { ...DEFAULT_CONFIG, minBodyWords: 1000 };
     const result = auditSeo(
       {
         title: "A reasonably descriptive title that fits the range",
@@ -125,7 +125,7 @@ describe("auditSeo (with operator-tuned config)", () => {
         content: "Body text. ".repeat(60), // ~120 words
         headings: [],
       },
-      lowConfig,
+      strictConfig,
     );
     expect(result.issues.some((i) => i.code === "thin-body")).toBe(true);
   });

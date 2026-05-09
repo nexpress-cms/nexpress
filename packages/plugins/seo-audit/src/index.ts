@@ -13,6 +13,14 @@ import { z } from "zod";
  * into the audit logic via `ctx.config` and replaces the legacy
  * declarative form with the auto-form.
  */
+// Note: cross-field validation (titleMin <= titleMax, descriptionMin
+// <= descriptionMax) would naturally live as `.refine()` calls on the
+// outer object — but adding a top-level effect/pipe wrapper currently
+// breaks the F.3 introspector, which only unwraps default / optional
+// / nullable. The form would render zero fields. Deferred until the
+// introspector grows refine-passthrough; until then a misconfigured
+// min/max pair is silently uncaught (the audit just never enters the
+// "long-X" branch because "short-X" always wins).
 const configSchema = z.object({
   titleMin: z
     .number()

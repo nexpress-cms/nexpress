@@ -383,6 +383,24 @@ Total: 6 PRs, ~2050 LOC. G.1 unblocks all subsequent phases.
   site-scoped via `np_settings`. The discriminator only matters
   if multi-site sites want different per-site config. Already
   works via existing siteId filter.
+- **Introspector `.refine()` passthrough** — surfaced in G.2.3
+  while writing the seo-audit schema. Cross-field constraints
+  (e.g. `titleMin <= titleMax`) naturally live as `.refine()` on
+  the outer `z.object`, but the F.3 introspector's `unwrap()`
+  only handles `default / optional / nullable` wrappers. Adding
+  `.refine()` turns the schema into a refine/effects/pipe wrapper
+  whose `_def.type` isn't `"object"`, so the introspector returns
+  an empty field list and the form renders blank. Needs an
+  additional unwrap step that walks past refine wrappers and
+  reads the inner object's shape. ~20 LOC in
+  `packages/core/src/themes/settings-schema.ts`. Plugins that
+  want cross-field validation today have to re-parse the raw
+  config in their `setup()` — out-of-band check.
+- **Introspector `array(string)` support** — surfaced in G.2.2
+  while writing oauth schemas. Plugin scopes are
+  `z.array(z.string())`, but the introspector currently only
+  handles `array(object)` — emits `unsupported`. Operators can't
+  edit oauth scopes via the form today. ~15 LOC follow-up.
 
 ## 11. Locked answers
 
