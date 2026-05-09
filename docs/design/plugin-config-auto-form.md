@@ -406,8 +406,10 @@ when a real hybrid plugin lands.
 - **Introspector `array(string)` support** — surfaced in G.2.2
   while writing oauth schemas. Plugin scopes are
   `z.array(z.string())`, but the introspector currently only
-  handles `array(object)` — emits `unsupported`. Operators can't
-  edit oauth scopes via the form today. ~15 LOC follow-up.
+  handles `array(object)` — emits `unsupported`. Operators
+  fall back to the raw-JSON textarea editor (functional but
+  awkward — `["read:user","user:email"]` typed by hand). A typed
+  string-array editor would be ~15 LOC follow-up.
 
 ## 11. Locked answers
 

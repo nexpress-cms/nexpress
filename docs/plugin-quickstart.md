@@ -236,7 +236,7 @@ export default definePlugin<MyPluginConfig>({
 |---|---|
 | `z.string()` | `<input type="text">` |
 | `z.string().url()` | `<input type="url">` |
-| `z.string().regex(/^#…/)` matching a hex pattern | color picker |
+| `z.string().regex(/^#…/)` matching a hex pattern | `<input type="color">` + companion hex text input |
 | `z.string().meta({ widget: "textarea", rows: N })` | `<textarea>` |
 | `z.string().meta({ sensitive: true })` | `<input type="password">` |
 | `z.number().int().min().max()` | `<input type="number">` with bounds |
@@ -245,13 +245,19 @@ export default definePlugin<MyPluginConfig>({
 | `z.array(z.object({...}))` | repeated nested object form |
 | `z.object({...})` | nested fieldset |
 
-Anything else introspects as `unsupported` and the form skips it
-— the value lives in storage but the operator can't edit it via
-the auto-form. Known gaps tracked in
+Anything else introspects as `unsupported` and falls back to a
+**raw-JSON textarea editor** — the operator CAN still edit the
+value, but as JSON literal (e.g. `["read:user","user:email"]`
+for an `array(string)` field) rather than a typed widget. The
+schema still validates the parsed value on save. Known gaps
+where a typed widget would be friendlier are tracked in
 [`docs/design/plugin-config-auto-form.md`](design/plugin-config-auto-form.md)
 § 10:
-- `z.array(z.string())` (e.g., OAuth scopes) — deferred follow-up
-- `.refine()` cross-field validation — deferred follow-up
+- `z.array(z.string())` (e.g., OAuth scopes) — deferred
+  introspector follow-up; works today via JSON textarea
+- `.refine()` cross-field validation — deferred introspector
+  follow-up; the refine wrapper currently breaks introspection
+  entirely (see seo-audit's inline note for the workaround)
 
 ### Schema migrations (configVersion / configMigrate)
 
