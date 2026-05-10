@@ -1,6 +1,8 @@
 import { defineTheme } from "@nexpress/theme";
 
 import { DocsHeader } from "./header.js";
+import { DocsMembersNotFound } from "./members-not-found.js";
+import { DocsMembersShell } from "./members-shell.js";
 import { DocsNotFound } from "./not-found.js";
 import { DocsSearch } from "./search.js";
 import { DocsShell } from "./shell.js";
@@ -95,6 +97,27 @@ export const docsTheme = defineTheme({
       },
     },
     notFound: DocsNotFound,
+    // M.* adoption (2026-05-11). Docs gains purpose-built member
+    // chrome: drops the docs sidebar (hierarchical doc nav is
+    // useless on auth forms), keeps the masthead, narrows the
+    // content column. Without this, the fallback chain would
+    // walk back to `impl.shell` (the 3-column grid) and the
+    // sidebar slot would surface alongside an auth form.
+    // - `shell`: DocsMembersShell (header + narrow column, no
+    //   sidebar).
+    // - `notFound`: DocsMembersNotFound (stale-auth-link framing
+    //   with /members/login CTA, monospace accent matching the
+    //   theme).
+    // - `error`: forward-compat type marker; the actual render
+    //   goes through `./components/members-error`'s client
+    //   subpath, lazy-imported by
+    //   `apps/web/src/app/(member)/error.tsx`'s registry
+    //   (F.7.1 delegation — Next mandates `error.tsx` is "use
+    //   client").
+    members: {
+      shell: DocsMembersShell,
+      notFound: DocsMembersNotFound,
+    },
   },
 });
 
@@ -103,6 +126,8 @@ export {
   DocsShell,
   DocsSidebar,
   DocsNotFound,
+  DocsMembersShell,
+  DocsMembersNotFound,
   DocsSearch,
   DocPageTemplate,
 };

@@ -37,6 +37,8 @@ interface ErrorPageProps {
 
 const THEME_MEMBER_ERRORS: Record<string, LazyExoticComponent<ComponentType<ErrorPageProps>>> = {
   magazine: lazy(() => import("@nexpress/theme-magazine/components/members-error")),
+  portfolio: lazy(() => import("@nexpress/theme-portfolio/components/members-error")),
+  docs: lazy(() => import("@nexpress/theme-docs/components/members-error")),
 };
 
 /** See `(site)/error.tsx` for the rationale on the lazy-init
