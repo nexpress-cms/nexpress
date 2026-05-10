@@ -53,18 +53,18 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
     // scoping the search returns both; with `locale: "en"` it
     // returns just the en row.
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "EN", body: "tigerlily english body", locale: "en" },
+      { title: "EN", seoDescription: "tigerlily english body", locale: "en" },
       actor(),
       { status: "published" },
     );
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "KO",
-        body: "tigerlily korean body",
+        seoDescription: "tigerlily korean body",
         locale: "ko",
         translationGroupId: (en.doc as { translationGroupId: string })
           .translationGroupId,
@@ -75,13 +75,13 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
 
     const all = await searchCollections({
       q: "tigerlily",
-      collections: ["localized-pages"],
+      collections: ["pages"],
     });
     expect(all.total).toBeGreaterThanOrEqual(2);
 
     const enOnly = await searchCollections({
       q: "tigerlily",
-      collections: ["localized-pages"],
+      collections: ["pages"],
       locale: "en",
     });
     expect(enOnly.total).toBe(1);
@@ -89,7 +89,7 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
 
     const koOnly = await searchCollections({
       q: "tigerlily",
-      collections: ["localized-pages"],
+      collections: ["pages"],
       locale: "ko",
     });
     expect(koOnly.total).toBe(1);
@@ -126,18 +126,18 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
   it("buildAtomFeed({ locale }) restricts an i18n collection's feed to one locale", async () => {
     const { saveDocument, buildAtomFeed } = await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "EN feed entry", body: "...", locale: "en" },
+      { title: "EN feed entry", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "KO feed entry",
-        body: "...",
+        seoDescription: "...",
         locale: "ko",
         translationGroupId: (en.doc as { translationGroupId: string })
           .translationGroupId,
@@ -147,32 +147,32 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
     );
 
     const enFeed = await buildAtomFeed({
-      collection: "localized-pages",
+      collection: "pages",
       locale: "en",
     });
     expect(enFeed?.entries.map((e) => e.title)).toEqual(["EN feed entry"]);
 
     const koFeed = await buildAtomFeed({
-      collection: "localized-pages",
+      collection: "pages",
       locale: "ko",
     });
     expect(koFeed?.entries.map((e) => e.title)).toEqual(["KO feed entry"]);
 
-    const allFeed = await buildAtomFeed({ collection: "localized-pages" });
+    const allFeed = await buildAtomFeed({ collection: "pages" });
     expect(allFeed?.entries.length).toBe(2);
   });
 
   it("renderAtomFeed embeds xml:lang and locale-scoped self-link when a locale is supplied", async () => {
     const { saveDocument, renderAtomFeed } = await import("@nexpress/core");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Lang test", body: "...", locale: "ko" },
+      { title: "Lang test", seoDescription: "...", locale: "ko" },
       actor(),
       { status: "published" },
     );
     const xml = await renderAtomFeed({
-      collection: "localized-pages",
+      collection: "pages",
       locale: "ko",
     });
     expect(xml).toContain('xml:lang="ko"');
@@ -182,13 +182,13 @@ describe.skipIf(skipIfNoTestDb())("i18n search + feed (Phase 12.4)", () => {
   it("renderAtomFeed without a locale doesn't emit xml:lang", async () => {
     const { saveDocument, renderAtomFeed } = await import("@nexpress/core");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "No lang", body: "...", locale: "en" },
+      { title: "No lang", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
-    const xml = await renderAtomFeed({ collection: "localized-pages" });
+    const xml = await renderAtomFeed({ collection: "pages" });
     expect(xml).not.toContain("xml:lang");
   });
 });

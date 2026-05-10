@@ -53,20 +53,20 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
 
     // 1. Author the source-locale (en) row.
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Hello", body: "Hello world", locale: "en" },
+      { title: "Hello", seoDescription: "Hello world", locale: "en" },
       actor(),
       { status: "published" },
     );
     const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
     expect(groupId).toBeTruthy();
 
-    // 2. Export. Should emit one file: localized-pages-en-ko.xliff
+    // 2. Export. Should emit one file: pages-en-ko.xliff
     //    (no -ja because the harness only configures en + ko).
     const bundle = await exportXliff();
     const koFile = bundle.files.find(
-      (f) => f.collection === "localized-pages" && f.targetLocale === "ko",
+      (f) => f.collection === "pages" && f.targetLocale === "ko",
     );
     expect(koFile).toBeDefined();
     expect(bundle.summary.docCount).toBe(1);
@@ -76,12 +76,12 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     //    fills in `<target>`. We simulate that by parsing,
     //    setting target, and re-rendering.
     const parsed = parseXliff(koFile!.xml);
-    expect(parsed.files[0]!.original).toBe(`localized-pages/${groupId}`);
+    expect(parsed.files[0]!.original).toBe(`pages/${groupId}`);
     expect(parsed.files[0]!.units).toHaveLength(2);
     const titleUnit = parsed.files[0]!.units.find((u) => u.id === "title")!;
-    const bodyUnit = parsed.files[0]!.units.find((u) => u.id === "body")!;
+    const seoDescriptionUnit = parsed.files[0]!.units.find((u) => u.id === "seoDescription")!;
     titleUnit.target = "안녕하세요";
-    bodyUnit.target = "안녕 세상";
+    seoDescriptionUnit.target = "안녕 세상";
     const translatedXml = renderXliff(parsed);
 
     // 4. Import. Should CREATE a new ko sibling.
@@ -99,14 +99,14 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     // 5. Verify the ko sibling landed with translated fields and
     //    the same translationGroupId. New siblings always start
     //    as draft so the translator's reviewer can publish them.
-    const koResult = await findDocuments("localized-pages", {
+    const koResult = await findDocuments("pages", {
       where: { translationGroupId: groupId },
       locale: "ko",
     });
     expect(koResult.docs).toHaveLength(1);
     const koDoc = koResult.docs[0] as Record<string, unknown>;
     expect(koDoc.title).toBe("안녕하세요");
-    expect(koDoc.body).toBe("안녕 세상");
+    expect(koDoc.seoDescription).toBe("안녕 세상");
     expect(koDoc.locale).toBe("ko");
     expect(koDoc.translationGroupId).toBe(groupId);
     expect(koDoc._status ?? koDoc.status).toBe("draft");
@@ -119,9 +119,9 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     );
 
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Greeting", body: "Hi", locale: "en" },
+      { title: "Greeting", seoDescription: "Hi", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -131,7 +131,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     let bundle = await exportXliff();
     let parsed = parseXliff(bundle.files[0]!.xml);
     parsed.files[0]!.units.find((u) => u.id === "title")!.target = "인사";
-    parsed.files[0]!.units.find((u) => u.id === "body")!.target = "안녕";
+    parsed.files[0]!.units.find((u) => u.id === "seoDescription")!.target = "안녕";
     let result = await importXliff({
       xml: renderXliff(parsed),
       user: actor(),
@@ -153,7 +153,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     });
     expect(result.applied[0]!.operation).toBe("update");
 
-    const koResult = await findDocuments("localized-pages", {
+    const koResult = await findDocuments("pages", {
       where: { translationGroupId: groupId },
       locale: "ko",
     });
@@ -167,9 +167,9 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
       "@nexpress/xliff"
     );
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "DryRun", body: "x", locale: "en" },
+      { title: "DryRun", seoDescription: "x", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -186,7 +186,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     expect(result.applied[0]!.operation).toBe("create");
 
     // Verify nothing landed in the DB.
-    const koResult = await findDocuments("localized-pages", { locale: "ko" });
+    const koResult = await findDocuments("pages", { locale: "ko" });
     expect(koResult.docs).toHaveLength(0);
   });
 
@@ -194,9 +194,9 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     const { saveDocument } = await import("@nexpress/core");
     const { exportXliff, importXliff } = await import("@nexpress/xliff");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Empty", body: "y", locale: "en" },
+      { title: "Empty", seoDescription: "y", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -225,19 +225,19 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
 
     // Set up: existing en + ko siblings.
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Source", body: "Source body", locale: "en" },
+      { title: "Source", seoDescription: "Source body", locale: "en" },
       actor(),
       { status: "published" },
     );
     const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "Target",
-        body: "Target body",
+        seoDescription: "Target body",
         locale: "ko",
         translationGroupId: groupId,
       },
@@ -251,7 +251,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     // odd id (e.g. unknown column) should also be rejected.
     const malicious = `<?xml version="1.0" encoding="UTF-8"?>
 <xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
-  <file source-language="en" target-language="ko" datatype="plaintext" original="localized-pages/${groupId}">
+  <file source-language="en" target-language="ko" datatype="plaintext" original="pages/${groupId}">
     <body>
       <trans-unit id="title">
         <source>Source</source>
@@ -287,7 +287,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     expect(result.skipped[0]!.reason).toContain("not_a_field");
 
     // The ko row's locale + translationGroupId stayed intact.
-    const koResult = await findDocuments("localized-pages", {
+    const koResult = await findDocuments("pages", {
       where: { translationGroupId: groupId },
       locale: "ko",
     });
@@ -331,9 +331,9 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
 
     // 1. Author a PRIVATE source-locale row.
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Secret", body: "Hidden body", locale: "en", visibility: "private" },
+      { title: "Secret", seoDescription: "Hidden body", locale: "en", visibility: "private" },
       actor(),
       { status: "published" },
     );
@@ -351,14 +351,14 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     const bundle = await exportXliff({ user: actor() });
     expect(bundle.summary.docCount).toBe(1);
     const koFile = bundle.files.find(
-      (f) => f.collection === "localized-pages" && f.targetLocale === "ko",
+      (f) => f.collection === "pages" && f.targetLocale === "ko",
     );
     expect(koFile).toBeDefined();
 
     // 3. Translator fills in `<target>`; import lands a sibling.
     const parsed = parseXliff(koFile!.xml);
     parsed.files[0]!.units.find((u) => u.id === "title")!.target = "비밀";
-    parsed.files[0]!.units.find((u) => u.id === "body")!.target = "숨겨진 본문";
+    parsed.files[0]!.units.find((u) => u.id === "seoDescription")!.target = "숨겨진 본문";
     const result = await importXliff({
       xml: renderXliff(parsed),
       user: actor(),
@@ -388,7 +388,7 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     expect(update.applied[0]!.operation).toBe("update");
 
     const koResult = await findDocuments(
-      "localized-pages",
+      "pages",
       {
         where: { translationGroupId: groupId, visibility: "*" },
         locale: "ko",
@@ -405,9 +405,9 @@ describe.skipIf(skipIfNoTestDb())("xliff round-trip (Phase 12.12)", () => {
     // Body deliberately empty — the unit for `body` should be
     // dropped from the file rather than emit an empty <source>.
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Title only", body: "", locale: "en" },
+      { title: "Title only", seoDescription: "", locale: "en" },
       actor(),
       { status: "published" },
     );

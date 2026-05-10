@@ -58,21 +58,21 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
     // we end up with 2 groups, 2 EN rows, 1 KO row, 1 KO
     // missing.
     const a = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Alpha", body: "en", locale: "en" },
+      { title: "Alpha", seoDescription: "en", locale: "en" },
       actor(),
       { status: "published" },
     );
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Beta", body: "en", locale: "en" },
+      { title: "Beta", seoDescription: "en", locale: "en" },
       actor(),
       { status: "published" },
     );
     await createTranslation(
-      "localized-pages",
+      "pages",
       a.doc.id as string,
       "ko",
       actor(),
@@ -83,7 +83,7 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
     expect(progress?.locales).toEqual(["en", "ko"]);
 
     const lp = progress?.collections.find(
-      (c) => c.collection === "localized-pages",
+      (c) => c.collection === "pages",
     );
     expect(lp).toBeDefined();
     expect(lp?.totalGroups).toBe(2);
@@ -95,7 +95,7 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
     const { getTranslationProgress } = await import("@nexpress/core");
     const progress = await getTranslationProgress();
     const lp = progress?.collections.find(
-      (c) => c.collection === "localized-pages",
+      (c) => c.collection === "pages",
     );
     expect(lp?.totalGroups).toBe(0);
     expect(lp?.perLocale.en).toEqual({ count: 0, missing: 0 });
@@ -131,9 +131,9 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
     const { saveDocument } = await import("@nexpress/core");
     const editor = await seedUser({ role: "editor" });
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Solo", body: "en only", locale: "en" },
+      { title: "Solo", seoDescription: "en only", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -151,7 +151,7 @@ describe.skipIf(skipIfNoTestDb())("i18n progress (Phase 12.6b)", () => {
     }>(res);
     expect(status).toBe(200);
     expect(body.defaultLocale).toBe("en");
-    const lp = body.collections?.find((c) => c.collection === "localized-pages");
+    const lp = body.collections?.find((c) => c.collection === "pages");
     expect(lp?.totalGroups).toBe(1);
     expect(lp?.perLocale.en.count).toBe(1);
     expect(lp?.perLocale.ko.missing).toBe(1);

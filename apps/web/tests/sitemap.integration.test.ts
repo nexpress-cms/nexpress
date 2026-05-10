@@ -130,7 +130,11 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
 
     const res = await sitemapGET(sitemapRequest("en"));
     const xml = await res.text();
-    expect(xml).toContain("<loc>http://localhost:3000/about</loc>");
+    // Pages is `i18n: true` since the localized-pages → pages
+    // collapse, so a page saved without an explicit locale
+    // defaults to defaultLocale="en" and the seo helper prepends
+    // the locale prefix.
+    expect(xml).toContain("<loc>http://localhost:3000/en/about</loc>");
   });
 
   it("dedupes overlapping static + dynamic entries", async () => {
@@ -274,19 +278,19 @@ describe.skipIf(skipIfNoTestDb())("sitemap.xml + robots.txt (Phase 10.1)", () =>
     // because the unique constraint is `(locale, slug)`), so both
     // entries land at /en/greeting and /ko/greeting.
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Greeting", body: "en body", locale: "en" },
+      { title: "Greeting", seoDescription: "en body", locale: "en" },
       actor,
       { status: "published" },
     );
     const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "Greeting",
-        body: "ko body",
+        seoDescription: "ko body",
         locale: "ko",
         translationGroupId: groupId,
       },
