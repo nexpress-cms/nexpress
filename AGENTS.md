@@ -32,10 +32,36 @@ pnpm install
 docker compose -f docker/docker-compose.yml up -d       # Postgres :5433 + Mailpit (SMTP :1025, inbox http://localhost:8025)
 cp .env.example .env                                    # DATABASE_URL, NP_SECRET, SITE_URL, SMTP defaults pointing at Mailpit
 pnpm build                                              # build all packages (dist/) — needed before dev
-pnpm dev                                                # turbo watch: tsup --watch per pkg + next dev + collection schema:gen on src/collections/* changes
+pnpm dev                                                # next dev (apps/web only) + collection schema:gen on src/collections/* changes
 ```
 
-- `pnpm build` / `pnpm dev` / `pnpm test` — turbo fan-out over all workspaces
+### Dev workflows (which `dev` to run)
+
+`pnpm dev` watches **only `apps/web`** (next dev + schema-gen).
+Other packages serve from their last-built `dist/`. This keeps the
+process count and memory footprint sane — the full-watch shape we
+shipped before brought 30 `tsup --watch` instances and ~3 GB of
+resident watcher memory.
+
+- **Default — app-level work in `apps/web/src/*`:**
+  ```bash
+  pnpm install && pnpm build   # one-time, builds every package
+  pnpm dev                     # next dev only; subsequent runs skip the build
+  ```
+- **Editing a leaf package — `@nexpress/admin`, `@nexpress/blocks`, etc.:**
+  ```bash
+  pnpm --filter @nexpress/admin... dev
+  ```
+  The `...` expands to that package + every workspace dep. Watcher count scales with the slice you actually touched.
+- **Cross-package refactor — every `dist/` should rebuild on save:**
+  ```bash
+  pnpm dev:full                # current full-fan-out behavior
+  ```
+  Heavy (~30 watchers, ~3 GB RSS) — reach for it when you really do need everyone watching at once.
+
+When a leaf package changes and you used the default `pnpm dev`, the leaf's `dist/` is stale. Either rebuild that leaf (`pnpm --filter <pkg> build`) or switch to the `... dev` filter for the rest of the session.
+
+- `pnpm build` / `pnpm test` — turbo fan-out over all workspaces. `pnpm dev` is now scoped to apps/web (see above).
 - `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Each package runs `eslint . --cache --cache-location node_modules/.cache/eslint`, so the heavy `recommendedTypeChecked` rule set's TS programs stay bounded per process and incremental runs hit cache. The previous root `eslint .` over 1000+ files OOMed at an 8 GB heap; the per-package fan-out caps peak RSS at ~1.2 GB. Use `pnpm --filter <pkg> lint` to target one package, or `turbo run lint --filter=<pkg>...` for a dependency-aware subset.
 - `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
 - `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)

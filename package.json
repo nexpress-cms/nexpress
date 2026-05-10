@@ -10,7 +10,8 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "build": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build",
-    "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=30",
+    "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --filter=@nexpress/web --concurrency=10",
+    "dev:full": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=50",
     "lint": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint --concurrency=2",
     "lint:fix": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run lint --concurrency=2 -- --fix",
     "typecheck": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run typecheck",
