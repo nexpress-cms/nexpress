@@ -679,11 +679,37 @@ export async function loadPlugins(
   }
 
   // Pass 3 — actually load. Legacy first, then resolved in topo order.
+  // Each load is wrapped in error isolation: a throwing plugin (most
+  // commonly a buggy `setup()` callback or a missing required config)
+  // is logged and skipped, so one broken plugin can't take down the
+  // whole boot. Partial state from a half-loaded plugin (hooks/routes
+  // registered before `setup` threw) is scrubbed via
+  // `pluginRegistry.delete(id)` so callers don't see an inconsistent
+  // shell registration. Plugins that depend on the failed one will
+  // either fail their own require check (handled cleanly) or fail at
+  // dispatch time (also caught at the dispatch layer).
   for (const plugin of legacy) {
-    await loadLegacyPlugin(plugin);
+    try {
+      await loadLegacyPlugin(plugin);
+    } catch (err) {
+      pluginRegistry.delete(plugin.id);
+      getLogger().error("Plugin failed to load — skipped", {
+        pluginId: plugin.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   for (const entry of ordered) {
-    await loadResolvedPlugin(entry.plugin);
+    try {
+      await loadResolvedPlugin(entry.plugin);
+    } catch (err) {
+      const pluginId = entry.plugin.manifest.id;
+      pluginRegistry.delete(pluginId);
+      getLogger().error("Plugin failed to load — skipped", {
+        pluginId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 

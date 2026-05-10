@@ -98,33 +98,39 @@ describe("plugin host", () => {
 
   describe("loadPlugins — resolved shape with manifest", () => {
     it("rejects a content hook when hooks:content is not declared", async () => {
-      await expect(
-        loadPlugins([
-          resolvedPlugin("no-capability", {
-            capabilities: [],
-            hooks: {
-              "content:afterCreate": () => undefined,
-            },
-          }),
-        ]),
-      ).rejects.toThrow(/hooks:content/);
+      // Per #620 (load-time error isolation), a capability
+      // mis-declaration no longer crashes the host — it's logged
+      // and the misbehaving plugin is dropped from the registry.
+      // Other plugins continue to load. The contract is now:
+      // loadPlugins() resolves; the failing plugin is absent from
+      // getAllPluginIds().
+      await loadPlugins([
+        resolvedPlugin("no-capability", {
+          capabilities: [],
+          hooks: {
+            "content:afterCreate": () => undefined,
+          },
+        }),
+      ]);
+      expect(getAllPluginIds()).not.toContain("no-capability");
     });
 
     it("rejects a route registration when api:route is not declared", async () => {
-      await expect(
-        loadPlugins([
-          resolvedPlugin("no-route-cap", {
-            capabilities: ["hooks:content"],
-            routes: [
-              {
-                method: "GET",
-                path: "/hi",
-                handler: () => Promise.resolve({ status: 200 }),
-              },
-            ],
-          }),
-        ]),
-      ).rejects.toThrow(/api:route/);
+      // Same isolation contract as above. The plugin is logged +
+      // dropped; other plugins keep loading.
+      await loadPlugins([
+        resolvedPlugin("no-route-cap", {
+          capabilities: ["hooks:content"],
+          routes: [
+            {
+              method: "GET",
+              path: "/hi",
+              handler: () => Promise.resolve({ status: 200 }),
+            },
+          ],
+        }),
+      ]);
+      expect(getAllPluginIds()).not.toContain("no-route-cap");
     });
 
     it("registers hooks and routes when capabilities cover them", async () => {
@@ -346,6 +352,92 @@ describe("plugin host", () => {
       expect(errors[0]?.message).toMatch(/Plugin hook handler threw/);
       expect(errors[0]?.context?.pluginId).toBe("first-throws");
       expect(errors[0]?.context?.hook).toBe("content:afterCreate");
+    });
+  });
+
+  describe("loadPlugins — load-time error isolation", () => {
+    let errors: Array<{ message: string; context?: Record<string, unknown> }>;
+
+    beforeEach(() => {
+      errors = [];
+      setLogger({
+        debug: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+        error: (message, context) => {
+          errors.push({ message, context });
+        },
+      });
+    });
+
+    afterEach(() => {
+      resetLogger();
+    });
+
+    it("isolates a throwing legacy init() — other plugins still load", async () => {
+      const otherInit = vi.fn();
+      await loadPlugins([
+        legacyPlugin("first-throws", () => {
+          throw new Error("init blew up");
+        }),
+        legacyPlugin("second-runs", otherInit),
+      ]);
+
+      // Throwing plugin gets its registration scrubbed; surviving
+      // plugin is fully loaded.
+      const ids = getAllPluginIds();
+      expect(ids).not.toContain("first-throws");
+      expect(ids).toContain("second-runs");
+      expect(otherInit).toHaveBeenCalledOnce();
+
+      expect(errors.some((e) => e.message.includes("Plugin failed to load"))).toBe(true);
+      expect(errors[0]?.context?.pluginId).toBe("first-throws");
+    });
+
+    it("isolates a throwing setup() in a resolved plugin", async () => {
+      const setup = vi.fn(() => {
+        throw new Error("setup config required");
+      });
+      await loadPlugins([
+        {
+          ...resolvedPlugin("setup-throws", { capabilities: ["hooks:content"] }),
+          setup,
+        } as never,
+        resolvedPlugin("survives", {
+          capabilities: ["hooks:content"],
+          hooks: { "content:afterCreate": () => undefined },
+        }),
+      ]);
+
+      const ids = getAllPluginIds();
+      expect(ids).not.toContain("setup-throws");
+      expect(ids).toContain("survives");
+
+      // Hooks from the failed plugin should NOT remain in the
+      // registry — `setup-throws` was scrubbed.
+      expect(getPluginRegistration("setup-throws")).toBeUndefined();
+      expect(setup).toHaveBeenCalledOnce();
+    });
+
+    it("logs the error message + plugin id for each failed plugin", async () => {
+      await loadPlugins([
+        legacyPlugin("a-fails", () => {
+          throw new Error("a-reason");
+        }),
+        legacyPlugin("b-fails", () => {
+          throw new Error("b-reason");
+        }),
+      ]);
+
+      const failureLogs = errors.filter((e) =>
+        e.message.includes("Plugin failed to load"),
+      );
+      expect(failureLogs).toHaveLength(2);
+      expect(failureLogs.map((e) => e.context?.pluginId).sort()).toEqual([
+        "a-fails",
+        "b-fails",
+      ]);
+      expect(failureLogs.find((e) => e.context?.pluginId === "a-fails")?.context?.error).toBe("a-reason");
     });
   });
 
