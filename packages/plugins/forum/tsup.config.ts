@@ -1,7 +1,6 @@
 import { defineConfig } from "tsup";
 
 const fast = process.env.NP_DEV_FAST === "1";
-const target = process.env.NP_BUILD_TARGET; // "index" | "client" | undefined
 
 const externals = [
   "next",
@@ -17,33 +16,46 @@ const externals = [
   "@nexpress/editor/server",
   "@nexpress/next",
   "@nexpress/next/client",
+  "@nexpress/plugin-forum/client",
   "@nexpress/plugin-sdk",
   "drizzle-orm",
 ];
 
-// Sequenced build (see `@nexpress/next/tsup.config.ts` for
-// rationale): two configs in `defineConfig([...])` race on the
-// shared `dist/`. The npm `build` script runs us twice — once
-// for index, once for client — which avoids the race.
-const indexConfig = {
-  entry: { index: "src/index.ts" },
-  format: ["esm"] as const,
-  dts: !fast,
-  clean: true,
-  sourcemap: !fast,
-  external: externals,
-};
-
-const clientConfig = {
-  entry: { client: "src/client.ts" },
-  format: ["esm"] as const,
-  dts: !fast,
-  clean: false,
-  sourcemap: !fast,
-  external: externals,
-  esbuildOptions(options: { banner?: { js?: string } }) {
-    options.banner = { js: '"use client";' };
+// Two-entry array config (matches `@nexpress/admin`'s pattern):
+// tsup builds `index` and `client` as separate passes that share
+// chunks. Source-side `"use client"` directives in
+// `src/client/*.tsx` cause tsup to emit those files as separate
+// chunks with the directive at the top, which is what React's
+// RSC compiler needs to treat them as client components even
+// when they're transitively imported from server-side route
+// files (e.g. `src/routes/edit.tsx` referencing
+// `DiscussionForm`).
+//
+// The previous sequenced single-entry approach lost this — each
+// invocation only saw one entry, so transitive client modules
+// got bundled into the server `dist/index.js` without the
+// directive, breaking the RSC boundary.
+export default defineConfig([
+  {
+    entry: { index: "src/index.ts" },
+    format: ["esm"],
+    dts: !fast,
+    // No `clean: true` here — the build script does `rm -rf
+    // dist` before invoking tsup. Cleaning inside one of the
+    // two parallel configs races with the other config's emit
+    // (when index's DTS finishes after client's, the cleanup
+    // path wipes client.d.ts that was already written).
+    sourcemap: !fast,
+    external: externals,
   },
-};
-
-export default defineConfig(target === "client" ? clientConfig : indexConfig);
+  {
+    entry: { client: "src/client.ts" },
+    format: ["esm"],
+    dts: !fast,
+    sourcemap: !fast,
+    esbuildOptions(options) {
+      options.banner = { js: '"use client";' };
+    },
+    external: externals,
+  },
+]);

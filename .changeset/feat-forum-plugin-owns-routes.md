@@ -42,14 +42,31 @@ packages/plugins/forum/
       list.tsx, new.tsx, detail.tsx, edit.tsx
 ```
 
-**Build pipeline.** tsup with two entries (`index` + `client`)
-configured as **sequenced** invocations rather than a
-`defineConfig([...])` array — the array form runs both configs
-in parallel, racing on `dist/` (the index entry's `clean: true`
-can wipe the client entry's emitted dts). The npm `build`
-script runs tsup twice, switching the entry via
-`NP_BUILD_TARGET=client`. Same fix applied to `@nexpress/next`
-(also a dual-entry package).
+**Build pipeline.** Two-entry array config (matches
+`@nexpress/admin`'s pattern) so source-side `"use client"`
+directives in `src/client/*.tsx` get preserved when tsup emits
+chunks. **`clean: true` lives in the npm `build` script as
+`rm -rf dist && tsup`, NOT inside the tsup config**: an
+in-config clean races with the parallel dts builds — when index
+DTS happens to finish after client DTS, the cleanup wipes
+`client.d.ts` that was already written. Same fix applied to
+`@nexpress/next` (also a dual-entry package).
+
+**Server / client boundary.** Route components (server-side)
+import client widgets via the package's own subpath:
+
+```ts
+import { DiscussionForm } from "@nexpress/plugin-forum/client";
+```
+
+`@nexpress/plugin-forum/client` is in tsup's `external` list, so
+the index bundle leaves the import alone. At runtime, Node
+resolves the import via the package's `exports` map → loads
+`dist/client.js` (which carries the `"use client"` banner) →
+React's RSC compiler treats `DiscussionForm` as a client
+component. Importing the same file via a relative path
+(`"../client/discussion-form.js"`) would have bundled it INTO
+`dist/index.js` without the directive, breaking the boundary.
 
 **Adapter shape.** Plugin route components take
 `NpRouteRenderProps` (from `@nexpress/next` — re-exported

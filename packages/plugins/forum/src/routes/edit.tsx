@@ -5,7 +5,7 @@ import type { NpRouteRenderProps } from "@nexpress/next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { DiscussionForm } from "../client/discussion-form.js";
+import { DiscussionForm } from "@nexpress/plugin-forum/client";
 
 export default async function EditDiscussionRoute({
   params,

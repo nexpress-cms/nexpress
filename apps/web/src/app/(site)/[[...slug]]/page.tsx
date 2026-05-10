@@ -77,7 +77,13 @@ export async function generateMetadata({
   params,
   searchParams,
 }: PageProps): Promise<Metadata> {
-  await ensureFor("read");
+  // PRT.3 — bumped to `"plugins"` so `dispatchPluginRoute`
+  // below sees plugin-contributed routes on the first cold-
+  // start request. `generateMetadata` runs in parallel with
+  // `CatchAllPage` (which already does `ensureFor("plugins")`),
+  // so without this bump the metadata path could race on first
+  // request and emit page-fallback SEO for plugin URLs.
+  await ensureFor("plugins");
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
   const { locale, path } = splitLocaleFromPath(rawPath);

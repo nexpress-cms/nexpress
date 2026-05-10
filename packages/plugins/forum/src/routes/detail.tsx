@@ -19,7 +19,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { DiscussionAuthorActions } from "../client/discussion-author-actions.js";
+import { DiscussionAuthorActions } from "@nexpress/plugin-forum/client";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending review",

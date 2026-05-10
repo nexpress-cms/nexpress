@@ -61,7 +61,7 @@
     "typescript": "^5.8.0"
   },
   "scripts": {
-    "build": "tsup && NP_BUILD_TARGET=client tsup",
+    "build": "rm -rf dist && tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
