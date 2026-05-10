@@ -136,25 +136,88 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   res.end();
 }
 
-function validateBody(
+/**
+ * Pure function — exported so the unit suite (#618) can pin the
+ * validation contract without booting the http server.
+ */
+export function validateBody(
   raw: Partial<SetupBody>,
 ): { body: SetupBody } | { error: string } {
   const databaseUrl = (raw.databaseUrl ?? "").trim();
   if (!/^postgres(?:ql)?:\/\//.test(databaseUrl)) {
     return { error: "DATABASE_URL must start with postgres:// or postgresql://" };
   }
+  // Parse the URL beyond the protocol prefix — catches malformed
+  // shapes like `postgres://` (no host) or `postgres://:5432/db`
+  // (no host, just port). The Postgres connector would surface
+  // these as connect-time errors anyway, but bouncing here means
+  // the operator gets the validation message inline on the form
+  // instead of the spawn-time crash from `pnpm db:migrate` later.
+  let dbHost: string | null = null;
+  try {
+    dbHost = new URL(databaseUrl).hostname || null;
+  } catch {
+    return { error: "DATABASE_URL is not a valid URL — check the host/port portion" };
+  }
+  if (!dbHost) {
+    return { error: "DATABASE_URL is missing the host portion" };
+  }
+
   const npSecret = (raw.npSecret ?? "").trim();
   if (npSecret.length < 32) {
     return { error: "NP_SECRET must be at least 32 characters" };
   }
+  // Reject obvious low-entropy patterns. `signJwt` uses HMAC-SHA256
+  // which only cares about byte-level entropy, but a secret like
+  // `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (32 chars, single byte
+  // repeated) is a footgun that's easy to type and easy to brute-
+  // force. The setup form's "generate" button produces a real
+  // 64-char random hex; this check catches the operator who
+  // overwrites that with a memorable string.
+  const uniqueChars = new Set(npSecret).size;
+  if (uniqueChars < 8) {
+    return {
+      error: "NP_SECRET is too low-entropy (only " + String(uniqueChars) +
+        " distinct chars). Use the form's `generate` button or supply at least 8 distinct characters.",
+    };
+  }
+
   const siteUrl = (raw.siteUrl ?? "").trim();
   if (!/^https?:\/\//.test(siteUrl)) {
     return { error: "SITE_URL must start with http:// or https://" };
   }
+  // Confirm there's actually a host. Naked `http://` passes the
+  // regex but `new URL` produces an empty hostname — rejecting
+  // here means the SITE_URL we write to .env can be parsed by
+  // both the safety check (#597) and the auth-pages email-link
+  // builders (#598).
+  let siteHost: string | null = null;
+  try {
+    siteHost = new URL(siteUrl).hostname || null;
+  } catch {
+    return { error: "SITE_URL is not a valid URL — check the host portion" };
+  }
+  if (!siteHost) {
+    return { error: "SITE_URL is missing the host portion (e.g. https://example.com)" };
+  }
+
   const storage = raw.storage === "s3" ? "s3" : "local";
   if (storage === "s3") {
     if (!raw.s3Bucket?.trim()) return { error: "S3 bucket is required" };
     if (!raw.s3Region?.trim()) return { error: "S3 region is required" };
+    // S3 endpoint is optional (AWS picks a default by region) but
+    // when supplied must parse — same logic as SITE_URL.
+    const endpoint = raw.s3Endpoint?.trim();
+    if (endpoint) {
+      try {
+        const u = new URL(endpoint);
+        if (!u.hostname) {
+          return { error: "S3 endpoint is missing the host portion" };
+        }
+      } catch {
+        return { error: "S3 endpoint is not a valid URL" };
+      }
+    }
   }
   return {
     body: {
