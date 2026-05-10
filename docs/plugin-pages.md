@@ -68,10 +68,21 @@ Each entry in `pageRoutes` is an `NpPluginPageRouteRegistration`:
 | Field | Type | Required | Default | Purpose |
 | --- | --- | --- | --- | --- |
 | `pattern` | string | yes | — | The URL pattern. See "Pattern grammar" below. |
-| `component` | `ComponentType<NpRouteRenderProps>` | yes | — | Your route component. **Must be a Server Component** unless wrapped — see "Server / client boundary." |
-| `metadata` | `(ctx) => Metadata \| Promise<Metadata>` | no | — | Builder for the route's `<head>` (Next.js `Metadata` type). Without it, the framework emits site-wide fallback SEO. |
-| `surface` | `"site" \| "member"` | no | `"site"` | Which audience this route is for. Affects the shell wrap (member surface support is **deferred to v0.2** — today both surfaces render in the site shell). |
+| `component` | `unknown` (expected: `ComponentType<NpRouteRenderProps>`) | yes | — | Your route component. **Must be a Server Component** unless wrapped — see "Server / client boundary." |
+| `metadata` | `unknown` (expected: `(ctx: NpRouteRenderProps) => Metadata \| Promise<Metadata>`) | no | — | Builder for the route's `<head>` (Next.js `Metadata` type). Without it, the framework emits site-wide fallback SEO. |
+| `surface` | `"site" \| "member"` | no | `"site"` | Which audience this route is for. Affects the shell wrap (member surface support is **deferred to v0.2** — today both surfaces render in the site shell). **Does not gate access** in v0.1: a `surface: "member"` route is rendered to anyone, and the route component is responsible for calling `getSiteMember()` and `notFound()` / redirecting on null. |
 | `locale` | `"auto" \| "none"` | no | `"auto"` | `"auto"` (the only setting plumbed today) means the host strips the locale prefix before matching, so `/en/discussions` and `/discussions` both match `/discussions`. `"none"` is reserved for v1.x. |
+
+> **Why `component` and `metadata` are typed as `unknown`:** the
+> SDK (`@nexpress/plugin-sdk`) deliberately stays React-free at
+> the type layer so the SDK package doesn't drag a React peer
+> dep into server-only plugin code. The route dispatcher in
+> `@nexpress/next` narrows both fields to their expected shapes
+> at the call site where the component is actually rendered.
+>
+> In practice, type your component's *own* props as
+> `NpRouteRenderProps` (TS will catch shape mismatches there) —
+> the entry-level `unknown` is just a structural escape hatch.
 
 Order matters in the array because the dispatcher is **first-match-
 wins**. Put more-specific patterns before parametric ones:
@@ -131,11 +142,24 @@ export interface NpRouteRenderProps {
 shape — building metadata from URL state is straightforward:
 
 ```ts
+import { findDocuments } from "@nexpress/core";
+import { buildPageMetadata } from "@nexpress/next";
+
+interface DiscussionRow {
+  title: string;
+  excerpt?: string | null;
+}
+
 async function detailMetadata(ctx: NpRouteRenderProps) {
   const slug = ctx.params.slug;
-  const doc = await findDocuments("discussions", { where: { slug }, limit: 1 });
+  const result = await findDocuments<DiscussionRow>("discussions", {
+    where: { slug },
+    limit: 1,
+  });
+  const doc = result.docs[0];
   return buildPageMetadata({
-    title: doc.docs[0]?.title ?? "Discussion",
+    title: doc?.title ?? "Discussion",
+    description: doc?.excerpt ?? null,
     path: `/discussions/${slug}`,
   });
 }
@@ -216,9 +240,24 @@ import { MyForm } from "../client/my-form.js";
 import { MyForm } from "@nexpress/plugin-my/client";
 ```
 
-Configure `tsup` to mark the `./client` subpath as `external` for the
-index entry, OR follow the dual-entry pattern in
-[`packages/plugins/forum/tsup.config.ts`](../packages/plugins/forum/tsup.config.ts).
+Two pieces of `tsup` setup are required:
+
+1. **Dual-entry config** (one entry per output: `index` + `client`)
+   so tsup emits a separate `dist/client.js` with the `"use
+   client"` banner.
+2. **Mark the package's own `./client` subpath as `external`** for
+   the `index` entry. Without this, tsup follows the relative
+   imports inside the package source and bundles client code into
+   `dist/index.js` — the directive ends up mid-bundle and React
+   ignores it.
+
+`clean: true` belongs in the npm `build` script (`rm -rf dist
+&& tsup`), not inside either tsup config — the parallel dts
+builds otherwise race on the shared output directory.
+
+Working reference:
+[`packages/plugins/forum/tsup.config.ts`](../packages/plugins/forum/tsup.config.ts)
++ [`packages/plugins/forum/package.json`](../packages/plugins/forum/package.json).
 
 ---
 
