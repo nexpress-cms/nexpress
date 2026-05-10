@@ -319,14 +319,27 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
             return state;
           }
         }
-        return mapTree(state, (block) => {
-          if (block.id !== action.id) return block;
-          const wrapper = createBlockInstance(containerDef);
-          return {
-            ...wrapper,
-            children: [block],
-          };
-        });
+        // Replace the source in its parent's siblings with a wrapper
+        // containing the original. `mapTree` would infinite-loop here:
+        // it walks every block including the wrapper's child, finds the
+        // same `action.id` again, wraps again, and the recursion never
+        // terminates. `locateBlock` + `updateContainerChildren` does
+        // the substitution exactly once at the right depth.
+        if (!sourceLoc) return state;
+        return updateContainerChildren(
+          state,
+          sourceLoc.parentId,
+          (siblings) => {
+            const target = siblings[sourceLoc.index];
+            if (!target) return siblings;
+            const wrapper = createBlockInstance(containerDef);
+            return [
+              ...siblings.slice(0, sourceLoc.index),
+              { ...wrapper, children: [target] },
+              ...siblings.slice(sourceLoc.index + 1),
+            ];
+          },
+        );
       }
       case "INSERT_PATTERN": {
         // Re-id every block in the pattern so each insertion is
