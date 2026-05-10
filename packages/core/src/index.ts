@@ -515,6 +515,7 @@ export {
   runHook,
   runHookAndCollect,
   getPluginRoutes,
+  getPluginPageRoutes,
   getPluginRegistration,
   getPluginConfig,
   getPluginConfigWithStatus,

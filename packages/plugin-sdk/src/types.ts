@@ -708,6 +708,68 @@ export interface NpPluginDefinition<TConfig = Record<string, unknown>> {
    *   }
    */
   templates?: Record<string, Record<string, unknown>>;
+  /**
+   * Plugin route contribution (#623 design lock).
+   *
+   * Public-site page routes the plugin ships. The framework's
+   * site catch-all (`(site)/[[...slug]]`) consults these AFTER
+   * page-document slug match and theme routes, BEFORE
+   * collection-derived URLs. See `docs/design/plugin-routes.md`
+   * for the precedence + override rules.
+   *
+   * The route shape is intentionally identical to
+   * `NpThemeRoute` so the dispatcher walks both lists with the
+   * same matcher. Each entry adds two plugin-specific knobs:
+   *
+   *   - `surface: "site" | "member"` — which theme shell wraps
+   *     the rendered component. `"member"` triggers the
+   *     existing membership gate (unauthenticated requests
+   *     redirect to `/members/login?next=…`).
+   *   - `locale: "auto" | "none"` — when the site is i18n-
+   *     enabled, `"auto"` (default) makes the route reachable
+   *     at `/<path>` AND `/<locale>/<path>` for every
+   *     configured locale; `"none"` keeps the path verbatim.
+   *
+   * Routes follow the plugin's `enabled` state — a disabled
+   * plugin returns 404 from its routes. Operators override a
+   * plugin route by declaring the same `pattern` in their
+   * theme's `theme.routes` (theme wins).
+   */
+  pageRoutes?: NpPluginPageRouteRegistration[];
+}
+
+/**
+ * Plugin-side shape of a page route entry. Stored as
+ * `unknown`-typed `component` because `@nexpress/plugin-sdk`
+ * deliberately stays React-free at the type layer (the SDK is
+ * imported by server-side plugin host code that doesn't need
+ * the React peer dep). The `@nexpress/next` route dispatcher
+ * narrows it to `ComponentType<NpRouteRenderProps>` at the
+ * call site where it's actually rendered.
+ *
+ * Plugin authors get the strict type by importing
+ * `NpPluginPageRoute` from `@nexpress/plugin-sdk` (re-exported
+ * from `define-plugin.ts` via a type-only file that augments
+ * the React peer dep).
+ */
+export interface NpPluginPageRouteRegistration {
+  /** Same path-to-regexp grammar as `NpThemeRoute.pattern`. */
+  pattern: string;
+  /** React component matching `NpRouteRenderProps`. */
+  component: unknown;
+  /** Optional metadata builder (same shape as theme routes). */
+  metadata?: unknown;
+  /**
+   * Which shell wraps the rendered component. Defaults to
+   * `"site"` (theme's `impl.shell`). `"member"` triggers the
+   * membership gate.
+   */
+  surface?: "site" | "member";
+  /**
+   * Locale handling. `"auto"` (default) inherits the site's
+   * i18n config; `"none"` keeps the path verbatim.
+   */
+  locale?: "auto" | "none";
 }
 
 export type NpResolvedPlugin<TConfig = Record<string, unknown>> = Omit<

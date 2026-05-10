@@ -170,6 +170,23 @@ interface PluginRegistration {
   configVersion?: number;
   /** G.1 — migration callback for v(N-1) → current. */
   configMigrate?: (old: unknown, fromVersion: number) => unknown;
+  /**
+   * Plugin-contributed page routes (#623). Stored as the same
+   * shape the SDK accepts (component + optional metadata as
+   * `unknown`); the route-dispatcher in `@nexpress/next`
+   * narrows them at render time. See
+   * `docs/design/plugin-routes.md` for precedence + surface
+   * semantics.
+   */
+  pageRoutes: readonly PluginPageRouteEntry[];
+}
+
+export interface PluginPageRouteEntry {
+  pattern: string;
+  component: unknown;
+  metadata?: unknown;
+  surface: "site" | "member";
+  locale: "auto" | "none";
 }
 
 /**
@@ -446,6 +463,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     configSchema: plugin.configSchema,
     configVersion: plugin.configVersion,
     configMigrate: plugin.configMigrate,
+    pageRoutes: normalizePageRoutes(plugin),
   };
 
   pluginRegistry.set(manifest.id, registration);
@@ -620,6 +638,12 @@ async function loadLegacyPlugin(plugin: NpPluginConfig): Promise<void> {
     routes: [],
     actions: new Map(),
     schedules: new Map(),
+    // Legacy `init()` plugins predate the page-routes contract;
+    // they always register zero routes. Kept as a literal `[]` so
+    // the registration shape is consistent across the two paths
+    // and `getPluginPageRoutes()` doesn't need to special-case
+    // legacy entries.
+    pageRoutes: [],
   };
 
   pluginRegistry.set(plugin.id, registration);
@@ -812,6 +836,70 @@ export async function runHookAndCollect<T>(
 
 export function getPluginRoutes(): PluginRouteHandler[] {
   return globalRoutes;
+}
+
+/**
+ * Plugin page routes (#623). Returns the flat list of registered
+ * routes from EVERY loaded plugin in registration order, regardless
+ * of enabled state — call sites that care about enabled gating
+ * (e.g. the route dispatcher) walk the list and re-check via
+ * `isPluginEnabled(pluginId)`. Keeping the gate at the call site
+ * means tests can assert the registered shape without mocking the
+ * enabled-state singleton.
+ */
+export function getPluginPageRoutes(): Array<{
+  pluginId: string;
+  route: PluginPageRouteEntry;
+}> {
+  const out: Array<{ pluginId: string; route: PluginPageRouteEntry }> = [];
+  for (const [pluginId, registration] of pluginRegistry) {
+    for (const route of registration.pageRoutes) {
+      out.push({ pluginId, route });
+    }
+  }
+  return out;
+}
+
+/**
+ * Normalize a plugin's `pageRoutes` field at registration time.
+ * Drops malformed entries silently — same defensive shape as
+ * `scheduled` / hooks normalization above. Defaults `surface` to
+ * `"site"` and `locale` to `"auto"` so the dispatcher always gets
+ * concrete values.
+ */
+function normalizePageRoutes(plugin: ResolvedPluginLike): readonly PluginPageRouteEntry[] {
+  const raw = (plugin as { pageRoutes?: unknown }).pageRoutes;
+  if (!Array.isArray(raw)) return [];
+  const out: PluginPageRouteEntry[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const r = entry as {
+      pattern?: unknown;
+      component?: unknown;
+      metadata?: unknown;
+      surface?: unknown;
+      locale?: unknown;
+    };
+    if (typeof r.pattern !== "string" || r.pattern.length === 0) continue;
+    // Accept either a function (functional / class component) or a
+    // non-null object (memo / forwardRef / Suspense-wrapped, all of
+    // which are objects with a `$$typeof` brand). Reject anything
+    // else — strings, numbers, booleans — that the dispatcher would
+    // hand to React only to crash at render time. Same defensive
+    // shape as the scheduled / hooks normalization above; tighter
+    // than the earlier draft which only rejected null / undefined.
+    if (typeof r.component !== "function") {
+      if (typeof r.component !== "object" || r.component === null) continue;
+    }
+    out.push({
+      pattern: r.pattern,
+      component: r.component,
+      metadata: r.metadata,
+      surface: r.surface === "member" ? "member" : "site",
+      locale: r.locale === "none" ? "none" : "auto",
+    });
+  }
+  return out;
 }
 
 export function getPluginRegistration(pluginId: string): PluginRegistration | undefined {

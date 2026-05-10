@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getAllPluginIds,
+  getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
   loadPlugins,
@@ -795,6 +796,172 @@ describe("plugin host", () => {
       );
       expect(results).toHaveLength(1);
       expect(results[0]?.head[0]?.attrs.name).toBe("on");
+    });
+  });
+
+  // ── PRT.1 plugin page routes ──────────────────────────────────
+
+  describe("getPluginPageRoutes (#623)", () => {
+    const Component = () => null;
+
+    it("returns an empty array when no plugins declare pageRoutes", async () => {
+      await loadPlugins([
+        resolvedPlugin("no-routes", { capabilities: ["hooks:content"] }),
+      ]);
+      expect(getPluginPageRoutes()).toEqual([]);
+    });
+
+    it("registers pageRoutes from a resolved plugin", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            { pattern: "/discussions", component: Component },
+            { pattern: "/discussions/:slug", component: Component },
+          ],
+        } as never,
+      ]);
+      const routes = getPluginPageRoutes();
+      expect(routes).toHaveLength(2);
+      expect(routes[0].pluginId).toBe("forum");
+      expect(routes[0].route.pattern).toBe("/discussions");
+      // Defaults applied: surface "site", locale "auto".
+      expect(routes[0].route.surface).toBe("site");
+      expect(routes[0].route.locale).toBe("auto");
+    });
+
+    it("preserves explicit surface=member and locale=none", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            {
+              pattern: "/discussions/new",
+              component: Component,
+              surface: "member",
+              locale: "none",
+            },
+          ],
+        } as never,
+      ]);
+      const [{ route }] = getPluginPageRoutes();
+      expect(route.surface).toBe("member");
+      expect(route.locale).toBe("none");
+    });
+
+    it("drops malformed entries silently — missing pattern, missing component, wrong shape", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            { pattern: "/ok", component: Component },           // valid
+            { pattern: "", component: Component },              // empty pattern
+            { component: Component },                           // no pattern
+            { pattern: "/no-component" },                       // no component
+            null,                                                // not an object
+            "string-not-object",                                 // wrong shape
+          ],
+        } as never,
+      ]);
+      const routes = getPluginPageRoutes();
+      expect(routes).toHaveLength(1);
+      expect(routes[0].route.pattern).toBe("/ok");
+    });
+
+    it("flattens routes from multiple plugins in registration order", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [{ pattern: "/discussions", component: Component }],
+        } as never,
+        {
+          ...resolvedPlugin("gallery", { capabilities: [] }),
+          pageRoutes: [{ pattern: "/gallery", component: Component }],
+        } as never,
+      ]);
+      const routes = getPluginPageRoutes();
+      expect(routes.map((r) => r.pluginId)).toEqual(["forum", "gallery"]);
+      expect(routes.map((r) => r.route.pattern)).toEqual([
+        "/discussions",
+        "/gallery",
+      ]);
+    });
+
+    it("legacy init-shape plugins register zero routes", async () => {
+      const init = vi.fn();
+      await loadPlugins([legacyPlugin("legacy", init)]);
+      expect(init).toHaveBeenCalledOnce();
+      expect(getPluginPageRoutes()).toEqual([]);
+    });
+
+    it("returns disabled plugin's routes too — gating is the dispatcher's job", async () => {
+      // Pins the design rationale (§ getPluginPageRoutes doc):
+      // gating lives at the call site so unit tests can assert
+      // the registered shape without mocking the enabled
+      // singleton. Disabling a plugin must NOT remove its
+      // entries from this getter.
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [{ pattern: "/discussions", component: Component }],
+        } as never,
+      ]);
+      setPluginEnabledForTest("forum", false);
+      const routes = getPluginPageRoutes();
+      expect(routes).toHaveLength(1);
+      expect(routes[0].pluginId).toBe("forum");
+    });
+
+    it("re-registering a plugin replaces its prior pageRoutes", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            { pattern: "/v1", component: Component },
+            { pattern: "/v1/old", component: Component },
+          ],
+        } as never,
+      ]);
+      expect(getPluginPageRoutes()).toHaveLength(2);
+
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [{ pattern: "/v2", component: Component }],
+        } as never,
+      ]);
+      const after = getPluginPageRoutes();
+      expect(after).toHaveLength(1);
+      expect(after[0].route.pattern).toBe("/v2");
+    });
+
+    it("rejects primitive non-component values; accepts memo/forwardRef-shaped objects", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            { pattern: "/ok", component: Component },
+            { pattern: "/string", component: "not-a-component" },
+            { pattern: "/number", component: 42 },
+            { pattern: "/bool", component: true },
+            { pattern: "/null-component", component: null },
+            // memo / forwardRef return objects with `$$typeof`.
+            { pattern: "/memo-shaped", component: { $$typeof: Symbol("memo") } },
+          ],
+        } as never,
+      ]);
+      const patterns = getPluginPageRoutes().map((r) => r.route.pattern).sort();
+      expect(patterns).toEqual(["/memo-shaped", "/ok"]);
+    });
+
+    it("treats `pageRoutes: []` as a valid empty list", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [],
+        } as never,
+      ]);
+      expect(getPluginPageRoutes()).toEqual([]);
     });
   });
 });
