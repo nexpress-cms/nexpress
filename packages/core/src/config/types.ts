@@ -476,6 +476,20 @@ export interface NpResolvedPluginLike {
    *   }
    */
   templates?: Record<string, Record<string, unknown>>;
+  /**
+   * Plugin page routes (#623). React-free shape — the framework
+   * narrows `component` to `ComponentType<NpRouteRenderProps>`
+   * at the dispatcher site. See
+   * `docs/design/plugin-routes.md` for the contract +
+   * precedence rules.
+   */
+  pageRoutes?: ReadonlyArray<{
+    pattern: string;
+    component: unknown;
+    metadata?: unknown;
+    surface?: "site" | "member";
+    locale?: "auto" | "none";
+  }>;
 }
 
 export interface NpPluginContext {

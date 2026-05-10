@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getAllPluginIds,
+  getPluginPageRoutes,
   getPluginRegistration,
   getPluginRoutes,
   loadPlugins,
@@ -795,6 +796,102 @@ describe("plugin host", () => {
       );
       expect(results).toHaveLength(1);
       expect(results[0]?.head[0]?.attrs.name).toBe("on");
+    });
+  });
+
+  // ── PRT.1 plugin page routes ──────────────────────────────────
+
+  describe("getPluginPageRoutes (#623)", () => {
+    const Component = () => null;
+
+    it("returns an empty array when no plugins declare pageRoutes", async () => {
+      await loadPlugins([
+        resolvedPlugin("no-routes", { capabilities: ["hooks:content"] }),
+      ]);
+      expect(getPluginPageRoutes()).toEqual([]);
+    });
+
+    it("registers pageRoutes from a resolved plugin", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            { pattern: "/discussions", component: Component },
+            { pattern: "/discussions/:slug", component: Component },
+          ],
+        } as never,
+      ]);
+      const routes = getPluginPageRoutes();
+      expect(routes).toHaveLength(2);
+      expect(routes[0].pluginId).toBe("forum");
+      expect(routes[0].route.pattern).toBe("/discussions");
+      // Defaults applied: surface "site", locale "auto".
+      expect(routes[0].route.surface).toBe("site");
+      expect(routes[0].route.locale).toBe("auto");
+    });
+
+    it("preserves explicit surface=member and locale=none", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            {
+              pattern: "/discussions/new",
+              component: Component,
+              surface: "member",
+              locale: "none",
+            },
+          ],
+        } as never,
+      ]);
+      const [{ route }] = getPluginPageRoutes();
+      expect(route.surface).toBe("member");
+      expect(route.locale).toBe("none");
+    });
+
+    it("drops malformed entries silently — missing pattern, missing component, wrong shape", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [
+            { pattern: "/ok", component: Component },           // valid
+            { pattern: "", component: Component },              // empty pattern
+            { component: Component },                           // no pattern
+            { pattern: "/no-component" },                       // no component
+            null,                                                // not an object
+            "string-not-object",                                 // wrong shape
+          ],
+        } as never,
+      ]);
+      const routes = getPluginPageRoutes();
+      expect(routes).toHaveLength(1);
+      expect(routes[0].route.pattern).toBe("/ok");
+    });
+
+    it("flattens routes from multiple plugins in registration order", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("forum", { capabilities: [] }),
+          pageRoutes: [{ pattern: "/discussions", component: Component }],
+        } as never,
+        {
+          ...resolvedPlugin("gallery", { capabilities: [] }),
+          pageRoutes: [{ pattern: "/gallery", component: Component }],
+        } as never,
+      ]);
+      const routes = getPluginPageRoutes();
+      expect(routes.map((r) => r.pluginId)).toEqual(["forum", "gallery"]);
+      expect(routes.map((r) => r.route.pattern)).toEqual([
+        "/discussions",
+        "/gallery",
+      ]);
+    });
+
+    it("legacy init-shape plugins register zero routes", async () => {
+      const init = vi.fn();
+      await loadPlugins([legacyPlugin("legacy", init)]);
+      expect(init).toHaveBeenCalledOnce();
+      expect(getPluginPageRoutes()).toEqual([]);
     });
   });
 });
