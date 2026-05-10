@@ -26,6 +26,7 @@ import type {
   StaffAuthRoutesConfig,
   StaffAuthRoutesOptions,
 } from "./staff-types.js";
+import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
 
 const STATE_COOKIE = "np-oauth-state";
 const STATE_COOKIE_MAX_AGE = 600;
@@ -49,7 +50,7 @@ function resolved(o: StaffAuthRoutesOptions = {}) {
 }
 
 function siteUrl(config: StaffAuthRoutesConfig, request: NextRequest): URL {
-  return config.site.url ? new URL(config.site.url) : new URL(request.url);
+  return siteUrlLenient(config, request);
 }
 
 interface LoginUserRow {
@@ -246,6 +247,9 @@ export function createStaffAuthRoutes(config: StaffAuthRoutesConfig): StaffAuthR
     try {
       await ensureFor("write");
       const { email } = validateForgotBody(await readJsonBody(request));
+      // Validate SITE_URL upfront so the failure mode is uniform
+      // for real and fake emails (#598). See `siteUrlStrict` doc.
+      siteUrlStrict(config);
 
       const result = await requestPasswordReset(
         getDb() as never,
@@ -603,11 +607,13 @@ function validateChangeBody(
 
 function buildResetUrl(
   config: StaffAuthRoutesConfig,
-  request: NextRequest,
+  _request: NextRequest,
   token: string,
   resetUrlPath: string,
 ): string {
-  const url = new URL(resetUrlPath, siteUrl(config, request));
+  // Email-deliverable URL — strict siteUrl prevents Host-header
+  // injection (#598). See `siteUrlStrict` doc comment.
+  const url = new URL(resetUrlPath, siteUrlStrict(config));
   url.searchParams.set("token", token);
   return url.toString();
 }

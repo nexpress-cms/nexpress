@@ -80,6 +80,59 @@ describe("parseFindOptions", () => {
     expect(out.sort).toBeUndefined();
     expect(out.search).toBeUndefined();
   });
+
+  // ── #598 — strip reserved `where` keys at the trust boundary ──
+
+  it("strips reserved `siteId` from user-supplied where (#598 cross-tenant smuggling guard)", () => {
+    const out = helpers.parseFindOptions(
+      new URLSearchParams(
+        `where=${encodeURIComponent('{"siteId":"*","status":"published"}')}`,
+      ),
+    );
+    // The pipeline interprets `siteId === "*"` as a trusted-caller
+    // cross-tenant sentinel. An anonymous query parameter must not
+    // be allowed to set it.
+    expect(out.where).toEqual({ status: "published" });
+    expect(out.where).not.toHaveProperty("siteId");
+  });
+
+  it("strips reserved `visibility` from user-supplied where (#598 visibility smuggling guard)", () => {
+    const out = helpers.parseFindOptions(
+      new URLSearchParams(
+        `where=${encodeURIComponent('{"visibility":"*","status":"published"}')}`,
+      ),
+    );
+    // `visibility === "*"` would drop the public-only filter for
+    // anonymous reads, exposing private posts.
+    expect(out.where).toEqual({ status: "published" });
+    expect(out.where).not.toHaveProperty("visibility");
+  });
+
+  it("strips both reserved keys when present together", () => {
+    const out = helpers.parseFindOptions(
+      new URLSearchParams(
+        `where=${encodeURIComponent(
+          '{"siteId":"*","visibility":"*","status":"published","slug":"about"}',
+        )}`,
+      ),
+    );
+    expect(out.where).toEqual({ status: "published", slug: "about" });
+  });
+
+  it("preserves non-reserved keys verbatim", () => {
+    const out = helpers.parseFindOptions(
+      new URLSearchParams(
+        `where=${encodeURIComponent(
+          '{"author":"u-1","tag":"news","status":"published"}',
+        )}`,
+      ),
+    );
+    expect(out.where).toEqual({
+      author: "u-1",
+      tag: "news",
+      status: "published",
+    });
+  });
 });
 
 describe("collection operations", () => {

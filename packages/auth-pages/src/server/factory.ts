@@ -35,6 +35,7 @@ import type {
   MemberAuthRoutesConfig,
   MemberAuthRoutesOptions,
 } from "./types.js";
+import { siteUrlLenient, siteUrlStrict } from "./site-url.js";
 
 /**
  * Drizzle-shaped database surface this factory calls. The real
@@ -75,7 +76,7 @@ function resolved(o: MemberAuthRoutesOptions = {}) {
 }
 
 function siteUrl(config: MemberAuthRoutesConfig, request: NextRequest): URL {
-  return config.site.url ? new URL(config.site.url) : new URL(request.url);
+  return siteUrlLenient(config, request);
 }
 
 function buildPath(config: MemberAuthRoutesConfig, request: NextRequest, path: string): string {
@@ -201,6 +202,14 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
       if (!settings.registrationEnabled) {
         throw new NpForbiddenError("members", "register");
       }
+
+      // Validate SITE_URL upfront so registration of an existing
+      // account vs a new account fails the same way when SITE_URL
+      // is unset (#598). Without this check, existing-account
+      // returns 200 (no buildVerifyUrl call) while new-account
+      // 500s on the buildVerifyUrl throw, leaking account
+      // existence.
+      siteUrlStrict(config);
 
       const body = validateRegisterBody(
         await readJsonBody(request),
@@ -399,6 +408,13 @@ export function createMemberAuthRoutes(config: MemberAuthRoutesConfig): MemberAu
           { field: "email", message: "Valid email required" },
         ]);
       }
+      // Validate SITE_URL upfront so the failure mode is uniform
+      // for real and fake emails (#598). If we waited until the
+      // conditional `buildResetUrl(...)` call, real-account
+      // requests would 500 while fake-account requests would 200,
+      // leaking account existence. Failing early keeps anti-
+      // enumeration intact when SITE_URL is unset.
+      siteUrlStrict(config);
 
       const result = await requestMemberPasswordReset(
         getDb() as never,
@@ -891,20 +907,25 @@ function validatePatchBody(raw: unknown, minPasswordLength: number): PatchBody {
 
 function buildVerifyUrl(
   config: MemberAuthRoutesConfig,
-  request: NextRequest,
+  _request: NextRequest,
   token: string,
 ): string {
-  const url = new URL("/members/verify", siteUrl(config, request));
+  // Email-deliverable URL — strict siteUrl prevents Host-header
+  // injection (#598). See `siteUrlStrict` doc comment for the
+  // exploit path being closed.
+  const url = new URL("/members/verify", siteUrlStrict(config));
   url.searchParams.set("token", token);
   return url.toString();
 }
 
 function buildResetUrl(
   config: MemberAuthRoutesConfig,
-  request: NextRequest,
+  _request: NextRequest,
   token: string,
 ): string {
-  const url = new URL("/members/reset-password", siteUrl(config, request));
+  // Email-deliverable URL — strict siteUrl prevents Host-header
+  // injection (#598). See `siteUrlStrict` doc comment.
+  const url = new URL("/members/reset-password", siteUrlStrict(config));
   url.searchParams.set("token", token);
   return url.toString();
 }
