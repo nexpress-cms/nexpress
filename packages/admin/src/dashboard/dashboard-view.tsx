@@ -7,7 +7,10 @@ import {
   FileText,
   FolderOpen,
   Image,
+  Package,
   Plus,
+  Settings,
+  Sparkles,
   Upload,
 } from "lucide-react";
 
@@ -137,6 +140,16 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
         ))}
       </div>
 
+      {/* First-boot welcome card. Surfaces 4 next-step links so a
+          fresh operator doesn't land on a screen of zeros without
+          a pointer to the next action. Hides as soon as the
+          install has any content OR any recent activity, so it
+          doesn't keep showing up after the operator wrote their
+          first post. */}
+      {totalContent === 0 && stats.recentActivity.length === 0 ? (
+        <WelcomeCard router={router} />
+      ) : null}
+
       {pluginWidgets && pluginWidgets.length > 0 ? (
         <DashboardPluginWidgets widgets={pluginWidgets} />
       ) : null}
@@ -191,6 +204,11 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
             <CardTitle>Collection pulse</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3.5">
+            {stats.collections.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/40">
+                No collections registered yet.
+              </div>
+            ) : null}
             {stats.collections.map((collection) => {
               const fill = Math.max(
                 4,
@@ -236,4 +254,95 @@ function formatTimestamp(timestamp: string) {
   }
 
   return formatter.format(parsed);
+}
+
+interface WelcomeCardProps {
+  router: ReturnType<typeof useRouter>;
+}
+
+/**
+ * Onboarding card shown on a fresh install — when totalContent
+ * is zero AND no recent activity has happened yet. Lists 4
+ * concrete next-step actions so an operator who just finished
+ * `pnpm run setup` + `pnpm seed:admin` lands on a page of
+ * actions, not a screen of zeros.
+ *
+ * Disappears as soon as any content lands, so it doesn't stick
+ * around as visual noise once the operator is rolling.
+ */
+function WelcomeCard({ router }: WelcomeCardProps) {
+  const steps: Array<{
+    title: string;
+    description: string;
+    icon: typeof Plus;
+    onClick: () => void;
+  }> = [
+    {
+      title: "Create your first post",
+      description: "Open the page-builder editor for a new entry.",
+      icon: Plus,
+      onClick: () => router.push("/admin/collections/posts/create"),
+    },
+    {
+      title: "Tune site settings",
+      description: "Title, slug rules, navigation, theme tokens.",
+      icon: Settings,
+      onClick: () => router.push("/admin/settings"),
+    },
+    {
+      title: "Browse plugins",
+      description: "OAuth providers, SEO audit, reading-time, and more.",
+      icon: Package,
+      onClick: () => router.push("/admin/plugins"),
+    },
+    {
+      title: "View your site",
+      description: "Open the public site in a new tab.",
+      icon: ExternalLink,
+      onClick: () => window.open("/", "_blank", "noreferrer"),
+    },
+  ];
+
+  return (
+    <Card className="border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
+      <CardHeader className="space-y-1">
+        <CardTitle className="flex items-center gap-2 text-[15px]">
+          <Sparkles className="size-4 text-[var(--np-color-brand)]" />
+          Welcome to NexPress
+        </CardTitle>
+        <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
+          Your install is ready. Pick a starting point — these all
+          come back to the dashboard, and the welcome card
+          disappears as soon as you create your first entry.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {steps.map((step) => {
+            const Icon = step.icon;
+            return (
+              <button
+                key={step.title}
+                type="button"
+                onClick={step.onClick}
+                className="group flex items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
+              >
+                <div className="mt-0.5 rounded-md bg-[var(--np-color-brand)]/10 p-1.5 text-[var(--np-color-brand)]">
+                  <Icon className="size-3.5" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-[13px] font-medium text-neutral-950 dark:text-neutral-50">
+                    {step.title}
+                  </div>
+                  <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                    {step.description}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
