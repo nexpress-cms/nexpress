@@ -30,15 +30,37 @@ export interface NpStartupSafetyInput {
    * callers that don't supply it (treated as `false`).
    */
   containerEnv?: boolean;
+  /**
+   * `kind` field on the active email adapter (e.g. `"noop"` /
+   * `"smtp"` / a custom value). Optional for back-compat — older
+   * callers omit it. When provided, lets us warn about running
+   * production with the noop adapter (transactional mail silently
+   * dropped: password reset, email verify, member digests).
+   */
+  emailAdapterKind?: string;
+  /**
+   * Hostname extracted from `DATABASE_URL`. Optional for back-compat.
+   * When provided and the host looks like loopback (`localhost` /
+   * `127.0.0.1` / `::1`) AND `nodeEnv === "production"`, we warn —
+   * the operator likely shipped the dev DB connection string.
+   */
+  databaseHost?: string | null;
+  /**
+   * Resolved `SITE_URL` (or equivalent base URL) at boot. Optional
+   * for back-compat. When unset OR loopback-shaped in production,
+   * we warn — links, SEO canonical URLs, OAuth callbacks, sitemap
+   * URLs all anchor on this value.
+   */
+  siteUrl?: string | null;
 }
 
 const MIN_PROD_SECRET_LENGTH = 32;
 
 /**
  * Surfaces operationally-bitten misconfiguration as warnings during
- * boot (Phase 22.2). The set is intentionally small — every entry has
- * to map to a real failure mode that has either bitten the project or
- * been called out in the deployment docs:
+ * boot. The set is intentionally small — every entry has to map to
+ * a real failure mode that has either bitten the project or been
+ * called out in the deployment docs:
  *
  *   - `LocalStorageAdapter` + `NP_MULTI_NODE=true`. Different nodes
  *     see different `./uploads` directories; uploads disappear
@@ -46,13 +68,23 @@ const MIN_PROD_SECRET_LENGTH = 32;
  *   - `LocalStorageAdapter` + `NODE_ENV=production` + a managed-
  *     container env var (`KUBERNETES_SERVICE_HOST`, `FLY_REGION`,
  *     `RENDER_INSTANCE_ID`, `RAILWAY_ENVIRONMENT_NAME`, …). Same
- *     failure mode as above; this
- *     branch catches the operator who forgot to set
- *     `NP_MULTI_NODE` but is clearly running on a multi-replica
- *     platform.
+ *     failure mode as above; this branch catches the operator who
+ *     forgot to set `NP_MULTI_NODE` but is clearly running on a
+ *     multi-replica platform.
  *   - `NODE_ENV=production` + missing or short `NP_SECRET`. Tokens
  *     signed with a weak secret are forgeable. We cap below 32 bytes
  *     because that's the floor `signJwt` documents.
+ *   - `NODE_ENV=production` + `emailAdapterKind === "noop"` (#597).
+ *     Transactional mail (password reset, email verify, member
+ *     digests) silently dropped — operators expect those to deliver.
+ *   - `NODE_ENV=production` + `databaseHost` looks like loopback
+ *     (#597). `localhost` / `127.0.0.1` / `::1` in a prod deploy is
+ *     almost always a stale dev `DATABASE_URL` that slipped through.
+ *   - `NODE_ENV=production` + `siteUrl` unset or loopback-shaped
+ *     (#597). Sitemap URLs, SEO canonical URLs, OAuth callbacks,
+ *     transactional mail links all anchor on this — wrong value
+ *     manifests as broken share links and unverifiable OAuth round-
+ *     trips, which take a while for the operator to notice.
  *
  * Warnings go through {@link getScopedLogger} so production deploys
  * that have called `setLogger(...)` get them in their structured-log
@@ -102,7 +134,68 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
       );
       emitted.push("weak_prod_secret");
     }
+
+    if (input.emailAdapterKind === "noop") {
+      log.warn(
+        "Email adapter is `noop` in production — transactional mail (password reset, email verify, member digests) is silently dropped. " +
+          "Set NP_EMAIL_ADAPTER=smtp + the NP_SMTP_* config, or install a custom adapter via setEmailAdapter().",
+        { check: "noop_email_in_prod" },
+      );
+      emitted.push("noop_email_in_prod");
+    }
+
+    if (input.databaseHost && isLoopbackHost(input.databaseHost)) {
+      log.warn(
+        `DATABASE_URL host is "${input.databaseHost}" in production — that's loopback, almost certainly a stale dev connection string. ` +
+          "Point DATABASE_URL at the production Postgres instance.",
+        { check: "loopback_database_in_prod", host: input.databaseHost },
+      );
+      emitted.push("loopback_database_in_prod");
+    }
+
+    // siteUrl undefined === "caller (older bootstrap) didn't supply
+    // info, skip the check"; siteUrl === null === "caller checked and
+    // confirmed it's unset". Only the explicit-null case warns. This
+    // back-compat shape lets `verifyStartupSafety` evolve its input
+    // surface without breaking existing call sites whose tests didn't
+    // know to set the new fields.
+    if (input.siteUrl === null) {
+      log.warn(
+        "SITE_URL is unset in production — sitemap URLs, SEO canonical URLs, OAuth callbacks, and email links anchor on it. " +
+          "Set SITE_URL to your public origin (e.g. https://example.com).",
+        { check: "missing_site_url" },
+      );
+      emitted.push("missing_site_url");
+    } else if (typeof input.siteUrl === "string" && isLoopbackUrl(input.siteUrl)) {
+      log.warn(
+        `SITE_URL is "${input.siteUrl}" in production — loopback origins break share links, OAuth round-trips, and outbound email links. ` +
+          "Set SITE_URL to your public origin.",
+        { check: "loopback_site_url", siteUrl: input.siteUrl },
+      );
+      emitted.push("loopback_site_url");
+    }
   }
 
   return emitted;
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+
+function isLoopbackHost(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host.toLowerCase());
+}
+
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    // IPv6 hostnames keep their square brackets in `URL.hostname`
+    // (e.g. `new URL("http://[::1]/").hostname === "[::1]"`). Strip
+    // them so the comparison hits our canonical loopback set.
+    const host = parsed.hostname.replace(/^\[/, "").replace(/\]$/, "");
+    return isLoopbackHost(host);
+  } catch {
+    // Malformed URL — treat as not-loopback so we don't double-warn.
+    // The caller's own URL parser will surface the malformation.
+    return false;
+  }
 }
