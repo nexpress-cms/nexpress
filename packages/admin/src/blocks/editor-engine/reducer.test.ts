@@ -230,6 +230,94 @@ describe("reducer — DUPLICATE (contract gate, #523)", () => {
   });
 });
 
+describe("reducer — MOVE_WITHIN_PARENT", () => {
+  // dnd-kit's drop handler is the primary caller. The `side`
+  // argument lets a drag-shield (DocCanvas) pin the visual drop bar
+  // to the top vs bottom of the target row regardless of drag
+  // direction. The reducer code has detailed comments about why
+  // splice(from)+splice(to) needs the side adjustment.
+
+  it("plain reorder (no side) uses arrayMove semantics", () => {
+    const state = [block("a", "p"), block("b", "p"), block("c", "p")];
+    const out = reducer(state, {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "a",
+      toId: "c",
+    });
+    // arrayMove(0, 2) → [b, c, a]
+    expect(out.map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("side='before' on forward drag drops one position earlier", () => {
+    // Dragging `a` (index 0) toward `c` (index 2), pinned to the
+    // BEFORE edge of c. With the side adjustment, lands at index 1
+    // (just before c). Without it, naive arrayMove would land at 2
+    // (after c, where c was).
+    const state = [block("a", "p"), block("b", "p"), block("c", "p")];
+    const out = reducer(state, {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "a",
+      toId: "c",
+      side: "before",
+    });
+    expect(out.map((x) => x.id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("side='after' on backward drag drops one position later", () => {
+    // Dragging `c` (index 2) toward `a` (index 0), pinned to the
+    // AFTER edge of a. With the side adjustment, lands at index 1
+    // (just after a). Without it, lands at 0 (before a).
+    const state = [block("a", "p"), block("b", "p"), block("c", "p")];
+    const out = reducer(state, {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "c",
+      toId: "a",
+      side: "after",
+    });
+    expect(out.map((x) => x.id)).toEqual(["a", "c", "b"]);
+  });
+
+  it("from==to is a no-op", () => {
+    const state = [block("a", "p"), block("b", "p")];
+    const out = reducer(state, {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "a",
+      toId: "a",
+    });
+    // Sibling list returned by mutate is the same reference; outer
+    // map still allocates a new array but content is identical.
+    expect(out.map((x) => x.id)).toEqual(["a", "b"]);
+  });
+
+  it("operates on the named container's children", () => {
+    const state = [
+      block("row", "row", [block("a", "p"), block("b", "p"), block("c", "p")]),
+    ];
+    const out = reducer(state, {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: "row",
+      fromId: "a",
+      toId: "c",
+    });
+    expect(out[0].children!.map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("missing fromId/toId returns siblings unchanged", () => {
+    const state = [block("a", "p"), block("b", "p")];
+    const out = reducer(state, {
+      type: "MOVE_WITHIN_PARENT",
+      parentId: null,
+      fromId: "missing",
+      toId: "a",
+    });
+    expect(out.map((x) => x.id)).toEqual(["a", "b"]);
+  });
+});
+
 describe("reducer — MOVE_UP / MOVE_DOWN", () => {
   it("MOVE_UP swaps with the previous sibling", () => {
     const state = [block("a", "paragraph"), block("b", "paragraph")];
@@ -403,6 +491,30 @@ describe("reducer — WRAP_IN", () => {
       containerType: "image",
     });
     expect(out).toBe(state);
+  });
+
+  it("wraps a nested block without infinite-recursing (regression for the mapTree bug)", () => {
+    // Pinning the nested-context fix: locateBlock+updateContainerChildren
+    // performs the substitution at the source's depth, never visiting
+    // the wrapper's child during the walk. Top-level case lives in the
+    // first WRAP_IN test; this one verifies the same fix holds when
+    // the source lives one level down.
+    const state = [
+      block("outer", "row", [block("p", "paragraph", undefined, { text: "hi" })]),
+    ];
+    const out = reducer(state, {
+      type: "WRAP_IN",
+      id: "p",
+      containerType: "row",
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("outer");
+    // outer.children replaced its lone child with a row wrapping p.
+    expect(out[0].children).toHaveLength(1);
+    expect(out[0].children![0].type).toBe("row");
+    expect(out[0].children![0].children).toHaveLength(1);
+    expect(out[0].children![0].children![0].id).toBe("p");
+    expect(out[0].children![0].children![0].props).toEqual({ text: "hi" });
   });
 });
 
