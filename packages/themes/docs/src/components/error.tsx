@@ -21,8 +21,13 @@ interface DocsErrorProps {
 }
 
 export default function DocsError({ error, reset }: DocsErrorProps) {
+  // Renders `<main>` because the host's (site)/error.tsx no
+  // longer relies on the layout for the `<main>` landmark (v0.2
+  // shell-wrap refactor moved that into pages). Theme error
+  // subpaths render *in place of* DefaultError, so we mirror
+  // its `<main>` — one per page either way.
   return (
-    <div
+    <main
       className="np-docs np-docs-error"
       style={{
         maxWidth: 560,
@@ -109,6 +114,6 @@ export default function DocsError({ error, reset }: DocsErrorProps) {
           Back home
         </a>
       </div>
-    </div>
+    </main>
   );
 }

@@ -25,8 +25,13 @@ export default function PortfolioError({
   error,
   reset,
 }: PortfolioErrorProps) {
+  // Renders `<main>` because the host's (site)/error.tsx no
+  // longer relies on the layout for the `<main>` landmark (v0.2
+  // shell-wrap refactor moved that into pages). Theme error
+  // subpaths render *in place of* DefaultError, so we mirror
+  // its `<main>` — one per page either way.
   return (
-    <div
+    <main
       className="np-portfolio np-portfolio-error"
       style={{
         maxWidth: 560,
@@ -117,6 +122,6 @@ export default function PortfolioError({
           Back home
         </a>
       </div>
-    </div>
+    </main>
   );
 }

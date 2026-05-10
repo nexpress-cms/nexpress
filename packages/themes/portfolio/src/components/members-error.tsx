@@ -28,8 +28,13 @@ export default function PortfolioMembersError({
   error,
   reset,
 }: PortfolioMembersErrorProps) {
+  // Renders `<main>` because the host's (member)/error.tsx no
+  // longer relies on the layout for the `<main>` landmark (v0.2
+  // shell-wrap refactor moved that into pages). Theme
+  // members-error subpaths render in place of DefaultMemberError,
+  // so we mirror its `<main>` — one per page either way.
   return (
-    <div
+    <main
       className="np-portfolio np-portfolio-members-error"
       style={{
         maxWidth: 480,
@@ -119,6 +124,6 @@ export default function PortfolioMembersError({
           Back to sign in
         </a>
       </div>
-    </div>
+    </main>
   );
 }

@@ -26,8 +26,13 @@ export default function DocsMembersError({
   error,
   reset,
 }: DocsMembersErrorProps) {
+  // Renders `<main>` because the host's (member)/error.tsx no
+  // longer relies on the layout for the `<main>` landmark (v0.2
+  // shell-wrap refactor moved that into pages). Theme
+  // members-error subpaths render in place of DefaultMemberError,
+  // so we mirror its `<main>` — one per page either way.
   return (
-    <div
+    <main
       className="np-docs np-docs-members-error"
       style={{
         maxWidth: 520,
@@ -114,6 +119,6 @@ export default function DocsMembersError({
           Back to sign in
         </a>
       </div>
-    </div>
+    </main>
   );
 }
