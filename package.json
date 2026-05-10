@@ -16,6 +16,7 @@
     "typecheck": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run typecheck",
     "test": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test",
     "test:integration": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run test:integration --concurrency=1",
+    "verify": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build typecheck test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run db:generate",
