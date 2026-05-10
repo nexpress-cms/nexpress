@@ -392,6 +392,96 @@ describe("verifyStartupSafety", () => {
     expect(warnings).toEqual([]);
   });
 
+  // ── #621 — multi-node in-memory rate limiter ─────────────────
+
+  it("warns when InMemoryRateLimiter is the default in a multi-node deploy", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "true",
+      rateLimiterCustom: false,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(emitted).toContain("multi_node_in_memory_rate_limiter");
+    expect(
+      warnings.some((w) =>
+        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
+      ),
+    ).toBe(true);
+  });
+
+  it("warns about in-memory rate limiter via container hint in production", () => {
+    const { warnings: _ } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      containerEnv: true,
+      rateLimiterCustom: false,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(emitted).toContain("multi_node_in_memory_rate_limiter");
+  });
+
+  it("does NOT warn when operator opted into a custom rate limiter", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "true",
+      rateLimiterCustom: true,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(
+      warnings.some((w) =>
+        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
+      ),
+    ).toBe(false);
+  });
+
+  it("does NOT warn when rateLimiterCustom is undefined (back-compat)", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: "true",
+      // rateLimiterCustom intentionally omitted
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(
+      warnings.some((w) =>
+        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
+      ),
+    ).toBe(false);
+  });
+
+  it("does NOT warn about in-memory rate limiter on a single-node deploy", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      rateLimiterCustom: false,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(
+      warnings.some((w) =>
+        w.message.includes("InMemoryRateLimiter is not multi-node safe"),
+      ),
+    ).toBe(false);
+  });
+
   it("none of the #597 checks fire outside production", () => {
     const { warnings } = captureWarnings();
     verifyStartupSafety({

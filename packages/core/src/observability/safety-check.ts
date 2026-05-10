@@ -56,6 +56,15 @@ export interface NpStartupSafetyInput {
    * URLs all anchor on this value.
    */
   siteUrl?: string | null;
+  /**
+   * Whether the operator has opted into a custom rate-limiter
+   * adapter via `setRateLimiter(...)`. `false` means the default
+   * `InMemoryRateLimiter` will be lazily installed on first use —
+   * fine for single-node, but per-node buckets in multi-replica
+   * deploys make the limit ~Nx looser than configured. Optional
+   * for back-compat; `undefined` skips the check.
+   */
+  rateLimiterCustom?: boolean;
 }
 
 const MIN_PROD_SECRET_LENGTH = 32;
@@ -122,6 +131,24 @@ export function verifyStartupSafety(input: NpStartupSafetyInput): readonly strin
       { check: "multi_node_local_storage", reason },
     );
     emitted.push("multi_node_local_storage");
+  }
+
+  // The default in-memory rate limiter is per-process. On a
+  // multi-replica deploy each pod tracks its own buckets, so a
+  // configured "5 login attempts / minute" effectively becomes
+  // "5 × N pods" — the gate is looser than the operator thinks.
+  // Same likely-multi-node detection as storage. `rateLimiterCustom
+  // === false` means the operator hasn't called `setRateLimiter()`,
+  // so the default will be installed on first request. `undefined`
+  // (caller didn't supply) skips the check.
+  if (likelyMultiNode && input.rateLimiterCustom === false) {
+    const reason = multiNode ? "explicit_flag" : "container_hint";
+    log.warn(
+      "InMemoryRateLimiter is not multi-node safe — buckets are per-process, so a multi-replica deploy multiplies the effective limit by the replica count. " +
+        "Install a shared adapter via `setRateLimiter(new RedisRateLimiter(...))` (or your own backing store), or `NP_MULTI_NODE=false` to silence this on a single-node deploy.",
+      { check: "multi_node_in_memory_rate_limiter", reason },
+    );
+    emitted.push("multi_node_in_memory_rate_limiter");
   }
 
   if (input.nodeEnv === "production") {
