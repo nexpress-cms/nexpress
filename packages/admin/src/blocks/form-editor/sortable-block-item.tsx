@@ -636,9 +636,15 @@ function ChildrenArea({
               const childLabel = childDefinition?.label ?? child.type;
               return (
                 <Fragment key={child.id}>
-                  {index === 0 ? (
+                  {/* Slot insertion lives inside the parent container,
+                      so siblings — like the Add-child popover above —
+                      must honor the same `allowedChildBlocks` list and
+                      the same `atMax` gate. Without it the slot offered
+                      types the reducer's INSERT_BEFORE/AFTER gate (#523)
+                      then silently rejected as no-ops. (#529) */}
+                  {index === 0 && !atMax ? (
                     <InsertSlot
-                      availableBlocks={availableBlocks}
+                      availableBlocks={allowedChildBlocks}
                       onInsert={(blockType) => onInsert("before", child.id, blockType)}
                       ariaLabel={`Insert block before ${childLabel}`}
                     />
@@ -667,11 +673,13 @@ function ChildrenArea({
                     isSelected={isSelected}
                     onToggleSelected={onToggleSelected}
                   />
-                  <InsertSlot
-                    availableBlocks={availableBlocks}
-                    onInsert={(blockType) => onInsert("after", child.id, blockType)}
-                    ariaLabel={`Insert block after ${childLabel}`}
-                  />
+                  {!atMax ? (
+                    <InsertSlot
+                      availableBlocks={allowedChildBlocks}
+                      onInsert={(blockType) => onInsert("after", child.id, blockType)}
+                      ariaLabel={`Insert block after ${childLabel}`}
+                    />
+                  ) : null}
                 </Fragment>
               );
             })

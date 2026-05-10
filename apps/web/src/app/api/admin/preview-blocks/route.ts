@@ -49,7 +49,12 @@ export async function POST(request: NextRequest) {
   try {
     await ensureFor("plugins");
     const user = await requireAuth(request);
-    if (!can(user, "admin.manage")) {
+    // Preview is a render-only operation — anyone with content-edit
+    // access in any collection can already see this output by
+    // saving and reloading. Gate on `content.author` (not
+    // `admin.manage`) so authors/editors get the live preview the
+    // editor route already let them open. (#521)
+    if (!can(user, "content.author")) {
       throw new NpForbiddenError("preview-blocks", "render");
     }
 

@@ -121,6 +121,27 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
       case "DUPLICATE": {
         const loc = locateBlock(state, action.id);
         if (!loc) return state;
+        // Honor parent container contract (#523). Duplicating into
+        // a parent that's already at `maxChildren` would push past
+        // the cap; the inserted clone has the same type as the
+        // source so `allowedChildTypes` is implicitly fine, but the
+        // count check matters.
+        if (loc.parentId !== null) {
+          const parent = findBlockInTreeFlat(state, loc.parentId);
+          const parentDef = parent ? definitions.get(parent.type) : null;
+          const source = findBlockInTreeFlat(state, action.id);
+          if (
+            parentDef &&
+            source &&
+            !canAcceptChild(
+              parentDef,
+              source.type,
+              parent?.children?.length ?? 0,
+            )
+          ) {
+            return state;
+          }
+        }
         return updateContainerChildren(state, loc.parentId, (siblings) => {
           const source = siblings[loc.index];
           if (!source) return siblings;
@@ -223,6 +244,29 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         const parentId = sourceLoc.parentId;
         const parentLoc = locateBlock(state, parentId);
         if (!parentLoc) return state;
+        // Honor the grandparent's contract (#523). Promoting into a
+        // grandparent whose `allowedChildTypes` excludes the source
+        // type — or that's already at `maxChildren` — would build
+        // an instantly-invalid tree. Top-level promotion
+        // (grandparent === null) skips the gate; no contract
+        // applies at root.
+        const source = findBlockInTreeFlat(state, action.id);
+        if (parentLoc.parentId !== null && source) {
+          const grandparent = findBlockInTreeFlat(state, parentLoc.parentId);
+          const grandparentDef = grandparent
+            ? definitions.get(grandparent.type)
+            : null;
+          if (
+            grandparentDef &&
+            !canAcceptChild(
+              grandparentDef,
+              source.type,
+              grandparent?.children?.length ?? 0,
+            )
+          ) {
+            return state;
+          }
+        }
         const detached = detachBlock(state, action.id);
         if (!detached) return state;
         return updateContainerChildren(
@@ -354,20 +398,40 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // selection that spans depths still duplicates bottom-up
         // and the indices stay correct. Each selected block emits
         // its (post-recurse) self followed by a fresh-id clone.
-        const walk = (siblings: NpBlockInstance[]): NpBlockInstance[] => {
+        //
+        // Per-parent contract gate (#523): walk takes the parent
+        // definition for the current sibling list. A selected block
+        // whose duplication would push the parent over its
+        // `maxChildren` cap is dropped from the duplication set —
+        // the original is preserved, the clone is skipped. (Type
+        // is implicitly fine since the source already passed
+        // `allowedChildTypes` to land here.) Top-level (parentDef
+        // null) has no cap.
+        const walk = (
+          siblings: NpBlockInstance[],
+          parentDef: NpBlockMetadata | null,
+        ): NpBlockInstance[] => {
           const out: NpBlockInstance[] = [];
+          let projected = siblings.length;
           for (const block of siblings) {
+            const childDef = definitions.get(block.type) ?? null;
             const transformed = block.children
-              ? { ...block, children: walk(block.children) }
+              ? { ...block, children: walk(block.children, childDef) }
               : block;
             out.push(transformed);
             if (idSet.has(block.id)) {
-              out.push(cloneBlockDeep(transformed));
+              if (
+                !parentDef ||
+                canAcceptChild(parentDef, block.type, projected)
+              ) {
+                out.push(cloneBlockDeep(transformed));
+                projected += 1;
+              }
             }
           }
           return out;
         };
-        return walk(state);
+        return walk(state, null);
       }
       case "WRAP_MANY": {
         if (action.ids.length === 0) return state;
@@ -483,8 +547,26 @@ export const createEditorReducer = (availableBlocks: NpBlockMetadata[]) => {
         // them forward when it is. Mid-conversion children-loss is
         // surprising — operators expect a hero->grid swap to land
         // their existing children inside the grid.
+        //
+        // Each carried child is re-validated against the NEW
+        // container's contract (#523). The source container may
+        // have allowed any child, while the target container could
+        // restrict to a specific type set or impose a smaller
+        // `maxChildren`. We accept children that fit the new
+        // contract one at a time and drop the rest — partial
+        // preservation is more useful than failing the whole
+        // type-replace, and the alternative (silently violating
+        // the new contract) would just be deferred breakage.
         if (newDef.acceptsChildren && source.children) {
-          baseInstance.children = source.children;
+          const accepted: NpBlockInstance[] = [];
+          let projected = 0;
+          for (const child of source.children) {
+            if (canAcceptChild(newDef, child.type, projected)) {
+              accepted.push(child);
+              projected += 1;
+            }
+          }
+          baseInstance.children = accepted;
         }
         const next =
           carriedText && preserveText

@@ -39,9 +39,12 @@ import { ensureFor } from "../src/lib/init-core";
  * (Sharp pipeline, storage adapter, audit refs all run as normal).
  *
  * Phase 21.6 — wire the taxonomy resolver against the reference
- * app's `taxonomies` collection. User projects with their own
- * taxonomy storage swap this hook out (or skip it entirely; the
- * importer drops terms with a single notes line).
+ * app's `categories` / `tags` collections. WP `category` terms land
+ * in `categories`; WP `post_tag` terms land in `tags`. Anything
+ * else is skipped (resolver returns null). The legacy unified
+ * `taxonomies` collection was split in #522/#526 — user projects
+ * with their own taxonomy storage swap this hook out (or skip it
+ * entirely; the importer drops terms with a single notes line).
  *
  * Phase 21.7 — wire the comments deps. Imported members land
  * directly in `np_members` with status="imported"; comments land
@@ -126,39 +129,47 @@ const code = await runCli(process.argv.slice(2), undefined, {
       },
       taxonomies: {
         findOrCreate: async ({ taxonomy, slug, name }) => {
-          // Look up by slug first (the slugField is unique on the
-          // taxonomies collection). If a row already exists with a
-          // different `taxonomy` field we bail rather than collide;
-          // this is rare in practice — slugs are taxonomy-scoped on
-          // a real WP site — but the warning is more useful than a
-          // silent stomp.
+          // Route WP `category` → categories collection, WP
+          // `post_tag` → tags collection. Anything else (custom WP
+          // taxonomies the operator might have configured) is
+          // skipped — the wp-import applier records a notes line
+          // and the post imports without that term wired. User
+          // projects with custom taxonomy storage swap in their
+          // own resolver to handle additional WP taxonomies.
+          const collectionSlug =
+            taxonomy === "category"
+              ? "categories"
+              : taxonomy === "post_tag"
+                ? "tags"
+                : null;
+          if (!collectionSlug) return null;
+
+          // Look up by slug first (the slugField is unique on each
+          // split collection). Both collections share the same
+          // (name, slug, description) shape, so the same code path
+          // covers both.
           const existing = await findDocuments(
-            "taxonomies",
+            collectionSlug,
             { where: { slug }, limit: 1 },
             ctx.actor,
           );
           const hit = existing.docs[0];
           if (hit) {
             const id = typeof hit.id === "string" ? hit.id : null;
-            if (id) {
-              if (hit.taxonomy !== taxonomy) {
-                throw new Error(
-                  `slug "${slug}" already maps to taxonomy "${String(hit.taxonomy)}", not "${taxonomy}"`,
-                );
-              }
-              return { id };
-            }
+            if (id) return { id };
           }
           const created = await saveDocument(
-            "taxonomies",
+            collectionSlug,
             null,
-            { name, slug, taxonomy },
+            { name, slug },
             ctx.actor,
             { status: "published" },
           );
           const createdId =
             typeof created.doc.id === "string" ? created.doc.id : null;
-          if (!createdId) throw new Error("taxonomies create returned no id");
+          if (!createdId) {
+            throw new Error(`${collectionSlug} create returned no id`);
+          }
           return { id: createdId };
         },
       },

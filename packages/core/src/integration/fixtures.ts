@@ -10,19 +10,19 @@
  */
 // eslint-disable-next-line import-x/no-relative-packages
 import {
-  localizedPagesTable,
+  categoriesTable,
   pagesTable,
   postsTable,
-  taxonomiesTable,
+  tagsTable,
 } from "../../../../apps/web/src/db/generated/collections.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { postsCollection } from "../../../../apps/web/src/collections/posts.js";
 // eslint-disable-next-line import-x/no-relative-packages
 import { pagesCollection } from "../../../../apps/web/src/collections/pages.js";
 // eslint-disable-next-line import-x/no-relative-packages
-import { localizedPagesCollection } from "../../../../apps/web/src/collections/localized-pages.js";
+import { categoriesCollection } from "../../../../apps/web/src/collections/categories.js";
 // eslint-disable-next-line import-x/no-relative-packages
-import { taxonomiesCollection } from "../../../../apps/web/src/collections/taxonomies.js";
+import { tagsCollection } from "../../../../apps/web/src/collections/tags.js";
 import { registerCollection } from "../collections/registry.js";
 import { setI18nConfig } from "../i18n/registry.js";
 import type { NpCollectionConfig } from "../config/types.js";
@@ -30,10 +30,14 @@ import type { NpCollectionConfig } from "../config/types.js";
 let registered = false;
 
 /**
- * Idempotently registers the `posts` and `localized-pages` collections so
- * tests can call saveDocument / findDocuments / publishScheduledDocuments
- * against known tables. Collections ship with ACLs — we strip them for
- * tests so a synthetic principal can write freely.
+ * Idempotently registers the reference app's `posts`, `pages`, `categories`,
+ * and `tags` collections so tests can call saveDocument / findDocuments /
+ * publishScheduledDocuments against known tables. Collections ship with
+ * ACLs — we strip them for tests so a synthetic principal can write freely.
+ *
+ * `pages` is `i18n: true` and replaces the deleted `localized-pages`
+ * collection (#528). `categories` + `tags` replace the deleted unified
+ * `taxonomies` collection (#522/#526).
  *
  * Phase 12.1 — also installs the i18n config singleton with the same
  * `["en", "ko"]` shape the reference app's nexpress.config.ts uses, so
@@ -57,26 +61,25 @@ export function registerTestCollections(): void {
   };
   registerCollection("pages", pagesTable as never, pagesConfig);
 
-  const localizedConfig: NpCollectionConfig = {
-    ...localizedPagesCollection,
+  // Posts reference categories and tags via relationship fields, so
+  // saving a post with terms requires both registrations.
+  const categoriesConfig: NpCollectionConfig = {
+    ...categoriesCollection,
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("localized-pages", localizedPagesTable as never, localizedConfig);
+  registerCollection("categories", categoriesTable as never, categoriesConfig);
 
-  // Phase 21.6 — taxonomies collection. Posts reference it via the
-  // `categories` / `tags` relationship fields, so saving a post
-  // with terms requires this registration to be present.
-  const taxonomiesConfig: NpCollectionConfig = {
-    ...taxonomiesCollection,
+  const tagsConfig: NpCollectionConfig = {
+    ...tagsCollection,
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("taxonomies", taxonomiesTable as never, taxonomiesConfig);
+  registerCollection("tags", tagsTable as never, tagsConfig);
 
   setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
 
   registered = true;
 }
 
-export { localizedPagesTable, pagesTable, postsTable, taxonomiesTable };
+export { categoriesTable, pagesTable, postsTable, tagsTable };

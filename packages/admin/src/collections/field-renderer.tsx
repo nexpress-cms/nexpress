@@ -119,16 +119,26 @@ const toBlockInstances = (value: unknown): NpBlockInstance[] => {
       return [];
     }
 
-    return [
-      {
-        id: candidate.id,
-        type: candidate.type,
-        props:
-          typeof candidate.props === "object" && candidate.props !== null && !Array.isArray(candidate.props)
-            ? (candidate.props)
-            : {},
-      },
-    ];
+    const instance: NpBlockInstance = {
+      id: candidate.id,
+      type: candidate.type,
+      props:
+        typeof candidate.props === "object" && candidate.props !== null && !Array.isArray(candidate.props)
+          ? (candidate.props)
+          : {},
+    };
+
+    // Recursively hydrate `children` so nested container/grid trees
+    // round-trip through the editor without dropping descendants.
+    // Without this, opening a saved page that contains a populated
+    // grid would mount the editor with empty children — and the next
+    // save would persist the truncated tree, silently deleting the
+    // operator's content.
+    if (Array.isArray(candidate.children)) {
+      instance.children = toBlockInstances(candidate.children);
+    }
+
+    return [instance];
   });
 };
 
