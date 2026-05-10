@@ -24,7 +24,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { NpPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
-import { JsonLd } from "@/components/json-ld";
+import { JsonLd } from "@nexpress/next";
 import { i18nConfig, isLocale } from "@/i18n.config";
 import { ensureFor } from "@/lib/init-core";
 

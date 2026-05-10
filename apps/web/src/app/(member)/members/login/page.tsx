@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/member-login-form";
 import { ensureFor } from "@/lib/init-core";
 import { nextQuery, safeNext } from "@/lib/safe-next";
-import { getSiteMember } from "@/lib/site-member";
+import { getSiteMember } from "@nexpress/next";
 
 interface LoginPageProps {
   searchParams: Promise<{ next?: string; verified?: string; reset?: string }>;

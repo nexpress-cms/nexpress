@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { DiscussionForm } from "@/components/discussion-form";
 import { ensureFor } from "@/lib/init-core";
-import { getSiteMember } from "@/lib/site-member";
+import { getSiteMember } from "@nexpress/next";
 import type { NpRichTextContent } from "@nexpress/editor";
 
 interface EditDiscussionPageProps {

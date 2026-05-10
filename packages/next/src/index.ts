@@ -82,3 +82,7 @@ export {
 export { NavMenu, type NpNavMenuProps } from "./nav-menu.js";
 
 export { buildPageMetadata } from "./page-metadata.js";
+
+export { getSiteMember } from "./site-member.js";
+
+export { JsonLd } from "./json-ld.js";

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ensureFor } from "@/lib/init-core";
-import { getSiteMember } from "@/lib/site-member";
+import { getSiteMember } from "@nexpress/next";
 
 import { DiscussionForm } from "@/components/discussion-form";
 

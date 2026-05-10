@@ -2,8 +2,9 @@ import { listNotificationKinds, getMemberNotificationPrefs } from "@nexpress/cor
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
-import { getSiteMember } from "@/lib/site-member";
+import { getSiteMember } from "@nexpress/next";
 import { NotificationPrefsForm } from "@/components/notification-prefs-form";
+import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
  * sign-in lands back here.
  */
 export default async function NotificationSettingsPage() {
+  await ensureFor("read");
   const member = await getSiteMember();
   if (!member) {
     redirect("/members/login?next=/members/me/notifications");

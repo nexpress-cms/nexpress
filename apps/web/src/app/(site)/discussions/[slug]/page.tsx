@@ -11,12 +11,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Comments } from "@/components/comments";
+import { Comments } from "@nexpress/next/client";
 import { DiscussionAuthorActions } from "@/components/discussion-author-actions";
-import { JsonLd } from "@/components/json-ld";
+import { JsonLd, getSiteMember } from "@nexpress/next";
 import { ensureFor } from "@/lib/init-core";
 import { getDb } from "@/lib/db";
-import { getSiteMember } from "@/lib/site-member";
 import type { NpRichTextContent } from "@nexpress/editor";
 
 interface DiscussionDetailPageProps {

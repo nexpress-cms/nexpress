@@ -8,7 +8,7 @@ import type { NpFindWhere } from "@nexpress/core";
 import { PaginationNav } from "@/components/pagination-nav";
 import { findDiscussions, type DiscussionsDocument } from "@/db/generated/documents";
 import { ensureFor } from "@/lib/init-core";
-import { getSiteMember } from "@/lib/site-member";
+import { getSiteMember } from "@nexpress/next";
 
 interface DiscussionsListPageProps {
   searchParams: Promise<{ page?: string; author?: string }>;

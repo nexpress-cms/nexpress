@@ -7,7 +7,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { FollowButton } from "@/components/follow-button";
-import { JsonLd } from "@/components/json-ld";
+import { JsonLd } from "@nexpress/next";
 import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";

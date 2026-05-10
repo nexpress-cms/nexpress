@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { RegisterForm } from "@/components/member-register-form";
 import { ensureFor } from "@/lib/init-core";
 import { nextQuery, safeNext } from "@/lib/safe-next";
-import { getSiteMember } from "@/lib/site-member";
+import { getSiteMember } from "@nexpress/next";
 
 interface RegisterPageProps {
   searchParams: Promise<{ next?: string }>;
