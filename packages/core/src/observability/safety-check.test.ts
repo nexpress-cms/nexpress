@@ -204,4 +204,205 @@ describe("verifyStartupSafety", () => {
     expect(emitted).not.toContain("multi_node_local_storage");
     expect(warnings).toEqual([]);
   });
+
+  // ── #597 — three more prod-only checks ────────────────────────
+
+  it("warns when NP_EMAIL_ADAPTER is unset (null) in production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      emailAdapterEnv: null,
+      siteUrl: "https://example.com",
+    });
+    expect(emitted).toContain("noop_email_in_prod");
+    expect(
+      warnings.some((w) =>
+        w.message.includes("transactional mail (password reset"),
+      ),
+    ).toBe(true);
+  });
+
+  it("warns when NP_EMAIL_ADAPTER='noop' (explicit) in production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      emailAdapterEnv: "noop",
+      siteUrl: "https://example.com",
+    });
+    expect(emitted).toContain("noop_email_in_prod");
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+
+  it("does NOT warn when emailAdapterEnv is undefined (back-compat: caller didn't supply)", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      // emailAdapterEnv intentionally omitted — older callers
+      // shouldn't pick up the new warning until they're updated.
+      siteUrl: "https://example.com",
+    });
+    expect(emitted).not.toContain("noop_email_in_prod");
+    expect(warnings).toEqual([]);
+  });
+
+  it("does NOT warn when noop email runs outside production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "development",
+      multiNodeFlag: undefined,
+      emailAdapterEnv: null,
+    });
+    expect(emitted).not.toContain("noop_email_in_prod");
+    expect(warnings).toEqual([]);
+  });
+
+  it("does NOT warn when smtp / custom email adapter is installed", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      emailAdapterEnv: "smtp",
+      siteUrl: "https://example.com",
+    });
+    expect(
+      warnings.some((w) => w.message.includes("Email adapter")),
+    ).toBe(false);
+  });
+
+  it.each([
+    ["localhost"],
+    ["127.0.0.1"],
+    ["::1"],
+    ["0.0.0.0"],
+    ["LOCALHOST"],
+  ])("warns about loopback DATABASE_URL host '%s' in production", (host) => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      databaseHost: host,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(emitted).toContain("loopback_database_in_prod");
+    expect(
+      warnings.find((w) => w.message.includes("loopback"))?.context,
+    ).toMatchObject({ host });
+  });
+
+  it("does NOT warn about a real production database host", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      databaseHost: "db.internal.example.com",
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(
+      warnings.some((w) => w.message.includes("DATABASE_URL host")),
+    ).toBe(false);
+  });
+
+  it("warns when SITE_URL is unset in production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      siteUrl: null,
+      emailAdapterEnv: "smtp",
+    });
+    expect(emitted).toContain("missing_site_url");
+    expect(
+      warnings.some((w) => w.message.includes("SITE_URL is unset")),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["http://localhost:3000"],
+    ["http://127.0.0.1:8080"],
+    ["http://[::1]:3000"],
+    ["http://0.0.0.0/"],
+  ])("warns about loopback SITE_URL '%s' in production", (siteUrl) => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      siteUrl,
+      emailAdapterEnv: "smtp",
+    });
+    expect(emitted).toContain("loopback_site_url");
+    expect(
+      warnings.find((w) => w.message.includes("loopback origins"))?.context,
+    ).toMatchObject({ siteUrl });
+  });
+
+  it("does NOT warn about a real production SITE_URL", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      siteUrl: "https://example.com",
+      emailAdapterEnv: "smtp",
+    });
+    expect(
+      warnings.some((w) => w.message.includes("SITE_URL")),
+    ).toBe(false);
+  });
+
+  it("malformed SITE_URL skips the loopback check (caller's URL parser will catch it)", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      siteUrl: "not-a-url",
+      emailAdapterEnv: "smtp",
+    });
+    // Not loopback because URL parsing fails — but also not "missing"
+    // because the value IS set. Skip both warnings; the framework's
+    // own URL parser at first request time will surface the
+    // malformation as a real error.
+    expect(emitted).not.toContain("loopback_site_url");
+    expect(emitted).not.toContain("missing_site_url");
+    expect(warnings).toEqual([]);
+  });
+
+  it("none of the #597 checks fire outside production", () => {
+    const { warnings } = captureWarnings();
+    verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "tiny",
+      nodeEnv: "development",
+      multiNodeFlag: undefined,
+      emailAdapterEnv: null,
+      databaseHost: "localhost",
+      siteUrl: "http://localhost:3000",
+    });
+    expect(warnings).toEqual([]);
+  });
 });

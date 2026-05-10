@@ -174,6 +174,23 @@ function toCamelCase(slug: string): string {
 }
 
 /**
+ * Best-effort hostname extractor for the boot-time safety check
+ * (#597). Postgres URLs follow the standard `postgres://...`
+ * shape so the URL constructor handles them; if parsing fails for
+ * any reason (including the connection string being null) we
+ * return null and the safety check skips the loopback warning
+ * rather than guessing.
+ */
+function extractDatabaseHost(connectionString: string | null): string | null {
+  if (!connectionString) return null;
+  try {
+    return new URL(connectionString).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Issue #221 — central access predicate the resolver uses to
  * confirm the authenticated session is allowed to operate on the
  * site id pulled from `np-admin-site`. Mirrors the rule in the
@@ -278,6 +295,24 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           process.env.RENDER_INSTANCE_ID ||
           process.env.RAILWAY_ENVIRONMENT_NAME,
       ),
+      // #597 — three more prod-only checks that map to common
+      // dev → prod slip-ups: noop email in prod, loopback DATABASE_URL
+      // in prod, missing/loopback SITE_URL in prod.
+      //
+      // `emailAdapterEnv` is the env var rather than the live
+      // adapter — by design, `setEmailAdapter()` is called AFTER
+      // this safety check (the host's `init-core.ts` does it in the
+      // "write" intent path), so a live-adapter check would always
+      // see the default noop. Reading the operator's intent
+      // (`NP_EMAIL_ADAPTER`) is the right signal at this boot stage.
+      emailAdapterEnv: process.env.NP_EMAIL_ADAPTER ?? null,
+      databaseHost: extractDatabaseHost(
+        options.connectionString ||
+          config.db.connectionString ||
+          process.env.DATABASE_URL ||
+          null,
+      ),
+      siteUrl: process.env.SITE_URL ?? null,
     });
 
     servicesInitialized = true;
