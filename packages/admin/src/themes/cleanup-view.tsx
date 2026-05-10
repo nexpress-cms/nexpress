@@ -58,7 +58,11 @@ interface ScanReport {
 export function ThemeCleanupView() {
   const [report, setReport] = useState<ScanReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busyType, setBusyType] = useState<string | "__all__" | null>(null);
+  // The literal "__all__" is a sentinel for the bulk button (vs.
+  // a per-row block type). It collapses into the `string` portion
+  // of the union as far as TypeScript is concerned — left here as
+  // a code-level marker, the runtime check is `=== "__all__"`.
+  const [busyType, setBusyType] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 

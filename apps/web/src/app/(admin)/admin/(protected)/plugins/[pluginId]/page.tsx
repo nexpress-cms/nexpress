@@ -5,7 +5,6 @@ import {
   getPluginAdminExtension,
   getPluginConfigWithStatus,
   getPluginRegistration,
-  getPluginState,
   introspectThemeSettingsSchema,
   verifyTokenFull,
   can,
@@ -37,7 +36,6 @@ export default async function PluginAdminRoute({ params }: PageProps) {
   const { pluginId } = await params;
   const registration = getPluginRegistration(pluginId);
   const adminExt = getPluginAdminExtension(pluginId);
-  const state = await getPluginState(getDb(), pluginId);
 
   // G.1 — a plugin that declares only `configSchema` (no
   // `admin.settings.fields`, no widgets/actions/tables) wouldn't

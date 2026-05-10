@@ -52,14 +52,14 @@ export function registerTestCollections(): void {
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("posts", postsTable as never, postsConfig);
+  registerCollection("posts", postsTable, postsConfig);
 
   const pagesConfig: NpCollectionConfig = {
     ...pagesCollection,
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("pages", pagesTable as never, pagesConfig);
+  registerCollection("pages", pagesTable, pagesConfig);
 
   // Posts reference categories and tags via relationship fields, so
   // saving a post with terms requires both registrations.
@@ -68,14 +68,14 @@ export function registerTestCollections(): void {
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("categories", categoriesTable as never, categoriesConfig);
+  registerCollection("categories", categoriesTable, categoriesConfig);
 
   const tagsConfig: NpCollectionConfig = {
     ...tagsCollection,
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("tags", tagsTable as never, tagsConfig);
+  registerCollection("tags", tagsTable, tagsConfig);
 
   setI18nConfig({ locales: ["en", "ko"], defaultLocale: "en" });
 

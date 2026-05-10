@@ -49,8 +49,6 @@ function dateArchivePattern(
   }
 }
 
-type ArchiveKindByCollection = NpThemeArchives[string];
-
 /**
  * Expand `archives` sugar into concrete `NpThemeRoute`s. The
  * order — within a collection — is byCategory, byTag, byAuthor,
@@ -63,7 +61,7 @@ type ArchiveKindByCollection = NpThemeArchives[string];
 function expandArchives(archives: NpThemeArchives): NpThemeRoute[] {
   const out: NpThemeRoute[] = [];
   for (const [, raw] of Object.entries(archives)) {
-    const byKind = raw as ArchiveKindByCollection;
+    const byKind = raw;
     if (!byKind) continue;
     const entry = (
       e: NpThemeArchiveEntry | undefined,
@@ -113,7 +111,7 @@ function detectAndWarnCollisions(routes: NpThemeRoute[]): void {
   for (const [pattern, count] of seen) {
     if (count > 1 && !warnedPatterns.has(pattern)) {
       warnedPatterns.add(pattern);
-      // eslint-disable-next-line no-console
+       
       console.warn(
         `[nexpress/theme] route pattern "${pattern}" is declared ${count} ` +
           `times in the active theme — only the first declaration will ` +
@@ -161,8 +159,8 @@ function matchPattern(
 
   const params: Record<string, string> = {};
   for (let i = 0; i < patternSegs.length; i++) {
-    const ps = patternSegs[i]!;
-    const xs = pathSegs[i]!;
+    const ps = patternSegs[i];
+    const xs = pathSegs[i];
     if (ps.startsWith(":")) {
       // `:name` or `:name(regex)`
       const parenStart = ps.indexOf("(");

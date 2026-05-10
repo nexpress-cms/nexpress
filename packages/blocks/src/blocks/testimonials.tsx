@@ -208,7 +208,6 @@ export const testimonialsBlock: NpBlockDefinition = {
                     }}
                   >
                     {item.avatar ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={item.avatar}
                         alt=""

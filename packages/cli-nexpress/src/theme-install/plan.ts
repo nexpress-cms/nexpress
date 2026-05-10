@@ -84,7 +84,7 @@ export function planThemeInstall(
   // collection (in declaration order from the manifest).
   for (const slug of Object.keys(requires)) {
     if (!existingSet.has(slug)) {
-      const requirement = requires[slug]!;
+      const requirement = requires[slug];
       steps.push({ kind: "create-collection", collection: slug, requirement });
     }
   }

@@ -48,8 +48,8 @@ describe("enabled-gate cache invalidation race (#462)", () => {
     // Settle them in REVERSE order: fetch #1 (the new one) reports false
     // first; fetch #0 (the old one) reports true second.
     expect(deferreds.length).toBe(2);
-    deferreds[1]!.resolve(false);
-    deferreds[0]!.resolve(true);
+    deferreds[1].resolve(false);
+    deferreds[0].resolve(true);
 
     expect(await readA).toBe(true); // A still returns its own result …
     expect(await readB).toBe(false); // … B returns its own result …
@@ -64,9 +64,9 @@ describe("enabled-gate cache invalidation race (#462)", () => {
 
   it("a single uncontested fetch caches normally", async () => {
     let calls = 0;
-    setFetchImplForTest(async () => {
+    setFetchImplForTest(() => {
       calls++;
-      return true;
+      return Promise.resolve(true);
     });
 
     expect(await isPluginEnabled("foo")).toBe(true);

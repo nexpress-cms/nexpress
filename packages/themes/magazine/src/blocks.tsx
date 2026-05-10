@@ -243,7 +243,6 @@ function HeroCarousel({
               role="listitem"
             >
               {item.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.imageUrl} alt="" loading="lazy" />
               ) : null}
               <div>
@@ -297,7 +296,6 @@ function HeroGrid({
           {items.map((item, i) => (
             <article key={i} className="np-magazine-hero-grid-tile">
               {item.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.imageUrl} alt="" loading="lazy" />
               ) : null}
               <div>

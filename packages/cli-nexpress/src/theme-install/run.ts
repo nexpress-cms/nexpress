@@ -87,8 +87,8 @@ async function loadThemeManifest(
   const candidate =
     (mod as { default?: unknown }).default ??
     (Object.values(mod).find(
-      (v) => v && typeof v === "object" && "manifest" in (v as object),
-    ) as unknown);
+      (v) => v && typeof v === "object" && "manifest" in (v),
+    ));
   if (!candidate || typeof candidate !== "object") {
     throw new Error(
       `Theme package '${themePackage}' has no detectable defineTheme export.`,
@@ -161,6 +161,7 @@ function applyPlan(
         }
         throw new Error(
           `Patcher failed on ${target}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
         );
       }
     }

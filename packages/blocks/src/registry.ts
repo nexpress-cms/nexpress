@@ -130,7 +130,7 @@ function detectAndWarnBlockCollision(
   if (isBuiltInSource(existing.source)) return;
   if (warnedBlockTypes.has(incoming.type)) return;
   warnedBlockTypes.add(incoming.type);
-  // eslint-disable-next-line no-console
+   
   console.warn(
     `[nexpress/blocks] block type "${incoming.type}" registered by ` +
       `"${incoming.source ?? "(no source)"}" is overwriting an earlier ` +
@@ -224,7 +224,7 @@ function detectAndWarnPatternCollision(
   if (isBuiltInPatternSource(existing.source)) return;
   if (warnedPatternIds.has(incoming.id)) return;
   warnedPatternIds.add(incoming.id);
-  // eslint-disable-next-line no-console
+   
   console.warn(
     `[nexpress/blocks] pattern id "${incoming.id}" registered by ` +
       `"${incoming.source}" is overwriting an earlier registration from ` +
