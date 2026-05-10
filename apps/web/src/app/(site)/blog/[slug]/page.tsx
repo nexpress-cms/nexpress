@@ -3,6 +3,7 @@ import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import { NpImage, getMediaUrl } from "@/components/np-image";
+import { ShellWrap } from "@/components/shell-wrap";
 import { ensureFor } from "@/lib/init-core";
 import {
   RenderBodyEnd,
@@ -41,58 +42,63 @@ export default async function PostPage({ params }: PostPageProps) {
   const articleJsonLd = await buildArticleJsonLd({
     url: `${settings.siteUrl.replace(/\/+$/, "")}/blog/${slug}`,
     headline: post.title as string,
-    description:
-      typeof post.excerpt === "string" && post.excerpt
-        ? (post.excerpt)
-        : null,
+    description: typeof post.excerpt === "string" && post.excerpt ? post.excerpt : null,
     image:
       typeof post.coverImage === "string" && post.coverImage
         ? await getMediaUrl(post.coverImage, "og")
         : null,
     datePublished:
       post.publishedAt instanceof Date
-        ? (post.publishedAt)
-        : (post.createdAt as Date | undefined) ?? null,
+        ? post.publishedAt
+        : ((post.createdAt as Date | undefined) ?? null),
     dateModified: (post.updatedAt as Date | undefined) ?? null,
     type: "BlogPosting",
   });
 
   return (
-    <article className="np-post">
-      <JsonLd data={articleJsonLd as unknown as Record<string, unknown>} />
-      <RenderHead entries={head} />
-      {isDraft ? (
-        <div className="np-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
-          Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
-        </div>
-      ) : null}
-      <header className="np-post-header">
-        <h1>{post.title as string}</h1>
-        {post.publishedAt ? (
-          <time dateTime={(post.publishedAt as Date).toISOString()}>
-            {(post.publishedAt as Date).toLocaleDateString()}
-          </time>
+    <ShellWrap surface="site">
+      <article className="np-post">
+        <JsonLd data={articleJsonLd as unknown as Record<string, unknown>} />
+        <RenderHead entries={head} />
+        {isDraft ? (
+          <div
+            className="np-draft-banner"
+            style={{
+              padding: "0.75rem 1rem",
+              background: "#fef3c7",
+              color: "#92400e",
+              fontSize: "0.875rem",
+              textAlign: "center",
+            }}
+          >
+            Draft preview —{" "}
+            <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>
+              exit
+            </a>
+          </div>
         ) : null}
-      </header>
-      {post.coverImage ? (
-        <div className="np-post-cover">
-          <NpImage media={post.coverImage as string} size="large" priority />
-        </div>
-      ) : null}
-      {content && (
-        <div className="np-post-content prose">
-          {renderRichText(content)}
-        </div>
-      )}
-      <Comments collectionSlug="posts" documentId={String(post.id)} />
-      <RenderBodyEnd entries={bodyEnd} />
-    </article>
+        <header className="np-post-header">
+          <h1>{post.title as string}</h1>
+          {post.publishedAt ? (
+            <time dateTime={(post.publishedAt as Date).toISOString()}>
+              {(post.publishedAt as Date).toLocaleDateString()}
+            </time>
+          ) : null}
+        </header>
+        {post.coverImage ? (
+          <div className="np-post-cover">
+            <NpImage media={post.coverImage as string} size="large" priority />
+          </div>
+        ) : null}
+        {content && <div className="np-post-content prose">{renderRichText(content)}</div>}
+        <Comments collectionSlug="posts" documentId={String(post.id)} />
+        <RenderBodyEnd entries={bodyEnd} />
+      </article>
+    </ShellWrap>
   );
 }
 
-export async function generateMetadata({
-  params,
-}: PostPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: PostPageProps): Promise<Metadata> {
   await ensureFor("read");
   const { slug } = await params;
   const { isEnabled: isDraft } = await draftMode();
@@ -100,17 +106,12 @@ export async function generateMetadata({
   if (!post) return {};
 
   const title = (post.seo as Record<string, unknown>)?.metaTitle ?? post.title;
-  const description =
-    (post.seo as Record<string, unknown>)?.metaDescription ?? post.excerpt;
-  const ogImageId = (post.seo as Record<string, unknown>)?.ogImage as
-    | string
-    | undefined;
+  const description = (post.seo as Record<string, unknown>)?.metaDescription ?? post.excerpt;
+  const ogImageId = (post.seo as Record<string, unknown>)?.ogImage as string | undefined;
 
   return {
     title: title as string,
     description: description as string | undefined,
-    openGraph: ogImageId
-      ? { images: [{ url: await getMediaUrl(ogImageId, "og") }] }
-      : undefined,
+    openGraph: ogImageId ? { images: [{ url: await getMediaUrl(ogImageId, "og") }] } : undefined,
   };
 }

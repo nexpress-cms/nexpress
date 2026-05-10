@@ -40,9 +40,7 @@ const THEME_ERRORS: Record<
   string,
   React.LazyExoticComponent<React.ComponentType<ErrorPageProps>>
 > = {
-  magazine: lazy(
-    () => import("@nexpress/theme-magazine/components/error"),
-  ),
+  magazine: lazy(() => import("@nexpress/theme-magazine/components/error")),
 };
 
 /** Read the active theme id from the `<style data-np-theme>` tag
@@ -63,9 +61,7 @@ const THEME_ERRORS: Record<
 function useActiveThemeId(): string | null {
   const [themeId] = useState<string | null>(() => {
     if (typeof document === "undefined") return null;
-    const styleTag = document.querySelector<HTMLStyleElement>(
-      "style[data-np-theme]",
-    );
+    const styleTag = document.querySelector<HTMLStyleElement>("style[data-np-theme]");
     return styleTag?.dataset.npTheme ?? null;
   });
   return themeId;
@@ -86,9 +82,15 @@ export default function SiteError(props: ErrorPageProps) {
 }
 
 function DefaultError({ error, reset }: ErrorPageProps) {
-  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
+  // After the v0.2 layout-shell refactor, the layout no longer
+  // wraps in `<main>` — pages do their own wrap via `ShellWrap`.
+  // error.tsx is `"use client"` so it can't import the
+  // server-side ShellWrap; instead it renders its own `<main>`
+  // for semantic correctness and accepts the lack of theme
+  // chrome (a stripped error page is a reasonable fallback when
+  // the rendering pipeline broke).
   return (
-    <div
+    <main
       className="np-error"
       style={{
         maxWidth: 480,
@@ -99,9 +101,7 @@ function DefaultError({ error, reset }: ErrorPageProps) {
     >
       <h1 style={{ fontSize: "1.75rem", margin: 0 }}>Something went wrong</h1>
       <p style={{ margin: "1rem 0 0", color: "#64748b" }}>
-        {process.env.NODE_ENV === "production"
-          ? "Please try again in a moment."
-          : error.message}
+        {process.env.NODE_ENV === "production" ? "Please try again in a moment." : error.message}
       </p>
       <button
         type="button"
@@ -118,6 +118,6 @@ function DefaultError({ error, reset }: ErrorPageProps) {
       >
         Try again
       </button>
-    </div>
+    </main>
   );
 }
