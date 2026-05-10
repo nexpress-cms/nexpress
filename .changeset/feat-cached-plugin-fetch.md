@@ -35,7 +35,11 @@ cache-tag plumbing that makes admin "Save config" propagate).
 - Per-site cache keying via `getCurrentSiteId()` so multi-tenant
   deployments don't leak across sites.
 - 60-second default `revalidate`; caller can override.
-- `extraTags` slot for collection-scoped tags.
+- `extraTags` slot for content-driven invalidation. Note: tags
+  are advisory — they invalidate only when something else fires
+  `revalidateTag` against them. The framework auto-fires the
+  `np:plugin:<id>` tag (always-on) but NOT collection-scoped
+  tags; the host's `RevalidationMap` is responsible for those.
 - Falls back to the uncached fetcher when Next's incremental
   cache is unreachable (integration tests, scripts, background
   workers).

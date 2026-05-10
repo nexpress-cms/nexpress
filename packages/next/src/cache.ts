@@ -306,10 +306,16 @@ export interface NpCachedPluginFetchOptions {
  * ```
  *
  * `extraTags` is the escape hatch for plugins whose data depends
- * on collections — pass `nx:collection:<slug>` so a content
- * write busts the cached page too. The framework's
- * `revalidateCollection` (called inside `saveDocument`) fires
- * those tags on every write.
+ * on collections. Tags are advisory — they only invalidate when
+ * something else calls `revalidateTag` against them. The host's
+ * `RevalidationMap` (`packages/next/src/revalidate.ts`) declares
+ * which tags fire on each collection's writes; pair the tag
+ * pattern you put in `extraTags` with a matching entry in the
+ * map (or contribute one in plugin docs to operators) so a
+ * content write actually busts the cache. The always-on
+ * `np:plugin:<pluginId>` tag, by contrast, is fired automatically
+ * by `setPluginConfig` — you don't have to configure anything
+ * for plugin-config saves to invalidate the cache.
  */
 export async function cachedPluginFetch<T>(
   pluginId: string,

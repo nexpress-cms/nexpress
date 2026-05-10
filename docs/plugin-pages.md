@@ -313,10 +313,15 @@ export default async function ListRoute({ searchParams }: NpRouteRenderProps) {
 ```
 
 The wrapper auto-tags entries with `np:plugin:<id>` so saving the
-plugin's config in `/admin/plugins/<id>` busts the cache. Pass
-`extraTags: ["nx:collection:<slug>"]` for every collection your fetch
-reads from — the framework's `revalidateCollection` (called inside
-`saveDocument`) fires those tags on every write.
+plugin's config in `/admin/plugins/<id>` busts the cache (the
+framework's `setPluginConfig` revalidates this tag automatically).
+
+`extraTags` is the slot for content-driven invalidation — but the
+tag only invalidates when something else fires `revalidateTag`
+against it. The host's `RevalidationMap` declares which tags fire
+on each collection's writes; pair the tag pattern in `extraTags`
+with a matching entry in the map (or document the convention to
+operators) so a discussion write actually busts the cache.
 
 **Key parts must include every input the fetcher uses** (page,
 slug, locale, etc.). The cache keys ONLY by `keyParts`, not by the
