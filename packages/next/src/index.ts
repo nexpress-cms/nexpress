@@ -21,7 +21,12 @@ export {
   collectThemeRoutes,
   dispatchThemeRoute,
   buildRouteRenderProps,
+  dispatchPluginRoute,
+  dispatchPluginRouteSync,
+  buildPluginRouteRenderProps,
+  __resetPluginCollisionWarnings,
   type NpThemeRouteMatch,
+  type NpPluginRouteMatch,
 } from "./route-dispatcher.js";
 
 export {

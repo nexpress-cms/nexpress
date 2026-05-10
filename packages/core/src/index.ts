@@ -548,6 +548,7 @@ export type {
   PluginRouteRequest,
   PluginRouteResponse,
   PluginAdminExtension,
+  PluginPageRouteEntry,
   ResolvedCollectionTab,
   ResolvedDashboardWidget,
   NpPluginState,
