@@ -116,9 +116,6 @@ importers:
       '@nexpress/theme-magazine':
         specifier: workspace:*
         version: link:../../packages/themes/magazine
-      '@nexpress/theme-minimal':
-        specifier: workspace:*
-        version: link:../../packages/themes/minimal
       '@nexpress/theme-portfolio':
         specifier: workspace:*
         version: link:../../packages/themes/portfolio
@@ -1028,34 +1025,6 @@ importers:
       next:
         specifier: ^16.2.4
         version: 16.2.4(@babel/core@7.29.0)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.5
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.5(react@19.2.5)
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.8.0
-        version: 5.9.3
-
-  packages/themes/minimal:
-    dependencies:
-      '@nexpress/core':
-        specifier: workspace:*
-        version: link:../../core
-      '@nexpress/theme':
-        specifier: workspace:*
-        version: link:../../theme
-    devDependencies:
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.0.0
-        version: 19.2.3(@types/react@19.2.14)
       react:
         specifier: ^19.0.0
         version: 19.2.5

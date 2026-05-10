@@ -54,7 +54,6 @@
     "@nexpress/theme-default": "workspace:*",
     "@nexpress/theme-docs": "workspace:*",
     "@nexpress/theme-magazine": "workspace:*",
-    "@nexpress/theme-minimal": "workspace:*",
     "@nexpress/theme-portfolio": "workspace:*",
     "@nexpress/wp-import": "workspace:*",
     "@nexpress/xliff": "workspace:*",

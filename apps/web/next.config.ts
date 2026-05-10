@@ -10,7 +10,6 @@ const nextConfig: NextConfig = {
     "@nexpress/theme-default",
     "@nexpress/theme-magazine",
     "@nexpress/theme-portfolio",
-    "@nexpress/theme-minimal",
     "@nexpress/plugin-sdk",
     "@nexpress/plugin-reading-time",
   ],
