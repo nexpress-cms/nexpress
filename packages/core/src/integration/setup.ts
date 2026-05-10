@@ -6,6 +6,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 
 import { setDb } from "../db/runtime.js";
+import { splitMigrationStatements } from "./migration-split.js";
 
 /**
  * Integration tests reuse the same Postgres that `docker compose up -d db`
@@ -165,11 +166,9 @@ export async function ensureMigrated(): Promise<void> {
 
   for (const file of files) {
     const sql = readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
-    // drizzle-kit writes `--> statement-breakpoint` between statements.
-    const statements = sql
-      .split("--> statement-breakpoint")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // `splitMigrationStatements` ignores marker text that appears
+    // inside `--` line comments (the 0033 backtick-orphan trap).
+    const statements = splitMigrationStatements(sql);
 
     for (const stmt of statements) {
       try {
@@ -328,10 +327,7 @@ export async function prepareTemplateDatabase(): Promise<() => Promise<void>> {
       .sort();
     for (const file of files) {
       const sql = readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
-      const statements = sql
-        .split("--> statement-breakpoint")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const statements = splitMigrationStatements(sql);
       for (const stmt of statements) {
         try {
           await tplPool.query(stmt);
