@@ -18,7 +18,6 @@ import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 import { defaultTheme } from "@nexpress/theme-default";
 import { docsTheme } from "@nexpress/theme-docs";
 import { magazineTheme } from "@nexpress/theme-magazine";
-import { minimalTheme } from "@nexpress/theme-minimal";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
 
 import { categoriesCollection } from "./collections/categories";
@@ -86,7 +85,7 @@ export default defineConfig({
   // admin switches the active one via the Theme settings tab
   // (11.4) without redeploying. The first entry is the
   // default-active until an admin overrides.
-  themes: [defaultTheme, minimalTheme, magazineTheme, portfolioTheme, docsTheme],
+  themes: [defaultTheme, magazineTheme, portfolioTheme, docsTheme],
   plugins: [
     forumPlugin,
     // @nexpress:plugins-list-start

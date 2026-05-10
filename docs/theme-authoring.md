@@ -356,12 +356,12 @@ to switch into in `nexpress.config.ts`:
 
 ```ts
 import { defaultTheme } from "@nexpress/theme-default";
-import { minimalTheme } from "@nexpress/theme-minimal";
+import { magazineTheme } from "@nexpress/theme-magazine";
 import { mybrandTheme } from "@yourco/theme-mybrand";
 
 export default defineConfig({
   // ...
-  themes: [defaultTheme, minimalTheme, mybrandTheme],
+  themes: [defaultTheme, magazineTheme, mybrandTheme],
 });
 ```
 
@@ -435,19 +435,25 @@ fetch it via an API route.
 
 | Package                       | Role in repo                                       | v0.2 surfaces |
 | ----------------------------- | -------------------------------------------------- | ------------- |
-| `@nexpress/theme-magazine`    | Editorial / blog layout, hero + archives + patterns. | F.1–F.7 (every surface) |
+| `@nexpress/theme-magazine`    | Editorial / blog layout, hero + archives + patterns. | F.1–F.7 + M.* (every surface) |
 | `@nexpress/theme-docs`        | Hierarchical docs with sidebar + search route.       | F.1–F.3, F.6, F.7 (no patterns / archives) |
 | `@nexpress/theme-portfolio`   | Image-led dark theme, deep settings (12 fields).     | F.1, F.3, F.4, F.6, F.7 |
-| `@nexpress/theme-default`     | v0.1-era baseline. Pre-v0.2 surfaces only — kept for back-compat. | v0.1 only |
-| `@nexpress/theme-minimal`     | v0.1-era sparse shell. Pre-v0.2 surfaces only.       | v0.1 only |
+| `@nexpress/theme-default`     | v0.1-era baseline. Pre-v0.2 surfaces only — kept as the framework fallback when no other theme is configured. | v0.1 only |
 
 For new themes, copy from `theme-magazine` / `theme-docs` /
 `theme-portfolio` — they exercise the v0.2 surfaces (manifest
 requires, settingsSchema, blocks, patterns, navLocations,
-archives, routes, seo). `theme-default` and `theme-minimal`
-are kept for back-compat but don't yet declare v0.2 surfaces;
-they remain valid `defineTheme` callers but skip the operator-
-no-code workflow.
+archives, routes, seo). `theme-default` is kept as a working
+`defineTheme` reference for the v0.1 baseline shape but doesn't
+declare v0.2 surfaces; copying from it gets you a basic shell +
+header + footer without the operator-no-code surfaces.
+
+`@nexpress/theme-minimal` (a 99-LOC v0.1 demo proving the
+slot system) was retired in #590 once F-track + M-track merged
+the slot-system story into reference theme adoption. Sites that
+were on minimal should switch to `theme-default` (same v0.1
+contract, more production-grade) or move up to a v0.2 reference
+theme.
 
 The contract is the same regardless of which template you
 copy from; the only constraint is that your theme's
