@@ -25,6 +25,7 @@ import type { NpPageBlocks } from "@nexpress/blocks";
 
 import { DefaultHomePage } from "@/components/default-home-page";
 import { JsonLd } from "@nexpress/next";
+import { ShellWrap } from "@/components/shell-wrap";
 import { i18nConfig, isLocale } from "@/i18n.config";
 import { ensureFor } from "@/lib/init-core";
 
@@ -57,8 +58,7 @@ function buildHreflangAlternates(
   pathWithoutLocale: string,
 ): Array<{ hreflang: string; href: string }> {
   return i18nConfig.locales.map((loc) => {
-    const path =
-      pathWithoutLocale === "/" ? `/${loc}` : `/${loc}/${pathWithoutLocale}`;
+    const path = pathWithoutLocale === "/" ? `/${loc}` : `/${loc}/${pathWithoutLocale}`;
     return { hreflang: loc, href: path };
   });
 }
@@ -73,10 +73,7 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata({
-  params,
-  searchParams,
-}: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   // PRT.3 — bumped to `"plugins"` so `dispatchPluginRoute`
   // below sees plugin-contributed routes on the first cold-
   // start request. `generateMetadata` runs in parallel with
@@ -94,8 +91,7 @@ export async function generateMetadata({
   // x-default pointing at the canonical default-locale URL.
   // Search engines use this to deduplicate translated copies.
   const alternates = buildHreflangAlternates(path === "/" ? "" : path);
-  const xDefault =
-    path === "/" ? "/" : `/${path}`;
+  const xDefault = path === "/" ? "/" : `/${path}`;
 
   // Phase F.2 — when no page document matches but a theme route
   // does, defer to the route's `metadata` builder. Without this,
@@ -168,8 +164,7 @@ export async function generateMetadata({
   // surface uses, so the meta tags still describe the brand.
   const metadata = await buildPageMetadata({
     title: typeof page?.title === "string" ? page.title : null,
-    description:
-      typeof page?.seoDescription === "string" ? page.seoDescription : null,
+    description: typeof page?.seoDescription === "string" ? page.seoDescription : null,
     path: rawPath === "/" ? "/" : `/${rawPath}`,
     ogType: "website",
     locale,
@@ -187,10 +182,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function CatchAllPage({
-  params,
-  searchParams,
-}: PageProps) {
+export default async function CatchAllPage({ params, searchParams }: PageProps) {
   await ensureFor("plugins");
   const { slug } = await params;
   const rawPath = slug?.join("/") || "/";
@@ -252,7 +244,12 @@ export default async function CatchAllPage({
         searchParams: sp,
         blockCtx,
       });
-      return <RouteComponent {...props} />;
+      // Theme routes are public-site by definition.
+      return (
+        <ShellWrap surface="site">
+          <RouteComponent {...props} />
+        </ShellWrap>
+      );
     }
 
     // PRT.2 — plugin route dispatcher (#623). Runs after theme
@@ -275,12 +272,19 @@ export default async function CatchAllPage({
         searchParams: sp,
         blockCtx,
       });
-      // `surface: "member"` shell wrap is deferred to PRT.4 (a
-      // parallel `(member)` catch-all). For PRT.2, member-surface
-      // routes render inside the site shell — operators get the
-      // route working; the shell distinction lands once the
-      // member catch-all surface is in.
-      return <PluginRouteComponent {...props} />;
+      // v0.2 — pick chrome based on the plugin route's declared
+      // surface. `surface: "member"` plugin routes (forum's
+      // `/discussions/new`, `/discussions/:slug/edit`) render with
+      // member chrome (`impl.members.shell` + chrome fallback)
+      // even though they live under the (site) catch-all.
+      // Without this dispatch a parallel `(member)/[[...slug]]`
+      // file route would be needed, which Next.js refuses (URL
+      // conflict with this catch-all).
+      return (
+        <ShellWrap surface={pluginMatch.route.surface}>
+          <PluginRouteComponent {...props} />
+        </ShellWrap>
+      );
     }
 
     // The site root is special: a fresh install with no pages
@@ -293,10 +297,10 @@ export default async function CatchAllPage({
     if (path === "/") {
       const websiteJsonLd = await buildWebSiteJsonLd();
       return (
-        <>
+        <ShellWrap surface="site">
           <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
           <DefaultHomePage />
-        </>
+        </ShellWrap>
       );
     }
 
@@ -344,14 +348,24 @@ export default async function CatchAllPage({
   const blockCtx = await createSiteScopedBlockRenderContext();
 
   return (
-    <>
-      {websiteJsonLd ? (
-        <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} />
-      ) : null}
+    <ShellWrap surface="site">
+      {websiteJsonLd ? <JsonLd data={websiteJsonLd as unknown as Record<string, unknown>} /> : null}
       <RenderHead entries={head} />
       {isDraft ? (
-        <div className="np-draft-banner" style={{ padding: "0.75rem 1rem", background: "#fef3c7", color: "#92400e", fontSize: "0.875rem", textAlign: "center" }}>
-          Draft preview — <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>exit</a>
+        <div
+          className="np-draft-banner"
+          style={{
+            padding: "0.75rem 1rem",
+            background: "#fef3c7",
+            color: "#92400e",
+            fontSize: "0.875rem",
+            textAlign: "center",
+          }}
+        >
+          Draft preview —{" "}
+          <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>
+            exit
+          </a>
         </div>
       ) : null}
       {Template ? (
@@ -366,7 +380,7 @@ export default async function CatchAllPage({
         </div>
       )}
       <RenderBodyEnd entries={bodyEnd} />
-    </>
+    </ShellWrap>
   );
 }
 
@@ -379,15 +393,18 @@ export default async function CatchAllPage({
  */
 async function resolvePageTemplate(
   templateId: string | null,
-): Promise<ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> | null> {
+): Promise<ComponentType<{
+  doc: Record<string, unknown>;
+  blockCtx?: NpBlockRenderContext;
+}> | null> {
   // Phase 14.5 — lookup walks theme → plugin so theme templates
   // take precedence on id collision (active theme is the site's
   // design authority). The historical theme.default fallback
   // still applies when the doc didn't pick anything specific.
   if (templateId) {
-    const explicit = (await resolveTemplateComponent("pages", templateId)) as
-      | { component?: ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> }
-      | null;
+    const explicit = (await resolveTemplateComponent("pages", templateId)) as {
+      component?: ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }>;
+    } | null;
     if (explicit?.component) return explicit.component;
   }
 
@@ -400,7 +417,12 @@ async function resolvePageTemplate(
 
   const pluginDefault = (
     getPluginTemplatesForCollection("pages").get("default") as
-      | { component?: ComponentType<{ doc: Record<string, unknown>; blockCtx?: NpBlockRenderContext }> }
+      | {
+          component?: ComponentType<{
+            doc: Record<string, unknown>;
+            blockCtx?: NpBlockRenderContext;
+          }>;
+        }
       | undefined
   )?.component;
   return pluginDefault ?? null;

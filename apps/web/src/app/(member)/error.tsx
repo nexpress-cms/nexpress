@@ -35,13 +35,8 @@ interface ErrorPageProps {
   reset: () => void;
 }
 
-const THEME_MEMBER_ERRORS: Record<
-  string,
-  LazyExoticComponent<ComponentType<ErrorPageProps>>
-> = {
-  magazine: lazy(
-    () => import("@nexpress/theme-magazine/components/members-error"),
-  ),
+const THEME_MEMBER_ERRORS: Record<string, LazyExoticComponent<ComponentType<ErrorPageProps>>> = {
+  magazine: lazy(() => import("@nexpress/theme-magazine/components/members-error")),
 };
 
 /** See `(site)/error.tsx` for the rationale on the lazy-init
@@ -51,9 +46,7 @@ const THEME_MEMBER_ERRORS: Record<
 function useActiveThemeId(): string | null {
   const [themeId] = useState<string | null>(() => {
     if (typeof document === "undefined") return null;
-    const styleTag = document.querySelector<HTMLStyleElement>(
-      "style[data-np-theme]",
-    );
+    const styleTag = document.querySelector<HTMLStyleElement>("style[data-np-theme]");
     return styleTag?.dataset.npTheme ?? null;
   });
   return themeId;
@@ -74,11 +67,15 @@ export default function MemberError(props: ErrorPageProps) {
 }
 
 function DefaultMemberError({ error, reset }: ErrorPageProps) {
-  // `<div>` rather than `<main>` because (member)/layout.tsx
-  // already emits a `<main className="np-member-main">` wrapping
-  // this body — second `<main>` would nest semantic landmarks.
+  // After the v0.2 layout-shell refactor, the layout no longer
+  // wraps in `<main>` — pages do their own wrap via `ShellWrap`.
+  // error.tsx is `"use client"` so it can't import the
+  // server-side ShellWrap; instead it renders its own `<main>`
+  // for semantic correctness and accepts the lack of theme
+  // chrome (a stripped error page is a reasonable fallback when
+  // the rendering pipeline broke).
   return (
-    <div
+    <main
       className="np-error np-error-member"
       style={{
         maxWidth: 480,
@@ -93,7 +90,9 @@ function DefaultMemberError({ error, reset }: ErrorPageProps) {
           ? "Please try again in a moment, or sign in again if the problem persists."
           : error.message}
       </p>
-      <div style={{ marginTop: "1.5rem", display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+      <div
+        style={{ marginTop: "1.5rem", display: "flex", gap: "0.75rem", justifyContent: "center" }}
+      >
         <button
           type="button"
           onClick={reset}
@@ -123,6 +122,6 @@ function DefaultMemberError({ error, reset }: ErrorPageProps) {
           Back to sign in
         </a>
       </div>
-    </div>
+    </main>
   );
 }

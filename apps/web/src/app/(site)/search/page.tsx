@@ -1,10 +1,7 @@
-import {
-  getCollectionConfig,
-  searchCollections,
-  type SearchResultItem,
-} from "@nexpress/core";
+import { getCollectionConfig, searchCollections, type SearchResultItem } from "@nexpress/core";
 import Link from "next/link";
 
+import { ShellWrap } from "@/components/shell-wrap";
 import { ensureFor } from "@/lib/init-core";
 import { highlightMatches } from "@/lib/search-highlight";
 
@@ -40,25 +37,23 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const page = parsePage(pageRaw);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const result = q.length > 0
-    ? await searchCollections({ q, limit: PAGE_SIZE, offset })
-    : null;
+  const result = q.length > 0 ? await searchCollections({ q, limit: PAGE_SIZE, offset }) : null;
 
   return (
-    <section className="np-search">
-      <header className="np-search-header">
-        <h1>Search</h1>
-        <SearchForm initialQ={q} />
-      </header>
+    <ShellWrap surface="site">
+      <section className="np-search">
+        <header className="np-search-header">
+          <h1>Search</h1>
+          <SearchForm initialQ={q} />
+        </header>
 
-      {result ? (
-        <SearchResults q={q} result={result} page={page} />
-      ) : (
-        <p className="np-search-empty">
-          Type a query above to search across the site.
-        </p>
-      )}
-    </section>
+        {result ? (
+          <SearchResults q={q} result={result} page={page} />
+        ) : (
+          <p className="np-search-empty">Type a query above to search across the site.</p>
+        )}
+      </section>
+    </ShellWrap>
   );
 }
 
@@ -123,8 +118,7 @@ function SearchResults({ q, result, page }: SearchResultsProps) {
   return (
     <div className="np-search-results">
       <p className="np-search-summary">
-        {result.total} result{result.total === 1 ? "" : "s"} for{" "}
-        <strong>{q}</strong>
+        {result.total} result{result.total === 1 ? "" : "s"} for <strong>{q}</strong>
       </p>
 
       {[...grouped.entries()].map(([collection, items]) => (
@@ -144,20 +138,12 @@ function SearchResults({ q, result, page }: SearchResultsProps) {
         </section>
       ))}
 
-      {lastPage > 1 ? (
-        <Pagination q={q} page={page} lastPage={lastPage} />
-      ) : null}
+      {lastPage > 1 ? <Pagination q={q} page={page} lastPage={lastPage} /> : null}
     </div>
   );
 }
 
-function SearchResultRow({
-  item,
-  query,
-}: {
-  item: SearchResultItem;
-  query: string;
-}) {
+function SearchResultRow({ item, query }: { item: SearchResultItem; query: string }) {
   const href = collectionUrlPath(item.collection, item.doc);
   const title = pickTitle(item.doc);
   const excerpt = pickExcerpt(item.doc);
@@ -183,22 +169,12 @@ function SearchResultRow({
       <Link href={href} className="np-search-result-title">
         {highlightedTitle}
       </Link>
-      {highlightedExcerpt ? (
-        <p className="np-search-result-excerpt">{highlightedExcerpt}</p>
-      ) : null}
+      {highlightedExcerpt ? <p className="np-search-result-excerpt">{highlightedExcerpt}</p> : null}
     </li>
   );
 }
 
-function Pagination({
-  q,
-  page,
-  lastPage,
-}: {
-  q: string;
-  page: number;
-  lastPage: number;
-}) {
+function Pagination({ q, page, lastPage }: { q: string; page: number; lastPage: number }) {
   const prev = page > 1 ? buildHref(q, page - 1) : null;
   const next = page < lastPage ? buildHref(q, page + 1) : null;
 
@@ -238,10 +214,7 @@ function buildHref(q: string, page: number): string {
  * case the search row renders without a link rather than a
  * dead one.
  */
-function collectionUrlPath(
-  collection: string,
-  doc: Record<string, unknown>,
-): string | null {
+function collectionUrlPath(collection: string, doc: Record<string, unknown>): string | null {
   try {
     const config = getCollectionConfig(collection);
     const path = config.seo?.urlPath?.(doc);
@@ -254,8 +227,7 @@ function collectionUrlPath(
 function pickTitle(doc: Record<string, unknown>): string {
   if (typeof doc.title === "string" && doc.title.length > 0) return doc.title;
   if (typeof doc.name === "string" && doc.name.length > 0) return doc.name;
-  if (typeof doc.handle === "string" && doc.handle.length > 0)
-    return `@${doc.handle}`;
+  if (typeof doc.handle === "string" && doc.handle.length > 0) return `@${doc.handle}`;
   if (typeof doc.slug === "string" && doc.slug.length > 0) return doc.slug;
   return "Untitled";
 }

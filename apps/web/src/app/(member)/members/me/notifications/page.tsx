@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 
 import { getSiteMember } from "@nexpress/next";
 import { NotificationPrefsForm } from "@/components/notification-prefs-form";
+import { ShellWrap } from "@/components/shell-wrap";
 import { ensureFor } from "@/lib/init-core";
 
 export const dynamic = "force-dynamic";
@@ -31,13 +32,15 @@ export default async function NotificationSettingsPage() {
     Promise.resolve(listNotificationKinds()),
   ]);
   return (
-    <section style={{ maxWidth: 640, margin: "2.5rem auto", padding: "0 1.25rem" }}>
-      <h1 style={{ fontSize: "1.5rem", marginBottom: "0.25rem" }}>Notification settings</h1>
-      <p style={{ color: "#64748b", marginBottom: "1.5rem" }}>
-        Choose which notification kinds land in your inbox. Disabling a kind silently drops new
-        notifications of that kind &mdash; existing ones stay readable.
-      </p>
-      <NotificationPrefsForm initialPrefs={prefs} kinds={kinds} />
-    </section>
+    <ShellWrap surface="member">
+      <section style={{ maxWidth: 640, margin: "2.5rem auto", padding: "0 1.25rem" }}>
+        <h1 style={{ fontSize: "1.5rem", marginBottom: "0.25rem" }}>Notification settings</h1>
+        <p style={{ color: "#64748b", marginBottom: "1.5rem" }}>
+          Choose which notification kinds land in your inbox. Disabling a kind silently drops new
+          notifications of that kind &mdash; existing ones stay readable.
+        </p>
+        <NotificationPrefsForm initialPrefs={prefs} kinds={kinds} />
+      </section>
+    </ShellWrap>
   );
 }
