@@ -8,6 +8,8 @@ import {
 } from "./components/project-card.js";
 import { PortfolioFooter } from "./footer.js";
 import { PortfolioHeader } from "./header.js";
+import { PortfolioMembersNotFound } from "./members-not-found.js";
+import { PortfolioMembersShell } from "./members-shell.js";
 import { PortfolioNotFound } from "./not-found.js";
 import { portfolioSettingsSchema } from "./settings.js";
 import { PortfolioShell } from "./shell.js";
@@ -142,6 +144,26 @@ export const portfolioTheme = defineTheme({
     },
     // Phase F.7 — error chrome.
     notFound: PortfolioNotFound,
+    // M.* adoption (2026-05-11). Portfolio gains purpose-built
+    // member chrome: narrow column wrapping the auth forms,
+    // tonally matched 404 + error pages. The fallback chain in
+    // `<ShellWrap surface="member">` would have walked back to
+    // `impl.shell` + the public slots, which would have stretched
+    // a 320-wide login form across the image-led wide layout.
+    // - `shell`: PortfolioMembersShell (narrow column, same
+    //   header/footer chrome so a masthead bump cascades).
+    // - `notFound`: PortfolioMembersNotFound (stale-auth-link
+    //   framing with /members/login CTA).
+    // - `error`: forward-compat type marker; the actual render
+    //   goes through `./components/members-error`'s client
+    //   subpath, lazy-imported by
+    //   `apps/web/src/app/(member)/error.tsx`'s registry
+    //   (F.7.1 delegation — Next mandates `error.tsx` is "use
+    //   client").
+    members: {
+      shell: PortfolioMembersShell,
+      notFound: PortfolioMembersNotFound,
+    },
   },
 });
 
@@ -149,6 +171,8 @@ export {
   PortfolioHeader,
   PortfolioFooter,
   PortfolioShell,
+  PortfolioMembersShell,
+  PortfolioMembersNotFound,
   PortfolioProjectCard,
   PortfolioMobileNav,
   PortfolioNotFound,

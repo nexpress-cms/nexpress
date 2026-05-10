@@ -471,4 +471,33 @@ export const portfolioCss = `
 .np-portfolio .np-page a {
   color: var(--np-color-primary);
 }
+
+/* M.* member surface — narrow auth-form column under the
+   masthead. The portfolio's public layout is image-led wide;
+   stretching a login form across that would look weird. */
+.np-portfolio-members {
+  display: flex;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 3rem 1.5rem;
+}
+.np-portfolio-members-column {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Member form token overrides — portfolio's minimal aesthetic:
+   sharp corners, hairline borders, theme primary on focus. */
+.np-portfolio .np-members-form {
+  --np-member-form-input-bg: transparent;
+  --np-member-form-input-border: var(--np-color-border);
+  --np-member-form-input-border-focus: var(--np-color-primary);
+  --np-member-form-input-radius: 0.25rem;
+  --np-member-form-button-radius: 0.25rem;
+}
+.np-portfolio .np-members-form .np-form-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
 `.trim();

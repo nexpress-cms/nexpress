@@ -211,4 +211,32 @@ export const docsCss = `
   color: var(--np-color-muted-foreground);
   margin-bottom: 0.25rem;
 }
+
+/* M.* member surface — narrow auth-form column under the
+   masthead, no sidebar (the docs sidebar is hierarchical
+   doc nav, useless on auth forms). */
+.np-docs-members {
+  display: flex;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 3rem 1.5rem;
+}
+.np-docs-members-column {
+  width: 100%;
+  max-width: 440px;
+}
+
+/* Member form token overrides — docs aesthetic: slightly
+   rounded corners, neutral palette, monospace label accent. */
+.np-docs .np-members-form {
+  --np-member-form-input-bg: var(--np-color-background);
+  --np-member-form-input-border: var(--np-color-border);
+  --np-member-form-input-border-focus: var(--np-color-primary);
+  --np-member-form-input-radius: 0.375rem;
+  --np-member-form-button-radius: 0.375rem;
+}
+.np-docs .np-members-form .np-form-label {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+}
 `;

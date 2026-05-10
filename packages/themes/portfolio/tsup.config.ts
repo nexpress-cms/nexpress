@@ -15,11 +15,13 @@ export default defineConfig([
       "@nexpress/blocks",
       "@nexpress/theme",
       "./components/mobile-nav.js",
+      "./components/members-error.js",
     ],
   },
   {
     entry: {
       "components/mobile-nav": "src/components/mobile-nav.tsx",
+      "components/members-error": "src/components/members-error.tsx",
     },
     format: ["esm"],
     dts: true,
