@@ -24,6 +24,8 @@ The v1 plugin model is **npm-package + rebuild**. A plugin can:
   (`render:beforePage` and friends — see
   [`plugin-render.md`](plugin-render.md)).
 - Register **routes** (`/api/plugins/<id>/<path>`).
+- Register **page routes** (public-site URLs the plugin owns; see
+  [`plugin-pages.md`](plugin-pages.md)).
 - Register **actions** (`/api/plugins/<id>/actions/<id>`).
 - Register **scheduled tasks** (run via the pg-boss worker).
 - Provide **blocks**, **fields**, **admin extensions**, **collections**.

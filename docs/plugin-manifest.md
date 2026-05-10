@@ -162,6 +162,7 @@ The full list:
 | `configMigrate` | `(old, fromVersion) => current` migrator. | Pair with a `configVersion` bump so existing operator data upgrades on first cold read. |
 | `hooks` | Lifecycle hook handlers keyed by hook name. | Most plugins start here. |
 | `routes` | Plugin API routes mounted under `/api/plugins/<id>`. | When the plugin needs an HTTP surface. |
+| `pageRoutes` | Public-site URL routes the plugin owns. See [`plugin-pages.md`](plugin-pages.md). | When the plugin ships its own pages (e.g. forum threads, calendar events). |
 | `blocks` | Block definitions for the page builder. | Block-shipping plugins. |
 | `admin` | Declarative admin extension (widgets, actions, tables, dashboard, collectionTabs). | When the plugin contributes UI to `/admin`. |
 | `setup` | `(ctx) => …` invoked once per plugin load. | Register actions, validate environment, log a startup line. |
@@ -190,3 +191,5 @@ is ignored — see
   "Reload all" does and what it doesn't.
 - [`plugin-render.md`](plugin-render.md) — render-extension hook
   semantics.
+- [`plugin-pages.md`](plugin-pages.md) — `pageRoutes` field in depth:
+  pattern grammar, server / client boundary, precedence, collisions.
