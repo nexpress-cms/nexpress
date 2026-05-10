@@ -46,6 +46,24 @@ export type CollectionHelpers = {
   ) => Promise<void>;
 };
 
+/**
+ * Reserved `where` keys that the pipeline interprets as
+ * trusted-caller sentinels (cross-site / cross-visibility queries
+ * for admin tools and bulk-export jobs). Per the security review
+ * (#598), the public `?where=` query parameter must NOT be allowed
+ * to set these — otherwise an anonymous request can pass
+ * `{"siteId":"*","visibility":"*"}` and read documents from sibling
+ * tenants and from `visibility=private` posts that anonymous users
+ * shouldn't see.
+ *
+ * The pipeline still honors these sentinels when an INTERNAL caller
+ * passes them programmatically (admin export tools build the where
+ * dict in TypeScript, not from a request); the gate lives at the
+ * trust boundary — this `parseWhere` helper — rather than inside
+ * the pipeline so the distinction stays visible at the API layer.
+ */
+const RESERVED_WHERE_KEYS = ["siteId", "visibility"] as const;
+
 function parseWhere(where: string | null): Record<string, unknown> | undefined {
   if (!where) return undefined;
 
@@ -64,7 +82,17 @@ function parseWhere(where: string | null): Record<string, unknown> | undefined {
     ]);
   }
 
-  return parsed as Record<string, unknown>;
+  // Strip reserved keys before forwarding. We delete rather than
+  // reject to keep the API forgiving of well-meaning clients that
+  // include keys like `visibility` in their filter object — the
+  // pipeline's documented public surface for visibility filtering
+  // is the access-control machinery, not the where dict.
+  const sanitized = { ...(parsed as Record<string, unknown>) };
+  for (const key of RESERVED_WHERE_KEYS) {
+    delete sanitized[key];
+  }
+
+  return sanitized;
 }
 
 function parsePositiveInt(
