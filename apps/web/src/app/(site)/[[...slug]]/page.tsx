@@ -7,8 +7,11 @@ import {
 } from "@nexpress/core";
 import {
   buildPageMetadata,
+  buildPluginRouteRenderProps,
   buildRouteRenderProps,
+  collectThemeRoutes,
   createSiteScopedBlockRenderContext,
+  dispatchPluginRoute,
   dispatchThemeRoute,
 } from "@nexpress/next";
 import { getCachedActiveTheme } from "@/lib/cached-theme";
@@ -121,6 +124,37 @@ export async function generateMetadata({
         },
       };
     }
+
+    // PRT.2 — plugin route metadata. Same precedence as the
+    // renderer: theme metadata wins, then plugin metadata.
+    // Without this branch, plugin-served URLs would emit
+    // page-fallback SEO based on whatever DefaultHomePage
+    // carries — same bug F.2 closed for theme routes.
+    const themeRoutes = activeTheme ? collectThemeRoutes(activeTheme) : [];
+    const pluginMatch = await dispatchPluginRoute({
+      localeAwarePath: path,
+      themeRoutes,
+    });
+    if (pluginMatch?.route.metadata) {
+      const sp = await searchParams;
+      const pluginMetadata = await pluginMatch.route.metadata(
+        buildPluginRouteRenderProps({
+          match: pluginMatch,
+          searchParams: sp,
+          blockCtx: await createSiteScopedBlockRenderContext(),
+        }),
+      );
+      return {
+        ...pluginMetadata,
+        alternates: {
+          ...(pluginMetadata.alternates ?? {}),
+          languages: {
+            ...Object.fromEntries(alternates.map((a) => [a.hreflang, a.href])),
+            "x-default": xDefault,
+          },
+        },
+      };
+    }
   }
 
   // Pages without a published row fall back to site-wide
@@ -213,6 +247,34 @@ export default async function CatchAllPage({
         blockCtx,
       });
       return <RouteComponent {...props} />;
+    }
+
+    // PRT.2 — plugin route dispatcher (#623). Runs after theme
+    // dispatch, before the `/` empty-state and 404. Theme >
+    // plugin precedence is enforced by ORDER (theme tried first
+    // above) plus the boot collision warning emitted by the
+    // dispatcher itself when the same pattern is registered on
+    // both sides.
+    const themeRoutes = activeTheme ? collectThemeRoutes(activeTheme) : [];
+    const pluginMatch = await dispatchPluginRoute({
+      localeAwarePath: path,
+      themeRoutes,
+    });
+    if (pluginMatch) {
+      const blockCtx = await createSiteScopedBlockRenderContext();
+      const PluginRouteComponent = pluginMatch.route.component;
+      const sp = await searchParams;
+      const props = buildPluginRouteRenderProps({
+        match: pluginMatch,
+        searchParams: sp,
+        blockCtx,
+      });
+      // `surface: "member"` shell wrap is deferred to PRT.4 (a
+      // parallel `(member)` catch-all). For PRT.2, member-surface
+      // routes render inside the site shell — operators get the
+      // route working; the shell distinction lands once the
+      // member catch-all surface is in.
+      return <PluginRouteComponent {...props} />;
     }
 
     // The site root is special: a fresh install with no pages

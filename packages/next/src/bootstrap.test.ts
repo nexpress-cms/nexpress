@@ -19,6 +19,7 @@ vi.mock("@nexpress/core", () => ({
   createStorageAdapter: vi.fn(() => ({ kind: "storage" })),
   getDb: vi.fn(() => ({ kind: "db" })),
   getOptionalJobQueue: vi.fn(() => null),
+  getOptionalRateLimiter: vi.fn(() => null),
   isSuperAdmin: vi.fn(() => false),
   listMembershipsForUser: vi.fn(() => Promise.resolve([])),
   listPluginStates: vi.fn(() => Promise.resolve([])),

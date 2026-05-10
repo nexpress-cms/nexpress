@@ -1,3 +1,11 @@
+import type { ComponentType } from "react";
+import type { Metadata } from "next";
+
+import {
+  getPluginPageRoutes,
+  isPluginEnabled,
+  type PluginPageRouteEntry,
+} from "@nexpress/core";
 import type {
   NpRouteRenderProps,
   NpTheme,
@@ -203,6 +211,212 @@ export function dispatchThemeRoute(
  */
 export function buildRouteRenderProps(args: {
   match: NpThemeRouteMatch;
+  searchParams: Record<string, string | string[] | undefined>;
+  blockCtx: NpRouteRenderProps["blockCtx"];
+}): NpRouteRenderProps {
+  return {
+    params: args.match.params,
+    searchParams: args.searchParams,
+    blockCtx: args.blockCtx,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Plugin route dispatch (#623, PRT.2)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * One matched plugin route. The component is narrowed from the
+ * registry's `unknown` to `ComponentType<NpRouteRenderProps>`
+ * here — the `@nexpress/core` plugin host stays React-free at
+ * the type level (peer-dep boundary), and the dispatcher is
+ * the right place to assert the runtime expectation.
+ */
+export interface NpPluginRouteMatch {
+  pluginId: string;
+  route: {
+    pattern: string;
+    component: ComponentType<NpRouteRenderProps>;
+    metadata?: (ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata;
+    surface: "site" | "member";
+    locale: "auto" | "none";
+  };
+  params: Record<string, string>;
+}
+
+/**
+ * Module-level cache so the boot collision warning fires
+ * once-per-pattern-per-process. Resets via the test hook below.
+ */
+const warnedPluginPatterns = new Set<string>();
+
+/** Test hook — resets the plugin collision warning de-dup set. */
+export function __resetPluginCollisionWarnings(): void {
+  warnedPluginPatterns.clear();
+}
+
+function detectAndWarnPluginCollisions(
+  themeRoutes: ReadonlyArray<NpThemeRoute>,
+  pluginEntries: ReadonlyArray<{ pluginId: string; route: PluginPageRouteEntry }>,
+): void {
+  // Theme patterns shadow plugin patterns under the locked
+  // precedence (theme > plugin, design doc § 2.3). Surface that
+  // explicitly so an operator who installed a plugin AND chose a
+  // theme that owns the same path knows why the plugin route
+  // never renders.
+  const themePatterns = new Set(themeRoutes.map((r) => r.pattern));
+  for (const { pluginId, route } of pluginEntries) {
+    const key = `theme:${route.pattern}`;
+    if (themePatterns.has(route.pattern) && !warnedPluginPatterns.has(key)) {
+      warnedPluginPatterns.add(key);
+
+      console.warn(
+        `[nexpress/plugin-routes] pattern "${route.pattern}" registered ` +
+          `by plugin "${pluginId}" is shadowed by the active theme — the ` +
+          `theme owns the path. Drop the override from the theme or rename ` +
+          `the plugin's route.`,
+      );
+    }
+  }
+  // Two plugins claiming the same pattern: the first registered
+  // wins (the `for` loop in `dispatchPluginRoute` matches in
+  // order). Warn once per duplicate so operators can resolve
+  // by disabling one.
+  const pluginCounts = new Map<string, string[]>();
+  for (const { pluginId, route } of pluginEntries) {
+    const ids = pluginCounts.get(route.pattern) ?? [];
+    ids.push(pluginId);
+    pluginCounts.set(route.pattern, ids);
+  }
+  for (const [pattern, ids] of pluginCounts) {
+    if (ids.length <= 1) continue;
+    const key = `plugins:${pattern}`;
+    if (warnedPluginPatterns.has(key)) continue;
+    warnedPluginPatterns.add(key);
+
+    console.warn(
+      `[nexpress/plugin-routes] pattern "${pattern}" is registered by ` +
+        `${ids.length} plugins (${ids.join(", ")}) — the first one wins. ` +
+        `Disable conflicting plugins or contact the plugin authors to ` +
+        `namespace their routes.`,
+    );
+  }
+}
+
+/**
+ * Plugin route dispatcher (#623). Walks every loaded plugin's
+ * registered `pageRoutes` in registration order, returning the
+ * first match against `path`. Disabled plugins (per the
+ * `enabled-gate`) are skipped silently — same gating behavior
+ * the hook dispatcher uses for `runHook`.
+ *
+ * Precedence vs theme routes lives at the call site (the
+ * catch-all): theme dispatch runs first, plugin dispatch runs
+ * only when theme returned null.
+ *
+ * `localeAwarePath` is the locale-stripped path the catch-all
+ * already computes for the page-document lookup. `rawPath` is
+ * the path before locale stripping; today only used by future
+ * `locale: "none"` plugin routes (deferred per PRT.2 scope —
+ * the field is accepted but `"auto"` is what every plugin
+ * actually receives in this slice).
+ */
+export async function dispatchPluginRoute(
+  ctx: { localeAwarePath: string; themeRoutes: ReadonlyArray<NpThemeRoute> },
+): Promise<NpPluginRouteMatch | null> {
+  const entries = getPluginPageRoutes();
+  detectAndWarnPluginCollisions(ctx.themeRoutes, entries);
+
+  const normalized = ctx.localeAwarePath.startsWith("/")
+    ? ctx.localeAwarePath
+    : `/${ctx.localeAwarePath}`;
+
+  for (const { pluginId, route } of entries) {
+    // Disabled plugins skip — checked per-request so admin
+    // toggles take effect without a process restart.
+    if (!(await isPluginEnabled(pluginId))) continue;
+    // Skip non-function/non-object components defensively (the
+    // registry already filters at registration time, but the
+    // dispatcher is the last line before React renders).
+    if (
+      typeof route.component !== "function" &&
+      (typeof route.component !== "object" || route.component === null)
+    ) {
+      continue;
+    }
+    const params = matchPattern(route.pattern, normalized);
+    if (!params) continue;
+    return {
+      pluginId,
+      route: {
+        pattern: route.pattern,
+        component: route.component as ComponentType<NpRouteRenderProps>,
+        metadata: route.metadata as
+          | ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata)
+          | undefined,
+        surface: route.surface,
+        locale: route.locale,
+      },
+      params,
+    };
+  }
+  return null;
+}
+
+/**
+ * Synchronous variant for callers that have already resolved
+ * the enabled state externally (e.g. tests, or surfaces that
+ * don't gate on enable). Skips the `isPluginEnabled` await.
+ */
+export function dispatchPluginRouteSync(
+  ctx: {
+    localeAwarePath: string;
+    themeRoutes: ReadonlyArray<NpThemeRoute>;
+    enabled?: (pluginId: string) => boolean;
+  },
+): NpPluginRouteMatch | null {
+  const entries = getPluginPageRoutes();
+  detectAndWarnPluginCollisions(ctx.themeRoutes, entries);
+
+  const normalized = ctx.localeAwarePath.startsWith("/")
+    ? ctx.localeAwarePath
+    : `/${ctx.localeAwarePath}`;
+
+  for (const { pluginId, route } of entries) {
+    if (ctx.enabled && !ctx.enabled(pluginId)) continue;
+    if (
+      typeof route.component !== "function" &&
+      (typeof route.component !== "object" || route.component === null)
+    ) {
+      continue;
+    }
+    const params = matchPattern(route.pattern, normalized);
+    if (!params) continue;
+    return {
+      pluginId,
+      route: {
+        pattern: route.pattern,
+        component: route.component as ComponentType<NpRouteRenderProps>,
+        metadata: route.metadata as
+          | ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata)
+          | undefined,
+        surface: route.surface,
+        locale: route.locale,
+      },
+      params,
+    };
+  }
+  return null;
+}
+
+/**
+ * Build `NpRouteRenderProps` for a plugin-route match. Same
+ * shape `buildRouteRenderProps` produces for theme routes; kept
+ * as a separate function so the params type stays accurate
+ * (plugin route match has its own `params` field).
+ */
+export function buildPluginRouteRenderProps(args: {
+  match: NpPluginRouteMatch;
   searchParams: Record<string, string | string[] | undefined>;
   blockCtx: NpRouteRenderProps["blockCtx"];
 }): NpRouteRenderProps {
