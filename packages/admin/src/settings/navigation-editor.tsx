@@ -1680,6 +1680,13 @@ function PagePicker({
           id={triggerId}
           type="button"
           variant="outline"
+          // Radix's PopoverTrigger sets `aria-expanded` automatically
+          // but not `aria-haspopup`. Declaring it as `listbox` lets
+          // screen readers announce "Select a page, listbox" before
+          // the operator opens the popover — without this the trigger
+          // reads as a plain button and the SR user has no hint that
+          // activating it surfaces a list of options.
+          aria-haspopup="listbox"
           className="w-full justify-between font-normal"
         >
           <span className="truncate">{triggerLabel}</span>
