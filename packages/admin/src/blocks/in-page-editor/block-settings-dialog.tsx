@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../ui/dialog.js";
+import { Label } from "../../ui/label.js";
 
 export interface BlockSettingsDialogProps {
   /**
@@ -128,17 +129,47 @@ export function BlockSettingsDialog({
               This block has no editable props.
             </div>
           ) : (
-            fields.map((field) => (
-              <FieldControl
-                key={field.name}
-                field={field}
-                value={draft[field.name]}
-                onChange={(value) =>
-                  setDraft((current) => ({ ...current, [field.name]: value }))
-                }
-                inputId={`np-block-settings-${block?.id ?? "x"}-${field.name}`}
-              />
-            ))
+            fields.map((field) => {
+              const inputId = `np-block-settings-${block?.id ?? "x"}-${field.name}`;
+              // `boolean` switches embed their own inline Label
+              // alongside the toggle (per FieldControl's switch
+              // layout), so a sibling label here would double up.
+              // Every other field type carries its label in this
+              // wrapper so the dialog reads consistently and so
+              // screen readers always have a programmatic
+              // association via `htmlFor`. (#524)
+              const renderInlineLabel = field.type !== "boolean";
+              return (
+                <div key={field.name} className="space-y-1.5">
+                  {renderInlineLabel ? (
+                    <Label
+                      htmlFor={inputId}
+                      className="flex items-center gap-1 text-xs font-medium text-foreground"
+                    >
+                      {field.label ?? field.name}
+                      {field.required ? (
+                        <span aria-hidden="true" className="text-destructive">
+                          *
+                        </span>
+                      ) : null}
+                    </Label>
+                  ) : null}
+                  <FieldControl
+                    field={field}
+                    value={draft[field.name]}
+                    onChange={(value) =>
+                      setDraft((current) => ({ ...current, [field.name]: value }))
+                    }
+                    inputId={inputId}
+                  />
+                  {field.description ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      {field.description}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })
           )}
         </div>
 

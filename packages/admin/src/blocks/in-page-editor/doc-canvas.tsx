@@ -17,7 +17,11 @@ import {
 } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
-import type { EditorAction } from "../editor-engine/index.js";
+import {
+  canAcceptChild,
+  locateBlock,
+  type EditorAction,
+} from "../editor-engine/index.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 import { PaletteModal } from "../shared/palette-modal.js";
@@ -236,6 +240,28 @@ export function DocCanvas({
   const settingsDefinition = settingsBlock
     ? (definitions.get(settingsBlock.type) ?? null)
     : null;
+
+  // Filter the palette's offerings to what the current insertion
+  // target's parent container actually accepts (#525). When
+  // `insertAfterId` is null (bottom "Browse all blocks" → top-level
+  // ADD), no parent contract applies; show the full field-allowed
+  // list. When set (hover-rail `+` → INSERT_AFTER inside a
+  // container), filter by the container's `allowedChildTypes` and
+  // hide types that would push past `maxChildren`. Without this the
+  // operator picks a type that the reducer's INSERT_AFTER gate
+  // (#523) silently rejects as a no-op.
+  const paletteBlocks = useMemo(() => {
+    if (!insertAfterId) return availableBlocks;
+    const loc = locateBlock(blocks, insertAfterId);
+    if (!loc || loc.parentId === null) return availableBlocks;
+    const parent = blocksById.get(loc.parentId);
+    const parentDef = parent ? definitions.get(parent.type) : null;
+    if (!parentDef) return availableBlocks;
+    const childCount = parent?.children?.length ?? 0;
+    return availableBlocks.filter((def) =>
+      canAcceptChild(parentDef, def.type, childCount),
+    );
+  }, [insertAfterId, availableBlocks, blocks, blocksById, definitions]);
 
   // Adding from the bottom inserter or quick-insert bar appends to
   // the top level. Adding from a hovered block's `+` rail inserts
@@ -517,7 +543,7 @@ export function DocCanvas({
           setPaletteOpen(open);
           if (!open) setInsertAfterId(null);
         }}
-        availableBlocks={availableBlocks}
+        availableBlocks={paletteBlocks}
         onAdd={handleAdd}
       />
 
