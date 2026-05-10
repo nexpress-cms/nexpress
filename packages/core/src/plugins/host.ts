@@ -881,7 +881,16 @@ function normalizePageRoutes(plugin: ResolvedPluginLike): readonly PluginPageRou
       locale?: unknown;
     };
     if (typeof r.pattern !== "string" || r.pattern.length === 0) continue;
-    if (r.component == null) continue;
+    // Accept either a function (functional / class component) or a
+    // non-null object (memo / forwardRef / Suspense-wrapped, all of
+    // which are objects with a `$$typeof` brand). Reject anything
+    // else — strings, numbers, booleans — that the dispatcher would
+    // hand to React only to crash at render time. Same defensive
+    // shape as the scheduled / hooks normalization above; tighter
+    // than the earlier draft which only rejected null / undefined.
+    if (typeof r.component !== "function") {
+      if (typeof r.component !== "object" || r.component === null) continue;
+    }
     out.push({
       pattern: r.pattern,
       component: r.component,
