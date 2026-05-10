@@ -27,6 +27,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
     }
   },
   "files": [
@@ -35,17 +40,28 @@
   "engines": {
     "node": ">=20"
   },
+  "peerDependencies": {
+    "next": ">=15",
+    "react": "^19.0.0"
+  },
   "dependencies": {
+    "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*"
+    "@nexpress/editor": "workspace:*",
+    "@nexpress/next": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "next": "^16.2.4",
+    "react": "^19.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "rm -rf dist && tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",

@@ -1,19 +1,18 @@
 import { findDocuments } from "@nexpress/core";
+import { getSiteMember } from "@nexpress/next";
+import type { NpRichTextContent } from "@nexpress/editor";
+import type { NpRouteRenderProps } from "@nexpress/next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { DiscussionForm } from "@/components/discussion-form";
-import { ensureFor } from "@/lib/init-core";
-import { getSiteMember } from "@/lib/site-member";
-import type { NpRichTextContent } from "@nexpress/editor";
+import { DiscussionForm } from "@nexpress/plugin-forum/client";
 
-interface EditDiscussionPageProps {
-  params: Promise<{ slug: string }>;
-}
+export default async function EditDiscussionRoute({
+  params,
+}: NpRouteRenderProps) {
+  const slug = typeof params.slug === "string" ? params.slug : "";
+  if (!slug) notFound();
 
-export default async function EditDiscussionPage({ params }: EditDiscussionPageProps) {
-  await ensureFor("read");
-  const { slug } = await params;
   const member = await getSiteMember();
   if (!member) {
     // 404 instead of redirecting to /members/login. The
@@ -24,7 +23,10 @@ export default async function EditDiscussionPage({ params }: EditDiscussionPageP
     notFound();
   }
 
-  const result = await findDocuments("discussions", { where: { slug }, limit: 1 });
+  const result = await findDocuments("discussions", {
+    where: { slug },
+    limit: 1,
+  });
   const doc = result.docs[0];
   if (!doc) notFound();
 

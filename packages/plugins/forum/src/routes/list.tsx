@@ -1,26 +1,33 @@
-import { getMemberProfiles } from "@nexpress/core";
-import { buildPageMetadata } from "@nexpress/next";
+import { findDocuments, getMemberProfiles } from "@nexpress/core";
+import type { NpFindWhere } from "@nexpress/core";
+import { buildPageMetadata, getSiteMember } from "@nexpress/next";
+import type { NpRouteRenderProps } from "@nexpress/next";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import type { NpFindWhere } from "@nexpress/core";
+import { PaginationNav } from "../components/pagination-nav.js";
 
-import { PaginationNav } from "@/components/pagination-nav";
-import { findDiscussions, type DiscussionsDocument } from "@/db/generated/documents";
-import { ensureFor } from "@/lib/init-core";
-import { getSiteMember } from "@/lib/site-member";
-
-interface DiscussionsListPageProps {
-  searchParams: Promise<{ page?: string; author?: string }>;
-}
-
-export async function generateMetadata(): Promise<Metadata> {
-  await ensureFor("read");
-  return buildPageMetadata({
-    title: "Discussions",
-    description: "Member-authored discussion threads.",
-    path: "/discussions",
-  });
+/**
+ * Locally-defined shape of a `discussions` collection row. The
+ * host's typed `findDiscussions` is generated from the host's
+ * collections list and lives in `apps/web/src/db/generated/`,
+ * which a plugin can't import. We assert the shape against the
+ * untyped `findDocuments<T>("discussions", ...)` call instead —
+ * the plugin owns the schema (`defineDiscussionsCollection`),
+ * so re-stating it here is the source of truth, not a copy.
+ */
+export interface DiscussionsDocument {
+  id: string;
+  status: "draft" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  memberAuthorId: string | null;
+  slug: string;
+  title: string;
+  body: unknown;
+  category?: string | null;
+  pinned?: boolean | null;
+  locked?: boolean | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -29,19 +36,30 @@ const STATUS_LABELS: Record<string, string> = {
   archived: "Archived",
 };
 
-export default async function DiscussionsListPage({ searchParams }: DiscussionsListPageProps) {
-  await ensureFor("read");
-  const params = await searchParams;
-  const pageNum = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+export async function listMetadata(): Promise<Metadata> {
+  return buildPageMetadata({
+    title: "Discussions",
+    description: "Member-authored discussion threads.",
+    path: "/discussions",
+  });
+}
+
+export default async function DiscussionsListRoute({
+  searchParams,
+}: NpRouteRenderProps) {
+  const sp = searchParams ?? {};
+  const rawPage = typeof sp.page === "string" ? sp.page : Array.isArray(sp.page) ? sp.page[0] : undefined;
+  const author = typeof sp.author === "string" ? sp.author : Array.isArray(sp.author) ? sp.author[0] : undefined;
+  const pageNum = Math.max(1, Number.parseInt(rawPage ?? "1", 10) || 1);
   const limit = 20;
 
   const member = await getSiteMember();
-  const showMine = params.author === "me" && member !== null;
+  const showMine = author === "me" && member !== null;
 
-  // Anonymous + non-author members see only published rows. A logged-in
-  // member viewing `?author=me` sees ALL their own docs (including
-  // pending) — they need to track what they submitted before a mod
-  // reviews it.
+  // Anonymous + non-author members see only published rows. A
+  // logged-in member viewing `?author=me` sees ALL their own
+  // docs (including pending) — they need to track what they
+  // submitted before a mod reviews it.
   const where: NpFindWhere<DiscussionsDocument> = {};
   if (showMine && member) {
     where.memberAuthorId = member.id;
@@ -49,16 +67,13 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
     where.status = "published";
   }
 
-  const result = await findDiscussions({
+  const result = await findDocuments<DiscussionsDocument>("discussions", {
     where,
     sort: "-createdAt",
     page: pageNum,
     limit,
   });
 
-  // Resolve member-author profiles in one query so each row can render
-  // "by @handle" without N round-trips. Anonymous-authored rows (the
-  // staff-side path) leave `memberAuthorId` null and skip the lookup.
   const authorIds = result.docs
     .map((d) => d.memberAuthorId)
     .filter((v): v is string => typeof v === "string" && v.length > 0);
@@ -107,18 +122,23 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
       ) : (
         <ul className="np-discussions-list">
           {result.docs.map((doc) => {
-            const author = doc.memberAuthorId ? authorById.get(doc.memberAuthorId) : null;
+            const profile = doc.memberAuthorId
+              ? authorById.get(doc.memberAuthorId)
+              : null;
             return (
               <li key={doc.id} className="np-discussions-card">
                 <h2>
                   <Link href={`/discussions/${doc.slug}`}>{doc.title}</Link>
                 </h2>
                 <div className="np-discussions-meta">
-                  {author ? (
-                    <Link href={`/u/${author.handle}`} className="np-discussions-author">
-                      {author.avatarUrl ? (
+                  {profile ? (
+                    <Link
+                      href={`/u/${profile.handle}`}
+                      className="np-discussions-author"
+                    >
+                      {profile.avatarUrl ? (
                         <img
-                          src={author.avatarUrl}
+                          src={profile.avatarUrl}
                           alt=""
                           width={20}
                           height={20}
@@ -132,7 +152,7 @@ export default async function DiscussionsListPage({ searchParams }: DiscussionsL
                           }}
                         />
                       ) : null}
-                      @{author.handle}
+                      @{profile.handle}
                     </Link>
                   ) : (
                     <span className="np-discussions-author">staff</span>

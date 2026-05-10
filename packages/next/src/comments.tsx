@@ -76,7 +76,6 @@ export function Comments({ collectionSlug, documentId }: CommentsProps) {
         if (typeof id === "string") setViewerMemberId(id);
       })
       .catch(() => setMemberKnown(false));
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
@@ -398,7 +397,6 @@ function ReactionButton({ commentId, memberKnown }: ReactionButtonProps) {
   }, [commentId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

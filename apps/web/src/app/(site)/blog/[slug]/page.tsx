@@ -9,8 +9,8 @@ import {
   RenderHead,
   collectRenderContributions,
 } from "@/components/render-contributions";
-import { Comments } from "@/components/comments";
-import { JsonLd } from "@/components/json-ld";
+import { Comments } from "@nexpress/next/client";
+import { JsonLd } from "@nexpress/next";
 import type { Metadata } from "next";
 import type { NpRichTextContent } from "@nexpress/editor";
 
