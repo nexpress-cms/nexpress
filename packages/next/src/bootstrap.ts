@@ -12,7 +12,6 @@ import {
   registerThemes,
   resetPlugins,
   resolveSiteForHostname,
-  getEmailAdapter,
   setCurrentSiteResolver,
   setDb,
   setI18nConfig,
@@ -298,11 +297,15 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       ),
       // #597 — three more prod-only checks that map to common
       // dev → prod slip-ups: noop email in prod, loopback DATABASE_URL
-      // in prod, missing/loopback SITE_URL in prod. The bootstrap
-      // layer is the only place that reads the live env + active
-      // adapter, so the inputs are gathered here and passed in as
-      // pure values; safety-check stays a pure function of its input.
-      emailAdapterKind: getEmailAdapter().kind,
+      // in prod, missing/loopback SITE_URL in prod.
+      //
+      // `emailAdapterEnv` is the env var rather than the live
+      // adapter — by design, `setEmailAdapter()` is called AFTER
+      // this safety check (the host's `init-core.ts` does it in the
+      // "write" intent path), so a live-adapter check would always
+      // see the default noop. Reading the operator's intent
+      // (`NP_EMAIL_ADAPTER`) is the right signal at this boot stage.
+      emailAdapterEnv: process.env.NP_EMAIL_ADAPTER ?? null,
       databaseHost: extractDatabaseHost(
         options.connectionString ||
           config.db.connectionString ||

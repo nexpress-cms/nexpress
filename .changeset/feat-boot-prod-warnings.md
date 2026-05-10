@@ -7,9 +7,15 @@
 `verifyStartupSafety` gains three optional inputs and three new
 warning ids that fire when `NODE_ENV=production`:
 
-- `emailAdapterKind` — when `"noop"` in production, warn that
-  transactional mail (password reset, email verify, member
-  digests) is silently dropped. Warning id: `noop_email_in_prod`.
+- `emailAdapterEnv` — when `null` (env var unset) or `"noop"`
+  in production, warn that transactional mail (password reset,
+  email verify, member digests) is silently dropped. Warning id:
+  `noop_email_in_prod`. Note: this checks the operator's
+  **intent** via the env var rather than the live adapter,
+  because the email adapter is wired AFTER this safety check
+  runs in the boot sequence — a live-adapter check would always
+  see the default noop. Programmatic `setEmailAdapter()` calls
+  surface a false positive; the warning text calls that out.
 - `databaseHost` — when loopback (`localhost` / `127.0.0.1` /
   `::1` / `0.0.0.0`) in production, warn that the operator
   likely shipped a stale dev DATABASE_URL. Warning id:

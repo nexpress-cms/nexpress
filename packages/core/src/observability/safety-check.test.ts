@@ -207,14 +207,14 @@ describe("verifyStartupSafety", () => {
 
   // ── #597 — three more prod-only checks ────────────────────────
 
-  it("warns when emailAdapterKind='noop' in production", () => {
+  it("warns when NP_EMAIL_ADAPTER is unset (null) in production", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
       storageAdapter: "s3",
       secret: "x".repeat(64),
       nodeEnv: "production",
       multiNodeFlag: undefined,
-      emailAdapterKind: "noop",
+      emailAdapterEnv: null,
       siteUrl: "https://example.com",
     });
     expect(emitted).toContain("noop_email_in_prod");
@@ -225,6 +225,35 @@ describe("verifyStartupSafety", () => {
     ).toBe(true);
   });
 
+  it("warns when NP_EMAIL_ADAPTER='noop' (explicit) in production", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      emailAdapterEnv: "noop",
+      siteUrl: "https://example.com",
+    });
+    expect(emitted).toContain("noop_email_in_prod");
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+
+  it("does NOT warn when emailAdapterEnv is undefined (back-compat: caller didn't supply)", () => {
+    const { warnings } = captureWarnings();
+    const emitted = verifyStartupSafety({
+      storageAdapter: "s3",
+      secret: "x".repeat(64),
+      nodeEnv: "production",
+      multiNodeFlag: undefined,
+      // emailAdapterEnv intentionally omitted — older callers
+      // shouldn't pick up the new warning until they're updated.
+      siteUrl: "https://example.com",
+    });
+    expect(emitted).not.toContain("noop_email_in_prod");
+    expect(warnings).toEqual([]);
+  });
+
   it("does NOT warn when noop email runs outside production", () => {
     const { warnings } = captureWarnings();
     const emitted = verifyStartupSafety({
@@ -232,7 +261,7 @@ describe("verifyStartupSafety", () => {
       secret: "x".repeat(64),
       nodeEnv: "development",
       multiNodeFlag: undefined,
-      emailAdapterKind: "noop",
+      emailAdapterEnv: null,
     });
     expect(emitted).not.toContain("noop_email_in_prod");
     expect(warnings).toEqual([]);
@@ -245,7 +274,7 @@ describe("verifyStartupSafety", () => {
       secret: "x".repeat(64),
       nodeEnv: "production",
       multiNodeFlag: undefined,
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
       siteUrl: "https://example.com",
     });
     expect(
@@ -268,7 +297,7 @@ describe("verifyStartupSafety", () => {
       multiNodeFlag: undefined,
       databaseHost: host,
       siteUrl: "https://example.com",
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
     });
     expect(emitted).toContain("loopback_database_in_prod");
     expect(
@@ -285,7 +314,7 @@ describe("verifyStartupSafety", () => {
       multiNodeFlag: undefined,
       databaseHost: "db.internal.example.com",
       siteUrl: "https://example.com",
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
     });
     expect(
       warnings.some((w) => w.message.includes("DATABASE_URL host")),
@@ -300,7 +329,7 @@ describe("verifyStartupSafety", () => {
       nodeEnv: "production",
       multiNodeFlag: undefined,
       siteUrl: null,
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
     });
     expect(emitted).toContain("missing_site_url");
     expect(
@@ -321,7 +350,7 @@ describe("verifyStartupSafety", () => {
       nodeEnv: "production",
       multiNodeFlag: undefined,
       siteUrl,
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
     });
     expect(emitted).toContain("loopback_site_url");
     expect(
@@ -337,7 +366,7 @@ describe("verifyStartupSafety", () => {
       nodeEnv: "production",
       multiNodeFlag: undefined,
       siteUrl: "https://example.com",
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
     });
     expect(
       warnings.some((w) => w.message.includes("SITE_URL")),
@@ -352,7 +381,7 @@ describe("verifyStartupSafety", () => {
       nodeEnv: "production",
       multiNodeFlag: undefined,
       siteUrl: "not-a-url",
-      emailAdapterKind: "smtp",
+      emailAdapterEnv: "smtp",
     });
     // Not loopback because URL parsing fails — but also not "missing"
     // because the value IS set. Skip both warnings; the framework's
@@ -370,7 +399,7 @@ describe("verifyStartupSafety", () => {
       secret: "tiny",
       nodeEnv: "development",
       multiNodeFlag: undefined,
-      emailAdapterKind: "noop",
+      emailAdapterEnv: null,
       databaseHost: "localhost",
       siteUrl: "http://localhost:3000",
     });
