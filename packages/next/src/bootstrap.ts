@@ -12,6 +12,7 @@ import {
   registerThemes,
   resetPlugins,
   resolveSiteForHostname,
+  getOptionalRateLimiter,
   setCurrentSiteResolver,
   setDb,
   setI18nConfig,
@@ -313,6 +314,13 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
           null,
       ),
       siteUrl: process.env.SITE_URL ?? null,
+      // #621 — `getOptionalRateLimiter()` returns the adapter the
+      // operator opted into via `setRateLimiter(...)`, or null
+      // when the in-memory default will be lazy-installed at first
+      // request. `null` → `rateLimiterCustom: false` (the warn
+      // condition); any non-null adapter → `true` (operator
+      // chose, presumably with multi-node in mind).
+      rateLimiterCustom: getOptionalRateLimiter() !== null,
     });
 
     servicesInitialized = true;
