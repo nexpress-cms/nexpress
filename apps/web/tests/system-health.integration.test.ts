@@ -37,7 +37,19 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
     const { gatherSystemHealth } = await import("@/lib/system-health");
     const summary = await gatherSystemHealth();
     const ids = summary.checks.map((c) => c.id);
-    expect(ids).toEqual(["db", "migrations", "storage", "queue", "plugins"]);
+    expect(ids).toEqual([
+      "db",
+      "migrations",
+      "storage",
+      "queue",
+      "plugins",
+      // #619 — runtime parallels of the boot-time safety checks
+      // from #597, surfaced on /admin/health for operators who
+      // are debugging "why did password reset stop working" etc.
+      "site_url",
+      "email",
+      "secret",
+    ]);
   });
 
   it("aggregates errorCount / warnCount honestly", async () => {

@@ -300,6 +300,154 @@ function checkPlugins(): Check {
   }
 }
 
+/**
+ * SITE_URL is the runtime parallel of the boot-time check in
+ * `verifyStartupSafety` (#597). Mirroring it on the health page
+ * means an operator who's debugging "why did password reset stop
+ * sending the right link" sees the answer here instead of having
+ * to grep boot logs.
+ *
+ * Exported so the unit suite can drive each branch directly by
+ * mutating `process.env` — no need to spin up the full health
+ * gather + integration DB.
+ */
+export function checkSiteUrl(): Check {
+  const raw = process.env.SITE_URL ?? "";
+  if (!raw) {
+    return {
+      id: "site_url",
+      label: "SITE_URL",
+      state: "error",
+      detail: "unset",
+      hint:
+        "Set SITE_URL in `.env` to your public origin. Sitemap URLs, " +
+        "OAuth callbacks, and outbound email links all anchor on it. " +
+        "Password-reset / email-verify flows refuse to run without it (#598).",
+    };
+  }
+  try {
+    const url = new URL(raw);
+    const host = url.hostname;
+    const loopback = ["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"];
+    if (loopback.includes(host)) {
+      return {
+        id: "site_url",
+        label: "SITE_URL",
+        state: "warn",
+        detail: `loopback origin (${host})`,
+        hint:
+          "Loopback in production breaks share links, OAuth round-trips, " +
+          "and outbound email links. Set to your public origin once you " +
+          "deploy.",
+      };
+    }
+    return { id: "site_url", label: "SITE_URL", state: "ok", detail: url.origin };
+  } catch (err) {
+    return {
+      id: "site_url",
+      label: "SITE_URL",
+      state: "error",
+      detail: err instanceof Error ? err.message : "unparseable",
+      hint:
+        "SITE_URL must be a parseable absolute URL (e.g. https://example.com).",
+    };
+  }
+}
+
+/**
+ * Email adapter — runtime parallel of the boot-time check in
+ * #597. Reads the env var (operator's intent) rather than the
+ * live adapter because programmatic `setEmailAdapter()` callers
+ * skip the env path. Catches the operator who deployed without
+ * SMTP and is wondering why password-reset emails never arrive.
+ */
+export function checkEmailAdapter(): Check {
+  const raw = (process.env.NP_EMAIL_ADAPTER ?? "").toLowerCase();
+  if (!raw || raw === "noop") {
+    return {
+      id: "email",
+      label: "Email adapter",
+      state: "warn",
+      detail: raw ? "noop" : "unset (defaults to noop)",
+      hint:
+        "Transactional mail (password reset, email verify, member " +
+        "digests) is silently dropped. Set NP_EMAIL_ADAPTER=smtp + the " +
+        "NP_SMTP_* vars, or install a custom adapter via " +
+        "setEmailAdapter() in your bootstrap.",
+    };
+  }
+  if (raw === "smtp") {
+    const missing: string[] = [];
+    if (!process.env.NP_SMTP_HOST) missing.push("NP_SMTP_HOST");
+    if (!process.env.NP_SMTP_FROM) missing.push("NP_SMTP_FROM");
+    if (missing.length > 0) {
+      return {
+        id: "email",
+        label: "Email adapter",
+        state: "error",
+        detail: `smtp · missing ${missing.join(", ")}`,
+        hint: "Re-run `pnpm run setup` to fill in the SMTP fields.",
+      };
+    }
+    return {
+      id: "email",
+      label: "Email adapter",
+      state: "ok",
+      detail: `smtp · ${process.env.NP_SMTP_HOST ?? ""}`,
+    };
+  }
+  return {
+    id: "email",
+    label: "Email adapter",
+    state: "ok",
+    detail: `custom (${raw})`,
+  };
+}
+
+/**
+ * NP_SECRET — runtime parallel of #597's boot-time check, plus
+ * the entropy floor introduced in the setup wizard (#618). Most
+ * deployments set this once via `pnpm run setup` and forget it;
+ * surfacing the runtime view catches the operator who hand-edited
+ * `.env` to a low-entropy string after the fact.
+ */
+export function checkSecret(): Check {
+  const secret = process.env.NP_SECRET ?? "";
+  if (!secret) {
+    return {
+      id: "secret",
+      label: "NP_SECRET",
+      state: "error",
+      detail: "unset",
+      hint:
+        "JWT sessions are signed with an empty key — every token is " +
+        "forgeable. Set NP_SECRET in `.env` (≥32 random chars).",
+    };
+  }
+  if (secret.length < 32) {
+    return {
+      id: "secret",
+      label: "NP_SECRET",
+      state: "error",
+      detail: `${secret.length.toString()} chars (need ≥32)`,
+      hint: "Re-run `pnpm run setup` and use the form's `generate` button.",
+    };
+  }
+  const distinct = new Set(secret).size;
+  if (distinct < 8) {
+    return {
+      id: "secret",
+      label: "NP_SECRET",
+      state: "warn",
+      detail: `${secret.length.toString()} chars · only ${distinct.toString()} distinct`,
+      hint:
+        "Low-entropy secret — trivially brute-forceable. Use the setup " +
+        "wizard's `generate` button.",
+    };
+  }
+  return { id: "secret", label: "NP_SECRET", state: "ok", detail: `${secret.length.toString()} chars` };
+}
+
 export async function gatherSystemHealth(): Promise<HealthSummary> {
   const checks: Check[] = [];
   checks.push(await checkDatabase());
@@ -307,6 +455,9 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(await checkStorage());
   checks.push(await checkQueue());
   checks.push(checkPlugins());
+  checks.push(checkSiteUrl());
+  checks.push(checkEmailAdapter());
+  checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),
     checks,
