@@ -231,11 +231,13 @@ export const portfolioBlocks: NpBlockDefinition[] = [
     propsSchema: [
       { name: "heading", label: "Section heading", type: "text" },
     ],
-    // Async render — reads `settings.clientLogos` so the
-    // operator manages logos in admin's Theme settings panel
-    // (a single canonical source) rather than re-typing per
-    // block instance. Block props only carry the heading.
-    render: async (props) => <ClientLogosStrip {...(props as { heading?: string })} />,
+    // `ClientLogosStrip` is itself an async server component —
+    // it reads `settings.clientLogos` so the operator manages
+    // logos in admin's Theme settings panel (a single canonical
+    // source) rather than re-typing per block instance. The render
+    // arrow itself is sync (just constructs the element); React
+    // resolves the inner async at render time.
+    render: (props) => <ClientLogosStrip {...(props as { heading?: string })} />,
   },
 ];
 

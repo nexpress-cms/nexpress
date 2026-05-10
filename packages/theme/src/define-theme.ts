@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ComponentType, ReactNode } from "react";
 
 import type {
@@ -210,7 +211,7 @@ export interface NpThemeRoute {
    */
   metadata?: (
     ctx: NpRouteRenderProps,
-  ) => Promise<import("next").Metadata> | import("next").Metadata;
+  ) => Promise<Metadata> | Metadata;
   // Note: a `revalidate` hint was considered but dropped from
   // v0.2 — Next's route-segment `revalidate` export is static
   // and can't vary per URL pattern from a single catch-all.

@@ -174,7 +174,7 @@ async function scanUnknownBlocks(
     // admin.manage capability gate at the route entry already
     // bounds who can run this.
     const result = await findDocuments(slug, { limit: 1000 }, user);
-    for (const row of result.docs as Record<string, unknown>[]) {
+    for (const row of result.docs) {
       const docId = typeof row.id === "string" ? row.id : null;
       if (!docId) continue;
       for (const fieldName of blocksFields) {
@@ -268,7 +268,7 @@ function collectUnknownInstances(
       // plugin might have removed a child block type while
       // keeping the container.
       if (Array.isArray(item.children)) {
-        walk(item.children as NpBlockInstance[]);
+        walk(item.children);
       }
     }
   }
@@ -309,7 +309,7 @@ function stripUnknownInstances(
       if (Array.isArray(item.children)) {
         out.push({
           ...item,
-          children: walk(item.children as NpBlockInstance[]),
+          children: walk(item.children),
         });
       } else {
         out.push(item);

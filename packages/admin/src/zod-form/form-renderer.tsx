@@ -45,7 +45,16 @@ export function ZodForm({ fields, initialValue, onChange }: ZodFormProps) {
   // once per edit. Calling onChange inside a setState updater
   // function (the prior approach) violates React's purity
   // contract and double-fires under StrictMode.
+  //
+  // react-hooks/refs flags ref mutation during render. The
+  // mutation IS during render, but it's idempotent and only
+  // mirrors state that's already committed in `value` — re-runs
+  // assign the same reference back. Standard "live ref" pattern;
+  // disabling locally rather than threading a useEffect (which
+  // would create a one-render staleness window the update path
+  // depends on NOT having).
   const valueRef = useRef(value);
+  // eslint-disable-next-line react-hooks/refs
   valueRef.current = value;
 
   const update = useCallback(

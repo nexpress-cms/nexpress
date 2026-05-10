@@ -4,7 +4,6 @@ import {
   SyntaxKind,
   type CallExpression,
   type ObjectLiteralExpression,
-  type PropertyAssignment,
   type SourceFile,
 } from "ts-morph";
 
@@ -68,7 +67,7 @@ export function extractFromSourceFile(
 
   const arg = defineCall.getArguments()[0];
   if (!arg || !arg.isKind(SyntaxKind.ObjectLiteralExpression)) return null;
-  const obj = arg as ObjectLiteralExpression;
+  const obj = arg;
 
   const slug = readStringProperty(obj, "slug");
   if (!slug) return null;
@@ -76,7 +75,7 @@ export function extractFromSourceFile(
   const fieldsProp = obj.getProperty("fields");
   const fields: NpFieldConfig[] = [];
   if (fieldsProp && fieldsProp.isKind(SyntaxKind.PropertyAssignment)) {
-    const initializer = (fieldsProp as PropertyAssignment).getInitializer();
+    const initializer = (fieldsProp).getInitializer();
     if (
       initializer &&
       initializer.isKind(SyntaxKind.ArrayLiteralExpression)
@@ -120,7 +119,7 @@ function readStringProperty(
 ): string | undefined {
   const prop = obj.getProperty(name);
   if (!prop || !prop.isKind(SyntaxKind.PropertyAssignment)) return undefined;
-  const initializer = (prop as PropertyAssignment).getInitializer();
+  const initializer = (prop).getInitializer();
   if (!initializer) return undefined;
   if (initializer.isKind(SyntaxKind.StringLiteral)) {
     return initializer.getLiteralValue();
@@ -145,7 +144,7 @@ function collectFields(
   if (type === "row" || type === "collapsible") {
     const innerFields = literal.getProperty("fields");
     if (innerFields && innerFields.isKind(SyntaxKind.PropertyAssignment)) {
-      const init = (innerFields as PropertyAssignment).getInitializer();
+      const init = (innerFields).getInitializer();
       if (init && init.isKind(SyntaxKind.ArrayLiteralExpression)) {
         for (const el of init.getElements()) {
           if (el.isKind(SyntaxKind.ObjectLiteralExpression)) {
@@ -179,7 +178,7 @@ function readRelationTo(
 ): string | string[] | undefined {
   const prop = literal.getProperty("relationTo");
   if (!prop || !prop.isKind(SyntaxKind.PropertyAssignment)) return undefined;
-  const init = (prop as PropertyAssignment).getInitializer();
+  const init = (prop).getInitializer();
   if (!init) return undefined;
   if (init.isKind(SyntaxKind.StringLiteral)) {
     return init.getLiteralValue();

@@ -136,7 +136,7 @@ describe("cachedThemeFetch", () => {
     const direct = vi.fn(() => Promise.resolve("posts-data"));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
-    await cachedThemeFetch(["category-archive", "tech"], async () => "x");
+    await cachedThemeFetch(["category-archive", "tech"], () => Promise.resolve("x"));
 
     expect(unstable_cache).toHaveBeenLastCalledWith(
       expect.any(Function),
@@ -150,7 +150,7 @@ describe("cachedThemeFetch", () => {
     const direct = vi.fn(() => Promise.resolve("x"));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
-    await cachedThemeFetch(["k"], async () => "x");
+    await cachedThemeFetch(["k"], () => Promise.resolve("x"));
 
     expect(unstable_cache).toHaveBeenLastCalledWith(
       expect.any(Function),
@@ -164,7 +164,7 @@ describe("cachedThemeFetch", () => {
     const direct = vi.fn(() => Promise.resolve("x"));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
-    await cachedThemeFetch(["k"], async () => "x", { revalidate: 300 });
+    await cachedThemeFetch(["k"], () => Promise.resolve("x"), { revalidate: 300 });
 
     expect(unstable_cache).toHaveBeenLastCalledWith(
       expect.any(Function),
@@ -178,7 +178,7 @@ describe("cachedThemeFetch", () => {
     const direct = vi.fn(() => Promise.resolve("x"));
     vi.mocked(unstable_cache).mockReturnValueOnce(direct as never);
 
-    await cachedThemeFetch(["k"], async () => "x", {
+    await cachedThemeFetch(["k"], () => Promise.resolve("x"), {
       extraTags: ["nx:collection:posts", "nx:collection:authors"],
     });
 

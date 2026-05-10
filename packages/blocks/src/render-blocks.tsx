@@ -129,6 +129,13 @@ async function SafeBlock({
   try {
     const result = definition.render(props, children, ctx);
     const node = await result;
+    // The fragment is wrapping an already-awaited node (resolved
+    // before this point), so the catch below does correctly
+    // surface render() errors. The react-hooks lint rule is
+    // conservative — it warns about constructing JSX inside
+    // try/catch in general because React defers rendering, but
+    // here we're just packaging a pre-resolved value.
+    // eslint-disable-next-line react-hooks/error-boundaries
     return <>{node}</>;
   } catch (error) {
     // Always log so server-side observability picks it up — the host's
@@ -138,7 +145,7 @@ async function SafeBlock({
     // only package back into the client graph (the same trap that broke
     // the build in PR #465's earlier round). console.error is fine —
     // Next pipes it into its own error reporter.
-    // eslint-disable-next-line no-console
+     
     console.error(`[blocks] render failed for "${definition.type}"`, error);
 
     const isProd = typeof process !== "undefined" && process.env.NODE_ENV === "production";

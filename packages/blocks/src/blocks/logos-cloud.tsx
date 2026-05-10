@@ -127,7 +127,6 @@ export const logosCloudBlock: NpBlockDefinition = {
           ) : (
             <div style={stripStyle}>
               {items.map((item, index) => {
-                // eslint-disable-next-line @next/next/no-img-element
                 const img = (
                   <img
                     src={item.src}

@@ -2,8 +2,9 @@ import type { NpThemeFieldRequirement } from "@nexpress/core";
 import {
   Project,
   SyntaxKind,
+  type ArrayLiteralExpression,
+  type Node,
   type ObjectLiteralExpression,
-  type PropertyAssignment,
 } from "ts-morph";
 
 import { renderFieldLiteral } from "./generate-collection.js";
@@ -105,20 +106,20 @@ export function patchCollectionFile(
 }
 
 function getDefineCollectionFieldsArray(
-  arg: import("ts-morph").Node | undefined,
-): import("ts-morph").ArrayLiteralExpression | undefined {
+  arg: Node | undefined,
+): ArrayLiteralExpression | undefined {
   if (!arg || !arg.isKind(SyntaxKind.ObjectLiteralExpression)) return undefined;
-  const obj = arg as ObjectLiteralExpression;
+  const obj = arg;
   const fieldsProp = obj.getProperty("fields");
   if (!fieldsProp || !fieldsProp.isKind(SyntaxKind.PropertyAssignment))
     return undefined;
-  const init = (fieldsProp as PropertyAssignment).getInitializer();
+  const init = (fieldsProp).getInitializer();
   if (!init || !init.isKind(SyntaxKind.ArrayLiteralExpression)) return undefined;
   return init;
 }
 
 function collectExistingFieldNames(
-  arr: import("ts-morph").ArrayLiteralExpression,
+  arr: ArrayLiteralExpression,
 ): Set<string> {
   const names = new Set<string>();
   for (const el of arr.getElements()) {
@@ -135,7 +136,7 @@ function walkFieldNames(
   const typeProp = literal.getProperty("type");
   let typeValue: string | undefined;
   if (typeProp && typeProp.isKind(SyntaxKind.PropertyAssignment)) {
-    const init = (typeProp as PropertyAssignment).getInitializer();
+    const init = (typeProp).getInitializer();
     if (init && init.isKind(SyntaxKind.StringLiteral)) {
       typeValue = init.getLiteralValue();
     }
@@ -144,7 +145,7 @@ function walkFieldNames(
   if (typeValue === "row" || typeValue === "collapsible") {
     const inner = literal.getProperty("fields");
     if (inner && inner.isKind(SyntaxKind.PropertyAssignment)) {
-      const init = (inner as PropertyAssignment).getInitializer();
+      const init = (inner).getInitializer();
       if (init && init.isKind(SyntaxKind.ArrayLiteralExpression)) {
         for (const el of init.getElements()) {
           if (el.isKind(SyntaxKind.ObjectLiteralExpression)) {
@@ -158,7 +159,7 @@ function walkFieldNames(
 
   const nameProp = literal.getProperty("name");
   if (nameProp && nameProp.isKind(SyntaxKind.PropertyAssignment)) {
-    const init = (nameProp as PropertyAssignment).getInitializer();
+    const init = (nameProp).getInitializer();
     if (init && init.isKind(SyntaxKind.StringLiteral)) {
       out.add(init.getLiteralValue());
     }

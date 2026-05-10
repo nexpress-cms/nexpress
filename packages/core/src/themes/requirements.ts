@@ -2,7 +2,6 @@ import type {
   NpCollectionConfig,
   NpFieldConfig,
   NpRelationshipField,
-  NpThemeCollectionRequirement,
   NpThemeFieldRequirement,
   NpThemeManifest,
 } from "../config/types.js";
@@ -158,14 +157,14 @@ export function checkThemeRequirements(
         if (
           !relationToMatches(
             fieldReq.relationTo,
-            (actual as NpRelationshipField).relationTo,
+            actual.relationTo,
           )
         ) {
           result.relationConflicts.push({
             collection: slug,
             field: fieldName,
             expected: fieldReq.relationTo,
-            actual: (actual as NpRelationshipField).relationTo,
+            actual: actual.relationTo,
             hard,
           });
         }

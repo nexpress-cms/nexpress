@@ -125,6 +125,13 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-call": "off",
       "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
+      // Already inherited from `recommendedTypeChecked` as errors,
+      // pinned here explicitly so a future loosening of the
+      // recommended set doesn't quietly weaken our anti-pattern gate
+      // (CLAUDE.md / AGENTS.md: "no `as any`, `@ts-ignore`,
+      // `@ts-expect-error`"). #596 audit confirmed zero occurrences.
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/ban-ts-comment": "error",
     },
   },
 

@@ -73,8 +73,8 @@ describe("extractSeoHooks", () => {
   });
 
   it("picks up declared hooks individually", () => {
-    const sitemapEntries = async () => [];
-    const feedEntries = async () => [];
+    const sitemapEntries = () => Promise.resolve([]);
+    const feedEntries = () => Promise.resolve([]);
     const robotsTxt = () => "User-agent: *\n";
     const out = extractSeoHooks({
       seo: { sitemapEntries, feedEntries, robotsTxt },
@@ -96,7 +96,7 @@ describe("extractSeoHooks", () => {
   });
 
   it("partial declaration — only some hooks set", () => {
-    const sitemapEntries = async () => [];
+    const sitemapEntries = () => Promise.resolve([]);
     const out = extractSeoHooks({ seo: { sitemapEntries } });
     expect(out.sitemapEntries).toBe(sitemapEntries);
     expect(out.feedEntries).toBeUndefined();

@@ -130,7 +130,15 @@ async function renderTreeToHtml(tree: React.ReactElement): Promise<string> {
   // itself would throw because ReadableStream isn't thenable.
   await stream.allReady;
   if (renderError) {
-    throw renderError;
+    // `onError`'s callback receives `unknown`; rewrap as a real
+    // Error before re-throwing so the only-throw-error rule is
+    // satisfied and downstream handlers (next's error reporter,
+    // the outer try/catch) get a stack trace either way.
+    throw renderError instanceof Error
+      ? renderError
+      : new Error(
+          typeof renderError === "string" ? renderError : "Render failed",
+        );
   }
   // Drain the stream into a string. Response is the simplest text
   // accumulator that handles backpressure; we don't have to manage
