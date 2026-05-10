@@ -31,10 +31,38 @@ its log context so log search rules can target them.
 | `multi_node_local_storage`  | `NP_MULTI_NODE=true` (or `=1`) AND `NP_STORAGE_ADAPTER=local`. Each node has its own `./uploads` dir. | Switch to S3 (`NP_STORAGE_ADAPTER=s3` + bucket env). For migration of existing files, see [Switching storage adapters](#switching-storage-adapters) below.                              |
 | `missing_prod_secret`       | `NODE_ENV=production` AND `NP_SECRET` unset. JWT sessions are forgeable.                  | Generate a secret (`openssl rand -base64 48`) and set `NP_SECRET`. Existing sessions will be invalidated; users re-login.                                                                |
 | `weak_prod_secret`          | `NP_SECRET` is shorter than 32 characters in production.                                  | Same fix as above.                                                                                                                                                                   |
+| `noop_email_in_prod`        | `NODE_ENV=production` AND `NP_EMAIL_ADAPTER` is unset / `noop`. Transactional mail (password-reset, email-verify, member digests) is silently dropped. | Set `NP_EMAIL_ADAPTER=smtp` and the `NP_SMTP_*` env vars (or install a custom adapter via `setEmailAdapter()` in your bootstrap — see [email.md](./email.md)). |
+| `loopback_database_in_prod` | `NODE_ENV=production` AND `DATABASE_URL` host is `localhost` / `127.0.0.1` / `::1` / `0.0.0.0`. Almost always a stale dev connection string that slipped through CI/CD. | Point `DATABASE_URL` at the production Postgres instance.                                                                                                                              |
+| `missing_site_url`          | `NODE_ENV=production` AND `SITE_URL` is unset. Sitemap, OAuth callbacks, email links all anchor on it. | Set `SITE_URL` to your public origin (e.g. `https://example.com`). Note: with `SITE_URL` unset, password-reset / register / verify flows refuse to run (#598) — see [SITE_URL is required for email flows](#site_url-is-required-for-email-flows). |
+| `loopback_site_url`         | `NODE_ENV=production` AND `SITE_URL` is `http://localhost:…` or similar loopback. Breaks share links, OAuth round-trips, outbound email. | Same fix.                                                                                                                                                                            |
 
 These are warnings, not crashes — the process boots. They show up in
 whatever logger has been installed via `setLogger()`; on a default
-deploy that's stdout via `consoleLogger`.
+deploy that's stdout via `consoleLogger`. Verify them at runtime via
+the `/admin/health` page (which mirrors the boot-time checks).
+
+## SITE_URL is required for email flows
+
+Three routes refuse to run when `SITE_URL` is unset, returning a 500
+`Error` instead of leaking attacker-controlled host headers into
+user-deliverable URLs:
+
+- `POST /api/auth/forgot-password`
+- `POST /api/members/forgot-password`
+- `POST /api/members/register`
+
+Symptom: operators see "Error: SITE_URL is unset — refusing to build a
+user-deliverable URL from the request `Host` header." in their server
+logs, and the affected forms surface a generic error.
+
+Fix: set `SITE_URL` to your public origin in `.env`. The boot-warning
+table above flags this same misconfiguration; the runtime refusal is
+the strictness level for security-sensitive flows.
+
+This is a deliberate hardening (#598) — without it, an attacker can
+spoof `Host: attacker.example` on a forgot-password POST and cause
+the framework to mail a real reset token inside an
+`https://attacker.example/...` URL.
 
 ## Migration crashed mid-flight
 
