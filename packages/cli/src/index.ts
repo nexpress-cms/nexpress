@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import pc from "picocolors";
 
 import { promptForProjectConfig, type CliFlags } from "./prompts.js";
@@ -78,9 +80,36 @@ async function main(): Promise<void> {
   await scaffoldProject({ ...config, localMode });
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unknown error";
+/**
+ * Run `main()` only when the file is the process entry point.
+ *
+ * Without this gate, `vitest` (or any other importer of
+ * `parseCliArgs`) triggered `main()` at module-load time, hit a
+ * non-TTY prompt, and called `process.exit(1)` — which vitest
+ * surfaces as an unhandled rejection that fails the entire test
+ * suite. The Node-ESM equivalent of `require.main === module`:
+ * compare `import.meta.url` (this module's resolved URL) with the
+ * URL form of `process.argv[1]` (the entry point Node was invoked
+ * with). `realpathSync` normalizes both sides so symlinks
+ * (`pnpm`'s shimmed `.bin/create-nexpress` → `dist/index.js`)
+ * still match.
+ */
+function isCliEntryPoint(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    const thisFile = fileURLToPath(import.meta.url);
+    return realpathSync(thisFile) === realpathSync(process.argv[1]);
+  } catch {
+    // Either path failed to resolve — safer to NOT run main().
+    return false;
+  }
+}
 
-  console.error(pc.red(`Error: ${message}`));
-  process.exit(1);
-});
+if (isCliEntryPoint()) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    console.error(pc.red(`Error: ${message}`));
+    process.exit(1);
+  });
+}
