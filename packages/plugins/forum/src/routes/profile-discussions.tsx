@@ -1,26 +1,28 @@
+import { findDocuments, getMemberProfile } from "@nexpress/core";
 import { buildPageMetadata } from "@nexpress/next";
+import type { NpRouteRenderProps } from "@nexpress/next";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
-import { PaginationNav } from "@/components/pagination-nav";
-import { findDiscussions } from "@/db/generated/documents";
-import { getCachedMemberProfile } from "@/lib/cached-content";
-import { ensureFor } from "@/lib/init-core";
-
-interface ProfileDiscussionsPageProps {
-  params: Promise<{ handle: string }>;
-  searchParams: Promise<{ page?: string }>;
-}
+import { PaginationNav } from "../components/pagination-nav.js";
+import type { DiscussionsDocument } from "./list.js";
 
 const PAGE_SIZE = 20;
 
-export async function generateMetadata({
-  params,
-}: ProfileDiscussionsPageProps): Promise<Metadata> {
-  await ensureFor("read");
-  const { handle } = await params;
-  const profile = await getCachedMemberProfile(handle);
+// React's per-request cache so metadata + render share a single
+// member lookup. Without this the metadata builder and the page
+// component would each issue an identical DB read for the same
+// handle on every request.
+const cachedGetMemberProfile = cache(getMemberProfile);
+
+export async function profileDiscussionsMetadata(
+  ctx: NpRouteRenderProps,
+): Promise<Metadata> {
+  const handle = typeof ctx.params.handle === "string" ? ctx.params.handle : "";
+  if (!handle) return {};
+  const profile = await cachedGetMemberProfile(handle);
   if (!profile) return {};
   return buildPageMetadata({
     title: `Discussions by @${profile.handle}`,
@@ -29,22 +31,29 @@ export async function generateMetadata({
   });
 }
 
-export default async function ProfileDiscussionsPage({
+export default async function ProfileDiscussionsRoute({
   params,
   searchParams,
-}: ProfileDiscussionsPageProps) {
-  await ensureFor("read");
-  const { handle } = await params;
-  const profile = await getCachedMemberProfile(handle);
+}: NpRouteRenderProps) {
+  const handle = typeof params.handle === "string" ? params.handle : "";
+  if (!handle) notFound();
+
+  const profile = await cachedGetMemberProfile(handle);
   if (!profile) notFound();
 
-  const { page: pageRaw } = await searchParams;
-  const pageNum = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const sp = searchParams ?? {};
+  const rawPage =
+    typeof sp.page === "string"
+      ? sp.page
+      : Array.isArray(sp.page)
+        ? sp.page[0]
+        : undefined;
+  const pageNum = Math.max(1, Number.parseInt(rawPage ?? "1", 10) || 1);
 
   // Public profile view shows only published threads — pending /
   // draft / archived rows are private to the author and the
   // /discussions index already handles those via `?author=me`.
-  const result = await findDiscussions({
+  const result = await findDocuments<DiscussionsDocument>("discussions", {
     where: {
       memberAuthorId: profile.id,
       status: "published",
@@ -66,7 +75,12 @@ export default async function ProfileDiscussionsPage({
             alt=""
             width={48}
             height={48}
-            style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "50%",
+              objectFit: "cover",
+            }}
           />
         ) : null}
         <div style={{ flex: 1 }}>
@@ -89,32 +103,30 @@ export default async function ProfileDiscussionsPage({
           className="np-profile-discussions-list"
           style={{ listStyle: "none", padding: 0, marginTop: "2rem" }}
         >
-          {result.docs.map((doc) => {
-            return (
-              <li
-                key={doc.id}
+          {result.docs.map((doc) => (
+            <li
+              key={doc.id}
+              style={{
+                padding: "1rem 0",
+                borderBottom: "1px solid #e2e8f0",
+              }}
+            >
+              <h2 style={{ fontSize: "1rem", margin: 0 }}>
+                <Link href={`/discussions/${doc.slug}`}>{doc.title}</Link>
+              </h2>
+              <p
                 style={{
-                  padding: "1rem 0",
-                  borderBottom: "1px solid #e2e8f0",
+                  margin: "0.25rem 0 0",
+                  color: "#64748b",
+                  fontSize: "0.8125rem",
                 }}
               >
-                <h2 style={{ fontSize: "1rem", margin: 0 }}>
-                  <Link href={`/discussions/${doc.slug}`}>{doc.title}</Link>
-                </h2>
-                <p
-                  style={{
-                    margin: "0.25rem 0 0",
-                    color: "#64748b",
-                    fontSize: "0.8125rem",
-                  }}
-                >
-                  <time dateTime={doc.createdAt.toISOString()}>
-                    {doc.createdAt.toLocaleDateString()}
-                  </time>
-                </p>
-              </li>
-            );
-          })}
+                <time dateTime={doc.createdAt.toISOString()}>
+                  {doc.createdAt.toLocaleDateString()}
+                </time>
+              </p>
+            </li>
+          ))}
         </ul>
       )}
 

@@ -10,6 +10,9 @@ import DiscussionsListRoute, { listMetadata } from "./routes/list.js";
 import NewDiscussionRoute from "./routes/new.js";
 import DiscussionDetailRoute, { detailMetadata } from "./routes/detail.js";
 import EditDiscussionRoute from "./routes/edit.js";
+import ProfileDiscussionsRoute, {
+  profileDiscussionsMetadata,
+} from "./routes/profile-discussions.js";
 
 /**
  * @nexpress/plugin-forum — opinionated discussion / forum scaffold on
@@ -231,6 +234,16 @@ export const forumPlugin = definePlugin({
       pattern: "/discussions/:slug",
       component: DiscussionDetailRoute,
       metadata: detailMetadata,
+    },
+    // Member-profile sub-page listing the member's own
+    // published discussions. Different segment shape from the
+    // /discussions/* family above so order doesn't matter, but
+    // keep it grouped here so all forum-owned URLs are visible
+    // in one block.
+    {
+      pattern: "/u/:handle/discussions",
+      component: ProfileDiscussionsRoute,
+      metadata: profileDiscussionsMetadata,
     },
   ],
   setup: (ctx) => {
