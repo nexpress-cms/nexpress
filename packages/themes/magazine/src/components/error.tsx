@@ -40,9 +40,13 @@ interface MagazineErrorProps {
 }
 
 export default function MagazineError({ error, reset }: MagazineErrorProps) {
-  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
+  // After the v0.2 layout-shell refactor, the host's
+  // (site)/error.tsx renders its own `<main>` (it used to rely
+  // on the layout's wrap, which was removed). Theme error
+  // subpaths render *in place of* DefaultError, so we mirror
+  // its semantic landmark — one `<main>` per page either way.
   return (
-    <div
+    <main
       className="np-magazine np-magazine-error"
       style={{
         maxWidth: 720,
@@ -109,6 +113,6 @@ export default function MagazineError({ error, reset }: MagazineErrorProps) {
       >
         Reload the page
       </button>
-    </div>
+    </main>
   );
 }

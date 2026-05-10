@@ -1,43 +1,40 @@
 "use client";
 
 /**
- * Portfolio theme's member-tree error boundary fallback.
+ * Portfolio theme's public-site error boundary fallback.
  *
- * Same delegation pattern as magazine's: Next requires
- * `(member)/error.tsx` to be a client component, so theme error
- * UI ships as a separate client subpath that the host's
- * error.tsx lazy-imports based on the active theme. The theme's
- * `impl.members.error` slot stays as a forward-compat type
- * marker; the actual rendering goes through this client entry.
+ * Same delegation pattern as `./members-error.tsx`: Next requires
+ * `(site)/error.tsx` to be a client component, so theme error UI
+ * ships as a separate client subpath that the host's error.tsx
+ * lazy-imports based on the active theme.
  *
- * Imported as `@nexpress/theme-portfolio/components/members-error`
- * by `apps/web/src/app/(member)/error.tsx`.
+ * Imported as `@nexpress/theme-portfolio/components/error` by
+ * `apps/web/src/app/(site)/error.tsx`'s registry.
  *
- * Tone matches the portfolio aesthetic — minimal, restrained,
- * with the same "Back to sign in" CTA as other member error
- * surfaces (the common cause of an error inside `/members/*` is
- * stale session state).
+ * Tone matches the portfolio aesthetic — minimal, restrained.
+ * No "Back to sign in" CTA here (that's the member-side concern);
+ * just a "Try again" button + a link back to home.
  */
 
-interface PortfolioMembersErrorProps {
+interface PortfolioErrorProps {
   error: Error & { digest?: string };
   reset: () => void;
 }
 
-export default function PortfolioMembersError({
+export default function PortfolioError({
   error,
   reset,
-}: PortfolioMembersErrorProps) {
-  // Renders `<main>` because the host's (member)/error.tsx no
+}: PortfolioErrorProps) {
+  // Renders `<main>` because the host's (site)/error.tsx no
   // longer relies on the layout for the `<main>` landmark (v0.2
-  // shell-wrap refactor moved that into pages). Theme
-  // members-error subpaths render in place of DefaultMemberError,
-  // so we mirror its `<main>` — one per page either way.
+  // shell-wrap refactor moved that into pages). Theme error
+  // subpaths render *in place of* DefaultError, so we mirror
+  // its `<main>` — one per page either way.
   return (
     <main
-      className="np-portfolio np-portfolio-members-error"
+      className="np-portfolio np-portfolio-error"
       style={{
-        maxWidth: 480,
+        maxWidth: 560,
         margin: "6rem auto",
         padding: "0 1.5rem",
         textAlign: "center",
@@ -53,30 +50,31 @@ export default function PortfolioMembersError({
           fontFamily: "var(--np-font-body)",
         }}
       >
-        Account
+        Server error
       </p>
       <h1
         style={{
           margin: "1rem 0 0",
-          fontSize: "clamp(1.75rem, 4vw, 2.5rem)",
+          fontSize: "clamp(1.75rem, 4vw, 2.75rem)",
           fontFamily: "var(--np-font-heading)",
           fontWeight: 500,
           letterSpacing: "-0.02em",
           lineHeight: 1.1,
         }}
       >
-        Something interrupted your session.
+        Something didn&rsquo;t load.
       </h1>
       <p
         style={{
-          margin: "1.25rem 0 0",
+          margin: "1.25rem auto 0",
+          maxWidth: 460,
           color: "var(--np-color-muted-foreground, #94a3b8)",
           fontSize: "0.9375rem",
           lineHeight: 1.6,
         }}
       >
         {process.env.NODE_ENV === "production"
-          ? "Try again, or sign back in to start fresh."
+          ? "Refreshing usually clears this. If it doesn't, try again in a moment."
           : error.message}
       </p>
       <div
@@ -106,7 +104,7 @@ export default function PortfolioMembersError({
           Try again
         </button>
         <a
-          href="/members/login"
+          href="/"
           style={{
             padding: "0.625rem 1.5rem",
             fontFamily: "inherit",
@@ -121,7 +119,7 @@ export default function PortfolioMembersError({
             alignItems: "center",
           }}
         >
-          Back to sign in
+          Back home
         </a>
       </div>
     </main>

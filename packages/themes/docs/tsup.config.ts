@@ -18,11 +18,13 @@ export default defineConfig([
       "@nexpress/editor",
       "@nexpress/next",
       "@nexpress/theme",
+      "./components/error.js",
       "./components/members-error.js",
     ],
   },
   {
     entry: {
+      "components/error": "src/components/error.tsx",
       "components/members-error": "src/components/members-error.tsx",
     },
     format: ["esm"],

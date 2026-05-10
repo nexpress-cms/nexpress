@@ -41,6 +41,8 @@ const THEME_ERRORS: Record<
   React.LazyExoticComponent<React.ComponentType<ErrorPageProps>>
 > = {
   magazine: lazy(() => import("@nexpress/theme-magazine/components/error")),
+  portfolio: lazy(() => import("@nexpress/theme-portfolio/components/error")),
+  docs: lazy(() => import("@nexpress/theme-docs/components/error")),
 };
 
 /** Read the active theme id from the `<style data-np-theme>` tag

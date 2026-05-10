@@ -1,41 +1,36 @@
 "use client";
 
 /**
- * Docs theme's member-tree error boundary fallback.
+ * Docs theme's public-site error boundary fallback.
  *
- * Same delegation pattern as magazine's: Next requires
- * `(member)/error.tsx` to be a client component, so theme error
- * UI ships as a separate client subpath that the host's
- * error.tsx lazy-imports based on the active theme. The theme's
- * `impl.members.error` slot stays as a forward-compat type
- * marker; the actual rendering goes through this client entry.
+ * Same delegation pattern as `./members-error.tsx`: Next requires
+ * `(site)/error.tsx` to be a client component, so theme error UI
+ * ships as a separate client subpath that the host's error.tsx
+ * lazy-imports based on the active theme.
  *
- * Imported as `@nexpress/theme-docs/components/members-error`
- * by `apps/web/src/app/(member)/error.tsx`.
+ * Imported as `@nexpress/theme-docs/components/error` by
+ * `apps/web/src/app/(site)/error.tsx`'s registry.
  *
- * Tone matches the docs aesthetic — technical, monospace
- * accent, with "Back to sign in" as the secondary CTA.
+ * Tone matches the docs aesthetic — monospace eyebrow ("500 ·
+ * docs"), neutral palette, technical voice.
  */
 
-interface DocsMembersErrorProps {
+interface DocsErrorProps {
   error: Error & { digest?: string };
   reset: () => void;
 }
 
-export default function DocsMembersError({
-  error,
-  reset,
-}: DocsMembersErrorProps) {
-  // Renders `<main>` because the host's (member)/error.tsx no
+export default function DocsError({ error, reset }: DocsErrorProps) {
+  // Renders `<main>` because the host's (site)/error.tsx no
   // longer relies on the layout for the `<main>` landmark (v0.2
-  // shell-wrap refactor moved that into pages). Theme
-  // members-error subpaths render in place of DefaultMemberError,
-  // so we mirror its `<main>` — one per page either way.
+  // shell-wrap refactor moved that into pages). Theme error
+  // subpaths render *in place of* DefaultError, so we mirror
+  // its `<main>` — one per page either way.
   return (
     <main
-      className="np-docs np-docs-members-error"
+      className="np-docs np-docs-error"
       style={{
-        maxWidth: 520,
+        maxWidth: 560,
         margin: "5rem auto",
         padding: "0 1.5rem",
       }}
@@ -50,7 +45,7 @@ export default function DocsMembersError({
           fontFamily: "var(--np-font-mono, ui-monospace, monospace)",
         }}
       >
-        500 · account
+        500 · docs
       </p>
       <h1
         style={{
@@ -61,7 +56,7 @@ export default function DocsMembersError({
           lineHeight: 1.2,
         }}
       >
-        Something interrupted your session.
+        The page failed to render.
       </h1>
       <p
         style={{
@@ -72,7 +67,7 @@ export default function DocsMembersError({
         }}
       >
         {process.env.NODE_ENV === "production"
-          ? "A fresh sign-in usually clears this. Try again, or sign back in to start fresh."
+          ? "Refreshing usually clears it. If the problem persists, the page may be temporarily broken — check back shortly."
           : error.message}
       </p>
       <div
@@ -101,7 +96,7 @@ export default function DocsMembersError({
           Try again
         </button>
         <a
-          href="/members/login"
+          href="/"
           style={{
             padding: "0.5rem 1.25rem",
             fontFamily: "inherit",
@@ -116,7 +111,7 @@ export default function DocsMembersError({
             alignItems: "center",
           }}
         >
-          Back to sign in
+          Back home
         </a>
       </div>
     </main>

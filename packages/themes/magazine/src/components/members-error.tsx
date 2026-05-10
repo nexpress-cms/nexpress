@@ -29,12 +29,13 @@ export default function MagazineMembersError({
   error,
   reset,
 }: MagazineMembersErrorProps) {
-  // `<div>` rather than `<main>` because (member)/error.tsx is
-  // rendered as the body of (member)/layout.tsx's
-  // `<main className="np-member-main">` — second `<main>`
-  // would nest semantic landmarks.
+  // After the v0.2 layout-shell refactor, the host's
+  // (member)/error.tsx renders its own `<main>` (the layout no
+  // longer emits one). Theme members-error subpaths render in
+  // place of DefaultMemberError, so we mirror its semantic
+  // landmark — one `<main>` per page either way.
   return (
-    <div
+    <main
       className="np-magazine np-magazine-members-error"
       style={{
         maxWidth: 560,
@@ -129,6 +130,6 @@ export default function MagazineMembersError({
           Back to sign in
         </a>
       </div>
-    </div>
+    </main>
   );
 }
