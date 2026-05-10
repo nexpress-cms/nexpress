@@ -291,6 +291,44 @@ shape on the plugin side is the source of truth, not a copy.
 
 ---
 
+## Caching expensive reads
+
+If your route does heavy work (multi-table joins, aggregates, external
+API calls), wrap the data fetch in `cachedPluginFetch` from
+`@nexpress/next`. It's the plugin parallel of `cachedThemeFetch`:
+
+```ts
+import { cachedPluginFetch } from "@nexpress/next";
+
+export default async function ListRoute({ searchParams }: NpRouteRenderProps) {
+  const page = Math.max(1, Number(searchParams.page ?? 1));
+  const data = await cachedPluginFetch(
+    "my-forum",                               // plugin id
+    ["list", String(page)],                   // key parts (key per page)
+    async () => findDocuments("discussions", { page, limit: 20 }),
+    { revalidate: 60, extraTags: ["nx:collection:discussions"] },
+  );
+  // …
+}
+```
+
+The wrapper auto-tags entries with `np:plugin:<id>` so saving the
+plugin's config in `/admin/plugins/<id>` busts the cache (the
+framework's `setPluginConfig` revalidates this tag automatically).
+
+`extraTags` is the slot for content-driven invalidation — but the
+tag only invalidates when something else fires `revalidateTag`
+against it. The host's `RevalidationMap` declares which tags fire
+on each collection's writes; pair the tag pattern in `extraTags`
+with a matching entry in the map (or document the convention to
+operators) so a discussion write actually busts the cache.
+
+**Key parts must include every input the fetcher uses** (page,
+slug, locale, etc.). The cache keys ONLY by `keyParts`, not by the
+fetcher's closure.
+
+---
+
 ## See also
 
 - [`plugin-quickstart.md`](plugin-quickstart.md) — step-by-step from

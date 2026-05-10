@@ -9,14 +9,18 @@ vi.mock("@nexpress/core", () => ({
   getActiveThemeId: vi.fn(),
   getCurrentSiteId: vi.fn(),
   getNavigation: vi.fn(),
+  getPluginConfig: vi.fn(),
   getRegisteredThemes: vi.fn(() => []),
   getTheme: vi.fn(),
   getThemeById: vi.fn(),
+  getThemeSettings: vi.fn(),
+  pluginConfigCacheTag: (id: string) => `np:plugin:${id}`,
 }));
 
 const { unstable_cache } = await import("next/cache");
 const core = await import("@nexpress/core");
 const {
+  cachedPluginFetch,
   cachedThemeFetch,
   getCachedActiveThemeId,
   getCachedNavigation,
@@ -221,5 +225,127 @@ describe("cachedThemeFetch", () => {
       cachedThemeFetch(["k"], fetcher),
     ).rejects.toBe(realError);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("cachedPluginFetch", () => {
+  it("registers a per-site, per-plugin cache key with caller-supplied parts", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("blog-jp");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.resolve("x")) as never,
+    );
+
+    await cachedPluginFetch("forum", ["list", "2"], () =>
+      Promise.resolve("data"),
+    );
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      ["np:plugin-fetch", "blog-jp", "forum", "list", "2"],
+      expect.objectContaining({ tags: ["np:plugin:forum"] }),
+    );
+  });
+
+  it("defaults revalidate to 60 seconds", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.resolve("x")) as never,
+    );
+
+    await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"));
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(Array),
+      expect.objectContaining({ revalidate: 60 }),
+    );
+  });
+
+  it("honors caller-supplied revalidate", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.resolve("x")) as never,
+    );
+
+    await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"), {
+      revalidate: 300,
+    });
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(Array),
+      expect.objectContaining({ revalidate: 300 }),
+    );
+  });
+
+  it("appends extraTags after the always-on plugin-config tag", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.resolve("x")) as never,
+    );
+
+    await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"), {
+      extraTags: ["nx:collection:discussions"],
+    });
+
+    expect(unstable_cache).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(Array),
+      expect.objectContaining({
+        tags: ["np:plugin:forum", "nx:collection:discussions"],
+      }),
+    );
+  });
+
+  it("falls back to uncached fetcher when Next's incremental cache is unavailable", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const cacheError = new Error("incrementalCache missing");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.reject(cacheError)) as never,
+    );
+    const fetcher = vi.fn(() => Promise.resolve("fresh-result"));
+
+    const result = await cachedPluginFetch("forum", ["k"], fetcher);
+
+    expect(result).toBe("fresh-result");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates non-incremental-cache errors", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValueOnce("default");
+    const realError = new Error("DB connection refused");
+    vi.mocked(unstable_cache).mockReturnValueOnce(
+      (() => Promise.reject(realError)) as never,
+    );
+    const fetcher = vi.fn(() => Promise.resolve("x"));
+
+    await expect(cachedPluginFetch("forum", ["k"], fetcher)).rejects.toBe(
+      realError,
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("two plugins use distinct cache namespaces", async () => {
+    vi.mocked(core.getCurrentSiteId).mockResolvedValue("default");
+    vi.mocked(unstable_cache).mockReturnValue(
+      (() => Promise.resolve("x")) as never,
+    );
+
+    await cachedPluginFetch("forum", ["k"], () => Promise.resolve("x"));
+    await cachedPluginFetch("calendar", ["k"], () => Promise.resolve("x"));
+
+    const calls = vi.mocked(unstable_cache).mock.calls;
+    expect(calls[calls.length - 2]?.[1]).toEqual([
+      "np:plugin-fetch",
+      "default",
+      "forum",
+      "k",
+    ]);
+    expect(calls[calls.length - 1]?.[1]).toEqual([
+      "np:plugin-fetch",
+      "default",
+      "calendar",
+      "k",
+    ]);
   });
 });

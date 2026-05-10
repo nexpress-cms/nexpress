@@ -37,7 +37,9 @@ export {
   getCachedThemeSettings,
   getCachedPluginConfig,
   cachedThemeFetch,
+  cachedPluginFetch,
   type NpCachedThemeFetchOptions,
+  type NpCachedPluginFetchOptions,
 } from "./cache.js";
 
 export {
