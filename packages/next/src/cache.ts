@@ -246,6 +246,95 @@ export async function cachedThemeFetch<T>(
   }
 }
 
+export interface NpCachedPluginFetchOptions {
+  /** Cache TTL in seconds. Defaults to 60 — same rationale as
+   *  `cachedThemeFetch`: plugin pages tend to be more dynamic
+   *  than config / static settings, so a short floor keeps
+   *  freshness reasonable while still deduping under traffic
+   *  spikes. Plugins serving low-churn data can pass a longer
+   *  value. */
+  revalidate?: number;
+  /** Extra tags to add alongside the always-on
+   *  `np:plugin:<pluginId>` (which the framework auto-busts on
+   *  plugin-config save / plugin disable). Use for
+   *  collection-scoped tags like `nx:collection:discussions`
+   *  so a content edit busts the relevant cached page too. */
+  extraTags?: string[];
+}
+
+/**
+ * Plugin-side parallel of `cachedThemeFetch`. Wraps a plugin
+ * route's data fetch in `unstable_cache` with the plugin's
+ * config tag (`np:plugin:<pluginId>`) so:
+ *
+ *   - Saving the plugin's config in `/admin/plugins/<id>` busts
+ *     the cache automatically (the framework already revalidates
+ *     this tag inside `setPluginConfig`).
+ *   - Reloading or disabling the plugin from the admin shell
+ *     busts the cache too (same tag).
+ *   - Multi-tenant deployments key by site, so site A's cache
+ *     doesn't leak into site B.
+ *
+ * **Key namespacing.** The cache key is
+ * `["np:plugin-fetch", siteId, pluginId, ...keyParts]`. Plugin
+ * authors don't need to prefix their own keyParts with the
+ * plugin id — the wrapper does that. Within a plugin, prefix
+ * by route or fetcher name (e.g. `["forum.list", String(page)]`)
+ * so two routes in the same plugin don't collide.
+ *
+ * **Include every fetcher input in `keyParts`** — `unstable_cache`
+ * keys ONLY by what's in `keyParts`, not by what the fetcher
+ * closes over. A `slug`, `pageSize`, or `locale` the fetcher
+ * uses MUST appear in `keyParts` or different inputs will
+ * silently share a cache entry.
+ *
+ * Example:
+ *
+ * ```ts
+ * import { cachedPluginFetch } from "@nexpress/next";
+ *
+ * export async function ListRoute({ searchParams }) {
+ *   const page = Number(searchParams.page ?? 1);
+ *   const data = await cachedPluginFetch(
+ *     "forum",
+ *     ["list", String(page)],
+ *     async () => findDocuments("discussions", { page }),
+ *     { revalidate: 60, extraTags: ["nx:collection:discussions"] },
+ *   );
+ *   // ...
+ * }
+ * ```
+ *
+ * `extraTags` is the escape hatch for plugins whose data depends
+ * on collections — pass `nx:collection:<slug>` so a content
+ * write busts the cached page too. The framework's
+ * `revalidateCollection` (called inside `saveDocument`) fires
+ * those tags on every write.
+ */
+export async function cachedPluginFetch<T>(
+  pluginId: string,
+  keyParts: string[],
+  fetcher: () => Promise<T>,
+  options?: NpCachedPluginFetchOptions,
+): Promise<T> {
+  const siteId = await resolveSiteId();
+  const tags = [pluginConfigCacheTag(pluginId), ...(options?.extraTags ?? [])];
+  const cached = unstable_cache(
+    fetcher,
+    ["np:plugin-fetch", siteId, pluginId, ...keyParts],
+    {
+      tags,
+      revalidate: options?.revalidate ?? 60,
+    },
+  );
+  try {
+    return await cached();
+  } catch (error) {
+    if (isMissingIncrementalCache(error)) return fetcher();
+    throw error;
+  }
+}
+
 /**
  * Cached active-theme lookup. Mirrors core's
  * `getActiveTheme()` semantics — falls back to the first
