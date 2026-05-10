@@ -26,5 +26,11 @@ export default defineConfig({
     pool: "forks",
     fileParallelism: true,
     testTimeout: 10_000,
+    // Seed NP_SECRET / DATABASE_URL before any test module's
+    // imports are evaluated. `nexpress.config.ts` validates
+    // `auth.secret` at module-load time — without this seed,
+    // unit tests that pull `@/lib/*` (which transitively imports
+    // the config) crash before the test body runs.
+    setupFiles: ["./tests/setup-env.ts"],
   },
 });
