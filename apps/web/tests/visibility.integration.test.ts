@@ -212,23 +212,23 @@ describe.skipIf(skipIfNoTestDb())("per-doc visibility (Phase 21.17)", () => {
 
   it("i18n collections honor the same visibility rules", async () => {
     // Codegen adds the column to every collection — pin the
-    // expectation that an i18n collection (`localized-pages`)
+    // expectation that an i18n collection (`pages`)
     // gets the same anon-hides-private behavior, so a
     // future codegen split that excluded i18n tables would
     // fail this suite.
     const { saveDocument, findDocuments } = await import("@nexpress/core");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "MemberOnly", body: "shh", locale: "en", visibility: "private" },
+      { title: "MemberOnly", seoDescription: "shh", locale: "en", visibility: "private" },
       actor(),
       { status: "published" },
     );
-    const anon = await findDocuments("localized-pages", { locale: "en" });
+    const anon = await findDocuments("pages", { locale: "en" });
     expect(anon.docs).toHaveLength(0);
 
     const authed = await findDocuments(
-      "localized-pages",
+      "pages",
       { locale: "en" },
       actor(),
     );

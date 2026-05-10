@@ -11,7 +11,7 @@ import {
 import type { TestUserSession } from "./harness.js";
 
 /**
- * Phase 12.1 — framework i18n primitives. The localized-pages
+ * Phase 12.1 — framework i18n primitives. The pages
  * collection is opted in via `i18n: true`; codegen added the
  * `locale` + `translation_group_id` columns and re-keyed the
  * slug uniqueness on `(locale, slug)`. These tests pin the
@@ -57,16 +57,16 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
   it("creates a doc with explicit locale; persists locale + a generated translation group id", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
     const result = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "About", body: "About the site (en)", locale: "en" },
+      { title: "About", seoDescription: "About the site (en)", locale: "en" },
       actor(),
       { status: "published" },
     );
     expect(result.operation).toBe("create");
     const id = result.doc.id as string;
 
-    const found = await findDocuments("localized-pages", { limit: 10 });
+    const found = await findDocuments("pages", { limit: 10 });
     const row = found.docs.find((d) => d.id === id) as
       | { locale?: string; translationGroupId?: string }
       | undefined;
@@ -80,9 +80,9 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
   it("defaults locale to defaultLocale when omitted on create", async () => {
     const { saveDocument } = await import("@nexpress/core");
     const result = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Default-locale doc", body: "no locale supplied" },
+      { title: "Default-locale doc", seoDescription: "no locale supplied" },
       actor(),
       { status: "published" },
     );
@@ -93,9 +93,9 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
     const { saveDocument, NpValidationError } = await import("@nexpress/core");
     await expect(
       saveDocument(
-        "localized-pages",
+        "pages",
         null,
-        { title: "Bogus", body: "...", locale: "fr" },
+        { title: "Bogus", seoDescription: "...", locale: "fr" },
         actor(),
       ),
     ).rejects.toBeInstanceOf(NpValidationError);
@@ -104,18 +104,18 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
   it("the same slug can exist in two locales (uniqueness is per-locale)", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "About", body: "english copy", locale: "en" },
+      { title: "About", seoDescription: "english copy", locale: "en" },
       actor(),
       { status: "published" },
     );
     const ko = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "About",
-        body: "korean copy",
+        seoDescription: "korean copy",
         locale: "ko",
         // Link the two as translations of each other by sharing
         // the same translationGroupId.
@@ -132,35 +132,35 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
       (ko.doc as { translationGroupId: string }).translationGroupId,
     );
 
-    const all = await findDocuments("localized-pages", { limit: 10 });
+    const all = await findDocuments("pages", { limit: 10 });
     expect(all.totalDocs).toBe(2);
   });
 
   it("findDocuments({ locale }) filters to that locale's rows", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "EN row", body: "...", locale: "en" },
+      { title: "EN row", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "KO row", body: "...", locale: "ko" },
+      { title: "KO row", seoDescription: "...", locale: "ko" },
       actor(),
       { status: "published" },
     );
 
-    const enOnly = await findDocuments("localized-pages", {
+    const enOnly = await findDocuments("pages", {
       locale: "en",
       limit: 10,
     });
     expect(enOnly.totalDocs).toBe(1);
     expect((enOnly.docs[0] as { locale?: string }).locale).toBe("en");
 
-    const koOnly = await findDocuments("localized-pages", {
+    const koOnly = await findDocuments("pages", {
       locale: "ko",
       limit: 10,
     });
@@ -171,9 +171,9 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
   it("updates can't reassign locale or translationGroupId", async () => {
     const { saveDocument, findDocuments } = await import("@nexpress/core");
     const created = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Sticky", body: "first write", locale: "en" },
+      { title: "Sticky", seoDescription: "first write", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -183,11 +183,11 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
       .translationGroupId;
 
     await saveDocument(
-      "localized-pages",
+      "pages",
       id,
       {
         title: "Sticky",
-        body: "second write",
+        seoDescription: "second write",
         // Caller tries to flip the locale; pipeline must ignore.
         locale: "ko",
         translationGroupId: "11111111-1111-4111-8111-111111111111",
@@ -195,7 +195,7 @@ describe.skipIf(skipIfNoTestDb())("i18n pipeline (Phase 12.1)", () => {
       actor(),
     );
 
-    const found = await findDocuments("localized-pages", { limit: 10 });
+    const found = await findDocuments("pages", { limit: 10 });
     const row = found.docs.find((d) => d.id === id) as
       | { locale?: string; translationGroupId?: string }
       | undefined;

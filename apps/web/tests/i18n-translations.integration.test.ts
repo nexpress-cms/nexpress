@@ -51,14 +51,14 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
   it("findTranslations returns the source row alone when no siblings exist", async () => {
     const { findTranslations, saveDocument } = await import("@nexpress/core");
     const created = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Solo", body: "single locale", locale: "en" },
+      { title: "Solo", seoDescription: "single locale", locale: "en" },
       actor(),
       { status: "published" },
     );
     const id = created.doc.id as string;
-    const rows = await findTranslations("localized-pages", id);
+    const rows = await findTranslations("pages", id);
     expect(rows.length).toBe(1);
     expect(rows[0]?.locale).toBe("en");
     expect(rows[0]?.translationGroupId).toBe(
@@ -71,22 +71,22 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       "@nexpress/core"
     );
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "About", body: "english copy", locale: "en" },
+      { title: "About", seoDescription: "english copy", locale: "en" },
       actor(),
       { status: "published" },
     );
     const enId = en.doc.id as string;
     const created = await createTranslation(
-      "localized-pages",
+      "pages",
       enId,
       "ko",
       actor(),
     );
     expect(typeof created.id).toBe("string");
 
-    const rows = await findTranslations("localized-pages", enId);
+    const rows = await findTranslations("pages", enId);
     expect(rows.length).toBe(2);
     const groupIds = new Set(rows.map((r) => r.translationGroupId));
     expect(groupIds.size).toBe(1);
@@ -101,15 +101,15 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     const { createTranslation, saveDocument, NpValidationError } =
       await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Dup", body: "...", locale: "en" },
+      { title: "Dup", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
-    await createTranslation("localized-pages", en.doc.id as string, "ko", actor());
+    await createTranslation("pages", en.doc.id as string, "ko", actor());
     await expect(
-      createTranslation("localized-pages", en.doc.id as string, "ko", actor()),
+      createTranslation("pages", en.doc.id as string, "ko", actor()),
     ).rejects.toBeInstanceOf(NpValidationError);
   });
 
@@ -117,15 +117,15 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     const { createTranslation, saveDocument, NpValidationError } =
       await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Bogus", body: "...", locale: "en" },
+      { title: "Bogus", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
     await expect(
       createTranslation(
-        "localized-pages",
+        "pages",
         en.doc.id as string,
         "fr",
         actor(),
@@ -137,15 +137,15 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     const { createTranslation, saveDocument, NpValidationError } =
       await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Self", body: "...", locale: "en" },
+      { title: "Self", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
     await expect(
       createTranslation(
-        "localized-pages",
+        "pages",
         en.doc.id as string,
         "en",
         actor(),
@@ -166,19 +166,19 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     const editor = await seedUser({ role: "editor" });
     const { saveDocument } = await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "API test", body: "...", locale: "en" },
+      { title: "API test", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
     const enId = en.doc.id as string;
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "API test",
-        body: "...",
+        seoDescription: "...",
         locale: "ko",
         translationGroupId: (en.doc as { translationGroupId: string })
           .translationGroupId,
@@ -191,11 +191,11 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       "@/app/api/admin/collections/[slug]/[id]/translations/route"
     );
     const req = buildRequest(
-      `/api/admin/collections/localized-pages/${enId}/translations`,
+      `/api/admin/collections/pages/${enId}/translations`,
       { session: editor },
     );
     const res = await GET(req, {
-      params: Promise.resolve({ slug: "localized-pages", id: enId }),
+      params: Promise.resolve({ slug: "pages", id: enId }),
     });
     const { status, body } = await readJson<{
       docs?: Array<{ id: string; locale: string }>;
@@ -208,9 +208,9 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
   it("POST /api/admin/collections/[slug]/[id]/translations creates a translation (admin-only)", async () => {
     const { saveDocument } = await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Create-API", body: "...", locale: "en" },
+      { title: "Create-API", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -220,7 +220,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       "@/app/api/admin/collections/[slug]/[id]/translations/route"
     );
     const req = buildRequest(
-      `/api/admin/collections/localized-pages/${enId}/translations`,
+      `/api/admin/collections/pages/${enId}/translations`,
       {
         session: admin,
         method: "POST",
@@ -228,7 +228,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       },
     );
     const res = await POST(req, {
-      params: Promise.resolve({ slug: "localized-pages", id: enId }),
+      params: Promise.resolve({ slug: "pages", id: enId }),
     });
     const { status, body } = await readJson<{ id?: string }>(res);
     expect(status).toBe(200);
@@ -239,9 +239,9 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
     const editor = await seedUser({ role: "editor" });
     const { saveDocument } = await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Gate", body: "...", locale: "en" },
+      { title: "Gate", seoDescription: "...", locale: "en" },
       actor(),
       { status: "published" },
     );
@@ -250,7 +250,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       "@/app/api/admin/collections/[slug]/[id]/translations/route"
     );
     const req = buildRequest(
-      `/api/admin/collections/localized-pages/${enId}/translations`,
+      `/api/admin/collections/pages/${enId}/translations`,
       {
         session: editor,
         method: "POST",
@@ -258,7 +258,7 @@ describe.skipIf(skipIfNoTestDb())("i18n translations (Phase 12.3)", () => {
       },
     );
     const res = await POST(req, {
-      params: Promise.resolve({ slug: "localized-pages", id: enId }),
+      params: Promise.resolve({ slug: "pages", id: enId }),
     });
     const { status } = await readJson(res);
     expect(status).toBe(403);

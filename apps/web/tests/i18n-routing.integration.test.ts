@@ -62,19 +62,19 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
     // `/{locale}/{slug}` so the resulting sitemap rows live at
     // `/en/about` and `/ko/about`.
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "About", body: "english", locale: "en" },
+      { title: "About", seoDescription: "english", locale: "en" },
       actor(),
       { status: "published" },
     );
     const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
       {
         title: "About",
-        body: "korean",
+        seoDescription: "korean",
         locale: "ko",
         translationGroupId: groupId,
       },
@@ -82,7 +82,7 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
       { status: "published" },
     );
 
-    const entries = await buildSitemap({ collections: ["localized-pages"] });
+    const entries = await buildSitemap({ collections: ["pages"] });
     const matched = entries.filter((e) => e.loc.endsWith("/about"));
     expect(matched.length).toBe(2);
     // Each entry's alternates should list both locales.
@@ -123,13 +123,13 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
   it("solo translations (no siblings) get no `alternates` block", async () => {
     const { buildSitemap, saveDocument } = await import("@nexpress/core");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Solo", body: "only en", locale: "en" },
+      { title: "Solo", seoDescription: "only en", locale: "en" },
       actor(),
       { status: "published" },
     );
-    const entries = await buildSitemap({ collections: ["localized-pages"] });
+    const entries = await buildSitemap({ collections: ["pages"] });
     const solo = entries.find((e) => e.loc.endsWith("/solo"));
     expect(solo).toBeDefined();
     expect(solo?.alternates).toBeUndefined();
@@ -160,17 +160,17 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
     const { resolveAvailableLocales } = await import("@nexpress/next");
     const { saveDocument } = await import("@nexpress/core");
     const en = await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "About", body: "english", locale: "en" },
+      { title: "About", seoDescription: "english", locale: "en" },
       actor(),
       { status: "published" },
     );
     const groupId = (en.doc as { translationGroupId: string }).translationGroupId;
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "About", body: "korean", locale: "ko", translationGroupId: groupId },
+      { title: "About", seoDescription: "korean", locale: "ko", translationGroupId: groupId },
       actor(),
       { status: "published" },
     );
@@ -184,9 +184,9 @@ describe.skipIf(skipIfNoTestDb())("i18n public routing (Phase 12.2)", () => {
     const { resolveAvailableLocales } = await import("@nexpress/next");
     const { saveDocument } = await import("@nexpress/core");
     await saveDocument(
-      "localized-pages",
+      "pages",
       null,
-      { title: "Solo Page", body: "only en", locale: "en" },
+      { title: "Solo Page", seoDescription: "only en", locale: "en" },
       actor(),
       { status: "published" },
     );

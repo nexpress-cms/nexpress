@@ -18,9 +18,13 @@
 
 -- ── Create categories ──────────────────────────────────────────
 -- `IF NOT EXISTS` on every CREATE so a partial-fail of a later
--- statement (drizzle-kit runs each `--> statement-breakpoint`
--- block in its own transaction, NOT the whole file) doesn't
--- block a re-run by clashing with already-committed creates.
+-- statement (drizzle-kit runs each statement-breakpoint block in
+-- its own transaction, NOT the whole file) doesn't block a re-run
+-- by clashing with already-committed creates. Note: the literal
+-- statement-breakpoint marker is intentionally NOT spelled out in
+-- this comment — the integration-test migration runner splits the
+-- file on that exact string and orphans the trailing backtick if
+-- the marker text appears inside a backtick-quoted comment.
 CREATE TABLE IF NOT EXISTS "np_c_categories" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "status" text DEFAULT 'draft' NOT NULL,
