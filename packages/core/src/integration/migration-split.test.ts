@@ -59,6 +59,22 @@ describe("splitMigrationStatements", () => {
     expect(out[1]).toContain(`'after'`);
   });
 
+  it("handles Postgres `''` quote-escape inside a string literal correctly", () => {
+    // Without the doubled-quote skip, `inSingle` would briefly flip
+    // out-of-string between the two quotes, and a following `--`
+    // would be misclassified as a comment start. Real-world chance
+    // is low (drizzle never emits `''` + `--` in the same string),
+    // but the rule is documented in the splitter and worth pinning.
+    const sql = [
+      `INSERT INTO "x" ("v") VALUES ('it''s -- not a comment, has --> statement-breakpoint inside');--> statement-breakpoint`,
+      `INSERT INTO "x" ("v") VALUES ('next');`,
+    ].join("\n");
+    const out = splitMigrationStatements(sql);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toContain(`'it''s -- not a comment, has --> statement-breakpoint inside'`);
+    expect(out[1]).toContain(`'next'`);
+  });
+
   it("drops empty trailing chunks", () => {
     const sql = `CREATE TABLE "a" ("id" uuid);--> statement-breakpoint\n\n   \n`;
     const out = splitMigrationStatements(sql);

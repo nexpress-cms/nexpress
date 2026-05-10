@@ -31,8 +31,9 @@
  *   migrations would have to construct it deliberately.
  * - Single-quoted string literals are tracked so `'-- not a comment'`
  *   inside a string doesn't get treated as a comment start. Postgres
- *   `''` quote-escaping inside literals toggles the in-string state
- *   twice, leaving it correct.
+ *   `''` quote-escaping inside literals (e.g. `'it''s'`) is detected
+ *   and skipped as a pair so the in-string state stays correct mid-
+ *   line, not just at line end.
  */
 
 const STATEMENT_MARKER = "--> statement-breakpoint";
@@ -79,6 +80,15 @@ function findMarkerStart(line: string): number {
   for (let i = 0; i < line.length - 1; i++) {
     const c = line[i];
     if (c === "'") {
+      // Postgres escapes a literal quote as `''`. When we're inside
+      // a string and see a doubled quote, skip both so the state
+      // doesn't flip twice (which would briefly read the chars after
+      // the doubled quote as out-of-string and misclassify a `--`
+      // following it as a comment start).
+      if (inSingle && line[i + 1] === "'") {
+        i++; // outer loop's `i++` advances past the second quote
+        continue;
+      }
       inSingle = !inSingle;
       continue;
     }
