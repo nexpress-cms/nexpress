@@ -1,32 +1,41 @@
 import {
   buildDiscussionForumPostingJsonLd,
   findDocuments,
+  getDb,
   getSiteSeoSettings,
   npMembers,
 } from "@nexpress/core";
-import { buildPageMetadata } from "@nexpress/next";
 import { renderRichText } from "@nexpress/editor/server";
+import type { NpRichTextContent } from "@nexpress/editor";
+import { Comments } from "@nexpress/next/client";
+import {
+  buildPageMetadata,
+  JsonLd,
+  getSiteMember,
+} from "@nexpress/next";
+import type { NpRouteRenderProps } from "@nexpress/next";
 import { eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Comments } from "@nexpress/next/client";
-import { DiscussionAuthorActions } from "@/components/discussion-author-actions";
-import { JsonLd, getSiteMember } from "@nexpress/next";
-import { ensureFor } from "@/lib/init-core";
-import { getDb } from "@/lib/db";
-import type { NpRichTextContent } from "@nexpress/editor";
+import { DiscussionAuthorActions } from "../client/discussion-author-actions.js";
 
-interface DiscussionDetailPageProps {
-  params: Promise<{ slug: string }>;
-}
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending review",
+  draft: "Draft",
+  archived: "Archived",
+};
 
-export async function generateMetadata({
-  params,
-}: DiscussionDetailPageProps): Promise<Metadata> {
-  await ensureFor("read");
-  const { slug } = await params;
+export async function detailMetadata(ctx: NpRouteRenderProps): Promise<Metadata> {
+  const slug = typeof ctx.params.slug === "string" ? ctx.params.slug : "";
+  if (!slug) {
+    return buildPageMetadata({
+      title: "Discussion",
+      description: null,
+      path: "/discussions",
+    });
+  }
   const result = await findDocuments("discussions", {
     where: { slug, status: "published" },
     limit: 1,
@@ -38,35 +47,23 @@ export async function generateMetadata({
   // body will turn the response into a 404 anyway, but search
   // crawlers fetching just the head still need a sane title.
   return buildPageMetadata({
-    title:
-      typeof doc?.title === "string" ? (doc.title) : "Discussion",
+    title: typeof doc?.title === "string" ? doc.title : "Discussion",
     description:
-      typeof doc?.excerpt === "string" && doc.excerpt
-        ? (doc.excerpt)
-        : null,
+      typeof doc?.excerpt === "string" && doc.excerpt ? doc.excerpt : null,
     path: `/discussions/${slug}`,
     ogType: "article",
-    publishedTime:
-      doc?.createdAt instanceof Date ? (doc.createdAt) : null,
-    modifiedTime:
-      doc?.updatedAt instanceof Date ? (doc.updatedAt) : null,
+    publishedTime: doc?.createdAt instanceof Date ? doc.createdAt : null,
+    modifiedTime: doc?.updatedAt instanceof Date ? doc.updatedAt : null,
   });
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pending review",
-  draft: "Draft",
-  archived: "Archived",
-};
+export default async function DiscussionDetailRoute({
+  params,
+}: NpRouteRenderProps) {
+  const slug = typeof params.slug === "string" ? params.slug : "";
+  if (!slug) notFound();
 
-export default async function DiscussionDetailPage({ params }: DiscussionDetailPageProps) {
-  await ensureFor("plugins");
-  const { slug } = await params;
   const member = await getSiteMember();
-
-  // findDocuments by slug. v1 doesn't have a `getDiscussionBySlug`
-  // helper — pages call findDocuments with a slug filter directly.
-  // The slug is unique per the collection's `slugField`.
   const result = await findDocuments("discussions", {
     where: { slug },
     limit: 1,
@@ -85,19 +82,21 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
     notFound();
   }
 
-  // Resolve the author handle for display.
   let author: { id: string; handle: string; displayName: string } | null = null;
   if (memberAuthorId) {
-    const [row] = (await getDb()
-      .select({
-        id: npMembers.id,
-        handle: npMembers.handle,
-        displayName: npMembers.displayName,
-      })
-      .from(npMembers)
-      .where(eq(npMembers.id, memberAuthorId))
-      .limit(1)) as Array<{ id: string; handle: string; displayName: string }>;
-    if (row) author = row;
+    const db = getDb();
+    if (db) {
+      const [row] = (await db
+        .select({
+          id: npMembers.id,
+          handle: npMembers.handle,
+          displayName: npMembers.displayName,
+        })
+        .from(npMembers)
+        .where(eq(npMembers.id, memberAuthorId))
+        .limit(1)) as Array<{ id: string; handle: string; displayName: string }>;
+      if (row) author = row;
+    }
   }
 
   const body = (doc.body as NpRichTextContent | undefined) ?? null;
@@ -113,13 +112,9 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
           url: `${settings.siteUrl.replace(/\/+$/, "")}/discussions/${slug}`,
           headline: doc.title as string,
           description:
-            typeof doc.excerpt === "string" && doc.excerpt
-              ? (doc.excerpt)
-              : null,
-          datePublished:
-            (doc.createdAt as Date | undefined) ?? null,
-          dateModified:
-            (doc.updatedAt as Date | undefined) ?? null,
+            typeof doc.excerpt === "string" && doc.excerpt ? doc.excerpt : null,
+          datePublished: (doc.createdAt as Date | undefined) ?? null,
+          dateModified: (doc.updatedAt as Date | undefined) ?? null,
           authorName: author?.displayName ?? null,
         })
       : null;
@@ -136,7 +131,10 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
         <h1>{doc.title as string}</h1>
         <div className="np-discussion-meta">
           {author ? (
-            <Link href={`/u/${author.handle}`} className="np-discussion-author">
+            <Link
+              href={`/u/${author.handle}`}
+              className="np-discussion-author"
+            >
               @{author.handle}
             </Link>
           ) : (
@@ -173,7 +171,10 @@ export default async function DiscussionDetailPage({ params }: DiscussionDetailP
       {status === "published" ? (
         <section className="np-discussion-comments">
           <h2>Comments</h2>
-          <Comments collectionSlug="discussions" documentId={doc.id as string} />
+          <Comments
+            collectionSlug="discussions"
+            documentId={doc.id as string}
+          />
         </section>
       ) : null}
     </article>

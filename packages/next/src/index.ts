@@ -27,6 +27,12 @@ export {
   type NpPluginRouteMatch,
 } from "./route-dispatcher.js";
 
+// Re-exported here so plugin authors can declare route
+// components without taking a direct dep on `@nexpress/theme`
+// (the type lives there for theme-route reasons but the SDK
+// boundary plugins want is `@nexpress/next`).
+export type { NpRouteRenderProps } from "@nexpress/theme";
+
 export {
   getCachedThemeSettings,
   getCachedPluginConfig,

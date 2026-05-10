@@ -6,6 +6,11 @@ import {
 } from "@nexpress/core";
 import { definePlugin } from "@nexpress/plugin-sdk";
 
+import DiscussionsListRoute, { listMetadata } from "./routes/list.js";
+import NewDiscussionRoute from "./routes/new.js";
+import DiscussionDetailRoute, { detailMetadata } from "./routes/detail.js";
+import EditDiscussionRoute from "./routes/edit.js";
+
 /**
  * @nexpress/plugin-forum — opinionated discussion / forum scaffold on
  * top of NexPress's collection + comment system.
@@ -199,6 +204,35 @@ export const forumPlugin = definePlugin({
       },
     ],
   },
+  // PRT.3 — the forum plugin owns the public-site routes for
+  // its collection. The catch-all in the host app dispatches
+  // these via `dispatchPluginRoute` (#623); precedence is
+  // theme > plugin > collection. Order here matters because the
+  // dispatcher is first-match-wins: more-specific patterns
+  // (`/discussions/new`, `/discussions/:slug/edit`) must precede
+  // the parametric `/discussions/:slug`.
+  pageRoutes: [
+    {
+      pattern: "/discussions",
+      component: DiscussionsListRoute,
+      metadata: listMetadata,
+    },
+    {
+      pattern: "/discussions/new",
+      component: NewDiscussionRoute,
+      surface: "member",
+    },
+    {
+      pattern: "/discussions/:slug/edit",
+      component: EditDiscussionRoute,
+      surface: "member",
+    },
+    {
+      pattern: "/discussions/:slug",
+      component: DiscussionDetailRoute,
+      metadata: detailMetadata,
+    },
+  ],
   setup: (ctx) => {
     // The widget action enumerates collections opted into comments and
     // sums their doc counts. Today the user typically has one

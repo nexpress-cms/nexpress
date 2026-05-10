@@ -1,12 +1,10 @@
+import { getSiteMember } from "@nexpress/next";
+import type { NpRouteRenderProps } from "@nexpress/next";
 import Link from "next/link";
 
-import { ensureFor } from "@/lib/init-core";
-import { getSiteMember } from "@nexpress/next";
+import { DiscussionForm } from "../client/discussion-form.js";
 
-import { DiscussionForm } from "@/components/discussion-form";
-
-export default async function NewDiscussionPage() {
-  await ensureFor("read");
+export default async function NewDiscussionRoute(_props: NpRouteRenderProps) {
   const member = await getSiteMember();
 
   if (!member) {
@@ -17,7 +15,10 @@ export default async function NewDiscussionPage() {
           You need to be signed in to post.{" "}
           <Link href="/members/login?next=/discussions/new">Sign in</Link>
           {" or "}
-          <Link href="/members/register?next=/discussions/new">create an account</Link>.
+          <Link href="/members/register?next=/discussions/new">
+            create an account
+          </Link>
+          .
         </p>
       </div>
     );
