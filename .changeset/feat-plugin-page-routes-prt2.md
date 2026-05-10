@@ -18,24 +18,31 @@ Same precedence applies in `generateMetadata` so plugin-rendered
 URLs emit plugin SEO instead of falling back to page metadata
 defaults.
 
-The dispatcher (`packages/next/src/route-dispatcher.ts`) gains:
+Public surface added on `@nexpress/next`:
 
 - `dispatchPluginRoute({ localeAwarePath, themeRoutes })` — async,
   walks `getPluginPageRoutes()` in registration order, skips
   disabled plugins via `isPluginEnabled`, returns the first match.
-- `dispatchPluginRouteSync({ ..., enabled? })` — test/sync variant
-  that takes a sync `enabled` callback instead of awaiting the gate.
 - `buildPluginRouteRenderProps({ match, searchParams, blockCtx })`
   — symmetric with `buildRouteRenderProps`; produces the same
   `NpRouteRenderProps` shape so theme + plugin routes share the
   component contract.
-- `__resetPluginCollisionWarnings()` — test hook for the once-
-  per-pattern-per-process dedup.
 - `NpPluginRouteMatch` interface — narrows the registry's
   `unknown` component to `ComponentType<NpRouteRenderProps>`. The
   `@nexpress/core` plugin host stays React-free at the type level
   (peer-dep boundary); the dispatcher is the right seam to assert
   it.
+
+Kept module-internal (not on the public surface) to avoid
+committing to APIs no consumer needs yet:
+
+- `dispatchPluginRouteSync` — sync variant with a callback-driven
+  `enabled` gate. Used by the dispatcher's own tests; can be
+  promoted later if a real consumer surfaces (e.g. an admin
+  preview).
+- `__resetPluginCollisionWarnings` — test hook for the once-per-
+  pattern-per-process dedup; matches F.2's
+  `__resetCollisionWarnings` (also internal-only).
 
 **Boot/runtime warnings.** The dispatcher logs once-per-process
 when:

@@ -390,6 +390,16 @@ describe("dispatchPluginRouteSync", () => {
     expect(match?.route.surface).toBe("member");
     expect(match?.route.locale).toBe("none");
   });
+
+  it("matches a plugin route registered at site root '/'", () => {
+    mockPageRoutes = [pluginEntry("landing", "/")];
+    const match = dispatchPluginRouteSync({
+      localeAwarePath: "/",
+      themeRoutes: [],
+    });
+    expect(match?.pluginId).toBe("landing");
+    expect(match?.params).toEqual({});
+  });
 });
 
 describe("dispatchPluginRoute (async, with enabled-gate)", () => {
