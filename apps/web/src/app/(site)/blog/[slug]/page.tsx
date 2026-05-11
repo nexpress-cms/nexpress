@@ -1,4 +1,9 @@
-import { buildArticleJsonLd, getPostBySlug, getSiteSeoSettings } from "@nexpress/core";
+import {
+  buildArticleJsonLd,
+  getPostBySlug,
+  getSiteSeoSettings,
+  resolveTemplateComponent,
+} from "@nexpress/core";
 import { renderRichText } from "@nexpress/editor/server";
 import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
@@ -11,8 +16,9 @@ import {
   collectRenderContributions,
 } from "@/components/render-contributions";
 import { Comments } from "@nexpress/next/client";
-import { JsonLd } from "@nexpress/next";
+import { JsonLd, createSiteScopedBlockRenderContext } from "@nexpress/next";
 import type { Metadata } from "next";
+import type { ComponentType } from "react";
 import type { NpRichTextContent } from "@nexpress/editor";
 
 interface PostPageProps {
@@ -55,6 +61,45 @@ export default async function PostPage({ params }: PostPageProps) {
     type: "BlogPosting",
   });
 
+  // Phase #612 (2026-05-11) — dispatch through the active
+  // theme's `templates.posts.{detail,default}` if either is
+  // declared. The doc's own `template` field wins if set,
+  // matching the `pages` catch-all's behavior. Otherwise the
+  // framework's inline body renders below.
+  const DetailTemplate = await resolvePostDetailTemplate(
+    typeof post.template === "string" ? post.template : null,
+  );
+
+  if (DetailTemplate) {
+    const blockCtx = await createSiteScopedBlockRenderContext();
+    return (
+      <ShellWrap surface="site">
+        <JsonLd data={articleJsonLd as unknown as Record<string, unknown>} />
+        <RenderHead entries={head} />
+        {isDraft ? (
+          <div
+            className="np-draft-banner"
+            style={{
+              padding: "0.75rem 1rem",
+              background: "#fef3c7",
+              color: "#92400e",
+              fontSize: "0.875rem",
+              textAlign: "center",
+            }}
+          >
+            Draft preview —{" "}
+            <a href="/api/preview/exit" style={{ color: "inherit", textDecoration: "underline" }}>
+              exit
+            </a>
+          </div>
+        ) : null}
+        <DetailTemplate doc={post} blockCtx={blockCtx} />
+        <Comments collectionSlug="posts" documentId={String(post.id)} />
+        <RenderBodyEnd entries={bodyEnd} />
+      </ShellWrap>
+    );
+  }
+
   return (
     <ShellWrap surface="site">
       <article className="np-post">
@@ -96,6 +141,34 @@ export default async function PostPage({ params }: PostPageProps) {
       </article>
     </ShellWrap>
   );
+}
+
+type PostDetailTemplate = ComponentType<{
+  doc: Record<string, unknown>;
+  blockCtx?: unknown;
+}>;
+
+/**
+ * Walk the conventional post-detail template IDs: the doc's
+ * own `template` field wins if set (matching the pages
+ * catch-all), then `detail`, then `default`. Both magazine
+ * (`templates.posts.feature` for hero-led layout) and portfolio
+ * (`templates.posts.detail`) honor this priority by naming
+ * their entries accordingly.
+ */
+async function resolvePostDetailTemplate(
+  explicitTemplateId: string | null,
+): Promise<PostDetailTemplate | null> {
+  const candidates: string[] = [];
+  if (explicitTemplateId) candidates.push(explicitTemplateId);
+  candidates.push("detail", "default", "feature");
+  for (const templateId of candidates) {
+    const entry = (await resolveTemplateComponent("posts", templateId)) as
+      | { component?: PostDetailTemplate }
+      | null;
+    if (entry?.component) return entry.component;
+  }
+  return null;
 }
 
 export async function generateMetadata({ params }: PostPageProps): Promise<Metadata> {
