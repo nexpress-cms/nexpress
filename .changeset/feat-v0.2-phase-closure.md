@@ -1,6 +1,5 @@
 ---
 "@nexpress/theme-default": patch
-"@nexpress/theme-minimal": patch
 ---
 
 **Phase F.9-D — v0.2 theme contract phase closure.**

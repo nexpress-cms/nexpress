@@ -14,7 +14,6 @@
 "@nexpress/theme": major
 "@nexpress/theme-default": major
 "@nexpress/theme-magazine": major
-"@nexpress/theme-minimal": major
 "@nexpress/theme-portfolio": major
 "@nexpress/wp-import": major
 "@nexpress/xliff": major
