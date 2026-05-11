@@ -44,3 +44,9 @@ CLAUDE.md
 
 *.tsbuildinfo
 /.claude/
+
+# scripts/ux-audit.mts scaffolds into packages/cli/<name> so the workspace
+# picks the workspace:* refs up. Cleaned at end of run; --keep leaves it
+# behind for inspection — ignore by convention.
+/packages/cli/ux-audit-*
+/packages/cli/my-nexpress-site
