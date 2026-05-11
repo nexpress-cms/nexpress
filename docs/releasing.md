@@ -1,5 +1,28 @@
 # Releasing
 
+## Bootstrap (one-time, v0.1.0 first publish)
+
+The first publish doesn't use the standard Changesets flow because
+Trusted Publishing requires the package name to already exist on npm.
+The v0.1.0 release was bootstrapped by:
+
+1. **All pending `.changeset/*.md` deleted** on the bootstrap branch.
+   The pre-v0.1.0 development cumulative changelog lives in the git
+   log; the published 0.1.0 starts a fresh changelog from this point.
+2. **`publish:` step removed from `release.yml`** so push-to-main
+   doesn't try to publish before TP is configured.
+3. **Operator runs `pnpm -r publish` locally** with 2FA-authenticated
+   `npm login` to claim every `@nexpress/*` name + `create-nexpress`
+   at version 0.1.0.
+4. **Trusted Publisher configured per package** on npmjs.com
+   (see "Trusted Publisher setup" below).
+5. **`publish: pnpm run release` restored** in `release.yml`. From
+   that PR onward, the normal Changesets flow takes over.
+
+The rest of this doc describes the steady-state flow (post-bootstrap).
+
+## Steady-state flow
+
 NexPress uses Changesets for versioning + npm publishing. The release
 workflow (`.github/workflows/release.yml`) runs on every push to
 `main`:
