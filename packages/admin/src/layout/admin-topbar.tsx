@@ -151,6 +151,7 @@ function AdminTopbar({ user }: AdminTopbarProps) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              aria-label="Open user menu"
               className="flex items-center gap-2 rounded-full px-1 py-1 text-left transition-colors hover:bg-neutral-950/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--np-color-brand-ring)] dark:hover:bg-white/[0.04]"
             >
               <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-[#3858E9] to-[#1f2c91] text-[10.5px] font-semibold text-white">

@@ -141,15 +141,15 @@ export async function getPluginConfig(pluginId: string): Promise<unknown> {
 export async function getPluginConfigWithStatus(
   pluginId: string,
 ): Promise<NpPluginConfigResult> {
+  // Registration is consulted for schema-driven validation + defaults
+  // when present, but a missing registration MUST NOT short-circuit the
+  // DB read. `ctx.settings.setPlugin` writes to `np_settings` for any
+  // pluginId regardless of registration — bailing here would create a
+  // read/write asymmetry where stored config silently disappears on
+  // read. Treat "not registered" the same as "registered with no
+  // schema": surface the row raw if it exists.
   const registration = getPluginRegistration(pluginId);
-  if (!registration) {
-    // Plugin not registered — return empty config so callers (plugin
-    // hosts iterating contexts, route handlers reading their own config)
-    // get a stable shape without having to special-case "plugin not
-    // found". The admin surface checks registration separately.
-    return { pluginId, value: {}, hasPersisted: false };
-  }
-  const schema = registration.configSchema as ZodTypeAny | undefined;
+  const schema = registration?.configSchema as ZodTypeAny | undefined;
 
   let row: { value: unknown } | undefined;
   try {
@@ -198,11 +198,19 @@ export async function getPluginConfigWithStatus(
   }
 
   // Versioned envelope detection + lazy migration. Mirrors
-  // `getThemeSettingsWithStatus` exactly.
+  // `getThemeSettingsWithStatus` exactly. Registration is guaranteed
+  // defined here: schema is only truthy when registration exists
+  // (line ~152), and the `if (!schema) return` above narrows the rest
+  // of the function — but TS can't infer that across `?.` so we
+  // restate it for the migration helper.
   const versioned = isVersionedPluginConfig(row.value) ? row.value : null;
   const storedVersion = versioned ? versioned.__npVersion : 1;
   const rawValue = versioned ? versioned.__npSettings : row.value;
-  const valueToParse = applyPluginConfigMigration(registration, rawValue, storedVersion);
+  const valueToParse = applyPluginConfigMigration(
+    registration ?? { configVersion: 1 },
+    rawValue,
+    storedVersion,
+  );
 
   const parsed = schema.safeParse(valueToParse);
   if (parsed.success) {
