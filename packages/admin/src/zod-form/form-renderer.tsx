@@ -140,6 +140,21 @@ function FieldShell({
   );
 }
 
+/**
+ * Convert a text-input's value to what the form should commit.
+ * Mirrors `NumberField`'s empty-string-→-undefined treatment
+ * for text-like fields (#603): when the field is NOT required,
+ * clearing the input emits `undefined` rather than `""`, so
+ * `z.string().url().optional()` and other optional text schemas
+ * see the absence the operator intended. Required fields keep
+ * the empty-string behavior so validation can surface
+ * `required` / `min(1)` errors.
+ */
+function commitText(raw: string, required: boolean): string | undefined {
+  if (raw === "" && !required) return undefined;
+  return raw;
+}
+
 function TextField({ field, value, onChange }: FieldProps) {
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
@@ -147,7 +162,7 @@ function TextField({ field, value, onChange }: FieldProps) {
         id={field.name}
         type="text"
         value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(commitText(e.target.value, field.required))}
       />
     </FieldShell>
   );
@@ -161,7 +176,7 @@ function TextareaField({ field, value, onChange }: FieldProps) {
         id={field.name}
         rows={f.rows ?? 4}
         value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(commitText(e.target.value, field.required))}
       />
     </FieldShell>
   );
@@ -175,7 +190,7 @@ function PasswordField({ field, value, onChange }: FieldProps) {
         type="password"
         autoComplete="new-password"
         value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(commitText(e.target.value, field.required))}
       />
     </FieldShell>
   );
@@ -189,13 +204,19 @@ function UrlField({ field, value, onChange }: FieldProps) {
         type="url"
         placeholder="https://"
         value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(commitText(e.target.value, field.required))}
       />
     </FieldShell>
   );
 }
 
 function ColorField({ field, value, onChange }: FieldProps) {
+  // Color is a special case: the `<input type="color">` always
+  // has a non-empty value, so the only way to "clear" the field
+  // is via the adjacent text input. Match the other text-like
+  // fields' treatment of empty input for optional fields
+  // (#603) — emit undefined when the operator clears the text
+  // box while the schema is optional.
   const v = typeof value === "string" ? value : "#000000";
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
@@ -204,14 +225,15 @@ function ColorField({ field, value, onChange }: FieldProps) {
           id={field.name}
           type="color"
           value={v}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(commitText(e.target.value, field.required))}
           className="h-9 w-16 cursor-pointer p-1"
         />
         <Input
           type="text"
-          value={v}
-          onChange={(e) => onChange(e.target.value)}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(commitText(e.target.value, field.required))}
           className="font-mono text-xs"
+          placeholder={field.required ? "#000000" : "(none)"}
         />
       </div>
     </FieldShell>
@@ -379,27 +401,45 @@ function StringArrayField({ field, value, onChange }: FieldProps) {
   // Phase G follow-up — `z.array(z.string())` editor.
   //
   // Renders one item per line in a `<textarea>`. Empty lines are
-  // dropped on commit so trailing returns don't introduce blank
-  // entries. Plugin / theme authors who want richer affordances
-  // (chips, drag-reorder, paste-from-CSV) can still target this
-  // surface — for the common OAuth-scopes / category-list /
-  // tag-allowlist case the line-buffer shape is the simplest
+  // dropped on **blur**, not on every keystroke (#599): while
+  // the operator is mid-edit, the textarea owns its content
+  // verbatim, including trailing blank lines, so typing
+  // multi-line input works naturally. On blur we normalize
+  // (split/trim/drop-empty) and emit the parsed array; the
+  // textarea returns to being controlled by `value`.
+  //
+  // Plugin / theme authors who want richer affordances (chips,
+  // drag-reorder, paste-from-CSV) can still target this surface
+  // — for the common OAuth-scopes / category-list / tag-
+  // allowlist case the line-buffer shape is the simplest
   // operator-readable representation.
   const items = Array.isArray(value)
     ? (value as unknown[]).filter((v): v is string => typeof v === "string")
     : [];
+  // `draft` is null while the textarea is in sync with `value`,
+  // and a raw string while the operator is mid-edit. The
+  // display value falls back to the parsed-from-value joined
+  // string so external resets (parent re-renders with a new
+  // value) take effect when no edit is pending.
+  const [draft, setDraft] = useState<string | null>(null);
+  const displayValue = draft ?? items.join("\n");
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
       <Textarea
         id={field.name}
         rows={Math.max(3, items.length + 1)}
-        value={items.join("\n")}
+        value={displayValue}
         onChange={(e) => {
-          const lines = e.target.value
+          setDraft(e.target.value);
+        }}
+        onBlur={() => {
+          if (draft === null) return;
+          const lines = draft
             .split(/\r?\n/)
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
           onChange(lines);
+          setDraft(null);
         }}
         placeholder="One item per line"
       />
