@@ -1,1 +1,0 @@
-ALTER TABLE "nx_c_posts" ADD COLUMN "wp_original_author" text;
