@@ -1,3 +1,0 @@
-ALTER TABLE "nx_c_discussions" ADD COLUMN "member_author_id" uuid;--> statement-breakpoint
-ALTER TABLE "nx_c_discussions" ADD CONSTRAINT "nx_c_discussions_member_author_id_nx_members_id_fk" FOREIGN KEY ("member_author_id") REFERENCES "public"."nx_members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "nx_c_discussions_member_author_idx" ON "nx_c_discussions" USING btree ("member_author_id");
