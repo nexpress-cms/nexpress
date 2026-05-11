@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import pc from "picocolors";
@@ -114,24 +114,58 @@ async function confirm(message: string): Promise<boolean> {
   }
 }
 
+function camelCase(s: string): string {
+  return s.replace(/[-_](.)/g, (_, ch: string) => ch.toUpperCase());
+}
+
 function applyPlan(
   cwd: string,
   plan: ThemeInstallPlan,
-): { patched: number; created: number; skipped: number } {
+  /** Map from discovered collection slug → its real file path
+   *  on disk. Used by `patch-collection` so an operator with a
+   *  collection file named differently from its slug (e.g.
+   *  `blog-posts.ts` exporting `slug: "posts"`) gets the right
+   *  file patched — issue #604. */
+  discoveredFiles: Map<string, string>,
+): {
+  patched: number;
+  created: number;
+  skipped: number;
+  /** Names of collections newly created; the runner prints a
+   *  manual-step note pointing the operator at `nexpress.config.ts`
+   *  so the new collection actually gets registered (#605). */
+  createdSlugs: string[];
+} {
   let patched = 0;
   let created = 0;
   let skipped = 0;
+  const createdSlugs: string[] = [];
   for (const step of plan.steps) {
     if (step.kind === "create-collection") {
       const target = resolve(cwd, COLLECTIONS_DIR, `${step.collection}.ts`);
+      // Issue #606 — projects without an existing
+      // `src/collections/` directory previously hit ENOENT.
+      // Create the directory tree before writing so the very
+      // first `theme:install` against a bare scaffold succeeds.
+      mkdirSync(dirname(target), { recursive: true });
       writeFileSync(
         target,
         renderNewCollectionFile(step.collection, step.requirement),
       );
       console.log(pc.green("✓") + ` Wrote ${pc.cyan(target)}`);
       created += 1;
+      createdSlugs.push(step.collection);
     } else if (step.kind === "patch-collection") {
-      const target = resolve(cwd, COLLECTIONS_DIR, `${step.collection}.ts`);
+      // Issue #604 — prefer the discovered filePath so a
+      // collection authored at `blog-posts.ts` (with
+      // `slug: "posts"`) gets patched at its real path, not the
+      // hard-coded `${slug}.ts`. Falls back to `<slug>.ts` only
+      // when discovery didn't see the collection (shouldn't
+      // happen for `patch-collection` steps — those imply the
+      // collection was discovered — but guarded defensively).
+      const target =
+        discoveredFiles.get(step.collection) ??
+        resolve(cwd, COLLECTIONS_DIR, `${step.collection}.ts`);
       try {
         const result = patchCollectionFile(
           target,
@@ -167,7 +201,7 @@ function applyPlan(
     }
     // warn-soft-mismatch — informational; no apply action.
   }
-  return { patched, created, skipped };
+  return { patched, created, skipped, createdSlugs };
 }
 
 function detectPackageManager(cwd: string): "pnpm" | "npm" | "yarn" {
@@ -333,9 +367,13 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
     }
   }
 
+  const discoveredFiles = new Map<string, string>(
+    discovered.map((d) => [d.config.slug, d.filePath]),
+  );
+
   let summary;
   try {
-    summary = applyPlan(cwd, plan);
+    summary = applyPlan(cwd, plan, discoveredFiles);
   } catch (error) {
     if (error instanceof CollectionPatchError) {
       console.error(pc.red("error: ") + error.message);
@@ -400,14 +438,55 @@ export async function runThemeInstall(input: RunInput): Promise<number> {
     return 0;
   }
 
+  // Issue #605 — created collection files aren't auto-imported
+  // into nexpress.config.ts. The generated drizzle schema picks
+  // them up only AFTER the operator registers them in the
+  // `collections` array. Surface this explicitly with the exact
+  // import + array entry so it's a copy-paste, not a guessing
+  // game.
+  if (summary.createdSlugs.length > 0) {
+    console.log("");
+    console.log(
+      pc.yellow("⚠"),
+      `Register the new collection${
+        summary.createdSlugs.length === 1 ? "" : "s"
+      } in ${pc.cyan("src/nexpress.config.ts")}:`,
+    );
+    for (const slug of summary.createdSlugs) {
+      const ident = `${camelCase(slug)}Collection`;
+      console.log(`    ${pc.dim("import")} { ${pc.cyan(ident)} } ${pc.dim(`from "./collections/${slug}";`)}`);
+    }
+    console.log("");
+    console.log(`  Then add to the ${pc.cyan("collections")} array:`);
+    const idents = summary.createdSlugs
+      .map((s) => `${camelCase(s)}Collection`)
+      .join(", ");
+    console.log(`    ${pc.dim("collections: […,")} ${pc.cyan(idents)}${pc.dim("]")}`);
+    console.log("");
+    console.log(
+      pc.dim(
+        `  Without registration, the new file is dead code: bootstrap and schema generation only see collections listed in the config.`,
+      ),
+    );
+  }
+
   console.log("");
   console.log("Next:");
   console.log("  1. Review the changes (`git diff`)");
-  console.log("  2. Run `pnpm db:migrate` to apply the migration");
-  console.log(
-    "     (or re-run with --apply to auto-chain db:migrate after generate)",
-  );
-  console.log("  3. Activate the theme in admin → Settings → Theme");
+  if (summary.createdSlugs.length > 0) {
+    console.log("  2. Register newly-created collections in `nexpress.config.ts` (see above)");
+    console.log("  3. Run `pnpm db:migrate` to apply the migration");
+    console.log(
+      "     (or re-run with --apply to auto-chain db:migrate after generate)",
+    );
+    console.log("  4. Activate the theme in admin → Settings → Theme");
+  } else {
+    console.log("  2. Run `pnpm db:migrate` to apply the migration");
+    console.log(
+      "     (or re-run with --apply to auto-chain db:migrate after generate)",
+    );
+    console.log("  3. Activate the theme in admin → Settings → Theme");
+  }
 
   return 0;
 }
