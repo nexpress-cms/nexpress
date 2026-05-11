@@ -11,10 +11,12 @@ import { resolveDocsSettings } from "./settings-helpers.js";
  * `resolveDocsSettings()` so the version label and search
  * placeholder match the operator's admin choices.
  *
- * The search input is a plain GET form to `/search` — F.2's
- * theme route on `/search` handles the actual query. No
- * client-side JS for the input itself; works without
- * hydration.
+ * The search input is a plain GET form to `/docs/search` —
+ * F.2's theme route handles the query (#609: the universal
+ * `/search` is the framework's own page, so the docs theme
+ * scopes its search to `/docs/search` to avoid being shadowed
+ * by the host's `app/(site)/search/page.tsx`). No client-side
+ * JS for the input itself; works without hydration.
  */
 export async function DocsHeader(): Promise<React.ReactElement> {
   const settings = await resolveDocsSettings();
@@ -26,7 +28,7 @@ export async function DocsHeader(): Promise<React.ReactElement> {
           <span className="np-docs-brand-version">{settings.version}</span>
         </a>
         <form
-          action="/search"
+          action="/docs/search"
           method="get"
           className="np-docs-search-form"
           role="search"

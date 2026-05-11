@@ -4,6 +4,7 @@ import { DocsHeader } from "./header.js";
 import { DocsMembersNotFound } from "./members-not-found.js";
 import { DocsMembersShell } from "./members-shell.js";
 import { DocsNotFound } from "./not-found.js";
+import { DocsDetailRoute } from "./routes/doc-detail.js";
 import { DocsSearch } from "./search.js";
 import { DocsShell } from "./shell.js";
 import { DocsSidebar } from "./sidebar.js";
@@ -84,10 +85,28 @@ export const docsTheme = defineTheme({
       },
     },
     routes: [
-      // F.2 — `/search` is a flat route (not collection-archive
-      // shaped). Theme registers it explicitly. The component
-      // reads `?q=` and runs `searchCollections`.
-      { pattern: "/search", component: DocsSearch },
+      // F.2 — docs theme's scoped search route. Lives at
+      // `/docs/search` rather than `/search` (#609): the host's
+      // reference app has an app-explicit `/search` page route
+      // that takes precedence over theme routes per the locked
+      // dispatch order (app file > page > theme > plugin). The
+      // theme can't override the universal search page, so it
+      // scopes its own search to a `/docs/*` namespace and the
+      // operator gets both routes: framework `/search` + docs
+      // theme `/docs/search`.
+      //
+      // Order matters: search comes first so `/docs/search` is
+      // matched as a literal rather than `{ slug: "search" }`
+      // by the parametric detail route below (dispatcher is
+      // first-match-wins).
+      { pattern: "/docs/search", component: DocsSearch },
+      // Doc detail dispatch (#614). The sidebar + template emit
+      // `/docs/<slug>` links; without this route those 404 in
+      // the reference app — the catch-all only resolves `pages`
+      // rows, not arbitrary `docs` collection rows. The
+      // component looks up the docs row by slug and renders
+      // through `templates.docs.default` (DocPageTemplate).
+      { pattern: "/docs/:slug", component: DocsDetailRoute },
     ],
     navLocations: {
       primary: {
