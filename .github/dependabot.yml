@@ -1,0 +1,51 @@
+# Weekly version bumps + daily security updates (security updates run
+# regardless of this config; see Security tab → Dependabot alerts).
+#
+# `groups` batch related dependencies into a single PR per week. The
+# noisiest packages (`drizzle-*`, `@radix-ui/*`, Lexical) are grouped
+# so we don't get 30 PRs every Monday.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    groups:
+      drizzle:
+        patterns:
+          - "drizzle-orm"
+          - "drizzle-kit"
+          - "drizzle-zod"
+      radix:
+        patterns:
+          - "@radix-ui/*"
+      lexical:
+        patterns:
+          - "lexical"
+          - "@lexical/*"
+      next:
+        patterns:
+          - "next"
+          - "@next/*"
+          - "eslint-config-next"
+      typescript-eslint:
+        patterns:
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - github-actions
