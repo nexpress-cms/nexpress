@@ -1,15 +1,15 @@
 name: CI
 
-# Pre-public-release cost saver: this private repo bills GitHub Actions
-# minutes per workflow run. Until the repo is open-sourced (and the
-# private-repo billing goes away), CI runs on demand only — push and
-# pull_request triggers are commented out. Restore both once the repo
-# is public; the rest of the workflow is unchanged.
+# Triggers: push to main (verify the merged state) + every
+# pull_request (gate merges on green). Restored alongside the npm
+# publish activation so the Release workflow on `main` runs against
+# pre-verified diffs — without push-time CI, a broken `main` would
+# propagate to npm before anyone noticed.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
-  # pull_request:
+  push:
+    branches: [main]
+  pull_request:
 
 concurrency:
   group: ci-${{ github.ref }}
