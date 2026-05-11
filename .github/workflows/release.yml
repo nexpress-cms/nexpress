@@ -106,24 +106,16 @@ jobs:
           # changeset-release/main". Same applies to `pnpm run
           # release` below.
           version: pnpm run version
-          # `publish:` is intentionally OMITTED during the v0.1.0
-          # bootstrap. Trusted Publishing requires each package to
-          # already exist on npm with a TP config pointing at this
-          # exact repo + workflow. The bootstrap path is:
-          #
-          #   1. Operator runs `pnpm -r publish --access public
-          #      --no-git-checks --filter '!@nexpress/web'`
-          #      locally (2FA-authenticated) to claim the package
-          #      names with v0.1.0 tarballs.
-          #   2. Operator configures Trusted Publisher per package
-          #      on npmjs.com (repo: nexpress-cms/nexpress, workflow:
-          #      release.yml, env: empty).
-          #   3. Restore `publish: pnpm run release` below in a
-          #      follow-up PR. From that point CI publishes via
-          #      OIDC on every Version Packages PR merge.
-          #
-          # Until step 3, this workflow only opens / updates the
-          # Version Packages PR — never publishes.
+          # `pnpm run release` runs `pnpm build && changeset publish`.
+          # changesets/action only calls this when no changesets are
+          # queued (i.e. the Version Packages PR has just merged), so
+          # publish doesn't fire mid-track. Auth via Trusted Publishing:
+          # the `id-token: write` permission lets npm exchange the
+          # workflow's OIDC token for publish rights, gated by each
+          # package's TP config on npmjs.com (nexpress-cms/nexpress +
+          # release.yml). `NPM_CONFIG_PROVENANCE: "true"` attaches a
+          # Sigstore provenance attestation to every tarball.
+          publish: pnpm run release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
