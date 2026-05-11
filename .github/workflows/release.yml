@@ -12,19 +12,28 @@ name: Release
 # tarball was built from this exact commit. See
 # https://docs.npmjs.com/generating-provenance-statements.
 #
-# Current mode: version-PR + npm publish. The `Create Release Pull
-# Request or Publish` step below picks up pending `.changeset/`
-# entries on every `push: main` — if any are queued and the diff
-# isn't already a Version Packages PR, the action opens / updates
-# that PR. When that PR merges (no remaining changesets), the same
-# step runs `pnpm release` (which is `pnpm build && changeset
-# publish`) to push tarballs to npm with Sigstore provenance.
+# Current mode: version-PR + npm publish via **Trusted Publishing**
+# (OIDC). The `Create Release Pull Request or Publish` step below
+# picks up pending `.changeset/` entries on every `push: main` —
+# if any are queued and the diff isn't already a Version Packages
+# PR, the action opens / updates that PR. When that PR merges
+# (no remaining changesets), the same step runs `pnpm release`
+# (`pnpm build && changeset publish`) to push tarballs to npm.
 #
-# **NPM_TOKEN required.** This workflow needs an `NPM_TOKEN`
-# repository secret with publish rights on the `@nexpress` scope
-# and `create-nexpress` unscoped package. Without it the publish
-# step errors with `ENEEDAUTH`; the version-PR side still works
-# because it only commits via GITHUB_TOKEN.
+# **No NPM_TOKEN.** Auth uses GitHub's OIDC: the workflow's
+# `id-token: write` permission lets npm exchange the short-lived
+# OIDC token for publish rights, gated by each package's Trusted
+# Publisher config on npmjs.com (which pins this exact repo +
+# workflow). Sigstore provenance attaches automatically via
+# `NPM_CONFIG_PROVENANCE: "true"`.
+#
+# **First-publish prerequisite.** A package must either (a)
+# already exist on npm with Trusted Publishers configured for
+# this workflow, OR (b) be published once via local
+# `pnpm publish --access public` with 2FA, then have its TP
+# config added on npmjs.com afterwards. See
+# `docs/releasing.md` § "Trusted Publisher setup" for the
+# step-by-step.
 on:
   workflow_dispatch:
   push:
@@ -95,12 +104,12 @@ jobs:
           # publish doesn't fire mid-track.
           #
           # `NPM_CONFIG_PROVENANCE: "true"` enables Sigstore /
-          # provenance attestation. The workflow's `id-token: write`
-          # permission is what npm uses to sign the package metadata.
+          # provenance attestation. Same `id-token: write`
+          # workflow permission powers both provenance signing AND
+          # Trusted Publishing auth — no separate token needed.
           publish: pnpm release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"

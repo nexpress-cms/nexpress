@@ -16,22 +16,64 @@ The root `release` script lives in `package.json`. Changesets reads
 `.changeset/config.json`, where `access: "public"` makes scoped
 packages publishable without per-package `publishConfig` blocks.
 
-## Required secrets
+## Auth: Trusted Publishing (OIDC)
 
-The workflow needs `NPM_TOKEN` as a GitHub repository secret with
-publish rights on:
+The workflow does **not** use `NPM_TOKEN`. npm 2024+ recommends
+[**Trusted Publishing**][tp-docs] — a token-less auth model
+backed by GitHub's OIDC. The same `id-token: write` workflow
+permission that signs Sigstore provenance also lets npm verify
+the workflow run's identity and grant publish access.
 
-- the `@nexpress` npm scope (for every `@nexpress/*` package), and
-- the unscoped `create-nexpress` package.
+[tp-docs]: https://docs.npmjs.com/trusted-publishers
 
-A classic Automation token works. The npm UI lets you scope a token
-to specific packages — preferred over an all-access token for the
-bot.
+**Why TP over classic tokens:**
+- No long-lived secret in repo settings to leak / rotate.
+- Audit trail tied to specific workflow runs (every publish is
+  attributable to a commit + workflow).
+- npm UI warns when creating a classic Automation token that
+  bypasses 2FA: "For automation or CI/CD uses, please use
+  Trusted Publishing instead."
 
-`permissions.id-token: write` (already set in the workflow) is what
-npm uses to sign provenance via Sigstore; combined with
-`NPM_CONFIG_PROVENANCE: "true"` the published tarballs carry an
-attestation pointing at the workflow run that produced them.
+### Trusted Publisher setup (one-time)
+
+For every package the workflow needs to publish, register the
+workflow as a Trusted Publisher on npmjs.com. Per-package
+clicking, ~25 entries for this monorepo:
+
+1. **Package must already exist on npm.** TP can't be configured
+   for a name that doesn't exist yet. For first-time publishes,
+   either:
+   - **Path A:** Publish each package once locally with
+     `pnpm publish --access public` + 2FA. Then proceed to step
+     2.
+   - **Path B:** Use a one-shot classic Automation token for
+     the first CI publish, then add TP configs, then revoke
+     the token. ("Bypass 2FA" warning is acceptable for a
+     token that lives only minutes.)
+2. **Go to the package settings page on npmjs.com:**
+   `https://www.npmjs.com/package/@nexpress/<name>/access`
+3. **"Trusted Publishers" tab → Add a publisher.**
+4. **Fill GitHub Actions config:**
+   - Publisher type: GitHub Actions
+   - Organization or user: `hahabsw`
+   - Repository: `nexpress`
+   - Workflow filename: `release.yml`
+   - Environment name: leave blank (no GH environment used)
+5. **Repeat for every published package.** Including `@nexpress/*`
+   scoped + the unscoped `create-nexpress`. The post-publish
+   verification step below lists what was published — use it
+   as the worklist.
+
+After the configs are in place, subsequent CI publishes work
+silently — no token, no prompts, no rotation.
+
+### Provenance attestation
+
+`NPM_CONFIG_PROVENANCE: "true"` + `id-token: write` →
+published tarballs carry a Sigstore signature pinning them to
+the GHA workflow run that built them. Installers can verify
+via `npm view <pkg> --json | jq '.dist.attestations'`. No
+extra setup beyond the workflow flag.
 
 ## Pre-merge smoke for the Version PR
 
