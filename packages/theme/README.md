@@ -89,9 +89,9 @@ Use the variables anywhere in your stylesheets.
 The monorepo ships four:
 
 - `@nexpress/theme-default`
-- `@nexpress/theme-minimal`
 - `@nexpress/theme-magazine`
 - `@nexpress/theme-portfolio`
+- `@nexpress/theme-docs`
 
 ## Links
 

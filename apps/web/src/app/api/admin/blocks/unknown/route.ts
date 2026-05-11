@@ -8,7 +8,11 @@ import {
   type NpAuthUser,
   type NpFieldConfig,
 } from "@nexpress/core";
-import { getRegisteredBlocks, type NpBlockInstance } from "@nexpress/blocks";
+import {
+  getRegisteredBlocksForActiveSources,
+  type NpBlockInstance,
+} from "@nexpress/blocks";
+import { getCachedActiveThemeId } from "@nexpress/next";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
@@ -125,7 +129,7 @@ export async function POST(request: NextRequest) {
       if (!Array.isArray(fieldValue)) continue;
       const stripped = stripUnknownInstances(
         fieldValue as NpBlockInstance[],
-        getKnownTypes(),
+        await getKnownTypes(),
         filterTypes,
       );
       if (stripped.removed === 0) continue;
@@ -146,14 +150,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getKnownTypes(): Set<string> {
-  return new Set(getRegisteredBlocks().map((b) => b.type));
+async function getKnownTypes(): Promise<Set<string>> {
+  // Issue #600 — filter the registry by active-source context.
+  // Previously the cleanup used the unfiltered registry, which
+  // counts inactive-theme blocks (e.g. `magazine.*` on a site
+  // with `portfolio` active) as "known" and so the cleanup
+  // scan reports nothing for the exact theme-switch stale-block
+  // flow it advertises. Filtering by active theme aligns the
+  // scan with how the public site renders these blocks (as
+  // "from inactive theme" placeholders, i.e. candidates to
+  // strip).
+  const themeId = (await getCachedActiveThemeId()) ?? null;
+  return new Set(
+    getRegisteredBlocksForActiveSources({ themeId }).map((b) => b.type),
+  );
 }
 
 async function scanUnknownBlocks(
   user: NpAuthUser,
 ): Promise<UnknownBlocksReport> {
-  const known = getKnownTypes();
+  const known = await getKnownTypes();
   const slugs = getAllCollectionSlugs();
   const affected: AffectedDoc[] = [];
   const typeCounters = new Map<

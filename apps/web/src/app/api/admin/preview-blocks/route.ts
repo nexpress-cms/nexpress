@@ -1,6 +1,6 @@
 import { NpForbiddenError, can, getTheme } from "@nexpress/core";
 import { renderBlocks, type NpBlockInstance } from "@nexpress/blocks";
-import { createDefaultBlockRenderContext } from "@nexpress/next";
+import { createSiteScopedBlockRenderContext } from "@nexpress/next";
 import { generateThemeCss } from "@nexpress/theme";
 import type { NextRequest } from "next/server";
 // `react-dom/server` in Node runtime exports the legacy sync APIs;
@@ -65,7 +65,13 @@ export async function POST(request: NextRequest) {
 
     const themeStyle = await resolveThemeStyle();
 
-    const ctx = createDefaultBlockRenderContext();
+    // Issue #607 — use the site-scoped block render context so
+    // inactive-theme blocks render as the same "from inactive
+    // theme" placeholder the public catch-all produces. Without
+    // this, the editor iframe shows inactive blocks rendering
+    // normally while the public site shows placeholders —
+    // preview disagrees with production output.
+    const ctx = await createSiteScopedBlockRenderContext();
     let bodyHtml: string;
     try {
       // `previewMarkers: true` wraps each rendered block with a

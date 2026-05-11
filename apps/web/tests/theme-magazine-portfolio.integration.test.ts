@@ -11,7 +11,7 @@ import {
 
 /**
  * Sanity coverage for the example themes shipped alongside
- * `theme-default` / `theme-minimal`. We aren't trying to lock
+ * `theme-default` / `theme-magazine` / `theme-portfolio` / `theme-docs`. We aren't trying to lock
  * in every CSS rule; the goal is to prove each theme exposes
  * the expected manifest, slots, and templates so a future
  * refactor doesn't silently break them.
