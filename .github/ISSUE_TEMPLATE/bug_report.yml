@@ -1,0 +1,63 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. The more concrete you can be, the faster we can act.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A short description of the bug.
+      placeholder: When I ..., I expected ... but got ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps. Include sample code / config when relevant.
+      placeholder: |
+        1. `pnpm create-nexpress my-site`
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+
+  - type: input
+    id: nexpress-version
+    attributes:
+      label: NexPress version
+      description: Output of `npm view @nexpress/core version` in your install.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Node version, OS, deployment target (local / Vercel / Fly / self-hosted).
+      placeholder: "Node 22.x on macOS, local dev"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / stack trace
+      description: Paste verbatim. Strip secrets.
+      render: text
+    validations:
+      required: false

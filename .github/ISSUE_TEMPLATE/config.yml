@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/nexpress-cms/nexpress/security/advisories/new
+    about: Please report security issues privately via GitHub Security Advisories, not as a public issue.
+  - name: Question / discussion
+    url: https://github.com/nexpress-cms/nexpress/discussions
+    about: For usage questions and open-ended discussions, please use Discussions.

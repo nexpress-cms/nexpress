@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The motivation, not the proposed solution. What are you trying to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: What you have in mind. Rough is fine.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways you've thought of solving this, including workarounds.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - "Core / pipeline"
+        - "Admin UI"
+        - "Blocks / editor"
+        - "Themes"
+        - "Plugins / SDK"
+        - "CLI / scaffolding"
+        - "Docs"
+        - "Other"
+    validations:
+      required: true
