@@ -94,20 +94,28 @@ jobs:
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
-          # `pnpm version` consumes pending `.changeset/` entries →
-          # bumps versions + writes CHANGELOG.md. The action opens /
-          # updates the "Version Packages" PR with this diff.
-          version: pnpm version
-          # `pnpm release` runs `pnpm build && changeset publish`.
-          # changesets/action only calls this when no changesets are
-          # queued (i.e. the Version Packages PR has just merged), so
-          # publish doesn't fire mid-track.
+          # `pnpm run version` invokes the `version` script in
+          # root package.json (= `changeset version`). MUST be
+          # `pnpm run version`, NOT `pnpm version` — bare `version`
+          # is a pnpm built-in (alias for npm's version subcommand)
+          # that shadows package.json scripts of the same name.
+          # With bare `pnpm version` the built-in fires, prints the
+          # current root version, and skips the changeset bump
+          # entirely — leaving no diff for the PR and the action
+          # erroring "No commits between main and
+          # changeset-release/main". Same applies to `pnpm run
+          # release` below.
+          version: pnpm run version
+          # `pnpm run release` runs `pnpm build && changeset publish`.
+          # changesets/action only calls this when no changesets
+          # are queued (i.e. the Version Packages PR has just
+          # merged), so publish doesn't fire mid-track.
           #
           # `NPM_CONFIG_PROVENANCE: "true"` enables Sigstore /
-          # provenance attestation. Same `id-token: write`
-          # workflow permission powers both provenance signing AND
-          # Trusted Publishing auth — no separate token needed.
-          publish: pnpm release
+          # provenance attestation. Same `id-token: write` workflow
+          # permission powers both provenance signing AND Trusted
+          # Publishing auth — no separate token needed.
+          publish: pnpm run release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
