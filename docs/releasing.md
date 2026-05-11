@@ -1,6 +1,10 @@
 # Releasing
 
-## Bootstrap (one-time, v0.1.0 first publish)
+## Bootstrap (one-time, v0.1.0 first publish) — completed
+
+> **Status:** Completed for v0.1.0 (published 2026-05-12). This
+> section is kept as a historical reference; the steady-state flow
+> below is what every subsequent release follows.
 
 The first publish doesn't use the standard Changesets flow because
 Trusted Publishing requires the package name to already exist on npm.
