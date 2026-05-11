@@ -1,6 +1,6 @@
 # @nexpress/admin
 
-Admin UI components for [NexPress](https://github.com/hahabsw/nexpress) —
+Admin UI components for [NexPress](https://github.com/nexpress-cms/nexpress) —
 the Next.js-based CMS. shadcn-style React components built on Radix UI
 and Tailwind v4.
 
@@ -25,7 +25,7 @@ import { AdminShell, CollectionListView } from "@nexpress/admin/client";
 Importing the wrong subpath breaks the build (RSC sees `"use client"` ;
 client gets server-only deps). The reference app's protected admin
 layout is the canonical pattern — see
-[`apps/web/src/app/(admin)/admin/(protected)/layout.tsx`](https://github.com/hahabsw/nexpress/blob/main/apps/web/src/app/(admin)/admin/(protected)/layout.tsx).
+[`apps/web/src/app/(admin)/admin/(protected)/layout.tsx`](https://github.com/nexpress-cms/nexpress/blob/main/apps/web/src/app/(admin)/admin/(protected)/layout.tsx).
 
 ## Quick example
 
@@ -66,9 +66,9 @@ itself would drag `@nexpress/core` into the browser bundle.
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md) — architecture overview
-- [docs/plugin-admin.md](https://github.com/hahabsw/nexpress/blob/main/docs/plugin-admin.md) — adding admin surfaces from a plugin
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview
+- [docs/plugin-admin.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-admin.md) — adding admin surfaces from a plugin
 
 ## License
 

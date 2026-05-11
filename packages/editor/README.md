@@ -1,7 +1,7 @@
 # @nexpress/editor
 
 Lexical-based rich text editor for
-[NexPress](https://github.com/hahabsw/nexpress) — the Next.js-based CMS.
+[NexPress](https://github.com/nexpress-cms/nexpress) — the Next.js-based CMS.
 Stores content as Lexical JSON; renders the same JSON server-side without
 mounting the editor.
 
@@ -58,8 +58,8 @@ import { NpRichTextEditor } from "@nexpress/editor/client";
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md)
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md)
 - [Lexical docs](https://lexical.dev/)
 
 ## License

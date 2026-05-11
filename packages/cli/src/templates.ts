@@ -537,7 +537,7 @@ With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
 
 ## Deploy
 
-See [docs/deployment.md](https://github.com/hahabsw/nexpress/blob/main/docs/deployment.md)
+See [docs/deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md)
 for full Docker / Vercel / Fly.io recipes plus multi-node notes.
 
 ### Vercel

@@ -1,7 +1,7 @@
 # @nexpress/rate-limiter-redis
 
 Redis-backed `NpRateLimiterAdapter` for multi-node
-[NexPress](https://github.com/hahabsw/nexpress) deployments.
+[NexPress](https://github.com/nexpress-cms/nexpress) deployments.
 
 The default `InMemoryRateLimiter` shipped in `@nexpress/core` keeps
 per-IP buckets in a process-local `Map`, which means the effective

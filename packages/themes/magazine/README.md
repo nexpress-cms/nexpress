@@ -1,6 +1,6 @@
 # @nexpress/theme-magazine
 
-Magazine theme for [NexPress](https://github.com/hahabsw/nexpress).
+Magazine theme for [NexPress](https://github.com/nexpress-cms/nexpress).
 Editorial layout — strong typography, image-forward grid, dense
 metadata. Suited for blogs, news sites, longform.
 
@@ -23,7 +23,7 @@ export default defineConfig({
 
 For authoring your own theme see
 [`@nexpress/theme`](https://www.npmjs.com/package/@nexpress/theme) and
-[docs/theme-authoring.md](https://github.com/hahabsw/nexpress/blob/main/docs/theme-authoring.md).
+[docs/theme-authoring.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/theme-authoring.md).
 
 ## License
 

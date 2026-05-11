@@ -4,14 +4,14 @@
   "description": "Server route factories + headless React hooks for member auth pages — login, register, password reset, verify, OAuth.",
   "license": "MIT",
   "author": "Nexpress",
-  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hahabsw/nexpress.git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
     "directory": "packages/auth-pages"
   },
   "bugs": {
-    "url": "https://github.com/hahabsw/nexpress/issues"
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
   },
   "keywords": [
     "nexpress",

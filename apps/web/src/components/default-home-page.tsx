@@ -74,7 +74,7 @@ export async function DefaultHomePage() {
           </p>
         </a>
         <a
-          href="https://github.com/hahabsw/nexpress"
+          href="https://github.com/nexpress-cms/nexpress"
           className="rounded-2xl border border-black/10 bg-white px-5 py-4 text-sm font-medium transition hover:border-black/30 hover:shadow-sm"
         >
           <div className="text-xs uppercase tracking-wider opacity-60">

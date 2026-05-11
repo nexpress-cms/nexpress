@@ -1,7 +1,7 @@
 # @nexpress/plugin-reading-time
 
 Reading-time meta plugin for
-[NexPress](https://github.com/hahabsw/nexpress). Logs a
+[NexPress](https://github.com/nexpress-cms/nexpress). Logs a
 word-count-based reading-time estimate whenever a post is created or
 updated, and exposes a `GET /api/plugins/reading-time/estimate?text=…`
 endpoint that returns the estimated minutes for ad-hoc text.

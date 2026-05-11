@@ -1,7 +1,7 @@
 # @nexpress/plugin-oauth-google
 
 "Sign in with Google" plugin for
-[NexPress](https://github.com/hahabsw/nexpress). Wires Google as an
+[NexPress](https://github.com/nexpress-cms/nexpress). Wires Google as an
 OAuth provider for both staff and member auth pools. Honors
 `email_verified` strictly — never links unverified Google addresses
 to existing NexPress users by email.

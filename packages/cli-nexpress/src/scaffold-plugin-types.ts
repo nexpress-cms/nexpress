@@ -43,7 +43,7 @@ export default defineConfig({
 });
 \`\`\`
 
-Reference: [Plugin SDK quickstart](https://github.com/hahabsw/nexpress/blob/main/docs/plugin-quickstart.md).
+Reference: [Plugin SDK quickstart](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-quickstart.md).
 `;
 
 function fillReadme(

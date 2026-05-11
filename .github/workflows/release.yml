@@ -116,7 +116,7 @@ jobs:
           #      locally (2FA-authenticated) to claim the package
           #      names with v0.1.0 tarballs.
           #   2. Operator configures Trusted Publisher per package
-          #      on npmjs.com (repo: hahabsw/nexpress, workflow:
+          #      on npmjs.com (repo: nexpress-cms/nexpress, workflow:
           #      release.yml, env: empty).
           #   3. Restore `publish: pnpm run release` below in a
           #      follow-up PR. From that point CI publishes via

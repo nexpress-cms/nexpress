@@ -1,6 +1,6 @@
 # @nexpress/plugin-forum
 
-Forum plugin for [NexPress](https://github.com/hahabsw/nexpress) —
+Forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress) —
 threaded discussions on top of the community surface (comments,
 reactions, follows, mentions).
 
