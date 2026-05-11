@@ -101,14 +101,19 @@ type PostsListTemplate = ComponentType<{
 
 /**
  * Walk the conventional list-template IDs in priority order.
- * Themes that ship any of `list` / `index` / `feature` win;
- * absent that, the inline framework default renders. Magazine
- * uses `list`, portfolio uses `index`; the third (`feature`)
- * is reserved for themes that want a magazine-style hero +
- * grid combination on the blog index.
+ * Magazine uses `list`, portfolio uses `index` — both for the
+ * list view. Themes that ship neither fall back to the inline
+ * framework default.
+ *
+ * Note: `feature` is NOT in this priority list. Magazine's
+ * `feature` template is a long-form post DETAIL template
+ * ("Large headline, byline rule, dropcap on the first
+ * paragraph"), which renders one doc — wrong shape for a list
+ * view. It belongs to the detail dispatcher in
+ * `[slug]/page.tsx`.
  */
 async function resolvePostsListTemplate(): Promise<PostsListTemplate | null> {
-  for (const templateId of ["list", "index", "feature"] as const) {
+  for (const templateId of ["list", "index"] as const) {
     const entry = (await resolveTemplateComponent("posts", templateId)) as
       | { component?: PostsListTemplate }
       | null;
