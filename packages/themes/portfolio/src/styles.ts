@@ -90,7 +90,7 @@ export const portfolioCss = `
 .np-portfolio-mobile-subnav {
   list-style: none;
   margin: 0;
-  padding-left: 1.25rem;
+  padding-inline-start: 1.25rem;
 }
 
 /* Mobile drawer */

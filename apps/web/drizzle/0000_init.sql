@@ -569,4 +569,12 @@ CREATE INDEX "np_c_posts__tags_posts_id_idx" ON "np_c_posts__tags" USING btree (
 CREATE UNIQUE INDEX "np_c_posts__tags_parent_target_uidx" ON "np_c_posts__tags" USING btree ("posts_id","target_id");--> statement-breakpoint
 CREATE INDEX "np_c_tags_status_idx" ON "np_c_tags" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "np_c_tags_site_slug_idx" ON "np_c_tags" USING btree ("site_id","slug");--> statement-breakpoint
-CREATE INDEX "np_c_tags_site_idx" ON "np_c_tags" USING btree ("site_id");
+CREATE INDEX "np_c_tags_site_idx" ON "np_c_tags" USING btree ("site_id");--> statement-breakpoint
+-- Seed: default site row. Single-tenant installs depend on this row
+-- existing without operator intervention; additional sites are added
+-- via the super-admin UI. The squashed migration history dropped the
+-- original seed (formerly in 0015), so re-inject it here. drizzle-kit
+-- doesn't emit data INSERTs, so this seed must be hand-maintained.
+INSERT INTO "np_sites" ("id", "name", "is_default", "settings")
+  VALUES ('default', 'Default site', true, '{}'::jsonb)
+  ON CONFLICT (id) DO NOTHING;

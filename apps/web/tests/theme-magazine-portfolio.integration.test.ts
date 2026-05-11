@@ -37,11 +37,13 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     expect(magazineTheme.impl.slots?.header).toBeTypeOf("function");
     expect(magazineTheme.impl.slots?.footer).toBeTypeOf("function");
 
-    // Templates: pages.default + pages.cover, posts.feature.
+    // Templates: pages.default + pages.cover, posts.feature + posts.list.
+    // posts.list was added in the v0.2 reference impl (#612) for the
+    // blog index route's theme template dispatch.
     const pageTemplates = magazineTheme.impl.templates?.pages ?? {};
     expect(Object.keys(pageTemplates).sort()).toEqual(["cover", "default"]);
     const postTemplates = magazineTheme.impl.templates?.posts ?? {};
-    expect(Object.keys(postTemplates)).toEqual(["feature"]);
+    expect(Object.keys(postTemplates).sort()).toEqual(["feature", "list"]);
   });
 
   it("magazine cover template renders the title with the cover hero markup", async () => {

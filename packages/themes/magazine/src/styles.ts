@@ -100,7 +100,7 @@ export const magazineCss = `
 .np-magazine-footer-subnav {
   list-style: none;
   margin: 0;
-  padding-left: 1.25rem;
+  padding-inline-start: 1.25rem;
 }
 .np-magazine-footer-subnav a {
   font-size: 0.85rem;

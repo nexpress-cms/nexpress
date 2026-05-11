@@ -235,12 +235,15 @@ describe.skipIf(skipIfNoTestDb())("wp-import applyBundle (Phase 21.4 integration
         findOrCreate: async ({ taxonomy, slug, name }) => {
           const cached = idsBySlug.get(slug);
           if (cached) return { id: cached };
-          // Insert a real taxonomy row so the post.categories /
-          // post.tags FK + UUID validation pass.
+          // The legacy `taxonomies` collection was split into separate
+          // `categories` + `tags` collections in v0.2. Map the WP-side
+          // `taxonomy` field onto the matching collection slug so the
+          // post.categoryIds / tagIds FK validation passes.
+          const collection = taxonomy === "post_tag" ? "tags" : "categories";
           const result = await saveDocument(
-            "taxonomies",
+            collection,
             null,
-            { name, slug, taxonomy },
+            { name, slug },
             actor,
             { status: "published" },
           );
