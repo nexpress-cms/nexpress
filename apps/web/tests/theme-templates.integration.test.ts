@@ -41,16 +41,24 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     const { getThemeTemplateSummaries } = await import("@nexpress/core");
     const docs = await getThemeTemplateSummaries("pages");
     const ids = docs.map((d) => d.id).sort();
-    expect(ids).toEqual(["default", "wide"]);
+    // Default theme's pages templates expanded during v0.2 (#612):
+    // `landing` (full-bleed marketing) + `sidebar` (docs-style) joined
+    // the original `default` + `wide`.
+    expect(ids).toEqual(["default", "landing", "sidebar", "wide"]);
     const def = docs.find((d) => d.id === "default");
     expect(def?.label).toBe("Default");
     expect(typeof def?.description).toBe("string");
   });
 
-  it("getThemeTemplateSummaries returns [] for a collection without registered templates", async () => {
+  it("getThemeTemplateSummaries returns the registered posts templates", async () => {
+    // Default theme gained `posts.default` (article column) when the
+    // blog detail dispatch was wired in #612, so this collection no
+    // longer reports an empty template set. The "no templates"
+    // contract is covered by the next test using a bare theme.
     const { getThemeTemplateSummaries } = await import("@nexpress/core");
     const docs = await getThemeTemplateSummaries("posts");
-    expect(docs).toEqual([]);
+    const ids = docs.map((d) => d.id).sort();
+    expect(ids).toContain("default");
   });
 
   it("getThemeTemplateSummaries returns [] when active theme has no templates at all", async () => {
@@ -82,7 +90,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     }>(res);
     expect(status).toBe(200);
     const ids = (body.docs ?? []).map((d) => d.id).sort();
-    expect(ids).toEqual(["default", "wide"]);
+    expect(ids).toEqual(["default", "landing", "sidebar", "wide"]);
   });
 
   it("admin endpoint requires a `collection` query param", async () => {

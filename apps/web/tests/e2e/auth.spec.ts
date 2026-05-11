@@ -9,7 +9,6 @@
 import { expect, test } from "@playwright/test";
 
 import { signInViaForm } from "./fixtures/auth-helpers.js";
-import { E2E_ADMIN } from "./fixtures/seed.js";
 
 test.describe("admin sign-in / sign-out", () => {
   test("logs an admin in via the form, lands them on /admin, and signs them out", async ({
@@ -28,7 +27,11 @@ test.describe("admin sign-in / sign-out", () => {
     // we can't reliably trigger the actual POST through the menu
     // item. The presence of the menu item is what we're checking
     // here; the logout endpoint itself is exercised below.
-    await page.getByRole("button", { name: new RegExp(E2E_ADMIN.name) }).click();
+    // Locate the user-menu trigger by its stable aria-label. The
+    // visible text shows only the first word of `user.name`, so
+    // matching the full seeded name against the accessible name fails
+    // — admin-topbar.tsx exposes "Open user menu" instead.
+    await page.getByRole("button", { name: "Open user menu" }).click();
     await expect(page.getByRole("menuitem", { name: /logout/i })).toBeVisible();
 
     // POST /api/auth/logout directly to confirm the server-side
