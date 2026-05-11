@@ -26,6 +26,7 @@
     "doctor": "pnpm --filter @nexpress/web run doctor",
     "seed:admin": "pnpm --filter @nexpress/web seed:admin",
     "seed:content": "pnpm --filter @nexpress/web seed:content",
+    "ux-audit": "tsx scripts/ux-audit.mts",
     "clean": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
     "version": "changeset version",
