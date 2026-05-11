@@ -51,6 +51,14 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       */}
       {themeCss ? (
         <style data-np-theme={themeId} dangerouslySetInnerHTML={{ __html: themeCss }} />
+      ) : themeId ? (
+        // Theme with no `impl.css` still needs the active-theme
+        // marker in the DOM so `(site)/error.tsx`'s F.7.1 lazy-
+        // import picks the right client subpath (#601). Emit an
+        // empty marker tag — no styles leak, just the id sits in
+        // a data attribute the boundary's `useActiveThemeId()`
+        // reads.
+        <style data-np-theme={themeId} />
       ) : null}
       {/*
         Feed discovery link — stays at framework level, not theme

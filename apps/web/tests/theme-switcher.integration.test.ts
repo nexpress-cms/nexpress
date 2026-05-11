@@ -29,9 +29,9 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     await truncateAll();
     const { resetThemes, registerThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
-    const { minimalTheme } = await import("@nexpress/theme-minimal");
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
     resetThemes();
-    registerThemes([defaultTheme, minimalTheme]);
+    registerThemes([defaultTheme, magazineTheme]);
   });
   afterAll(async () => {
     await closeTestDb();
@@ -54,7 +54,7 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     }>(res);
     expect(status).toBe(200);
     const ids = (body.docs ?? []).map((d) => d.id).sort();
-    expect(ids).toEqual(["default", "minimal"]);
+    expect(ids).toEqual(["default", "magazine"]);
     const def = body.docs?.find((d) => d.id === "default");
     expect(def?.name).toBe("NexPress Default");
     expect(typeof def?.version).toBe("string");
@@ -79,14 +79,14 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     const putReq = buildRequest("/api/admin/themes/active", {
       session: admin,
       method: "PUT",
-      body: { id: "minimal" },
+      body: { id: "magazine" },
     });
     const putRes = await PUT(putReq);
     const { status: putStatus, body: putBody } = await readJson<{
       activeId?: string;
     }>(putRes);
     expect(putStatus).toBe(200);
-    expect(putBody.activeId).toBe("minimal");
+    expect(putBody.activeId).toBe("magazine");
 
     const listReq = buildRequest("/api/admin/themes", { session: admin });
     const listRes = await getList(listReq);
@@ -96,7 +96,7 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     const active = (listBody.docs ?? [])
       .filter((d) => d.isActive)
       .map((d) => d.id);
-    expect(active).toEqual(["minimal"]);
+    expect(active).toEqual(["magazine"]);
   });
 
   it("PUT rejects unknown theme ids (registry-membership validation)", async () => {
@@ -131,7 +131,7 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     const req = buildRequest("/api/admin/themes/active", {
       session: editor,
       method: "PUT",
-      body: { id: "minimal" },
+      body: { id: "magazine" },
     });
     const res = await PUT(req);
     const { status } = await readJson(res);
@@ -153,11 +153,11 @@ describe.skipIf(skipIfNoTestDb())("theme switcher (Phase 11.4)", () => {
     // Persist via the helper directly (we already covered the
     // PUT endpoint's plumbing above) and re-read.
     const { setActiveThemeId } = await import("@nexpress/core");
-    await setActiveThemeId("minimal", admin.userId);
+    await setActiveThemeId("magazine", admin.userId);
     const req2 = buildRequest("/api/admin/themes/active", { session: admin });
     const res2 = await GET(req2);
     const { body: body2 } = await readJson<{ activeId?: string | null }>(res2);
-    expect(body2.activeId).toBe("minimal");
+    expect(body2.activeId).toBe("magazine");
   });
 
   it("GET listing requires editor+ (no anonymous read)", async () => {

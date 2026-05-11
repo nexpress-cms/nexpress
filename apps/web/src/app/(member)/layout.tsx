@@ -39,6 +39,11 @@ export default async function MemberLayout({ children }: { children: React.React
       <NpThemeStyle theme={tokens} />
       {themeCss ? (
         <style data-np-theme={themeId} dangerouslySetInnerHTML={{ __html: themeCss }} />
+      ) : themeId ? (
+        // Empty marker so `(member)/error.tsx`'s F.7.1 lazy-import
+        // picks the right client subpath even when the theme
+        // ships no CSS (#601). Mirrors `(site)/layout.tsx`.
+        <style data-np-theme={themeId} />
       ) : null}
       {children}
     </>

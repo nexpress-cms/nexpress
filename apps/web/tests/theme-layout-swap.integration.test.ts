@@ -18,7 +18,7 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
   });
   beforeEach(async () => {
     await truncateAll();
-    // The framework registers `[defaultTheme, minimalTheme]` from
+    // The framework registers `[defaultTheme, magazineTheme]` from
     // nexpress.config.ts during ensureCoreServices. truncate
     // clears np_settings but doesn't touch the in-memory
     // registry; we just need both themes available + no
@@ -26,9 +26,9 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     // first registered).
     const { resetThemes, registerThemes } = await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
-    const { minimalTheme } = await import("@nexpress/theme-minimal");
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
     resetThemes();
-    registerThemes([defaultTheme, minimalTheme]);
+    registerThemes([defaultTheme, magazineTheme]);
   });
   afterAll(async () => {
     await closeTestDb();
@@ -55,18 +55,18 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     expect(impl.css).toContain(".np-site-footer");
   });
 
-  it("setActiveThemeId('minimal') swaps the active theme; CSS reflects the swap", async () => {
+  it("setActiveThemeId('magazine') swaps the active theme; CSS reflects the swap", async () => {
     const admin = await seedUser({ role: "admin" });
     const { setActiveThemeId, getActiveTheme } = await import("@nexpress/core");
-    await setActiveThemeId("minimal", admin.userId);
+    await setActiveThemeId("magazine", admin.userId);
 
     const active = await getActiveTheme();
-    expect(active?.manifest.id).toBe("minimal");
+    expect(active?.manifest.id).toBe("magazine");
     const impl = active?.impl as { css?: string };
-    // Minimal theme owns the `.np-minimal-header` look (centered
+    // Minimal theme owns the `.np-magazine-header` look (centered
     // logo, dotted rule, serif type) — distinct from the
     // default theme's flex-row header layout.
-    expect(impl.css).toContain(".np-minimal-header");
+    expect(impl.css).toContain(".np-magazine-header");
     expect(impl.css).toContain("text-align: center");
   });
 
@@ -74,9 +74,9 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     const { getActiveTheme } = await import("@nexpress/core");
     const active = await getActiveTheme();
     const impl = active?.impl as { css?: string };
-    // Default-active. The minimal theme's `.np-minimal-header`
+    // Default-active. The magazine theme's `.np-magazine-header`
     // class shouldn't be in the default theme's CSS string.
-    expect(impl.css).not.toContain("np-minimal-header");
+    expect(impl.css).not.toContain("np-magazine-header");
   });
 
   it("absent active theme falls back to first registered (resilience)", async () => {
@@ -87,12 +87,12 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     const { resetThemes, registerThemes, getActiveTheme } = await import(
       "@nexpress/core"
     );
-    const { minimalTheme } = await import("@nexpress/theme-minimal");
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
     resetThemes();
-    registerThemes([minimalTheme]);
+    registerThemes([magazineTheme]);
 
     const active = await getActiveTheme();
-    expect(active?.manifest.id).toBe("minimal");
+    expect(active?.manifest.id).toBe("magazine");
   });
 
   it("each theme's slots ARE distinct functions (proves the swap reaches the layout)", async () => {
@@ -102,7 +102,7 @@ describe.skipIf(skipIfNoTestDb())("theme layout swap (Phase 11.2)", () => {
     // actually differ.
     const { getThemeById } = await import("@nexpress/core");
     const def = getThemeById("default");
-    const min = getThemeById("minimal");
+    const min = getThemeById("magazine");
     const defHeader = (def?.impl as { slots?: { header?: unknown } }).slots
       ?.header;
     const minHeader = (min?.impl as { slots?: { header?: unknown } }).slots
