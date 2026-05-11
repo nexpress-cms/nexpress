@@ -1,6 +1,6 @@
 # @nexpress/theme-portfolio
 
-Portfolio theme for [NexPress](https://github.com/hahabsw/nexpress).
+Portfolio theme for [NexPress](https://github.com/nexpress-cms/nexpress).
 Project-grid landing page, case-study layouts, image-led detail
 pages. Suited for design / studio / agency sites.
 

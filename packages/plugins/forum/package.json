@@ -4,14 +4,14 @@
   "description": "Forum plugin for NexPress — threaded discussions on top of the community surface.",
   "license": "MIT",
   "author": "Nexpress",
-  "homepage": "https://github.com/hahabsw/nexpress#readme",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hahabsw/nexpress.git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
     "directory": "packages/plugins/forum"
   },
   "bugs": {
-    "url": "https://github.com/hahabsw/nexpress/issues"
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
   },
   "keywords": [
     "nexpress",

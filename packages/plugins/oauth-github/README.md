@@ -1,7 +1,7 @@
 # @nexpress/plugin-oauth-github
 
 "Sign in with GitHub" plugin for
-[NexPress](https://github.com/hahabsw/nexpress). Wires GitHub as an
+[NexPress](https://github.com/nexpress-cms/nexpress). Wires GitHub as an
 OAuth provider for both staff and member auth pools.
 
 ## Install

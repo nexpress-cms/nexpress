@@ -231,7 +231,7 @@ so Next.js's bundler can detect the server → client boundary. See the inline
 comments in \`tsup.config.ts\` for the why.`
     : `\`src/index.tsx\` defines a single example block (\`${blockTypeRoot}.example\`)
 with text + boolean + select fields. Edit \`propsSchema\` and \`render\` to
-make it your own. Reference: [Block plugin guide](https://github.com/hahabsw/nexpress).`
+make it your own. Reference: [Block plugin guide](https://github.com/nexpress-cms/nexpress).`
 }
 `;
 

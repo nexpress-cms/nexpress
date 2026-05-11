@@ -1,6 +1,6 @@
 # @nexpress/theme
 
-Theme engine for [NexPress](https://github.com/hahabsw/nexpress) — the
+Theme engine for [NexPress](https://github.com/nexpress-cms/nexpress) — the
 Next.js-based CMS. Generates CSS custom properties from design tokens,
 exposes a typed registry, and emits a single `<style>` tag for SSR.
 
@@ -95,8 +95,8 @@ The monorepo ships four:
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [docs/theme-authoring.md](https://github.com/hahabsw/nexpress/blob/main/docs/theme-authoring.md)
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [docs/theme-authoring.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/theme-authoring.md)
 
 ## License
 

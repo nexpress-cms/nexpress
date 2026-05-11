@@ -270,7 +270,7 @@ versioning policy (standard semver under `0.x` with breaking changes
 called out in the changeset summary), and the changeset workflow.
 
 Bug reports and feature ideas welcome on the
-[issue tracker](https://github.com/hahabsw/nexpress/issues).
+[issue tracker](https://github.com/nexpress-cms/nexpress/issues).
 
 ## License
 

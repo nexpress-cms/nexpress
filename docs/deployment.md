@@ -348,7 +348,7 @@ For a Sentry / pino / Datadog-specific recipe and the matching
 
     Recommended when you already have Redis for caching / sessions
     (one client, one connection pool). See the package
-    [README](https://github.com/hahabsw/nexpress/tree/main/packages/rate-limiter-redis)
+    [README](https://github.com/nexpress-cms/nexpress/tree/main/packages/rate-limiter-redis)
     for cluster / sentinel / shared-client patterns.
   - **CDN / edge rate limiter** — Cloudflare / Vercel rules at the
     edge. The in-process default becomes defense-in-depth.

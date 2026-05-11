@@ -1,6 +1,6 @@
 # create-nexpress
 
-Scaffolder CLI for [NexPress](https://github.com/hahabsw/nexpress) — the
+Scaffolder CLI for [NexPress](https://github.com/nexpress-cms/nexpress) — the
 Next.js-based CMS.
 
 ## Usage
@@ -43,13 +43,13 @@ A Next.js 15 App Router project with:
 
 - Seed the first admin: `pnpm seed:admin` (set `NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`, `NP_ADMIN_PASSWORD`)
 - Add a collection: edit `src/collections/<name>.ts`, run `pnpm db:generate && pnpm db:migrate`
-- Read [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md) — architecture overview
-- Read [docs/](https://github.com/hahabsw/nexpress/tree/main/docs) — deployment, jobs, observability, theming
+- Read [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview
+- Read [docs/](https://github.com/nexpress-cms/nexpress/tree/main/docs) — deployment, jobs, observability, theming
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [Issues](https://github.com/hahabsw/nexpress/issues)
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [Issues](https://github.com/nexpress-cms/nexpress/issues)
 
 ## License
 

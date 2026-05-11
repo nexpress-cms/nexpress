@@ -351,7 +351,7 @@ export async function seedNavigation(
     { id: navId("about-f"), label: "About", type: "link", url: "/about" },
     { id: navId("pricing-f"), label: "Pricing", type: "link", url: "/pricing" },
     { id: navId("contact-f"), label: "Contact", type: "link", url: "/contact" },
-    { id: navId("github"), label: "GitHub", type: "link", url: "https://github.com/hahabsw/nexpress" },
+    { id: navId("github"), label: "GitHub", type: "link", url: "https://github.com/nexpress-cms/nexpress" },
   ];
 
   let headerCount = 0;

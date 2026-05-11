@@ -1,6 +1,6 @@
 # @nexpress/plugin-sdk
 
-Plugin SDK for [NexPress](https://github.com/hahabsw/nexpress) — the
+Plugin SDK for [NexPress](https://github.com/nexpress-cms/nexpress) — the
 Next.js-based CMS. Author plugins with `definePlugin()`.
 
 ## Install
@@ -59,15 +59,15 @@ Restart the server — the hook fires on every `content:beforeSave`.
 - **`actions`** — custom API handlers at `/api/plugins/<id>/actions/<name>`
 - **`routes`** — full route handlers at `/api/plugins/<id>/<...path>`
   (rate-limited at the framework level — see
-  [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md))
+  [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md))
 - **`scheduled`** — cron-style tasks dispatched by pg-boss
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [docs/plugin-admin.md](https://github.com/hahabsw/nexpress/blob/main/docs/plugin-admin.md)
-- [docs/plugin-render.md](https://github.com/hahabsw/nexpress/blob/main/docs/plugin-render.md)
-- [Reference plugins](https://github.com/hahabsw/nexpress/tree/main/packages/plugins) — `reading-time`, `seo-audit`, `forum`, `oauth-github`, `oauth-google`
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [docs/plugin-admin.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-admin.md)
+- [docs/plugin-render.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-render.md)
+- [Reference plugins](https://github.com/nexpress-cms/nexpress/tree/main/packages/plugins) — `reading-time`, `seo-audit`, `forum`, `oauth-github`, `oauth-google`
 
 ## License
 

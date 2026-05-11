@@ -1,13 +1,13 @@
 # @nexpress/core
 
-Server-only core for [NexPress](https://github.com/hahabsw/nexpress) — the
+Server-only core for [NexPress](https://github.com/nexpress-cms/nexpress) — the
 Next.js-based CMS. Houses the collections pipeline, auth, jobs, media,
 plugins, observability, SEO helpers, i18n, and the multi-site model.
 
 > **You probably don't install this directly.** It's wired up by
 > `@nexpress/next` from a project scaffolded with `npx create-nexpress`.
 > If you're adding a custom backend behavior to a NexPress site, see
-> [docs/plugin-render.md](https://github.com/hahabsw/nexpress/blob/main/docs/plugin-render.md)
+> [docs/plugin-render.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-render.md)
 > first — most extension points live in the plugin SDK, not core.
 
 ## Install
@@ -59,10 +59,10 @@ and a CRUD API at `/api/collections/posts` once you re-run
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md) — architecture overview
-- [docs/](https://github.com/hahabsw/nexpress/tree/main/docs) — live guides (deployment, jobs, caching, observability, …)
-- [Issues](https://github.com/hahabsw/nexpress/issues)
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview
+- [docs/](https://github.com/nexpress-cms/nexpress/tree/main/docs) — live guides (deployment, jobs, caching, observability, …)
+- [Issues](https://github.com/nexpress-cms/nexpress/issues)
 
 ## License
 

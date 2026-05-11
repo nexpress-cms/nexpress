@@ -78,7 +78,7 @@ clicking, ~25 entries for this monorepo:
 3. **"Trusted Publishers" tab → Add a publisher.**
 4. **Fill GitHub Actions config:**
    - Publisher type: GitHub Actions
-   - Organization or user: `hahabsw`
+   - Organization or user: `nexpress-cms`
    - Repository: `nexpress`
    - Workflow filename: `release.yml`
    - Environment name: leave blank (no GH environment used)

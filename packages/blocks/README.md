@@ -1,7 +1,7 @@
 # @nexpress/blocks
 
 Block-based page builder for
-[NexPress](https://github.com/hahabsw/nexpress) — the Next.js-based CMS.
+[NexPress](https://github.com/nexpress-cms/nexpress) — the Next.js-based CMS.
 Drag-and-drop blocks in the admin; render the same blocks server-side
 on the public site.
 
@@ -82,8 +82,8 @@ registry.register(calloutBlock);
 
 ## Links
 
-- [Repository](https://github.com/hahabsw/nexpress)
-- [AGENTS.md](https://github.com/hahabsw/nexpress/blob/main/AGENTS.md)
+- [Repository](https://github.com/nexpress-cms/nexpress)
+- [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md)
 
 ## License
 
