@@ -11,6 +11,7 @@ import { PortfolioHeader } from "./header.js";
 import { PortfolioMembersNotFound } from "./members-not-found.js";
 import { PortfolioMembersShell } from "./members-shell.js";
 import { PortfolioNotFound } from "./not-found.js";
+import { PortfolioProjectDetailRoute } from "./routes/project-detail.js";
 import { portfolioSettingsSchema } from "./settings.js";
 import { PortfolioShell } from "./shell.js";
 import { portfolioCss } from "./styles.js";
@@ -127,6 +128,15 @@ export const portfolioTheme = defineTheme({
         },
       },
     },
+    // F.2 — theme routes. `/work/:slug` dispatches a posts row
+    // through `ProjectDetailTemplate` (#613). Without this, the
+    // `/work/<slug>` URLs `PortfolioProjectCard` emits would
+    // 404 — the framework catch-all only resolves `pages` rows
+    // by URL, so case studies (`posts` collection) need a theme
+    // route to be reachable.
+    routes: [
+      { pattern: "/work/:slug", component: PortfolioProjectDetailRoute },
+    ],
     // Phase F.4 — portfolio-shipped block types.
     blocks: portfolioBlocks,
     // Phase F.6 — declared nav locations.
