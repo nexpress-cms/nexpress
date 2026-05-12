@@ -1,11 +1,32 @@
 ---
-"create-nexpress": patch
+"create-nexpress": minor
 ---
 
-Three setup wizard polish fixes:
+**Setup wizard polish + headless modes.**
 
-1. **Migration failure output is no longer silently empty.** `runChild`'s `spawn` now uses `shell: true` so PATH resolution and the chained `&&` in `pnpm schema:gen && drizzle-kit generate` flow through the same pipe linkage the operator sees in their own terminal. Previously some operators got an empty `<details>` toggle in the UI with no error trace, even though running the same `pnpm db:generate` directly printed a full stack trace.
+The scaffolded `pnpm run setup` wizard now supports two new modes for environments where opening a browser tab isn't practical:
 
-2. **Silent-fail guard.** If the spawned child exits non-zero but produced nothing on stdout/stderr (rare — happens with early-spawn-error edge cases or OS-level pipe disconnects), the captured output is replaced with a one-line "child X exited with code N but produced no output — try running X directly" message. Better than an empty `<details>` panel.
+```bash
+pnpm run setup -- --cli              # terminal prompts via readline
+pnpm run setup -- --non-interactive  # read everything from env vars
+```
 
-3. **NP_SECRET encoding unified.** Wizard auto-generated secret now uses `randomBytes(32).toString("hex")` (64 chars) instead of `base64url` (~43 chars), matching what `create-nexpress --yes` writes. Same 32-byte entropy; consistent encoding means operators don't see two different-looking secrets in the same project depending on which path created the `.env`.
+Auto-detects SSH (`SSH_TTY` / `SSH_CONNECTION`) and headless Linux (no `DISPLAY` / `WAYLAND_DISPLAY`) and falls back to `--cli` automatically. The default browser wizard still opens on desktop terminals.
+
+Non-interactive mode reads:
+
+| Env var | Required? | Default |
+|---|---|---|
+| `DATABASE_URL` | yes | — |
+| `NP_SECRET` | no | auto-generated 64-char hex |
+| `SITE_URL` | no | `http://localhost:3000` |
+| `NP_STORAGE_ADAPTER` | no | `local` (set to `s3` for S3) |
+| `NP_S3_BUCKET` / `NP_S3_REGION` / `NP_S3_ENDPOINT` | when `NP_STORAGE_ADAPTER=s3` | — |
+| `TEST_DATABASE_URL` | no | — |
+| `NP_SETUP_RUN_MIGRATIONS` | no | `true` (set to `false` to skip auto-migrate) |
+
+Additional fixes bundled in:
+
+- **Setup wizard output visibility.** `runChild` now spawns with `shell: true` so the chained `pnpm schema:gen && drizzle-kit generate` script's stderr flows through the wizard's tee. Some operators previously saw an empty `<details>` toggle in the UI even though direct terminal runs printed a full stack trace.
+- **Silent-fail guard.** If the spawned child exits non-zero but produces nothing on stdout/stderr, the captured output is replaced with a one-line placeholder pointing the operator at the direct-terminal-run workaround. Better than an empty toggle.
+- **NP_SECRET encoding unified to hex.** Wizard auto-generated secret now uses `randomBytes(32).toString("hex")` (64 chars) instead of `base64url` (~43 chars), matching what `create-nexpress --yes` writes. Same 32-byte entropy; unified encoding so the secret looks the same regardless of which path created the `.env`.
