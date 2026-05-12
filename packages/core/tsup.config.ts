@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "tsup";
 
 // NP_DEV_FAST is read from `.env` (default `1` in dev). It skips dts
@@ -5,6 +9,19 @@ import { defineConfig } from "tsup";
 // `.d.ts` files refresh on the next `pnpm build`, which prefixes
 // `NP_DEV_FAST=0` to guarantee full dts regardless of `.env`.
 const fast = process.env.NP_DEV_FAST === "1";
+
+// Inject the framework version into `compat.ts` at build time so
+// the plugin-compatibility check always reports what the published
+// tarball actually is. Previously the constant was hand-maintained
+// in `compat.ts` and drifted three times in a single release
+// cycle; the corresponding version-sync test exists exactly to
+// surface that drift. With this inject the drift is impossible —
+// `package.json.version` is the only source of truth — and the
+// sync test can retire.
+const here = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(
+  readFileSync(resolve(here, "package.json"), "utf-8"),
+) as { version: string };
 
 export default defineConfig({
   entry: {
@@ -29,4 +46,7 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   sourcemap: !fast,
+  define: {
+    __NP_FRAMEWORK_VERSION__: JSON.stringify(pkg.version),
+  },
 });

@@ -17,13 +17,24 @@
  */
 
 /**
- * Framework version reported to plugin compatibility checks. Kept in sync
- * with `@nexpress/core`'s `package.json`'s `version` by `version.test.ts`,
- * which fails CI if the two drift. We don't import package.json directly
- * because it sits outside the package's `rootDir` and would force a
- * tsconfig-wide change for one constant.
+ * Framework version reported to plugin compatibility checks.
+ *
+ * `__NP_FRAMEWORK_VERSION__` is replaced at build time by tsup's
+ * `define` option (see `tsup.config.ts`) with the actual
+ * `package.json.version` of `@nexpress/core`. The published tarball
+ * carries the literal version string inlined here — no JSON import
+ * at runtime, no cross-rootDir reach. Drift between
+ * package.json and this constant is structurally impossible.
+ *
+ * For local `vitest` runs the `define` substitution doesn't fire
+ * (vitest reads source files directly), so a `declare const` ambient
+ * + a fallback constant covers the test path.
  */
-const FRAMEWORK_VERSION_FROM_PACKAGE = "0.1.0";
+declare const __NP_FRAMEWORK_VERSION__: string;
+const FRAMEWORK_VERSION_FROM_PACKAGE: string =
+  typeof __NP_FRAMEWORK_VERSION__ !== "undefined"
+    ? __NP_FRAMEWORK_VERSION__
+    : "0.0.0-dev";
 let frameworkVersion: string = FRAMEWORK_VERSION_FROM_PACKAGE;
 
 /**
