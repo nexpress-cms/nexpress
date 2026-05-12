@@ -4,6 +4,15 @@
   "description": "Callout block — info/warn/danger notice card. Sample plugin showcasing block contribution.",
   "license": "MIT",
   "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/plugins/block-callout"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
