@@ -5,10 +5,27 @@ name: CI
 # publish activation so the Release workflow on `main` runs against
 # pre-verified diffs — without push-time CI, a broken `main` would
 # propagate to npm before anyone noticed.
+#
+# `paths-ignore` on push:main only — PR triggers stay unconditional
+# so required-status-checks are still satisfied (a paths-ignored
+# workflow run reports as "missing" rather than "passed", which
+# would block the merge). Skipping push:main runs is safe because
+# the PR's own CI already verified the same diff seconds earlier;
+# the push:main re-run only adds value when files outside this
+# ignore list changed.
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - ".changeset/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+      - ".github/dependabot.yml"
+      - "docs/**"
+      - "LICENSE"
+      - "CODE_OF_CONDUCT.md"
   pull_request:
 
 concurrency:
@@ -116,8 +133,16 @@ jobs:
   # service the integration job uses, but keeps a separate DB
   # name so an integration run leaving stale rows doesn't break
   # E2E (and vice versa).
+  #
+  # Gated to pull_request + workflow_dispatch only. On push:main the
+  # diff is already what the PR's E2E run exercised seconds earlier
+  # — re-running the 6-7 minute Playwright suite for every merge
+  # added queue pressure without catching anything new. If a future
+  # merge group / squash-and-rebase changes the diff post-merge
+  # enough to warrant verification, flip this back to unconditional.
   e2e:
     name: E2E (Playwright)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
