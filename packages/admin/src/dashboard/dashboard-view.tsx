@@ -2,14 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import {
+  Check,
+  Circle,
   ExternalLink,
   FileClock,
   FileText,
   FolderOpen,
   Image,
-  Package,
   Plus,
-  Settings,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -38,6 +38,12 @@ type DashboardStats = {
   }>;
   draftCount: number;
   mediaCount: number;
+  onboarding?: {
+    siteNameSet: boolean;
+    hasPublishedPost: boolean;
+    themeCustomized: boolean;
+    productionDomainSet: boolean;
+  };
 };
 
 interface DashboardViewProps {
@@ -140,15 +146,21 @@ export function DashboardView({ stats, pluginWidgets }: DashboardViewProps) {
         ))}
       </div>
 
-      {/* First-boot welcome card. Surfaces 4 next-step links so a
-          fresh operator doesn't land on a screen of zeros without
-          a pointer to the next action. Hides as soon as the
-          install has any content OR any recent activity, so it
-          doesn't keep showing up after the operator wrote their
-          first post. */}
-      {totalContent === 0 && stats.recentActivity.length === 0 ? (
-        <WelcomeCard router={router} />
-      ) : null}
+      {/* First-time setup checklist. 5 steps; hides only when every
+          step is done so the operator has a single place that tells
+          them what still needs setup. The first step (admin
+          created) is implicitly ✓ if this page renders at all. */}
+      {(() => {
+        const ob = stats.onboarding;
+        if (!ob) return null;
+        const allDone =
+          ob.siteNameSet &&
+          ob.hasPublishedPost &&
+          ob.themeCustomized &&
+          ob.productionDomainSet;
+        if (allDone) return null;
+        return <WelcomeCard router={router} onboarding={ob} />;
+      })()}
 
       {pluginWidgets && pluginWidgets.length > 0 ? (
         <DashboardPluginWidgets widgets={pluginWidgets} />
@@ -258,90 +270,127 @@ function formatTimestamp(timestamp: string) {
 
 interface WelcomeCardProps {
   router: ReturnType<typeof useRouter>;
+  onboarding: NonNullable<DashboardStats["onboarding"]>;
 }
 
 /**
- * Onboarding card shown on a fresh install — when totalContent
- * is zero AND no recent activity has happened yet. Lists 4
- * concrete next-step actions so an operator who just finished
- * `pnpm run setup` + `pnpm seed:admin` lands on a page of
- * actions, not a screen of zeros.
+ * First-time setup checklist. 5 steps in the order an operator
+ * naturally encounters them. The first step (admin created) is
+ * implicitly ✓ whenever this page renders — if there were no
+ * admin, the operator would be on `/admin/setup`, not here. The
+ * other 4 read from `stats.onboarding`, which `loadDashboardStats`
+ * derives at request time.
  *
- * Disappears as soon as any content lands, so it doesn't stick
- * around as visual noise once the operator is rolling.
+ * The card hides once every step is ✓ so it doesn't keep nagging
+ * a finished install. Re-appears if the operator later removes
+ * something (e.g. unpublishes the only post).
  */
-function WelcomeCard({ router }: WelcomeCardProps) {
+function WelcomeCard({ router, onboarding }: WelcomeCardProps) {
   const steps: Array<{
     title: string;
     description: string;
-    icon: typeof Plus;
+    done: boolean;
     onClick: () => void;
   }> = [
     {
-      title: "Create your first post",
+      title: "Admin account created",
+      description: "Signed in as an admin — first step is already done.",
+      done: true,
+      onClick: () => router.push("/admin/users"),
+    },
+    {
+      title: "Name your site",
+      description:
+        "Replace the placeholder “Default site” with your project's name.",
+      done: onboarding.siteNameSet,
+      onClick: () => router.push("/admin/sites"),
+    },
+    {
+      title: "Publish your first post",
       description: "Open the page-builder editor for a new entry.",
-      icon: Plus,
+      done: onboarding.hasPublishedPost,
       onClick: () => router.push("/admin/collections/posts/create"),
     },
     {
-      title: "Tune site settings",
-      description: "Title, slug rules, navigation, theme tokens.",
-      icon: Settings,
+      title: "Pick a theme",
+      description: "Swap the placeholder default for magazine, portfolio, or docs.",
+      done: onboarding.themeCustomized,
+      onClick: () => router.push("/admin/themes"),
+    },
+    {
+      title: "Connect a production domain",
+      description: "Set SITE_URL so links, sitemaps, and emails point at your real host.",
+      done: onboarding.productionDomainSet,
       onClick: () => router.push("/admin/settings"),
     },
-    {
-      title: "Browse plugins",
-      description: "OAuth providers, SEO audit, reading-time, and more.",
-      icon: Package,
-      onClick: () => router.push("/admin/plugins"),
-    },
-    {
-      title: "View your site",
-      description: "Open the public site in a new tab.",
-      icon: ExternalLink,
-      onClick: () => window.open("/", "_blank", "noreferrer"),
-    },
   ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const totalSteps = steps.length;
 
   return (
     <Card className="border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
-      <CardHeader className="space-y-1">
-        <CardTitle className="flex items-center gap-2 text-[15px]">
-          <Sparkles className="size-4 text-[var(--np-color-brand)]" />
-          Welcome to NexPress
+      <CardHeader className="space-y-1.5">
+        <CardTitle className="flex items-center justify-between gap-2 text-[15px]">
+          <span className="flex items-center gap-2">
+            <Sparkles className="size-4 text-[var(--np-color-brand)]" />
+            Welcome to NexPress
+          </span>
+          <span className="font-mono text-[12px] tabular-nums text-neutral-500 dark:text-neutral-400">
+            {doneCount} / {totalSteps}
+          </span>
         </CardTitle>
         <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-          Your install is ready. Pick a starting point — these all
-          come back to the dashboard, and the welcome card
-          disappears as soon as you create your first entry.
+          Five steps to a public, named, branded site. The card
+          disappears once every step is ✓.
         </p>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {steps.map((step) => {
-            const Icon = step.icon;
-            return (
+        <ol className="space-y-2">
+          {steps.map((step, index) => (
+            <li key={step.title}>
               <button
-                key={step.title}
                 type="button"
                 onClick={step.onClick}
-                className="group flex items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
+                className={
+                  step.done
+                    ? "group flex w-full items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-left transition-colors hover:border-emerald-500/50 dark:border-emerald-500/20"
+                    : "group flex w-full items-start gap-3 rounded-md border border-neutral-200/80 bg-background px-3 py-2.5 text-left transition-colors hover:border-[var(--np-color-brand)]/40 hover:bg-[var(--np-color-brand)]/5 dark:border-neutral-800/80"
+                }
               >
-                <div className="mt-0.5 rounded-md bg-[var(--np-color-brand)]/10 p-1.5 text-[var(--np-color-brand)]">
-                  <Icon className="size-3.5" />
+                <div
+                  className={
+                    step.done
+                      ? "mt-0.5 rounded-full bg-emerald-500/15 p-1 text-emerald-600 dark:text-emerald-400"
+                      : "mt-0.5 rounded-full border border-neutral-300 p-1 text-neutral-400 dark:border-neutral-700"
+                  }
+                  aria-hidden
+                >
+                  {step.done ? (
+                    <Check className="size-3" />
+                  ) : (
+                    <Circle className="size-3" strokeWidth={0} />
+                  )}
                 </div>
-                <div className="space-y-0.5">
-                  <div className="text-[13px] font-medium text-neutral-950 dark:text-neutral-50">
-                    {step.title}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div
+                    className={
+                      step.done
+                        ? "text-[13px] font-medium text-neutral-500 line-through decoration-neutral-300 dark:text-neutral-400 dark:decoration-neutral-700"
+                        : "text-[13px] font-medium text-neutral-950 dark:text-neutral-50"
+                    }
+                  >
+                    {index + 1}. {step.title}
                   </div>
-                  <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
-                    {step.description}
-                  </p>
+                  {!step.done ? (
+                    <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                      {step.description}
+                    </p>
+                  ) : null}
                 </div>
               </button>
-            );
-          })}
-        </div>
+            </li>
+          ))}
+        </ol>
       </CardContent>
     </Card>
   );
