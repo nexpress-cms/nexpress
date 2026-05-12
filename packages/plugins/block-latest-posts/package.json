@@ -4,6 +4,15 @@
   "description": "Latest posts block — list the most recent documents from any collection.",
   "license": "MIT",
   "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/plugins/block-latest-posts"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
