@@ -81,6 +81,15 @@ jobs:
           # Required for `npm publish --provenance` to authenticate.
           registry-url: https://registry.npmjs.org
 
+      # npm Trusted Publishing (OIDC) requires npm >= 11.5.1; Node 22
+      # ships with npm 10.x by default. Without this bump, every
+      # `npm publish` call inside `changeset publish` exchanges the
+      # OIDC token for nothing, and npm responds with a misleading
+      # E404 ("not in this registry") for every package — the
+      # symptom we hit on the v0.2.0 release run.
+      - name: Upgrade npm for Trusted Publishing support
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
