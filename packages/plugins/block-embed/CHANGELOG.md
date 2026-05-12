@@ -1,5 +1,11 @@
 # @nexpress/plugin-block-embed
 
+## 0.1.2
+
+### Patch Changes
+
+- 6029918: Add missing `homepage` / `repository` / `bugs` metadata to the six block-plugin packages. Sigstore provenance validation rejects publishes whose `repository.url` doesn't match the OIDC token's source repo, so the CI publish was returning E422 ("repository.url is empty") for these packages even though the OIDC TP auth itself worked. Adding the standard metadata block (matching every other published `@nexpress/*` package) makes provenance validation pass.
+
 ## 0.1.1
 
 ### Patch Changes
