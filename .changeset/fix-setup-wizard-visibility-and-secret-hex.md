@@ -1,5 +1,5 @@
 ---
-"create-nexpress": minor
+"create-nexpress": patch
 ---
 
 **Setup wizard polish + headless modes.**
