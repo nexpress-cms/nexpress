@@ -47,7 +47,6 @@
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
-    "prepublishOnly": "pnpm build"
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint"
   }
 }

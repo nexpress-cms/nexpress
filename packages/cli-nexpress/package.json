@@ -35,8 +35,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "prepublishOnly": "pnpm build"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",

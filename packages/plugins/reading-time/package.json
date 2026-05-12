@@ -51,7 +51,6 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
-    "prepublishOnly": "pnpm build"
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint"
   }
 }
