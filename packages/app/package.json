@@ -51,9 +51,17 @@
   },
   "dependencies": {
     "@nexpress/admin": "workspace:*",
+    "@nexpress/auth-pages": "workspace:*",
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",
+    "@nexpress/editor": "workspace:*",
     "@nexpress/next": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*",
+    "@nexpress/theme": "workspace:*",
+    "@nexpress/theme-default": "workspace:*",
+    "@nexpress/theme-docs": "workspace:*",
+    "@nexpress/theme-magazine": "workspace:*",
+    "@nexpress/theme-portfolio": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "peerDependencies": {

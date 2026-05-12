@@ -1,6 +1,6 @@
 // Stub — see ./init-core.ts for the rationale.
-export async function getCachedActiveTheme(): Promise<{
-  manifest: { id: string };
-} | null> {
+import type { NpTheme } from "@nexpress/theme";
+
+export async function getCachedActiveTheme(): Promise<NpTheme | null> {
   return null;
 }
