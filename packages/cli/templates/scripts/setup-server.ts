@@ -366,10 +366,18 @@ function runChild(
 ): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolvePromise) => {
     const [cmd, ...args] = argv;
-    const child = spawn(cmd!, args, {
+    // `shell: true` so PATH resolution + shell constructs (`&&` in
+    // the chained `db:generate` script) match how the operator's
+    // own terminal runs `pnpm db:generate`. Without shell, the
+    // child's stderr was empty in the wizard UI for some operators
+    // even though a direct terminal run printed the full stack
+    // trace — pnpm spawning its own sub-shell for `&&` lost the
+    // pipe linkage in that path.
+    const child = spawn(`${cmd} ${args.join(" ")}`, {
       cwd: PROJECT_DIR,
       env,
       stdio: ["ignore", "pipe", "pipe"],
+      shell: true,
     });
     let buf = "";
     const tee = (label: "stdout" | "stderr") => (chunk: Buffer) => {
@@ -388,7 +396,19 @@ function runChild(
       resolvePromise({ ok: false, output: `${buf}\n${err.message}` });
     });
     child.on("close", (code) => {
-      resolvePromise({ ok: code === 0, output: buf });
+      // Silent-fail guard: if the child exited non-zero AND emitted
+      // nothing through our pipe, surface a placeholder so the
+      // operator at least sees "the child failed" instead of an
+      // empty `<details>` toggle. Real cases where this fires:
+      // spawn race that loses early stderr, child writes only to
+      // its own buffered streams, OS-level pipe disconnect. Better
+      // than the JSON response carrying `""` and the operator
+      // having to guess.
+      let output = buf;
+      if (code !== 0 && output.trim() === "") {
+        output = `(child '${argv.join(" ")}' exited with code ${code ?? "unknown"} but produced no output on stdout/stderr — try running '${argv.join(" ")}' directly in another terminal to see the failure)`;
+      }
+      resolvePromise({ ok: code === 0, output });
     });
   });
 }
@@ -444,7 +464,11 @@ function getArg(name: string): string | undefined {
 }
 
 function generatedSecret(): string {
-  return randomBytes(32).toString("base64url");
+  // hex (not base64url) to match what `create-nexpress --yes`
+  // writes — same 32-byte entropy either way, but unified encoding
+  // means operators don't see two different-looking secrets in the
+  // same project depending on which path created the .env.
+  return randomBytes(32).toString("hex");
 }
 
 function escapeHtml(s: string): string {
