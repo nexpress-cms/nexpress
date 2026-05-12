@@ -1,5 +1,12 @@
 # @nexpress/theme
 
+## 0.1.2
+
+### Patch Changes
+
+- @nexpress/core@0.1.2
+- @nexpress/blocks@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

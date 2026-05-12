@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-block-callout",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Callout block — info/warn/danger notice card. Sample plugin showcasing block contribution.",
   "license": "MIT",
   "author": "Nexpress",
