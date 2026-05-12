@@ -206,3 +206,55 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  # #705 — scaffold smoke. After #702-#704 the scaffold no longer
+  # duplicates apps/web's logic; it mirrors apps/web via the
+  # @nexpress/app subpath exports + a frozen `templates/snapshot/`
+  # copy. The unit tests on getProjectFiles verify the file map
+  # is well-formed, but nothing catches the next-tier regression:
+  # an actual scaffold of `node dist/index.js my-app` failing to
+  # typecheck (broken stub, missing dep, snapshot drift). This
+  # job runs the built CLI end-to-end against a temp project
+  # rooted inside the workspace so workspace:* deps resolve.
+  scaffold-smoke:
+    name: scaffold smoke (typecheck a fresh scaffold)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      NP_SECRET: ci-secret-which-is-long-enough-for-jwt-signing
+      SITE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (CLI + all sibling packages it links against)
+        run: pnpm build
+
+      # `--local` makes the scaffold use `workspace:*` for every
+      # @nexpress/* dep. The project is created inside `packages/`
+      # so the monorepo's `pnpm-workspace.yaml` picks it up and
+      # the workspace links resolve to the just-built dist/.
+      - name: Scaffold a fresh project (--local + --yes)
+        run: |
+          cd packages
+          node ./cli/dist/index.js scaffold-smoke-app --yes --no-example --no-docker --local
+
+      - name: Re-install so the new package's deps resolve
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck the scaffolded project
+        run: pnpm --filter scaffold-smoke-app exec tsc --noEmit
