@@ -23,7 +23,7 @@
  * because it sits outside the package's `rootDir` and would force a
  * tsconfig-wide change for one constant.
  */
-const FRAMEWORK_VERSION_FROM_PACKAGE = "0.1.0";
+const FRAMEWORK_VERSION_FROM_PACKAGE = "0.2.0";
 let frameworkVersion: string = FRAMEWORK_VERSION_FROM_PACKAGE;
 
 /**
