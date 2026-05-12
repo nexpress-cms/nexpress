@@ -1,7 +1,3 @@
-import { SettingsView } from "@nexpress/admin/client";
-
 export const dynamic = "force-dynamic";
+export { default } from "@nexpress/app/admin/protected/settings/page";
 
-export default function SettingsPage() {
-  return <SettingsView />;
-}

@@ -1,7 +1,3 @@
-import { JobsView } from "@nexpress/admin/client";
-
 export const dynamic = "force-dynamic";
+export { default } from "@nexpress/app/admin/protected/jobs/page";
 
-export default function JobsPage() {
-  return <JobsView />;
-}

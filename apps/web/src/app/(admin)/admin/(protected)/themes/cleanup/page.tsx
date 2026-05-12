@@ -1,7 +1,3 @@
-import { ThemeCleanupView } from "@nexpress/admin/client";
-
 export const dynamic = "force-dynamic";
+export { default } from "@nexpress/app/admin/protected/themes/cleanup/page";
 
-export default function ThemeCleanupPage() {
-  return <ThemeCleanupView />;
-}

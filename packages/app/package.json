@@ -23,15 +23,25 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./admin/dashboard/page": {
-      "types": "./src/admin/dashboard/page.tsx",
-      "import": "./src/admin/dashboard/page.tsx",
-      "default": "./src/admin/dashboard/page.tsx"
+    "./admin/*": {
+      "types": "./src/admin/*.tsx",
+      "import": "./src/admin/*.tsx",
+      "default": "./src/admin/*.tsx"
     },
-    "./admin/protected-layout": {
-      "types": "./src/admin/protected-layout.tsx",
-      "import": "./src/admin/protected-layout.tsx",
-      "default": "./src/admin/protected-layout.tsx"
+    "./site/*": {
+      "types": "./src/site/*.tsx",
+      "import": "./src/site/*.tsx",
+      "default": "./src/site/*.tsx"
+    },
+    "./member/*": {
+      "types": "./src/member/*.tsx",
+      "import": "./src/member/*.tsx",
+      "default": "./src/member/*.tsx"
+    },
+    "./api/*": {
+      "types": "./src/api/*.ts",
+      "import": "./src/api/*.ts",
+      "default": "./src/api/*.ts"
     }
   },
   "files": ["dist", "src"],

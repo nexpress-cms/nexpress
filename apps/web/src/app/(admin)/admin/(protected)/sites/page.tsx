@@ -1,7 +1,3 @@
-import { SitesView } from "@nexpress/admin/client";
-
 export const dynamic = "force-dynamic";
+export { default } from "@nexpress/app/admin/protected/sites/page";
 
-export default function SitesPage() {
-  return <SitesView />;
-}
