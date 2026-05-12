@@ -21,6 +21,15 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: { url: connectionString },
-  strict: true,
+  // `strict: true` makes drizzle-kit prompt the operator to
+  // confirm potentially-destructive diffs. When `pnpm db:migrate`
+  // runs inside the setup wizard as a child process with piped
+  // stdio, the prompt can't render — drizzle-kit detects the
+  // non-TTY and exits silently (no error, just code 1). Operators
+  // saw an empty `<details>` toggle in the wizard UI and no useful
+  // output from direct `pnpm db:migrate` either. Leaving strict
+  // off so migrations are non-interactive by default; operators
+  // who want destructive-change confirmation should run
+  // `pnpm exec drizzle-kit migrate --strict` directly.
   verbose: true,
 });

@@ -404,7 +404,12 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
     return gen;
   }
   console.log("[setup] running pnpm db:migrate …");
-  const mig = await runChild(["pnpm", "run", "db:migrate"], env);
+  // Bypass the pnpm script wrapper — call drizzle-kit directly via
+  // `pnpm exec`. `pnpm run` adds its own output layer that has
+  // swallowed drizzle-kit stderr in past reports; `pnpm exec` runs
+  // the binary as a direct child so whatever the binary writes flows
+  // straight through.
+  const mig = await runChild(["pnpm", "exec", "drizzle-kit", "migrate"], env);
   if (!mig.ok) {
     console.log("[setup] db:migrate FAILED");
     return { ok: false, output: gen.output + mig.output };
@@ -419,48 +424,72 @@ function runChild(
 ): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolvePromise) => {
     const [cmd, ...args] = argv;
-    // `shell: true` so PATH resolution + shell constructs (`&&` in
-    // the chained `db:generate` script) match how the operator's
-    // own terminal runs `pnpm db:generate`. Without shell, the
-    // child's stderr was empty in the wizard UI for some operators
-    // even though a direct terminal run printed the full stack
-    // trace — pnpm spawning its own sub-shell for `&&` lost the
-    // pipe linkage in that path.
-    const child = spawn(`${cmd} ${args.join(" ")}`, {
-      cwd: PROJECT_DIR,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: true,
-    });
+    const inheritStdio = mode !== "http";
+    // CLI / non-interactive modes get `stdio: "inherit"` so the
+    // child's stdout/stderr write directly to the operator's
+    // terminal — no buffering, no TTY-detection oddities, no risk
+    // of drizzle-kit's interactive bits getting swallowed by our
+    // pipe. We sacrifice the ability to bundle output into a UI
+    // response, but in CLI / non-interactive modes there's no UI.
+    //
+    // HTTP mode still uses pipes (so the wizard's browser response
+    // can carry the captured output back) AND we tee the same
+    // chunks to the terminal that launched `pnpm run setup`.
+    // `shell: true` so PATH resolution + shell constructs flow
+    // through unchanged in either path.
+    const child = inheritStdio
+      ? spawn(`${cmd} ${args.join(" ")}`, {
+          cwd: PROJECT_DIR,
+          env,
+          stdio: "inherit",
+          shell: true,
+        })
+      : spawn(`${cmd} ${args.join(" ")}`, {
+          cwd: PROJECT_DIR,
+          env,
+          stdio: ["ignore", "pipe", "pipe"],
+          shell: true,
+        });
+
     let buf = "";
-    const tee = (label: "stdout" | "stderr") => (chunk: Buffer) => {
-      const text = chunk.toString();
-      buf += text;
-      // Mirror to the terminal that started `pnpm run setup` so
-      // operators can actually read the failure when something
-      // goes wrong (used to be silent — output only made it to
-      // the JSON response).
-      const stream = label === "stdout" ? process.stdout : process.stderr;
-      stream.write(text);
-    };
-    child.stdout?.on("data", tee("stdout"));
-    child.stderr?.on("data", tee("stderr"));
+    if (!inheritStdio) {
+      const tee = (label: "stdout" | "stderr") => (chunk: Buffer) => {
+        const text = chunk.toString();
+        buf += text;
+        const stream = label === "stdout" ? process.stdout : process.stderr;
+        stream.write(text);
+      };
+      child.stdout?.on("data", tee("stdout"));
+      child.stderr?.on("data", tee("stderr"));
+    }
+
     child.on("error", (err) => {
       resolvePromise({ ok: false, output: `${buf}\n${err.message}` });
     });
+
     child.on("close", (code) => {
-      // Silent-fail guard: if the child exited non-zero AND emitted
-      // nothing through our pipe, surface a placeholder so the
-      // operator at least sees "the child failed" instead of an
-      // empty `<details>` toggle. Real cases where this fires:
-      // spawn race that loses early stderr, child writes only to
-      // its own buffered streams, OS-level pipe disconnect. Better
-      // than the JSON response carrying `""` and the operator
-      // having to guess.
-      let output = buf;
-      if (code !== 0 && output.trim() === "") {
-        output = `(child '${argv.join(" ")}' exited with code ${code ?? "unknown"} but produced no output on stdout/stderr — try running '${argv.join(" ")}' directly in another terminal to see the failure)`;
-      }
+      const cmdLine = argv.join(" ");
+      // Always append an explicit exit footer — regardless of whether
+      // buf has content. drizzle-kit / pnpm have shipped ANSI escape
+      // sequences that fill the buffer but render as nothing visible,
+      // which made the previous "only show hint when buf is empty"
+      // guard miss the silent-fail case. Footer also points at the
+      // exact command to re-run directly so the operator can bypass
+      // any wizard layer that might be eating output.
+      const footer =
+        `\n[setup] '${cmdLine}' exited with code ${code ?? "unknown"}` +
+        (code !== 0
+          ? `\n[setup] If the output above is empty or unclear, run this in your terminal:\n[setup]   cd '${PROJECT_DIR}' && ${cmdLine}\n`
+          : "\n");
+      // Footer is written to terminal in both modes (in inherit mode
+      // the child's own output already went to the terminal; the
+      // footer here is what the wizard adds on top). In pipe mode
+      // the same footer goes into `buf` so the browser UI sees it
+      // in the <details> toggle.
+      process.stderr.write(footer);
+      const output = inheritStdio
+        ? footer
+        : buf + footer;
       resolvePromise({ ok: code === 0, output });
     });
   });
