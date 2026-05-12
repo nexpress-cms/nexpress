@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-block-latest-posts",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Latest posts block — list the most recent documents from any collection.",
   "license": "MIT",
   "author": "Nexpress",
