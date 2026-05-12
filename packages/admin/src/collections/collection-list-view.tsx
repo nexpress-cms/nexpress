@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 
@@ -130,6 +131,23 @@ export function CollectionListView({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [searchValue, setSearchValue] = useState(searchParams.get("search") ?? "");
+
+  // First-time UX: distinguish "no docs because the operator hasn't
+  // created any yet" from "no docs match the current search / filter".
+  // The latter keeps the table-with-search shell (so they can clear
+  // the filter); the former replaces the page body with a focused
+  // "create your first <singular>" card. URL params that should not
+  // count as "filtered" (`page`, `sort`) are excluded — being on
+  // page 2 of an empty collection isn't an active filter, just an
+  // unusual landing page.
+  const hasActiveFilters = useMemo(() => {
+    const search = searchParams.get("search");
+    if (search && search.trim() !== "") return true;
+    const status = searchParams.get("status");
+    if (status && status !== "all") return true;
+    return false;
+  }, [searchParams]);
+  const isPristineEmpty = totalDocs === 0 && !hasActiveFilters;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<null | "publish" | "unpublish" | "delete">(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -277,6 +295,30 @@ export function CollectionListView({
         }
       />
 
+      {isPristineEmpty ? (
+        <Card className="border-[var(--np-color-brand)]/30 bg-[var(--np-color-brand)]/5">
+          <CardContent className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+            <div className="rounded-full bg-[var(--np-color-brand)]/10 p-3 text-[var(--np-color-brand)]">
+              <Sparkles className="size-5" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-base font-semibold text-neutral-950 dark:text-neutral-50">
+                Create your first {config.labels.singular.toLowerCase()}
+              </h2>
+              <p className="max-w-md text-[13px] text-neutral-500 dark:text-neutral-400">
+                {config.admin?.description ??
+                  `No ${config.labels.plural.toLowerCase()} yet — add one to see it here.`}
+              </p>
+            </div>
+            <Button asChild>
+              <Link href={`/admin/collections/${config.slug}/create`}>
+                <Plus />
+                New {config.labels.singular.toLowerCase()}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle>All entries</CardTitle>
@@ -499,6 +541,7 @@ export function CollectionListView({
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
