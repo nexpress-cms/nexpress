@@ -51,7 +51,7 @@
     "@nexpress/core": "workspace:*",
     "@nexpress/next": "workspace:*",
     "@nexpress/theme": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
