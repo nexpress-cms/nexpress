@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@nexpress/admin": "workspace:*",
+    "@nexpress/app": "workspace:*",
     "@nexpress/auth-pages": "workspace:*",
     "@nexpress/blocks": "workspace:*",
     "@nexpress/core": "workspace:*",

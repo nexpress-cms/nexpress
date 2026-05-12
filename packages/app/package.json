@@ -1,0 +1,63 @@
+{
+  "name": "@nexpress/app",
+  "version": "0.1.0",
+  "description": "Shared Next.js page implementations for NexPress reference + scaffolded apps. Consumers import via thin re-export so both apps/web and `npx create-nexpress` projects render byte-identical UIs.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/app"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
+  "keywords": ["nexpress", "nextjs", "app-router", "pages"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./admin/dashboard/page": {
+      "types": "./src/admin/dashboard/page.tsx",
+      "import": "./src/admin/dashboard/page.tsx",
+      "default": "./src/admin/dashboard/page.tsx"
+    },
+    "./admin/protected-layout": {
+      "types": "./src/admin/protected-layout.tsx",
+      "import": "./src/admin/protected-layout.tsx",
+      "default": "./src/admin/protected-layout.tsx"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexpress/admin": "workspace:*",
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/core": "workspace:*",
+    "@nexpress/next": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "peerDependencies": {
+    "next": "^15.0.0 || ^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0"
+  }
+}
