@@ -483,6 +483,21 @@ pnpm dev
 > and \`pnpm init\` are all pnpm built-ins that shadow our package
 > scripts of the same name. Invoke ours with \`pnpm run <name>\`.
 
+#### Headless / SSH / CI?
+
+\`pnpm run setup\` auto-detects an SSH session or headless Linux and
+falls back to terminal prompts. To force it:
+
+\`\`\`bash
+pnpm run setup -- --cli              # terminal prompts, no browser
+pnpm run setup -- --non-interactive  # read everything from env vars
+\`\`\`
+
+Non-interactive mode reads \`DATABASE_URL\` (required), and optional
+\`NP_SECRET\` (auto-generated if absent), \`SITE_URL\`,
+\`NP_STORAGE_ADAPTER\`, \`NP_S3_*\`, \`NP_SETUP_RUN_MIGRATIONS\` (set to
+\`false\` to write only \`.env\` without running migrations).
+
 ### Stuck? Run the doctor.
 
 \`\`\`bash

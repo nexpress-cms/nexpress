@@ -27,6 +27,7 @@ import { access, copyFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 const PROJECT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,24 +49,76 @@ interface SetupBody {
   runMigrate: boolean;
 }
 
-const server = createServer((req, res) => {
-  void handle(req, res).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    sendJson(res, 500, { error: msg });
-  });
-});
+/**
+ * `pnpm run setup` supports three modes:
+ *
+ *   - **http** (default) — opens a localhost HTTP server with a
+ *     wizard UI. Best for first-time operators on a desktop.
+ *   - **cli** — terminal prompts via `readline/promises`. Picks up
+ *     automatically when run on a headless / SSH session, or
+ *     forced via `--cli`.
+ *   - **non-interactive** — reads everything from env vars, no
+ *     prompts. Forced via `--non-interactive` or env var
+ *     `NP_SETUP_NONINTERACTIVE=1`. Required env: `DATABASE_URL`.
+ *     Optional: `NP_SECRET` (auto-generated if absent), `SITE_URL`
+ *     (defaults to http://localhost:3000), `NP_STORAGE_ADAPTER`
+ *     (`local` | `s3`, default `local`), `NP_S3_*` (when storage
+ *     is `s3`), `NP_SETUP_RUN_MIGRATIONS` (`true` | `false`,
+ *     default `true`).
+ */
+type Mode = "http" | "cli" | "non-interactive";
 
-server.listen(PORT, "127.0.0.1", () => {
-  const url = `http://localhost:${PORT}/?token=${TOKEN}`;
-  console.log("");
-  console.log("  NexPress setup");
-  console.log("  --------------");
-  console.log(`  Open ${url}`);
-  console.log(`  Writes .env → ${ENV_PATH}`);
-  console.log("  (monorepo: apps/web/.env — not the repo root; IDE may hide gitignored files)");
-  console.log("  (server binds 127.0.0.1 only; press Ctrl+C to abort)");
-  console.log("");
-});
+function detectMode(): Mode {
+  if (args.includes("--non-interactive") || process.env.NP_SETUP_NONINTERACTIVE) {
+    return "non-interactive";
+  }
+  if (args.includes("--cli") || args.includes("--no-browser")) return "cli";
+  // Headless / SSH fallback. The HTTP wizard relies on the operator
+  // opening a browser tab on the same machine — if there's no DISPLAY
+  // (Linux/X11), no WAYLAND_DISPLAY, and an SSH session, that's
+  // almost certainly impossible.
+  const isSsh = Boolean(process.env.SSH_TTY || process.env.SSH_CONNECTION);
+  const isLinuxHeadless =
+    process.platform === "linux" &&
+    !process.env.DISPLAY &&
+    !process.env.WAYLAND_DISPLAY;
+  if (isSsh || isLinuxHeadless) return "cli";
+  return "http";
+}
+
+const mode = detectMode();
+
+if (mode === "non-interactive") {
+  void runNonInteractive().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+} else if (mode === "cli") {
+  void runCli().catch((err: unknown) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+} else {
+  const server = createServer((req, res) => {
+    void handle(req, res).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendJson(res, 500, { error: msg });
+    });
+  });
+
+  server.listen(PORT, "127.0.0.1", () => {
+    const url = `http://localhost:${PORT}/?token=${TOKEN}`;
+    console.log("");
+    console.log("  NexPress setup");
+    console.log("  --------------");
+    console.log(`  Open ${url}`);
+    console.log(`  Writes .env → ${ENV_PATH}`);
+    console.log("  (monorepo: apps/web/.env — not the repo root; IDE may hide gitignored files)");
+    console.log("  (server binds 127.0.0.1 only; press Ctrl+C to abort)");
+    console.log("  (no browser? use `pnpm setup --cli` or `pnpm setup --non-interactive`)");
+    console.log("");
+  });
+}
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
@@ -366,10 +419,18 @@ function runChild(
 ): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolvePromise) => {
     const [cmd, ...args] = argv;
-    const child = spawn(cmd!, args, {
+    // `shell: true` so PATH resolution + shell constructs (`&&` in
+    // the chained `db:generate` script) match how the operator's
+    // own terminal runs `pnpm db:generate`. Without shell, the
+    // child's stderr was empty in the wizard UI for some operators
+    // even though a direct terminal run printed the full stack
+    // trace — pnpm spawning its own sub-shell for `&&` lost the
+    // pipe linkage in that path.
+    const child = spawn(`${cmd} ${args.join(" ")}`, {
       cwd: PROJECT_DIR,
       env,
       stdio: ["ignore", "pipe", "pipe"],
+      shell: true,
     });
     let buf = "";
     const tee = (label: "stdout" | "stderr") => (chunk: Buffer) => {
@@ -388,7 +449,19 @@ function runChild(
       resolvePromise({ ok: false, output: `${buf}\n${err.message}` });
     });
     child.on("close", (code) => {
-      resolvePromise({ ok: code === 0, output: buf });
+      // Silent-fail guard: if the child exited non-zero AND emitted
+      // nothing through our pipe, surface a placeholder so the
+      // operator at least sees "the child failed" instead of an
+      // empty `<details>` toggle. Real cases where this fires:
+      // spawn race that loses early stderr, child writes only to
+      // its own buffered streams, OS-level pipe disconnect. Better
+      // than the JSON response carrying `""` and the operator
+      // having to guess.
+      let output = buf;
+      if (code !== 0 && output.trim() === "") {
+        output = `(child '${argv.join(" ")}' exited with code ${code ?? "unknown"} but produced no output on stdout/stderr — try running '${argv.join(" ")}' directly in another terminal to see the failure)`;
+      }
+      resolvePromise({ ok: code === 0, output });
     });
   });
 }
@@ -444,7 +517,168 @@ function getArg(name: string): string | undefined {
 }
 
 function generatedSecret(): string {
-  return randomBytes(32).toString("base64url");
+  // hex (not base64url) to match what `create-nexpress --yes`
+  // writes — same 32-byte entropy either way, but unified encoding
+  // means operators don't see two different-looking secrets in the
+  // same project depending on which path created the .env.
+  return randomBytes(32).toString("hex");
+}
+
+async function runCli(): Promise<void> {
+  console.log("");
+  console.log("  NexPress setup (CLI mode)");
+  console.log("  -------------------------");
+  console.log(`  Will write .env → ${ENV_PATH}`);
+  console.log(
+    "  (press Ctrl+C at any prompt to abort — nothing is written until the end)",
+  );
+  console.log("");
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const ask = async (prompt: string, fallback?: string): Promise<string> => {
+    const hint = fallback ? ` [${fallback}]` : "";
+    const ans = (await rl.question(`  ${prompt}${hint}: `)).trim();
+    return ans || fallback || "";
+  };
+  const askBool = async (prompt: string, defaultYes: boolean): Promise<boolean> => {
+    const hint = defaultYes ? "Y/n" : "y/N";
+    const ans = (await rl.question(`  ${prompt} [${hint}]: `)).trim().toLowerCase();
+    if (!ans) return defaultYes;
+    return ans === "y" || ans === "yes";
+  };
+
+  try {
+    const databaseUrl = await ask(
+      "PostgreSQL connection string (DATABASE_URL)",
+      process.env.DATABASE_URL ?? "postgres://nexpress:nexpress@localhost:5432/nexpress",
+    );
+    const npSecretInput = await ask(
+      "NP_SECRET (Enter to auto-generate 64-char hex)",
+      "",
+    );
+    const npSecret = npSecretInput || generatedSecret();
+    const siteUrl = await ask(
+      "Public site URL (SITE_URL)",
+      process.env.SITE_URL ?? "http://localhost:3000",
+    );
+
+    const storageAns = await ask("Storage adapter (local/s3)", "local");
+    const storage: "local" | "s3" = storageAns === "s3" ? "s3" : "local";
+    const body: SetupBody = {
+      databaseUrl,
+      npSecret,
+      siteUrl,
+      storage,
+      runMigrate: false,
+    };
+    if (storage === "s3") {
+      body.s3Bucket = await ask("S3 bucket (NP_S3_BUCKET)", process.env.NP_S3_BUCKET);
+      body.s3Region = await ask(
+        "S3 region (NP_S3_REGION)",
+        process.env.NP_S3_REGION ?? "auto",
+      );
+      const ep = await ask(
+        "S3 endpoint URL (NP_S3_ENDPOINT — leave blank for AWS)",
+        process.env.NP_S3_ENDPOINT ?? "",
+      );
+      if (ep) body.s3Endpoint = ep;
+    }
+
+    body.runMigrate = await askBool("Run pnpm db:generate + db:migrate now?", true);
+
+    const validated = validateBody(body);
+    if ("error" in validated) {
+      rl.close();
+      console.error("");
+      console.error(`✗ Invalid input: ${validated.error}`);
+      process.exit(1);
+    }
+
+    rl.close();
+    console.log("");
+    await saveEnv(validated.body);
+    console.log(`[setup] wrote ${ENV_PATH}`);
+
+    if (body.runMigrate) {
+      const result = await runMigrations(validated.body);
+      if (!result.ok) {
+        console.error("");
+        console.error("✗ migrations FAILED — full output above");
+        process.exit(1);
+      }
+    }
+
+    console.log("");
+    console.log("✓ Setup complete. Run `pnpm dev` to start NexPress.");
+    process.exit(0);
+  } catch (err) {
+    rl.close();
+    throw err;
+  }
+}
+
+async function runNonInteractive(): Promise<void> {
+  // Reads from real `process.env` so a CI / dotfile / fly secrets
+  // flow can dictate everything without a TTY. Reuses the
+  // operator-facing env-var names (`DATABASE_URL`, `NP_SECRET`,
+  // `SITE_URL`, `NP_STORAGE_ADAPTER`, `NP_S3_*`) plus one wizard-
+  // specific knob (`NP_SETUP_RUN_MIGRATIONS`).
+  console.log("");
+  console.log("  NexPress setup (non-interactive mode)");
+  console.log("  -------------------------------------");
+  console.log(`  Will write .env → ${ENV_PATH}`);
+  console.log("");
+
+  const storage = (process.env.NP_STORAGE_ADAPTER === "s3" ? "s3" : "local") as
+    | "local"
+    | "s3";
+  const runMigrate =
+    (process.env.NP_SETUP_RUN_MIGRATIONS ?? "true").toLowerCase() !== "false";
+  const body: SetupBody = {
+    databaseUrl: process.env.DATABASE_URL ?? "",
+    npSecret: process.env.NP_SECRET ?? generatedSecret(),
+    siteUrl: process.env.SITE_URL ?? "http://localhost:3000",
+    storage,
+    runMigrate,
+  };
+  if (storage === "s3") {
+    if (process.env.NP_S3_BUCKET) body.s3Bucket = process.env.NP_S3_BUCKET;
+    if (process.env.NP_S3_REGION) body.s3Region = process.env.NP_S3_REGION;
+    if (process.env.NP_S3_ENDPOINT) body.s3Endpoint = process.env.NP_S3_ENDPOINT;
+  }
+  if (process.env.TEST_DATABASE_URL) body.testDatabaseUrl = process.env.TEST_DATABASE_URL;
+
+  const validated = validateBody(body);
+  if ("error" in validated) {
+    console.error(`✗ Invalid setup input: ${validated.error}`);
+    console.error("");
+    console.error("Required env vars for non-interactive mode:");
+    console.error("  DATABASE_URL              postgres://...");
+    console.error("Optional:");
+    console.error("  NP_SECRET                 (auto-generated if absent; ≥32 chars)");
+    console.error("  SITE_URL                  (defaults to http://localhost:3000)");
+    console.error("  NP_STORAGE_ADAPTER        local | s3 (default local)");
+    console.error("  NP_S3_BUCKET / NP_S3_REGION / NP_S3_ENDPOINT");
+    console.error("  TEST_DATABASE_URL         (integration tests; copied as-is)");
+    console.error("  NP_SETUP_RUN_MIGRATIONS   true | false (default true)");
+    process.exit(1);
+  }
+
+  await saveEnv(validated.body);
+  console.log(`[setup] wrote ${ENV_PATH}`);
+
+  if (runMigrate) {
+    const result = await runMigrations(validated.body);
+    if (!result.ok) {
+      console.error("");
+      console.error("✗ migrations FAILED — full output above");
+      process.exit(1);
+    }
+  }
+
+  console.log("");
+  console.log("✓ Setup complete.");
+  process.exit(0);
 }
 
 function escapeHtml(s: string): string {
