@@ -90,8 +90,18 @@ export function getProjectFiles(config: TemplateConfig): Record<string, string> 
   return files;
 }
 
+// Pinned `@nexpress/*` range for scaffolded projects. Bumped
+// manually when the family hits a new minor (e.g. 0.1.x → 0.2.x).
+// `latest` is tempting but creates a footgun: a stale
+// `create-nexpress` could scaffold a project pinned to a future
+// breaking `@nexpress/core` whose API the scaffold's source
+// templates haven't kept up with. Explicit pin = scaffold and
+// runtime always speak the same version family. Operator can
+// still bump locally with `pnpm update --latest @nexpress/*`.
+const SCAFFOLDED_NEXPRESS_RANGE = "^0.1.3";
+
 function packageJsonTemplate(config: TemplateConfig): string {
-  const nexpressVersion = config.localMode ? "workspace:*" : "latest";
+  const nexpressVersion = config.localMode ? "workspace:*" : SCAFFOLDED_NEXPRESS_RANGE;
 
   return `${JSON.stringify(
     {
@@ -104,6 +114,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         dev: "next dev",
         build: "next build",
         start: "next start",
+        typecheck: "tsc --noEmit",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
         postinstall: "tsx scripts/postinstall-notice.ts",
@@ -149,6 +160,19 @@ function packageJsonTemplate(config: TemplateConfig): string {
         tailwindcss: "^4.0.0",
         tsx: "^4.20.6",
         typescript: "^5.8.0",
+      },
+      // pnpm 10+ defaults to NOT running native-build postinstalls
+      // (sharp, @node-rs/argon2). NexPress depends on both:
+      //   - sharp for media transforms (image upload + resize)
+      //   - @node-rs/argon2 for password hashing (login, member auth)
+      // Without these built, those features throw at runtime with
+      // opaque "module not found" / "function not implemented"
+      // errors deep inside the framework. Explicit allowlist gets
+      // them built on first `pnpm install` without operator
+      // intervention. Other native deps fall back to pnpm's safe
+      // default (ignored, operator can `pnpm approve-builds`).
+      pnpm: {
+        onlyBuiltDependencies: ["sharp", "@node-rs/argon2"],
       },
     },
     null,

@@ -359,18 +359,23 @@ interface PgModuleLike {
 }
 
 /**
- * Pre-flight check before applying migrations: count framework
- * tables (`np_*` / `np_c_*`) already in the target DB. If any
- * exist, the operator is about to apply migrations on top of
- * another NexPress project's schema — typically because their
- * `.env` accidentally points at the monorepo dev DB or another
- * scaffold's DB. drizzle-kit's `CREATE TABLE` would silently
- * fail under spinner-suppressed output (it has historically
- * exited 1 with no message in this case).
+ * Pre-flight check before applying migrations.
  *
- * Returns `{ existing: 0 }` when the DB is empty or unreachable
- * (let drizzle-kit handle real connection failures with its
- * own error path), or `{ existing: N }` when collision is real.
+ * Returns `{ existing: N }` only when the target DB already has
+ * NexPress framework tables (`np_*`) AND those tables were NOT
+ * created by drizzle-kit (i.e. `drizzle.__drizzle_migrations`
+ * has no rows). That's the "another NexPress project owns this
+ * DB" case — drizzle-kit would silently exit 1 with no message
+ * when applying CREATE TABLE on top of the foreign schema, so
+ * we want to short-circuit with a clear error.
+ *
+ * Returns `{ existing: 0 }` when:
+ *   - DB is empty (fresh — normal path)
+ *   - DB is unreachable (let drizzle-kit's own connection error
+ *     fire; pre-flight only signals on reachable+populated)
+ *   - DB has drizzle-managed rows (= same project re-running
+ *     setup; drizzle-kit migrate is idempotent so safe to
+ *     proceed without a false-positive collision flag)
  */
 async function probeExistingFrameworkTables(
   url: string,
@@ -389,9 +394,32 @@ async function probeExistingFrameworkTables(
   });
   try {
     await client.connect();
+
+    // If drizzle has already migrated this DB (regardless of
+    // hash match), assume it belongs to this project and let
+    // drizzle-kit handle idempotency. Catches the "operator
+    // re-runs `pnpm setup`" case that previously false-
+    // positived. The table only exists once drizzle-kit migrate
+    // has succeeded at least once.
+    type CountRow = { rows: Array<{ n: number }> };
+    let trackedCount = 0;
+    try {
+      const tracked = (await client.query(
+        "SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations",
+      )) as unknown as CountRow;
+      trackedCount = tracked.rows[0]?.n ?? 0;
+    } catch {
+      // table doesn't exist → drizzle hasn't touched this DB
+      trackedCount = 0;
+    }
+    if (trackedCount > 0) {
+      await client.end();
+      return { existing: 0 };
+    }
+
     const result = (await client.query(
       "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'np\\_%' ESCAPE '\\'",
-    )) as unknown as { rows: Array<{ n: number }> };
+    )) as unknown as CountRow;
     await client.end();
     return { existing: result.rows[0]?.n ?? 0 };
   } catch {
