@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -65,4 +65,75 @@ export function readTemplate(
     }
     return match;
   });
+}
+
+/**
+ * Resolves a template directory across the dev / published-build
+ * candidate paths, the same way `readTemplate` resolves single
+ * files.
+ */
+function resolveTemplateDir(relativePath: string): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(here, "..", "templates", relativePath),
+    resolve(here, "templates", relativePath),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const stat = statSync(candidate);
+      if (stat.isDirectory()) return candidate;
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error(
+    `Template directory not found: ${relativePath} (looked in ${candidates.join(", ")})`,
+  );
+}
+
+/**
+ * Walks a template subtree (e.g. `"snapshot/src/app"`) and returns
+ * a flat map of `{ relPath: fileContent }`, where `relPath` is
+ * relative to the subtree root.
+ *
+ * Used to mirror an entire subtree (the apps/web snapshot — root
+ * layout, page wrappers, API route wrappers, shared lib/) into a
+ * scaffolded project as-is so scaffolded sites and `apps/web`
+ * resolve to byte-identical code through @nexpress/app's subpath
+ * exports.
+ *
+ * Binary files (currently just `icon.svg`) come back as a base64
+ * string under `{ encoding: "base64", content }`; callers writing
+ * them out must decode before write. Everything else returns as a
+ * utf-8 string under `{ encoding: "utf8", content }`.
+ */
+export type TemplateFile =
+  | { encoding: "utf8"; content: string }
+  | { encoding: "base64"; content: string };
+
+export function walkTemplateTree(
+  relativePath: string,
+): Record<string, TemplateFile> {
+  const root = resolveTemplateDir(relativePath);
+  const out: Record<string, TemplateFile> = {};
+
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir)) {
+      const abs = join(dir, entry);
+      const stat = statSync(abs);
+      if (stat.isDirectory()) {
+        walk(abs);
+        continue;
+      }
+      const rel = relative(root, abs);
+      if (entry.endsWith(".svg") || entry.endsWith(".png") || entry.endsWith(".ico")) {
+        out[rel] = { encoding: "base64", content: readFileSync(abs).toString("base64") };
+      } else {
+        out[rel] = { encoding: "utf8", content: readFileSync(abs, "utf8") };
+      }
+    }
+  }
+
+  walk(root);
+  return out;
 }
