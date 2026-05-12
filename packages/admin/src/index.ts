@@ -6,5 +6,6 @@ export type {
   CollectionTabAction,
 } from "./collections/collection-tabs.js";
 export type { DashboardPluginWidget } from "./dashboard/plugin-widgets.js";
+export type { DashboardStats } from "./dashboard/dashboard-view.js";
 
 export { ThemeInit } from "./layout/theme-init.js";

@@ -27,7 +27,7 @@ import {
   type DashboardPluginWidget,
 } from "./plugin-widgets.js";
 
-type DashboardStats = {
+export type DashboardStats = {
   collections: Array<{ slug: string; label: string; count: number }>;
   recentActivity: Array<{
     id: string;
