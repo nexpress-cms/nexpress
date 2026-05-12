@@ -1,16 +1,5 @@
 # @nexpress/theme-portfolio
 
-## 0.1.1
-
-### Patch Changes
-
-- 1221e84: Use logical RTL-safe `padding-inline-start` instead of `padding-left` for mobile sub-nav lists in `theme-magazine` and `theme-portfolio`. The default theme already used logical properties; this brings the v0.2 reference themes into alignment so RTL locales render correctly.
-- Updated dependencies [1221e84]
-  - @nexpress/core@0.2.0
-  - @nexpress/blocks@0.2.0
-  - @nexpress/next@0.2.0
-  - @nexpress/theme@0.2.0
-
 ## 0.1.0
 
 ### Minor Changes
