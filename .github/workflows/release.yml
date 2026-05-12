@@ -87,8 +87,14 @@ jobs:
       # OIDC token for nothing, and npm responds with a misleading
       # E404 ("not in this registry") for every package — the
       # symptom we hit on the v0.2.0 release run.
+      #
+      # Pinned to an exact version, not `@latest`, to dodge the
+      # self-upgrade race that left npm with a broken `arborist`
+      # require chain ("Cannot find module 'promise-retry'") on the
+      # 0.1.1 attempt. Bump this manually when a new npm major
+      # introduces relevant TP fixes.
       - name: Upgrade npm for Trusted Publishing support
-        run: npm install -g npm@latest
+        run: npm install -g npm@11.5.1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
