@@ -1,3 +1,11 @@
+// `_load-env.js` MUST be the first import. It runs `dotenv` so
+// `process.env.NP_SECRET` / `DATABASE_URL` are populated before
+// `@/nexpress.config` evaluates and zod-validates them. Without
+// this line, `pnpm db:generate` aborts on a fresh scaffold with
+// "Invalid NexPress config — boot aborted before any service
+// starts" even though `.env` is already on disk.
+import "./_load-env.js";
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
