@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "fast-xml-parser": "^5.5.8"
+    "fast-xml-parser": "^5.7.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
