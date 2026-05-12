@@ -1,5 +1,17 @@
 # @nexpress/web
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [6029918]
+  - @nexpress/plugin-block-callout@0.1.2
+  - @nexpress/plugin-block-embed@0.1.2
+  - @nexpress/plugin-block-latest-posts@0.1.2
+  - @nexpress/plugin-block-newsletter@0.1.2
+  - @nexpress/plugin-block-pricing@0.1.2
+  - @nexpress/plugin-block-stats@0.1.2
+
 ## 0.0.1
 
 ### Patch Changes
