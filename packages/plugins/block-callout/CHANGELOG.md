@@ -1,5 +1,12 @@
 # @nexpress/plugin-block-callout
 
+## 0.1.4
+
+### Patch Changes
+
+- @nexpress/blocks@0.1.3
+- @nexpress/plugin-sdk@0.1.3
+
 ## 0.1.3
 
 ### Patch Changes
