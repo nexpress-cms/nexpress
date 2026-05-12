@@ -1,3 +1,1 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
-
-export const POST = memberAuthRoutes.register;
+export { POST } from "@nexpress/app/api/members/register/route";

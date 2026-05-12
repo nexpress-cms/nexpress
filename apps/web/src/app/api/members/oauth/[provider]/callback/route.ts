@@ -1,3 +1,1 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
-
-export const GET = memberAuthRoutes.oauthCallback;
+export { GET } from "@nexpress/app/api/members/oauth/[provider]/callback/route";

@@ -1,5 +1,1 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
-
-export const GET = memberAuthRoutes.meGet;
-export const PATCH = memberAuthRoutes.mePatch;
-export const DELETE = memberAuthRoutes.meDelete;
+export { DELETE,GET,PATCH } from "@nexpress/app/api/members/me/route";

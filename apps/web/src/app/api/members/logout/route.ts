@@ -1,3 +1,1 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
-
-export const POST = memberAuthRoutes.logout;
+export { POST } from "@nexpress/app/api/members/logout/route";

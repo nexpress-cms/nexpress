@@ -16,3 +16,13 @@ export async function ensureFor(
 ): Promise<void> {
   void intent;
 }
+
+export const nexpressConfig: {
+  collections: Array<any>;
+  site: { url?: string; name?: string; [k: string]: any };
+  jobs?: {
+    stuckThreshold?: { failed?: number; expired?: number };
+    [k: string]: any;
+  };
+  [k: string]: any;
+} = { collections: [], site: {} };

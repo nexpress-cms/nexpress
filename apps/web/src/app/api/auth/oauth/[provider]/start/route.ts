@@ -1,3 +1,1 @@
-import { staffAuthRoutes } from "@/lib/auth-routes";
-
-export const GET = staffAuthRoutes.oauthStart;
+export { GET } from "@nexpress/app/api/auth/oauth/[provider]/start/route";
