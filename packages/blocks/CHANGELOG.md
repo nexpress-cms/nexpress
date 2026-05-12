@@ -1,5 +1,13 @@
 # @nexpress/blocks
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [3fff335]
+  - @nexpress/core@0.2.1
+  - @nexpress/editor@0.2.1
+
 ## 0.2.0
 
 ### Patch Changes
