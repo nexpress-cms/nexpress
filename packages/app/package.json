@@ -42,6 +42,16 @@
       "types": "./src/api/*.ts",
       "import": "./src/api/*.ts",
       "default": "./src/api/*.ts"
+    },
+    "./root/layout": {
+      "types": "./src/root/layout.tsx",
+      "import": "./src/root/layout.tsx",
+      "default": "./src/root/layout.tsx"
+    },
+    "./root/*": {
+      "types": "./src/root/*.ts",
+      "import": "./src/root/*.ts",
+      "default": "./src/root/*.ts"
     }
   },
   "files": ["dist", "src"],
