@@ -330,7 +330,15 @@ function postcssConfigTemplate(): string {
 }
 
 function gitignoreTemplate(): string {
-  return readTemplate("config/.gitignore");
+  // Read the template under the non-dotted name `gitignore`. npm
+  // publish strips dot-prefixed files from the tarball as a safety
+  // default (so a package can't accidentally ship `.npmrc` /
+  // `.gitignore` overrides), which broke the published CLI before
+  // — the template file existed in `dist/templates/config/.gitignore`
+  // locally but disappeared from the tarball. The scaffolded
+  // project still receives `.gitignore` as the output filename
+  // (set by the caller in templates.ts:12).
+  return readTemplate("config/gitignore");
 }
 
 function nextEnvTemplate(): string {
