@@ -122,7 +122,12 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
         "drizzle-orm": "^0.45.2",
-        next: "^15.3.0",
+        // Pinned to ^16 — `@nexpress/app`'s route handlers use Next 16
+        // signatures (notably `revalidateTag(tag, profile)` with the
+        // second arg added in 16; `proxy.ts` replacing `middleware.ts`).
+        // A scaffold on Next 15 fails to typecheck against the shared
+        // package's surface.
+        next: "^16.0.0",
         react: "^19.0.0",
         "react-dom": "^19.0.0",
       },

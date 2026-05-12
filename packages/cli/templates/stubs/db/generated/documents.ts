@@ -4,7 +4,7 @@
 // from their `nexpress.config.ts` collections. The stub declares
 // the fields the framework pages actually read, so the package
 // typechecks against the "default scaffold" shape.
-import type { NpFindOptions, NpFindResult } from "@nexpress/core";
+import type { NpAuthUser, NpFindOptions, NpFindResult } from "@nexpress/core";
 
 export interface PostsDocument {
   id: string;
@@ -76,4 +76,43 @@ export async function findDiscussions(
 ): Promise<NpFindResult<DiscussionsDocument>> {
   void opts;
   return emptyResult<DiscussionsDocument>();
+}
+
+// Single-document accessors. Each real generator emits one of these per
+// collection that opts into single-row lookups; the stub provides the same
+// shape returning null so framework pages reaching `getPostsDocument(id)`
+// typecheck before the first `pnpm db:generate` overwrites this file.
+export async function getPostsDocument(
+  _id: string,
+  _user?: NpAuthUser,
+): Promise<PostsDocument | null> {
+  return null;
+}
+
+export async function getPagesDocument(
+  _id: string,
+  _user?: NpAuthUser,
+): Promise<PagesDocument | null> {
+  return null;
+}
+
+export async function getCategoriesDocument(
+  _id: string,
+  _user?: NpAuthUser,
+): Promise<CategoriesDocument | null> {
+  return null;
+}
+
+export async function getTagsDocument(
+  _id: string,
+  _user?: NpAuthUser,
+): Promise<TagsDocument | null> {
+  return null;
+}
+
+export async function getDiscussionsDocument(
+  _id: string,
+  _user?: NpAuthUser,
+): Promise<DiscussionsDocument | null> {
+  return null;
 }
