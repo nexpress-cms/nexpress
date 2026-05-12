@@ -58,7 +58,6 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.templates.json",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
-    "test": "vitest run",
-    "prepublishOnly": "pnpm build"
+    "test": "vitest run"
   }
 }
