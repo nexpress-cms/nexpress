@@ -424,73 +424,45 @@ function runChild(
 ): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolvePromise) => {
     const [cmd, ...args] = argv;
-    const inheritStdio = mode !== "http";
-    // CLI / non-interactive modes get `stdio: "inherit"` so the
-    // child's stdout/stderr write directly to the operator's
-    // terminal — no buffering, no TTY-detection oddities, no risk
-    // of drizzle-kit's interactive bits getting swallowed by our
-    // pipe. We sacrifice the ability to bundle output into a UI
-    // response, but in CLI / non-interactive modes there's no UI.
+    const cmdLine = argv.join(" ");
+    // `stdio: "inherit"` in all modes (including the HTTP wizard).
+    // drizzle-kit emits its real error / progress output only when
+    // it has a real TTY — when our spawn used `pipe`, the captured
+    // buffer ended up with just two spinner frames + nothing else,
+    // and the actual migration error (or success message) was
+    // silently dropped. Inheriting hands the child whatever stdio
+    // the wizard parent has, which is the operator's actual
+    // terminal. The browser UI loses captured output, but the
+    // terminal now shows exactly what running `pnpm exec
+    // drizzle-kit migrate` directly would show — same source, same
+    // formatting, same error fidelity.
     //
-    // HTTP mode still uses pipes (so the wizard's browser response
-    // can carry the captured output back) AND we tee the same
-    // chunks to the terminal that launched `pnpm run setup`.
     // `shell: true` so PATH resolution + shell constructs flow
-    // through unchanged in either path.
-    const child = inheritStdio
-      ? spawn(`${cmd} ${args.join(" ")}`, {
-          cwd: PROJECT_DIR,
-          env,
-          stdio: "inherit",
-          shell: true,
-        })
-      : spawn(`${cmd} ${args.join(" ")}`, {
-          cwd: PROJECT_DIR,
-          env,
-          stdio: ["ignore", "pipe", "pipe"],
-          shell: true,
-        });
-
-    let buf = "";
-    if (!inheritStdio) {
-      const tee = (label: "stdout" | "stderr") => (chunk: Buffer) => {
-        const text = chunk.toString();
-        buf += text;
-        const stream = label === "stdout" ? process.stdout : process.stderr;
-        stream.write(text);
-      };
-      child.stdout?.on("data", tee("stdout"));
-      child.stderr?.on("data", tee("stderr"));
-    }
+    // through unchanged.
+    const child = spawn(`${cmd} ${args.join(" ")}`, {
+      cwd: PROJECT_DIR,
+      env,
+      stdio: "inherit",
+      shell: true,
+    });
 
     child.on("error", (err) => {
-      resolvePromise({ ok: false, output: `${buf}\n${err.message}` });
+      process.stderr.write(`\n[setup] failed to spawn '${cmdLine}': ${err.message}\n`);
+      resolvePromise({ ok: false, output: err.message });
     });
 
     child.on("close", (code) => {
-      const cmdLine = argv.join(" ");
-      // Always append an explicit exit footer — regardless of whether
-      // buf has content. drizzle-kit / pnpm have shipped ANSI escape
-      // sequences that fill the buffer but render as nothing visible,
-      // which made the previous "only show hint when buf is empty"
-      // guard miss the silent-fail case. Footer also points at the
-      // exact command to re-run directly so the operator can bypass
-      // any wizard layer that might be eating output.
+      // Footer always prints to the terminal so the operator can
+      // tell which step finished and how — drizzle-kit's own
+      // success line ("X migrations applied") sometimes flushes
+      // late or not at all when run as a piped child.
       const footer =
         `\n[setup] '${cmdLine}' exited with code ${code ?? "unknown"}` +
         (code !== 0
-          ? `\n[setup] If the output above is empty or unclear, run this in your terminal:\n[setup]   cd '${PROJECT_DIR}' && ${cmdLine}\n`
+          ? `\n[setup] To re-run directly:\n[setup]   cd '${PROJECT_DIR}' && ${cmdLine}\n`
           : "\n");
-      // Footer is written to terminal in both modes (in inherit mode
-      // the child's own output already went to the terminal; the
-      // footer here is what the wizard adds on top). In pipe mode
-      // the same footer goes into `buf` so the browser UI sees it
-      // in the <details> toggle.
       process.stderr.write(footer);
-      const output = inheritStdio
-        ? footer
-        : buf + footer;
-      resolvePromise({ ok: code === 0, output });
+      resolvePromise({ ok: code === 0, output: footer });
     });
   });
 }
@@ -852,6 +824,7 @@ function renderHtml(): string {
 <script>
   const TOKEN = ${JSON.stringify(TOKEN)};
   const SETUP_ENV_PATH = ${JSON.stringify(ENV_PATH)};
+  const SETUP_PROJECT_DIR = ${JSON.stringify(PROJECT_DIR)};
   const $ = (id) => document.getElementById(id);
   const status = $("status");
   const testStatus = $("testStatus");
@@ -919,15 +892,20 @@ function renderHtml(): string {
         return;
       }
       const failed =
-        body.migrate && !body.migrate.ok && { label: "migrations", output: body.migrate.output };
+        body.migrate && !body.migrate.ok && { label: "migrations" };
       if (failed) {
-        const out = (failed.output || "(no output captured)").trim();
+        // Captured output isn't reliable (drizzle-kit emits useful
+        // logs only on a real TTY; the wizard now inherits the
+        // parent terminal so the operator's terminal has the real
+        // output, not the browser). Point them at the terminal +
+        // give the exact re-run command.
         status.innerHTML =
-          ".env written, but <strong>" + failed.label + " FAILED</strong>. Full output is also in the terminal where \\\`pnpm run setup\\\` is running. " +
-          "<details style=\\"margin-top:.5rem;\\"><summary style=\\"cursor:pointer;\\">Show output</summary>" +
-          "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;max-height:280px;overflow:auto;\\">" +
-          out.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
-          "</pre></details>";
+          ".env written, but <strong>" + failed.label + " FAILED</strong>." +
+          "<br>The full migration output is in the terminal that's running \\\`pnpm run setup\\\` — switch back to that window to see what drizzle-kit reported." +
+          "<br><br>To re-run the migration directly:" +
+          "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;margin-top:.3rem;\\">cd " +
+          SETUP_PROJECT_DIR.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+          " && pnpm exec drizzle-kit migrate</pre>";
         status.className = "err";
         $("saveBtn").disabled = false;
         return;
