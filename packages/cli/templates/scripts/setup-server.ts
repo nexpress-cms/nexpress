@@ -26,12 +26,25 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { access, copyFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 const PROJECT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_PATH = resolve(PROJECT_DIR, ".env");
+
+// Default Postgres database name = project directory name,
+// sanitized to lowercase + underscores. Each scaffolded project
+// gets its own DB so two projects on the same machine (or the
+// scaffold + the monorepo dev DB) don't clobber each other's
+// migration tracking.
+const DEFAULT_DB_NAME =
+  basename(PROJECT_DIR)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "nexpress";
+const DEFAULT_DATABASE_URL = `postgres://nexpress:nexpress@localhost:5433/${DEFAULT_DB_NAME}`;
+const DEFAULT_TEST_DATABASE_URL = `postgres://nexpress:nexpress@localhost:5433/${DEFAULT_DB_NAME}_test`;
 
 const args = process.argv.slice(2);
 const PORT = Number(getArg("--port") ?? "3001");
@@ -345,6 +358,56 @@ interface PgModuleLike {
   };
 }
 
+/**
+ * Pre-flight check before applying migrations: count framework
+ * tables (`np_*` / `np_c_*`) already in the target DB. If any
+ * exist, the operator is about to apply migrations on top of
+ * another NexPress project's schema — typically because their
+ * `.env` accidentally points at the monorepo dev DB or another
+ * scaffold's DB. drizzle-kit's `CREATE TABLE` would silently
+ * fail under spinner-suppressed output (it has historically
+ * exited 1 with no message in this case).
+ *
+ * Returns `{ existing: 0 }` when the DB is empty or unreachable
+ * (let drizzle-kit handle real connection failures with its
+ * own error path), or `{ existing: N }` when collision is real.
+ */
+async function probeExistingFrameworkTables(
+  url: string,
+): Promise<{ existing: number }> {
+  let pg: PgModuleLike;
+  try {
+    const require = createRequire(import.meta.url);
+    const resolved = require.resolve("pg");
+    pg = (await import(resolved)) as unknown as PgModuleLike;
+  } catch {
+    return { existing: 0 };
+  }
+  const client = new pg.default.Client({
+    connectionString: url,
+    connectionTimeoutMillis: 5_000,
+  });
+  try {
+    await client.connect();
+    const result = (await client.query(
+      "SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'np\\_%' ESCAPE '\\'",
+    )) as unknown as { rows: Array<{ n: number }> };
+    await client.end();
+    return { existing: result.rows[0]?.n ?? 0 };
+  } catch {
+    try {
+      await client.end();
+    } catch {
+      /* swallow */
+    }
+    // Connection failed (DB doesn't exist, wrong creds, port
+    // not open). Let drizzle-kit surface that as its own error;
+    // pre-flight only signals on the "DB reachable + already
+    // populated" case.
+    return { existing: 0 };
+  }
+}
+
 async function testDbConnection(
   url: string,
 ): Promise<{ ok: boolean; message: string }> {
@@ -396,7 +459,34 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
   // `apps/web` where the package's own `db:generate` / `db:migrate`
   // scripts already wire drizzle-kit.
   const env = { ...process.env, ...envForChild(body) };
+
+  // Pre-flight: refuse to apply migrations onto a DB that already
+  // has another NexPress project's tables. drizzle-kit's CREATE
+  // TABLE collision under non-TTY spawn produces a silent exit 1
+  // with no message, which has burned multiple first-time
+  // operators who pointed their fresh scaffold at the monorepo's
+  // shared dev DB (same URL by default before #694 + this PR).
   console.log("");
+  console.log("[setup] checking database …");
+  const probe = await probeExistingFrameworkTables(body.databaseUrl);
+  if (probe.existing > 0) {
+    const dbName = (() => {
+      try {
+        return new URL(body.databaseUrl).pathname.replace(/^\//, "") || "(unknown)";
+      } catch {
+        return "(unknown)";
+      }
+    })();
+    const message =
+      `Database '${dbName}' already contains ${probe.existing} NexPress tables (np_*).\n` +
+      `Another project is using this DB. Pick a different DB name in DATABASE_URL,\n` +
+      `or drop + recreate the DB:\n` +
+      `  psql -c "DROP DATABASE ${dbName}; CREATE DATABASE ${dbName};"\n` +
+      `Then re-run setup.`;
+    console.log("[setup] db pre-flight FAILED — DB already populated");
+    return { ok: false, output: message };
+  }
+
   console.log("[setup] running pnpm db:generate …");
   const gen = await runChild(["pnpm", "run", "db:generate"], env);
   if (!gen.ok) {
@@ -551,7 +641,7 @@ async function runCli(): Promise<void> {
   try {
     const databaseUrl = await ask(
       "PostgreSQL connection string (DATABASE_URL)",
-      process.env.DATABASE_URL ?? "postgres://nexpress:nexpress@localhost:5432/nexpress",
+      process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
     );
     const npSecretInput = await ask(
       "NP_SECRET (Enter to auto-generate 64-char hex)",
@@ -748,15 +838,15 @@ function renderHtml(): string {
     <legend>Database</legend>
     <label>
       <span>DATABASE_URL</span>
-      <span class="hint">Postgres connection string. The local Docker preset is <code>postgres://nexpress:nexpress@localhost:5433/nexpress</code>.</span>
+      <span class="hint">Postgres connection string. Default uses your project name as the DB: <code>${DEFAULT_DATABASE_URL}</code>. Create the DB first with <code>psql -c "CREATE DATABASE ${DEFAULT_DB_NAME};"</code> on your Postgres.</span>
       <input id="databaseUrl" name="databaseUrl" type="text" required spellcheck="false"
-             value="postgres://nexpress:nexpress@localhost:5433/nexpress" />
+             value="${DEFAULT_DATABASE_URL}" />
     </label>
     <label>
       <span>TEST_DATABASE_URL <em>(optional)</em></span>
       <span class="hint">Used by <code>pnpm test:integration</code>. Leave blank if you don't run integration tests.</span>
       <input id="testDatabaseUrl" name="testDatabaseUrl" type="text" spellcheck="false"
-             value="postgres://nexpress:nexpress@localhost:5433/nexpress_test" />
+             value="${DEFAULT_TEST_DATABASE_URL}" />
     </label>
     <div class="row" style="margin-top: 0.7rem; align-items: center;">
       <button type="button" id="testBtn">Test connection</button>
@@ -892,20 +982,24 @@ function renderHtml(): string {
         return;
       }
       const failed =
-        body.migrate && !body.migrate.ok && { label: "migrations" };
+        body.migrate && !body.migrate.ok && { label: "migrations", output: body.migrate.output };
       if (failed) {
-        // Captured output isn't reliable (drizzle-kit emits useful
-        // logs only on a real TTY; the wizard now inherits the
-        // parent terminal so the operator's terminal has the real
-        // output, not the browser). Point them at the terminal +
-        // give the exact re-run command.
+        // Pre-flight check (DB already populated) returns a
+        // multi-line actionable message in 'output'. Other
+        // failures (drizzle-kit silent exit etc.) have only a
+        // short footer line — for those we point the operator
+        // at their terminal where drizzle-kit's real output is.
+        const raw = (failed.output || "").trim();
+        const isPreflight = raw.includes("already contains") && raw.includes("NexPress tables");
+        const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        const preflightBox = isPreflight
+          ? "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;margin-top:.5rem;\\">" + escape(raw) + "</pre>"
+          : "<br>The migration output is in the terminal that's running \\\`pnpm run setup\\\` — switch back to that window to see what drizzle-kit reported." +
+            "<br><br>To re-run the migration directly:" +
+            "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;margin-top:.3rem;\\">cd " +
+            escape(SETUP_PROJECT_DIR) + " && pnpm exec drizzle-kit migrate</pre>";
         status.innerHTML =
-          ".env written, but <strong>" + failed.label + " FAILED</strong>." +
-          "<br>The full migration output is in the terminal that's running \\\`pnpm run setup\\\` — switch back to that window to see what drizzle-kit reported." +
-          "<br><br>To re-run the migration directly:" +
-          "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;margin-top:.3rem;\\">cd " +
-          SETUP_PROJECT_DIR.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
-          " && pnpm exec drizzle-kit migrate</pre>";
+          ".env written, but <strong>" + failed.label + " FAILED</strong>." + preflightBox;
         status.className = "err";
         $("saveBtn").disabled = false;
         return;
