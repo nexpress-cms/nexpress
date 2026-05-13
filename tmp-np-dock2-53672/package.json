@@ -1,0 +1,60 @@
+{
+  "name": "tmp-np-dock2-53672",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "tsx scripts/dev-notice.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "doctor": "tsx scripts/doctor.ts",
+    "doctor:prod": "tsx scripts/doctor.ts --prod",
+    "postinstall": "tsx scripts/postinstall-notice.ts",
+    "schema:gen": "tsx scripts/generate-schema.ts",
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "setup": "tsx scripts/setup-server.ts",
+    "worker": "tsx scripts/worker.ts",
+    "db:generate": "pnpm schema:gen && drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "pnpm schema:gen && drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@nexpress/core": "workspace:*",
+    "@nexpress/admin": "workspace:*",
+    "@nexpress/app": "workspace:*",
+    "@nexpress/auth-pages": "workspace:*",
+    "@nexpress/editor": "workspace:*",
+    "@nexpress/blocks": "workspace:*",
+    "@nexpress/theme": "workspace:*",
+    "@nexpress/next": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.13.1",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@nexpress/cli": "workspace:*",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "dotenv": "^17.2.4",
+    "drizzle-kit": "^0.31.10",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp",
+      "@node-rs/argon2"
+    ]
+  }
+}

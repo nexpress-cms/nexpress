@@ -76,7 +76,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
 
   if (config.dockerSetup) {
     files["docker/Dockerfile"] = utf8(dockerfileTemplate());
-    files["docker/docker-compose.yml"] = utf8(dockerComposeTemplate());
+    files["docker/docker-compose.yml"] = utf8(dockerComposeTemplate(config));
     // .dockerignore must live at the build context root (project
     // root), not under docker/. Source file is colocated with the
     // other docker assets but emitted to the root.
@@ -267,11 +267,22 @@ function postinstallNoticeScriptTemplate(): string {
   return readTemplate("scripts/postinstall-notice.ts");
 }
 
-function dockerComposeTemplate(): string {
+function dockerComposeTemplate(config: TemplateConfig): string {
   // #268 — first template migrated to a real on-disk file. The
   // string-function shape is kept so `getProjectFiles` doesn't
   // change; the body just delegates to the template loader.
-  return readTemplate("docker/docker-compose.yml");
+  //
+  // Substitutes POSTGRES_DB with the project-derived DB name so the
+  // compose db service initializes with the SAME database the
+  // generated .env / setup wizard expects. Without this, `docker
+  // compose up -d db` boots a db named `nexpress` but the scaffold's
+  // DATABASE_URL points at `<project>` — the README's quickstart
+  // dies on the first `pnpm setup` with "database does not exist".
+  const dbName = dbNameFromProject(config.projectName);
+  return readTemplate("docker/docker-compose.yml").replace(
+    /^(\s*POSTGRES_DB:\s*)nexpress\s*$/m,
+    `$1${dbName}`,
+  );
 }
 
 function dockerfileTemplate(): string {
