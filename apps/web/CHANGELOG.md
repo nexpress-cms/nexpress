@@ -1,5 +1,51 @@
 # @nexpress/web
 
+## 0.0.7
+
+### Patch Changes
+
+- 6fae726: Fix the "Setup already completed" 409 loop on the first-boot Admin Setup wizard. The route's chain — admin `INSERT` → `updateSite` → `seedAll` → token sign — was not wrapped in a transaction. If `updateSite` or `seedAll` threw (e.g. validation or seed-time error), the admin row was already committed and every retry hit `adminCount > 0` and returned 409 with the umbrella "Setup already completed" message. Server log showed the diagnostic shape: `POST /api/admin/setup 400 (309ms)` → `POST /api/admin/setup 409 (11ms)` — the 400 came from a post-INSERT throw, the 409s from the partial commit.
+
+  Two changes:
+  - **Best-effort `updateSite` + `seedAll`** in `route.ts`. Both are now individually try/caught; the admin row stays committed (so the wizard finishes) and the failures surface as `warnings[]` on the success response. Operator can fix data afterwards from Admin → Settings / Collections.
+  - **`NpValidationError.fields[]` surfaced in `setup-client.tsx`**. The client previously showed only the umbrella `error.message` ("Invalid input") even though the response carries the actual offending fields. Reads like `Invalid input (password: Password must be at least 12 characters)` now instead of a screen that says nothing.
+
+- 143ef33: Fix the missing `max-w-[420px]` / `max-w-[380px]` wrap on `/admin/setup` (and every other AuthCard page) by closing two gaps in the Tailwind v4 source pipeline:
+  1. **Add `packages/app/src` to `@source`** so the scanner sees `setup-client.tsx` and the other admin/site pages that moved into `@nexpress/app` after PR #704. Scaffolds get the equivalent `node_modules/@nexpress/app/src/**/*.{ts,tsx}` (via `snapshot-rewrites.ts`'s new `app` branch — admin/blocks/editor stay on `dist/**/*.js` because they ship bundled, `@nexpress/app` ships its raw `.tsx` source per its `./admin/*` export map).
+  2. **`@source inline()` for AuthCard's bracketed utilities.** Verified that Tailwind v4's scanner drops arbitrary-value classes (`max-w-[380px]`, `shadow-[…]`, `bg-[radial-gradient(…)]`) when they live inside a long multi-utility string — same source file's standard `min-h-screen` is picked up fine. Force the AuthLayout/AuthCard utilities into the stylesheet with explicit `@source inline()` lines so the layout doesn't depend on scanner heuristics.
+
+  Verified with a clean `pnpm --filter @nexpress/web build`: `380px` and `420px` now appear in the generated CSS (previously 0).
+
+- Updated dependencies [6fae726]
+- Updated dependencies [6fae726]
+- Updated dependencies [6fae726]
+  - @nexpress/app@0.1.6
+  - @nexpress/admin@0.1.6
+  - @nexpress/auth-pages@0.1.6
+  - @nexpress/blocks@0.1.6
+  - @nexpress/core@0.1.6
+  - @nexpress/editor@0.1.6
+  - @nexpress/next@0.1.6
+  - @nexpress/plugin-block-callout@0.1.6
+  - @nexpress/plugin-block-embed@0.1.6
+  - @nexpress/plugin-block-latest-posts@0.1.6
+  - @nexpress/plugin-block-newsletter@0.1.6
+  - @nexpress/plugin-block-pricing@0.1.6
+  - @nexpress/plugin-block-stats@0.1.6
+  - @nexpress/plugin-forum@0.1.6
+  - @nexpress/plugin-oauth-github@0.1.6
+  - @nexpress/plugin-oauth-google@0.1.6
+  - @nexpress/plugin-reading-time@0.1.6
+  - @nexpress/plugin-sdk@0.1.6
+  - @nexpress/plugin-seo-audit@0.1.6
+  - @nexpress/theme@0.1.6
+  - @nexpress/theme-default@0.1.6
+  - @nexpress/theme-docs@0.1.6
+  - @nexpress/theme-magazine@0.1.6
+  - @nexpress/theme-portfolio@0.1.6
+  - @nexpress/wp-import@0.1.6
+  - @nexpress/xliff@0.1.6
+
 ## 0.0.6
 
 ### Patch Changes
