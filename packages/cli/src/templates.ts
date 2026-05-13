@@ -137,6 +137,12 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
         "drizzle-orm": "^0.45.2",
+        // `pg` is in @nexpress/core's install graph, but pnpm 10's
+        // strict hoisting won't surface a nested package's bare
+        // specifier at the scaffold's top level. `scripts/run-migrations.ts`
+        // does `import pg from "pg"` and would otherwise fail with
+        // ERR_MODULE_NOT_FOUND on a fresh scaffold.
+        pg: "^8.13.1",
         // Pinned to ^16 — `@nexpress/app`'s route handlers use Next 16
         // signatures (notably `revalidateTag(tag, profile)` with the
         // second arg added in 16; `proxy.ts` replacing `middleware.ts`).
