@@ -189,8 +189,10 @@ export async function POST(request: NextRequest): Promise<Response> {
       try {
         await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
       } catch (siteErr) {
+        const msg = siteErr instanceof Error ? siteErr.message : String(siteErr);
+        console.error("[admin-setup] updateSite failed:", siteErr);
         warnings.push(
-          `Site name update failed: ${siteErr instanceof Error ? siteErr.message : String(siteErr)}. You can rename the site from Admin → Settings.`,
+          `Site name update failed: ${msg}. You can rename the site from Admin → Settings.`,
         );
       }
     }
@@ -211,8 +213,14 @@ export async function POST(request: NextRequest): Promise<Response> {
           }),
         );
       } catch (seedErr) {
+        const msg = seedErr instanceof Error ? seedErr.message : String(seedErr);
+        // Print the full stack on the dev terminal so the operator
+        // can diagnose silent seed failures (validation inside a
+        // collection hook, a missing FK, etc.). The HTTP response
+        // only carries the message; the stack is the diagnostic.
+        console.error("[admin-setup] seedAll failed:", seedErr);
         warnings.push(
-          `Sample content seeding failed: ${seedErr instanceof Error ? seedErr.message : String(seedErr)}. Admin account is ready; add content manually from Admin → Collections.`,
+          `Sample content seeding failed: ${msg}. Admin account is ready; add content manually from Admin → Collections. Full stack is in the server log.`,
         );
       }
     }
