@@ -56,10 +56,22 @@ const SCAFFOLD_VARIANT_COMMENT = `/*
 const SCAFFOLD_VARIANT_MARKER = "Scaffold variant of these";
 
 export function rewriteScaffoldGlobalsCss(css: string): string {
-  const rewritten = css.replace(
-    /@source "(?:\.\.\/)+packages\/(admin|blocks|editor)\/src\/\*\*\/\*\.\{ts,tsx\}";/g,
-    '@source "../../node_modules/@nexpress/$1/dist/**/*.js";',
-  );
+  // admin/blocks/editor ship as a single bundled `dist/<name>.js`
+  // (tsup, un-minified) so the scaffold's Tailwind scanner can read
+  // className strings out of the published JS. `@nexpress/app`, by
+  // contrast, ships raw `src/*.tsx` (its export map points consumer
+  // imports at `./src/admin/*.tsx` for transpilePackages), so the
+  // scaffold needs to scan `node_modules/@nexpress/app/src/**` —
+  // not `dist/`, which only carries the package's root entry.
+  const rewritten = css
+    .replace(
+      /@source "(?:\.\.\/)+packages\/(admin|blocks|editor)\/src\/\*\*\/\*\.\{ts,tsx\}";/g,
+      '@source "../../node_modules/@nexpress/$1/dist/**/*.js";',
+    )
+    .replace(
+      /@source "(?:\.\.\/)+packages\/app\/src\/\*\*\/\*\.\{ts,tsx\}";/g,
+      '@source "../../node_modules/@nexpress/app/src/**/*.{ts,tsx}";',
+    );
   // Idempotency — only insert the comment if it's not already
   // there. A second sync-snapshot run starts from a fresh copy of
   // apps/web (so the comment is absent again on entry), but tests
@@ -75,7 +87,7 @@ export function rewriteScaffoldGlobalsCss(css: string): string {
   // silently strip the comment while the rewrite itself still
   // succeeds on the remaining lines.
   return rewritten.replace(
-    /(@source "\.\.\/\.\.\/node_modules\/@nexpress\/(?:admin|blocks|editor)\/dist[^"]*";)/,
+    /(@source "\.\.\/\.\.\/node_modules\/@nexpress\/(?:admin|app|blocks|editor)\/dist[^"]*";)/,
     SCAFFOLD_VARIANT_COMMENT + "$1",
   );
 }
