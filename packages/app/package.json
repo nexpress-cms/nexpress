@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared Next.js page implementations for NexPress reference + scaffolded apps. Consumers import via thin re-export so both apps/web and `npx create-nexpress` projects render byte-identical UIs.",
   "license": "MIT",
   "author": "Nexpress",
@@ -13,7 +13,12 @@
   "bugs": {
     "url": "https://github.com/nexpress-cms/nexpress/issues"
   },
-  "keywords": ["nexpress", "nextjs", "app-router", "pages"],
+  "keywords": [
+    "nexpress",
+    "nextjs",
+    "app-router",
+    "pages"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -54,7 +59,10 @@
       "default": "./src/root/*.ts"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
