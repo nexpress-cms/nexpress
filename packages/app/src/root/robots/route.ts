@@ -5,7 +5,7 @@ import {
   getSiteById,
 } from "@nexpress/core";
 
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Phase 10.1 — robots.txt. Sane defaults: allow general crawl,

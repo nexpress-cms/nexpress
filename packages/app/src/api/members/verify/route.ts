@@ -1,3 +1,3 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
+import { memberAuthRoutes } from "../../../lib/auth-routes";
 
 export const POST = memberAuthRoutes.verifyEmail;

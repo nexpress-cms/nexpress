@@ -2,7 +2,7 @@ import { getActiveThemeMembersNotFound } from "@nexpress/core";
 import type { ComponentType } from "react";
 
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Phase M.3 — member-tree 404 page.

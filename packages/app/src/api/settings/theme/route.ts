@@ -12,9 +12,9 @@ import { readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { getDb } from "../../../lib/db";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);

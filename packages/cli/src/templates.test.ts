@@ -33,14 +33,18 @@ describe("getProjectFiles", () => {
     expect(files["src/db/generated/collections.ts"]).toMatch(/export\s*\{/);
   });
 
-  it("worker template reads DATABASE_URL inside main() so the narrowing reaches startWorker", () => {
+  it("worker template is a thin wrapper that hands ensureFor to @nexpress/app's runWorker", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const worker = files["scripts/worker.ts"];
     expect(worker).toBeDefined();
-    const mainIdx = worker.indexOf("async function main");
-    const declIdx = worker.indexOf("const databaseUrl = process.env.DATABASE_URL");
-    expect(mainIdx).toBeGreaterThan(-1);
-    expect(declIdx).toBeGreaterThan(mainIdx);
+    // Wrapper invariants — the substance (DATABASE_URL guard, signal
+    // handlers, builtin-job context wiring) lives in @nexpress/app's
+    // shared `runWorker`. The scaffold's job is to feed it the site's
+    // bootstrap singletons.
+    expect(worker).toMatch(/@nexpress\/app\/scripts\/worker/);
+    expect(worker).toMatch(/ensureFor/);
+    expect(worker).toMatch(/runWorker\(\s*\{\s*ensureFor\s*\}\s*\)/);
+    expect(worker.split("\n").filter((l) => l.trim().length > 0).length).toBeLessThanOrEqual(6);
   });
 
   it("emits the admin login + setup route files (now as @nexpress/app wrappers)", () => {
@@ -133,12 +137,14 @@ describe("getProjectFiles", () => {
     expect(dockerfile).toMatch(/NP_SECRET=placeholder/);
   });
 
-  it("ships lib/auth-routes.ts wired to createStaffAuthRoutes", () => {
+  it("ships lib/auth-routes.ts as a thin wrapper over @nexpress/app/lib/auth-routes", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const authRoutes = files["src/lib/auth-routes.ts"];
     expect(authRoutes).toBeDefined();
-    expect(authRoutes).toMatch(/createStaffAuthRoutes/);
-    expect(authRoutes).toMatch(/@nexpress\/auth-pages\/server/);
+    // Real implementation now lives in @nexpress/app/lib/auth-routes; the
+    // scaffold ships a one-line re-export so operators don't carry the
+    // factory wiring in their project.
+    expect(authRoutes).toMatch(/@nexpress\/app\/lib\/auth-routes/);
   });
 
   it("api/auth route files re-export from @nexpress/app (thin wrappers)", () => {
@@ -183,25 +189,20 @@ describe("getProjectFiles", () => {
   it("ships scripts/_load-env.ts so doctor.ts's first import resolves", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     expect(files["scripts/_load-env.ts"]).toBeDefined();
-    expect(files["scripts/_load-env.ts"]).toMatch(/loadEnv/);
+    // Thin wrapper — substance lives in @nexpress/app/scripts/_load-env.
+    expect(files["scripts/_load-env.ts"]).toMatch(/@nexpress\/app\/scripts\/_load-env/);
   });
 
-  it("doctor.ts has --prod mode that tightens secret-length to error", () => {
+  it("doctor.ts is a thin wrapper over @nexpress/app's shared doctor (--prod mode lives there)", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const doctor = files["scripts/doctor.ts"];
     expect(doctor).toBeDefined();
-    expect(doctor).toMatch(/PROD_MODE/);
-    expect(doctor).toMatch(/--prod/);
-    expect(doctor).toMatch(/PROD_MODE \? "error" : "warn"/);
-  });
-
-  it("doctor.ts adds the four prod-only checks (jobs / storage / SITE_URL https / scheduler token)", () => {
-    const files = textFiles(getProjectFiles(baseConfig));
-    const doctor = files["scripts/doctor.ts"];
-    expect(doctor).toMatch(/checkJobsEnabledProd/);
-    expect(doctor).toMatch(/checkStorageProd/);
-    expect(doctor).toMatch(/checkSiteUrlProd/);
-    expect(doctor).toMatch(/checkSchedulerTokenProd/);
+    // The actual PROD_MODE / checkJobsEnabledProd / etc. surface lives
+    // in `@nexpress/app/src/scripts/doctor.ts` so apps/web and every
+    // scaffold use byte-identical checks. The wrapper is a 1-line
+    // import.
+    expect(doctor).toMatch(/@nexpress\/app\/scripts\/doctor/);
+    expect(doctor.split("\n").filter((l) => l.trim().length > 0).length).toBeLessThanOrEqual(3);
   });
 
   it("package.json exposes a doctor:prod script", () => {

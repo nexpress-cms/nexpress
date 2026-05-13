@@ -2,9 +2,9 @@ import { createComment, listComments, memberCan } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
-import { optionalMember, requireMember } from "@/lib/member-auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
+import { ensureFor } from "../../../../../lib/init-core";
+import { optionalMember, requireMember } from "../../../../../lib/member-auth-helpers";
 
 /**
  * Comment list + create for documents in any collection. The list

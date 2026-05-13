@@ -1,37 +1,14 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@nexpress/app/config/tsconfig-base",
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ]
-    },
     "outDir": null,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "composite": false,
-    "incremental": true,
-    "allowJs": true,
-    "noEmit": true
-  },
-  "include": [
-    "src",
-    "scripts",
-    "next-env.d.ts",
-    ".next/types/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
 }

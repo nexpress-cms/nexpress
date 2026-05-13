@@ -6,9 +6,9 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
-import { requireMember } from "@/lib/member-auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { ensureFor } from "../../../lib/init-core";
+import { requireMember } from "../../../lib/member-auth-helpers";
 
 /**
  * Two modes:

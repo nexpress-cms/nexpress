@@ -5,8 +5,8 @@ import {
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { ensureFor } from "@/lib/init-core";
-import { getDb } from "@/lib/db";
+import { ensureFor } from "../../../lib/init-core";
+import { getDb } from "../../../lib/db";
 
 /**
  * Readiness probe — answers "is this process ready to serve

@@ -1,1 +1,1 @@
-export { getDb, type NpDb } from "@/lib/bootstrap";
+export * from "@nexpress/app/lib/db";

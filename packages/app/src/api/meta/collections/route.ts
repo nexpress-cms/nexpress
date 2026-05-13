@@ -1,8 +1,8 @@
 import { getAllCollectionSlugs, getCollectionConfig } from "@nexpress/core";
 
-import { ensureFor } from "@/lib/init-core";
-import { collectionToManifest } from "@/lib/manifest";
-import { npSuccessResponse, npErrorResponse } from "@/lib/api-response";
+import { ensureFor } from "../../../lib/init-core";
+import { collectionToManifest } from "../../../lib/manifest";
+import { npSuccessResponse, npErrorResponse } from "../../../lib/api-response";
 
 export async function GET() {
   try {

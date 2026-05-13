@@ -7,10 +7,10 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
-import { revalidateCollection } from "@/lib/revalidate";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { ensureFor } from "../../../../lib/init-core";
+import { revalidateCollection } from "../../../../lib/revalidate";
 
 const MAX_IDS = 100;
 const ACTIONS = ["publish", "unpublish", "delete"] as const;

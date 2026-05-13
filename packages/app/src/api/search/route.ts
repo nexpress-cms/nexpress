@@ -8,8 +8,8 @@ import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { ensureFor } from "../../lib/init-core";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;

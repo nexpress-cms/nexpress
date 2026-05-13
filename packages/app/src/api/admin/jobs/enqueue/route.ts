@@ -10,9 +10,9 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
 
 /**
  * Phase 13.3 — manual enqueue. Lets an admin trigger a

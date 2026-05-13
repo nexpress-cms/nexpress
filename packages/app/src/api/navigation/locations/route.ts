@@ -9,10 +9,10 @@ import {
 } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { getDb } from "../../../lib/db";
+import { ensureFor } from "../../../lib/init-core";
 import type { NextRequest } from "next/server";
 
 interface LocationOption {

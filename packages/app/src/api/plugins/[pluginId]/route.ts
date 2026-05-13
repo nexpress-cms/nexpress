@@ -14,11 +14,11 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { parseBodyRecord } from "@/lib/collection-helpers";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { parseBodyRecord } from "../../../lib/collection-helpers";
+import { getDb } from "../../../lib/db";
+import { ensureFor } from "../../../lib/init-core";
 
 interface ScheduleDetail {
   taskId: string;

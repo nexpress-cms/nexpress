@@ -1,8 +1,8 @@
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 
 /**
  * Phase 5.3 — discover plugins on the npm registry. Wraps

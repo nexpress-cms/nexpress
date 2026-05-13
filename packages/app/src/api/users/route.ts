@@ -11,10 +11,10 @@ import { asc, count, ilike, or } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { getDb } from "../../lib/db";
+import { ensureFor } from "../../lib/init-core";
 
 const VALID_ROLES: readonly NpUserRole[] = [
   "admin",

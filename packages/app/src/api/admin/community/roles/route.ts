@@ -1,9 +1,9 @@
 import { can, NpForbiddenError, listCommunityRoles } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
 
 /**
  * Returns the registered community role definitions so the admin

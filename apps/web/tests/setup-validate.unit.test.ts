@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateBody } from "@/../scripts/setup-server";
+import { validateBody } from "@nexpress/app/scripts/setup-server-validate";
 
 const ok = (body: Parameters<typeof validateBody>[0]) => {
   const out = validateBody(body);

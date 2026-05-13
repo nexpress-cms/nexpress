@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ForgotPasswordForm } from "../../components/member-forgot-password-form";
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 export default async function MemberForgotPasswordPage() {
   await ensureFor("read");

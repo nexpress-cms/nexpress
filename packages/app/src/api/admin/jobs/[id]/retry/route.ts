@@ -6,9 +6,9 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
+import { requireAuth } from "../../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../../lib/init-core";
 
 /**
  * Phase 13 — re-enqueue a job's payload as a brand-new job.

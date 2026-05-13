@@ -2,8 +2,8 @@ import { getCollectionConfig, searchCollections, type SearchResultItem } from "@
 import Link from "next/link";
 
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
-import { highlightMatches } from "@/lib/search-highlight";
+import { ensureFor } from "../../lib/init-core";
+import { highlightMatches } from "../../lib/search-highlight";
 
 interface SearchPageProps {
   searchParams: Promise<{ q?: string; page?: string }>;

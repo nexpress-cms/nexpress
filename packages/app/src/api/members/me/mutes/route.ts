@@ -2,9 +2,9 @@ import { NpValidationError, listMutes, muteMember } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireMember } from "@/lib/member-auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { requireMember } from "../../../../lib/member-auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
 
 /**
  * Phase 16.1 — self-service mute list.

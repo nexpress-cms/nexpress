@@ -11,9 +11,9 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
-import { getDb } from "@/lib/db";
+import { getAuthRuntimeConfig } from "../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
+import { getDb } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
 

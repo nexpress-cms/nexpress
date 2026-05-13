@@ -33,27 +33,10 @@ export interface GlobalsCssRewrite {
  * `packages/<name>/src/**\/*.{ts,tsx}`. Mismatched lines pass
  * through unchanged.
  */
-const SCAFFOLD_VARIANT_COMMENT = `/*
- * Scaffold variant of these \`@source\` lines — paths point at the
- * installed packages under node_modules. apps/web's globals.css
- * scans \`../../../../packages/X/src\` via the monorepo's relative
- * path; a scaffolded site doesn't have a \`packages/\` sibling, so
- * we point at the built \`dist/\` instead.
- *
- * The admin / blocks / editor packages ship their tsup output
- * un-minified, which means className strings stay intact in the
- * .js bundles for Tailwind v4's content scanner to pick up. If
- * that ever changes (someone enables \`minify: true\` in any of
- * those packages' tsup.config), the scaffolded admin will start
- * shipping without its utility classes.
- *
- * \`pnpm sync-snapshot\` rewrites these three lines back to the
- * node_modules form on every resync even if apps/web's source
- * paths change.
- */
+const SCAFFOLD_VARIANT_COMMENT = `/* Scaffold variant — admin/blocks/editor ship un-minified \`dist/*.js\` so Tailwind v4's content scanner picks up className strings from node_modules. \`@nexpress/app\` ships raw src/. Rewrite owned by \`pnpm sync-snapshot\`. */
 `;
 
-const SCAFFOLD_VARIANT_MARKER = "Scaffold variant of these";
+const SCAFFOLD_VARIANT_MARKER = "Scaffold variant —";
 
 export function rewriteScaffoldGlobalsCss(css: string): string {
   // admin/blocks/editor ship as a single bundled `dist/<name>.js`

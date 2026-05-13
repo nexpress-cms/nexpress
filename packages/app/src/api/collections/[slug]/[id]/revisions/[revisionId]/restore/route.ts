@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { restoreDocumentRevision } from "@/lib/revision-helpers";
-import { revalidateCollection } from "@/lib/revalidate";
+import { requireAuth } from "../../../../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../../../../lib/api-response";
+import { restoreDocumentRevision } from "../../../../../../../lib/revision-helpers";
+import { revalidateCollection } from "../../../../../../../lib/revalidate";
 
 export async function POST(
   request: NextRequest,

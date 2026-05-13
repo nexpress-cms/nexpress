@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { VerifyTokenConsumer } from "../../components/member-verify-consumer";
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 interface VerifyPageProps {
   searchParams: Promise<{ token?: string }>;

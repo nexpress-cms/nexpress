@@ -1,9 +1,9 @@
 import { listNotifications, unreadNotificationCount } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
-import { requireMember } from "@/lib/member-auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { ensureFor } from "../../lib/init-core";
+import { requireMember } from "../../lib/member-auth-helpers";
 
 export async function GET(request: NextRequest) {
   try {

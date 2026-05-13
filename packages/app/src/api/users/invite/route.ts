@@ -14,12 +14,12 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { parseBodyRecord } from "@/lib/collection-helpers";
-import { getDb } from "@/lib/db";
-import { ensureFor, nexpressConfig } from "@/lib/init-core";
-import { inviteTtlMs } from "@/lib/token-ttl";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { parseBodyRecord } from "../../../lib/collection-helpers";
+import { getDb } from "../../../lib/db";
+import { ensureFor, nexpressConfig } from "../../../lib/init-core";
+import { inviteTtlMs } from "../../../lib/token-ttl";
 
 const VALID_ROLES: readonly NpUserRole[] = [
   "admin",

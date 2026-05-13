@@ -13,11 +13,11 @@ import { count, eq } from "drizzle-orm";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getAuthRuntimeConfig, setAuthCookies } from "@/lib/auth-helpers";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
-import { seedAll } from "@/lib/seed-content";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { getAuthRuntimeConfig, setAuthCookies } from "../../../lib/auth-helpers";
+import { getDb } from "../../../lib/db";
+import { ensureFor } from "../../../lib/init-core";
+import { seedAll } from "../../../lib/seed-content";
 
 /**
  * First-boot Admin Setup wizard endpoint.

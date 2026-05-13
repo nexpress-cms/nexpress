@@ -2,9 +2,9 @@ import { NpNotFoundError, npMembers } from "@nexpress/core";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { getDb } from "../../../lib/db";
+import { ensureFor } from "../../../lib/init-core";
 
 /**
  * Public profile read. Returns the columns safe for unauthenticated

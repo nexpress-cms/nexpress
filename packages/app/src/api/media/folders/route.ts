@@ -9,9 +9,9 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { getDb } from "../../../lib/db";
 
 export async function GET(request: NextRequest) {
   try {

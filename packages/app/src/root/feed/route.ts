@@ -8,7 +8,7 @@ import { unstable_cache } from "next/cache";
 import type { NextRequest } from "next/server";
 
 import { isLocale } from "@/i18n.config";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Phase 10.4 — Atom feed. Default collection is `posts`; sites

@@ -2,8 +2,8 @@ import { NpAuthError, publishScheduledDocuments } from "@nexpress/core";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { ensureFor } from "../../../lib/init-core";
 
 /**
  * Bearer-token-protected trigger for the scheduled-publishing sweep. Designed

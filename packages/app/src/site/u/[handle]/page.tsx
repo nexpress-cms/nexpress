@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { FollowButton } from "../../../components/follow-button";
 import { ShellWrap } from "../../../components/shell-wrap";
 import { JsonLd } from "@nexpress/next";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 

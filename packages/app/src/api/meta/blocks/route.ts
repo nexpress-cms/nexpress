@@ -1,7 +1,7 @@
 import { getDefaultBlocks } from "@nexpress/blocks";
 
-import { blockToManifest } from "@/lib/manifest";
-import { npSuccessResponse, npErrorResponse } from "@/lib/api-response";
+import { blockToManifest } from "../../../lib/manifest";
+import { npSuccessResponse, npErrorResponse } from "../../../lib/api-response";
 
 export function GET() {
   try {

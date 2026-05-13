@@ -9,9 +9,9 @@ import type { CollectionTabDescriptor } from "@nexpress/admin";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { ensureFor } from "@/lib/init-core";
-import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { getDb } from "@/lib/db";
+import { ensureFor } from "../../../../../lib/init-core";
+import { getAuthRuntimeConfig } from "../../../../../lib/auth-helpers";
+import { getDb } from "../../../../../lib/db";
 
 export const dynamic = "force-dynamic";
 

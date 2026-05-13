@@ -7,9 +7,9 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
 
 /**
  * Read community settings — site-wide knobs that gate registration

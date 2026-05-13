@@ -1,0 +1,977 @@
+/*
+ * Framework-shared globals consumed by both apps/web and every
+ * scaffolded site via `@import "@nexpress/app/styles/globals.css"`.
+ * Site-specific concerns (the `@import "tailwindcss"` shim and the
+ * `@source` lines pointing at each consumer's package layout) live
+ * in the consumer's own globals.css — those paths differ between
+ * the monorepo (`../../../../packages/X/src`) and a scaffolded
+ * project (`../../node_modules/@nexpress/X/...`). Everything below
+ * is identical for every NexPress site.
+ */
+
+/* Tailwind v4's source scanner can drop arbitrary-value classes that
+ * live inside long multi-utility strings (e.g. the AuthCard's
+ * `shadow-[…]` + `bg-[radial-gradient(…)]` in a single cn() arg).
+ * Verified 2026-05-13: same source file's `min-h-screen` was picked
+ * up, the bracketed siblings were not. `@source inline()` forces
+ * these specific utilities into the generated stylesheet without
+ * relying on the scanner. AuthCard ships from `@nexpress/admin`, so
+ * the inline-source lines live with the framework substance — not
+ * the per-site shell.
+ */
+@source inline("max-w-[380px] max-w-[420px]");
+@source inline("shadow-[0_20px_50px_-20px_rgba(0,0,0,0.12),0_8px_16px_-8px_rgba(0,0,0,0.06)]");
+@source inline("dark:shadow-[0_20px_50px_-20px_rgba(0,0,0,0.5)]");
+@source inline("bg-[radial-gradient(circle_at_15%_0%,rgba(0,102,255,0.06),transparent_50%),radial-gradient(circle_at_85%_100%,rgba(0,102,255,0.04),transparent_50%),#f8f8f7]");
+@source inline("dark:bg-[radial-gradient(circle_at_15%_0%,rgba(0,102,255,0.10),transparent_50%),radial-gradient(circle_at_85%_100%,rgba(0,102,255,0.06),transparent_50%),#0a0a0a]");
+
+/* Pin Tailwind's `dark:` variant to the .dark class (or any
+ * descendant of it). The admin's ThemeToggle is the only writer —
+ * it sets / removes .dark on <html>. The class also folds in the
+ * OS preference at hydration time (see ThemeInit), so an operator
+ * who hasn't picked a theme still sees the right surface on first
+ * paint. */
+@variant dark (&:where(.dark, .dark *));
+
+@layer np-base, np-blocks, np-theme, np-overrides;
+
+/* ------------------------------------------------------------------
+ * Admin brand accent — used as a quiet indicator (active sidebar
+ * rail, focus rings, links, progress bars), never as a fill.
+ * Sourced from the wordmark's blue notch (`assets/icon.svg`).
+ * --------------------------------------------------------------- */
+:root {
+  --np-color-brand: #0066ff;
+  --np-color-brand-foreground: #ffffff;
+  --np-color-brand-soft: rgb(0 102 255 / 0.08);
+  --np-color-brand-ring: rgb(0 102 255 / 0.32);
+}
+
+@layer np-base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--np-font-body, system-ui, sans-serif);
+    font-size: var(--np-font-size-base, 16px);
+    line-height: var(--np-line-height, 1.6);
+    color: var(--np-color-foreground, #0f172a);
+    background: var(--np-color-background, #fff);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Stylistic alternates pulled from the design system: ss01 picks
+       the geometric "1" and "0" variants; cv11/cv02 swap to the
+       single-storey g/a where the font ships them. Harmless on fonts
+       that don't (the browser silently ignores unknown features). */
+    font-feature-settings: "ss01", "cv11", "cv02";
+  }
+
+  /*
+   * Cross-theme site primitives. Forms, auth pages, search
+   * results, and other surfaces every theme inherits — token
+   * references read from `--np-*` custom properties so theme
+   * overrides flow through without per-rule edits. Theme-owned
+   * shell rules (header / footer / search bar) live in each
+   * theme's `impl.css` instead.
+   */
+
+  /*
+   * `.np-site-main` is a cross-theme primitive: every theme's
+   * shell renders `<main className="np-site-main">` so the
+   * baseline box-model has to live here, not in any single
+   * theme's CSS. Without the min-height, short pages collapse
+   * and the footer floats up. Themes layer their own typography
+   * and color rules on top.
+   */
+  .np-site-main {
+    min-height: calc(100vh - 8rem);
+  }
+
+  /* Member auth pages ---------------------------------- */
+
+  .np-members-auth {
+    max-width: 28rem;
+    margin: 4rem auto;
+    padding: 2.5rem;
+    background: var(--np-color-card, #fff);
+    border: 1px solid var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-lg, 0.75rem);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.04),
+      0 4px 16px -8px rgba(0, 0, 0, 0.08);
+  }
+
+  .np-members-auth h1 {
+    margin: 0 0 1.5rem;
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  .np-members-auth-alt {
+    margin: 1rem 0 0;
+    font-size: 0.875rem;
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-members-auth-alt a {
+    color: var(--np-color-primary, #4f46e5);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .np-members-auth-alt a:hover {
+    text-decoration: underline;
+  }
+
+  /* Forms (member auth + discussion + comments) -------- */
+
+  .np-members-form,
+  .np-discussion-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .np-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .np-form-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--np-color-foreground, #0f172a);
+  }
+
+  .np-form-input,
+  textarea.np-form-input {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font: inherit;
+    color: inherit;
+    background: var(--np-color-background, #fff);
+    border: 1px solid var(--np-color-input, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .np-form-input:focus,
+  textarea.np-form-input:focus {
+    outline: none;
+    border-color: var(--np-color-ring, #4f46e5);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--np-color-ring, #4f46e5) 20%, transparent);
+  }
+
+  .np-form-input:disabled {
+    background: var(--np-color-muted, #f8fafc);
+    cursor: not-allowed;
+  }
+
+  .np-form-help {
+    font-size: 0.8125rem;
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-form-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .np-form-error {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: var(--np-color-destructive, #b91c1c);
+    background: color-mix(in oklch, var(--np-color-destructive, #b91c1c) 8%, transparent);
+    border: 1px solid color-mix(in oklch, var(--np-color-destructive, #b91c1c) 30%, transparent);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  /* Phase M.2 — member form surface tokens.
+   *
+   * Member auth forms (`.np-members-form`) and discussion / comment
+   * forms (`.np-discussion-form`) share the same `.np-form-input`
+   * primitive selector. To let themes restyle MEMBER forms specifically
+   * without touching discussion / comment styling, M.2 scopes a token
+   * layer under `.np-members-form` only — the inner `.np-form-input`
+   * inside a member form reads from `--np-member-form-*` tokens, while
+   * discussion / comment `.np-form-input` keeps the existing
+   * `--np-color-*` reads.
+   *
+   * Tokens fall back to the global theme tokens by default — themes
+   * that don't override get the same look as today. Themes restyle
+   * member forms by overriding the tokens in their `impl.css` (e.g.
+   * `.np-magazine .np-members-form { --np-member-form-input-bg: …; }`).
+   *
+   * See `docs/design/member-surface-skinning.md` § 5.2 for the
+   * contract. OAuth button tokens (`--np-member-oauth-{provider}-*`)
+   * are declared here for forward compatibility — there's no OAuth
+   * button component on the login page today (OAuth login goes
+   * through `/api/members/oauth/{provider}/start` directly), but
+   * shipping the token surface lets themes pre-style for when those
+   * buttons land. */
+  .np-members-form {
+    --np-member-form-input-bg: var(--np-color-background, #fff);
+    --np-member-form-input-border: var(--np-color-input, #e5e7eb);
+    --np-member-form-input-border-focus: var(--np-color-ring, #4f46e5);
+    --np-member-form-input-radius: var(--np-radius-md, 0.5rem);
+    --np-member-form-input-padding: 0.625rem 0.75rem;
+    --np-member-form-input-disabled-bg: var(--np-color-muted, #f8fafc);
+    --np-member-form-button-bg: var(--np-color-primary, #4f46e5);
+    --np-member-form-button-fg: var(--np-color-primary-foreground, #fff);
+    --np-member-form-button-radius: var(--np-radius-md, 0.5rem);
+    --np-member-form-error-color: var(--np-color-destructive, #b91c1c);
+    /* OAuth button tokens — forward-compat surface (no consumer today). */
+    --np-member-oauth-google-bg: #fff;
+    --np-member-oauth-google-fg: #1f2937;
+    --np-member-oauth-google-border: var(--np-color-input, #e5e7eb);
+    --np-member-oauth-google-radius: var(--np-radius-md, 0.5rem);
+    --np-member-oauth-github-bg: #1f2937;
+    --np-member-oauth-github-fg: #fff;
+    --np-member-oauth-github-border: transparent;
+    --np-member-oauth-github-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-members-form .np-form-input,
+  .np-members-form textarea.np-form-input {
+    background: var(--np-member-form-input-bg);
+    border-color: var(--np-member-form-input-border);
+    border-radius: var(--np-member-form-input-radius);
+    padding: var(--np-member-form-input-padding);
+  }
+
+  .np-members-form .np-form-input:focus,
+  .np-members-form textarea.np-form-input:focus {
+    border-color: var(--np-member-form-input-border-focus);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--np-member-form-input-border-focus) 20%, transparent);
+  }
+
+  .np-members-form .np-form-input:disabled {
+    background: var(--np-member-form-input-disabled-bg);
+  }
+
+  .np-members-form .np-form-error {
+    color: var(--np-member-form-error-color);
+    background: color-mix(in oklch, var(--np-member-form-error-color) 8%, transparent);
+    border-color: color-mix(in oklch, var(--np-member-form-error-color) 30%, transparent);
+    border-radius: var(--np-member-form-input-radius);
+  }
+
+  .np-members-form .np-button-primary {
+    background: var(--np-member-form-button-bg);
+    color: var(--np-member-form-button-fg);
+    border-radius: var(--np-member-form-button-radius);
+  }
+
+  .np-members-form .np-button-primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--np-member-form-button-bg) 90%, black);
+  }
+
+  .np-form-success {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: #047857;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: var(--np-radius-md, 0.5rem);
+    margin: 0 0 1rem;
+  }
+
+  .np-form-editor-loading {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--np-color-muted-foreground, #64748b);
+    border: 1px dashed var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  /* Buttons -------------------------------------------- */
+
+  .np-button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--np-color-primary-foreground, #fff);
+    background: var(--np-color-primary, #4f46e5);
+    border: 1px solid transparent;
+    border-radius: var(--np-radius-md, 0.5rem);
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      transform 0.05s ease;
+  }
+
+  .np-button-primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--np-color-primary, #4f46e5) 90%, black);
+  }
+
+  .np-button-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .np-button-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .np-text-button {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font: inherit;
+    color: var(--np-color-muted-foreground, #64748b);
+    background: transparent;
+    border: 1px solid var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s ease;
+  }
+
+  .np-text-button:hover {
+    background: var(--np-color-muted, #f8fafc);
+    color: var(--np-color-foreground, #0f172a);
+  }
+
+  /* Member status widget ------------------------------- */
+
+  .np-member-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .np-member-status-handle {
+    font-weight: 500;
+  }
+
+  .np-member-status-loading {
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  /* Member profile / page wrappers --------------------- */
+
+  .np-member-profile,
+  .np-page,
+  .np-post,
+  .np-blog,
+  .np-discussions,
+  .np-discussion {
+    max-width: 48rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+  }
+
+  .np-page > *:first-child,
+  .np-post > *:first-child {
+    margin-top: 0;
+  }
+
+  /* Tabs ----------------------------------------------- */
+
+  .np-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.875rem;
+    color: var(--np-color-muted-foreground, #64748b);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .np-tab[aria-current="true"],
+  .np-tab.is-active {
+    color: var(--np-color-foreground, #0f172a);
+    background: var(--np-color-muted, #f8fafc);
+    border-color: var(--np-color-border, #e5e7eb);
+  }
+
+  .np-tab-destructive {
+    color: var(--np-color-destructive, #b91c1c);
+  }
+
+  /* Confirm dialog ------------------------------------- */
+
+  .np-confirm-dialog {
+    max-width: 28rem;
+    padding: 1.5rem;
+    background: var(--np-color-card, #fff);
+    border: 1px solid var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-lg, 0.75rem);
+    box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Discussions list ----------------------------------- */
+
+  .np-discussions-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .np-discussions-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .np-discussions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .np-discussions-card {
+    padding: 1.25rem 1.5rem;
+    background: var(--np-color-card, #fff);
+    border: 1px solid var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-discussions-card a {
+    color: var(--np-color-foreground, #0f172a);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .np-discussions-card a:hover {
+    color: var(--np-color-primary, #4f46e5);
+  }
+
+  .np-discussions-meta,
+  .np-discussions-author,
+  .np-discussion-meta,
+  .np-discussion-author,
+  .np-blog-excerpt {
+    font-size: 0.875rem;
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-discussions-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--np-color-muted-foreground, #64748b);
+    background: var(--np-color-muted, #f8fafc);
+    border-radius: 9999px;
+  }
+
+  .np-discussions-empty {
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--np-color-muted-foreground, #64748b);
+    border: 1px dashed var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-discussions-pagination,
+  .np-blog-pagination {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 2rem;
+  }
+
+  /* Discussion detail ---------------------------------- */
+
+  .np-discussion-header {
+    margin-bottom: 1rem;
+  }
+
+  .np-discussion-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .np-discussion-body {
+    margin: 1.5rem 0;
+    line-height: 1.7;
+  }
+
+  .np-discussion-body-empty {
+    color: var(--np-color-muted-foreground, #64748b);
+    font-style: italic;
+  }
+
+  .np-discussion-comments {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--np-color-border, #e5e7eb);
+  }
+
+  /* Blog list ------------------------------------------ */
+
+  .np-blog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .np-blog-card {
+    padding: 1.5rem;
+    background: var(--np-color-card, #fff);
+    border: 1px solid var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-blog-card h2,
+  .np-blog-card h3 {
+    margin: 0 0 0.5rem;
+  }
+
+  .np-blog-card a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Post detail (cover, header, content) --------------- */
+
+  .np-post-cover {
+    margin: 0 0 2rem;
+    border-radius: var(--np-radius-md, 0.5rem);
+    overflow: hidden;
+  }
+
+  .np-post-cover img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .np-post-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .np-post-content {
+    line-height: 1.7;
+  }
+
+  /* Comments (already styled in @nexpress/blocks via the
+   * shared component, but the wrapper class needs spacing) */
+  .np-comments {
+    margin-top: 2rem;
+  }
+
+  .np-comment-body {
+    line-height: 1.6;
+  }
+
+  /* Search --------------------------------------------- */
+
+  .np-search {
+    max-width: 56rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+  }
+
+  .np-search-header h1 {
+    margin: 0 0 1rem;
+  }
+
+  .np-search-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+    margin-bottom: 2rem;
+  }
+
+  .np-search-form-label {
+    flex: 1;
+    display: block;
+  }
+
+  .np-search-empty {
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--np-color-muted-foreground, #64748b);
+    border: 1px dashed var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-search-summary {
+    margin: 0 0 1.5rem;
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.9375rem;
+  }
+
+  .np-search-group {
+    margin-bottom: 2.5rem;
+  }
+
+  .np-search-group-title {
+    margin: 0 0 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--np-color-muted-foreground, #64748b);
+  }
+
+  .np-search-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .np-search-result {
+    padding: 1.25rem 1.5rem;
+    background: var(--np-color-card, #fff);
+    border: 1px solid var(--np-color-border, #e5e7eb);
+    border-radius: var(--np-radius-md, 0.5rem);
+  }
+
+  .np-search-result-title {
+    color: var(--np-color-foreground, #0f172a);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 1.0625rem;
+  }
+
+  a.np-search-result-title:hover {
+    color: var(--np-color-primary, #4f46e5);
+  }
+
+  .np-search-result-excerpt {
+    margin: 0.375rem 0 0;
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  .np-search-result-untargeted {
+    opacity: 0.65;
+  }
+
+  /* Phase 10.7 — query-term highlight inside search-result
+     title and excerpt. Subtle yellow tint that respects the
+     theme's foreground color so it stays legible in both
+     light and dark surfaces. */
+  .np-search-highlight {
+    background-color: rgba(250, 204, 21, 0.35);
+    color: inherit;
+    padding: 0 0.1em;
+    border-radius: 2px;
+  }
+
+  .np-search-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--np-color-border, #e5e7eb);
+    font-size: 0.9375rem;
+  }
+
+  .np-search-pagination a {
+    color: var(--np-color-primary, #4f46e5);
+    text-decoration: none;
+  }
+
+  .np-search-pagination-info {
+    color: var(--np-color-muted-foreground, #64748b);
+    font-size: 0.875rem;
+  }
+
+  .np-search-pagination-disabled {
+    color: var(--np-color-muted-foreground, #64748b);
+    opacity: 0.5;
+  }
+
+  /* Accessibility helper used by labels-for-screen-readers
+   * patterns (the search forms above hide the label visually
+   * but keep it for screen readers). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Misc ----------------------------------------------- */
+
+  .np-draft-banner {
+    border-bottom: 1px solid #fcd34d;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Dark-mode overrides for admin surfaces
+ *
+ * The site theme packages (`@nexpress/theme-default` etc.) flip their
+ * design tokens via `[data-theme="dark"]` because the site reads the
+ * `np-color-scheme` cookie. The admin's ThemeToggle takes a different
+ * path: it adds a `.dark` class to <html> directly so Tailwind's
+ * `dark:` variant works inside the admin shell (see `@variant dark`
+ * at the top of this file).
+ *
+ * Without an explicit `.dark` block setting the underlying
+ * `--np-color-*` tokens, the `@theme` re-mapping below
+ * (`--color-card -> var(--np-color-card, light-default)`) resolves
+ * to its LIGHT defaults even when the operator picks dark mode —
+ * Cards render with a near-white surface on a dark page. This block
+ * mirrors the OKLCH values the default theme uses for dark surfaces
+ * so the @theme indirection cascades the right values into Tailwind
+ * utilities like `bg-card` / `text-foreground`.
+ *
+ * Kept OUTSIDE `@layer np-base` on purpose: Tailwind v4 strips plain
+ * `.dark` class rules from inside user layers (it treats `.dark` as
+ * a registered variant via the `@variant dark` directive at the top
+ * of this file, so the rule was being eliminated as "redundant").
+ * Top-level CSS passes through to the final stylesheet.
+ *
+ * The selector is scoped to `.dark` so the site's
+ * `[data-theme="dark"]` rules and this block never collide.
+ * --------------------------------------------------------------- */
+.dark {
+  --np-color-background: oklch(0.145 0.004 285.823);
+  --np-color-foreground: oklch(0.985 0.001 106.423);
+  --np-color-muted: oklch(0.215 0.006 286.033);
+  --np-color-muted-foreground: oklch(0.711 0.008 285.879);
+  --np-color-border: oklch(0.269 0.006 286.033);
+  --np-color-input: oklch(0.269 0.006 286.033);
+  --np-color-card: oklch(0.18 0.005 285.5);
+  --np-color-card-foreground: oklch(0.985 0.001 106.423);
+  --np-color-accent: oklch(0.269 0.006 286.033);
+  --np-color-accent-foreground: oklch(0.985 0.001 106.423);
+}
+
+@theme {
+  --color-primary: var(--np-color-primary, oklch(0.55 0.2 250));
+  --color-primary-foreground: var(--np-color-primary-foreground, oklch(0.98 0 0));
+  --color-secondary: var(--np-color-secondary, oklch(0.75 0.05 250));
+  --color-secondary-foreground: var(--np-color-secondary-foreground, oklch(0.15 0.02 260));
+  --color-accent: var(--np-color-accent, oklch(0.65 0.15 200));
+  --color-accent-foreground: var(--np-color-accent-foreground, oklch(0.15 0.02 260));
+  --color-background: var(--np-color-background, oklch(0.99 0 0));
+  --color-foreground: var(--np-color-foreground, oklch(0.15 0.02 260));
+  --color-muted: var(--np-color-muted, oklch(0.95 0.01 260));
+  --color-muted-foreground: var(--np-color-muted-foreground, oklch(0.45 0.02 260));
+  --color-border: var(--np-color-border, oklch(0.9 0.01 260));
+  --color-input: var(--np-color-input, oklch(0.9 0.01 260));
+  --color-ring: var(--np-color-ring, oklch(0.55 0.2 250));
+  --color-destructive: var(--np-color-destructive, oklch(0.55 0.25 25));
+  --color-destructive-foreground: var(--np-color-destructive-foreground, oklch(0.98 0 0));
+  --color-card: var(--np-color-card, oklch(0.99 0 0));
+  --color-card-foreground: var(--np-color-card-foreground, oklch(0.15 0.02 260));
+  --color-brand: var(--np-color-brand, #0066ff);
+  --color-brand-foreground: var(--np-color-brand-foreground, #ffffff);
+
+  --font-heading: var(--np-font-heading, "Inter", system-ui, sans-serif);
+  --font-body: var(--np-font-body, "Inter", system-ui, sans-serif);
+  --font-mono: var(--np-font-mono, "JetBrains Mono", monospace);
+
+  --radius-sm: var(--np-radius-sm, 0.25rem);
+  --radius-md: var(--np-radius-md, 0.5rem);
+  --radius-lg: var(--np-radius-lg, 0.75rem);
+}
+
+/* ==========================================================================
+   ATOM BLOCK DEFAULTS (np-blocks layer)
+
+   The 8 built-in atom blocks (paragraph / heading / quote / code / callout /
+   list / image / divider) emit these class names from their `render()`. The
+   admin in-page editor styles its bodies inline (Tailwind utilities); these
+   rules cover the PUBLIC site render so a paragraph block authored in
+   Document view looks like a paragraph on the operator's published page.
+
+   Themes can override via `@layer np-theme` (or `@layer np-overrides` for
+   per-page overrides) — these defaults sit at the bottom of the cascade.
+   ========================================================================== */
+@layer np-blocks {
+  .np-paragraph {
+    margin: 0 0 1em;
+    line-height: 1.7;
+    color: var(--np-color-foreground, currentColor);
+  }
+  .np-paragraph:last-child {
+    margin-bottom: 0;
+  }
+
+  .np-heading {
+    margin: 1.5em 0 0.5em;
+    font-family: var(--np-font-heading, inherit);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--np-color-foreground, currentColor);
+  }
+  .np-heading-1 {
+    font-size: clamp(2rem, 4vw, 2.5rem);
+  }
+  .np-heading-2 {
+    font-size: clamp(1.5rem, 3vw, 1.875rem);
+    line-height: 1.3;
+  }
+  .np-heading-3 {
+    font-size: 1.25rem;
+    line-height: 1.35;
+  }
+
+  .np-quote {
+    margin: 1.5em 0;
+    padding: 0.25em 0 0.25em 1rem;
+    border-left: 2px solid var(--np-color-foreground, currentColor);
+    font-style: italic;
+    line-height: 1.6;
+  }
+  .np-quote p {
+    margin: 0;
+  }
+  .np-quote-cite {
+    display: block;
+    margin-top: 0.5em;
+    font-size: 0.875rem;
+    font-style: normal;
+    color: var(--np-color-muted-foreground, #6b7280);
+  }
+
+  .np-code {
+    margin: 1.5em 0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background: var(--np-color-code-bg, #0f0f0e);
+    color: var(--np-color-code-fg, #e6e6e5);
+    font-family: var(--np-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.875rem;
+    line-height: 1.65;
+    overflow-x: auto;
+  }
+  .np-code code {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    background: transparent;
+    padding: 0;
+  }
+
+  .np-callout {
+    margin: 1.5em 0;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid;
+    line-height: 1.55;
+  }
+  .np-callout p {
+    margin: 0;
+  }
+  .np-callout-info {
+    background: oklch(0.975 0.018 240);
+    border-color: oklch(0.92 0.04 240);
+    color: oklch(0.35 0.12 240);
+  }
+  .np-callout-success {
+    background: oklch(0.975 0.04 155);
+    border-color: oklch(0.9 0.07 155);
+    color: oklch(0.4 0.13 155);
+  }
+  .np-callout-warning {
+    background: oklch(0.98 0.05 80);
+    border-color: oklch(0.9 0.09 80);
+    color: oklch(0.45 0.14 60);
+  }
+
+  .np-list {
+    margin: 1em 0;
+    padding-left: 1.5em;
+    line-height: 1.7;
+  }
+  .np-list-bullet {
+    list-style: disc;
+  }
+  .np-list-ordered {
+    list-style: decimal;
+  }
+  .np-list li {
+    margin: 0.25em 0;
+  }
+
+  .np-image {
+    margin: 1.5em 0;
+  }
+  .np-image img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+  }
+  .np-image figcaption {
+    margin-top: 0.5em;
+    text-align: center;
+    font-size: 0.875rem;
+    font-style: italic;
+    color: var(--np-color-muted-foreground, #6b7280);
+  }
+
+  .np-divider {
+    margin: 2em 0;
+    height: 1px;
+    border: 0;
+    background: var(--np-color-border, #e5e7eb);
+  }
+}
+
+/* ==========================================================================
+   IN-PAGE EDITOR — autosave pulse
+
+   Custom box-shadow ripple keyframe used by the in-page editor's
+   status bar to indicate "autosave on / save resolved". Tailwind's
+   built-in `animate-pulse` is opacity-only; the design wants a
+   radiating ring like the form-card's status-pulse preview card.
+   ========================================================================== */
+@keyframes np-autosave-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 167, 100, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 167, 100, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 167, 100, 0);
+  }
+}
+.np-autosave-pulse {
+  animation: np-autosave-pulse 2s ease-out infinite;
+}

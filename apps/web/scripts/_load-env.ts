@@ -1,5 +1,4 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 import { config as loadEnv } from "dotenv";
 
@@ -7,25 +6,17 @@ import { config as loadEnv } from "dotenv";
  * Side-effect module that loads `.env` files before any other
  * import in a seed/CLI script can evaluate.
  *
- * The reason this is its own file: ESM imports are evaluated in
- * topological order, so the first import declaration in a script
- * runs to completion before subsequent imports' module bodies are
- * evaluated. Putting the dotenv calls inside the script itself
- * doesn't help — the script's own `import` statements have
- * already evaluated by the time the script's first statement
- * runs, and `nexpress.config.ts` (transitively imported by
- * `init-core`) reads `process.env.NP_SECRET` at module-load time.
+ * We inline the dotenv calls here (instead of re-exporting
+ * `@nexpress/app/scripts/_load-env`) for one reason: ESM's
+ * top-level-await rule evaluates *sibling* imports of the same
+ * parent module in parallel. A wrapper that did `await
+ * import("@nexpress/app/scripts/_load-env")` wouldn't block
+ * `nexpress.config.ts` from evaluating concurrently — config
+ * validation would race the env load.
  *
- * Resolution order matches the original inline calls:
- *   1. `<repo>/.env` (root) — primary source of truth
- *   2. `<repo>/apps/web/.env` (local) — fills gaps without overriding
- *
- * Import this file FIRST in any script that depends on
- * `nexpress.config.ts` evaluating cleanly:
- *
- *   import "./_load-env.js"; // must be the first import
- *   import { ensureCoreServices } from "../src/lib/init-core";
+ * Apps/web's `.env` is the monorepo's root file. The local
+ * `apps/web/.env` is the secondary, gap-filling source.
  */
-const here = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(here, "../../../.env") });
-loadEnv({ path: resolve(here, "../.env"), override: false });
+const projectRoot = process.cwd();
+loadEnv({ path: resolve(projectRoot, "../../.env") });
+loadEnv({ path: resolve(projectRoot, ".env"), override: false });

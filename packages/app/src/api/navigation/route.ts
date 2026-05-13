@@ -13,9 +13,9 @@ import { navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { optionalAuth, requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
+import { optionalAuth, requireAuth } from "../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { getDb } from "../../lib/db";
 
 // Theme-baked default locations. Operators can edit their items
 // but not rename or delete the slot itself — themes look these up

@@ -7,18 +7,18 @@ import {
 import type { NextRequest } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 
-import { optionalAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
+import { optionalAuth } from "../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 import {
   extractSaveOptions,
   findCollectionDocuments,
   parseBodyRecord,
   parseFindOptions,
   saveCollectionDocument,
-} from "@/lib/collection-helpers";
-import { ensureFor } from "@/lib/init-core";
-import { optionalMember } from "@/lib/member-auth-helpers";
-import { revalidateCollection } from "@/lib/revalidate";
+} from "../../../lib/collection-helpers";
+import { ensureFor } from "../../../lib/init-core";
+import { optionalMember } from "../../../lib/member-auth-helpers";
+import { revalidateCollection } from "../../../lib/revalidate";
 
 export async function GET(
   request: NextRequest,

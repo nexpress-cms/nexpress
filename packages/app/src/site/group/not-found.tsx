@@ -2,7 +2,7 @@ import { getActiveThemeNotFound } from "@nexpress/core";
 import type { ComponentType } from "react";
 
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Phase F.7 — public-site 404 page.

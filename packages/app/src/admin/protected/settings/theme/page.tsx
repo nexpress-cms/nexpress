@@ -1,7 +1,7 @@
 import { ThemeEditor, ThemeSettingsPanel } from "@nexpress/admin/client";
 import { getActiveTheme } from "@nexpress/core";
 
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 

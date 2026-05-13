@@ -10,7 +10,7 @@ import {
 } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
 
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Phase 10.1 — sitemap.xml. The core helper walks every

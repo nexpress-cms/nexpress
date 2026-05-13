@@ -9,10 +9,10 @@ import {
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
-import { requireMember } from "@/lib/member-auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { getDb } from "../../../../lib/db";
+import { ensureFor } from "../../../../lib/init-core";
+import { requireMember } from "../../../../lib/member-auth-helpers";
 
 /**
  * Member-side image upload (Phase 9.7j). The discussion form's

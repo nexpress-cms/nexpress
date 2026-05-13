@@ -2,8 +2,8 @@ import { draftMode } from "next/headers";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { can, NpAuthError } from "@nexpress/core";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../lib/auth-helpers";
+import { ensureFor } from "../../lib/init-core";
 
 // `new URL(redirectTo, request.url)` preserves an external origin when
 // `redirectTo` is absolute or protocol-relative, so an editor with

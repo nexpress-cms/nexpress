@@ -9,18 +9,18 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { optionalAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
+import { optionalAuth } from "../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 import {
   deleteCollectionDocument,
   extractSaveOptions,
   getCollectionDocument,
   parseBodyRecord,
   saveCollectionDocument,
-} from "@/lib/collection-helpers";
-import { ensureFor } from "@/lib/init-core";
-import { optionalMember } from "@/lib/member-auth-helpers";
-import { revalidateCollection } from "@/lib/revalidate";
+} from "../../../../lib/collection-helpers";
+import { ensureFor } from "../../../../lib/init-core";
+import { optionalMember } from "../../../../lib/member-auth-helpers";
+import { revalidateCollection } from "../../../../lib/revalidate";
 
 export async function GET(
   request: NextRequest,

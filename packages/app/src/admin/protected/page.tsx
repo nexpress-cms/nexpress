@@ -7,8 +7,8 @@
 import { DashboardView } from "@nexpress/admin/client";
 import type { DashboardPluginWidget } from "@nexpress/admin";
 import { getDashboardWidgetsFromPlugins } from "@nexpress/core";
-import { ensureFor } from "@/lib/init-core";
-import { loadDashboardStats } from "@/lib/dashboard-stats";
+import { ensureFor } from "../../lib/init-core";
+import { loadDashboardStats } from "../../lib/dashboard-stats";
 
 export default async function DashboardPage() {
   await ensureFor("plugins");

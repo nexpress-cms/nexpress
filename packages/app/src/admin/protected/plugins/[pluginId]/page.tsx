@@ -13,9 +13,9 @@ import {
 } from "@nexpress/core";
 import { PluginAdminPage } from "@nexpress/admin/client";
 
-import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { getAuthRuntimeConfig } from "../../../../lib/auth-helpers";
+import { getDb } from "../../../../lib/db";
+import { ensureFor } from "../../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 
