@@ -10,7 +10,7 @@ import {
   startWorker,
 } from "@nexpress/core";
 
-import { ensureFor } from "@/lib/bootstrap";
+import { ensureFor } from "@/lib/init-core";
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });

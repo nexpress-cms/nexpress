@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: [
     "@nexpress/admin",
+    "@nexpress/app",
+    "@nexpress/auth-pages",
     "@nexpress/editor",
     "@nexpress/blocks",
     "@nexpress/theme",
