@@ -137,6 +137,9 @@ importers:
       nodemailer:
         specifier: ^8.0.5
         version: 8.0.5
+      pg:
+        specifier: ^8.13.1
+        version: 8.20.0
       react:
         specifier: ^19.0.0
         version: 19.2.5

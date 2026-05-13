@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "${NEXPRESS_DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: tmp_np_dock_53207
+      POSTGRES_USER: nexpress
+      POSTGRES_PASSWORD: nexpress
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Mailpit — local SMTP capture for development. The framework's
+  # SmtpEmailAdapter speaks plain SMTP, so this container is a
+  # drop-in replacement for Resend / SendGrid / Postmark during
+  # dev. Open the inbox at http://localhost:8025 to see every
+  # email the app would have sent. Swap to a real provider for
+  # staging / production by changing the four NP_SMTP_* values
+  # in your .env — no code changes.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "${NEXPRESS_SMTP_PORT:-1025}:1025"
+      - "${NEXPRESS_MAILPIT_WEB_PORT:-8025}:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
+volumes:
+  pgdata:
