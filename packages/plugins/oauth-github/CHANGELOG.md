@@ -1,5 +1,13 @@
 # @nexpress/plugin-oauth-github
 
+## 0.1.5
+
+### Patch Changes
+
+- @nexpress/core@0.1.5
+- @nexpress/oauth-providers@0.1.5
+- @nexpress/plugin-sdk@0.1.5
+
 ## 0.1.3
 
 ### Patch Changes

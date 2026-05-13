@@ -1,5 +1,11 @@
 # @nexpress/wp-import
 
+## 0.1.5
+
+### Patch Changes
+
+- @nexpress/core@0.1.5
+
 ## 0.1.3
 
 ### Patch Changes
