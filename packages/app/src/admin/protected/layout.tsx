@@ -44,8 +44,26 @@ export default async function AdminLayout({
 
   const { secret } = getAuthRuntimeConfig();
   const db = getDb();
-  const user = await verifyTokenFull(token, secret, db);
-  if (!user) redirect("/admin/login");
+  let user: Awaited<ReturnType<typeof verifyTokenFull>> = null;
+  try {
+    user = await verifyTokenFull(token, secret, db);
+  } catch {
+    // Token verification threw (stale cookie signed by a different
+    // NP_SECRET — common after re-scaffolding against the same
+    // localhost). Treat exactly like an absent / invalid session
+    // so the user lands on /admin/setup (when no admin exists) or
+    // /admin/login. Without this catch the unhandled JWS error
+    // bubbles up as a 500 on `/admin` and the operator can't
+    // self-recover from an old cookie.
+  }
+  if (!user) {
+    const rows = await db
+      .select({ value: count() })
+      .from(npUsers)
+      .where(eq(npUsers.role, "admin"));
+    if ((rows[0]?.value ?? 0) === 0) redirect("/admin/setup");
+    redirect("/admin/login");
+  }
 
   // Pulls the list straight from `nexpress.config.ts` so the admin
   // sidebar lists every collection the app declares (Posts, Pages,

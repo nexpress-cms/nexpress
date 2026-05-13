@@ -46,8 +46,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     // typechecking before the first DB generate.
     "src/db/generated/documents.ts": utf8(documentsStubTemplate()),
     "src/nexpress.config.ts": utf8(nexpressConfigTemplate(config)),
-    "src/collections/posts.ts": utf8(postsCollectionTemplate()),
+    "src/collections/categories.ts": utf8(categoriesCollectionTemplate()),
     "src/collections/pages.ts": utf8(pagesCollectionTemplate()),
+    "src/collections/posts.ts": utf8(postsCollectionTemplate()),
+    "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
@@ -134,6 +136,14 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/editor": nexpressVersion,
         "@nexpress/blocks": nexpressVersion,
         "@nexpress/theme": nexpressVersion,
+        // Built-in theme packs — scaffold admin's Appearance → Themes
+        // can only list themes that exist in node_modules. Without
+        // these as direct deps, the picker shows empty even though
+        // @nexpress/theme (the engine) is present.
+        "@nexpress/theme-default": nexpressVersion,
+        "@nexpress/theme-docs": nexpressVersion,
+        "@nexpress/theme-magazine": nexpressVersion,
+        "@nexpress/theme-portfolio": nexpressVersion,
         "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
         "drizzle-orm": "^0.45.2",
@@ -194,11 +204,24 @@ function packageJsonTemplate(config: TemplateConfig): string {
 
 function nexpressConfigTemplate(config: TemplateConfig): string {
   const imports = config.includeExampleContent
-    ? 'import { postsCollection } from "./collections/posts";\nimport { pagesCollection } from "./collections/pages";\n\n'
+    ? 'import { categoriesCollection } from "./collections/categories";\n' +
+      'import { pagesCollection } from "./collections/pages";\n' +
+      'import { postsCollection } from "./collections/posts";\n' +
+      'import { tagsCollection } from "./collections/tags";\n\n'
     : "";
   const collections = config.includeExampleContent
-    ? "[postsCollection, pagesCollection]"
+    ? "[postsCollection, pagesCollection, categoriesCollection, tagsCollection]"
     : "[]";
+  // Built-in theme packs. Each pack registers a renderer + assets;
+  // without them, admin → Appearance → Themes is empty. Operator
+  // picks the active theme in `np_settings.activeTheme`. Comment out
+  // any line to drop a pack from the scaffolded site.
+  const themesImports =
+    'import { defaultTheme } from "@nexpress/theme-default";\n' +
+    'import { docsTheme } from "@nexpress/theme-docs";\n' +
+    'import { magazineTheme } from "@nexpress/theme-magazine";\n' +
+    'import { portfolioTheme } from "@nexpress/theme-portfolio";\n\n';
+  const themesArray = "[defaultTheme, magazineTheme, portfolioTheme, docsTheme]";
   // Storage is selected at runtime via NP_STORAGE_ADAPTER so the
   // operator can flip local ↔ S3 from `.env` without editing this
   // file. `pnpm run setup` writes the right env block directly.
@@ -224,7 +247,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   const pluginsHint = `  plugins: [\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ],`;
   const importsBlock = `// @nexpress:plugins-imports-start\n// @nexpress:plugins-imports-end\n\n`;
 
-  return `import { defineConfig } from "@nexpress/core";\n${imports}${importsBlock}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  auth: {\n    secret: process.env.NP_SECRET!,\n  },\n${pluginsHint}\n});\n`;
+  return `import { defineConfig } from "@nexpress/core";\n${themesImports}${imports}${importsBlock}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  themes: ${themesArray},\n  auth: {\n    secret: process.env.NP_SECRET!,\n  },\n${pluginsHint}\n});\n`;
 }
 
 function drizzleConfigTemplate(): string {
@@ -405,6 +428,14 @@ function postsCollectionTemplate(): string {
 
 function pagesCollectionTemplate(): string {
   return readTemplate("collections/pages.ts");
+}
+
+function tagsCollectionTemplate(): string {
+  return readTemplate("collections/tags.ts");
+}
+
+function categoriesCollectionTemplate(): string {
+  return readTemplate("collections/categories.ts");
 }
 
 function readmeTemplate(config: TemplateConfig): string {

@@ -2,6 +2,7 @@ import {
   NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpValidationError,
+  ensureDefaultSite,
   hashPassword,
   npUsers,
   signToken,
@@ -128,6 +129,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       throw new NpConflictError("Setup already completed");
     }
 
+    // First-boot guarantee: `np_sites` is created by migrations but
+    // the default row isn't seeded automatically (`ensureDefaultSite`
+    // isn't wired into bootstrap). Without this, the wizard's
+    // `updateSite(NP_DEFAULT_SITE_ID, …)` below throws `Site "default"
+    // not found` and the operator gets a 400 with no recourse. Wiring
+    // ensureDefaultSite into `ensureFor` is the longer-term fix; for
+    // now call it explicitly here since the wizard is the path where
+    // the absence first matters.
+    await ensureDefaultSite();
+
     const db = getDb();
     const passwordHash = await hashPassword(body.password);
 
@@ -164,24 +175,54 @@ export async function POST(request: NextRequest): Promise<Response> {
       throw new Error("Failed to create admin row");
     }
 
+    // Admin row is committed (no transaction wraps the chain
+    // below — adding one would force a drizzle `db.transaction()`
+    // around updateSite + seedAll, both of which acquire their
+    // own DB scope today). Without rollback, a later throw would
+    // leave the admin row in place and every retry would hit the
+    // `Setup already completed` gate. Wrap site-rename and
+    // seeding as best-effort so the wizard still completes —
+    // operator can fix data afterwards through the admin UI.
+    const warnings: string[] = [];
+
     if (body.siteName) {
-      await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
+      try {
+        await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
+      } catch (siteErr) {
+        const msg = siteErr instanceof Error ? siteErr.message : String(siteErr);
+        console.error("[admin-setup] updateSite failed:", siteErr);
+        warnings.push(
+          `Site name update failed: ${msg}. You can rename the site from Admin → Settings.`,
+        );
+      }
     }
 
     let seeded: Awaited<ReturnType<typeof seedAll>> | null = null;
     if (body.sampleContent) {
-      // Sample content needs the plugin host loaded so collection
-      // hooks (slugField, search-vector, etc.) fire.
-      await ensureFor("plugins");
-      seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
-        seedAll({
-          id: created.id,
-          email: created.email,
-          name: created.name,
-          role: created.role,
-          tokenVersion: created.tokenVersion,
-        }),
-      );
+      try {
+        // Sample content needs the plugin host loaded so collection
+        // hooks (slugField, search-vector, etc.) fire.
+        await ensureFor("plugins");
+        seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
+          seedAll({
+            id: created.id,
+            email: created.email,
+            name: created.name,
+            role: created.role,
+            tokenVersion: created.tokenVersion,
+          }),
+        );
+      } catch (seedErr) {
+        const msg = seedErr instanceof Error ? seedErr.message : String(seedErr);
+        // Print the full stack on the dev terminal so the operator
+        // can diagnose silent seed failures (validation inside a
+        // collection hook, a missing FK, etc.). The HTTP response
+        // only carries the message; the stack is the diagnostic.
+        console.error("[admin-setup] seedAll failed:", seedErr);
+        warnings.push(
+          `Sample content seeding failed: ${msg}. Admin account is ready; add content manually from Admin → Collections. Full stack is in the server log.`,
+        );
+      }
     }
 
     const config = getAuthRuntimeConfig();
@@ -213,6 +254,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             navItems: seeded.navigation.header + seeded.navigation.footer,
           }
         : null,
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
     setAuthCookies(response, {
       access,
