@@ -42,6 +42,7 @@ try {
   console.log("✓ migrations applied");
 } catch (err) {
   console.error("✗ migration failed:");
+  let collisionSqlstate: string | null = null;
   if (err instanceof Error) {
     console.error(`  ${err.message}`);
     // drizzle-orm wraps the underlying pg error as `cause`. pg
@@ -51,10 +52,45 @@ try {
     if (cause instanceof Error) {
       console.error(`  caused by: ${cause.message}`);
       const code = (cause as { code?: string }).code;
-      if (code) console.error(`  sqlstate: ${code}`);
+      if (code) {
+        console.error(`  sqlstate: ${code}`);
+        // 42710 = duplicate object (e.g. enum type), 42P07 =
+        // duplicate table. Both mean this DB already holds tables
+        // from another NexPress install — pre-flight should have
+        // caught it, but didn't because `drizzle.__drizzle_migrations`
+        // exists from that earlier project. Surface the recovery
+        // path here instead of leaving the operator on raw pg
+        // text.
+        if (code === "42710" || code === "42P07") collisionSqlstate = code;
+      }
     }
   } else {
     console.error(`  ${String(err)}`);
+  }
+  if (collisionSqlstate) {
+    const dbName = (() => {
+      try {
+        return new URL(url).pathname.replace(/^\//, "") || "<db>";
+      } catch {
+        return "<db>";
+      }
+    })();
+    console.error("");
+    console.error(
+      "  This database already contains tables/types from another NexPress",
+    );
+    console.error("  install. Pick one:");
+    console.error(
+      `    1. Point DATABASE_URL at a fresh database (recommended for multi-project hosts)`,
+    );
+    console.error(`    2. Drop and recreate this one:`);
+    console.error(
+      `       docker compose -f docker/docker-compose.yml exec db psql -U nexpress \\`,
+    );
+    console.error(
+      `         -c 'DROP DATABASE "${dbName}"; CREATE DATABASE "${dbName}";'`,
+    );
+    console.error(`       (this DESTROYS all data in '${dbName}')`);
   }
   await client.end().catch(() => {});
   process.exit(1);
