@@ -46,8 +46,10 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     // typechecking before the first DB generate.
     "src/db/generated/documents.ts": utf8(documentsStubTemplate()),
     "src/nexpress.config.ts": utf8(nexpressConfigTemplate(config)),
-    "src/collections/posts.ts": utf8(postsCollectionTemplate()),
+    "src/collections/categories.ts": utf8(categoriesCollectionTemplate()),
     "src/collections/pages.ts": utf8(pagesCollectionTemplate()),
+    "src/collections/posts.ts": utf8(postsCollectionTemplate()),
+    "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
@@ -202,10 +204,13 @@ function packageJsonTemplate(config: TemplateConfig): string {
 
 function nexpressConfigTemplate(config: TemplateConfig): string {
   const imports = config.includeExampleContent
-    ? 'import { postsCollection } from "./collections/posts";\nimport { pagesCollection } from "./collections/pages";\n\n'
+    ? 'import { categoriesCollection } from "./collections/categories";\n' +
+      'import { pagesCollection } from "./collections/pages";\n' +
+      'import { postsCollection } from "./collections/posts";\n' +
+      'import { tagsCollection } from "./collections/tags";\n\n'
     : "";
   const collections = config.includeExampleContent
-    ? "[postsCollection, pagesCollection]"
+    ? "[postsCollection, pagesCollection, categoriesCollection, tagsCollection]"
     : "[]";
   // Built-in theme packs. Each pack registers a renderer + assets;
   // without them, admin → Appearance → Themes is empty. Operator
@@ -423,6 +428,14 @@ function postsCollectionTemplate(): string {
 
 function pagesCollectionTemplate(): string {
   return readTemplate("collections/pages.ts");
+}
+
+function tagsCollectionTemplate(): string {
+  return readTemplate("collections/tags.ts");
+}
+
+function categoriesCollectionTemplate(): string {
+  return readTemplate("collections/categories.ts");
 }
 
 function readmeTemplate(config: TemplateConfig): string {
