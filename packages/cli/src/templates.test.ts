@@ -72,11 +72,15 @@ describe("getProjectFiles", () => {
     }
   });
 
-  it("uses workspace:* deps when localMode, otherwise latest", () => {
+  it("uses workspace:* deps when localMode, otherwise a pinned range", () => {
     const local = textFiles(getProjectFiles(baseConfig));
     const remote = textFiles(getProjectFiles({ ...baseConfig, localMode: false }));
     expect(local["package.json"]).toMatch(/"@nexpress\/core":\s*"workspace:\*"/);
-    expect(remote["package.json"]).toMatch(/"@nexpress\/core":\s*"latest"/);
+    // Pinned to the current @nexpress family minor (SCAFFOLDED_NEXPRESS_RANGE
+    // in templates.ts) instead of "latest" — keeps the scaffolded site on a
+    // known-compatible major+minor across @nexpress/*.
+    expect(remote["package.json"]).toMatch(/"@nexpress\/core":\s*"\^0\.\d+\.\d+"/);
+    expect(remote["package.json"]).not.toMatch(/"@nexpress\/core":\s*"latest"/);
   });
 
   it("declares @nexpress/app as a dependency so subpath wrappers resolve", () => {
