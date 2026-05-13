@@ -57,6 +57,23 @@ cpSync(join(webRoot, "lib"), join(snapRoot, "lib"), { recursive: true });
 cpSync(join(webRoot, "i18n.config.ts"), join(snapRoot, "i18n.config.ts"));
 cpSync(join(webRoot, "proxy.ts"), join(snapRoot, "proxy.ts"));
 
+// Collections live OUTSIDE the snapshot tree because `templates.ts`
+// loads them via `readTemplate("collections/<name>.ts")` rather than
+// from `snapshot/`. Mirror them into the `templates/collections/`
+// dir so a scaffolded project ships the same `posts.ts` / `pages.ts`
+// / `categories.ts` / `tags.ts` shape as apps/web — without this
+// step the scaffold templates drifted from apps/web (no `icon`, no
+// `group`, missing access rules, no SEO config) and operators saw
+// a stale admin sidebar + stale edit-view metadata. Verified
+// 2026-05-14 — diff at apps/web vs scaffold was multi-hundred
+// lines before this mirror was wired.
+const collectionsSrc = join(webRoot, "collections");
+const collectionsDst = join(repoRoot, "packages/cli/templates/collections");
+assertExists(collectionsSrc);
+rmSync(collectionsDst, { recursive: true, force: true });
+mkdirSync(collectionsDst, { recursive: true });
+cpSync(collectionsSrc, collectionsDst, { recursive: true });
+
 // Path rewrites that apply to the scaffold context but not to
 // apps/web. globals.css's `@source` lines in apps/web reach into
 // `../../../../packages/{admin,blocks,editor}/src` via the
