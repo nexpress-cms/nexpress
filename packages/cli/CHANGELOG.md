@@ -1,5 +1,37 @@
 # create-nexpress
 
+## 0.1.12
+
+### Patch Changes
+
+- 41f59a3: When the migration runner hits sqlstate `42710` (duplicate type) or `42P07` (duplicate table) — the "another NexPress install owns this DB" case the pre-flight can't detect when `drizzle.__drizzle_migrations` already exists — surface the recovery options inline instead of leaving the operator on the raw pg error message:
+
+  ```
+  ✗ migration failed:
+    …
+    sqlstate: 42710
+
+    This database already contains tables/types from another NexPress
+    install. Pick one:
+      1. Point DATABASE_URL at a fresh database (recommended for multi-project hosts)
+      2. Drop and recreate this one:
+         docker compose -f docker/docker-compose.yml exec db psql -U nexpress \
+           -c 'DROP DATABASE "<name>"; CREATE DATABASE "<name>";'
+         (this DESTROYS all data in '<name>')
+  ```
+
+  Pure additive — non-collision failures still print the same Error + sqlstate they always did.
+
+- 41f59a3: Drop the `webpack` callback from the scaffold's `next.config.ts`. Next 16 made Turbopack the default bundler; mixing a `webpack` callback with no Turbopack config trips
+
+  ```
+  Error: this build is using turbopack, with a webpack config and no turbopack config
+  ```
+
+  and stops `pnpm dev` immediately after `pnpm setup`. apps/web had already been migrated (the inline comment there explains the same), but the scaffold template lagged behind and re-emitted the old callback into every newly scaffolded project.
+
+  The callback only pushed `@node-rs/argon2`, `pg-native`, and `sharp` into `externals`. `serverExternalPackages` covers the same surface for both bundlers, so the fix is to delete the callback and add `pg-native` to `serverExternalPackages`.
+
 ## 0.1.11
 
 ### Patch Changes
