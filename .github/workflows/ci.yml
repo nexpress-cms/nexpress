@@ -213,9 +213,19 @@ jobs:
   # copy. The unit tests on getProjectFiles verify the file map
   # is well-formed, but nothing catches the next-tier regression:
   # an actual scaffold of `node dist/index.js my-app` failing to
-  # typecheck (broken stub, missing dep, snapshot drift). This
-  # job runs the built CLI end-to-end against a temp project
-  # rooted inside the workspace so workspace:* deps resolve.
+  # typecheck (broken stub, missing dep, snapshot drift).
+  #
+  # The smoke runs end-to-end against a temp project rooted in
+  # `$RUNNER_TEMP` (NOT inside the monorepo workspace). The trick:
+  # pack every @nexpress/* package with `pnpm pack`, rewrite the
+  # scaffold's package.json to use `file:` tarball paths, then
+  # `pnpm install --ignore-workspace` in the scaffold dir. This
+  # keeps the smoke fully isolated — the monorepo's pnpm-lock.yaml
+  # never mutates, the scaffold doesn't accidentally pick up the
+  # workspace's deps, and the test exercises the same install
+  # path a real `npx create-nexpress` user would (modulo registry
+  # vs. tarball, which is the only safe difference until the
+  # packages are published).
   scaffold-smoke:
     name: scaffold smoke (typecheck a fresh scaffold)
     runs-on: ubuntu-latest
@@ -241,20 +251,61 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build (CLI + all sibling packages it links against)
+      - name: Build (CLI + every package the scaffold pulls in)
         run: pnpm build
 
-      # `--local` makes the scaffold use `workspace:*` for every
-      # @nexpress/* dep. The project is created inside `packages/`
-      # so the monorepo's `pnpm-workspace.yaml` picks it up and
-      # the workspace links resolve to the just-built dist/.
-      - name: Scaffold a fresh project (--local + --yes)
+      # Pack every @nexpress/* package the scaffold pulls (direct
+      # or transitive). `pnpm pack` resolves `workspace:*` to the
+      # actual version pin at tarball time — which is why we need
+      # the pnpm.overrides block the link script adds below; the
+      # unpacked tarballs say e.g. "@nexpress/core": "0.1.3" and
+      # would otherwise chase npm registry on install.
+      - name: Pack workspace packages as tarballs
         run: |
-          cd packages
-          node ./cli/dist/index.js scaffold-smoke-app --yes --no-example --no-docker --local
+          mkdir -p "$RUNNER_TEMP/tarballs"
+          for dir in \
+            packages/core \
+            packages/admin \
+            packages/app \
+            packages/auth-pages \
+            packages/editor \
+            packages/blocks \
+            packages/theme \
+            packages/themes/default \
+            packages/themes/docs \
+            packages/themes/magazine \
+            packages/themes/portfolio \
+            packages/next \
+            packages/plugin-sdk \
+            packages/cli-nexpress; do
+            (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/tarballs")
+          done
+          ls "$RUNNER_TEMP/tarballs"
 
-      - name: Re-install so the new package's deps resolve
-        run: pnpm install --no-frozen-lockfile
+      - name: Scaffold a fresh project (outside the workspace)
+        run: |
+          mkdir -p "$RUNNER_TEMP/scaffold"
+          cd "$RUNNER_TEMP/scaffold"
+          node "$GITHUB_WORKSPACE/packages/cli/dist/index.js" \
+            smoke-app --yes --no-example --no-docker --local
 
-      - name: Typecheck the scaffolded project
-        run: pnpm --filter scaffold-smoke-app exec tsc --noEmit
+      - name: Rewrite scaffold deps to use packed tarballs
+        run: |
+          node "$GITHUB_WORKSPACE/.github/scripts/link-scaffold-tarballs.mjs" \
+            "$RUNNER_TEMP/scaffold/smoke-app" \
+            "$RUNNER_TEMP/tarballs"
+
+      - name: Install + typecheck (isolated from monorepo lockfile)
+        run: |
+          cd "$RUNNER_TEMP/scaffold/smoke-app"
+          pnpm install --ignore-workspace
+          pnpm exec tsc --noEmit
+
+      - name: Verify monorepo lockfile is untouched
+        run: |
+          if ! git diff --quiet pnpm-lock.yaml; then
+            echo "::error::scaffold-smoke mutated pnpm-lock.yaml — isolation broke"
+            git diff pnpm-lock.yaml | head -40
+            exit 1
+          fi
+          echo "✓ pnpm-lock.yaml clean"
