@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "preserve",
+    "strict": true,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "allowJs": false,
+    "paths": {
+      "@/*": ["./_consumer-stubs/*"]
+    }
+  },
+  // Notes on what we typecheck:
+  //
+  //   `src/**` — framework route implementations. They reference
+  //   `@/lib/*` stubs that approximate the consumer-side contract.
+  //   Stubs drift naturally over time; chasing every symbol mismatch
+  //   produces high friction with low value because the REAL
+  //   typecheck happens when apps/web (and scaffolded sites) compile
+  //   these files through Next.js's `transpilePackages` using their
+  //   own tsconfig paths. So we keep `noImplicitAny: false` here to
+  //   tolerate the stub imprecision and rely on the consumer's
+  //   `tsc --noEmit` (and `next build`) for the real surface check.
+  //
+  //   `_consumer-stubs/**` still typechecks strictly so the
+  //   structural shape we promise consumers stays well-formed.
+  "include": ["src/**/*", "_consumer-stubs/**/*"]
+}

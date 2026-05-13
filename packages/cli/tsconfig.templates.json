@@ -22,13 +22,20 @@
       "@/*": ["./templates/_typecheck/*", "./templates/*"]
     }
   },
+  // After #702-#704, the bulk of routable code (admin pages, site
+  // pages, api routes, lib/) moved into @nexpress/app and is
+  // mirrored into a scaffold via the `templates/snapshot/` subtree
+  // as opaque, byte-identical copies of apps/web. apps/web's own
+  // typecheck pass validates that surface, so we don't redo the
+  // work here — typing those files against the CLI's tsconfig
+  // would also require the full reference-app dep graph (Drizzle,
+  // every @nexpress/* package, generated documents) reachable
+  // from packages/cli/node_modules. Keep this typecheck focused
+  // on what the scaffold actually authors: collections (which
+  // are operator-editable examples) and bootstrap scripts.
   "include": [
-    "templates/lib/**/*.ts",
     "templates/scripts/**/*.ts",
-    "templates/collections/**/*.ts",
-    "templates/api/**/*.ts",
-    "templates/site/**/*.tsx",
-    "templates/admin/**/*.tsx"
+    "templates/collections/**/*.ts"
   ],
   "files": [
     "templates/_typecheck/db/generated/collections.ts",

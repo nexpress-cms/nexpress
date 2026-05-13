@@ -18,10 +18,14 @@ export async function scaffoldProject(config: ProjectConfig): Promise<void> {
     secret,
   });
 
-  for (const [relativePath, content] of Object.entries(files)) {
+  for (const [relativePath, file] of Object.entries(files)) {
     const absolutePath = path.join(targetDir, relativePath);
     await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, content, "utf8");
+    if (file.encoding === "base64") {
+      await writeFile(absolutePath, Buffer.from(file.content, "base64"));
+    } else {
+      await writeFile(absolutePath, file.content, "utf8");
+    }
   }
 
   printSuccess(config.projectName, config.dockerSetup, config.localMode ?? false);
