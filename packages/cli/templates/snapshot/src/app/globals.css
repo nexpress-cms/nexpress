@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/*
+ * Scaffold variant of these `@source` lines — paths point at the
+ * installed packages under node_modules. apps/web's globals.css
+ * scans `../../../../packages/X/src` via the monorepo's relative
+ * path; a scaffolded site doesn't have a `packages/` sibling, so
+ * we point at the built `dist/` instead.
+ *
+ * The admin / blocks / editor packages ship their tsup output
+ * un-minified, which means className strings stay intact in the
+ * .js bundles for Tailwind v4's content scanner to pick up. If
+ * that ever changes (someone enables `minify: true` in any of
+ * those packages' tsup.config), the scaffolded admin will start
+ * shipping without its utility classes.
+ *
+ * `pnpm sync-snapshot` rewrites these three lines back to the
+ * node_modules form on every resync even if apps/web's source
+ * paths change.
+ */
 @source "../../node_modules/@nexpress/admin/dist/**/*.js";
 @source "../../node_modules/@nexpress/blocks/dist/**/*.js";
 @source "../../node_modules/@nexpress/editor/dist/**/*.js";
