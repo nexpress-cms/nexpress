@@ -134,6 +134,14 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/editor": nexpressVersion,
         "@nexpress/blocks": nexpressVersion,
         "@nexpress/theme": nexpressVersion,
+        // Built-in theme packs — scaffold admin's Appearance → Themes
+        // can only list themes that exist in node_modules. Without
+        // these as direct deps, the picker shows empty even though
+        // @nexpress/theme (the engine) is present.
+        "@nexpress/theme-default": nexpressVersion,
+        "@nexpress/theme-docs": nexpressVersion,
+        "@nexpress/theme-magazine": nexpressVersion,
+        "@nexpress/theme-portfolio": nexpressVersion,
         "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
         "drizzle-orm": "^0.45.2",

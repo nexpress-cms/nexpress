@@ -2,6 +2,7 @@ import {
   NP_DEFAULT_SITE_ID,
   NpConflictError,
   NpValidationError,
+  ensureDefaultSite,
   hashPassword,
   npUsers,
   signToken,
@@ -127,6 +128,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       // admin.
       throw new NpConflictError("Setup already completed");
     }
+
+    // First-boot guarantee: `np_sites` is created by migrations but
+    // the default row isn't seeded automatically (`ensureDefaultSite`
+    // isn't wired into bootstrap). Without this, the wizard's
+    // `updateSite(NP_DEFAULT_SITE_ID, …)` below throws `Site "default"
+    // not found` and the operator gets a 400 with no recourse. Wiring
+    // ensureDefaultSite into `ensureFor` is the longer-term fix; for
+    // now call it explicitly here since the wizard is the path where
+    // the absence first matters.
+    await ensureDefaultSite();
 
     const db = getDb();
     const passwordHash = await hashPassword(body.password);
