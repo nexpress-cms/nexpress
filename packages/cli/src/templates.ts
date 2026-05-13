@@ -55,6 +55,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
     "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
     "scripts/setup-server.ts": utf8(setupServerScriptTemplate()),
+    "scripts/run-migrations.ts": utf8(runMigrationsScriptTemplate()),
     "scripts/worker.ts": utf8(workerScriptTemplate()),
   };
 
@@ -156,6 +157,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/cli": nexpressVersion,
         "@tailwindcss/postcss": "^4.0.0",
         "@types/node": "^22.0.0",
+        "@types/pg": "^8.15.5",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
         dotenv: "^17.2.4",
@@ -237,6 +239,10 @@ function seedAdminScriptTemplate(): string {
 
 function setupServerScriptTemplate(): string {
   return readTemplate("scripts/setup-server.ts");
+}
+
+function runMigrationsScriptTemplate(): string {
+  return readTemplate("scripts/run-migrations.ts");
 }
 
 function doctorScriptTemplate(): string {
