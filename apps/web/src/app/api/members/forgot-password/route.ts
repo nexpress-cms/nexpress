@@ -1,3 +1,1 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
-
-export const POST = memberAuthRoutes.forgotPassword;
+export { POST } from "@nexpress/app/api/members/forgot-password/route";
