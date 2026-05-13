@@ -98,9 +98,23 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as {
-          error?: { message?: string };
+          error?: {
+            message?: string;
+            fields?: Array<{ field: string; message: string }>;
+          };
         };
-        setError(body.error?.message ?? "Setup failed.");
+        // NpValidationError carries the actual offending fields in
+        // `fields[]`; surfacing only the umbrella `message` ("Invalid
+        // input") leaves operators staring at a screen that says
+        // nothing about what's wrong with their input.
+        const fieldDetail = body.error?.fields
+          ?.map((f) => `${f.field}: ${f.message}`)
+          .join(" — ");
+        setError(
+          fieldDetail
+            ? `${body.error?.message ?? "Setup failed"} (${fieldDetail})`
+            : body.error?.message ?? "Setup failed.",
+        );
         return;
       }
       router.push("/admin");

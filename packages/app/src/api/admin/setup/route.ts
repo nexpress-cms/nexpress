@@ -164,24 +164,46 @@ export async function POST(request: NextRequest): Promise<Response> {
       throw new Error("Failed to create admin row");
     }
 
+    // Admin row is committed (no transaction wraps the chain
+    // below — adding one would force a drizzle `db.transaction()`
+    // around updateSite + seedAll, both of which acquire their
+    // own DB scope today). Without rollback, a later throw would
+    // leave the admin row in place and every retry would hit the
+    // `Setup already completed` gate. Wrap site-rename and
+    // seeding as best-effort so the wizard still completes —
+    // operator can fix data afterwards through the admin UI.
+    const warnings: string[] = [];
+
     if (body.siteName) {
-      await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
+      try {
+        await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
+      } catch (siteErr) {
+        warnings.push(
+          `Site name update failed: ${siteErr instanceof Error ? siteErr.message : String(siteErr)}. You can rename the site from Admin → Settings.`,
+        );
+      }
     }
 
     let seeded: Awaited<ReturnType<typeof seedAll>> | null = null;
     if (body.sampleContent) {
-      // Sample content needs the plugin host loaded so collection
-      // hooks (slugField, search-vector, etc.) fire.
-      await ensureFor("plugins");
-      seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
-        seedAll({
-          id: created.id,
-          email: created.email,
-          name: created.name,
-          role: created.role,
-          tokenVersion: created.tokenVersion,
-        }),
-      );
+      try {
+        // Sample content needs the plugin host loaded so collection
+        // hooks (slugField, search-vector, etc.) fire.
+        await ensureFor("plugins");
+        seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
+          seedAll({
+            id: created.id,
+            email: created.email,
+            name: created.name,
+            role: created.role,
+            tokenVersion: created.tokenVersion,
+          }),
+        );
+      } catch (seedErr) {
+        warnings.push(
+          `Sample content seeding failed: ${seedErr instanceof Error ? seedErr.message : String(seedErr)}. Admin account is ready; add content manually from Admin → Collections.`,
+        );
+      }
     }
 
     const config = getAuthRuntimeConfig();
@@ -213,6 +235,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             navItems: seeded.navigation.header + seeded.navigation.footer,
           }
         : null,
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
     setAuthCookies(response, {
       access,
