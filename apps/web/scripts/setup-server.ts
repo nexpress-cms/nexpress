@@ -365,8 +365,13 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
     console.log("[setup] db:generate FAILED");
     return gen;
   }
-  console.log("[setup] running pnpm db:migrate …");
-  const mig = await runChild(["pnpm", "run", "db:migrate"], env);
+  console.log("[setup] running migrations …");
+  // Use the local drizzle-orm migrate runner (scripts/run-migrations.ts)
+  // instead of `pnpm run db:migrate` (which shells out to the
+  // drizzle-kit CLI). The CLI swallows SQL errors as a silent
+  // `exit 1` under non-TTY; the library function throws a real
+  // Error with the pg sqlstate, surfaced through stderr.
+  const mig = await runChild(["pnpm", "exec", "tsx", "./scripts/run-migrations.ts"], env);
   if (!mig.ok) {
     console.log("[setup] db:migrate FAILED");
     return { ok: false, output: gen.output + mig.output };

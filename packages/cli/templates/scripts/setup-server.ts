@@ -521,13 +521,16 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
     console.log("[setup] db:generate FAILED");
     return gen;
   }
-  console.log("[setup] running pnpm db:migrate …");
-  // Bypass the pnpm script wrapper — call drizzle-kit directly via
-  // `pnpm exec`. `pnpm run` adds its own output layer that has
-  // swallowed drizzle-kit stderr in past reports; `pnpm exec` runs
-  // the binary as a direct child so whatever the binary writes flows
-  // straight through.
-  const mig = await runChild(["pnpm", "exec", "drizzle-kit", "migrate"], env);
+  console.log("[setup] running migrations …");
+  // Use the local drizzle-orm migrate runner (scripts/run-migrations.ts)
+  // instead of the `drizzle-kit migrate` CLI. The CLI swallows SQL
+  // errors as a silent `exit 1` under non-TTY (the wizard's spawn);
+  // the library function throws a real Error with the pg sqlstate
+  // attached, which our runner prints to stderr. The schema state
+  // produced is identical — same migrations folder, same
+  // `drizzle.__drizzle_migrations` tracking — only error fidelity
+  // changes.
+  const mig = await runChild(["pnpm", "exec", "tsx", "./scripts/run-migrations.ts"], env);
   if (!mig.ok) {
     console.log("[setup] db:migrate FAILED");
     return { ok: false, output: gen.output + mig.output };
