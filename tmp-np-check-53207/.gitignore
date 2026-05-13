@@ -1,8 +1,0 @@
-node_modules/
-.next/
-dist/
-.env
-*.tsbuildinfo
-src/db/generated/*.ts
-!src/db/generated/.gitkeep
-uploads/
