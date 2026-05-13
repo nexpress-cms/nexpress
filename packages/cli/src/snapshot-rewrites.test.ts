@@ -70,4 +70,20 @@ describe("rewriteScaffoldGlobalsCss", () => {
     expect(commentIdx).toBeGreaterThanOrEqual(0);
     expect(sourceIdx).toBeGreaterThan(commentIdx);
   });
+
+  it("inserts the comment when admin is absent (only blocks/editor present)", () => {
+    // Guards against a future apps/web globals.css that reorders or
+    // drops the admin line — the comment must still land on the
+    // first rewritten line, not vanish silently.
+    const out = rewriteScaffoldGlobalsCss(
+      [
+        '@source "../../../../packages/blocks/src/**/*.{ts,tsx}";',
+        '@source "../../../../packages/editor/src/**/*.{ts,tsx}";',
+      ].join("\n"),
+    );
+    expect(out).toContain("Scaffold variant of these");
+    const commentIdx = out.indexOf("Scaffold variant of these");
+    const firstSourceIdx = out.indexOf("@source \"../../node_modules");
+    expect(firstSourceIdx).toBeGreaterThan(commentIdx);
+  });
 });

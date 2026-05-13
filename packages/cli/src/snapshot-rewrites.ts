@@ -69,9 +69,13 @@ export function rewriteScaffoldGlobalsCss(css: string): string {
   }
   // Insert the comment block immediately before the first
   // node_modules `@source` line so the rationale lives next to
-  // the rewrite, not buried at the top of the file.
+  // the rewrite, not buried at the top of the file. Matches any
+  // of admin / blocks / editor (not admin-only) so a future
+  // reorder or drop of one line in apps/web's globals.css can't
+  // silently strip the comment while the rewrite itself still
+  // succeeds on the remaining lines.
   return rewritten.replace(
-    /(@source "\.\.\/\.\.\/node_modules\/@nexpress\/admin\/dist[^"]*";)/,
+    /(@source "\.\.\/\.\.\/node_modules\/@nexpress\/(?:admin|blocks|editor)\/dist[^"]*";)/,
     SCAFFOLD_VARIANT_COMMENT + "$1",
   );
 }
