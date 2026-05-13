@@ -85,15 +85,18 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
   return files;
 }
 
-// Pinned `@nexpress/*` range for scaffolded projects. Bumped
-// manually when the family hits a new minor (e.g. 0.1.x → 0.2.x).
-// `latest` is tempting but creates a footgun: a stale
-// `create-nexpress` could scaffold a project pinned to a future
-// breaking `@nexpress/core` whose API the scaffold's source
-// templates haven't kept up with. Explicit pin = scaffold and
-// runtime always speak the same version family. Operator can
-// still bump locally with `pnpm update --latest @nexpress/*`.
-const SCAFFOLDED_NEXPRESS_RANGE = "^0.1.3";
+// Family range for scaffolded `@nexpress/*` deps. `^0.1.0` =
+// `>= 0.1.0 < 0.2.0` — pins to the 0.1 minor family. `latest` is
+// tempting but creates a footgun: a stale `create-nexpress` would
+// scaffold against a future breaking `@nexpress/core` whose API
+// the scaffold's source templates haven't kept up with. The
+// `fixed` group in `.changeset/config.json` keeps every
+// `@nexpress/*` on the same `0.1.x` patch in lockstep, so the
+// `^0.1.0` lower bound never misses a member of the family
+// (which is what bit `@nexpress/app@0.1.1` against an earlier
+// `^0.1.3` pin). Bump this only when the family crosses a minor
+// boundary (0.2.x, 1.0.0, …).
+const SCAFFOLDED_NEXPRESS_RANGE = "^0.1.0";
 
 function packageJsonTemplate(config: TemplateConfig): string {
   const nexpressVersion = config.localMode ? "workspace:*" : SCAFFOLDED_NEXPRESS_RANGE;
