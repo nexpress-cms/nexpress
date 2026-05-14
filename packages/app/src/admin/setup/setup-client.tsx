@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AuthCard,
@@ -93,6 +93,26 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // One ref per theme radio button so arrow-key nav can hand
+  // focus to the new selection. Standard WAI-ARIA radio pattern:
+  // Tab enters the group, arrows move focus + selection inside,
+  // Tab again leaves the group. Only the selected radio is in
+  // the document tab order (`tabIndex={selected ? 0 : -1}`).
+  const themeRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function moveThemeSelection(delta: number) {
+    if (themes.length === 0) return;
+    const current = themes.findIndex((t) => t.id === site.themeId);
+    const fromIndex = current >= 0 ? current : 0;
+    // Modulo with `+ themes.length` handles the negative wrap
+    // (`-1 % 4 === -1` in JS, not `3`).
+    const nextIndex = (fromIndex + delta + themes.length) % themes.length;
+    const next = themes[nextIndex];
+    if (!next) return;
+    setSite((prev) => ({ ...prev, themeId: next.id }));
+    themeRefs.current[nextIndex]?.focus();
+  }
 
   function validateAccount(): string | null {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.email)) {
@@ -260,15 +280,40 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
                   aria-label="Theme"
                   className="flex flex-col gap-1.5"
                 >
-                  {themes.map((theme) => {
+                  {themes.map((theme, index) => {
                     const selected = site.themeId === theme.id;
                     return (
                       <button
                         key={theme.id}
+                        ref={(el) => {
+                          themeRefs.current[index] = el;
+                        }}
                         type="button"
                         role="radio"
                         aria-checked={selected}
+                        tabIndex={selected ? 0 : -1}
                         onClick={() => setSite({ ...site, themeId: theme.id })}
+                        onKeyDown={(e) => {
+                          // Standard radio group: Down/Right →
+                          // next option (wrap), Up/Left → prev
+                          // option (wrap), Home → first, End →
+                          // last. preventDefault on the arrows
+                          // stops the page from scrolling under
+                          // the picker.
+                          if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                            e.preventDefault();
+                            moveThemeSelection(1);
+                          } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            moveThemeSelection(-1);
+                          } else if (e.key === "Home") {
+                            e.preventDefault();
+                            moveThemeSelection(-index);
+                          } else if (e.key === "End") {
+                            e.preventDefault();
+                            moveThemeSelection(themes.length - 1 - index);
+                          }
+                        }}
                         className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors ${
                           selected
                             ? "border-neutral-900 bg-neutral-50 dark:border-neutral-100 dark:bg-neutral-900"

@@ -13,7 +13,7 @@ import {
   withCurrentSite,
 } from "@nexpress/core";
 import { count, eq } from "drizzle-orm";
-import { readJsonBody } from "@nexpress/next";
+import { readJsonBody, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -248,6 +248,27 @@ export async function POST(request: NextRequest): Promise<Response> {
           // sees one consistent theme view.
           if (body.themeId) {
             await setActiveThemeId(body.themeId, created.id);
+            // Bust the theme-dependent caches so the next render
+            // picks up the new shell + CSS. Mirror of
+            // `/api/admin/themes/active` PUT — keep them in sync
+            // if you change one. Wrapped in try/catch because
+            // `revalidate*` throws "Invariant: static generation
+            // store missing" outside a request context (test
+            // harnesses, scripts); the persistence already
+            // succeeded, cache-bust failure shouldn't surface as
+            // a 500. SEO tags bust unconditionally on theme
+            // switch (design doc §4.7) — the new theme may not
+            // contribute SEO hooks, but the OLD one might have,
+            // and those cached entries linger otherwise.
+            try {
+              const { revalidatePath, revalidateTag } = await import("next/cache");
+              revalidateTag(themeCacheTag(NP_DEFAULT_SITE_ID), "default");
+              revalidateTag(`nx:sitemap:${NP_DEFAULT_SITE_ID}`, "default");
+              revalidateTag(`nx:feed:${NP_DEFAULT_SITE_ID}`, "default");
+              revalidatePath("/", "layout");
+            } catch {
+              // ignore — see comment above
+            }
           }
           // Theme-only path (operator picked a theme but declined
           // sample content): the activation already landed above;
