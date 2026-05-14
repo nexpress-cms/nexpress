@@ -1,6 +1,6 @@
 # Deployment
 
-NexPress is a standard Next.js 15 app with a Postgres dependency. Any host
+NexPress is a standard Next.js 16 app with a Postgres dependency. Any host
 that runs Node.js 20+ with a managed Postgres works. This guide covers
 three concrete paths plus the env-var surface you need on all of them.
 
@@ -62,9 +62,12 @@ docker run --rm \
 > A volume mount keeps uploads across redeploys, but the local adapter is
 > **single-node only** — for multi-node deploys switch to `NP_STORAGE_ADAPTER=s3`.
 
-A reference Compose file for db + minio lives at `docker/docker-compose.yml`.
-For production, point `DATABASE_URL` at a managed Postgres (RDS, Supabase,
-Neon, Fly.io Postgres, etc.) instead.
+A reference Compose file for Postgres (port 5433) + Mailpit (SMTP 1025,
+web inbox 8025) + an optional MinIO under the `s3` profile lives at
+`docker/docker-compose.yml`. Scaffolded sites get the same layout under
+`docker/docker-compose.yml`, just with a project-named `POSTGRES_DB`
+substituted in. For production, point `DATABASE_URL` at a managed
+Postgres (RDS, Supabase, Neon, Fly.io Postgres, etc.) instead.
 
 ### Image build notes
 
@@ -82,7 +85,7 @@ Neon, Fly.io Postgres, etc.) instead.
 
 ## Path 2: Vercel
 
-Works out of the box thanks to `output: "standalone"` + Next 15 Vercel
+Works out of the box thanks to `output: "standalone"` + Next 16 Vercel
 support. One-time setup:
 
 1. Push the repo to GitHub / GitLab and import it in the Vercel
@@ -254,8 +257,11 @@ warnings — including the Phase 22.2 boot checks and the pg-boss handler
 errors — land in the same stream as application logs.
 
 Install once at app boot, before the first `ensureFor(...)` call. The
-canonical install location in the reference app is
-`apps/web/src/lib/init-core.ts`, next to the email-adapter setup:
+framework implementation lives in `@nexpress/app/lib/init-core`; both
+the reference app (`apps/web/src/lib/init-core.ts`) and scaffolded
+sites (`src/lib/init-core.ts`) are thin wrappers around it. To swap a
+logger, unwrap that file and install your adapter next to the
+email-adapter setup before re-exporting:
 
 ```ts
 import { setLogger } from "@nexpress/core";
@@ -315,7 +321,8 @@ For a Sentry / pino / Datadog-specific recipe and the matching
   the adapter at boot:
 
   ```ts
-  // apps/web/src/lib/init-core.ts (or your app's bootstrap)
+  // src/lib/init-core.ts wrapper (unwrap to install) — implementation
+  // lives in @nexpress/app/lib/init-core
   import { setRateLimiter } from "@nexpress/core/rate-limit";
   import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
 
@@ -339,7 +346,8 @@ For a Sentry / pino / Datadog-specific recipe and the matching
     ```
 
     ```ts
-    // apps/web/src/lib/init-core.ts (or your bootstrap)
+    // src/lib/init-core.ts wrapper (unwrap to install) — implementation
+    // lives in @nexpress/app/lib/init-core
     import { setRateLimiter } from "@nexpress/core/rate-limit";
     import { RedisRateLimiter } from "@nexpress/rate-limiter-redis";
 

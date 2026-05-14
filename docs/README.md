@@ -31,6 +31,7 @@ behavior they describe changes.
 | [plugin-render.md](plugin-render.md)                   | Plugin render hooks                                                    |
 | [releasing.md](releasing.md)                           | Changesets release and npm publish checklist                           |
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
+| [site-customization.md](site-customization.md)         | Track A — what to customise in a scaffolded site without forking       |
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |
 | [theme-and-page-authors.md](theme-and-page-authors.md) | Cookbook — what to call from a custom page or theme                    |
 | [theme-authoring.md](theme-authoring.md)               | Authoring a theme                                                      |

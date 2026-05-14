@@ -3,8 +3,10 @@
 This is the recipe book for two adjacent jobs:
 
 - Authoring a **custom Next.js page** that lives under
-  `apps/web/src/app/(site)/*` and ships as part of your site code
-  (`/blog`, `/search`, `/u/[handle]`, …).
+  `src/app/(site)/*` (in a scaffolded site; the same physical
+  location in `apps/web/src/app/(site)/*` for the reference app)
+  and ships as part of your site code (`/blog`, `/search`,
+  `/u/[handle]`, …).
 - Authoring a **theme package** (`packages/themes/<name>` or your
   own npm package) that contributes `<Shell>`, slots, and per-
   collection templates.
@@ -57,7 +59,8 @@ call `ensureFor(intent)` first. Without it, `getDb()` throws
 `"Database not initialized"` and the request 500s.
 
 ```ts
-// apps/web/src/app/(site)/blog/page.tsx
+// src/app/(site)/blog/page.tsx (in a scaffolded site, or the same
+// physical location under `apps/web/` in the monorepo).
 import { ensureFor } from "@/lib/init-core";
 
 export default async function BlogIndex() {
@@ -248,7 +251,7 @@ intersects across multiple hasMany filters, and delegates to
 applies — `siteId`, `visibility`, `access.read` — run as usual.**
 You shouldn't need raw Drizzle for the standard listing path.
 
-Reference implementation: `apps/web/src/app/(site)/blog/category/[slug]/page.tsx`.
+Reference implementation: `@nexpress/app/site/blog/category/[slug]/page` (re-exported by the thin wrapper at `apps/web/src/app/(site)/blog/category/[slug]/page.tsx`).
 
 #### When you still need raw Drizzle
 
@@ -333,7 +336,8 @@ operators can pick them from a dropdown.
 ### 4.1 Register your hand-coded routes
 
 ```ts
-// apps/web/src/lib/custom-routes.ts
+// src/lib/custom-routes.ts (a new file you author inside your site —
+// not a framework wrapper).
 import { registerCustomRoute } from "@nexpress/core/routes";
 
 export function registerCustomRoutes(): void {
@@ -349,8 +353,10 @@ export function registerCustomRoutes(): void {
 }
 ```
 
-Call `registerCustomRoutes()` once at boot (the reference app
-hooks this into `ensureFor("read")` in `apps/web/src/lib/init-core.ts`).
+Call `registerCustomRoutes()` once at boot — unwrap your site's
+`src/lib/init-core.ts` (a thin re-export of
+`@nexpress/app/lib/init-core` by default) and call it inside
+`ensureFor("read")` before re-exporting.
 The routes show up in **Settings → Routes** for operators and as
 autocomplete in the navigation editor's link picker.
 
@@ -365,7 +371,7 @@ import { resolveLocale, getCurrentLocale, t, tSync } from "@nexpress/core/i18n";
 import { headers } from "next/headers";
 
 const headerList = await headers();
-const pathname = headerList.get("x-np-pathname") ?? "/"; // stamped by `apps/web/src/proxy.ts`
+const pathname = headerList.get("x-np-pathname") ?? "/"; // stamped by the framework proxy (`src/proxy.ts`, implementation in `@nexpress/app/proxy`)
 const acceptLanguage = headerList.get("accept-language") ?? undefined;
 
 const resolved = resolveLocale({ pathname, acceptLanguage });
@@ -652,8 +658,8 @@ export const POST = staffAuthRoutes.login;
 Nine handlers cover every flow: `login`, `logout`, `refresh`,
 `forgotPassword`, `resetPassword`, `changePassword`,
 `oauthStart`, `oauthCallback`, `meGet`. Behavior is byte-for-byte
-identical to the reference app's prior `apps/web/src/app/api/auth/*`
-implementation — same lockout config (env-driven via
+identical to the framework's `@nexpress/app/api/auth/*` route
+implementations — same lockout config (env-driven via
 `NP_MAX_LOGIN_ATTEMPTS` / `NP_LOCKOUT_DURATION`), same OAuth
 state cookies, same `auth:afterLogin` / `auth:beforeLogout`
 plugin hooks, same `np-admin-site` cookie clear on logout.
@@ -783,7 +789,8 @@ the body. Each call hits the DB independently. React's `cache()`
 deduplicates by argument tuple, so wrap once at the app boundary:
 
 ```ts
-// apps/web/src/lib/cached-content.ts
+// src/lib/cached-content.ts (a new file you author in your site —
+// not a framework wrapper).
 import { getMemberProfile } from "@nexpress/core";
 import { cache } from "react";
 
@@ -834,11 +841,12 @@ const tokens = await getCachedTheme(); // resolved tokens (defaults + active the
 const active = await getCachedActiveTheme(); // the registered theme object — has .impl with shell/slots
 ```
 
-Themes inject their own CSS via `active?.impl.css`. The reference
-site layout (`apps/web/src/app/(site)/layout.tsx`) is the
-canonical example — copy its shape if you're building a custom
-top-level layout. See [`theme-authoring.md`](theme-authoring.md)
-for the full `defineTheme` contract.
+Themes inject their own CSS via `active?.impl.css`. The framework
+ships the canonical `(site)` layout at `@nexpress/app/site/layout`
+(re-exported from `apps/web/src/app/(site)/layout.tsx`) — copy its
+shape into your scaffold if you're building a custom top-level
+layout. See [`theme-authoring.md`](theme-authoring.md) for the
+full `defineTheme` contract.
 
 ---
 
@@ -922,10 +930,11 @@ return (
 );
 ```
 
-For sitemap and Atom feed entry points, the reference app already
-exposes `/sitemap.xml` and `/feed.xml` — see
-`apps/web/src/app/sitemap.xml/route.ts` and
-`apps/web/src/app/feed.xml/route.ts` for the wiring.
+For sitemap and Atom feed entry points, every scaffold already
+exposes `/sitemap.xml` and `/feed.xml` — the implementations live
+in `@nexpress/app/root/{sitemap,feed}/route` and are re-exported
+from `src/app/{sitemap,feed}.xml/route.ts` thin wrappers (same
+shape in `apps/web`).
 
 ---
 
@@ -934,9 +943,10 @@ exposes `/sitemap.xml` and `/feed.xml` — see
 `NpFindResult` already gives you everything: `page`, `totalPages`,
 `hasPrevPage`, `hasNextPage`. The framework intentionally doesn't
 ship a `<Pagination />` component because the visual treatment is
-theme territory. The reference app has a small one at
-`apps/web/src/components/pagination-nav.tsx` that you can copy
-and restyle:
+theme territory. There's a reference implementation at
+`@nexpress/app/components/pagination-nav` (also visible as a thin
+wrapper in `apps/web/src/components/pagination-nav.tsx`) you can
+copy into your site as a starting point and restyle:
 
 ```tsx
 import { PaginationNav } from "@/components/pagination-nav";

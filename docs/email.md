@@ -53,14 +53,16 @@ NP_SMTP_FROM="NexPress dev <noreply@nexpress.local>"
 NP_SMTP_SECURE=false
 ```
 
-> **Two `.env` files, both need this.** Next.js reads `.env` from
-> the project root (`apps/web/`), but monorepo-level scripts like
-> `drizzle.config.ts` load the repo-root `.env` directly via
-> dotenv. The SMTP block has to live in **`apps/web/.env`** for
-> `next dev` to see it; root `.env` only matters for monorepo
-> tooling. `pnpm run setup` writes both automatically — manual
-> setups need to copy the block into `apps/web/.env` after
-> `cp .env.example .env`.
+> **Scaffolded site (Track A):** one `.env` at the project root —
+> `pnpm run setup` writes it. Done.
+>
+> **Monorepo (Track B):** two `.env` files, both need this. Next.js
+> reads `.env` from the project root (`apps/web/`), but monorepo-level
+> scripts like `drizzle.config.ts` load the repo-root `.env` directly
+> via dotenv. The SMTP block has to live in **`apps/web/.env`** for
+> `next dev` to see it; root `.env` only matters for monorepo tooling.
+> `pnpm run setup` writes both automatically — manual setups need to
+> copy the block into `apps/web/.env` after `cp .env.example .env`.
 
 The `MP_SMTP_AUTH_ACCEPT_ANY` flag on the container accepts any
 credentials, so you don't need to provision a real SMTP user
@@ -127,7 +129,9 @@ provider has a native HTTP SDK (Resend, SendGrid, Postmark) that you'd
 rather call directly than go through SMTP.
 
 ```ts
-// apps/web/src/lib/init-core.ts
+// src/lib/init-core.ts (a thin wrapper in scaffolded sites — unwrap to
+// install). Implementation lives in @nexpress/app/lib/init-core; the
+// reference app re-exports from there at apps/web/src/lib/init-core.ts.
 import { setEmailAdapter, type NpEmailAdapter, type NpEmailMessage } from "@nexpress/core";
 import { Resend } from "resend";
 
@@ -160,8 +164,9 @@ if (process.env.RESEND_API_KEY) {
 ```
 
 Call `setEmailAdapter` **before** the first password-reset / invite
-request — the reference app wires it inside `ensureFor("write")`
-(see `apps/web/src/lib/init-core.ts`). Any module-scope init that
+request — the framework wires it inside `ensureFor("write")` in
+`@nexpress/app/lib/init-core` (surfaced as `src/lib/init-core.ts` in
+both scaffolded sites and `apps/web`). Any module-scope init that
 runs on boot also works.
 
 ---

@@ -192,9 +192,11 @@ rsync -a --delete /backups/uploads-20260502/ ./uploads/
 
 ### 3. Workers and app
 
-Bring app replicas back up. The worker (`startWorker()` in `apps/web`)
-boots, registers in `np_worker_heartbeats`, and starts pulling from
-the pg-boss tables that were restored along with the DB.
+Bring app replicas back up. The worker (`startWorker()`, invoked
+from `scripts/worker.ts` in your site or `apps/web` in the
+monorepo) boots, registers in `np_worker_heartbeats`, and starts
+pulling from the pg-boss tables that were restored along with the
+DB.
 
 ```bash
 # Docker

@@ -77,7 +77,7 @@ packages/themes/mybrand/
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "peerDependencies": {
-    "next": "^15.0.0",
+    "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -352,16 +352,30 @@ revert when an admin tries a different theme.
 ## 9. Registering and Activating
 
 **Install**: register every theme you want admins to be able
-to switch into in `nexpress.config.ts`:
+to switch into in `nexpress.config.ts`. The built-in pack
+(`@nexpress/theme-default`, `theme-magazine`, `theme-portfolio`,
+`theme-docs`) is exported as `defaultThemes` from
+`@nexpress/app/config-defaults` — spread it and append your own:
 
 ```ts
-import { defaultTheme } from "@nexpress/theme-default";
-import { magazineTheme } from "@nexpress/theme-magazine";
+import { defaultThemes } from "@nexpress/app/config-defaults";
 import { mybrandTheme } from "@yourco/theme-mybrand";
 
 export default defineConfig({
   // ...
-  themes: [defaultTheme, magazineTheme, mybrandTheme],
+  themes: [...defaultThemes, mybrandTheme],
+});
+```
+
+If you don't want every built-in pack, drop `defaultThemes` and list
+just the themes you ship:
+
+```ts
+import { magazineTheme } from "@nexpress/theme-magazine";
+import { mybrandTheme } from "@yourco/theme-mybrand";
+
+export default defineConfig({
+  themes: [magazineTheme, mybrandTheme],
 });
 ```
 

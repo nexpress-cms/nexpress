@@ -13,8 +13,11 @@ framework taking on a Sentry / Datadog / Axiom dependency:
   nothing.
 
 Both APIs are exported from `@nexpress/core`. Install your adapters
-once at app boot (e.g. inside `apps/web/src/lib/init-core.ts` next to
-the email setup) and every downstream call site picks them up.
+once at app boot — the framework's bootstrap lives in
+`@nexpress/app/lib/init-core` and is surfaced through a thin wrapper
+at `src/lib/init-core.ts` in every site (and `apps/web/src/lib/init-core.ts`
+in the monorepo). Unwrap that file and install the adapters next to
+the email setup; every downstream call site picks them up.
 
 ---
 
