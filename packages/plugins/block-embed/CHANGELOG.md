@@ -1,5 +1,12 @@
 # @nexpress/plugin-block-embed
 
+## 0.2.1
+
+### Patch Changes
+
+- @nexpress/blocks@0.2.1
+- @nexpress/plugin-sdk@0.2.1
+
 ## 0.2.0
 
 ### Patch Changes
