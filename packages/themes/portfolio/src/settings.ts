@@ -59,6 +59,25 @@ export const portfolioSettingsSchema = z.object({
     .string()
     .default("Studio")
     .describe("Studio / personal name shown in the masthead and footer."),
+  timezone: z
+    .string()
+    .default("Asia/Seoul")
+    .describe(
+      "IANA timezone for the masthead's local-time pill (e.g. 'Asia/Seoul', 'America/New_York'). Leave at default to use studio-local time.",
+    ),
+  contactEmail: z
+    .string()
+    .email()
+    .optional()
+    .describe(
+      "Studio mailto target rendered as a large heading in the contact strip. When omitted, the contact strip is hidden.",
+    ),
+  bookingNotice: z
+    .string()
+    .default("Currently — booking late 2026")
+    .describe(
+      "Short availability eyebrow above the contact mailto (e.g. 'Currently — booking late 2026').",
+    ),
   aboutCopy: z
     .string()
     .default("")

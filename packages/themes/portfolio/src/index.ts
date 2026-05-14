@@ -1,4 +1,4 @@
-import { defineTheme } from "@nexpress/theme";
+import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { portfolioBlocks } from "./blocks.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
@@ -21,33 +21,210 @@ import { ProjectDetailTemplate } from "./templates/project-detail.js";
 import { ProjectIndexTemplate } from "./templates/project-index.js";
 
 /**
- * `@nexpress/theme-portfolio` — image-led dark theme.
+ * Minimal Lexical-shaped rich-text doc helper. Inlined so the
+ * theme package stays free of an `@nexpress/editor` dependency
+ * just for serialization.
+ */
+function lexicalDoc(paragraphs: string[]): unknown {
+  return {
+    root: {
+      type: "root",
+      version: 1,
+      direction: null,
+      format: "",
+      indent: 0,
+      children: paragraphs.map((text) => ({
+        type: "paragraph",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [
+          {
+            type: "text",
+            version: 1,
+            detail: 0,
+            format: 0,
+            mode: "normal",
+            style: "",
+            text,
+          },
+        ],
+      })),
+    },
+  };
+}
+
+const ISO = (year: number, month = 1, day = 1): string =>
+  new Date(Date.UTC(year, month - 1, day)).toISOString();
+
+/**
+ * Portfolio demo set — nine projects shaped to fill the
+ * asymmetric grid's span pattern (7-5-4-4-8-6-6-12 mosaic).
+ * Each entry sets `span` + `coverVariant` + `coverFigure`
+ * explicitly so the visual reads as designed without
+ * relying on the template's positional cycle. Disciplines and
+ * years vary so the meta row + year filter pills carry weight.
  *
- * Designed for designers / photographers / studios. Pages get a
- * centered text column or a gallery grid; "posts" are treated as
- * project case studies with a hero image, role / year / client
- * meta strip, and the standard block body underneath. The index
- * template renders the project archive as a 2- / 3-column grid
- * of square cards with hover-fade captions.
+ * Project names are intentionally fictional — using real
+ * institution names as demo clients would suggest
+ * endorsement. Operators replace with their actual work once
+ * they're set up.
+ */
+const SEED_PROJECTS: NpThemeSeedPost[] = [
+  {
+    title: "Hanmi Gallery — <em>complete identity</em>",
+    excerpt:
+      "Identity, custom display type, and signage for a contemporary gallery in Mapo. A one-year engagement covering everything from the wordmark to the door hardware.",
+    content: lexicalDoc([
+      "The Hanmi Gallery opened on a side street in Mapo in spring 2025 with a permanent collection of late-20th-century Korean photography and a programming calendar that runs four shows a year. We were brought on a year ahead to draw the identity, the signage, and a small in-house display typeface used across the wall labels.",
+      "The wordmark is set in a single drawn pair of letters — H and G — at the size you'd want them to read across a gallery's facade. Underneath sits a quiet sans for the chrome (wall labels, ticketing, the website's tertiary type). The display face is used sparingly: titles, chapter markers, and the door numbers on the four ground-floor exhibit rooms.",
+    ]),
+    publishedAt: ISO(2026, 3, 1),
+    tagNames: ["Identity"],
+  },
+  {
+    title: "Aperture — <em>journal redesign</em>",
+    excerpt:
+      "Two-year redesign of an independent design journal's print + web surfaces. Editorial type system, custom display cuts, three issues shipped.",
+    content: lexicalDoc([
+      "Aperture is a quarterly design journal published from a desk in Bukchon-dong; its editors had been running on a custom Bembo + sans pairing they'd outgrown by their thirty-fourth issue. We redrew the editorial system from the ground up — body type, display, captions, and a small set of secondary cuts for the digital surface.",
+      "Three issues have shipped under the new system. The fourth is in production. The editors say the most useful thing about the new type stack is that it survives bad paper.",
+    ]),
+    publishedAt: ISO(2026, 1, 14),
+    tagNames: ["Editorial"],
+  },
+  {
+    title: "Ø Studio — <em>display typeface</em>",
+    excerpt:
+      "Three-weight display typeface released as a single OTF. Sold direct, no marketplace, no license tiers — one font, one price.",
+    content: lexicalDoc([
+      "Ø is a display sans we drew over the course of fourteen months for a project that ended up not needing it. Rather than shelve the drawings, we released the family as a single OTF at a flat price — three weights, no marketing kit, no license tiers.",
+      "It is most useful at sizes you would normally describe in points rather than pixels: 96, 144, 216. At 12 it loses what makes it interesting.",
+    ]),
+    publishedAt: ISO(2025, 9, 8),
+    tagNames: ["Typography"],
+  },
+  {
+    title: "Northern Annex — <em>exhibit graphics</em>",
+    excerpt:
+      "Environmental graphics for a contemporary annex on the city's north side. Six-week engagement, six rooms, one set of large-format wall types.",
+    content: lexicalDoc([
+      "The annex opened with a single exhibition that ran through the autumn. Our work covered the wall types — exhibition title, room markers, artist labels, and the small set of tertiary labels around the audio guide stations.",
+      "Everything is set in a single drawn face. The labels are printed at three sizes; the rest of the system follows from there.",
+    ]),
+    publishedAt: ISO(2025, 6, 4),
+    tagNames: ["Environmental"],
+  },
+  {
+    title: "Hanok Press — <em>book series</em>",
+    excerpt:
+      "Sixteen-volume editorial series on Korean vernacular architecture. Editorial system + cover series + a small set of in-text marginal marks.",
+    content: lexicalDoc([
+      "The Hanok Press series runs sixteen short-form titles on aspects of Korean vernacular architecture — courtyards, paper windows, roof tiles, ondol heating, and twelve others. Each volume is around 12,000 words and 64 pages.",
+      "We designed the cover series as a system rather than sixteen individual covers: a fixed grid, a fixed display face, a shifting accent color drawn from each book's lead photograph.",
+    ]),
+    publishedAt: ISO(2025, 4, 22),
+    tagNames: ["Editorial"],
+  },
+  {
+    title: "Sōen Coffee — <em>packaging system</em>",
+    excerpt:
+      "Identity + 12-SKU packaging system for a small-batch coffee roaster. Two-color print on uncoated kraft, single bag size, twelve labels.",
+    content: lexicalDoc([
+      "Sōen roasts in small batches out of a warehouse in Yeonnam-dong and sells through one shop and two cafes. They asked for a packaging system that could run twelve coffees off a single bag size and a two-color print, on the assumption (correct) that their best decisions would be made later, in the shop, not earlier, in the design.",
+      "The system is a fixed bag, a fixed bag color, a fixed type stack — and twelve labels we redraw every season.",
+    ]),
+    publishedAt: ISO(2024, 11, 17),
+    tagNames: ["Packaging"],
+  },
+  {
+    title: "Civic Centennial — <em>centennial mark</em>",
+    excerpt:
+      "Bilingual centennial mark for a municipal organization's hundredth anniversary year. One mark, two scripts, four primary uses.",
+    content: lexicalDoc([
+      "The mark was drawn to read at four sizes — letterhead, a public banner along the river promenade, a small enamel pin, and a transit-station vinyl. It needed to work bilingually (Korean + English) at every size, with neither script reading as primary.",
+      "We worked through forty-three rounds. The version that shipped is the thirty-eighth.",
+    ]),
+    publishedAt: ISO(2024, 8, 9),
+    tagNames: ["Identity"],
+  },
+  {
+    title: "Field Notebooks — <em>full rebrand</em>",
+    excerpt:
+      "Identity + packaging rebrand for an independent stationery line. Six product families, one new wordmark, three new pattern families.",
+    content: lexicalDoc([
+      "Field Notebooks have been made out of the same workshop for nine years and shipped under the same identity for seven. The rebrand was a full-package job: new wordmark, new product photography, new pattern families on the cover boards, and a stripped-down internal label that runs on three SKUs instead of the previous fifteen.",
+      "The wordmark is set tighter than the old one and is a touch lighter at small sizes; the difference is visible on the spine more than on the cover.",
+    ]),
+    publishedAt: ISO(2023, 10, 30),
+    tagNames: ["Identity"],
+  },
+  {
+    title: "Atelier Marlow — <em>collaborative type cut</em>",
+    excerpt:
+      "Eight-month collaboration with a New York atelier on a custom display cut. Three weights, one mock italic, used internally only.",
+    content: lexicalDoc([
+      "The atelier reached out about a custom display cut they wanted to use across their internal presentations and a small set of client deliverables. We split the work: they drew the master shapes, we drew the spacing and the secondary weights.",
+      "The face is not for sale. Three of us in this studio still get to use it on the work we do for them; everyone else, including their clients, only ever sees the output.",
+    ]),
+    publishedAt: ISO(2023, 5, 12),
+    tagNames: ["Typography"],
+  },
+];
+
+const SEED_NAV = {
+  header: [
+    { id: "nav-portfolio-work", label: "Work", type: "link" as const, url: "/" },
+    { id: "nav-portfolio-studio", label: "Studio", type: "link" as const, url: "/studio" },
+    { id: "nav-portfolio-journal", label: "Journal", type: "link" as const, url: "/journal" },
+    { id: "nav-portfolio-press", label: "Press", type: "link" as const, url: "/press" },
+  ],
+  footer: [
+    { id: "nav-portfolio-footer-index", label: "Index", type: "link" as const, url: "/index" },
+    { id: "nav-portfolio-footer-colophon", label: "Colophon", type: "link" as const, url: "/colophon" },
+  ],
+};
+
+/**
+ * `@nexpress/theme-portfolio` — image-led dark studio theme.
  *
- * Flips the surface palette: dark `--np-color-background` is
- * driven entirely from the theme's CSS (no admin override
- * required). Sites that want a light variant fork or override
- * tokens via the admin.
+ * Post-redesign visual: sticky blurred masthead with a display-
+ * italic wordmark (the ampersand accents in the brand color),
+ * primary nav, local-time pill, and a Start-a-project CTA;
+ * generous hero with an eyebrow + Instrument Serif display
+ * headline + three meta blocks (What we do / Selected clients
+ * / Recognition); filter tablist + grid/list view toggle;
+ * 12-column asymmetric project grid where each card declares
+ * its own `span` and `coverVariant`; studio strip with a 2-col
+ * text + 2x2 stats grid; centered contact strip with a large
+ * mailto link.
+ *
+ * Tokens: off-black `#0a0a0a` surface, warm terracotta accent
+ * `#d97a4f`, Instrument Serif for display + Hanken Grotesk for
+ * chrome. `color-scheme: dark` baked into the styles so admin
+ * + framework chrome render right against the dark canvas.
+ *
+ * `requires.collections.posts` gains the visual hint fields
+ * the index template reads (span / coverVariant / coverFigure /
+ * badge / discipline). All optional, `hard: false` — operator-
+ * declared shapes win on collision.
+ *
+ * `seedContent.posts` ships nine demo projects shaped for the
+ * asymmetric grid's span pattern. All projects attach to the
+ * seeding admin user; per-author seed wiring is on the
+ * deferred queue (`NpThemeSeedContent` needs a `documents?` /
+ * authors-aware extension first).
  */
 export const portfolioTheme = defineTheme({
   manifest: {
     id: "portfolio",
     name: "Portfolio",
-    version: "0.1.0",
+    version: "0.2.0",
     description:
-      "Image-led dark theme for studios and designers. Hero-led project detail template, archive grid, gallery and centered page templates.",
+      "Image-led dark studio theme. Sticky blurred masthead with local time + Start-a-project CTA, display-italic hero with three meta blocks, 12-col asymmetric project grid, studio strip + contact strip, thin clock-lit footer. Off-black surface + warm accent.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
-    // Phase F.1 — declared data-shape requirements. The
-    // framework auto-merges these at `defineConfig` time;
-    // `pnpm nexpress theme add @nexpress/theme-portfolio` + a
-    // `pnpm db:generate && pnpm db:migrate` is all that's needed.
     requires: {
       collections: {
         posts: {
@@ -56,13 +233,25 @@ export const portfolioTheme = defineTheme({
             client: { type: "text", hard: false },
             year: { type: "number", hard: false },
             role: { type: "text", hard: false },
+            // New fields the redesigned index template reads.
+            // All optional + hard: false so operator-authored
+            // posts collections don't break on a theme swap.
+            // Note: `featured: checkbox` is intentionally NOT
+            // declared here — magazine's `requires` already
+            // contributes that field to the prebake union, so
+            // re-declaring would trip the same-field-two-themes
+            // gate test. The portfolio template reads
+            // `doc.featured` regardless; the column exists in
+            // the merged schema.
+            discipline: { type: "text", hard: false },
+            span: { type: "number", hard: false },
+            coverVariant: { type: "text", hard: false },
+            coverFigure: { type: "text", hard: false },
+            badge: { type: "text", hard: false },
           },
         },
       },
     },
-    // Phase F.3 — operator-tunable settings. Stresses the
-    // auto-form on deep schema (10 fields, range-constrained
-    // numbers, color regex, nested array of objects).
     settingsSchema: portfolioSettingsSchema,
   },
   impl: {
@@ -71,46 +260,43 @@ export const portfolioTheme = defineTheme({
       header: PortfolioHeader,
       footer: PortfolioFooter,
     },
-    // Dark palette is now token-driven — previously the dark
-    // surface was hardcoded as `#0b0b0c` in `styles.ts`, so admin
-    // overrides couldn't reach it. Tokens here flip background +
-    // foreground for the whole shell; `styles.ts` reads them via
-    // `var(--np-color-*)` so a single token change reflows the
-    // entire theme. Light variant: override these in the admin's
-    // theme settings tab — no fork required.
     tokens: {
       colors: {
-        primary: "oklch(0.985 0.001 106)",
-        primaryForeground: "oklch(0.145 0.005 285)",
-        background: "oklch(0.16 0.005 285)",
-        foreground: "oklch(0.91 0.003 286)",
-        muted: "oklch(0.22 0.006 286)",
-        mutedForeground: "oklch(0.66 0.005 286)",
-        border: "oklch(0.28 0.008 286)",
-        card: "oklch(0.20 0.006 286)",
-        cardForeground: "oklch(0.91 0.003 286)",
-        accent: "oklch(0.32 0.012 286)",
-        accentForeground: "oklch(0.985 0.001 106)",
+        primary: "#f5f1ea",
+        primaryForeground: "#0a0a0a",
+        background: "#0a0a0a",
+        foreground: "#f5f1ea",
+        muted: "#1a1a1a",
+        mutedForeground: "#8a857d",
+        border: "#232323",
+        card: "#141414",
+        accent: "#d97a4f",
       },
       typography: {
         fontHeading:
-          '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+          '"Instrument Serif", "Times New Roman", Georgia, serif',
         fontBody:
-          '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+          '"Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontMono:
+          '"Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       },
     },
     css: portfolioCss,
+    seedContent: {
+      posts: SEED_PROJECTS,
+      navigation: SEED_NAV,
+    },
     templates: {
       pages: {
         default: {
           label: "Default",
-          description: "Centered text column on dark background.",
+          description: "Centered text column on the dark canvas.",
           component: PageDefaultTemplate,
         },
         gallery: {
           label: "Gallery",
           description:
-            "Two-column block grid for image-led project pages and case studies.",
+            "Auto-fill block grid for image-led project pages and case studies.",
           component: PageGalleryTemplate,
         },
       },
@@ -118,33 +304,25 @@ export const portfolioTheme = defineTheme({
         detail: {
           label: "Project detail",
           description:
-            "Hero image, centered title and excerpt, role / year / client meta strip, then the body blocks.",
+            "Hero image, display title, role / year / client meta strip, then the body blocks.",
           component: ProjectDetailTemplate,
         },
         index: {
           label: "Project index",
           description:
-            "Archive grid of square project cards with hover-fade captions.",
+            "Full front page — hero + filter tablist + 12-col asymmetric grid + studio strip + contact strip. Each card's `span` drives its grid width (7 / 5 / 4 / 4 / 8 / 6 / 6 / 12 by default).",
           component: ProjectIndexTemplate,
         },
       },
     },
-    // F.2 — theme routes. `/work/:slug` dispatches a posts row
-    // through `ProjectDetailTemplate` (#613). Without this, the
-    // `/work/<slug>` URLs `PortfolioProjectCard` emits would
-    // 404 — the framework catch-all only resolves `pages` rows
-    // by URL, so case studies (`posts` collection) need a theme
-    // route to be reachable.
     routes: [
       { pattern: "/work/:slug", component: PortfolioProjectDetailRoute },
     ],
-    // Phase F.4 — portfolio-shipped block types.
     blocks: portfolioBlocks,
-    // Phase F.6 — declared nav locations.
     navLocations: {
       primary: {
         label: "Primary nav",
-        description: "Top nav links (Work / About / Contact).",
+        description: "Top nav links (Work / Studio / Journal / Press).",
         maxItems: 5,
       },
       footerSocial: {
@@ -153,24 +331,7 @@ export const portfolioTheme = defineTheme({
         maxItems: 6,
       },
     },
-    // Phase F.7 — error chrome.
     notFound: PortfolioNotFound,
-    // M.* adoption (2026-05-11). Portfolio gains purpose-built
-    // member chrome: narrow column wrapping the auth forms,
-    // tonally matched 404 + error pages. The fallback chain in
-    // `<ShellWrap surface="member">` would have walked back to
-    // `impl.shell` + the public slots, which would have stretched
-    // a 320-wide login form across the image-led wide layout.
-    // - `shell`: PortfolioMembersShell (narrow column, same
-    //   header/footer chrome so a masthead bump cascades).
-    // - `notFound`: PortfolioMembersNotFound (stale-auth-link
-    //   framing with /members/login CTA).
-    // - `error`: forward-compat type marker; the actual render
-    //   goes through `./components/members-error`'s client
-    //   subpath, lazy-imported by
-    //   `apps/web/src/app/(member)/error.tsx`'s registry
-    //   (F.7.1 delegation — Next mandates `error.tsx` is "use
-    //   client").
     members: {
       shell: PortfolioMembersShell,
       notFound: PortfolioMembersNotFound,
