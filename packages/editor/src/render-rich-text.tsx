@@ -1,5 +1,6 @@
 import React from "react";
 
+import { slugifyHeading } from "./heading-toc.js";
 import type { NpRichTextContent } from "./types.js";
 
 const IS_BOLD = 1;
@@ -125,35 +126,71 @@ function applyTextFormats(text: string, format: number, key: string): React.Reac
   return value;
 }
 
-function renderChildren(nodes: RichTextNode[], keyPrefix: string): React.ReactNode[] {
+interface RenderContext {
+  /**
+   * Per-document heading slug counter. Tracks how many times each
+   * slugified text has been emitted so collisions append `-2`,
+   * `-3`, … Fresh map per top-level `renderRichText` call so two
+   * documents on the same page don't bleed numbering.
+   */
+  headingSlugs: Map<string, number>;
+}
+
+function nextHeadingId(slug: string, ctx: RenderContext): string {
+  const prior = ctx.headingSlugs.get(slug) ?? 0;
+  ctx.headingSlugs.set(slug, prior + 1);
+  return prior === 0 ? slug : `${slug}-${(prior + 1).toString()}`;
+}
+
+function renderChildren(
+  nodes: RichTextNode[],
+  keyPrefix: string,
+  ctx: RenderContext,
+): React.ReactNode[] {
   return nodes
-    .map((node, index) => renderNode(node, `${keyPrefix}:${index}`))
+    .map((node, index) => renderNode(node, `${keyPrefix}:${index.toString()}`, ctx))
     .filter((node): node is React.ReactNode => node !== null);
 }
 
-function renderNode(node: RichTextNode, key: string): React.ReactNode | null {
+function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.ReactNode | null {
   switch (node.type) {
     case "text":
       return applyTextFormats(node.text ?? "", toFormatMask(node.format), key);
     case "paragraph":
-      return React.createElement("p", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key));
+      return React.createElement("p", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
     case "heading": {
       const tag = typeof node.tag === "string" && /^h[1-6]$/.test(node.tag) ? node.tag : "h1";
-      return React.createElement(tag, { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key));
+      // h2/h3 get auto-emitted ids for TOC anchoring (docs theme
+      // scrollspy, deep-linking, "Copy link" buttons). h1 is
+      // typically the page title — pages own that id at the
+      // wrapper level. h4–h6 are too deep for a top-level TOC and
+      // emitting ids on them just pollutes the DOM with collisions.
+      let id: string | undefined;
+      if (tag === "h2" || tag === "h3") {
+        const text = extractText(node).trim();
+        if (text.length > 0) {
+          id = nextHeadingId(slugifyHeading(text), ctx);
+        }
+      }
+      return React.createElement(
+        tag,
+        { key, id, dir: node.direction ?? undefined },
+        renderChildren(toArray(node.children), key, ctx),
+      );
     }
     case "quote":
-      return React.createElement("blockquote", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key));
+      return React.createElement("blockquote", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
     case "list": {
       const tag = node.listType === "number" ? "ol" : "ul";
-      return React.createElement(tag, { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key));
+      return React.createElement(tag, { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
     }
     case "listitem":
-      return React.createElement("li", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key));
+      return React.createElement("li", { key, dir: node.direction ?? undefined }, renderChildren(toArray(node.children), key, ctx));
     case "link":
       return React.createElement(
         "a",
         { key, href: sanitizeUrl(node.url) },
-        renderChildren(toArray(node.children), key),
+        renderChildren(toArray(node.children), key, ctx),
       );
     case "image":
       return React.createElement("img", {
@@ -177,7 +214,7 @@ function renderNode(node: RichTextNode, key: string): React.ReactNode | null {
         return null;
       }
 
-      return React.createElement(React.Fragment, { key }, renderChildren(children, key));
+      return React.createElement(React.Fragment, { key }, renderChildren(children, key, ctx));
     }
   }
 }
@@ -188,5 +225,10 @@ export function renderRichText(content: NpRichTextContent | null | undefined): R
     return null;
   }
 
-  return React.createElement(React.Fragment, null, renderChildren(toArray(content.root.children), "root"));
+  const ctx: RenderContext = { headingSlugs: new Map() };
+  return React.createElement(
+    React.Fragment,
+    null,
+    renderChildren(toArray(content.root.children), "root", ctx),
+  );
 }

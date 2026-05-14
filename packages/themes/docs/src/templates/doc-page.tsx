@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 import { findDocuments, type NpRichTextContent } from "@nexpress/core";
-import { renderRichText } from "@nexpress/editor/server";
+import { extractHeadingToc, renderRichText } from "@nexpress/editor/server";
 
 import { resolveDocsSettings } from "../settings-helpers.js";
 
@@ -19,73 +19,6 @@ interface DocDoc {
   readingTime?: number | string;
 }
 
-interface TocEntry {
-  id: string;
-  text: string;
-  /** `2` or `3` — h2 is top-level, h3 nests under preceding h2. */
-  level: 2 | 3;
-}
-
-/**
- * Walks a Lexical doc looking for `heading` nodes. Returns
- * `{ id, text, level }` for h2 / h3 — h1 is the page title
- * itself, deeper levels (h4+) don't fit the TOC's two-tier
- * visual.
- *
- * The renderer (`renderRichText` from `@nexpress/editor/server`)
- * does NOT currently emit `id="..."` on the heading elements,
- * so the anchor links the TOC produces only work once the
- * renderer learns to do that (or sites override the body
- * render with their own slug-emitting walker). Tracked as a
- * follow-up — for v0.1 the TOC reads as a structural overview
- * even if clicks fall through.
- */
-function extractToc(body: NpRichTextContent | undefined): TocEntry[] {
-  if (!body) return [];
-  const root = (body as { root?: { children?: unknown[] } }).root;
-  if (!root || !Array.isArray(root.children)) return [];
-  const out: TocEntry[] = [];
-  walk(root.children, out);
-  return out;
-}
-
-function walk(nodes: unknown[], out: TocEntry[]): void {
-  for (const raw of nodes) {
-    if (!raw || typeof raw !== "object") continue;
-    const node = raw as { type?: unknown; tag?: unknown; children?: unknown };
-    if (node.type === "heading" && (node.tag === "h2" || node.tag === "h3")) {
-      const text = collectText(Array.isArray(node.children) ? node.children : []);
-      if (text) {
-        out.push({
-          id: slugify(text),
-          text,
-          level: node.tag === "h2" ? 2 : 3,
-        });
-      }
-      continue;
-    }
-    if (Array.isArray(node.children)) walk(node.children, out);
-  }
-}
-
-function collectText(nodes: unknown[]): string {
-  const parts: string[] = [];
-  for (const raw of nodes) {
-    if (!raw || typeof raw !== "object") continue;
-    const node = raw as { text?: unknown; children?: unknown };
-    if (typeof node.text === "string") parts.push(node.text);
-    else if (Array.isArray(node.children)) parts.push(collectText(node.children));
-  }
-  return parts.join("").trim();
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
 
 /**
  * Doc page template — three-zone article: header strap
@@ -123,7 +56,7 @@ export async function DocPageTemplate({
   const editHref = settings.githubRepo
     ? `${settings.githubRepo}/edit/main/docs/${doc.slug}.md`
     : null;
-  const toc = extractToc(doc.body);
+  const toc = extractHeadingToc(doc.body);
   const reportIssueHref = settings.githubRepo
     ? `${settings.githubRepo}/issues/new`
     : null;
