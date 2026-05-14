@@ -94,12 +94,16 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
 // scaffold against a future breaking `@nexpress/core` whose API
 // the scaffold's source templates haven't kept up with. The
 // `fixed` group in `.changeset/config.json` keeps every
-// `@nexpress/*` on the same `0.1.x` patch in lockstep, so the
-// `^0.1.0` lower bound never misses a member of the family
-// (which is what bit `@nexpress/app@0.1.1` against an earlier
-// `^0.1.3` pin). Bump this only when the family crosses a minor
-// boundary (0.2.x, 1.0.0, …).
-const SCAFFOLDED_NEXPRESS_RANGE = "^0.1.0";
+// `@nexpress/*` on the same `0.<minor>.x` patch in lockstep, so
+// the lower bound never misses a member of the family.
+//
+// Bump this when the family crosses a minor boundary (0.1.x →
+// 0.2.x, 0.2.x → 0.3.x, 1.0.0, …). Without the bump, `npm install`
+// resolves to the previous minor's last patch (e.g. with the pin
+// still at `^0.1.0` after the family went to 0.2.x, scaffolded
+// sites silently install 0.1.6 — the lib code shipped to operators
+// is one minor stale).
+const SCAFFOLDED_NEXPRESS_RANGE = "^0.2.0";
 
 function packageJsonTemplate(config: TemplateConfig): string {
   const nexpressVersion = config.localMode ? "workspace:*" : SCAFFOLDED_NEXPRESS_RANGE;
