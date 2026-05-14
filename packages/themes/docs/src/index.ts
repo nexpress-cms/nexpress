@@ -12,22 +12,51 @@ import { docsCss } from "./styles.js";
 import { docsSettingsSchema } from "./settings.js";
 import { DocPageTemplate } from "./templates/doc-page.js";
 
+const SEED_NAV = {
+  header: [
+    { id: "nav-docs-docs", label: "Docs", type: "link" as const, url: "/docs" },
+    { id: "nav-docs-reference", label: "Reference", type: "link" as const, url: "/docs/reference" },
+    { id: "nav-docs-blog", label: "Blog", type: "link" as const, url: "/blog" },
+  ],
+  footer: [
+    { id: "nav-docs-footer-docs", label: "Documentation", type: "link" as const, url: "/docs" },
+    { id: "nav-docs-footer-reference", label: "Reference", type: "link" as const, url: "/docs/reference" },
+    { id: "nav-docs-footer-changelog", label: "Changelog", type: "link" as const, url: "/changelog" },
+    { id: "nav-docs-footer-github", label: "GitHub", type: "link" as const, url: "https://github.com" },
+  ],
+};
+
 /**
  * `@nexpress/theme-docs` — documentation theme for NexPress.
  *
- * Stresses F.2 (search route + sidebar slot consuming
- * hierarchy) and F.3 (settings: version, githubRepo,
- * sidebarHeading, TOC toggle). Different contract axis from
- * F.9-A's magazine — sidebar-driven layout, hierarchical doc
- * collection, prev/next navigation.
+ * Three-column reference-docs layout: sticky search-first header
+ * (brand mark + version pill + ⌘K search + primary nav + GitHub
+ * link), hierarchical sidebar with bullet-eyebrow groups + nested
+ * links + status badges, centered article column with breadcrumbs
+ * + lede + meta pills + Lexical body, on-this-page TOC on the
+ * right. Sidebar collapses out at the tablet breakpoint; TOC
+ * collapses out below 1100px.
+ *
+ * Pairs with a `docs` collection (auto-created via
+ * `requires.collections.docs.createIfAbsent` on the bundled-themes
+ * prebake path). Operator-declared fields with the same names win
+ * on collision so a site that ships its own `docs` schema is
+ * never overwritten.
+ *
+ * `seedContent.navigation` ships the primary header / footer
+ * links; the `docs` collection rows are operator-authored.
+ * Seeding actual doc rows requires the seedContent contract to
+ * grow a `documents?: Record<slug, ...>` slot, which is queued as
+ * a follow-up — without it, themes that target non-page / non-post
+ * collections (docs, projects, products) can only seed nav.
  */
 export const docsTheme = defineTheme({
   manifest: {
     id: "docs",
     name: "Docs",
-    version: "0.1.0",
+    version: "0.2.0",
     description:
-      "Documentation theme — hierarchical sidebar, prev/next nav, search masthead. Pairs with a `docs` collection that has parent/order fields.",
+      "Documentation theme — three-column layout with hierarchical sidebar, breadcrumbs + lede + meta pills on the article column, on-this-page TOC on the right rail. Blue accent on a near-white surface; pairs with a `docs` collection.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
     requires: {
@@ -36,6 +65,9 @@ export const docsTheme = defineTheme({
           createIfAbsent: true,
           fields: {
             title: { type: "text", required: true },
+            // Short opening paragraph rendered as a lede under the
+            // h1. Optional — the article still renders without it.
+            lede: { type: "textarea", hard: false },
             body: { type: "richText" },
             parent: {
               type: "relationship",
@@ -43,6 +75,10 @@ export const docsTheme = defineTheme({
               hard: false,
             },
             order: { type: "number" },
+            // Meta-pill slots — all optional, all advisory hints
+            // the doc-page template surfaces in the strap row.
+            stableSince: { type: "text", hard: false },
+            badge: { type: "text", hard: false },
           },
         },
       },
@@ -57,29 +93,39 @@ export const docsTheme = defineTheme({
     },
     css: docsCss,
     tokens: {
-      // Docs lean cool/neutral with a sharp accent — distinct
-      // from magazine's warm cream so a side-by-side preview
-      // makes the swap obvious.
       colors: {
-        primary: "oklch(0.55 0.18 260)",
-        primaryForeground: "oklch(0.985 0.005 260)",
-        background: "oklch(0.99 0.005 260)",
-        foreground: "oklch(0.18 0.025 260)",
-        muted: "oklch(0.95 0.012 260)",
-        mutedForeground: "oklch(0.5 0.025 260)",
-        border: "oklch(0.9 0.012 260)",
-        card: "oklch(0.985 0.008 260)",
-        cardForeground: "oklch(0.18 0.025 260)",
-        accent: "oklch(0.92 0.05 260)",
-        accentForeground: "oklch(0.18 0.025 260)",
+        primary: "#2563eb",
+        primaryForeground: "#ffffff",
+        background: "#fbfcfe",
+        foreground: "#0c1320",
+        muted: "#f1f4f9",
+        mutedForeground: "#5b6478",
+        border: "#e2e7ef",
+        card: "#ffffff",
       },
+      typography: {
+        fontHeading:
+          '"Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontBody:
+          '"Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        fontMono:
+          '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      },
+      shape: {
+        radiusSm: "5px",
+        radiusMd: "9px",
+        radiusLg: "10px",
+      },
+    },
+    seedContent: {
+      navigation: SEED_NAV,
     },
     templates: {
       docs: {
         default: {
           label: "Doc page",
           description:
-            "Hierarchical sidebar + body + prev/next nav. Optional 'Edit on GitHub' link when settings.githubRepo is set.",
+            "Three-column reference layout — breadcrumbs + lede + meta + Lexical body + feedback + prev/next, with the docs sidebar slotted on the left and the on-page TOC on the right.",
           component: DocPageTemplate,
         },
       },
