@@ -53,6 +53,11 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  *     so they can't have an np-csrf cookie either. The handler
  *     guards with the "no admin yet" precondition (409 once one
  *     exists) which is a strictly stronger gate than CSRF.
+ *   - `/api/newsletter`: anonymous public subscribe form. Visitors
+ *     who haven't authenticated have no np-csrf cookie; gating the
+ *     submit on CSRF would 403 every fresh visitor. The route
+ *     has its own per-IP rate limit (see RATE_LIMITS) to discourage
+ *     subscribe-spam.
  *   - `/api/internal/*`: bearer-token auth via NP_SCHEDULER_TOKEN.
  *     No browser session involved.
  *   - `/api/plugins/<id>/<...>` for `<...>` other than the
@@ -67,6 +72,7 @@ const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/auth\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
   /^\/api\/members\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
   /^\/api\/admin\/setup$/,
+  /^\/api\/newsletter$/,
   /^\/api\/internal\//,
   // plugins/<id>/<segment>/... where <segment> != "actions" — the
   // catch-all proxy. plugins/<id> (CRUD) and plugins/<id>/actions/<id>
@@ -99,6 +105,9 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   { pattern: /^\/api\/search(?:\/|$)/, limit: 60, windowMs: 60_000 },
   // Member-side report submissions — keep tight to discourage report-spam.
   { pattern: /^\/api\/reports(?:\/|$)/, limit: 10, windowMs: 60_000 },
+  // Newsletter subscribe — anonymous public form, no CSRF gate, so the
+  // IP bucket is the only floor against subscribe-spam. Keep tight.
+  { pattern: /^\/api\/newsletter$/, limit: 5, windowMs: 60_000 },
   // Phase 20.1 — job actions that do real work or bulk fan-out get
   // tighter limits than the general /api/admin/ bucket. Each
   // retry-all call fires up to 200 retries; enqueue runs an
