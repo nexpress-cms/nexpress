@@ -351,8 +351,30 @@ revert when an admin tries a different theme.
 
 ## 9. Registering and Activating
 
-**Install**: register every theme you want admins to be able
-to switch into in `nexpress.config.ts`. The built-in pack
+**Install (operator side, one command)**: from the project root, run
+
+```bash
+pnpm nexpress theme add @yourco/theme-mybrand
+pnpm db:generate && pnpm db:migrate
+```
+
+`theme add` runs `pnpm add <pkg>`, then patches `nexpress.config.ts`
+via the marker comments (`@nexpress:themes-imports-*` and
+`@nexpress:themes-list-*`) to insert the import and append the
+identifier to the `themes:` array. `defineConfig` then auto-merges
+the theme's `manifest.requires.collections` into the resolved
+`collections` array, so the operator's `src/collections/*.ts`
+files stay untouched — `pnpm db:generate` picks up the new
+columns from the merged config. `pnpm nexpress theme add --apply`
+chains the two `db:*` commands in one go.
+
+The marker comments are present in every freshly scaffolded
+`nexpress.config.ts`. If a project's config doesn't have them
+yet, `theme add` prints a copy-paste snippet and exits without
+mutating anything; add the markers and re-run.
+
+**Install (manual / explicit form)**: scaffolded sites can list
+themes by hand if they prefer. The built-in pack
 (`@nexpress/theme-default`, `theme-magazine`, `theme-portfolio`,
 `theme-docs`) is exported as `defaultThemes` from
 `@nexpress/app/config-defaults` — spread it and append your own:
@@ -483,7 +505,7 @@ implementation reference.
 
 | Surface | What it does |
 |---|---|
-| `manifest.requires` | Declare collection field expectations; `pnpm nexpress theme:install <pkg>` AST-patches operator collections to satisfy. Admin warns at activation time when fields are missing. |
+| `manifest.requires` | Declare collection field expectations; the framework auto-merges them into the operator's `collections` array at `defineConfig` time. Operators run `pnpm nexpress theme add <pkg>` to install + register, then `pnpm db:generate && pnpm db:migrate` to materialise the columns. Admin warns at activation time only when an operator-declared field has a conflicting TYPE. |
 | `manifest.settingsSchema` | Zod schema → admin auto-form. Operator tunes per site without editing code. Reuses `nx:theme:<siteId>` cache tag. |
 | `impl.blocks` | Theme-shipped block types. Bootstrap auto-stamps `source: "theme:<id>"` for active-source filtering in multi-site processes. |
 | `impl.patterns` | Pre-shaped block subtrees the page-builder drops in one click (Cmd-K → Pattern). |

@@ -29,6 +29,11 @@ export const postsTable = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     author: uuid("author").references(() => npUsers.id),
     wpOriginalAuthor: text("wp_original_author"),
+    featured: boolean("featured"),
+    heroImage: uuid("hero_image").references(() => npMedia.id),
+    client: text("client"),
+    year: doublePrecision("year"),
+    role: text("role"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
@@ -42,6 +47,7 @@ export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
   updatedByUser: one(npUsers, { fields: [postsTable.updatedBy], references: [npUsers.id] }),
   coverImage: one(npMedia, { fields: [postsTable.coverImage], references: [npMedia.id] }),
   author: one(npUsers, { fields: [postsTable.author], references: [npUsers.id] }),
+  heroImage: one(npMedia, { fields: [postsTable.heroImage], references: [npMedia.id] }),
 }));
 
 export const postsCategoriesTable = pgTable(
@@ -181,4 +187,53 @@ export const discussionsTableRelations = relations(discussionsTable, ({ many, on
   createdByUser: one(npUsers, { fields: [discussionsTable.createdBy], references: [npUsers.id] }),
   updatedByUser: one(npUsers, { fields: [discussionsTable.updatedBy], references: [npUsers.id] }),
   memberAuthor: one(npMembers, { fields: [discussionsTable.memberAuthorId], references: [npMembers.id] }),
+}));
+
+export const authorsTable = pgTable(
+  "np_c_authors",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    name: text("name"),
+    bio: text("bio"),
+    siteId: text("site_id").default("default").notNull(),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [index("np_c_authors_status_idx").on(table.status), index("np_c_authors_site_idx").on(table.siteId)],
+);
+
+export const authorsTableRelations = relations(authorsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [authorsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [authorsTable.updatedBy], references: [npUsers.id] }),
+}));
+
+export const docsTable = pgTable(
+  "np_c_docs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references(() => npUsers.id),
+    updatedBy: uuid("updated_by").references(() => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
+    title: text("title"),
+    body: jsonb("body"),
+    parent: uuid("parent").references(() => docsTable.id),
+    order: doublePrecision("order"),
+    siteId: text("site_id").default("default").notNull(),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [index("np_c_docs_status_idx").on(table.status), index("np_c_docs_site_idx").on(table.siteId)],
+);
+
+export const docsTableRelations = relations(docsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [docsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [docsTable.updatedBy], references: [npUsers.id] }),
+  parent: one(docsTable, { fields: [docsTable.parent], references: [docsTable.id] }),
 }));

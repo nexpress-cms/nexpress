@@ -76,9 +76,24 @@ Built-in packs already wired by the scaffold:
 `@nexpress/theme-default`, `theme-magazine`, `theme-portfolio`,
 `theme-docs`. Switch the active one from admin → Appearance.
 
+To install a third-party theme, one command from the project root:
+
+```bash
+pnpm nexpress theme add @you/theme-cool
+pnpm db:generate && pnpm db:migrate
+```
+
+This runs `pnpm add`, edits `nexpress.config.ts` via the
+`@nexpress:themes-*` marker comments to insert the import and
+append the identifier to the `themes:` array, then leaves the
+migration step to you (or use `--apply` to chain it). The
+framework auto-merges the theme's `manifest.requires.collections`
+into your `collections` array at `defineConfig` time, so your
+own `src/collections/*.ts` files stay untouched.
+
 To author a new theme: separate npm package — see
-[theme-authoring.md](./theme-authoring.md). Register it by adding
-the import + entry to `themes: [...]` in `nexpress.config.ts`:
+[theme-authoring.md](./theme-authoring.md). The manual equivalent
+of `theme add` is the same import + array entry:
 
 ```ts
 import { coolTheme } from "@you/theme-cool";

@@ -39,16 +39,20 @@ export const magazineTheme = defineTheme({
       "Editorial magazine layout. Display-serif masthead with mobile drawer, three-column footer with newsletter, feature-article post template with drop cap, magazine-style index with lead piece + archive grid.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
-    // Phase F.1 — declared data-shape requirements. F.8's CLI
-    // (`pnpm nexpress theme:install @nexpress/theme-magazine`)
-    // patches operator collections to satisfy these; admin
-    // surfaces mismatches before activation.
+    // Phase F.1 — declared data-shape requirements. The
+    // framework auto-merges these into the operator's
+    // `collections` array at `defineConfig` time, so
+    // `pnpm nexpress theme add @nexpress/theme-magazine`
+    // followed by `pnpm db:generate && pnpm db:migrate` is all
+    // the operator needs to materialise the columns. Admin
+    // surfaces residual mismatches (e.g. operator-declared
+    // field with a conflicting type) before activation.
     requires: {
       collections: {
         posts: {
           fields: {
             featured: { type: "checkbox" },
-            coverImage: { type: "upload" },
+            coverImage: { type: "upload", relationTo: "media" },
             categories: {
               type: "relationship",
               relationTo: "categories",

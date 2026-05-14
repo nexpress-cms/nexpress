@@ -5,7 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import pc from "picocolors";
 
-import { extractCollectionFromFile } from "../theme-install/ast/extract-collection.js";
+import { extractCollectionFromFile } from "./ast/extract-collection.js";
 import {
   CollectionUnpatchError,
   unpatchCollectionFile,

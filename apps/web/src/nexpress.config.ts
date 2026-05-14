@@ -20,6 +20,8 @@ import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 // @nexpress:plugins-imports-end
+// @nexpress:themes-imports-start
+// @nexpress:themes-imports-end
 
 import { i18nConfig } from "./i18n.config";
 
@@ -41,7 +43,10 @@ export default defineConfig({
     connectionString: process.env.DATABASE_URL ?? "",
   },
   storage: storageFromEnv(),
-  collections: [...defaultCollections, discussionsCollection],
+  collections: [
+    ...defaultCollections.filter((c) => c.slug !== "discussions"),
+    discussionsCollection,
+  ],
   // Phase 12.1 — i18n config. Required when any collection
   // sets `i18n: true`. `pagesCollection` opts in: each row
   // carries a locale + translation_group_id, and the admin
@@ -56,7 +61,11 @@ export default defineConfig({
     locales: [...i18nConfig.locales],
     defaultLocale: i18nConfig.defaultLocale,
   },
-  themes: defaultThemes,
+  themes: [
+    ...defaultThemes,
+    // @nexpress:themes-list-start
+    // @nexpress:themes-list-end
+  ],
   plugins: [
     forumPlugin,
     // @nexpress:plugins-list-start

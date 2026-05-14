@@ -18,9 +18,10 @@ import { ProjectDetailTemplate } from "../templates/project-detail.js";
  *
  * Defensive untyped `findDocuments<ProjectRow>` lookup — the
  * posts schema lives in the operator's project, not the theme.
- * `theme:install @nexpress/theme-portfolio` patches the
- * collection to include the fields ProjectDetailTemplate
- * expects (hero, role/year/client meta).
+ * Adding `@nexpress/theme-portfolio` via `theme add` auto-merges
+ * the fields ProjectDetailTemplate expects (hero, role/year/client
+ * meta) into the operator's posts collection at config-resolution
+ * time — no AST patches needed.
  *
  * Access / visibility: `findDocuments` already enforces
  * `access.read` and `community.visibility`, same as the

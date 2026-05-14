@@ -1,9 +1,17 @@
 import { t } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
-import { headers } from "next/headers";
 
 import { MagazineMobileNav } from "./components/mobile-nav.js";
+
+// `next/headers` is a Next-build-context-only specifier — Next's
+// bundler resolves it, but a plain `node` / `tsx` import from
+// outside Next (e.g. `pnpm nexpress theme add` probing this
+// theme module's export shape) blows up with
+// `ERR_MODULE_NOT_FOUND` at module load. Lazy-importing inside
+// the request-scoped function body keeps the top-level evaluation
+// free of Next-only specifiers, so CLI tooling can load the
+// theme module without booting a Next bundle.
 
 /**
  * Editorial masthead. Display-serif logo over a thick rule with a
@@ -20,10 +28,13 @@ export async function MagazineHeader() {
   const items = await getCachedNavigation("header");
   let locale: string | undefined;
   try {
+    const { headers } = await import("next/headers");
     const headerList = await headers();
     locale = headerList.get("x-np-locale") ?? undefined;
   } catch {
-    // Outside a request scope; t()'s default-locale fallback handles it.
+    // Outside a request scope (or outside Next entirely — e.g.
+    // CLI tooling that loaded this module). t()'s default-locale
+    // fallback handles it.
   }
   const tagline = await t("magazine.tagline", locale);
   const today = new Date().toLocaleDateString(undefined, {

@@ -389,6 +389,8 @@ export type {
   NpThemeRequirementRelationConflict,
 } from "./themes/requirements.js";
 
+export { mergeThemeRequirements } from "./themes/merge-requirements.js";
+
 export {
   getThemeSettings,
   getThemeSettingsWithStatus,

@@ -1,8 +1,15 @@
 import { getI18nConfig } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation, resolveAvailableLocales } from "@nexpress/next";
-import { headers } from "next/headers";
 import Link from "next/link";
+
+// `next/headers` lives in the Next-build-context-only world —
+// outside a Next bundle (e.g. when `pnpm nexpress theme add`
+// dynamically imports this module to probe its export shape)
+// resolution fails with ERR_MODULE_NOT_FOUND. Lazy-importing
+// inside the request-scoped function body keeps the top-level
+// import graph free of Next-only specifiers, so CLI tooling can
+// load this theme module without booting a Next bundle.
 
 import { DarkModeToggle } from "./components/dark-mode-toggle.js";
 import { LanguagePicker } from "./components/language-picker.js";
@@ -32,6 +39,7 @@ export async function DefaultHeader() {
 
   let availableLocales: string[] | null = null;
   if (showLanguagePicker) {
+    const { headers } = await import("next/headers");
     const headerList = await headers();
     const pathname = headerList.get("x-np-pathname");
     if (pathname) {

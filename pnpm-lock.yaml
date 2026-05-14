@@ -301,9 +301,42 @@ importers:
       '@nexpress/next':
         specifier: workspace:*
         version: link:../next
+      '@nexpress/plugin-block-callout':
+        specifier: workspace:*
+        version: link:../plugins/block-callout
+      '@nexpress/plugin-block-embed':
+        specifier: workspace:*
+        version: link:../plugins/block-embed
+      '@nexpress/plugin-block-latest-posts':
+        specifier: workspace:*
+        version: link:../plugins/block-latest-posts
+      '@nexpress/plugin-block-newsletter':
+        specifier: workspace:*
+        version: link:../plugins/block-newsletter
+      '@nexpress/plugin-block-pricing':
+        specifier: workspace:*
+        version: link:../plugins/block-pricing
+      '@nexpress/plugin-block-stats':
+        specifier: workspace:*
+        version: link:../plugins/block-stats
+      '@nexpress/plugin-forum':
+        specifier: workspace:*
+        version: link:../plugins/forum
+      '@nexpress/plugin-oauth-github':
+        specifier: workspace:*
+        version: link:../plugins/oauth-github
+      '@nexpress/plugin-oauth-google':
+        specifier: workspace:*
+        version: link:../plugins/oauth-google
+      '@nexpress/plugin-reading-time':
+        specifier: workspace:*
+        version: link:../plugins/reading-time
       '@nexpress/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      '@nexpress/plugin-seo-audit':
+        specifier: workspace:*
+        version: link:../plugins/seo-audit
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../theme

@@ -22,11 +22,11 @@ import { PostListTemplate } from "./templates/post-list.js";
  *
  * `theme-default` doesn't declare v0.2 surfaces: operators using
  * it skip the no-code-customization workflow (no admin auto-
- * form for theme settings, no `theme:install` data-shape
- * checks, no theme-shipped blocks/patterns). It remains a valid
- * `defineTheme` caller — production sites pinned to v0.1 keep
- * working — but consider migrating to a v0.2 reference if you
- * want operator-tunable settings.
+ * form for theme settings, no `requires`-driven data-shape
+ * auto-merge, no theme-shipped blocks/patterns). It remains a
+ * valid `defineTheme` caller — production sites pinned to v0.1
+ * keep working — but consider migrating to a v0.2 reference if
+ * you want operator-tunable settings.
  *
  * Production-grade defaults: sticky header with a mobile drawer,
  * a four-column footer (brand / sitemap / resources / newsletter)
