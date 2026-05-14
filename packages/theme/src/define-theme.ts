@@ -370,12 +370,55 @@ export interface NpThemeSeedNavigation {
   footer?: LocalNpNavItem[];
 }
 
+/**
+ * Generic seed-document descriptor for the `documents?` slot.
+ *
+ * `pages` / `posts` are first-class because every theme uses them;
+ * `documents` is the catch-all for everything else (a magazine
+ * theme's `authors`, a docs theme's `glossary`, a portfolio's
+ * `clients`). Keyed by collection slug at the `NpThemeSeedContent`
+ * level; the seeder iterates each list with the same idempotency
+ * rule as posts/pages — if the collection already has any rows,
+ * the whole slot is skipped.
+ */
+export interface NpThemeSeedDocument {
+  /** Used as the canonical `slug` field on the seeded document. */
+  slug: string;
+  /** Used as the canonical `title` field. */
+  title: string;
+  /** Defaults to `"published"`. */
+  status?: "draft" | "published";
+  /** ISO date string. Past = published; future = scheduled. */
+  publishedAt?: string;
+  /**
+   * Collection-specific fields merged onto the document. The
+   * pipeline's Zod validation strips keys the collection doesn't
+   * declare, so extra fields are silently dropped rather than
+   * rejected. Themes that don't know the operator's `author` id
+   * shouldn't include one — the seeder injects `author: actor.id`
+   * for any collection that declares an `author` field.
+   */
+  data?: Record<string, unknown>;
+}
+
 export interface NpThemeSeedContent {
   tags?: NpThemeSeedTerm[];
   categories?: NpThemeSeedTerm[];
   pages?: NpThemeSeedPage[];
   posts?: NpThemeSeedPost[];
   navigation?: NpThemeSeedNavigation;
+  /**
+   * Seed documents into arbitrary user-declared collections beyond
+   * pages/posts. Keyed by collection slug (`{ authors: [...],
+   * glossary: [...] }`). Each list is idempotent: if the
+   * collection already has rows, the whole slot is skipped.
+   *
+   * Unknown collection slugs are skipped with a warning rather
+   * than failing the boot — a theme that ships seed data for a
+   * collection an operator hasn't activated should degrade rather
+   * than crash the setup wizard.
+   */
+  documents?: Record<string, NpThemeSeedDocument[]>;
 }
 
 export interface NpThemeImpl {
