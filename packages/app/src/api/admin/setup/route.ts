@@ -249,19 +249,13 @@ export async function POST(request: NextRequest): Promise<Response> {
           if (body.themeId) {
             await setActiveThemeId(body.themeId, created.id);
           }
+          // Theme-only path (operator picked a theme but declined
+          // sample content): the activation already landed above;
+          // returning null surfaces the "no seed ran" intent
+          // unambiguously, vs returning a stub that the response
+          // builder then has to re-suppress.
+          if (!body.sampleContent) return null;
           const activeTheme = await getActiveTheme();
-          if (!body.sampleContent) {
-            // Theme picked but operator declined sample content —
-            // theme is now active, no seed runs. Return a stub so
-            // the caller still gets a non-null `seeded` shape
-            // describing zero work.
-            return {
-              terms: { tagsCreated: 0, categoriesCreated: 0, skipped: true },
-              pages: { created: 0, skipped: true },
-              posts: { created: 0, skipped: true },
-              navigation: { header: 0, footer: 0, headerSkipped: true, footerSkipped: true },
-            };
-          }
           return seedAll(
             {
               id: created.id,
@@ -273,11 +267,6 @@ export async function POST(request: NextRequest): Promise<Response> {
             activeTheme,
           );
         });
-        // The "seeded" response is meaningful only when actual
-        // seeding happened — when the operator declined sample
-        // content but picked a theme, suppress the seeded block
-        // so the response doesn't claim zero creations.
-        if (!body.sampleContent) seeded = null;
       } catch (seedErr) {
         const msg = seedErr instanceof Error ? seedErr.message : String(seedErr);
         // Print the full stack on the dev terminal so the operator

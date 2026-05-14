@@ -13,7 +13,6 @@ import {
 } from "@nexpress/core";
 import type {
   NpThemeSeedContent,
-  NpThemeSeedNavigation,
   NpThemeSeedPage,
   NpThemeSeedPost,
   NpThemeSeedTerm,
