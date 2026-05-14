@@ -109,4 +109,42 @@ describe("built-in themes — requires union", () => {
     const conflicts = warnings.filter((w) => CONFLICT_MESSAGE.test(w.message));
     expect(conflicts).toEqual([]);
   });
+
+  it("no two built-in themes claim createIfAbsent on the same slug", () => {
+    // `_themeOrigin` is a single string today — when two themes
+    // both declare `createIfAbsent: true` for the same slug, the
+    // first synthesises (and owns origin) and subsequent themes
+    // only extend the existing collection. Activating the second
+    // theme would then hide the collection from its sidebar
+    // because origin still names the first theme. The same-field
+    // conflict gate above catches one shape of overlap, but two
+    // themes that contribute DISJOINT fields under the same
+    // createIfAbsent slug slip past the field-collision check.
+    //
+    // Prevent both shapes here. Future built-ins that legitimately
+    // want to co-own a synthesised collection have to either pick
+    // a distinct slug or graduate the framework to a multi-origin
+    // tag (`_themeOrigins: string[]`) before they can land.
+    const owners: Record<string, string[]> = {};
+    for (const theme of defaultThemes) {
+      const cols = theme.manifest.requires?.collections ?? {};
+      for (const [slug, req] of Object.entries(cols)) {
+        if (req.createIfAbsent) {
+          (owners[slug] ??= []).push(theme.manifest.id);
+        }
+      }
+    }
+    const overlaps = Object.entries(owners).filter(([, ids]) => ids.length > 1);
+    if (overlaps.length > 0) {
+      const detail = overlaps
+        .map(([slug, ids]) => `${slug}: [${ids.join(", ")}]`)
+        .join(" | ");
+      throw new Error(
+        `Two built-in themes claim createIfAbsent on the same slug: ${detail}. ` +
+          `The admin's _themeOrigin tag is single-string, so the first claimant wins ` +
+          `and the second is invisible when active. Distinguish the slug, drop one ` +
+          `theme's createIfAbsent, or promote _themeOrigin to a multi-origin list.`,
+      );
+    }
+  });
 });
