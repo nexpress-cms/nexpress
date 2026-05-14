@@ -532,6 +532,39 @@ Slot-by-slot rules:
   Each entry needs a stable `id`; the framework doesn't generate
   ids for theme-seeded nav items, so author them as part of the
   static data (e.g. `id: "nav-magazine-politics"`).
+- **`documents`** — keyed by collection slug for everything
+  beyond pages/posts. Each entry is `{ slug, title, status?,
+  publishedAt?, data? }`; `data` holds the collection-specific
+  fields. Use this for `authors`, `glossary`, `projects`, or any
+  user-declared collection a theme wants to ship demo data for.
+  Idempotent per collection (skipped when the collection has any
+  row). Unknown collection slugs are logged at warn level and
+  reported in the result rather than aborting the wizard, so a
+  theme that ships seed for an inactive collection degrades
+  cleanly. The seeder injects `author: actor.id` automatically
+  for collections that declare an `author` field — themes don't
+  have to special-case the operator's user id.
+
+```ts
+seedContent: {
+  documents: {
+    authors: [
+      {
+        slug: "ada-lovelace",
+        title: "Ada Lovelace",
+        data: { bio: "First programmer." },
+      },
+    ],
+    glossary: [
+      {
+        slug: "lexical",
+        title: "Lexical",
+        data: { definition: "The rich-text editor framework." },
+      },
+    ],
+  },
+}
+```
 
 **Asset references**: image URLs in block props (`hero.
 backgroundImage`, `logosCloud.items[].src`, etc.) are baked into
@@ -553,9 +586,9 @@ seeder owns the write path.
 
 Pre-1.0 stability note: `NpThemeSeedContent` and its sub-types
 (`NpThemeSeedTerm`, `NpThemeSeedPage`, `NpThemeSeedPost`,
-`NpThemeSeedNavigation`) are on the v0.1 stable surface. Adding
-optional fields to any of them is non-breaking; renaming or
-removing one rides a minor + migration note.
+`NpThemeSeedNavigation`, `NpThemeSeedDocument`) are on the v0.1
+stable surface. Adding optional fields to any of them is non-
+breaking; renaming or removing one rides a minor + migration note.
 
 ---
 
