@@ -11,33 +11,6 @@ import { z } from "zod";
  * widget surface.
  */
 export const portfolioSettingsSchema = z.object({
-  // Layout
-  gridColumns: z
-    .number()
-    .int()
-    .min(1)
-    .max(6)
-    .default(3)
-    .describe("Number of columns in the project archive grid (1–6)."),
-  cardAspect: z
-    .enum(["square", "portrait", "landscape", "golden"])
-    .default("square")
-    .describe(
-      "Aspect ratio of project cards: square (1:1), portrait (3:4), landscape (4:3), or golden (1:1.618).",
-    ),
-  hoverStyle: z
-    .enum(["fade", "scale", "slide", "lift"])
-    .default("fade")
-    .describe(
-      "Hover effect on project cards. fade: caption fades in. scale: image zooms 1.05x. slide: caption slides up. lift: card lifts with shadow.",
-    ),
-  galleryGutter: z
-    .number()
-    .int()
-    .min(0)
-    .max(64)
-    .default(16)
-    .describe("Gap between project cards in pixels (0–64)."),
   // Project meta
   showProjectMeta: z
     .boolean()
@@ -113,6 +86,24 @@ export const portfolioSettingsSchema = z.object({
     .default([])
     .describe(
       "Client logos rendered in the homepage 'Selected clients' strip. Edit per project.",
+    ),
+  // Social links — rendered under the contact strip as a mid-
+  // dot–separated list. Each entry is { platform, url }; the
+  // platform name is title-cased and shown verbatim ("Instagram",
+  // "Are.na", "Dribbble", …) so a studio can list any service
+  // without us shipping a per-platform icon set.
+  socialLinks: z
+    .array(
+      z.object({
+        platform: z
+          .string()
+          .describe("Display label (e.g. 'Instagram', 'Are.na', 'Dribbble')"),
+        url: z.string().url().describe("Profile URL"),
+      }),
+    )
+    .default([])
+    .describe(
+      "Social profiles linked from the contact strip below the mailto line. Empty array hides the section.",
     ),
 });
 

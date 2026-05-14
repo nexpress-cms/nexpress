@@ -1,7 +1,9 @@
 import * as React from "react";
-import { NavMenu } from "@nexpress/next";
+import { NavMenu, getCachedSite } from "@nexpress/next";
 
 import { resolveDocsSettings } from "./settings-helpers.js";
+
+const FALLBACK_SITE_NAME = "NexPress";
 
 /**
  * Docs theme masthead. Brand strap (mark + wordmark + version
@@ -18,13 +20,17 @@ import { resolveDocsSettings } from "./settings-helpers.js";
  * setting is unset, the link is hidden.
  */
 export async function DocsHeader(): Promise<React.ReactElement> {
-  const settings = await resolveDocsSettings();
+  const [settings, site] = await Promise.all([
+    resolveDocsSettings(),
+    getCachedSite(),
+  ]);
+  const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   return (
     <header className="np-docs-header">
       <div className="np-docs-header-inner">
         <a href="/" className="np-docs-brand">
           <span className="np-docs-brand-mark" aria-hidden="true" />
-          <span className="np-docs-brand-name">NexPress</span>
+          <span className="np-docs-brand-name">{siteName}</span>
           <span className="np-docs-brand-version">{settings.version}</span>
         </a>
         <form

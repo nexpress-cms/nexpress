@@ -19,6 +19,12 @@ export interface PortfolioProjectDoc {
   title?: string;
   category?: string;
   cover?: { url?: string; alt?: string } | string | null;
+  /**
+   * Optional publish timestamp. Used as a fallback when the
+   * project doesn't carry an explicit `year` field (see
+   * `projectYear` in templates/project-index.tsx).
+   */
+  publishedAt?: string | Date | null;
 }
 
 function coverUrl(value: PortfolioProjectDoc["cover"]): string | null {

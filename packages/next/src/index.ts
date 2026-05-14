@@ -76,8 +76,10 @@ export {
   getCachedActiveTheme,
   getCachedActiveThemeId,
   getCachedNavigation,
+  getCachedSite,
   themeCacheTag,
   navCacheTag,
+  siteCacheTag,
 } from "./cache.js";
 
 export { resolveAvailableLocales } from "./locale-siblings.js";

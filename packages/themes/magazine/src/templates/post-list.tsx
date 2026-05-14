@@ -2,6 +2,7 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 import type { MagazinePostCardDoc } from "../components/post-card.js";
 import { toRoman } from "../lib/roman.js";
+import { resolveMagazineSettings } from "../settings-helpers.js";
 
 /**
  * Magazine index — front-page editorial layout.
@@ -69,6 +70,21 @@ function postHref(doc: MagazinePostCardDoc): string {
   return "#";
 }
 
+/**
+ * ISO-style week-of-year for the cover-story issue number. Used
+ * as the fallback when the operator hasn't pinned an explicit
+ * `leadIssueNumber` in theme settings. We deliberately keep this
+ * naive (year-relative, not strict ISO) so a fresh install in
+ * week 3 ships with issue "3" and rotates weekly without an
+ * operator touching admin.
+ */
+function weekOfYear(now: Date): number {
+  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const msSinceYearStart = now.getTime() - yearStart.getTime();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  return Math.floor(msSinceYearStart / weekMs) + 1;
+}
+
 function dispatchTime(doc: MagazinePostCardDoc): string {
   if (!doc.publishedAt) return "";
   try {
@@ -131,8 +147,9 @@ function leadDoc(docs: MagazinePostCardDoc[]): {
   return { lead: docs[0]!, rest: docs.slice(1) };
 }
 
-export function PostListTemplate({ doc }: NpTemplateRenderProps) {
+export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const data = doc as PostListDoc;
+  const settings = await resolveMagazineSettings();
   const all = data.docs ?? [];
   if (all.length === 0) {
     return (
@@ -157,7 +174,10 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const secondary = rest.slice(0, 3);
   const dispatches = rest.slice(3, 7);
   const archive = rest.slice(7, 13);
-  const leadIssueNumber = 47;
+  // Operator override takes precedence; otherwise fall back to
+  // the ISO-week-of-year so a fresh install ships with a sensible
+  // running issue counter rather than a static "47".
+  const leadIssueNumber = settings.leadIssueNumber ?? weekOfYear(new Date());
 
   return (
     <>

@@ -5,6 +5,7 @@ import {
   getNavigation,
   getPluginConfig,
   getRegisteredThemes,
+  getSiteById,
   getTheme,
   getThemeById,
   getThemeSettings,
@@ -13,6 +14,7 @@ import {
 import type {
   NpNavItem,
   NpRegisteredTheme,
+  NpSite,
   NpThemeTokens,
 } from "@nexpress/core";
 import { unstable_cache } from "next/cache";
@@ -62,6 +64,41 @@ export function themeCacheTag(siteId: string): string {
 
 export function navCacheTag(siteId: string, location: string): string {
   return `nx:nav:${siteId}:${location}`;
+}
+
+/**
+ * Tag for the active site's `np_sites` row read. Bust whenever
+ * the operator renames the site or changes its hostname so
+ * themes that render `site.name` in the masthead refresh on
+ * the next request.
+ */
+export function siteCacheTag(siteId: string): string {
+  return `np:site:${siteId}`;
+}
+
+/**
+ * Cached read of the active site's `np_sites` row. Themes that
+ * render the operator's site name in the masthead / footer use
+ * this so a single rename in admin propagates without an env
+ * var or a redeploy.
+ *
+ * Returns `null` when the site context resolves to a row that
+ * doesn't exist (e.g. mid-deletion); callers fall back to a
+ * theme-local default in that case.
+ */
+export async function getCachedSite(): Promise<NpSite | null> {
+  const siteId = await resolveSiteId();
+  const cached = unstable_cache(
+    () => getSiteById(siteId),
+    ["np:site", siteId],
+    { tags: [siteCacheTag(siteId)], revalidate: REVALIDATE_SECONDS },
+  );
+  try {
+    return await cached();
+  } catch (error) {
+    if (isMissingIncrementalCache(error)) return getSiteById(siteId);
+    throw error;
+  }
 }
 
 export async function getCachedTheme(): Promise<NpThemeTokens> {
