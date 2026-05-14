@@ -437,6 +437,38 @@ export async function ProjectIndexTemplate({
             >
               {settings.contactEmail}
             </a>
+            {settings.socialLinks.length > 0 ? (
+              <div className="np-portfolio-contact-meta">
+                {settings.socialLinks.flatMap((link, i) => {
+                  const platform = link.platform;
+                  const label =
+                    typeof platform === "string"
+                      ? platform.charAt(0).toUpperCase() + platform.slice(1)
+                      : "Link";
+                  const anchor = (
+                    <a
+                      key={`social-${i.toString()}-${link.url}`}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {label}
+                    </a>
+                  );
+                  return i === 0
+                    ? [anchor]
+                    : [
+                        <span
+                          key={`sep-${i.toString()}`}
+                          aria-hidden="true"
+                        >
+                          ·
+                        </span>,
+                        anchor,
+                      ];
+                })}
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}

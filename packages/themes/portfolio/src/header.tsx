@@ -45,6 +45,19 @@ export async function PortfolioHeader() {
                   className="np-portfolio-nav-item"
                 >
                   <a href={item.url}>{item.label}</a>
+                  {item.children && item.children.length > 0 ? (
+                    <ul className="np-portfolio-subnav">
+                      {item.children.map(
+                        (child: NpNavItem, childIndex: number) => (
+                          <li
+                            key={`portfolio-nav-${index.toString()}-${childIndex.toString()}`}
+                          >
+                            <a href={child.url}>{child.label}</a>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>
