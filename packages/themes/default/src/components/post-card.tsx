@@ -176,26 +176,9 @@ export function PostCard({
           ) : null}
           {variant !== "feature" && doc.tags && doc.tags.length > 0 ? (
             <ul className="np-post-card-tags">
-              {doc.tags.flatMap((tag, idx) =>
-                idx === 0
-                  ? [
-                      <li key={`tag-${tag}-${idx.toString()}`}>
-                        <span>{tag}</span>
-                      </li>,
-                    ]
-                  : [
-                      <li
-                        key={`sep-${idx.toString()}`}
-                        className="np-post-card-tags-sep"
-                        aria-hidden="true"
-                      >
-                        ·
-                      </li>,
-                      <li key={`tag-${tag}-${idx.toString()}`}>
-                        <span>{tag}</span>
-                      </li>,
-                    ],
-              )}
+              {doc.tags.map((tag, idx) => (
+                <li key={`tag-${tag}-${idx.toString()}`}>{tag}</li>
+              ))}
             </ul>
           ) : null}
           <h3 className="np-post-card-title">{title}</h3>

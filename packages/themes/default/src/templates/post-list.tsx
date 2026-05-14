@@ -8,9 +8,11 @@ import { PostCard, type PostCardDoc } from "../components/post-card.js";
 // the `"use client"` directive survives. Pulling it into this
 // server template would inline `useState` into the main theme
 // bundle and crash the Next build. The inline newsletter here
-// renders a plain `<form action="/api/subscribe">` instead;
-// operators who want the inline-feedback variant override the
-// `newsletter` doc field with their own component.
+// renders a plain `<form action="/api/newsletter">` instead —
+// same endpoint the footer's NewsletterForm POSTs to, so the
+// operator only wires up one route. Sites that want the
+// inline-feedback variant override the `newsletter` doc field
+// with their own component.
 
 /**
  * Blog index template. The first post becomes the feature card
@@ -227,7 +229,7 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
           </div>
           <form
             className="np-newsletter-form"
-            action="/api/subscribe"
+            action="/api/newsletter"
             method="POST"
           >
             <label className="sr-only" htmlFor="np-newsletter-email">

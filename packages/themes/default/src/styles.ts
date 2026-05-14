@@ -989,20 +989,29 @@ export const defaultThemeCss = `
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+  margin: 0;
   margin-top: -0.25rem;
   list-style: none;
   padding: 0;
-}
-.np-post-card-tags li,
-.np-post-card-tags span,
-.np-post-card-tags a {
   font-family: var(--np-font-mono, ui-monospace, monospace);
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--np-color-muted-foreground, #6b6b74);
-  text-decoration: none;
 }
+.np-post-card-tags li {
+  display: inline-flex;
+  align-items: baseline;
+}
+/* Mid-dot separator between tags. Visual only — aria-hidden
+ * isn't needed because ::before content doesn't reach the
+ * accessibility tree. */
+.np-post-card-tags li:not(:first-child)::before {
+  content: "·";
+  margin: 0 0.35rem 0 0;
+  color: color-mix(in oklab, currentColor 50%, transparent);
+}
+.np-post-card-tags a { color: inherit; text-decoration: none; }
 .np-post-card-title {
   font-size: 1.1875rem;
   font-weight: 600;
@@ -1052,10 +1061,6 @@ export const defaultThemeCss = `
   content: "·";
   margin: 0 0.1rem;
 }
-.np-post-card-tags-sep {
-  color: color-mix(in oklab, currentColor 50%, transparent);
-}
-
 .np-post-list-empty header {
   text-align: center;
   padding: 4rem 1.5rem;
