@@ -35,6 +35,15 @@ export const magazineSettingsSchema = z.object({
     .boolean()
     .default(true)
     .describe("Show the footer newsletter signup form."),
+  leadIssueNumber: z
+    .number()
+    .int()
+    .min(1)
+    .max(9999)
+    .optional()
+    .describe(
+      "Issue number rendered on the cover-story lead card (e.g. 47). When unset, the masthead's week-of-year computation is used so a fresh install never shows '0'.",
+    ),
   socialLinks: z
     .array(
       z.object({

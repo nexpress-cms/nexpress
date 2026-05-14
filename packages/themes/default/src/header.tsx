@@ -1,6 +1,10 @@
 import { getI18nConfig } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
-import { getCachedNavigation, resolveAvailableLocales } from "@nexpress/next";
+import {
+  getCachedNavigation,
+  getCachedSite,
+  resolveAvailableLocales,
+} from "@nexpress/next";
 import Link from "next/link";
 
 // `next/headers` lives in the Next-build-context-only world —
@@ -35,8 +39,14 @@ import { MobileNav } from "./components/mobile-nav.js";
  * surface (see styles.ts) so the search + member widget stay
  * reachable as the page scrolls.
  */
+const FALLBACK_SITE_NAME = "NexPress";
+
 export async function DefaultHeader() {
-  const headerNav = await getCachedNavigation("header");
+  const [headerNav, site] = await Promise.all([
+    getCachedNavigation("header"),
+    getCachedSite(),
+  ]);
+  const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   const i18n = getI18nConfig();
   const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
 
@@ -59,7 +69,7 @@ export async function DefaultHeader() {
       <div className="np-site-header-inner">
         <Link href="/" className="np-site-logo">
           <span className="np-site-logo-mark" aria-hidden="true" />
-          <span>NexPress</span>
+          <span>{siteName}</span>
         </Link>
         <nav className="np-site-nav-desktop" aria-label="Primary">
           <ul className="np-site-nav">

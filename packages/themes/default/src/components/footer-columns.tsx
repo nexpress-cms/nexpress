@@ -1,5 +1,5 @@
 import type { NpNavItem } from "@nexpress/core";
-import { getCachedNavigation } from "@nexpress/next";
+import { getCachedNavigation, getCachedSite } from "@nexpress/next";
 import Link from "next/link";
 
 import { NewsletterForm } from "./newsletter-form.js";
@@ -19,8 +19,14 @@ import { SocialLinks } from "./social-links.js";
  * no JS). The bottom row carries the copyright and a small set
  * of secondary links (RSS / Sitemap / Privacy / Colophon).
  */
+const FALLBACK_SITE_NAME = "NexPress";
+
 export async function DefaultFooter() {
-  const footerNav = await getCachedNavigation("footer");
+  const [footerNav, site] = await Promise.all([
+    getCachedNavigation("footer"),
+    getCachedSite(),
+  ]);
+  const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   const year = new Date().getFullYear();
 
   return (
@@ -30,10 +36,10 @@ export async function DefaultFooter() {
           <section className="np-site-footer-col np-site-footer-brand">
             <Link href="/" className="np-site-footer-logo">
               <span className="np-site-logo-mark" aria-hidden="true" />
-              <span>NexPress</span>
+              <span>{siteName}</span>
             </Link>
             <p className="np-site-footer-tagline">
-              A team blog about the systems we ship — built on NexPress.
+              A team blog about the systems we ship — built on {siteName}.
             </p>
             <SocialLinks />
           </section>
@@ -93,7 +99,7 @@ export async function DefaultFooter() {
 
         <div className="np-site-footer-bottom">
           <p className="np-site-footer-copy">
-            © {year.toString()} · Built with NexPress
+            © {year.toString()} {siteName} · Built with NexPress
           </p>
           <ul className="np-site-footer-meta">
             <li>
