@@ -14,6 +14,16 @@ export interface MagazinePostCardDoc {
   publishedAt?: string | Date;
   authorName?: string;
   author?: { name?: string } | string;
+  /** Reading-time estimate; usually populated by the reading-time
+   *  plugin's `content:afterSave` hook. Number = minutes, string =
+   *  pre-formatted label. */
+  readingTime?: number | string;
+  /** Promotes the doc to the index template's lead position.
+   *  Operator-set via the admin's posts edit view. */
+  featured?: boolean;
+  /** Category references — relationship rows or just names.
+   *  Surfaced as the kicker eyebrow on grid / archive cards. */
+  categories?: Array<{ name?: string } | string>;
 }
 
 function coverUrl(value: MagazinePostCardDoc["cover"]): string | null {
