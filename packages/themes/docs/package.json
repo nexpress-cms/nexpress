@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/theme-docs",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Documentation theme for NexPress — hierarchical sidebar, prev/next nav, in-page TOC.",
   "license": "MIT",
   "author": "Nexpress",
