@@ -59,19 +59,14 @@
       "default": "./src/root/*.ts"
     },
     "./scripts/*": {
-      "types": "./src/scripts/*.ts",
-      "import": "./src/scripts/*.ts",
-      "default": "./src/scripts/*.ts"
-    },
-    "./lib/search-highlight": {
-      "types": "./src/lib/search-highlight.tsx",
-      "import": "./src/lib/search-highlight.tsx",
-      "default": "./src/lib/search-highlight.tsx"
+      "types": "./dist/scripts/*.d.ts",
+      "import": "./dist/scripts/*.js",
+      "default": "./dist/scripts/*.js"
     },
     "./lib/*": {
-      "types": "./src/lib/*.ts",
-      "import": "./src/lib/*.ts",
-      "default": "./src/lib/*.ts"
+      "types": "./dist/lib/*.d.ts",
+      "import": "./dist/lib/*.js",
+      "default": "./dist/lib/*.js"
     },
     "./collections/*": {
       "types": "./src/collections/*.ts",
