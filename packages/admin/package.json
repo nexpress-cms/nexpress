@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/admin",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Admin UI components for NexPress (React + Tailwind v4 + Radix).",
   "license": "MIT",
   "author": "Nexpress",
