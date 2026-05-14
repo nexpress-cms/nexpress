@@ -21,7 +21,14 @@ export default defineConfig([
       "./components/error.js",
       "./components/members-error.js",
       "./components/search-keyboard-shortcut.js",
-      "./components/toc-scrollspy.js",
+      // doc-page.tsx (at src/templates/) imports TocScrollspy via
+      // the package subpath rather than `../components/...` —
+      // tsup's external preserves the specifier verbatim in the
+      // output, and a parent-relative path bundled into dist/
+      // would escape the dist root at consume time. The subpath
+      // resolves through package.json `exports` and is depth-
+      // independent.
+      "@nexpress/theme-docs/components/toc-scrollspy",
     ],
   },
   {
