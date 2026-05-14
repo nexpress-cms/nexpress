@@ -19,6 +19,74 @@ interface DocDoc {
   readingTime?: number | string;
 }
 
+interface TocEntry {
+  id: string;
+  text: string;
+  /** `2` or `3` — h2 is top-level, h3 nests under preceding h2. */
+  level: 2 | 3;
+}
+
+/**
+ * Walks a Lexical doc looking for `heading` nodes. Returns
+ * `{ id, text, level }` for h2 / h3 — h1 is the page title
+ * itself, deeper levels (h4+) don't fit the TOC's two-tier
+ * visual.
+ *
+ * The renderer (`renderRichText` from `@nexpress/editor/server`)
+ * does NOT currently emit `id="..."` on the heading elements,
+ * so the anchor links the TOC produces only work once the
+ * renderer learns to do that (or sites override the body
+ * render with their own slug-emitting walker). Tracked as a
+ * follow-up — for v0.1 the TOC reads as a structural overview
+ * even if clicks fall through.
+ */
+function extractToc(body: NpRichTextContent | undefined): TocEntry[] {
+  if (!body) return [];
+  const root = (body as { root?: { children?: unknown[] } }).root;
+  if (!root || !Array.isArray(root.children)) return [];
+  const out: TocEntry[] = [];
+  walk(root.children, out);
+  return out;
+}
+
+function walk(nodes: unknown[], out: TocEntry[]): void {
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== "object") continue;
+    const node = raw as { type?: unknown; tag?: unknown; children?: unknown };
+    if (node.type === "heading" && (node.tag === "h2" || node.tag === "h3")) {
+      const text = collectText(Array.isArray(node.children) ? node.children : []);
+      if (text) {
+        out.push({
+          id: slugify(text),
+          text,
+          level: node.tag === "h2" ? 2 : 3,
+        });
+      }
+      continue;
+    }
+    if (Array.isArray(node.children)) walk(node.children, out);
+  }
+}
+
+function collectText(nodes: unknown[]): string {
+  const parts: string[] = [];
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== "object") continue;
+    const node = raw as { text?: unknown; children?: unknown };
+    if (typeof node.text === "string") parts.push(node.text);
+    else if (Array.isArray(node.children)) parts.push(collectText(node.children));
+  }
+  return parts.join("").trim();
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
 /**
  * Doc page template — three-zone article: header strap
  * (breadcrumbs + h1 + lede + meta pills), Lexical-rendered body,
@@ -55,8 +123,13 @@ export async function DocPageTemplate({
   const editHref = settings.githubRepo
     ? `${settings.githubRepo}/edit/main/docs/${doc.slug}.md`
     : null;
+  const toc = extractToc(doc.body);
+  const reportIssueHref = settings.githubRepo
+    ? `${settings.githubRepo}/issues/new`
+    : null;
 
   return (
+    <>
     <article className="np-docs-page">
       <nav className="np-docs-breadcrumbs" aria-label="Breadcrumb">
         {breadcrumbs.map((crumb, index) => {
@@ -131,12 +204,8 @@ export async function DocPageTemplate({
           </div>
         </div>
         <div className="np-docs-feedback-buttons">
-          <button type="button" disabled>
-            Yes
-          </button>
-          <button type="button" disabled>
-            Could be better
-          </button>
+          <button type="button">Yes</button>
+          <button type="button">Could be better</button>
         </div>
       </div>
 
@@ -165,6 +234,63 @@ export async function DocPageTemplate({
         )}
       </nav>
     </article>
+
+    {toc.length > 0 ? (
+      <aside className="np-docs-toc" aria-label="On this page">
+        <p className="np-docs-toc-eyebrow">On this page</p>
+        <ul>
+          {toc.map((entry) => (
+            <li
+              key={`toc-${entry.id}`}
+              style={entry.level === 3 ? { marginLeft: "0.85rem" } : undefined}
+            >
+              <a href={`#${entry.id}`}>{entry.text}</a>
+            </li>
+          ))}
+        </ul>
+
+        {(editHref || reportIssueHref) ? (
+          <div className="np-docs-toc-secondary">
+            {editHref ? (
+              <a href={editHref} target="_blank" rel="noreferrer">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Edit on GitHub
+              </a>
+            ) : null}
+            {reportIssueHref ? (
+              <a href={reportIssueHref} target="_blank" rel="noreferrer">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                Report an issue
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+      </aside>
+    ) : null}
+    </>
   );
 }
 
