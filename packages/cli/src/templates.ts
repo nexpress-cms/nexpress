@@ -416,6 +416,14 @@ function envExampleTemplate(config: TemplateConfig): string {
     'NP_SMTP_FROM="NexPress dev <noreply@nexpress.local>"',
     "NP_SMTP_SECURE=false",
     "",
+    "# First-boot setup wizard — pre-fills the picker on /admin/setup",
+    "# so headless / CI installs don't have to click through the form.",
+    "# These values DO NOT persist; the wizard writes the actual",
+    "# `np_settings.activeTheme` row when the operator finishes.",
+    `NP_ADMIN_THEME=${config.themeId}`,
+    "# NP_ADMIN_EMAIL=admin@example.com",
+    "# NP_ADMIN_NAME=Site Admin",
+    "",
   ].join("\n");
 }
 

@@ -50,6 +50,27 @@ import type {
 } from "@nexpress/core";
 
 /**
+ * Local mirror of `NpNavItem` from `@nexpress/core` — same
+ * tsup-DTS-bundler workaround as `NpThemeTokensOverlay` /
+ * `LocalNpSitemapEntry` elsewhere in this file. The bundler
+ * intermittently fails to resolve the named type across the
+ * `@nexpress/core` boundary; the structural mirror keeps
+ * theme authors able to declare nav items against the same
+ * shape. The runtime passes values through unchanged so the
+ * structural identity is enough.
+ */
+type LocalNpNavItem = {
+  id: string;
+  label: string;
+  type: "link" | "collection" | "page";
+  url?: string;
+  collection?: string;
+  collectionSlug?: string;
+  pageId?: string;
+  children?: LocalNpNavItem[];
+};
+
+/**
  * Local mirror of `NpThemeTokensOverlay` from `@nexpress/core` —
  * authored as `Partial`s of each sub-tree so a theme that overrides
  * only a few tokens (e.g. `colors.primary`) doesn't have to copy
@@ -273,6 +294,88 @@ export interface NpThemeArchives {
     byDate?: NpThemeDateArchiveEntry;
     search?: NpThemeArchiveEntry;
   };
+}
+
+/**
+ * Static seed data themes ship for first-boot demo content.
+ *
+ * The setup wizard reads the active theme's `impl.seedContent`
+ * and feeds it through the framework's seeder
+ * (`seedAll` in `@nexpress/app`), so each piece flows through
+ * the normal collection pipeline — access control, hooks,
+ * validation, search-vector build, all the same as a write
+ * coming from the admin. Themes therefore declare WHAT to seed,
+ * not HOW; calling `saveDocument` directly from a theme would
+ * bypass the pipeline and is not supported.
+ *
+ * All entries are optional; omitted slots fall through to the
+ * framework's generic seed content (the current "Welcome to
+ * NexPress" pages + 5 framework-themed posts). Themes that ship
+ * a partial overlay (e.g. only `posts`, no custom pages) keep
+ * the generic pages and override just the posts.
+ *
+ * **Asset references** — image URLs in `blocks` props (`hero.
+ * backgroundImage`, `logosCloud.items[].src`, etc.) are baked
+ * into the seeded page exactly as authored. Themes that need
+ * branded imagery should reference URLs that don't go away
+ * (their own CDN, a stable third-party host) — the seed pages
+ * outlive the install, so a 404'd asset URL ships forever.
+ */
+export interface NpThemeSeedTerm {
+  name: string;
+  description?: string;
+}
+
+export interface NpThemeSeedPage {
+  title: string;
+  /**
+   * Override slug — e.g. `"/"` for the home page. The pipeline's
+   * `slugField` normally derives the slug from `title`; passing
+   * `slug` skips the derivation. Mostly used for `/`.
+   */
+  slug?: string;
+  seoDescription?: string;
+  /**
+   * `NpBlockInstance[]` — kept as `unknown[]` here so the seed
+   * types don't drag the blocks JSON shape across the package
+   * boundary. The framework's seeder treats the array opaquely
+   * and writes it to the `blocks` field on the seeded page.
+   */
+  blocks: unknown[];
+}
+
+export interface NpThemeSeedPost {
+  title: string;
+  excerpt: string;
+  /**
+   * Lexical rich-text document — same opacity rationale as
+   * `NpThemeSeedPage.blocks`. The seeder passes it through to
+   * the `content` field unchanged.
+   */
+  content: unknown;
+  /** ISO date string. Past = published; future = scheduled. */
+  publishedAt: string;
+  status?: "draft" | "published";
+  /**
+   * Tag names to link via the `tags` collection. Names that
+   * don't resolve (the seeder didn't create the tag, or the
+   * theme didn't seed tags but referenced one) are skipped
+   * silently — the post still seeds, just without that link.
+   */
+  tagNames?: string[];
+}
+
+export interface NpThemeSeedNavigation {
+  header?: LocalNpNavItem[];
+  footer?: LocalNpNavItem[];
+}
+
+export interface NpThemeSeedContent {
+  tags?: NpThemeSeedTerm[];
+  categories?: NpThemeSeedTerm[];
+  pages?: NpThemeSeedPage[];
+  posts?: NpThemeSeedPost[];
+  navigation?: NpThemeSeedNavigation;
 }
 
 export interface NpThemeImpl {
@@ -505,6 +608,26 @@ export interface NpThemeImpl {
    * The framework wires this — themes don't have to opt in.
    */
   seo?: NpThemeSeoHooks;
+  /**
+   * Theme-shipped first-boot demo content.
+   *
+   * Consumed by the setup wizard's `seedAll(actor, theme)`
+   * dispatch when the operator opts into sample content. Each
+   * slot is independent: a theme that overrides only `posts`
+   * keeps the framework's generic pages and seeds the posts on
+   * top. See `NpThemeSeedContent` for the shape and the
+   * "asset references" note (image URLs are baked into the
+   * seeded page exactly as authored).
+   *
+   * When the active theme has no `seedContent` (or this slot is
+   * unset), the setup wizard falls back to the framework's
+   * generic "Welcome to NexPress" pages + 5 framework-themed
+   * posts. That fallback is the v0.1 default; built-in themes
+   * are expected to override it in their respective refactor
+   * PRs so the demo content matches the theme's visual
+   * language.
+   */
+  seedContent?: NpThemeSeedContent;
 }
 
 /**

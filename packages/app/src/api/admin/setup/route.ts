@@ -3,14 +3,17 @@ import {
   NpConflictError,
   NpValidationError,
   ensureDefaultSite,
+  getActiveTheme,
+  getThemeById,
   hashPassword,
   npUsers,
+  setActiveThemeId,
   signToken,
   updateSite,
   withCurrentSite,
 } from "@nexpress/core";
 import { count, eq } from "drizzle-orm";
-import { readJsonBody } from "@nexpress/next";
+import { readJsonBody, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -41,6 +44,15 @@ interface SetupBody {
   name?: string;
   siteName?: string;
   sampleContent?: boolean;
+  /**
+   * Optional theme id to activate before seeding. Validated
+   * against the registered themes; an unknown id surfaces a
+   * 400 so a stale wizard tab can't silently fall back to the
+   * default. When omitted, the active-theme resolver's
+   * "first-registered" fallback applies — no `np_settings`
+   * write happens.
+   */
+  themeId?: string;
 }
 
 const PASSWORD_MIN = 12;
@@ -51,7 +63,7 @@ function validateBody(raw: unknown): SetupBody {
       { field: "body", message: "Request body must be an object" },
     ]);
   }
-  const { email, password, name, siteName, sampleContent } = raw as Record<
+  const { email, password, name, siteName, sampleContent, themeId } = raw as Record<
     string,
     unknown
   >;
@@ -78,6 +90,9 @@ function validateBody(raw: unknown): SetupBody {
       message: "sampleContent must be a boolean",
     });
   }
+  if (themeId !== undefined && typeof themeId !== "string") {
+    errors.push({ field: "themeId", message: "themeId must be a string" });
+  }
   if (errors.length > 0) {
     throw new NpValidationError("Invalid input", errors);
   }
@@ -92,6 +107,9 @@ function validateBody(raw: unknown): SetupBody {
       ? { siteName: siteName.trim() }
       : {}),
     ...(typeof sampleContent === "boolean" ? { sampleContent } : {}),
+    ...(typeof themeId === "string" && themeId.trim().length > 0
+      ? { themeId: themeId.trim() }
+      : {}),
   };
 }
 
@@ -197,30 +215,88 @@ export async function POST(request: NextRequest): Promise<Response> {
       }
     }
 
+    // Theme picker: validate up front (fail-fast before we touch
+    // the seed) so an unknown id doesn't leave the wizard in a
+    // half-applied state. `setActiveThemeId` revalidates against
+    // the registry inside `withCurrentSite` below; this early
+    // check just surfaces the error before we open the wider
+    // try-block that swallows seed failures.
+    if (body.themeId && !getThemeById(body.themeId)) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "themeId",
+          message: `Unknown theme '${body.themeId}'. Register it in nexpress.config.ts first.`,
+        },
+      ]);
+    }
+
     let seeded: Awaited<ReturnType<typeof seedAll>> | null = null;
-    if (body.sampleContent) {
+    if (body.sampleContent || body.themeId) {
       try {
         // Sample content needs the plugin host loaded so collection
-        // hooks (slugField, search-vector, etc.) fire.
+        // hooks (slugField, search-vector, etc.) fire. Theme
+        // activation also runs through here so the active-theme
+        // setting + seed both land under one `withCurrentSite`.
         await ensureFor("plugins");
-        seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
-          seedAll({
-            id: created.id,
-            email: created.email,
-            name: created.name,
-            role: created.role,
-            tokenVersion: created.tokenVersion,
-          }),
-        );
+        seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, async () => {
+          // Activate the picked theme BEFORE seeding so the seeder
+          // resolves `getActiveTheme()` to the right theme — that's
+          // what feeds `theme.impl.seedContent` to `seedAll`. When
+          // no themeId was provided, the activeTheme stays at the
+          // implicit "first registered" fallback, which is also
+          // what `getActiveTheme()` returns. Either way the seeder
+          // sees one consistent theme view.
+          if (body.themeId) {
+            await setActiveThemeId(body.themeId, created.id);
+            // Bust the theme-dependent caches so the next render
+            // picks up the new shell + CSS. Mirror of
+            // `/api/admin/themes/active` PUT — keep them in sync
+            // if you change one. Wrapped in try/catch because
+            // `revalidate*` throws "Invariant: static generation
+            // store missing" outside a request context (test
+            // harnesses, scripts); the persistence already
+            // succeeded, cache-bust failure shouldn't surface as
+            // a 500. SEO tags bust unconditionally on theme
+            // switch (design doc §4.7) — the new theme may not
+            // contribute SEO hooks, but the OLD one might have,
+            // and those cached entries linger otherwise.
+            try {
+              const { revalidatePath, revalidateTag } = await import("next/cache");
+              revalidateTag(themeCacheTag(NP_DEFAULT_SITE_ID), "default");
+              revalidateTag(`nx:sitemap:${NP_DEFAULT_SITE_ID}`, "default");
+              revalidateTag(`nx:feed:${NP_DEFAULT_SITE_ID}`, "default");
+              revalidatePath("/", "layout");
+            } catch {
+              // ignore — see comment above
+            }
+          }
+          // Theme-only path (operator picked a theme but declined
+          // sample content): the activation already landed above;
+          // returning null surfaces the "no seed ran" intent
+          // unambiguously, vs returning a stub that the response
+          // builder then has to re-suppress.
+          if (!body.sampleContent) return null;
+          const activeTheme = await getActiveTheme();
+          return seedAll(
+            {
+              id: created.id,
+              email: created.email,
+              name: created.name,
+              role: created.role,
+              tokenVersion: created.tokenVersion,
+            },
+            activeTheme,
+          );
+        });
       } catch (seedErr) {
         const msg = seedErr instanceof Error ? seedErr.message : String(seedErr);
         // Print the full stack on the dev terminal so the operator
         // can diagnose silent seed failures (validation inside a
         // collection hook, a missing FK, etc.). The HTTP response
         // only carries the message; the stack is the diagnostic.
-        console.error("[admin-setup] seedAll failed:", seedErr);
+        console.error("[admin-setup] seed/theme activation failed:", seedErr);
         warnings.push(
-          `Sample content seeding failed: ${msg}. Admin account is ready; add content manually from Admin → Collections. Full stack is in the server log.`,
+          `Sample content / theme activation failed: ${msg}. Admin account is ready; pick a theme and seed from Admin → Appearance / Collections. Full stack is in the server log.`,
         );
       }
     }

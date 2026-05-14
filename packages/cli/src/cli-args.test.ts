@@ -37,6 +37,19 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["a", "b"])).toThrow(/Unexpected positional/);
   });
 
+  it("supports --theme <id> in space form", () => {
+    expect(parseCliArgs(["--theme", "magazine"]).flags.themeId).toBe("magazine");
+  });
+
+  it("supports --theme=<id> in equals form", () => {
+    expect(parseCliArgs(["--theme=portfolio"]).flags.themeId).toBe("portfolio");
+  });
+
+  it("rejects --theme without a value", () => {
+    expect(() => parseCliArgs(["--theme"])).toThrow(/--theme requires a value/);
+    expect(() => parseCliArgs(["--theme", "--yes"])).toThrow(/--theme requires a value/);
+  });
+
   it("combines all flags in one call", () => {
     const out = parseCliArgs([
       "demo",
@@ -44,12 +57,15 @@ describe("parseCliArgs", () => {
       "--no-example",
       "--no-docker",
       "--local",
+      "--theme",
+      "magazine",
     ]);
     expect(out.flags).toEqual({
       projectName: "demo",
       yes: true,
       includeExampleContent: false,
       dockerSetup: false,
+      themeId: "magazine",
     });
     expect(out.localMode).toBe(true);
   });

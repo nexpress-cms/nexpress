@@ -9,7 +9,14 @@ import {
   saveDocument,
   type NpAuthUser,
   type NpNavItem,
+  type NpRegisteredTheme,
 } from "@nexpress/core";
+import type {
+  NpThemeSeedContent,
+  NpThemeSeedPage,
+  NpThemeSeedPost,
+  NpThemeSeedTerm,
+} from "@nexpress/theme";
 
 /**
  * Demo-content seeders shared by the CLI script (`pnpm seed:content`)
@@ -66,12 +73,7 @@ export interface SeedAllResult {
 // Tags — seeded before posts so each post can reference real ids.
 // ──────────────────────────────────────────────────────────────────
 
-interface TagSample {
-  name: string;
-  description: string;
-}
-
-const TAG_SAMPLES: TagSample[] = [
+const TAG_SAMPLES: NpThemeSeedTerm[] = [
   {
     name: "Framework",
     description: "Architecture, conventions, and roadmap notes.",
@@ -90,17 +92,23 @@ const TAG_SAMPLES: TagSample[] = [
   },
 ];
 
-interface CategorySample {
-  name: string;
-  description: string;
-}
-
-const CATEGORY_SAMPLES: CategorySample[] = [
+const CATEGORY_SAMPLES: NpThemeSeedTerm[] = [
   { name: "Engineering", description: "Architecture, internals, and tooling." },
   { name: "Product", description: "Roadmap, decisions, and announcements." },
 ];
 
-export async function seedTerms(actor: NpAuthUser): Promise<SeedTermsResult> {
+export interface SeedTermsOptions {
+  tags?: NpThemeSeedTerm[];
+  categories?: NpThemeSeedTerm[];
+}
+
+export async function seedTerms(
+  actor: NpAuthUser,
+  options: SeedTermsOptions = {},
+): Promise<SeedTermsResult> {
+  const tags = options.tags ?? TAG_SAMPLES;
+  const categories = options.categories ?? CATEGORY_SAMPLES;
+
   // Both collections are checked together — if the operator has
   // touched EITHER side, treat the seed as already-run so we don't
   // half-overwrite.
@@ -110,19 +118,27 @@ export async function seedTerms(actor: NpAuthUser): Promise<SeedTermsResult> {
     return { tagsCreated: 0, categoriesCreated: 0, skipped: true };
   }
 
-  for (const sample of TAG_SAMPLES) {
-    await saveDocument("tags", null, { ...sample }, actor, {
-      status: "published",
-    });
+  for (const sample of tags) {
+    await saveDocument(
+      "tags",
+      null,
+      { name: sample.name, description: sample.description ?? "" },
+      actor,
+      { status: "published" },
+    );
   }
-  for (const sample of CATEGORY_SAMPLES) {
-    await saveDocument("categories", null, { ...sample }, actor, {
-      status: "published",
-    });
+  for (const sample of categories) {
+    await saveDocument(
+      "categories",
+      null,
+      { name: sample.name, description: sample.description ?? "" },
+      actor,
+      { status: "published" },
+    );
   }
   return {
-    tagsCreated: TAG_SAMPLES.length,
-    categoriesCreated: CATEGORY_SAMPLES.length,
+    tagsCreated: tags.length,
+    categoriesCreated: categories.length,
     skipped: false,
   };
 }
@@ -143,17 +159,10 @@ async function tagIdsByName(): Promise<Map<string, string>> {
 // a stable id so re-renders don't shuffle the editor's row order.
 // ──────────────────────────────────────────────────────────────────
 
-interface PageSample {
-  title: string;
-  forceSlug?: string;
-  seoDescription?: string;
-  blocks: unknown[];
-}
-
-const PAGE_SAMPLES: PageSample[] = [
+const PAGE_SAMPLES: NpThemeSeedPage[] = [
   {
     title: "Welcome to NexPress",
-    forceSlug: "/",
+    slug: "/",
     seoDescription:
       "An opinionated, batteries-included CMS for teams shipping production sites on Next.js.",
     blocks: buildHomePageBlocks(),
@@ -175,28 +184,37 @@ const PAGE_SAMPLES: PageSample[] = [
   },
 ];
 
-export async function seedPages(actor: NpAuthUser): Promise<SeedPagesResult> {
+export interface SeedPagesOptions {
+  pages?: NpThemeSeedPage[];
+}
+
+export async function seedPages(
+  actor: NpAuthUser,
+  options: SeedPagesOptions = {},
+): Promise<SeedPagesResult> {
+  const pages = options.pages ?? PAGE_SAMPLES;
+
   const existing = await findDocuments("pages", { limit: 1 });
   if (existing.docs.length > 0) {
     return { created: 0, skipped: true };
   }
 
   const db = getDb();
-  for (const sample of PAGE_SAMPLES) {
-    const { forceSlug, ...data } = sample;
+  for (const sample of pages) {
+    const { slug, ...data } = sample;
     const result = await saveDocument("pages", null, data, actor, {
       status: "published",
     });
-    if (forceSlug) {
+    if (slug) {
       const id = result.doc.id as string;
       // The pipeline's slugField derives from title, so we override
       // the home page's slug with a direct DB write after save.
       await db.execute(
-        sql`update np_c_pages set slug = ${forceSlug} where id = ${id}`,
+        sql`update np_c_pages set slug = ${slug} where id = ${id}`,
       );
     }
   }
-  return { created: PAGE_SAMPLES.length, skipped: false };
+  return { created: pages.length, skipped: false };
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -205,16 +223,7 @@ export async function seedPages(actor: NpAuthUser): Promise<SeedPagesResult> {
 // to demo the scheduled-publish flow.
 // ──────────────────────────────────────────────────────────────────
 
-interface PostSample {
-  title: string;
-  excerpt: string;
-  content: unknown;
-  publishedAt: string;
-  status?: "draft" | "published";
-  tagNames?: string[];
-}
-
-function buildPostSamples(now: Date): PostSample[] {
+function buildPostSamples(now: Date): NpThemeSeedPost[] {
   const day = 1000 * 60 * 60 * 24;
   return [
     {
@@ -289,14 +298,21 @@ function buildPostSamples(now: Date): PostSample[] {
   ];
 }
 
-export async function seedPosts(actor: NpAuthUser): Promise<SeedPostsResult> {
+export interface SeedPostsOptions {
+  posts?: NpThemeSeedPost[];
+}
+
+export async function seedPosts(
+  actor: NpAuthUser,
+  options: SeedPostsOptions = {},
+): Promise<SeedPostsResult> {
   const existing = await findDocuments("posts", { limit: 1 });
   if (existing.docs.length > 0) {
     return { created: 0, skipped: true };
   }
 
   const tagIds = await tagIdsByName();
-  const samples = buildPostSamples(new Date());
+  const samples = options.posts ?? buildPostSamples(new Date());
 
   for (const sample of samples) {
     const tagRefs = (sample.tagNames ?? [])
@@ -318,9 +334,33 @@ export async function seedPosts(actor: NpAuthUser): Promise<SeedPostsResult> {
 // Navigation — header + footer linking to the seeded pages.
 // ──────────────────────────────────────────────────────────────────
 
+const DEFAULT_HEADER_NAV: NpNavItem[] = [
+  { id: navId("blog"), label: "Blog", type: "link", url: "/blog" },
+  { id: navId("about"), label: "About", type: "link", url: "/about" },
+  { id: navId("pricing"), label: "Pricing", type: "link", url: "/pricing" },
+  { id: navId("contact"), label: "Contact", type: "link", url: "/contact" },
+  { id: navId("discussions"), label: "Discussions", type: "link", url: "/discussions" },
+];
+
+const DEFAULT_FOOTER_NAV: NpNavItem[] = [
+  { id: navId("about-f"), label: "About", type: "link", url: "/about" },
+  { id: navId("pricing-f"), label: "Pricing", type: "link", url: "/pricing" },
+  { id: navId("contact-f"), label: "Contact", type: "link", url: "/contact" },
+  { id: navId("github"), label: "GitHub", type: "link", url: "https://github.com/nexpress-cms/nexpress" },
+];
+
+export interface SeedNavigationOptions {
+  header?: NpNavItem[];
+  footer?: NpNavItem[];
+}
+
 export async function seedNavigation(
   actor: NpAuthUser,
+  options: SeedNavigationOptions = {},
 ): Promise<SeedNavigationResult> {
+  const headerItems = options.header ?? DEFAULT_HEADER_NAV;
+  const footerItems = options.footer ?? DEFAULT_FOOTER_NAV;
+
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const db = getDb();
 
@@ -339,20 +379,6 @@ export async function seedNavigation(
       and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, "footer")),
     )
     .limit(1);
-
-  const headerItems: NpNavItem[] = [
-    { id: navId("blog"), label: "Blog", type: "link", url: "/blog" },
-    { id: navId("about"), label: "About", type: "link", url: "/about" },
-    { id: navId("pricing"), label: "Pricing", type: "link", url: "/pricing" },
-    { id: navId("contact"), label: "Contact", type: "link", url: "/contact" },
-    { id: navId("discussions"), label: "Discussions", type: "link", url: "/discussions" },
-  ];
-  const footerItems: NpNavItem[] = [
-    { id: navId("about-f"), label: "About", type: "link", url: "/about" },
-    { id: navId("pricing-f"), label: "Pricing", type: "link", url: "/pricing" },
-    { id: navId("contact-f"), label: "Contact", type: "link", url: "/contact" },
-    { id: navId("github"), label: "GitHub", type: "link", url: "https://github.com/nexpress-cms/nexpress" },
-  ];
 
   let headerCount = 0;
   let footerCount = 0;
@@ -393,12 +419,40 @@ export async function seedNavigation(
 // Orchestrator — terms first so post tag/category refs resolve.
 // ──────────────────────────────────────────────────────────────────
 
-export async function seedAll(actor: NpAuthUser): Promise<SeedAllResult> {
-  const terms = await seedTerms(actor);
-  const pages = await seedPages(actor);
-  const posts = await seedPosts(actor);
-  const navigation = await seedNavigation(actor);
-  return { terms, pages, posts, navigation };
+/**
+ * Theme-aware seed orchestrator.
+ *
+ * When `theme.impl.seedContent` is set, each slot drives its
+ * respective seeder. Unset slots fall through to the framework's
+ * generic content per-slot — so a theme that overrides only
+ * `posts` keeps the generic pages, tags, and nav. Pass no `theme`
+ * (or one without `seedContent`) to run the pure framework
+ * default — the current call signature `seedAll(actor)` still
+ * works for back-compat with `seed:content` scripts.
+ */
+export async function seedAll(
+  actor: NpAuthUser,
+  theme?: NpRegisteredTheme | null,
+): Promise<SeedAllResult> {
+  // `NpRegisteredTheme.impl` is typed as opaque `unknown` in core
+  // (themes opt into the typed `NpThemeImpl` view by importing
+  // `@nexpress/theme`); narrow at the boundary so the seeder
+  // sees the typed shape. The structural cast is benign — both
+  // sides go through the `defineTheme` author surface.
+  const impl = (theme?.impl ?? null) as { seedContent?: NpThemeSeedContent } | null;
+  const themed: NpThemeSeedContent = impl?.seedContent ?? {};
+
+  const terms = await seedTerms(actor, {
+    tags: themed.tags,
+    categories: themed.categories,
+  });
+  const pages = await seedPages(actor, { pages: themed.pages });
+  const posts = await seedPosts(actor, { posts: themed.posts });
+  const nav = await seedNavigation(actor, {
+    header: themed.navigation?.header,
+    footer: themed.navigation?.footer,
+  });
+  return { terms, pages, posts, navigation: nav };
 }
 
 // ──────────────────────────────────────────────────────────────────

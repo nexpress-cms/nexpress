@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AuthCard,
@@ -23,9 +23,22 @@ interface AccountState {
 interface SiteState {
   siteName: string;
   sampleContent: boolean;
+  themeId: string;
 }
 
 const PASSWORD_MIN = 12;
+
+/**
+ * Theme option the wizard renders in its picker. The server page
+ * builds this from `getRegisteredThemes()` so multi-site and
+ * third-party themes registered in `nexpress.config.ts` appear
+ * too — the picker is just a UI on top of the live registry.
+ */
+export interface SetupWizardThemeOption {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 export interface SetupWizardProps {
   /**
@@ -37,10 +50,30 @@ export interface SetupWizardProps {
   prefill?: {
     email?: string;
     name?: string;
+    /**
+     * Pre-selected theme id (from `NP_ADMIN_THEME` written by
+     * `create-nexpress --theme <id>`). The wizard validates it
+     * against `themes` server-side; when absent or unknown the
+     * picker falls back to the first registered theme.
+     */
+    themeId?: string;
   };
+  /**
+   * Registered themes resolved server-side. The wizard renders a
+   * text-only picker (name + one-line description); visual preview
+   * lives in `/admin/appearance` after first boot — the
+   * bundled-themes prebake makes swapping migration-free, so the
+   * operator's initial pick is never a binding commitment.
+   *
+   * When empty (no themes registered), the picker is hidden
+   * entirely and the wizard falls back to the framework's
+   * default-theme resolution. When `prefill?.themeId` is set, that
+   * theme is selected by default; otherwise the first option wins.
+   */
+  themes?: SetupWizardThemeOption[];
 }
 
-export function SetupWizard({ prefill }: SetupWizardProps = {}) {
+export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [account, setAccount] = useState<AccountState>({
@@ -49,12 +82,37 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
     passwordConfirm: "",
     name: prefill?.name ?? "",
   });
+  const initialThemeId =
+    (prefill?.themeId && themes.some((t) => t.id === prefill.themeId)
+      ? prefill.themeId
+      : themes[0]?.id) ?? "";
   const [site, setSite] = useState<SiteState>({
     siteName: "My Site",
     sampleContent: true,
+    themeId: initialThemeId,
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // One ref per theme radio button so arrow-key nav can hand
+  // focus to the new selection. Standard WAI-ARIA radio pattern:
+  // Tab enters the group, arrows move focus + selection inside,
+  // Tab again leaves the group. Only the selected radio is in
+  // the document tab order (`tabIndex={selected ? 0 : -1}`).
+  const themeRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function moveThemeSelection(delta: number) {
+    if (themes.length === 0) return;
+    const current = themes.findIndex((t) => t.id === site.themeId);
+    const fromIndex = current >= 0 ? current : 0;
+    // Modulo with `+ themes.length` handles the negative wrap
+    // (`-1 % 4 === -1` in JS, not `3`).
+    const nextIndex = (fromIndex + delta + themes.length) % themes.length;
+    const next = themes[nextIndex];
+    if (!next) return;
+    setSite((prev) => ({ ...prev, themeId: next.id }));
+    themeRefs.current[nextIndex]?.focus();
+  }
 
   function validateAccount(): string | null {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.email)) {
@@ -94,6 +152,7 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
           ...(account.name.trim() ? { name: account.name.trim() } : {}),
           ...(site.siteName.trim() ? { siteName: site.siteName.trim() } : {}),
           sampleContent: site.sampleContent,
+          ...(site.themeId ? { themeId: site.themeId } : {}),
         }),
       });
       if (!res.ok) {
@@ -213,6 +272,85 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
                 placeholder="My Site"
               />
             </FieldRow>
+            {themes.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-[12.5px]">Theme</Label>
+                <div
+                  role="radiogroup"
+                  aria-label="Theme"
+                  className="flex flex-col gap-1.5"
+                >
+                  {themes.map((theme, index) => {
+                    const selected = site.themeId === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        ref={(el) => {
+                          themeRefs.current[index] = el;
+                        }}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        tabIndex={selected ? 0 : -1}
+                        onClick={() => setSite({ ...site, themeId: theme.id })}
+                        onKeyDown={(e) => {
+                          // Standard radio group: Down/Right →
+                          // next option (wrap), Up/Left → prev
+                          // option (wrap), Home → first, End →
+                          // last. preventDefault on the arrows
+                          // stops the page from scrolling under
+                          // the picker.
+                          if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                            e.preventDefault();
+                            moveThemeSelection(1);
+                          } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            moveThemeSelection(-1);
+                          } else if (e.key === "Home") {
+                            e.preventDefault();
+                            moveThemeSelection(-index);
+                          } else if (e.key === "End") {
+                            e.preventDefault();
+                            moveThemeSelection(themes.length - 1 - index);
+                          }
+                        }}
+                        className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors ${
+                          selected
+                            ? "border-neutral-900 bg-neutral-50 dark:border-neutral-100 dark:bg-neutral-900"
+                            : "border-neutral-200/80 bg-neutral-50/40 hover:border-neutral-300 dark:border-neutral-800/80 dark:bg-neutral-900/30 dark:hover:border-neutral-700"
+                        }`}
+                      >
+                        <span
+                          aria-hidden
+                          className={`mt-[3px] inline-block size-3 shrink-0 rounded-full border-2 transition-colors ${
+                            selected
+                              ? "border-neutral-900 dark:border-neutral-100"
+                              : "border-neutral-400 dark:border-neutral-600"
+                          }`}
+                        >
+                          {selected ? (
+                            <span className="block size-full scale-50 rounded-full bg-neutral-900 dark:bg-neutral-100" />
+                          ) : null}
+                        </span>
+                        <span className="flex-1">
+                          <span className="block text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">
+                            {theme.name}
+                          </span>
+                          {theme.description ? (
+                            <span className="mt-0.5 block text-[11.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
+                              {theme.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] leading-[1.4] text-neutral-500 dark:text-neutral-500">
+                  You can switch themes anytime from Appearance — no migration needed.
+                </p>
+              </div>
+            ) : null}
             <div className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200/80 bg-neutral-50/60 px-3 py-2.5 dark:border-neutral-800/80 dark:bg-neutral-900/40">
               <div className="flex-1">
                 <div className="text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">
