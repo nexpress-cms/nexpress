@@ -23,9 +23,22 @@ interface AccountState {
 interface SiteState {
   siteName: string;
   sampleContent: boolean;
+  themeId: string;
 }
 
 const PASSWORD_MIN = 12;
+
+/**
+ * Theme option the wizard renders in its picker. The server page
+ * builds this from `getRegisteredThemes()` so multi-site and
+ * third-party themes registered in `nexpress.config.ts` appear
+ * too — the picker is just a UI on top of the live registry.
+ */
+export interface SetupWizardThemeOption {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 export interface SetupWizardProps {
   /**
@@ -37,10 +50,30 @@ export interface SetupWizardProps {
   prefill?: {
     email?: string;
     name?: string;
+    /**
+     * Pre-selected theme id (from `NP_ADMIN_THEME` written by
+     * `create-nexpress --theme <id>`). The wizard validates it
+     * against `themes` server-side; when absent or unknown the
+     * picker falls back to the first registered theme.
+     */
+    themeId?: string;
   };
+  /**
+   * Registered themes resolved server-side. The wizard renders a
+   * text-only picker (name + one-line description); visual preview
+   * lives in `/admin/appearance` after first boot — the
+   * bundled-themes prebake makes swapping migration-free, so the
+   * operator's initial pick is never a binding commitment.
+   *
+   * When empty (no themes registered), the picker is hidden
+   * entirely and the wizard falls back to the framework's
+   * default-theme resolution. When `prefill?.themeId` is set, that
+   * theme is selected by default; otherwise the first option wins.
+   */
+  themes?: SetupWizardThemeOption[];
 }
 
-export function SetupWizard({ prefill }: SetupWizardProps = {}) {
+export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [account, setAccount] = useState<AccountState>({
@@ -49,9 +82,14 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
     passwordConfirm: "",
     name: prefill?.name ?? "",
   });
+  const initialThemeId =
+    (prefill?.themeId && themes.some((t) => t.id === prefill.themeId)
+      ? prefill.themeId
+      : themes[0]?.id) ?? "";
   const [site, setSite] = useState<SiteState>({
     siteName: "My Site",
     sampleContent: true,
+    themeId: initialThemeId,
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -94,6 +132,7 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
           ...(account.name.trim() ? { name: account.name.trim() } : {}),
           ...(site.siteName.trim() ? { siteName: site.siteName.trim() } : {}),
           sampleContent: site.sampleContent,
+          ...(site.themeId ? { themeId: site.themeId } : {}),
         }),
       });
       if (!res.ok) {
@@ -213,6 +252,60 @@ export function SetupWizard({ prefill }: SetupWizardProps = {}) {
                 placeholder="My Site"
               />
             </FieldRow>
+            {themes.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-[12.5px]">Theme</Label>
+                <div
+                  role="radiogroup"
+                  aria-label="Theme"
+                  className="flex flex-col gap-1.5"
+                >
+                  {themes.map((theme) => {
+                    const selected = site.themeId === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setSite({ ...site, themeId: theme.id })}
+                        className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors ${
+                          selected
+                            ? "border-neutral-900 bg-neutral-50 dark:border-neutral-100 dark:bg-neutral-900"
+                            : "border-neutral-200/80 bg-neutral-50/40 hover:border-neutral-300 dark:border-neutral-800/80 dark:bg-neutral-900/30 dark:hover:border-neutral-700"
+                        }`}
+                      >
+                        <span
+                          aria-hidden
+                          className={`mt-[3px] inline-block size-3 shrink-0 rounded-full border-2 transition-colors ${
+                            selected
+                              ? "border-neutral-900 dark:border-neutral-100"
+                              : "border-neutral-400 dark:border-neutral-600"
+                          }`}
+                        >
+                          {selected ? (
+                            <span className="block size-full scale-50 rounded-full bg-neutral-900 dark:bg-neutral-100" />
+                          ) : null}
+                        </span>
+                        <span className="flex-1">
+                          <span className="block text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">
+                            {theme.name}
+                          </span>
+                          {theme.description ? (
+                            <span className="mt-0.5 block text-[11.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
+                              {theme.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] leading-[1.4] text-neutral-500 dark:text-neutral-500">
+                  You can switch themes anytime from Appearance — no migration needed.
+                </p>
+              </div>
+            ) : null}
             <div className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200/80 bg-neutral-50/60 px-3 py-2.5 dark:border-neutral-800/80 dark:bg-neutral-900/40">
               <div className="flex-1">
                 <div className="text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">

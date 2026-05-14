@@ -8,6 +8,7 @@ const baseConfig = {
   includeExampleContent: true,
   dockerSetup: true,
   localMode: true,
+  themeId: "default",
   secret: "test-secret-32characters-min-aaaaaaaaaaaa",
 };
 
@@ -85,6 +86,16 @@ describe("getProjectFiles", () => {
     // known-compatible major+minor across @nexpress/*.
     expect(remote["package.json"]).toMatch(/"@nexpress\/core":\s*"\^0\.\d+\.\d+"/);
     expect(remote["package.json"]).not.toMatch(/"@nexpress\/core":\s*"latest"/);
+  });
+
+  it("bakes the picked theme into .env / .env.example as NP_ADMIN_THEME", () => {
+    const files = textFiles(getProjectFiles({ ...baseConfig, themeId: "magazine" }));
+    // The wizard reads NP_ADMIN_THEME server-side and forwards it
+    // as the picker's initial selection; the bundled-themes
+    // prebake makes the operator's actual choice migration-free
+    // regardless of what we pre-seed here.
+    expect(files[".env.example"]).toMatch(/NP_ADMIN_THEME=magazine\b/);
+    expect(files[".env"]).toMatch(/NP_ADMIN_THEME=magazine\b/);
   });
 
   it("declares @nexpress/app as a dependency so subpath wrappers resolve", () => {

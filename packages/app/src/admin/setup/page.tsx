@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
-import { npUsers } from "@nexpress/core";
+import { getRegisteredThemes, npUsers } from "@nexpress/core";
 
 import { getDb } from "../../lib/db";
 import { ensureFor } from "../../lib/init-core";
 
-import { SetupWizard } from "./setup-client";
+import { SetupWizard, type SetupWizardThemeOption } from "./setup-client";
 
 /**
  * First-boot Admin Setup wizard. Renders only when no admin row
@@ -30,12 +30,33 @@ export default async function SetupPage() {
   const adminCount = rows[0]?.value ?? 0;
   if (adminCount > 0) redirect("/admin/login");
 
+  // Theme picker source — registered themes from the operator's
+  // `nexpress.config.ts`. The wizard renders a text-only picker;
+  // visual preview happens later in the admin's Appearance panel
+  // (already lets operators switch the active theme freely, now
+  // that the bundled-themes prebake makes the swap migration-free).
+  const themes: SetupWizardThemeOption[] = getRegisteredThemes().map((theme) => ({
+    id: theme.manifest.id,
+    name: theme.manifest.name,
+    description: theme.manifest.description ?? null,
+  }));
+
+  // `NP_ADMIN_THEME` is the scaffold-emitted pre-pick (see
+  // `create-nexpress --theme <id>`). Only forward it when the
+  // value names a registered theme — otherwise an env carrying a
+  // typo'd id would silently fall back to the wizard's first
+  // option, leaving the operator unsure which pick is active.
+  const envThemeId = process.env.NP_ADMIN_THEME;
+  const themeId =
+    envThemeId && themes.some((t) => t.id === envThemeId) ? envThemeId : undefined;
+
   const prefill = {
     email: process.env.NP_ADMIN_EMAIL ?? "",
     name: process.env.NP_ADMIN_NAME ?? "",
+    ...(themeId ? { themeId } : {}),
   };
 
-  return <SetupWizard prefill={prefill} />;
+  return <SetupWizard prefill={prefill} themes={themes} />;
 }
 
 export const dynamic = "force-dynamic";

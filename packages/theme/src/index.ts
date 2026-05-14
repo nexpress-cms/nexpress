@@ -28,6 +28,11 @@ export type {
   NpThemeNavLocation,
   NpThemeErrorProps,
   NpThemeSeoHooks,
+  NpThemeSeedContent,
+  NpThemeSeedNavigation,
+  NpThemeSeedPage,
+  NpThemeSeedPost,
+  NpThemeSeedTerm,
 } from "./define-theme.js";
 
 export { getActiveTheme, getRegisteredThemes, getThemeById } from "./registry-typed.js";

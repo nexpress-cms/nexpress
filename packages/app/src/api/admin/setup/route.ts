@@ -3,8 +3,11 @@ import {
   NpConflictError,
   NpValidationError,
   ensureDefaultSite,
+  getActiveTheme,
+  getThemeById,
   hashPassword,
   npUsers,
+  setActiveThemeId,
   signToken,
   updateSite,
   withCurrentSite,
@@ -41,6 +44,15 @@ interface SetupBody {
   name?: string;
   siteName?: string;
   sampleContent?: boolean;
+  /**
+   * Optional theme id to activate before seeding. Validated
+   * against the registered themes; an unknown id surfaces a
+   * 400 so a stale wizard tab can't silently fall back to the
+   * default. When omitted, the active-theme resolver's
+   * "first-registered" fallback applies — no `np_settings`
+   * write happens.
+   */
+  themeId?: string;
 }
 
 const PASSWORD_MIN = 12;
@@ -51,7 +63,7 @@ function validateBody(raw: unknown): SetupBody {
       { field: "body", message: "Request body must be an object" },
     ]);
   }
-  const { email, password, name, siteName, sampleContent } = raw as Record<
+  const { email, password, name, siteName, sampleContent, themeId } = raw as Record<
     string,
     unknown
   >;
@@ -78,6 +90,9 @@ function validateBody(raw: unknown): SetupBody {
       message: "sampleContent must be a boolean",
     });
   }
+  if (themeId !== undefined && typeof themeId !== "string") {
+    errors.push({ field: "themeId", message: "themeId must be a string" });
+  }
   if (errors.length > 0) {
     throw new NpValidationError("Invalid input", errors);
   }
@@ -92,6 +107,9 @@ function validateBody(raw: unknown): SetupBody {
       ? { siteName: siteName.trim() }
       : {}),
     ...(typeof sampleContent === "boolean" ? { sampleContent } : {}),
+    ...(typeof themeId === "string" && themeId.trim().length > 0
+      ? { themeId: themeId.trim() }
+      : {}),
   };
 }
 
@@ -197,30 +215,78 @@ export async function POST(request: NextRequest): Promise<Response> {
       }
     }
 
+    // Theme picker: validate up front (fail-fast before we touch
+    // the seed) so an unknown id doesn't leave the wizard in a
+    // half-applied state. `setActiveThemeId` revalidates against
+    // the registry inside `withCurrentSite` below; this early
+    // check just surfaces the error before we open the wider
+    // try-block that swallows seed failures.
+    if (body.themeId && !getThemeById(body.themeId)) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "themeId",
+          message: `Unknown theme '${body.themeId}'. Register it in nexpress.config.ts first.`,
+        },
+      ]);
+    }
+
     let seeded: Awaited<ReturnType<typeof seedAll>> | null = null;
-    if (body.sampleContent) {
+    if (body.sampleContent || body.themeId) {
       try {
         // Sample content needs the plugin host loaded so collection
-        // hooks (slugField, search-vector, etc.) fire.
+        // hooks (slugField, search-vector, etc.) fire. Theme
+        // activation also runs through here so the active-theme
+        // setting + seed both land under one `withCurrentSite`.
         await ensureFor("plugins");
-        seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, () =>
-          seedAll({
-            id: created.id,
-            email: created.email,
-            name: created.name,
-            role: created.role,
-            tokenVersion: created.tokenVersion,
-          }),
-        );
+        seeded = await withCurrentSite(NP_DEFAULT_SITE_ID, async () => {
+          // Activate the picked theme BEFORE seeding so the seeder
+          // resolves `getActiveTheme()` to the right theme — that's
+          // what feeds `theme.impl.seedContent` to `seedAll`. When
+          // no themeId was provided, the activeTheme stays at the
+          // implicit "first registered" fallback, which is also
+          // what `getActiveTheme()` returns. Either way the seeder
+          // sees one consistent theme view.
+          if (body.themeId) {
+            await setActiveThemeId(body.themeId, created.id);
+          }
+          const activeTheme = await getActiveTheme();
+          if (!body.sampleContent) {
+            // Theme picked but operator declined sample content —
+            // theme is now active, no seed runs. Return a stub so
+            // the caller still gets a non-null `seeded` shape
+            // describing zero work.
+            return {
+              terms: { tagsCreated: 0, categoriesCreated: 0, skipped: true },
+              pages: { created: 0, skipped: true },
+              posts: { created: 0, skipped: true },
+              navigation: { header: 0, footer: 0, headerSkipped: true, footerSkipped: true },
+            };
+          }
+          return seedAll(
+            {
+              id: created.id,
+              email: created.email,
+              name: created.name,
+              role: created.role,
+              tokenVersion: created.tokenVersion,
+            },
+            activeTheme,
+          );
+        });
+        // The "seeded" response is meaningful only when actual
+        // seeding happened — when the operator declined sample
+        // content but picked a theme, suppress the seeded block
+        // so the response doesn't claim zero creations.
+        if (!body.sampleContent) seeded = null;
       } catch (seedErr) {
         const msg = seedErr instanceof Error ? seedErr.message : String(seedErr);
         // Print the full stack on the dev terminal so the operator
         // can diagnose silent seed failures (validation inside a
         // collection hook, a missing FK, etc.). The HTTP response
         // only carries the message; the stack is the diagnostic.
-        console.error("[admin-setup] seedAll failed:", seedErr);
+        console.error("[admin-setup] seed/theme activation failed:", seedErr);
         warnings.push(
-          `Sample content seeding failed: ${msg}. Admin account is ready; add content manually from Admin → Collections. Full stack is in the server log.`,
+          `Sample content / theme activation failed: ${msg}. Admin account is ready; pick a theme and seed from Admin → Appearance / Collections. Full stack is in the server log.`,
         );
       }
     }

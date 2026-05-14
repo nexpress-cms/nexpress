@@ -12,6 +12,7 @@ describe("promptForProjectConfig — non-interactive paths", () => {
       projectName: "demo",
       includeExampleContent: true,
       dockerSetup: true,
+      themeId: "default",
     });
   });
 
@@ -21,12 +22,24 @@ describe("promptForProjectConfig — non-interactive paths", () => {
       projectName: "demo",
       includeExampleContent: false,
       dockerSetup: false,
+      themeId: "magazine",
     });
     expect(out).toEqual({
       projectName: "demo",
       includeExampleContent: false,
       dockerSetup: false,
+      themeId: "magazine",
     });
+  });
+
+  it("rejects an unknown --theme value", async () => {
+    await expect(
+      promptForProjectConfig({
+        yes: true,
+        projectName: "demo",
+        themeId: "no-such-theme",
+      }),
+    ).rejects.toThrow(/Unknown --theme value/);
   });
 
   it("normalizes the project name (whitespace / case / spaces → kebab)", async () => {

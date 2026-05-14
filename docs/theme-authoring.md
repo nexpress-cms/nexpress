@@ -469,6 +469,94 @@ pick up its columns. There is no `prebake-themes` upgrade
 helper — the operator's `themes:` array is the source of truth
 for what's in the union.
 
+### First-boot demo content (`impl.seedContent`)
+
+The setup wizard's "Add sample content" toggle runs the framework's
+seeder via `seedAll(actor, theme)`. When the active theme declares
+`impl.seedContent`, each slot drives the matching seeder; unset
+slots fall through to the framework's generic content (the
+"Welcome to NexPress" pages + framework-themed posts). This is
+how built-in themes ship demo content that matches their visual
+language without forking the seeder.
+
+```ts
+export const magazineTheme = defineTheme({
+  manifest: { id: "magazine", /* … */ },
+  impl: {
+    /* shell, slots, templates, tokens, css, … */
+    seedContent: {
+      tags: [
+        { name: "Politics", description: "…" },
+        { name: "Culture", description: "…" },
+      ],
+      pages: [
+        {
+          title: "About the magazine",
+          seoDescription: "…",
+          blocks: [/* NpBlockInstance[] */],
+        },
+      ],
+      posts: [
+        {
+          title: "The lead piece",
+          excerpt: "…",
+          content: lexicalDoc([/* … */]),
+          publishedAt: "2026-05-01T00:00:00.000Z",
+          tagNames: ["Politics"],
+        },
+      ],
+      navigation: {
+        header: [{ id: "h1", label: "Politics", type: "link", url: "/category/politics" }],
+        footer: [{ id: "f1", label: "Masthead", type: "link", url: "/masthead" }],
+      },
+    },
+  },
+});
+```
+
+Slot-by-slot rules:
+
+- **`tags` / `categories`** — `{ name, description? }`. Seeded
+  before posts so post `tagNames` resolve to real ids. Names
+  that don't resolve are skipped silently.
+- **`pages`** — `{ title, slug?, seoDescription?, blocks }`.
+  `slug` overrides the pipeline's title-derived slug (used for
+  `/` on the home page). `blocks` is `NpBlockInstance[]` kept
+  as `unknown[]` in the type so the JSON shape doesn't cross
+  the package boundary; the seeder treats it opaquely.
+- **`posts`** — `{ title, excerpt, content, publishedAt, status?,
+  tagNames? }`. Lexical `content` is opaque to the type for the
+  same reason. Past `publishedAt` = published; future = scheduled
+  (the scheduled-publish cron promotes when the timestamp passes).
+- **`navigation.header` / `navigation.footer`** — `NpNavItem[]`.
+  Each entry needs a stable `id`; the framework doesn't generate
+  ids for theme-seeded nav items, so author them as part of the
+  static data (e.g. `id: "nav-magazine-politics"`).
+
+**Asset references**: image URLs in block props (`hero.
+backgroundImage`, `logosCloud.items[].src`, etc.) are baked into
+the seeded page exactly as authored. Reference URLs that won't
+go away — your own CDN, a stable third-party host. The seed
+pages outlive the install, so a 404'd asset URL ships forever.
+
+**Idempotency**: each seeder skips when the corresponding
+collection / nav location already has at least one row. Re-running
+seed-all on a populated install is a no-op. This is the same
+behavior as the framework default content; theme-provided
+`seedContent` doesn't change it.
+
+**No `saveDocument` from a theme**: themes declare WHAT to seed,
+not HOW. Calling `saveDocument` directly from a theme would
+bypass the framework's pipeline (access control, hooks,
+validation, search-vector build) and is not supported. The
+seeder owns the write path.
+
+Pre-1.0 stability note: `NpThemeSeedContent` and its sub-types
+(`NpThemeSeedTerm`, `NpThemeSeedPage`, `NpThemeSeedPost`,
+`NpThemeSeedNavigation`) are on the v0.1 stable surface. Adding
+optional fields to any of them is non-breaking; renaming or
+removing one rides a minor + migration note.
+
 ---
 
 ## 10. Server vs Client Boundary
