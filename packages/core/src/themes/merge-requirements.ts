@@ -195,6 +195,7 @@ function synthesiseCollection(
   slug: string,
   requirement: NpThemeCollectionRequirement,
   injectedNames: Set<string>,
+  themeId: string,
 ): NpCollectionConfig | null {
   const fields: NpFieldConfig[] = [];
   for (const [fieldName, fieldReq] of Object.entries(requirement.fields ?? {})) {
@@ -220,10 +221,17 @@ function synthesiseCollection(
   }
   const titled = titleCase(slug);
   const singular = slug.endsWith("s") ? titleCase(slug.slice(0, -1)) : titled;
+  // `_themeOrigin` is the admin's signal that this collection
+  // only exists because the named theme's `createIfAbsent`
+  // synthesised it. The admin sidebar hides such entries when
+  // the owning theme isn't the active one — the bundled-themes
+  // prebake materialises every built-in's createIfAbsent slug,
+  // but only the active theme's deserve sidebar real estate.
   return {
     slug,
     labels: { singular, plural: titled },
     fields,
+    admin: { _themeOrigin: themeId },
   };
 }
 
@@ -281,7 +289,7 @@ export function mergeThemeRequirements(
       if (existingIndex === undefined) {
         if (!req.createIfAbsent) continue;
         const injectedNames = new Set<string>();
-        const synth = synthesiseCollection(slug, req, injectedNames);
+        const synth = synthesiseCollection(slug, req, injectedNames, theme.manifest.id);
         if (!synth) continue;
         merged.push(synth);
         indexBySlug.set(slug, merged.length - 1);

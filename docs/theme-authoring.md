@@ -417,6 +417,58 @@ the persisted id no longer resolves (developer removed the theme
 between deploys), the resolver also falls back to first-registered
 rather than 500.
 
+### Bundled-themes prebake — runtime swap without migration
+
+Built-in themes (`@nexpress/theme-default`, `theme-magazine`,
+`theme-portfolio`, `theme-docs`) ship together as `defaultThemes`,
+and a freshly scaffolded `nexpress.config.ts` spreads the whole
+pack into `themes:`. Because `defineConfig` runs
+`mergeThemeRequirements` over EVERY entry in that array, every
+built-in's `requires.collections` lands in the merged schema at
+boot — not just the one that's currently active. After the first
+`pnpm db:generate && pnpm db:migrate`, every column any built-in
+theme needs is already in the database.
+
+The payoff: switching the active theme from `/admin/appearance`
+is just a `np_settings.activeTheme` flip. No restart, no
+migration, no second `theme add`. Editors can try Magazine on
+Monday and Docs on Friday with no operator involvement.
+
+Two safety nets keep this honest:
+
+- A CI gate (`apps/web/tests/builtin-themes-union.unit.test.ts`)
+  asserts the union of every built-in's `requires` is
+  conflict-free. If a future built-in declares the same field
+  name as another with a different shape, the gate fails before
+  the conflict reaches `main`.
+- Theme-synthesised collections (those that exist only because
+  a theme's `requires.collections.<slug>.createIfAbsent: true`
+  asked for them) carry a `_themeOrigin` tag in the merged
+  config. The admin sidebar hides them when the owning theme
+  isn't active — so a docs-only site doesn't see Magazine's
+  `authors` collection cluttering the nav even though the
+  table exists in the DB. Field-level visibility (e.g. hiding
+  Magazine's `posts.featured` field when running docs) is NOT
+  filtered today; the column stays on the edit view so any data
+  the operator captured under another theme remains addressable.
+
+**This prebake applies only to the bundled built-ins.**
+Third-party themes go through the regular `pnpm nexpress theme
+add` flow — that's a code change (the config file is patched)
+and a schema change (the next migration adds the columns), so it
+needs a redeploy + migration. After the third-party theme is
+added once, activating / deactivating it from admin is free
+(same `np_settings.activeTheme` flip), but the install itself
+is a build-time event.
+
+If you intentionally pruned built-ins from `defaultThemes`
+(e.g. `themes: [magazineTheme, mybrandTheme]`), the prebake
+covers only what you spread in. Re-adding a built-in later
+means running `pnpm db:generate && pnpm db:migrate` again to
+pick up its columns. There is no `prebake-themes` upgrade
+helper — the operator's `themes:` array is the source of truth
+for what's in the union.
+
 ---
 
 ## 10. Server vs Client Boundary
