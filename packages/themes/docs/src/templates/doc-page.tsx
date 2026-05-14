@@ -3,7 +3,12 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
 import { findDocuments, type NpRichTextContent } from "@nexpress/core";
 import { extractHeadingToc, renderRichText } from "@nexpress/editor/server";
 
-import { TocScrollspy } from "../components/toc-scrollspy.js";
+// Subpath import (not `../components/toc-scrollspy.js`) so tsup
+// can externalize this client component without baking a parent-
+// relative path into the bundled `dist/index.js` — the parent-
+// relative form would escape dist at consume time. Confirmed by
+// CI on #741.
+import { TocScrollspy } from "@nexpress/theme-docs/components/toc-scrollspy";
 import { resolveDocsSettings } from "../settings-helpers.js";
 
 interface DocDoc {
