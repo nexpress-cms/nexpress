@@ -3,12 +3,19 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
 import { findDocuments, type NpRichTextContent } from "@nexpress/core";
 import { extractHeadingToc, renderRichText } from "@nexpress/editor/server";
 
-// Subpath import (not `../components/toc-scrollspy.js`) so tsup
-// can externalize this client component without baking a parent-
-// relative path into the bundled `dist/index.js` — the parent-
-// relative form would escape dist at consume time. Confirmed by
-// CI on #741.
-import { TocScrollspy } from "@nexpress/theme-docs/components/toc-scrollspy";
+// Routed via a sibling-depth bridge module (`../toc-scrollspy-
+// bridge.js`) rather than `../components/toc-scrollspy.js`
+// directly: tsup's `external` rule matches the import specifier
+// verbatim, and a parent-relative spec at this depth would
+// preserve `"../components/..."` in the bundled `dist/index.js`
+// (escapes dist at consume time). The bridge re-exports from a
+// sibling-depth path that DOES match the external rule, so the
+// final bundle carries `import "./components/toc-scrollspy.js"`
+// which resolves cleanly to `dist/components/toc-scrollspy.js`.
+// A package-subpath self-import was tried first but fails
+// during tsup's parallel dts step (the index dts can't see the
+// component's freshly-written .d.ts in time, TS7016).
+import { TocScrollspy } from "../toc-scrollspy-bridge.js";
 import { resolveDocsSettings } from "../settings-helpers.js";
 
 interface DocDoc {
