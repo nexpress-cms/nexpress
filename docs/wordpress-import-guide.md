@@ -25,7 +25,7 @@
 
 1. A WXR export from the source site — `wp-admin → Tools → Export → Download Export File`. Pick "All content" unless you only want a subset.
 2. A NexPress site with at least one staff admin user. Run `pnpm seed:admin` if you haven't already.
-3. The reference app's `taxonomies` collection (Phase 21.6 — already in `apps/web/src/collections/taxonomies.ts`). User projects opt in by registering an equivalent collection or by skipping the `taxonomies` resolver in the shim.
+3. The framework's split-taxonomy collections (`categories` + `tags`, shipped from `@nexpress/app/collections/{categories,tags}` and re-exported in every scaffold under `src/collections/`). Phase 21.6's single `taxonomies` collection was split into the two; user projects opt in by keeping those wrappers around (the scaffold does so by default), or by skipping the taxonomy resolver in the shim.
 
 The importer reads `DATABASE_URL` and uses the framework's existing storage adapter (local or S3 — whichever your config selects).
 

@@ -85,7 +85,11 @@ the web app, one for the worker) so deploys can replace the
 web container without dropping in-flight jobs.
 
 ```ts
-// Worker entrypoint, e.g. apps/web/scripts/worker.ts
+// Worker entrypoint — `scripts/worker.ts` in a scaffolded site (a thin
+// wrapper around `@nexpress/app/scripts/worker`), or
+// `apps/web/scripts/worker.ts` in the monorepo. The framework's stock
+// runner handles the boilerplate below; this is what it does
+// underneath if you ever need to roll your own.
 import { startWorker } from "@nexpress/core";
 
 await startWorker(process.env.DATABASE_URL!);

@@ -83,8 +83,9 @@ table that's half-created or has columns the code doesn't expect.
    the right path is a new migration that asserts the desired state
    with `IF EXISTS` / `IF NOT EXISTS` clauses, not a manual rewrite.
 4. After recovery, run `pnpm typecheck` — if generated code under
-   `apps/web/src/db/generated/` is stale, regenerate with
-   `pnpm db:generate` (review the SQL diff before applying).
+   `src/db/generated/` (`apps/web/src/db/generated/` in the monorepo)
+   is stale, regenerate with `pnpm db:generate` (review the SQL diff
+   before applying).
 
 ## Switching storage adapters
 

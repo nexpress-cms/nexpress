@@ -4,71 +4,23 @@ Next.js-based open-source CMS for developers building content-managed
 sites. Self-hostable on a single Postgres + a Next.js app; horizontally
 scalable when you flip on S3 + an upstream rate limiter.
 
-<!-- badges -->
-
-> **Status — pre-1.0 (`v0.1.0`).** Public APIs are committed per
+> **Status — pre-1.0 (`v0.2.x`).** Public APIs are committed per
 > [the Stability section in `AGENTS.md`](./AGENTS.md#stability-v01).
 > Breaking changes during `0.x` ride a minor bump and ship with a
 > CHANGELOG line you can search for.
 
-## Features
+---
 
-### Core authoring
-- Type-safe collections via `defineCollection({ slug, fields, hooks, access })` — Drizzle schema + Zod validators are generated from the same definition.
-- Lexical rich-text editor (client + server-safe SSR renderer)
-- Block-based page builder with 8 default blocks + drag & drop
-- Media library with image processing (sharp), local + S3 adapters
-- Revisions, autosave, and scheduled publishing
-- Full-text search via Postgres `tsvector` (per-collection)
+## Two ways to use NexPress
 
-### Multi-tenant + locale
-- **Multi-site** (Phase 15) — one install can host many tenants, each with its own content, settings, members, and admin
-- **i18n** (Phase 12) — locale-keyed documents, per-site string overrides, translator workflow with [`@nexpress/xliff`](packages/xliff) export/import
-- **Right-to-left** locale support
+NexPress is published as a set of npm packages plus a scaffolder. Most
+people only need the scaffolder; the monorepo is only for working on
+the framework itself.
 
-### Community
-- Threaded comments with nested replies, edit history, hidden/deleted states
-- Reactions (configurable kind set), follows, mentions
-- Member-side moderation (hide / restore / delete by author) and staff moderation queue
-- Reports + audit log + per-site bans + per-site moderator role grants
-- Pluggable spam, profanity, and reputation adapters
-- Email digests (daily/weekly) with notification preferences
+### Track A — Build a site (`npx create-nexpress`)
 
-### Auth
-- JWT sessions (Argon2 password hashing) with `tokenVersion` invalidation
-- OAuth providers: GitHub, Google ([`@nexpress/plugin-oauth-github`](packages/plugins/oauth-github), [`@nexpress/plugin-oauth-google`](packages/plugins/oauth-google)) — extensible via `registerOAuthProvider`
-- Member email verification + password reset flow
-- Capability-based authorization (`can(user, "content.publish")` etc.)
-
-### Migration in
-- **WordPress import** ([`@nexpress/wp-import`](packages/wp-import)) — WXR XML, HTML → Lexical conversion (incl. Gutenberg block fences), media download + dedup, taxonomies, comments, custom post types, audit log, resume marker
-
-### SEO
-- Sitemap + sitemap-index XML
-- Atom feed
-- JSON-LD builders (Article / DiscussionForumPosting / Person / WebSite)
-- Per-site SEO settings (default OG / Twitter / robots)
-
-### Operations
-- Background jobs via pg-boss (multi-node safe via Postgres advisory locks)
-- Health probe + readiness probe (DB / storage / queue round-trip)
-- Pluggable structured logger + error reporter (pino, Sentry, Datadog, …)
-- Boot-time safety checks (multi-node + LocalStorageAdapter, weak prod secret)
-- Admin Jobs surface — manual enqueue, pause / resume, archive, worker-health widget
-- Operations runbook ([`docs/operations.md`](docs/operations.md))
-
-### Plugin SDK
-- `definePlugin({ manifest, hooks, actions, routes, scheduled })` — npm-package + rebuild model
-- Catch-all routes at `/api/plugins/<id>/<...>` (rate-limited at framework level)
-- Reference plugins shipped: [`reading-time`](packages/plugins/reading-time), [`seo-audit`](packages/plugins/seo-audit), [`forum`](packages/plugins/forum), `oauth-github`, `oauth-google`
-
-### Tooling
-- `create-nexpress` CLI scaffolder
-- shadcn-style admin UI (Radix UI + Tailwind v4)
-- Theme engine — CSS custom properties from design tokens
-- Docker-ready (Next.js standalone output)
-
-## Quick Start
+For everyone running a NexPress site: bloggers, agencies adding NexPress
+to a client project, theme authors, plugin authors.
 
 ```bash
 npx create-nexpress my-site
@@ -79,198 +31,205 @@ pnpm run setup    # browser env wizard — DB connection, NP_SECRET, storage
 pnpm dev
 ```
 
-> `pnpm run setup`, not `pnpm setup` — `pnpm setup`, `pnpm doctor`,
-> and `pnpm init` are all pnpm built-ins that shadow our package
-> scripts of the same name. Always invoke ours with `pnpm run <name>`.
+Site at `localhost:3000`, admin at `localhost:3000/admin`. The first
+`/admin` visit on an empty DB runs a 2-step wizard for the admin account,
+site name, and optional sample content.
 
-The site runs at `localhost:3000` and the admin panel is at
-`localhost:3000/admin`. The first time you visit `/admin` on an empty
-DB, a 2-step wizard collects your admin account, site name, and
-optional sample content — no `pnpm seed:admin` env vars needed.
+**What you can customise without touching the monorepo** — full guide in
+[`docs/site-customization.md`](./docs/site-customization.md):
 
-> Prefer to do it by hand? `cp .env.example .env`, edit it yourself,
-> then `pnpm db:generate && pnpm db:migrate && pnpm dev`.
+| Surface | How |
+| --- | --- |
+| Site identity, auth secret, DB URL | `src/nexpress.config.ts` + `.env` |
+| New collection (Type-safe Drizzle + Zod) | Drop a `src/collections/<name>.ts`, append to `defineConfig({ collections })` |
+| Active theme | `themes` array in `nexpress.config.ts` + admin → Appearance |
+| Author a theme | Separate npm package — see [`docs/theme-authoring.md`](./docs/theme-authoring.md) |
+| Install a plugin | `pnpm nexpress plugin add @scope/plugin-foo` (auto-wires `nexpress.config.ts`) |
+| Author a plugin | Separate npm package — see [`docs/plugin-quickstart.md`](./docs/plugin-quickstart.md) |
+| Customise a built-in (collection, lib helper, script) | Unwrap the matching `src/` file — that file becomes yours from then on |
+| CSS / Tailwind tokens | `src/app/globals.css` + theme tokens |
+| Deploy | [`docs/deployment.md`](./docs/deployment.md) — Docker, Vercel, Fly.io |
 
-### Stuck? Run the doctor.
+Stuck on first install? `pnpm run doctor` runs a read-only diagnosis
+(Node / pnpm versions, `.env` presence, env-var shape checks, Postgres
+reachability, migrations applied, storage dir).
+
+> `pnpm run setup` / `pnpm run doctor`, not `pnpm setup` / `pnpm doctor`
+> — pnpm built-ins shadow scripts of the same name; always invoke ours
+> with `pnpm run <name>`.
+
+### Track B — Contribute to the framework (monorepo)
+
+For working on `@nexpress/core` / `@nexpress/admin` / `@nexpress/app`
+(routes, lib, scripts, middleware) / `@nexpress/blocks` / `@nexpress/editor`
+themselves — anything not addressable from Track A.
 
 ```bash
-pnpm run doctor
+git clone https://github.com/nexpress-cms/nexpress.git
+cd nexpress
+pnpm install
+pnpm build          # workspace packages resolve from dist/ — build once after fresh clone
+docker compose -f docker/docker-compose.yml up -d   # Postgres :5433 + Mailpit
+cp .env.example apps/web/.env
+pnpm --filter @nexpress/web run setup
+pnpm dev            # next dev for apps/web + tsup --watch on every package
 ```
 
-A read-only diagnosis: Node / pnpm versions, `.env` presence, the
-required env vars (with shape checks), Postgres reachability,
-whether migrations are applied, and the local-storage directory.
-Prints a green `✓` per check, a yellow `⚠` for soft issues, a red
-`✗` per blocker plus a one-line hint for each.
+`apps/web` is the reference site that loads every package as a workspace
+dependency — edits to `packages/admin/src/...` show up live in
+`localhost:3000/admin`.
+
+Required reading before deeper work:
+- [`AGENTS.md`](./AGENTS.md) — single architecture entry point (long-form,
+  current-state)
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — branching, changeset workflow,
+  release rules
+- [`docs/testing.md`](./docs/testing.md) — unit vs. integration vs. e2e
+- [`docs/releasing.md`](./docs/releasing.md) — version bumps + publish flow
+
+---
+
+## How the two tracks share code
+
+Track A scaffold's `src/` is intentionally tiny — every runtime file
+under `scripts/`, `src/lib/`, `src/app/`, `src/proxy.ts`, etc. is a
+**thin re-export** from `@nexpress/app`. The framework lives in
+`@nexpress/app` (and its sibling packages); scaffolds carry only
+site-bound config + the wrappers Next.js needs in physical locations
+under `src/app/...`.
+
+This means:
+- A Track A operator who edits `src/nexpress.config.ts` never has to
+  rebuild the framework.
+- A Track A operator who *unwraps* a wrapper (e.g. opens
+  `src/lib/init-core.ts` and replaces the `export * from
+  "@nexpress/app/lib/init-core"` with their own implementation) opts
+  out of further framework updates for that file — exactly the seam
+  between Track A and Track B.
+- A Track B contributor's edits to `@nexpress/app` flow back to every
+  Track A site on the next `pnpm install`.
+
+---
+
+## Features (highlights)
+
+Authoring & content
+- Type-safe collections via `defineCollection({ slug, fields, hooks, access })`
+- Lexical rich-text editor (client + SSR-safe renderer)
+- Block-based page builder with 8 default blocks + DnD
+- Media library (sharp), local + S3 adapters
+- Revisions, autosave, scheduled publishing
+- Postgres full-text search per collection
+
+Multi-tenant & locale — multi-site, i18n (locale-keyed docs, per-site string
+overrides), RTL.
+
+Community — threaded comments, reactions, follows, mentions, member-side
+moderation, staff queue, reports, audit log, bans, role grants, email
+digests, pluggable spam/profanity/reputation adapters.
+
+Auth — JWT + Argon2, OAuth (GitHub, Google, extensible), member verify +
+password reset, capability-based authz (`can(user, "content.publish")`).
+
+SEO — sitemap + sitemap-index + Atom feed + JSON-LD builders (Article /
+DiscussionForumPosting / Person / WebSite).
+
+Operations — pg-boss jobs (multi-node safe), health + readiness probes,
+pluggable logger/error-reporter, boot-time safety checks, admin Jobs
+surface, full runbook in [`docs/operations.md`](./docs/operations.md).
+
+Migration — [`@nexpress/wp-import`](./packages/wp-import) for WordPress
+(WXR XML → Lexical incl. Gutenberg fences, media dedup, taxonomies,
+comments, custom post types, audit log, resume marker).
+
+Tooling — `create-nexpress` scaffolder, shadcn-style admin (Radix +
+Tailwind v4), theme engine (CSS custom properties), Docker-ready.
+
+---
 
 ## Architecture
 
 ```
 packages/
-├── core         — Server-only: collections, pipeline, auth, jobs,
-│                  media, plugins, observability, SEO, i18n, sites,
-│                  community
-├── editor       — Lexical rich-text (client + SSR renderer split)
-├── blocks       — Block registry + 8 defaults + DnD editor
-├── admin        — UI primitives + admin views
-├── theme        — CSS generation from design tokens
-├── plugin-sdk   — definePlugin() + manifest types
-├── next         — Next.js integration (createBootstrap, ensureFor,
-│                  revalidateCollection, auth helpers)
-├── wp-import    — WordPress (WXR) importer
-├── xliff        — XLIFF i18n export/import
-├── cli          — create-nexpress scaffolder
-├── plugins/*    — Reference plugins (reading-time, seo-audit, forum,
-│                  oauth-github, oauth-google)
-└── themes/*     — Reference themes (default, minimal, magazine,
-                   portfolio)
+├── core         server-only domain: pipeline, auth, jobs, media, plugins
+├── editor       Lexical (client + SSR renderer split)
+├── blocks       block registry + 8 defaults + DnD editor
+├── admin        admin UI primitives + views
+├── theme        CSS generation from design tokens
+├── plugin-sdk   definePlugin() + manifest types
+├── next         Next.js integration (createBootstrap, ensureFor, revalidate*)
+├── app          single-source impls of admin/site/api routes + lib + scripts +
+│                proxy middleware + config helpers (shared between apps/web
+│                and every scaffolded site)
+├── wp-import    WordPress (WXR) importer
+├── xliff        XLIFF i18n export/import
+├── cli          create-nexpress scaffolder
+├── plugins/*    reference plugins (reading-time, seo-audit, forum, oauth-*)
+└── themes/*     reference themes (default, magazine, portfolio, docs)
 apps/
-└── web          — Next.js 15 reference app (private)
+└── web          private Next.js reference app
 ```
+
+Long-form discussion of subsystem boundaries, hooks, the bootstrap
+intent enum, the principal model, the rate-limiter, and the v0.1
+stability contract lives in [`AGENTS.md`](./AGENTS.md).
+
+---
 
 ## Documentation
 
-The single live "architecture" entry point is
-[`AGENTS.md`](./AGENTS.md) at the repo root — a working contributor
-should orient there before diving into a subsystem.
-
-Subsystem guides live under [`docs/`](./docs/) and are kept current
-with the code:
-
-| Topic | Guide |
+| Category | Guide |
 | --- | --- |
-| Architecture overview | [AGENTS.md](./AGENTS.md) |
-| Stability promise | [AGENTS.md § Stability (v0.1)](./AGENTS.md#stability-v01) |
-| Production deployment | [docs/deployment.md](./docs/deployment.md) |
-| Operations runbook | [docs/operations.md](./docs/operations.md) |
+| **Track A — site customisation** | [docs/site-customization.md](./docs/site-customization.md) |
+| **Track A — author a theme** | [docs/theme-authoring.md](./docs/theme-authoring.md) |
+| **Track A — author a plugin** | [docs/plugin-quickstart.md](./docs/plugin-quickstart.md) |
+| **Production deployment** | [docs/deployment.md](./docs/deployment.md) |
+| **Operations runbook** | [docs/operations.md](./docs/operations.md) |
 | Background jobs | [docs/jobs.md](./docs/jobs.md) |
 | Caching strategy | [docs/caching.md](./docs/caching.md) |
 | Observability | [docs/observability.md](./docs/observability.md) |
-| Releasing | [docs/releasing.md](./docs/releasing.md) |
 | Multi-site | [docs/multi-site.md](./docs/multi-site.md) |
 | i18n | [docs/i18n.md](./docs/i18n.md) |
-| Email | [docs/email.md](./docs/email.md) |
 | Community | [docs/community.md](./docs/community.md) |
-| Theme authoring | [docs/theme-authoring.md](./docs/theme-authoring.md) |
+| Email | [docs/email.md](./docs/email.md) |
+| Scheduled publishing | [docs/scheduled-publishing.md](./docs/scheduled-publishing.md) |
+| WordPress import | [docs/wordpress-import-guide.md](./docs/wordpress-import-guide.md) |
 | Plugin admin surface | [docs/plugin-admin.md](./docs/plugin-admin.md) |
 | Plugin render hooks | [docs/plugin-render.md](./docs/plugin-render.md) |
-| WordPress import | [docs/wordpress-import-guide.md](./docs/wordpress-import-guide.md) |
-| Scheduled publishing | [docs/scheduled-publishing.md](./docs/scheduled-publishing.md) |
+| Plugin manifest | [docs/plugin-manifest.md](./docs/plugin-manifest.md) |
+| Plugin capabilities | [docs/plugin-capabilities.md](./docs/plugin-capabilities.md) |
 | API error codes | [docs/api-error-codes.md](./docs/api-error-codes.md) |
 | Agent / LLM integration | [docs/agent-integration.md](./docs/agent-integration.md) |
+| Architecture (long form) | [AGENTS.md](./AGENTS.md) |
+| Contributing | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| Releasing | [docs/releasing.md](./docs/releasing.md) |
 | Testing setup | [docs/testing.md](./docs/testing.md) |
 
-Security issues should be reported privately; see
+Frozen design docs (historical reference, not maintained):
+[`docs/design/`](./docs/design/).
+
+Security issues should be reported privately — see
 [SECURITY.md](./SECURITY.md).
 
-## Tech Stack
+---
+
+## Tech stack
 
 | Layer     | Technology                                       |
 | --------- | ------------------------------------------------ |
-| Framework | Next.js 15 (App Router)                          |
-| Language  | TypeScript (strict, `NodeNext` module resolution) |
+| Framework | Next.js 16 (App Router, Turbopack)               |
+| Language  | TypeScript (strict, `NodeNext`)                  |
 | Database  | PostgreSQL 16 + Drizzle ORM                      |
-| Editor    | Lexical                                           |
-| UI        | React 19 + Tailwind CSS v4 + Radix UI            |
-| Block DnD | @dnd-kit                                          |
+| Editor    | Lexical                                          |
+| UI        | React 19 + Tailwind v4 + Radix UI + @dnd-kit     |
 | Auth      | JWT (jose) + Argon2 (`@node-rs/argon2`)          |
-| Jobs      | pg-boss                                           |
+| Jobs      | pg-boss                                          |
 | Media     | sharp + S3 (`@aws-sdk/client-s3`) or local       |
 | Email     | Pluggable (default no-op, SMTP via nodemailer)   |
-| Build     | pnpm (10.33+) + Turborepo + tsup                 |
+| Build     | pnpm 10.33+ + Turborepo + tsup                   |
 | Deploy    | Docker (Next standalone) / Vercel / Fly.io       |
 
-## Plugin Development
-
-Author plugins with `definePlugin()` from
-[`@nexpress/plugin-sdk`](packages/plugin-sdk):
-
-```ts
-import { definePlugin } from "@nexpress/plugin-sdk";
-
-export default definePlugin({
-  manifest: {
-    id: "my-plugin",
-    name: "My Plugin",
-    version: "1.0.0",
-    description: "A sample NexPress plugin.",
-    author: { name: "Your Name" },
-    license: "MIT",
-    nexpress: { minVersion: "0.1.0" },
-    capabilities: ["hooks:content"],
-    agent: {
-      description: "Logs a message after content creation.",
-      category: "utility",
-    },
-  },
-  hooks: {
-    "content:afterCreate": async (ctx) => {
-      ctx.ctx.log.info("Document created!");
-    },
-  },
-});
-```
-
-Hook names: `content:beforeSave`, `content:afterSave`,
-`content:beforeDelete`, `content:afterDelete`, plus `member:*` and
-`media:*` events. Custom routes are mounted at
-`/api/plugins/<id>/<...>`. See
-[docs/plugin-render.md](./docs/plugin-render.md) and
-[docs/plugin-admin.md](./docs/plugin-admin.md).
-
-## Project Structure (scaffolded site)
-
-```
-my-site/
-├── src/
-│   ├── collections/        — defineCollection() entries
-│   ├── db/generated/       — codegen output (do not edit)
-│   ├── nexpress.config.ts  — site config (storage, auth, plugins, themes)
-│   ├── app/
-│   │   ├── (site)/         — public routes; catch-all [[...slug]]
-│   │   ├── (admin)/admin/  — login + protected admin shell
-│   │   └── api/            — REST endpoints
-│   └── lib/init-core.ts    — bootstrap singletons
-├── scripts/
-│   └── seed-admin.ts
-├── docker/
-│   └── docker-compose.yml  — Postgres 16 on :5433
-├── public/uploads/         — local-storage adapter root
-└── package.json
-```
-
-## Scripts (monorepo)
-
-| Script             | Description                                                     |
-| ------------------ | --------------------------------------------------------------- |
-| `pnpm build`       | Build every package's `dist/`                                   |
-| `pnpm dev`         | Turbo watch — `tsup --watch` per package + `next dev`           |
-| `pnpm lint`        | Root ESLint (type-aware rules)                                  |
-| `pnpm typecheck`   | Per-package `tsc --noEmit` via Turbo                            |
-| `pnpm test`        | Vitest unit suite (no DB needed)                                |
-| `pnpm test:integration` | Vitest integration suite (gated on `TEST_DATABASE_URL`)    |
-| `pnpm changeset`   | Record a user-facing change for the next release                |
-| `pnpm db:generate` | Drizzle migrations from current schema                          |
-| `pnpm db:migrate`  | Apply migrations against `DATABASE_URL`                         |
-| `pnpm format`      | Prettier write                                                  |
-| `pnpm clean`       | Remove `dist/` + `node_modules`                                 |
-
-## Monorepo Notes
-
-- Run `pnpm build` once before `pnpm dev` in a fresh clone — workspace packages resolve from `dist/`.
-- `moduleResolution: NodeNext`: relative imports in `.ts` files must use `.js` extensions.
-- `@nexpress/core` is **server-only**. Importing from a client component breaks the build.
-- `pnpm lint` (ESLint) and `pnpm typecheck` (`tsc --noEmit`) are different by design.
-- The eight published `@nexpress/*` framework packages bump together via the changesets `fixed` group; reference plugins / themes / `create-nexpress` / `wp-import` / `xliff` version independently.
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, branching,
-versioning policy (standard semver under `0.x` with breaking changes
-called out in the changeset summary), and the changeset workflow.
-
-Bug reports and feature ideas welcome on the
-[issue tracker](https://github.com/nexpress-cms/nexpress/issues).
+---
 
 ## License
 
