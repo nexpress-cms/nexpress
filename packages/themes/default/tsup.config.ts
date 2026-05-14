@@ -32,6 +32,7 @@ export default defineConfig([
       "./components/language-picker.js",
       "./components/mobile-nav.js",
       "./components/newsletter-form.js",
+      "./components/search-keyboard-shortcut.js",
       "./components/footer-columns.js",
     ],
   },
@@ -45,6 +46,8 @@ export default defineConfig([
         "src/components/language-picker.tsx",
       "components/mobile-nav": "src/components/mobile-nav.tsx",
       "components/newsletter-form": "src/components/newsletter-form.tsx",
+      "components/search-keyboard-shortcut":
+        "src/components/search-keyboard-shortcut.tsx",
     },
     format: ["esm"],
     dts: true,

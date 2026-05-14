@@ -2,6 +2,7 @@ import * as React from "react";
 import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
+import { LocalTimeTicker } from "./components/local-time-ticker.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
 import { resolvePortfolioSettings } from "./settings-helpers.js";
 
@@ -66,7 +67,9 @@ export async function PortfolioHeader() {
           <span aria-hidden="true" />
         )}
         <div className="np-portfolio-header-tools">
-          <span className="np-portfolio-header-meta">{localTime}</span>
+          <span className="np-portfolio-header-meta">
+            <LocalTimeTicker zone={settings.timezone} initial={localTime} />
+          </span>
           {ctaHref ? (
             <a href={ctaHref} className="np-portfolio-cta">
               Start a project

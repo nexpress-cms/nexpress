@@ -17,6 +17,7 @@ export default defineConfig([
       "./components/mobile-nav.js",
       "./components/error.js",
       "./components/members-error.js",
+      "./components/local-time-ticker.js",
     ],
   },
   {
@@ -24,6 +25,8 @@ export default defineConfig([
       "components/mobile-nav": "src/components/mobile-nav.tsx",
       "components/error": "src/components/error.tsx",
       "components/members-error": "src/components/members-error.tsx",
+      "components/local-time-ticker":
+        "src/components/local-time-ticker.tsx",
     },
     format: ["esm"],
     dts: true,

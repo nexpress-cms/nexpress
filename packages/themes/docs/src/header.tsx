@@ -1,6 +1,7 @@
 import * as React from "react";
 import { NavMenu, getCachedSite } from "@nexpress/next";
 
+import { SearchKeyboardShortcut } from "./components/search-keyboard-shortcut.js";
 import { resolveDocsSettings } from "./settings-helpers.js";
 
 const FALLBACK_SITE_NAME = "NexPress";
@@ -63,6 +64,7 @@ export async function DocsHeader(): Promise<React.ReactElement> {
           />
           <kbd className="np-docs-search-kbd">⌘K</kbd>
         </form>
+        <SearchKeyboardShortcut targetId="np-docs-search-input" />
         <nav className="np-docs-nav" aria-label="Primary">
           <NavMenu location="primary" className="np-docs-primary-nav" />
           {settings.githubRepo ? (
