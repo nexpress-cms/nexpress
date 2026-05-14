@@ -3,6 +3,7 @@ import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { MagazineMobileNav } from "./components/mobile-nav.js";
+import { toRoman } from "./lib/roman.js";
 
 // `next/headers` is a Next-build-context-only specifier — Next's
 // bundler resolves it, but a plain `node` / `tsx` import from
@@ -76,12 +77,16 @@ export async function MagazineHeader() {
   // Volume / issue derived from the year so the masthead stays
   // editorially accurate without an admin step. Sites that want
   // a fixed cadence override the issue label by editing the
-  // header component or by feeding it through i18n.
+  // header component or by feeding it through i18n. Week-of-year
+  // is computed as ms-since-Jan-1 / 1-week, floored and
+  // 1-indexed; close enough for an editorial label without
+  // adopting ISO 8601's week-numbering edge cases.
   const year = today.getFullYear();
   const volume = year - 2014; // matches MASTHEAD_TITLE's "Est. 2014"
-  const issue = Math.max(1, Math.ceil(((today.getTime() - new Date(year, 0, 1).getTime()) /
-    (1000 * 60 * 60 * 24 * 7)) | 0));
-  const issueLabel = `Volume ${toRoman(volume)} · Issue ${issue}`;
+  const msSinceYearStart = today.getTime() - new Date(year, 0, 1).getTime();
+  const weekOfYear =
+    Math.floor(msSinceYearStart / (1000 * 60 * 60 * 24 * 7)) + 1;
+  const issueLabel = `Volume ${toRoman(volume)} · Issue ${weekOfYear.toString()}`;
 
   return (
     <>
@@ -145,30 +150,3 @@ export async function MagazineHeader() {
   );
 }
 
-/**
- * Roman numerals for the volume label. Capped at 89 (LXXXIX)
- * since the masthead's "Est. 2014" only puts us at Volume XII
- * in 2026 — bumping the cap is a one-line edit when the
- * publication outlives its century.
- */
-function toRoman(n: number): string {
-  if (n <= 0) return "I";
-  const pairs: Array<[number, string]> = [
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"],
-  ];
-  let value = n;
-  let out = "";
-  for (const [num, sym] of pairs) {
-    while (value >= num) {
-      out += sym;
-      value -= num;
-    }
-  }
-  return out;
-}

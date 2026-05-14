@@ -1,6 +1,7 @@
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
 import type { MagazinePostCardDoc } from "../components/post-card.js";
+import { toRoman } from "../lib/roman.js";
 
 /**
  * Magazine index — front-page editorial layout.
@@ -66,34 +67,6 @@ function postHref(doc: MagazinePostCardDoc): string {
     return doc.slug.startsWith("/") ? doc.slug : `/blog/${doc.slug}`;
   }
   return "#";
-}
-
-function romanNumeral(n: number): string {
-  if (n <= 0) return "I";
-  const pairs: Array<[number, string]> = [
-    [1000, "M"],
-    [900, "CM"],
-    [500, "D"],
-    [400, "CD"],
-    [100, "C"],
-    [90, "XC"],
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"],
-  ];
-  let value = n;
-  let out = "";
-  for (const [num, sym] of pairs) {
-    while (value >= num) {
-      out += sym;
-      value -= num;
-    }
-  }
-  return out;
 }
 
 function dispatchTime(doc: MagazinePostCardDoc): string {
@@ -201,7 +174,7 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
                 <span className="np-magazine-lead-cover-figure">
                   No.
                   <br />
-                  {romanNumeral(leadIssueNumber).replace(/.*/, leadIssueNumber.toString())}
+                  {leadIssueNumber.toString()}
                 </span>
                 <span className="np-magazine-lead-cover-caption">
                   Photograph by editorial
@@ -263,7 +236,7 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
                         className={`np-magazine-story-cover ${coverClass(index)}`}
                       >
                         <div className="np-magazine-story-cover-figure">
-                          {romanNumeral(index + 2)}
+                          {toRoman(index + 2)}
                         </div>
                       </div>
                       {Array.isArray(post.categories) && post.categories.length > 0 ? (
@@ -340,7 +313,7 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
                           className={`np-magazine-archive-item-cover ${coverClass((index + 2) % COVER_VARIANTS.length)}`}
                         >
                           <div className="np-magazine-archive-item-cover-fig">
-                            {romanNumeral(index + 5)}
+                            {toRoman(index + 5)}
                           </div>
                         </div>
                         <div>
