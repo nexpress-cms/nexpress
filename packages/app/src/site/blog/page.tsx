@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ComponentType } from "react";
 
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 interface BlogPageProps {
   searchParams: Promise<{ page?: string }>;

@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 
 import { LoginForm } from "../../components/member-login-form";
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
-import { nextQuery, safeNext } from "@/lib/safe-next";
+import { ensureFor } from "../../lib/init-core";
+import { nextQuery, safeNext } from "../../lib/safe-next";
 import { getSiteMember } from "@nexpress/next";
 
 interface LoginPageProps {

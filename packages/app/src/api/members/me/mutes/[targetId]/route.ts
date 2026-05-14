@@ -1,9 +1,9 @@
 import { unmuteMember } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireMember } from "@/lib/member-auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
+import { requireMember } from "../../../../../lib/member-auth-helpers";
+import { ensureFor } from "../../../../../lib/init-core";
 
 /**
  * Phase 16.1 — unmute a previously muted target. Idempotent:

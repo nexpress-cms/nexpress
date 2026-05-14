@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { can, verifyTokenFull } from "@nexpress/core";
 import { PluginsManager } from "@nexpress/admin/client";
 
-import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { getAuthRuntimeConfig } from "../../../lib/auth-helpers";
+import { getDb } from "../../../lib/db";
+import { ensureFor } from "../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 

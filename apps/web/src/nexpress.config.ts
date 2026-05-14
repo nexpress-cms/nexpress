@@ -1,5 +1,10 @@
 import { defineConfig } from "@nexpress/core";
 import {
+  defaultCollections,
+  defaultThemes,
+  storageFromEnv,
+} from "@nexpress/app/config-defaults";
+import {
   defineDiscussionsCollection,
   forumPlugin,
 } from "@nexpress/plugin-forum";
@@ -15,15 +20,7 @@ import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 // @nexpress:plugins-imports-end
-import { defaultTheme } from "@nexpress/theme-default";
-import { docsTheme } from "@nexpress/theme-docs";
-import { magazineTheme } from "@nexpress/theme-magazine";
-import { portfolioTheme } from "@nexpress/theme-portfolio";
 
-import { categoriesCollection } from "./collections/categories";
-import { pagesCollection } from "./collections/pages";
-import { postsCollection } from "./collections/posts";
-import { tagsCollection } from "./collections/tags";
 import { i18nConfig } from "./i18n.config";
 
 const discussionsCollection = defineDiscussionsCollection({
@@ -43,30 +40,8 @@ export default defineConfig({
   db: {
     connectionString: process.env.DATABASE_URL ?? "",
   },
-  storage:
-    process.env.NP_STORAGE_ADAPTER === "s3"
-      ? {
-          adapter: "s3",
-          s3: {
-            bucket: process.env.NP_S3_BUCKET ?? "",
-            region: process.env.NP_S3_REGION ?? "us-east-1",
-            endpoint: process.env.NP_S3_ENDPOINT,
-          },
-        }
-      : {
-          adapter: "local",
-          local: {
-            directory: process.env.NP_STORAGE_DIR ?? "./uploads",
-            baseUrl: process.env.NP_STORAGE_URL ?? "/uploads",
-          },
-        },
-  collections: [
-    postsCollection,
-    pagesCollection,
-    categoriesCollection,
-    tagsCollection,
-    discussionsCollection,
-  ],
+  storage: storageFromEnv(),
+  collections: [...defaultCollections, discussionsCollection],
   // Phase 12.1 — i18n config. Required when any collection
   // sets `i18n: true`. `pagesCollection` opts in: each row
   // carries a locale + translation_group_id, and the admin
@@ -81,11 +56,7 @@ export default defineConfig({
     locales: [...i18nConfig.locales],
     defaultLocale: i18nConfig.defaultLocale,
   },
-  // Phase 11.1 — themes registry. Sites declare an array;
-  // admin switches the active one via the Theme settings tab
-  // (11.4) without redeploying. The first entry is the
-  // default-active until an admin overrides.
-  themes: [defaultTheme, magazineTheme, portfolioTheme, docsTheme],
+  themes: defaultThemes,
   plugins: [
     forumPlugin,
     // @nexpress:plugins-list-start

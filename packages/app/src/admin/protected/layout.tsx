@@ -11,11 +11,11 @@ import {
   getRegisteredBlockMetadataForActiveSources,
   getRegisteredPatternsForActiveSources,
 } from "@nexpress/blocks";
-import { getCachedActiveTheme } from "@/lib/cached-theme";
+import { getCachedActiveTheme } from "../../lib/cached-theme";
 import nexpressConfig from "@/nexpress.config";
-import { ensureFor } from "@/lib/init-core";
-import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { getDb } from "@/lib/db";
+import { ensureFor } from "../../lib/init-core";
+import { getAuthRuntimeConfig } from "../../lib/auth-helpers";
+import { getDb } from "../../lib/db";
 
 export default async function AdminLayout({
   children,

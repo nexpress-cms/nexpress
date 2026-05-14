@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDocumentRevision } from "@/lib/revision-helpers";
+import { requireAuth } from "../../../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
+import { getDocumentRevision } from "../../../../../../lib/revision-helpers";
 
 export async function GET(
   request: NextRequest,

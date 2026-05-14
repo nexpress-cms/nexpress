@@ -1,9 +1,9 @@
 import { NpValidationError, isFollowing } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
-import { requireMember } from "@/lib/member-auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
+import { ensureFor } from "../../../lib/init-core";
+import { requireMember } from "../../../lib/member-auth-helpers";
 
 const SUPPORTED = ["member", "thread", "tag"] as const;
 type FollowTarget = (typeof SUPPORTED)[number];

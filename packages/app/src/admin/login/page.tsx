@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
 import { listOAuthProviders, npUsers } from "@nexpress/core";
 
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { getDb } from "../../lib/db";
+import { ensureFor } from "../../lib/init-core";
 
 import { LoginClient } from "./login-client";
 

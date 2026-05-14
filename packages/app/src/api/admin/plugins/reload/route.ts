@@ -1,10 +1,10 @@
 import { NpForbiddenError, can } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
+import { requireAuth } from "../../../../lib/auth-helpers";
 import { reloadPlugins } from "@/lib/bootstrap";
-import { ensureFor } from "@/lib/init-core";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
+import { ensureFor } from "../../../../lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
 
 /**
  * Phase 5.1 — soft reload of the plugin registry. Wipes every registered

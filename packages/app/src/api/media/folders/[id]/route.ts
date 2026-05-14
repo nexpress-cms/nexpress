@@ -12,9 +12,9 @@ import { NextResponse } from "next/server";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { getDb } from "../../../../lib/db";
 
 export async function PATCH(
   request: NextRequest,

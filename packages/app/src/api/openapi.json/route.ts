@@ -1,8 +1,8 @@
 import { getAllCollectionSlugs, getCollectionConfig, getPluginRoutes } from "@nexpress/core";
 import { NextResponse } from "next/server";
 
-import { ensureFor } from "@/lib/init-core";
-import { collectionToManifest, type NpFieldManifest } from "@/lib/manifest";
+import { ensureFor } from "../../lib/init-core";
+import { collectionToManifest, type NpFieldManifest } from "../../lib/manifest";
 
 type OpenApiSchema = Record<string, unknown>;
 

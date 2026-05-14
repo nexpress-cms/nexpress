@@ -1,8 +1,8 @@
 import { NpThemeStyle } from "@nexpress/theme";
 import { getCachedTheme } from "@nexpress/next";
 
-import { getCachedActiveTheme } from "@/lib/cached-theme";
-import { ensureFor } from "@/lib/init-core";
+import { getCachedActiveTheme } from "../../lib/cached-theme";
+import { ensureFor } from "../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 

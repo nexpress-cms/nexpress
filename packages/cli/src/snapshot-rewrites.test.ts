@@ -53,7 +53,7 @@ describe("rewriteScaffoldGlobalsCss", () => {
     const once = rewriteScaffoldGlobalsCss(
       '@source "../../../../packages/admin/src/**/*.{ts,tsx}";',
     );
-    expect(once).toContain("Scaffold variant of these");
+    expect(once).toContain("Scaffold variant —");
     // Second pass on the rewritten output is idempotent — no
     // duplicate comment, paths already in their final form.
     const twice = rewriteScaffoldGlobalsCss(once);
@@ -65,7 +65,7 @@ describe("rewriteScaffoldGlobalsCss", () => {
       '@source "../../../../packages/admin/src/**/*.{ts,tsx}";',
     );
     // Comment must precede the @source line, not sit somewhere else.
-    const commentIdx = out.indexOf("Scaffold variant of these");
+    const commentIdx = out.indexOf("Scaffold variant —");
     const sourceIdx = out.indexOf("@source \"../../node_modules");
     expect(commentIdx).toBeGreaterThanOrEqual(0);
     expect(sourceIdx).toBeGreaterThan(commentIdx);
@@ -81,8 +81,8 @@ describe("rewriteScaffoldGlobalsCss", () => {
         '@source "../../../../packages/editor/src/**/*.{ts,tsx}";',
       ].join("\n"),
     );
-    expect(out).toContain("Scaffold variant of these");
-    const commentIdx = out.indexOf("Scaffold variant of these");
+    expect(out).toContain("Scaffold variant —");
+    const commentIdx = out.indexOf("Scaffold variant —");
     const firstSourceIdx = out.indexOf("@source \"../../node_modules");
     expect(firstSourceIdx).toBeGreaterThan(commentIdx);
   });

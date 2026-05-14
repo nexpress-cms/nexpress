@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { PaginationNav } from "../../../../components/pagination-nav";
 import { ShellWrap } from "../../../../components/shell-wrap";
 import { findCategories, findPosts, type CategoriesDocument } from "@/db/generated/documents";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../../../lib/init-core";
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;

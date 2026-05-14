@@ -1,4 +1,4 @@
-import { getCachedActiveTheme } from "@/lib/cached-theme";
+import { getCachedActiveTheme } from "../lib/cached-theme";
 
 interface ShellWrapProps {
   /**

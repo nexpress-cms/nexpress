@@ -3,10 +3,10 @@ import { cookies } from "next/headers";
 import { can, verifyTokenFull } from "@nexpress/core";
 import { Card, CardContent, CardHeader, CardTitle } from "@nexpress/admin/client";
 
-import { ensureFor } from "@/lib/init-core";
-import { getAuthRuntimeConfig } from "@/lib/auth-helpers";
-import { getDb } from "@/lib/db";
-import { gatherSystemHealth, type Check } from "@/lib/system-health";
+import { ensureFor } from "../../../lib/init-core";
+import { getAuthRuntimeConfig } from "../../../lib/auth-helpers";
+import { getDb } from "../../../lib/db";
+import { gatherSystemHealth, type Check } from "../../../lib/system-health";
 
 /**
  * Admin runtime diagnostics. The GUI half of `pnpm run doctor` (#404,

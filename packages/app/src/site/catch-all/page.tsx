@@ -14,7 +14,7 @@ import {
   dispatchPluginRoute,
   dispatchThemeRoute,
 } from "@nexpress/next";
-import { getCachedActiveTheme } from "@/lib/cached-theme";
+import { getCachedActiveTheme } from "../../lib/cached-theme";
 import { renderBlocks } from "@nexpress/blocks";
 import type { NpBlockRenderContext } from "@nexpress/blocks";
 import type { ComponentType } from "react";
@@ -27,7 +27,7 @@ import { DefaultHomePage } from "../../components/default-home-page";
 import { JsonLd } from "@nexpress/next";
 import { ShellWrap } from "../../components/shell-wrap";
 import { i18nConfig, isLocale } from "@/i18n.config";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Phase 12.2 — peel a locale prefix off the path. Returns

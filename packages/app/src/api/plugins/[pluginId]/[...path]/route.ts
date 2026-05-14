@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getPluginRoutes, isPluginEnabled } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
-import { optionalAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { optionalAuth } from "../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 

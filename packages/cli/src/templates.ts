@@ -203,91 +203,115 @@ function packageJsonTemplate(config: TemplateConfig): string {
 }
 
 function nexpressConfigTemplate(config: TemplateConfig): string {
-  const imports = config.includeExampleContent
-    ? 'import { categoriesCollection } from "./collections/categories";\n' +
-      'import { pagesCollection } from "./collections/pages";\n' +
-      'import { postsCollection } from "./collections/posts";\n' +
-      'import { tagsCollection } from "./collections/tags";\n\n'
-    : "";
+  // Built-in collections + themes + i18n are sourced from
+  // `@nexpress/app/config-defaults` so the single source of truth
+  // lives in the framework, not in scaffolded boilerplate.
+  // `includeExampleContent` toggles whether the scaffold pre-wires
+  // them. We always export `defaultI18n` because the default
+  // `pagesCollection` declares `i18n: true` and the pipeline
+  // refuses to boot without a matching top-level block.
   const collections = config.includeExampleContent
-    ? "[postsCollection, pagesCollection, categoriesCollection, tagsCollection]"
+    ? "[...defaultCollections]"
     : "[]";
-  // Built-in theme packs. Each pack registers a renderer + assets;
-  // without them, admin → Appearance → Themes is empty. Operator
-  // picks the active theme in `np_settings.activeTheme`. Comment out
-  // any line to drop a pack from the scaffolded site.
-  const themesImports =
-    'import { defaultTheme } from "@nexpress/theme-default";\n' +
-    'import { docsTheme } from "@nexpress/theme-docs";\n' +
-    'import { magazineTheme } from "@nexpress/theme-magazine";\n' +
-    'import { portfolioTheme } from "@nexpress/theme-portfolio";\n\n';
-  const themesArray = "[defaultTheme, magazineTheme, portfolioTheme, docsTheme]";
-  // Storage is selected at runtime via NP_STORAGE_ADAPTER so the
-  // operator can flip local ↔ S3 from `.env` without editing this
-  // file. `pnpm run setup` writes the right env block directly.
-  const storageConfig = `  storage:
-    process.env.NP_STORAGE_ADAPTER === "s3"
-      ? {
-          adapter: "s3",
-          s3: {
-            bucket: process.env.NP_S3_BUCKET ?? "",
-            region: process.env.NP_S3_REGION ?? "us-east-1",
-            endpoint: process.env.NP_S3_ENDPOINT,
-          },
-        }
-      : {
-          adapter: "local",
-          local: { directory: "./public/media", baseUrl: "/media" },
-        },`;
+  const themes = config.includeExampleContent
+    ? "defaultThemes"
+    : "[]";
+  const defaultsImports = config.includeExampleContent
+    ? 'import {\n  defaultCollections,\n  defaultI18n,\n  defaultThemes,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n'
+    : 'import {\n  defaultI18n,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n';
 
   // Marker comments let `nexpress plugin add/remove <pkg>` from
   // `@nexpress/cli` edit this file automatically. Keep them in
   // place even when no plugins are installed — removing them
   // forces the operator to do manual edits later.
-  const pluginsHint = `  plugins: [\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ],`;
   const importsBlock = `// @nexpress:plugins-imports-start\n// @nexpress:plugins-imports-end\n\n`;
+  const pluginsList = `  plugins: [\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ],`;
 
-  return `import { defineConfig } from "@nexpress/core";\n${themesImports}${imports}${importsBlock}export default defineConfig({\n  site: {\n    name: "${config.projectName}",\n    url: process.env.SITE_URL || "http://localhost:3000",\n  },\n  db: {\n    connectionString: process.env.DATABASE_URL!,\n  },\n${storageConfig}\n  collections: ${collections},\n  themes: ${themesArray},\n  auth: {\n    secret: process.env.NP_SECRET!,\n  },\n${pluginsHint}\n});\n`;
+  return (
+    `import { defineConfig } from "@nexpress/core";\n` +
+    defaultsImports +
+    `\n` +
+    importsBlock +
+    `export default defineConfig({\n` +
+    `  site: {\n` +
+    `    name: "${config.projectName}",\n` +
+    `    url: process.env.SITE_URL || "http://localhost:3000",\n` +
+    `  },\n` +
+    `  db: {\n` +
+    `    connectionString: process.env.DATABASE_URL!,\n` +
+    `  },\n` +
+    `  storage: storageFromEnv(),\n` +
+    `  collections: ${collections},\n` +
+    `  themes: ${themes},\n` +
+    `  i18n: defaultI18n,\n` +
+    `  auth: {\n` +
+    `    secret: process.env.NP_SECRET!,\n` +
+    `  },\n` +
+    pluginsList +
+    `\n});\n`
+  );
 }
 
 function drizzleConfigTemplate(): string {
-  return readTemplate("config/drizzle.config.ts");
+  // Thin wrapper — `createDrizzleConfig` from `@nexpress/app` carries
+  // the schema paths, dialect, etc. Scaffolded projects keep the
+  // default env path (`.env` next to `package.json`).
+  return `import { createDrizzleConfig } from "@nexpress/app/config/drizzle-config";\n\nexport default createDrizzleConfig();\n`;
 }
 
 function generateSchemaScriptTemplate(): string {
-  return readTemplate("scripts/generate-schema.ts");
+  // Site-dep — the schema generator needs the consumer's resolved
+  // `nexpress.config` (which collections to codegen). Wrapper:
+  //   1. Loads .env first so `nexpress.config.ts` zod-validation
+  //      (NP_SECRET / DATABASE_URL) doesn't crash at module load.
+  //   2. Hands the resolved config to @nexpress/app for the
+  //      actual file emission.
+  return (
+    `import "./_load-env.js";\n\n` +
+    `import nexpressConfig from "../src/nexpress.config";\n` +
+    `import { generateSchema } from "@nexpress/app/scripts/generate-schema";\n\n` +
+    `generateSchema({ config: nexpressConfig });\n`
+  );
 }
 
 function workerScriptTemplate(): string {
-  return readTemplate("scripts/worker.ts");
+  // Site-dep — worker needs the consumer's bootstrap singletons
+  // (DB, plugins, jobs). Wrapper hands `ensureFor` over to
+  // `@nexpress/app`'s shared runner.
+  return (
+    `import "./_load-env.js";\n\n` +
+    `import { runWorker } from "@nexpress/app/scripts/worker";\n` +
+    `import { ensureFor } from "@/lib/init-core";\n\n` +
+    `await runWorker({ ensureFor });\n`
+  );
 }
 
 function seedAdminScriptTemplate(): string {
-  return readTemplate("scripts/seed-admin.ts");
+  return `import "@nexpress/app/scripts/seed-admin";\n`;
 }
 
 function setupServerScriptTemplate(): string {
-  return readTemplate("scripts/setup-server.ts");
+  return `import "@nexpress/app/scripts/setup-server";\n`;
 }
 
 function runMigrationsScriptTemplate(): string {
-  return readTemplate("scripts/run-migrations.ts");
+  return `import "@nexpress/app/scripts/run-migrations";\n`;
 }
 
 function doctorScriptTemplate(): string {
-  return readTemplate("scripts/doctor.ts");
+  return `import "@nexpress/app/scripts/doctor";\n`;
 }
 
 function devNoticeScriptTemplate(): string {
-  return readTemplate("scripts/dev-notice.ts");
+  return `import "@nexpress/app/scripts/dev-notice";\n`;
 }
 
 function loadEnvScriptTemplate(): string {
-  return readTemplate("scripts/_load-env.ts");
+  return `import "@nexpress/app/scripts/_load-env";\n`;
 }
 
 function postinstallNoticeScriptTemplate(): string {
-  return readTemplate("scripts/postinstall-notice.ts");
+  return `import "@nexpress/app/scripts/postinstall-notice";\n`;
 }
 
 function dockerComposeTemplate(config: TemplateConfig): string {
@@ -387,7 +411,10 @@ function envTemplate(config: TemplateConfig): string {
 }
 
 function nextConfigTemplate(): string {
-  return readTemplate("config/next.config.ts");
+  // Thin wrapper over `createNextConfig()` from @nexpress/app.
+  // Adding more transpilePackages / serverExternalPackages is done
+  // by passing overrides; see `@nexpress/app/config/next-config`.
+  return `import { createNextConfig } from "@nexpress/app/config/next-config";\n\nexport default createNextConfig();\n`;
 }
 
 function vercelJsonTemplate(): string {
@@ -395,11 +422,33 @@ function vercelJsonTemplate(): string {
 }
 
 function tsconfigTemplate(): string {
-  return readTemplate("config/tsconfig.json");
+  // Scaffolded projects extend the shared base from @nexpress/app
+  // for compiler-level settings (target / module / strict / etc.).
+  //
+  // `paths` is *redeclared* here rather than inherited because
+  // TypeScript resolves `paths` relative to the file that declares
+  // them — when the base lives in `node_modules/@nexpress/app/...`
+  // the inherited `@/*` would point at the base's neighbours, not
+  // the consumer's `./src/*`. Same hazard applies to Turbopack /
+  // Next's path-alias support. Keeping the alias local makes the
+  // mapping unambiguous.
+  return (
+    JSON.stringify(
+      {
+        extends: "@nexpress/app/config/tsconfig-base",
+        compilerOptions: {
+          paths: { "@/*": ["./src/*"] },
+        },
+      },
+      null,
+      2,
+    ) + "\n"
+  );
 }
 
 function postcssConfigTemplate(): string {
-  return readTemplate("config/postcss.config.mjs");
+  // Thin re-export — Tailwind v4 PostCSS plugin is the only entry.
+  return `export { default } from "@nexpress/app/config/postcss-config";\n`;
 }
 
 function gitignoreTemplate(): string {
@@ -415,7 +464,10 @@ function gitignoreTemplate(): string {
 }
 
 function nextEnvTemplate(): string {
-  return readTemplate("config/next-env.d.ts");
+  // Trivial Next-generated stub — re-emitted as a 2-line file.
+  // Next regenerates this with project-specific routes on first
+  // `next dev` / `next build`.
+  return `/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n`;
 }
 
 function documentsStubTemplate(): string {
@@ -423,19 +475,19 @@ function documentsStubTemplate(): string {
 }
 
 function postsCollectionTemplate(): string {
-  return readTemplate("collections/posts.ts");
+  return `export { postsCollection } from "@nexpress/app/collections/posts";\n`;
 }
 
 function pagesCollectionTemplate(): string {
-  return readTemplate("collections/pages.ts");
+  return `export { pagesCollection } from "@nexpress/app/collections/pages";\n`;
 }
 
 function tagsCollectionTemplate(): string {
-  return readTemplate("collections/tags.ts");
+  return `export { tagsCollection } from "@nexpress/app/collections/tags";\n`;
 }
 
 function categoriesCollectionTemplate(): string {
-  return readTemplate("collections/categories.ts");
+  return `export { categoriesCollection } from "@nexpress/app/collections/categories";\n`;
 }
 
 function readmeTemplate(config: TemplateConfig): string {

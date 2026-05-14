@@ -1,4 +1,4 @@
-import { memberAuthRoutes } from "@/lib/auth-routes";
+import { memberAuthRoutes } from "../../../lib/auth-routes";
 
 export const GET = memberAuthRoutes.meGet;
 export const PATCH = memberAuthRoutes.mePatch;

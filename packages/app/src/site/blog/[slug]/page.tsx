@@ -9,7 +9,7 @@ import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import { NpImage, getMediaUrl } from "../../../components/np-image";
 import { ShellWrap } from "../../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../../lib/init-core";
 import {
   RenderBodyEnd,
   RenderHead,

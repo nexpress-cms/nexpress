@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ResetPasswordForm } from "../../components/member-reset-password-form";
 import { ShellWrap } from "../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../lib/init-core";
 
 interface ResetPasswordPageProps {
   searchParams: Promise<{ token?: string }>;

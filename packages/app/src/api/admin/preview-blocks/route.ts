@@ -11,9 +11,9 @@ import type { NextRequest } from "next/server";
 // which are part of the Node global.
 import { renderToReadableStream } from "react-dom/server.edge";
 
-import { getCachedActiveTheme } from "@/lib/cached-theme";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { getCachedActiveTheme } from "../../../lib/cached-theme";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { ensureFor } from "../../../lib/init-core";
 
 /**
  * Issue #467 — server-rendered live preview for the page-builder.

@@ -5,10 +5,10 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
-import { revalidateCollection } from "@/lib/revalidate";
+import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
+import { requireAuth } from "../../../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../../../lib/init-core";
+import { revalidateCollection } from "../../../../../../lib/revalidate";
 
 /**
  * Promote a member-authored `pending` document to `published`. The

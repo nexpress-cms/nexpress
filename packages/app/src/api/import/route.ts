@@ -16,10 +16,10 @@ import type { NextRequest } from "next/server";
 
 const SUPPORTED_EXPORT_VERSION = "1";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { getDb } from "../../lib/db";
+import { ensureFor } from "../../lib/init-core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);

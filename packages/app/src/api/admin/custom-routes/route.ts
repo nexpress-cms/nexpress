@@ -2,9 +2,9 @@ import { NpForbiddenError, can } from "@nexpress/core";
 import { getCustomRoutes } from "@nexpress/core/routes";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
+import { requireAuth } from "../../../lib/auth-helpers";
+import { ensureFor } from "../../../lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
 
 /**
  * Lists every developer-declared custom route registered via

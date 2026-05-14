@@ -2,9 +2,9 @@ import { can, NpForbiddenError, resolveReport } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { npErrorResponse, npSuccessResponse } from "../../../../../../lib/api-response";
+import { requireAuth } from "../../../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../../../lib/init-core";
 
 interface ResolveBody {
   resolution?: unknown;

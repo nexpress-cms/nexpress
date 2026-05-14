@@ -5,10 +5,10 @@ import {
 } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { parseBodyRecord } from "@/lib/collection-helpers";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
+import { parseBodyRecord } from "../../../../../lib/collection-helpers";
+import { ensureFor } from "../../../../../lib/init-core";
 
 /**
  * Admin-only dispatcher for plugin-registered actions. Admin UI widgets /

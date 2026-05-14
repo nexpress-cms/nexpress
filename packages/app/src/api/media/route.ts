@@ -1,9 +1,9 @@
 import { can, NpForbiddenError, NpValidationError, listMedia } from "@nexpress/core";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { ensureFor } from "../../lib/init-core";
 
 function parsePositiveInt(
   value: string | null,

@@ -19,10 +19,10 @@ import type { NextRequest } from "next/server";
 // backwards-incompatible way. Import validates this.
 const EXPORT_VERSION = "1" as const;
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { getDb } from "@/lib/db";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../lib/api-response";
+import { getDb } from "../../lib/db";
+import { ensureFor } from "../../lib/init-core";
 
 /**
  * Comma-separated list in `?collections=a,b` restricts the export to just

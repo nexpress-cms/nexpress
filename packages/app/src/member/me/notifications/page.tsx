@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { getSiteMember } from "@nexpress/next";
 import { NotificationPrefsForm } from "../../../components/notification-prefs-form";
 import { ShellWrap } from "../../../components/shell-wrap";
-import { ensureFor } from "@/lib/init-core";
+import { ensureFor } from "../../../lib/init-core";
 
 export const dynamic = "force-dynamic";
 

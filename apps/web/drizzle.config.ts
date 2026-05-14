@@ -1,28 +1,6 @@
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { createDrizzleConfig } from "@nexpress/app/config/drizzle-config";
 
-import { config as loadEnv } from "dotenv";
-import { defineConfig } from "drizzle-kit";
-
-const here = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(here, "../../.env") });
-
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set — copy .env.example to .env first.");
-}
-
-export default defineConfig({
-  schema: [
-    "./node_modules/@nexpress/core/dist/db-schema.js",
-    "./src/db/generated/*.ts",
-  ],
-  out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: connectionString,
-  },
-  strict: true,
-  verbose: true,
-});
+// Reach up to the monorepo root `.env` — the shared dev convention
+// in this repo. A scaffolded project would omit this and pick up
+// the local `.env` default.
+export default createDrizzleConfig({ envPath: "../../.env" });

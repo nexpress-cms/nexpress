@@ -2,9 +2,9 @@ import { NpValidationError, autosaveRevision } from "@nexpress/core";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { requireAuth } from "@/lib/auth-helpers";
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { ensureFor } from "@/lib/init-core";
+import { requireAuth } from "../../../../../lib/auth-helpers";
+import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
+import { ensureFor } from "../../../../../lib/init-core";
 
 /**
  * Editor autosave endpoint. Persists an in-flight snapshot to

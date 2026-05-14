@@ -9,10 +9,10 @@ import {
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "@/lib/api-response";
-import { requireAuth } from "@/lib/auth-helpers";
-import { ensureFor } from "@/lib/init-core";
-import { canManageSite } from "@/lib/site-authz";
+import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
+import { requireAuth } from "../../../../lib/auth-helpers";
+import { ensureFor } from "../../../../lib/init-core";
+import { canManageSite } from "../../../../lib/site-authz";
 
 /**
  * Phase 15.3 — per-site admin endpoints.
