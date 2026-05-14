@@ -21,16 +21,19 @@ import { MobileNav } from "./components/mobile-nav.js";
  * `header` navigation menu and renders the desktop / mobile
  * surfaces in one go:
  *
- *   - Desktop (≥768px): inline link list, search bar, lang
- *     picker, dark toggle, member widget.
- *   - Mobile (<768px): the inline list collapses (CSS-only) and
- *     a hamburger button opens a slide-in drawer (`<MobileNav />`,
+ *   - Desktop (≥900px): logo mark + wordmark, centered nav,
+ *     search pill with a ⌘K affordance, Subscribe CTA, plus
+ *     the language picker / dark toggle / member widget when
+ *     enabled.
+ *   - Mobile (<900px): the nav + search collapse (CSS-only).
+ *     A hamburger button opens a slide-in drawer (`<MobileNav />`,
  *     a small client component that owns its own open/closed
  *     state). The same nav items feed both surfaces — markup is
  *     server-rendered once and reused.
  *
- * The header is `position: sticky` (see styles.ts) so the search
- * + member widget stay reachable as the page scrolls.
+ * The header is `position: sticky` with a blurred translucent
+ * surface (see styles.ts) so the search + member widget stay
+ * reachable as the page scrolls.
  */
 export async function DefaultHeader() {
   const headerNav = await getCachedNavigation("header");
@@ -55,7 +58,8 @@ export async function DefaultHeader() {
     <header className="np-site-header">
       <div className="np-site-header-inner">
         <Link href="/" className="np-site-logo">
-          NexPress
+          <span className="np-site-logo-mark" aria-hidden="true" />
+          <span>NexPress</span>
         </Link>
         <nav className="np-site-nav-desktop" aria-label="Primary">
           <ul className="np-site-nav">
@@ -82,6 +86,18 @@ export async function DefaultHeader() {
             role="search"
             className="np-site-search"
           >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
             <label className="sr-only" htmlFor="np-site-search-input">
               Search
             </label>
@@ -93,7 +109,11 @@ export async function DefaultHeader() {
               autoComplete="off"
               className="np-site-search-input"
             />
+            <kbd>⌘K</kbd>
           </form>
+          <Link href="/subscribe" className="np-site-cta">
+            Subscribe
+          </Link>
           {showLanguagePicker && i18n ? (
             <LanguagePicker
               locales={i18n.locales}
