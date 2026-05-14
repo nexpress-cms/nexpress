@@ -1,5 +1,11 @@
 # @nexpress/rate-limiter-redis
 
+## 0.2.1
+
+### Patch Changes
+
+- @nexpress/core@0.2.1
+
 ## 0.2.0
 
 ### Patch Changes

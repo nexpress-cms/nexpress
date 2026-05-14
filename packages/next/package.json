@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/next",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Next.js integration helpers for NexPress — bootstrap, auth, collections.",
   "license": "MIT",
   "author": "Nexpress",
