@@ -226,8 +226,11 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   const themes = config.includeExampleContent
     ? "[\n    ...defaultThemes,\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]"
     : "[\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]";
+  const plugins = config.includeExampleContent
+    ? "[\n    ...defaultPlugins,\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ]"
+    : "[\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ]";
   const defaultsImports = config.includeExampleContent
-    ? 'import {\n  defaultCollections,\n  defaultI18n,\n  defaultThemes,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n'
+    ? 'import {\n  defaultCollections,\n  defaultI18n,\n  defaultPlugins,\n  defaultThemes,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n'
     : 'import {\n  defaultI18n,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n';
 
   // Marker comments let `nexpress plugin add/remove <pkg>` and
@@ -238,7 +241,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   const importsBlock =
     `// @nexpress:plugins-imports-start\n// @nexpress:plugins-imports-end\n` +
     `// @nexpress:themes-imports-start\n// @nexpress:themes-imports-end\n\n`;
-  const pluginsList = `  plugins: [\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ],`;
+  const pluginsList = `  plugins: ${plugins},`;
 
   return (
     `import { defineConfig } from "@nexpress/core";\n` +

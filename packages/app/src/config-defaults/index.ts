@@ -5,6 +5,18 @@ import { docsTheme } from "@nexpress/theme-docs";
 import { magazineTheme } from "@nexpress/theme-magazine";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
 
+import { calloutPlugin } from "@nexpress/plugin-block-callout";
+import { embedPlugin } from "@nexpress/plugin-block-embed";
+import { latestPostsPlugin } from "@nexpress/plugin-block-latest-posts";
+import { newsletterPlugin } from "@nexpress/plugin-block-newsletter";
+import { pricingPlugin } from "@nexpress/plugin-block-pricing";
+import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
+import { defineDiscussionsCollection, forumPlugin } from "@nexpress/plugin-forum";
+import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
+import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
+import { readingTimePlugin } from "@nexpress/plugin-reading-time";
+import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
+
 import { categoriesCollection } from "../collections/categories";
 import { pagesCollection } from "../collections/pages";
 import { postsCollection } from "../collections/posts";
@@ -19,12 +31,64 @@ import { tagsCollection } from "../collections/tags";
  * Editing one of these requires upstreaming the change into
  * `packages/app/src/collections/*.ts` — they're the single
  * source of truth used by both apps/web and every scaffold.
+ *
+ * `discussions` is built by the `@nexpress/plugin-forum` factory
+ * with its default options (no extra categories) so the forum
+ * plugin's pre-registered hooks have a target collection from
+ * boot. Operators who want custom categories override the entry:
+ *
+ *   collections: [
+ *     ...defaultCollections.filter((c) => c.slug !== "discussions"),
+ *     defineDiscussionsCollection({ categories: [...] }),
+ *   ]
  */
 export const defaultCollections: NpConfig["collections"] = [
   postsCollection,
   pagesCollection,
   categoriesCollection,
   tagsCollection,
+  defineDiscussionsCollection(),
+];
+
+/**
+ * Built-in plugins registered out of the box. Every scaffolded
+ * site spreads this into `nexpress.config.ts`:
+ *
+ *   plugins: [...defaultPlugins, myCustomPlugin]
+ *
+ * What's in here:
+ *   - 6 block plugins (callout / embed / latest-posts / newsletter
+ *     / pricing / stats) — add new block types to the page builder.
+ *   - reading-time, seo-audit — content-pipeline hooks, no extra
+ *     surface.
+ *   - forum — registers the `discussions` collection (pre-included
+ *     in `defaultCollections` above so the plugin has a target
+ *     from boot) plus the public forum routes under `/discussions`.
+ *   - oauth-github, oauth-google — register OAuth provider entries
+ *     but only become reachable when the corresponding env vars
+ *     (or admin auto-form values) are populated; the empty case
+ *     stays silent.
+ *
+ * Operators who want a stripped-down install filter the list or
+ * disable plugins from the admin Plugins page.
+ */
+export const defaultPlugins: NonNullable<NpConfig["plugins"]> = [
+  // Block plugins — additive page-builder blocks.
+  calloutPlugin,
+  embedPlugin,
+  latestPostsPlugin,
+  newsletterPlugin,
+  pricingPlugin,
+  statsBlockPlugin,
+  // Hook plugins — silent until they fire.
+  readingTimePlugin,
+  seoAuditPlugin,
+  // Surface-contributing plugins.
+  forumPlugin,
+  // Env / admin-form gated — register-safe, no side effect without
+  // credentials.
+  githubOAuthPlugin,
+  googleOAuthPlugin,
 ];
 
 /**
