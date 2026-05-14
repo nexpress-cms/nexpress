@@ -9,23 +9,34 @@ interface DocNode {
   title: string;
   parent: string | null;
   order: number;
+  /**
+   * Optional small label rendered next to the link
+   * (`new` / `beta` / `api`). Renders as a pill via the
+   * `.np-docs-sidebar-badge.{value}` selector in styles.ts.
+   * Treated as advisory; sites without the field render no
+   * badge.
+   */
+  badge: string | null;
   children: DocNode[];
 }
 
 /**
- * Phase F.9-B — hierarchical sidebar.
+ * Hierarchical sidebar for the docs theme.
  *
- * Walks the `docs` collection (declared as required in the
- * manifest), builds a parent/order tree, renders nested nav.
- * The current doc is highlighted via `data-current="true"`.
+ * Top-level docs (those without a `parent`) become **group
+ * eyebrows** rendered with a bullet dot indicator; each
+ * group's children are the linkable items under the eyebrow.
+ * Deeper levels render as nested lists with a hairline left
+ * rule.
  *
- * The function reads `currentSlug` from a query param (when
- * called as a route component) or from doc context. For F.9-B
- * we keep it simple: the slot component fetches the request's
- * URL via `headers()` and matches on `pathname.startsWith`.
+ * The current doc is highlighted via `data-current="true"`
+ * resolved from the request's pathname. Wired through
+ * `next/headers` (`x-np-pathname`) so the highlight survives
+ * server rendering with no client-side hydration.
  */
 export async function DocsSidebar(): Promise<React.ReactElement> {
   const settings = await resolveDocsSettings();
+  const currentSlug = await currentPathSlug();
 
   // Pull every doc and assemble the hierarchy. Capped at 500 to
   // keep the query bounded — typical doc sites stay well under.
@@ -36,16 +47,47 @@ export async function DocsSidebar(): Promise<React.ReactElement> {
   });
 
   const tree = buildTree(result.docs);
-  // Active-link detection happens client-side via the URL; here
-  // we just emit the static tree. The CSS uses `aria-current`
-  // (set by Next's link-active conventions) plus the
-  // `data-current` we'd set if we threaded the current path
-  // through; F.9-B leaves this as a polish item — links work,
-  // the highlight is missing.
+
+  if (tree.length === 0) {
+    return (
+      <aside className="np-docs-sidebar" aria-label="Docs navigation">
+        <div className="np-docs-sidebar-group">
+          <h2 className="np-docs-sidebar-eyebrow">
+            <span className="np-docs-sidebar-eyebrow-dot" aria-hidden="true" />
+            {settings.sidebarHeading}
+          </h2>
+          <p
+            style={{
+              padding: "0.34rem 0.6rem",
+              fontSize: "0.875rem",
+              color: "var(--np-color-muted-foreground)",
+              margin: 0,
+            }}
+          >
+            No docs yet.
+          </p>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="np-docs-sidebar" aria-label="Docs navigation">
-      <h2>{settings.sidebarHeading}</h2>
-      <NavTree nodes={tree} />
+      {tree.map((group) => (
+        <div className="np-docs-sidebar-group" key={group.id}>
+          <h2 className="np-docs-sidebar-eyebrow">
+            <span className="np-docs-sidebar-eyebrow-dot" aria-hidden="true" />
+            {group.title}
+          </h2>
+          {group.children.length > 0 ? (
+            <NavTree nodes={group.children} currentSlug={currentSlug} />
+          ) : (
+            <ul>
+              <SidebarLink node={group} currentSlug={currentSlug} />
+            </ul>
+          )}
+        </div>
+      ))}
     </aside>
   );
 }
@@ -56,6 +98,20 @@ interface DocRow {
   title: unknown;
   parent: unknown;
   order: unknown;
+  badge: unknown;
+}
+
+async function currentPathSlug(): Promise<string | null> {
+  try {
+    const { headers } = await import("next/headers");
+    const list = await headers();
+    const pathname = list.get("x-np-pathname");
+    if (!pathname) return null;
+    const m = /^\/docs\/(.+?)\/?$/.exec(pathname);
+    return m ? (m[1] ?? null) : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildTree(rawDocs: Record<string, unknown>[]): DocNode[] {
@@ -71,6 +127,7 @@ function buildTree(rawDocs: Record<string, unknown>[]): DocNode[] {
       title: typeof d.title === "string" ? d.title : d.slug,
       parent: typeof d.parent === "string" ? d.parent : null,
       order: typeof d.order === "number" ? d.order : 0,
+      badge: typeof d.badge === "string" ? d.badge : null,
       children: [],
     });
   }
@@ -92,15 +149,48 @@ function buildTree(rawDocs: Record<string, unknown>[]): DocNode[] {
   return roots;
 }
 
-function NavTree({ nodes }: { nodes: DocNode[] }): React.ReactElement {
+function NavTree({
+  nodes,
+  currentSlug,
+}: {
+  nodes: DocNode[];
+  currentSlug: string | null;
+}): React.ReactElement {
   return (
     <ul>
       {nodes.map((n) => (
         <li key={n.id}>
-          <a href={`/docs/${n.slug}`}>{n.title}</a>
-          {n.children.length > 0 ? <NavTree nodes={n.children} /> : null}
+          <SidebarLink node={n} currentSlug={currentSlug} />
+          {n.children.length > 0 ? (
+            <NavTree nodes={n.children} currentSlug={currentSlug} />
+          ) : null}
         </li>
       ))}
     </ul>
+  );
+}
+
+function SidebarLink({
+  node,
+  currentSlug,
+}: {
+  node: DocNode;
+  currentSlug: string | null;
+}): React.ReactElement {
+  const isCurrent = currentSlug !== null && currentSlug === node.slug;
+  const badgeClass = node.badge
+    ? `np-docs-sidebar-badge ${node.badge.toLowerCase()}`
+    : null;
+  return (
+    <a
+      href={`/docs/${node.slug}`}
+      data-current={isCurrent ? "true" : undefined}
+      aria-current={isCurrent ? "page" : undefined}
+    >
+      {node.title}
+      {badgeClass ? (
+        <span className={badgeClass}>{node.badge!.toUpperCase()}</span>
+      ) : null}
+    </a>
   );
 }

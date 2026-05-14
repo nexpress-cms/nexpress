@@ -1,9 +1,19 @@
 /**
- * Phase F.9-B — docs theme CSS.
+ * `@nexpress/theme-docs` — CSS layout.
  *
- * Scoped under `.np-docs-*` so theme swaps don't leave
- * residue. Uses `var(--np-color-*)` tokens so admin
- * settings → tokens still apply on top.
+ * Three-column reference-docs layout: sticky search-first header,
+ * hierarchical sidebar (groups with bullet eyebrows + nested
+ * links + status badges), centered article column, on-this-page
+ * TOC on the right. Sidebar + TOC collapse out below the
+ * tablet / phone breakpoints respectively.
+ *
+ * Scoped under `.np-docs-*` so a theme swap to another v0.2
+ * theme doesn't leave residue. All colors resolve through the
+ * `--np-color-*` tokens so admin overrides on top still apply.
+ *
+ * The terminal-style shell command snippet uses `.np-docs-cmdline`
+ * (not `.np-docs-shell`) because `.np-docs-shell` is already
+ * claimed by the route shell's root container.
  */
 export const docsCss = `
 .np-docs-shell {
@@ -12,231 +22,805 @@ export const docsCss = `
   min-height: 100vh;
   background: var(--np-color-background);
   color: var(--np-color-foreground);
-  font-family: var(--np-font-body, system-ui, sans-serif);
+  font-family: var(--np-font-body, "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.np-docs-shell a { color: inherit; }
+.np-docs-shell code,
+.np-docs-shell pre,
+.np-docs-shell kbd {
+  font-family: var(--np-font-mono, "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
+/* ============================================================
+ * Header — sticky bar with brand + version pill, ⌘K search in
+ * the center, primary nav + GitHub link on the right. Grid
+ * keeps everything anchored regardless of viewport width.
+ * ============================================================ */
 .np-docs-header {
   position: sticky;
   top: 0;
-  z-index: 50;
-  background: var(--np-color-background);
+  z-index: 30;
+  background: color-mix(in oklab, var(--np-color-background) 80%, transparent);
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
   border-bottom: 1px solid var(--np-color-border);
-  backdrop-filter: blur(8px);
 }
-
 .np-docs-header-inner {
-  max-width: 1200px;
+  max-width: 1380px;
   margin: 0 auto;
-  padding: 0.75rem 1.5rem;
+  padding: 0.7rem 1.5rem;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) auto;
   gap: 1.5rem;
   align-items: center;
 }
-
 .np-docs-brand {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -0.02em;
   text-decoration: none;
-  color: var(--np-color-foreground);
 }
-
+.np-docs-brand-mark {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--np-color-primary, #2563eb), #0ea5e9);
+  position: relative;
+  flex: none;
+}
+.np-docs-brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 2px;
+  background: var(--np-color-background, #fff);
+  opacity: 0.95;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 60% 100%, 0 35%);
+}
+.np-docs-brand-name { font-weight: 700; }
 .np-docs-brand-version {
-  font-size: 0.75rem;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--np-color-muted-foreground);
-  background: var(--np-color-muted);
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.25rem;
+  font-family: var(--np-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--np-color-primary);
+  background: color-mix(in oklab, var(--np-color-primary) 14%, var(--np-color-card));
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
 }
 
 .np-docs-search-form {
-  flex: 1;
+  max-width: 520px;
+  width: 100%;
+  position: relative;
+  justify-self: center;
 }
-
+.np-docs-search-form svg {
+  position: absolute;
+  top: 50%;
+  left: 0.85rem;
+  transform: translateY(-50%);
+  color: var(--np-color-muted-foreground);
+}
 .np-docs-search-input {
   width: 100%;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--np-color-border);
-  border-radius: 0.375rem;
-  background: var(--np-color-card);
-  color: var(--np-color-foreground);
+  padding: 0.55rem 0.85rem 0.55rem 2.4rem;
+  font: inherit;
   font-size: 0.875rem;
+  color: var(--np-color-foreground);
+  background: var(--np-color-card);
+  border: 1px solid var(--np-color-border);
+  border-radius: 9px;
 }
-
+.np-docs-search-input::placeholder {
+  color: var(--np-color-muted-foreground);
+}
 .np-docs-search-input:focus {
-  outline: 2px solid var(--np-color-primary);
-  outline-offset: -2px;
-  border-color: transparent;
+  outline: none;
+  border-color: var(--np-color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--np-color-primary) 22%, transparent);
+}
+.np-docs-search-kbd {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  color: var(--np-color-muted-foreground);
+  border: 1px solid var(--np-color-border);
+  border-radius: 4px;
 }
 
 .np-docs-nav {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.25rem;
 }
-
 .np-docs-primary-nav {
   display: flex;
   list-style: none;
+  gap: 1.25rem;
   margin: 0;
   padding: 0;
-  gap: 1rem;
 }
-
 .np-docs-primary-nav a {
   color: var(--np-color-muted-foreground);
-  text-decoration: none;
   font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
 }
-
-.np-docs-primary-nav a:hover {
+.np-docs-primary-nav a:hover,
+.np-docs-primary-nav a[aria-current="page"] {
+  color: var(--np-color-foreground);
+}
+.np-docs-github,
+.np-docs-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.8125rem;
+  color: var(--np-color-muted-foreground);
+  background: var(--np-color-muted);
+  border: 1px solid var(--np-color-border);
+  border-radius: 7px;
+  text-decoration: none;
+}
+.np-docs-github:hover,
+.np-docs-github-link:hover {
   color: var(--np-color-foreground);
 }
 
-.np-docs-github-link {
-  font-size: 0.875rem;
-  color: var(--np-color-muted-foreground);
-  text-decoration: none;
+@media (max-width: 800px) {
+  .np-docs-header-inner {
+    grid-template-columns: auto 1fr auto;
+    gap: 0.75rem;
+  }
+  .np-docs-search-form { display: none; }
+  .np-docs-primary-nav { display: none; }
 }
 
-.np-docs-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  max-width: 1200px;
+/* ============================================================
+ * 3-column layout: sidebar + article + on-page TOC.
+ * ============================================================ */
+.np-docs-grid,
+.np-docs-body {
+  max-width: 1380px;
   margin: 0 auto;
   width: 100%;
-  gap: 2.5rem;
-  padding: 2rem 1.5rem;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 220px;
+  gap: 3rem;
+  padding: 2.25rem 1.5rem 4rem;
 }
-
-@media (max-width: 768px) {
-  .np-docs-grid {
+@media (max-width: 1100px) {
+  .np-docs-grid,
+  .np-docs-body {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+  .np-docs-toc { display: none; }
+}
+@media (max-width: 800px) {
+  .np-docs-grid,
+  .np-docs-body {
     grid-template-columns: 1fr;
   }
-  .np-docs-sidebar {
-    display: none;
-  }
+  .np-docs-sidebar { display: none; }
 }
 
+/* ============================================================
+ * Sidebar — grouped link list with bullet eyebrow + badges.
+ * ============================================================ */
 .np-docs-sidebar {
   position: sticky;
-  top: 4rem;
+  top: 4.25rem;
   align-self: start;
   max-height: calc(100vh - 5rem);
   overflow-y: auto;
+  padding-right: 0.5rem;
 }
-
-.np-docs-sidebar h2 {
-  font-size: 0.75rem;
+.np-docs-sidebar-group { margin-bottom: 1.5rem; }
+.np-docs-sidebar-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--np-font-mono);
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--np-color-muted-foreground);
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.65rem;
+  font-weight: 600;
 }
-
+.np-docs-sidebar-eyebrow-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--np-color-primary);
+}
 .np-docs-sidebar ul {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-
-.np-docs-sidebar li {
-  margin: 0.125rem 0;
-}
-
+.np-docs-sidebar li { margin: 0.05rem 0; }
 .np-docs-sidebar a {
   display: block;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
+  padding: 0.34rem 0.6rem;
+  font-size: 0.875rem;
   color: var(--np-color-muted-foreground);
   text-decoration: none;
-  font-size: 0.875rem;
+  border-radius: 6px;
+  line-height: 1.35;
 }
-
 .np-docs-sidebar a:hover {
   background: var(--np-color-muted);
   color: var(--np-color-foreground);
 }
-
-.np-docs-sidebar a[data-current="true"] {
-  background: color-mix(in oklch, var(--np-color-primary) 12%, transparent);
+.np-docs-sidebar a[data-current="true"],
+.np-docs-sidebar a[aria-current="page"] {
   color: var(--np-color-primary);
+  background: color-mix(in oklab, var(--np-color-primary) 14%, var(--np-color-card));
   font-weight: 500;
 }
-
 .np-docs-sidebar ul ul {
-  margin-left: 0.75rem;
+  margin-left: 0.5rem;
+  padding-left: 0.85rem;
   border-left: 1px solid var(--np-color-border);
-  padding-left: 0.5rem;
+}
+.np-docs-sidebar-badge {
+  display: inline-block;
+  font-family: var(--np-font-mono);
+  font-size: 0.62rem;
+  padding: 0.02rem 0.34rem;
+  margin-left: 0.4rem;
+  vertical-align: 1px;
+  border-radius: 4px;
+  background: var(--np-color-muted);
+  color: var(--np-color-muted-foreground);
+  font-weight: 500;
+}
+.np-docs-sidebar-badge.new { background: #dcfce7; color: #166534; }
+.np-docs-sidebar-badge.beta { background: #fef3c7; color: #92400e; }
+.np-docs-sidebar-badge.api {
+  background: color-mix(in oklab, var(--np-color-primary) 16%, var(--np-color-card));
+  color: var(--np-color-primary);
 }
 
+/* ============================================================
+ * Doc page — article column. h1 + lede + meta row + sections
+ * with hovered anchor link icon.
+ * ============================================================ */
 .np-docs-page {
-  max-width: 720px;
+  max-width: 760px;
+  min-width: 0;
 }
+.np-docs-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--np-color-muted-foreground);
+  margin-bottom: 1rem;
+}
+.np-docs-breadcrumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+.np-docs-breadcrumbs a:hover { color: var(--np-color-foreground); }
+.np-docs-breadcrumbs-sep { opacity: 0.5; }
 
 .np-docs-page h1 {
-  font-size: 2rem;
+  font-size: clamp(2rem, 3.6vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
   margin: 0 0 0.5rem;
+  text-wrap: balance;
+}
+.np-docs-page-lede {
+  font-size: 1.125rem;
+  color: var(--np-color-muted-foreground);
+  line-height: 1.55;
+  margin: 0 0 2rem;
+  max-width: 38rem;
+  text-wrap: pretty;
+}
+.np-docs-page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--np-color-muted-foreground);
+  padding: 0.85rem 0;
+  margin-bottom: 2rem;
+  border-top: 1px solid var(--np-color-border);
+  border-bottom: 1px solid var(--np-color-border);
+}
+.np-docs-page-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  font-family: var(--np-font-mono);
+  font-size: 0.72rem;
+  border: 1px solid var(--np-color-border);
+  border-radius: 999px;
+  background: var(--np-color-card);
+}
+.np-docs-page-meta-pill.status {
+  color: #047857;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+.np-docs-page-meta-pill.status::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: #047857;
+}
+.np-docs-page-meta-sep { opacity: 0.4; }
+.np-docs-page-meta a {
+  color: var(--np-color-primary);
+  text-decoration: none;
+  margin-left: auto;
+}
+.np-docs-page-meta a:hover { text-decoration: underline; }
+
+.np-docs-page h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 3rem 0 0.85rem;
+  scroll-margin-top: 5rem;
+  position: relative;
+}
+.np-docs-page h2:first-of-type { margin-top: 2.5rem; }
+.np-docs-page h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2.25rem 0 0.7rem;
+  scroll-margin-top: 5rem;
+  position: relative;
+}
+.np-docs-page p { margin: 0 0 1rem; }
+.np-docs-page p code,
+.np-docs-page li code {
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  background: var(--np-color-muted);
+  border: 1px solid var(--np-color-border);
+  border-radius: 4px;
+}
+.np-docs-page strong { font-weight: 600; }
+.np-docs-page ul,
+.np-docs-page ol {
+  margin: 0 0 1rem;
+  padding-left: 1.4rem;
+}
+.np-docs-page li { margin: 0.35rem 0; }
+.np-docs-page a:not(.np-docs-prev-next a):not(.np-docs-anchor) {
+  color: var(--np-color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, var(--np-color-primary) 45%, transparent);
+}
+.np-docs-page a:not(.np-docs-prev-next a):not(.np-docs-anchor):hover {
+  text-decoration-color: currentColor;
 }
 
+/* Anchor icon — visible only on heading hover. */
+.np-docs-anchor {
+  position: absolute;
+  left: -1.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--np-color-muted-foreground);
+  opacity: 0;
+  text-decoration: none !important;
+  font-weight: 400;
+}
+.np-docs-page h2:hover .np-docs-anchor,
+.np-docs-page h3:hover .np-docs-anchor { opacity: 1; }
+
+/* ============================================================
+ * Callouts — info (default) / note (indigo) / warn (amber) /
+ * danger (red). 3px left rule carries the variant color.
+ * ============================================================ */
+.np-docs-callout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.85rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--np-color-border);
+  border-left: 3px solid var(--np-color-primary);
+  border-radius: 8px;
+  background: var(--np-color-card);
+  margin: 1.25rem 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+.np-docs-callout > svg,
+.np-docs-callout-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  color: var(--np-color-primary);
+  margin-top: 0.1rem;
+}
+.np-docs-callout p { margin: 0; }
+.np-docs-callout-title {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+  color: var(--np-color-foreground);
+}
+.np-docs-callout--warn {
+  border-left-color: #b45309;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.np-docs-callout--warn .np-docs-callout-icon,
+.np-docs-callout--warn > svg { color: #b45309; }
+.np-docs-callout--note {
+  border-left-color: #6366f1;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+.np-docs-callout--note .np-docs-callout-icon,
+.np-docs-callout--note > svg { color: #4338ca; }
+.np-docs-callout--danger {
+  border-left-color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.np-docs-callout--danger .np-docs-callout-icon,
+.np-docs-callout--danger > svg { color: #b91c1c; }
+
+/* ============================================================
+ * Code blocks — dark surface with a file-named header and a
+ * copy button. Syntax tokens (.tk-*) cover the common slots
+ * (keyword / string / function / number / type / punctuation /
+ * comment) using a muted neutral-paired palette so the block
+ * reads at the same contrast as the page chrome.
+ * ============================================================ */
+.np-docs-code {
+  margin: 1.25rem 0;
+  border-radius: 10px;
+  background: #0b1220;
+  color: #e6edf6;
+  overflow: hidden;
+  border: 1px solid #1e2939;
+}
+.np-docs-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.85rem;
+  background: #0f1a2b;
+  border-bottom: 1px solid #1e293b;
+}
+.np-docs-code-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--np-font-mono);
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+.np-docs-code-file svg { color: #64748b; }
+.np-docs-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-family: var(--np-font-mono);
+  color: #94a3b8;
+  background: transparent;
+  border: 1px solid #1e293b;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.np-docs-code-copy:hover {
+  color: #e2e8f0;
+  border-color: #334155;
+}
+.np-docs-code pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  font-size: 0.825rem;
+  line-height: 1.65;
+  overflow-x: auto;
+}
+.np-docs-code pre code {
+  display: block;
+  font-family: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+.tk-c { color: #64748b; font-style: italic; }
+.tk-k { color: #c084fc; }
+.tk-s { color: #86efac; }
+.tk-f { color: #93c5fd; }
+.tk-t { color: #fcd34d; }
+.tk-n { color: #f9a8d4; }
+.tk-p { color: #e2e8f0; }
+
+/* Inline shell snippet — for terse \`pnpm dev\` style commands.
+ * Named \`cmdline\` (not \`shell\`) so it doesn't collide with the
+ * route shell container at \`.np-docs-shell\`. */
+.np-docs-cmdline {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  margin: 1.25rem 0;
+  background: #0b1220;
+  color: #e6edf6;
+  border-radius: 9px;
+  font-family: var(--np-font-mono);
+  font-size: 0.875rem;
+}
+.np-docs-cmdline-prompt { color: #34d399; }
+.np-docs-cmdline-cmd { color: #e2e8f0; }
+.np-docs-cmdline-copy {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  background: transparent;
+  border: 1px solid #1e293b;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.np-docs-cmdline-copy:hover { color: #e2e8f0; border-color: #334155; }
+
+/* ============================================================
+ * Numbered steps — counter on a soft pill before each step.
+ * ============================================================ */
+.np-docs-steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  display: grid;
+  gap: 1rem;
+}
+.np-docs-steps > li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 2.1rem 1fr;
+  gap: 0.85rem;
+  align-items: start;
+}
+.np-docs-steps > li::before {
+  content: counter(step);
+  width: 1.85rem;
+  height: 1.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--np-font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--np-color-primary);
+  background: color-mix(in oklab, var(--np-color-primary) 14%, var(--np-color-card));
+  border-radius: 50%;
+}
+.np-docs-step-title {
+  font-weight: 600;
+  margin: 0.25rem 0 0.25rem;
+}
+.np-docs-step-body {
+  margin: 0;
+  color: var(--np-color-muted-foreground);
+}
+
+/* ============================================================
+ * API / reference tables — uppercase mono headers.
+ * ============================================================ */
+.np-docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin: 1.25rem 0;
+}
+.np-docs-table thead { background: var(--np-color-muted); }
+.np-docs-table th,
+.np-docs-table td {
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--np-color-border);
+  vertical-align: top;
+}
+.np-docs-table th {
+  font-family: var(--np-font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--np-color-muted-foreground);
+  font-weight: 600;
+}
+.np-docs-table td:first-child code {
+  color: var(--np-color-foreground);
+  font-weight: 500;
+}
+.np-docs-table-required {
+  display: inline-block;
+  font-family: var(--np-font-mono);
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.4rem;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  vertical-align: 1px;
+}
+
+/* ============================================================
+ * Prev / next — symmetric pair at the foot of every doc page.
+ * Hover lifts the bordered card and tints the border primary.
+ * ============================================================ */
 .np-docs-prev-next {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  margin-top: 3rem;
-  padding-top: 1.5rem;
+  margin: 3.5rem 0 1rem;
+  padding-top: 2rem;
   border-top: 1px solid var(--np-color-border);
 }
-
 .np-docs-prev-next a {
   display: block;
-  padding: 0.75rem 1rem;
+  padding: 1rem 1.15rem;
+  background: var(--np-color-card);
   border: 1px solid var(--np-color-border);
-  border-radius: 0.5rem;
-  color: var(--np-color-foreground);
+  border-radius: 10px;
   text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.2s ease;
 }
-
 .np-docs-prev-next a:hover {
   border-color: var(--np-color-primary);
+  transform: translateY(-1px);
 }
-
+.np-docs-prev-next-dir,
 .np-docs-prev-next-label {
-  display: block;
-  font-size: 0.75rem;
+  font-family: var(--np-font-mono);
+  font-size: 0.72rem;
   color: var(--np-color-muted-foreground);
+  letter-spacing: 0.05em;
   margin-bottom: 0.25rem;
 }
+.np-docs-prev-next-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.np-docs-prev-next a.np-docs-prev-next-next,
+.np-docs-prev-next a:last-child { text-align: right; }
 
-/* M.* member surface — narrow auth-form column under the
-   masthead, no sidebar (the docs sidebar is hierarchical
-   doc nav, useless on auth forms). */
-.np-docs-members {
+/* ============================================================
+ * Feedback row — Yes / Could be better buttons under each page.
+ * ============================================================ */
+.np-docs-feedback {
+  margin-top: 3rem;
+  padding: 1.25rem;
+  background: var(--np-color-muted);
+  border: 1px solid var(--np-color-border);
+  border-radius: 10px;
   display: flex;
-  justify-content: center;
-  min-height: 60vh;
-  padding: 3rem 1.5rem;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
-.np-docs-members-column {
-  width: 100%;
-  max-width: 440px;
+.np-docs-feedback-title { font-weight: 600; font-size: 0.95rem; }
+.np-docs-feedback-helper {
+  font-size: 0.825rem;
+  color: var(--np-color-muted-foreground);
+  margin-top: 0.15rem;
+}
+.np-docs-feedback-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+.np-docs-feedback-buttons button {
+  padding: 0.4rem 0.85rem;
+  font: inherit;
+  font-size: 0.825rem;
+  background: var(--np-color-card);
+  border: 1px solid var(--np-color-border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.np-docs-feedback-buttons button:hover {
+  border-color: var(--np-color-primary);
+  color: var(--np-color-primary);
 }
 
-/* Member form token overrides — docs aesthetic: slightly
-   rounded corners, neutral palette, monospace label accent. */
-.np-docs .np-members-form {
-  --np-member-form-input-bg: var(--np-color-background);
-  --np-member-form-input-border: var(--np-color-border);
-  --np-member-form-input-border-focus: var(--np-color-primary);
-  --np-member-form-input-radius: 0.375rem;
-  --np-member-form-button-radius: 0.375rem;
+/* ============================================================
+ * On-page TOC — right rail, sticky, current section gets a
+ * primary border + soft gradient.
+ * ============================================================ */
+.np-docs-toc {
+  position: sticky;
+  top: 4.25rem;
+  align-self: start;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  font-size: 0.825rem;
 }
-.np-docs .np-members-form .np-form-label {
-  font-family: var(--np-font-mono, ui-monospace, monospace);
-  font-size: 0.8125rem;
+.np-docs-toc-eyebrow {
+  font-family: var(--np-font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--np-color-muted-foreground);
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+}
+.np-docs-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.np-docs-toc li { margin: 0.05rem 0; }
+.np-docs-toc a {
+  display: block;
+  padding: 0.3rem 0.5rem;
+  color: var(--np-color-muted-foreground);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  line-height: 1.4;
+}
+.np-docs-toc a:hover { color: var(--np-color-foreground); }
+.np-docs-toc a[data-current="true"],
+.np-docs-toc a[aria-current="location"] {
+  color: var(--np-color-primary);
+  border-left-color: var(--np-color-primary);
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--np-color-primary) 14%, var(--np-color-card)),
+    transparent 80%
+  );
+}
+.np-docs-toc ul ul { margin-left: 0.85rem; }
+.np-docs-toc-secondary {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--np-color-border);
+}
+.np-docs-toc-secondary a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0;
+  border-left: 0;
+  margin: 0;
+}
+.np-docs-toc-secondary a:hover { background: transparent; }
+
+/* Empty / not-found surfaces — used by routes/not-found and
+ * the docs collection's empty state. */
+.np-docs-empty {
+  padding: 4rem 1.5rem;
+  text-align: center;
+  color: var(--np-color-muted-foreground);
+}
+.np-docs-empty h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+  color: var(--np-color-foreground);
 }
 `;
