@@ -3,6 +3,7 @@ import type { NpTemplateRenderProps } from "@nexpress/theme";
 import { findDocuments, type NpRichTextContent } from "@nexpress/core";
 import { extractHeadingToc, renderRichText } from "@nexpress/editor/server";
 
+import { TocScrollspy } from "../components/toc-scrollspy.js";
 import { resolveDocsSettings } from "../settings-helpers.js";
 
 interface DocDoc {
@@ -181,6 +182,7 @@ export async function DocPageTemplate({
             </li>
           ))}
         </ul>
+        <TocScrollspy ids={toc.map((entry) => entry.id)} />
 
         {(editHref || reportIssueHref) ? (
           <div className="np-docs-toc-secondary">

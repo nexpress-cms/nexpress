@@ -786,7 +786,8 @@ export const docsCss = `
 }
 .np-docs-toc a:hover { color: var(--np-color-foreground); }
 .np-docs-toc a[data-current="true"],
-.np-docs-toc a[aria-current="location"] {
+.np-docs-toc a[aria-current="location"],
+.np-docs-toc a[aria-current="true"] {
   color: var(--np-color-primary);
   border-left-color: var(--np-color-primary);
   background: linear-gradient(

@@ -15,6 +15,7 @@ import { DarkModeToggle } from "./components/dark-mode-toggle.js";
 import { LanguagePicker } from "./components/language-picker.js";
 import { MemberStatusWidget } from "./components/member-status-widget.js";
 import { MobileNav } from "./components/mobile-nav.js";
+import { SearchKeyboardShortcut } from "./components/search-keyboard-shortcut.js";
 
 /**
  * Default theme header — server component. Reads the
@@ -111,6 +112,7 @@ export async function DefaultHeader() {
             />
             <kbd>⌘K</kbd>
           </form>
+          <SearchKeyboardShortcut targetId="np-site-search-input" />
           <Link href="/subscribe" className="np-site-cta">
             Subscribe
           </Link>
