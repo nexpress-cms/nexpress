@@ -1,5 +1,35 @@
 # @nexpress/app
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [e733d47]
+- Updated dependencies [e733d47]
+  - @nexpress/core@0.2.2
+  - @nexpress/admin@0.2.2
+  - @nexpress/theme-magazine@0.2.2
+  - @nexpress/theme-portfolio@0.2.2
+  - @nexpress/theme-default@0.2.2
+  - @nexpress/auth-pages@0.2.2
+  - @nexpress/blocks@0.2.2
+  - @nexpress/next@0.2.2
+  - @nexpress/plugin-sdk@0.2.2
+  - @nexpress/plugin-forum@0.2.2
+  - @nexpress/plugin-oauth-github@0.2.2
+  - @nexpress/plugin-oauth-google@0.2.2
+  - @nexpress/theme@0.2.2
+  - @nexpress/theme-docs@0.2.2
+  - @nexpress/plugin-block-callout@0.2.2
+  - @nexpress/plugin-block-embed@0.2.2
+  - @nexpress/plugin-block-latest-posts@0.2.2
+  - @nexpress/plugin-block-newsletter@0.2.2
+  - @nexpress/plugin-block-pricing@0.2.2
+  - @nexpress/plugin-block-stats@0.2.2
+  - @nexpress/plugin-reading-time@0.2.2
+  - @nexpress/plugin-seo-audit@0.2.2
+  - @nexpress/editor@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes

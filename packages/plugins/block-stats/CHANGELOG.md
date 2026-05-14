@@ -1,5 +1,12 @@
 # @nexpress/plugin-block-stats
 
+## 0.2.2
+
+### Patch Changes
+
+- @nexpress/blocks@0.2.2
+- @nexpress/plugin-sdk@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes
