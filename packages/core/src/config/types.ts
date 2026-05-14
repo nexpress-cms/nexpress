@@ -406,6 +406,24 @@ export interface NpCollectionConfig {
      * default so a typo can't break the sidebar render.
      */
     icon?: string;
+    /**
+     * Framework-set. Stamped by `mergeThemeRequirements` on
+     * collections it synthesised via a theme's
+     * `requires.collections.<slug>.createIfAbsent: true`. The
+     * admin sidebar uses it to hide collections whose owning
+     * theme isn't active — the bundled-themes prebake puts
+     * EVERY built-in theme's `createIfAbsent` slug into the
+     * schema so swap-from-admin is migration-free, but the
+     * operator shouldn't see `authors` in the sidebar while
+     * running the docs theme.
+     *
+     * NEVER set this by hand from operator config. The
+     * underscore is intentional — it marks "this is the
+     * framework's view of the config, not the operator's
+     * intent". Operator-declared collections (slug exists
+     * before merge) keep this unset and always show.
+     */
+    _themeOrigin?: string;
   };
   upload?: NpUploadConfig;
 }

@@ -65,21 +65,40 @@ export default async function AdminLayout({
     redirect("/admin/login");
   }
 
+  // `getCachedActiveTheme()` is read below for the block / pattern
+  // filters; resolve it here too so the collection filter and the
+  // block filter agree on which theme is active.
+  const activeTheme = await getCachedActiveTheme();
+  const activeThemeId = activeTheme?.manifest.id ?? null;
+
   // Pulls the list straight from `nexpress.config.ts` so the admin
   // sidebar lists every collection the app declares (Posts, Pages,
   // Categories, Tags, Discussions, etc.). Was a `[]` stub before —
   // sidebar rendered no collection nav.
-  const collections = nexpressConfig.collections.map((c) => ({
-    slug: c.slug,
-    labels: { plural: c.labels.plural },
-    admin: c.admin
-      ? {
-          group: c.admin.group,
-          hidden: c.admin.hidden,
-          icon: c.admin.icon,
-        }
-      : undefined,
-  }));
+  //
+  // Filter out theme-synthesised collections whose owning theme
+  // isn't active. The bundled-themes prebake unions every
+  // built-in's `createIfAbsent` slug into the schema so
+  // swap-from-admin needs no migration — but only the active
+  // theme's synthesised slugs deserve sidebar real estate.
+  // Operator-declared collections (no `_themeOrigin` tag) always
+  // pass through.
+  const collections = nexpressConfig.collections
+    .filter((c) => {
+      const origin = c.admin?._themeOrigin;
+      return !origin || origin === activeThemeId;
+    })
+    .map((c) => ({
+      slug: c.slug,
+      labels: { plural: c.labels.plural },
+      admin: c.admin
+        ? {
+            group: c.admin.group,
+            hidden: c.admin.hidden,
+            icon: c.admin.icon,
+          }
+        : undefined,
+    }));
   // Server-side capability resolution — keeps `@nexpress/core`
   // (which pulls `pg`/`sharp`/`argon2`) out of the admin client
   // bundle. The shell mirrors the same gates client-side via the
@@ -99,15 +118,12 @@ export default async function AdminLayout({
   // the Add-block popover. Plugin and built-in blocks are
   // always included; only theme blocks are gated by themeId.
   //
-  // Use `getCachedActiveTheme()` (which falls back to the first
-  // registered theme when `np_settings.activeTheme` is unset)
-  // so admin and renderer agree on the active theme — without
-  // the fallback, a fresh install would render the first theme's
-  // shell while the admin's Add-block popover shows zero theme
-  // blocks. Cached version also participates in `nx:theme`
-  // invalidation, matching the renderer's invalidation path.
-  const activeTheme = await getCachedActiveTheme();
-  const sourceContext = { themeId: activeTheme?.manifest.id ?? null };
+  // Reuses `activeTheme` resolved above (fallback to the first
+  // registered theme when `np_settings.activeTheme` is unset, via
+  // `getCachedActiveTheme()`). Both the collection sidebar filter
+  // and the block / pattern filters need to agree on which theme
+  // is active, so they share one read.
+  const sourceContext = { themeId: activeThemeId };
   const blocksMetadata = getRegisteredBlockMetadataForActiveSources(sourceContext);
   // Phase F.5 — same active-source filter for patterns. Theme
   // patterns from the inactive theme(s) are filtered out so the

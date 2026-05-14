@@ -131,6 +131,24 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
       "name",
       "description",
     ]);
+    // Synthesised collections carry the originating theme id so
+    // the admin sidebar can hide them when that theme isn't
+    // active (bundled-themes prebake / runtime-swap path).
+    expect(cats?.admin?._themeOrigin).toBe("magazine");
+  });
+
+  it("does NOT stamp _themeOrigin on operator-declared collections that gain theme fields", () => {
+    // The merge only tags COLLECTIONS it had to synthesise. A
+    // collection the operator declared and the theme merely
+    // extended (e.g. magazine adding `featured` to operator's
+    // `posts`) stays operator-owned — admin shouldn't hide it
+    // just because the active theme changed.
+    const themeExtendsPosts = theme("magazine", {
+      posts: { fields: { featured: { type: "checkbox" } } },
+    });
+    const out = mergeThemeRequirements([basePosts], [themeExtendsPosts]);
+    const posts = out.find((c) => c.slug === "posts");
+    expect(posts?.admin?._themeOrigin).toBeUndefined();
   });
 
   it("does NOT create a missing collection when createIfAbsent is absent", () => {
