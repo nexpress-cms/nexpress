@@ -544,17 +544,22 @@ export interface NpThemeManifest {
    * (e.g. magazine theme reads `posts.featured`) declare them
    * here. Two consumers read this:
    *
-   * 1. Admin theme switcher (this phase): compares against the
-   *    site's registered collections at activation time and
-   *    surfaces mismatches to the operator BEFORE they click
-   *    "activate" — so they don't end up with a theme that
-   *    silently renders fallbacks for missing fields.
-   * 2. `pnpm nexpress theme:install` (Phase F.8, deferred):
-   *    reads this to AST-patch the operator's
-   *    `src/collections/*.ts` files and run codegen + migrate.
-   *
-   * F.1 ships only the type + admin warning surface. The CLI
-   * patcher is its own phase.
+   * 1. `defineConfig` calls `mergeThemeRequirements` to UNION
+   *    declared fields into the operator's `collections` array
+   *    at config-resolution time. Operator-authored fields with
+   *    the same name always win, so the merge is non-
+   *    destructive. The framework's codegen then picks up the
+   *    union shape; the operator's next `pnpm db:generate &&
+   *    pnpm db:migrate` materialises the columns. Operators
+   *    add a theme via `pnpm nexpress theme add <pkg>` — there
+   *    is no longer a `theme:install` AST-patcher that touches
+   *    `src/collections/*.ts` (that flow was retired alongside
+   *    the auto-merge).
+   * 2. Admin theme switcher: compares against the resolved
+   *    collections at activation time and surfaces residual
+   *    mismatches — chiefly TYPE conflicts where the operator
+   *    declared a field with the same name but a different
+   *    `type` and the merge respected the operator's choice.
    */
   requires?: {
     collections?: Record<string, NpThemeCollectionRequirement>;
@@ -650,14 +655,18 @@ export interface NpThemeManifest {
 
 /**
  * One collection's worth of theme requirements. The collection
- * may exist (admin checks fields) or not (admin flags as missing
- * — the CLI in F.8 will create it if `createIfAbsent` is set).
+ * may exist (the framework's auto-merge appends fields to the
+ * existing array) or not (the merge skips it unless
+ * `createIfAbsent` is set, in which case a minimal collection is
+ * synthesised on the resolved config).
  */
 export interface NpThemeCollectionRequirement {
   fields?: Record<string, NpThemeFieldRequirement>;
-  /** True → CLI in F.8 creates this collection if absent.
-   *  Admin still warns at activation; the operator must run the
-   *  CLI to actually create it. */
+  /** True → the framework's `mergeThemeRequirements` step in
+   *  `defineConfig` synthesises a minimal collection (slug +
+   *  labels + the declared fields) when no collection with this
+   *  slug is registered. Operator-authored collections of the
+   *  same slug always take precedence. */
   createIfAbsent?: boolean;
 }
 

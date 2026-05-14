@@ -217,18 +217,27 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   const collections = config.includeExampleContent
     ? "[...defaultCollections]"
     : "[]";
+  // The themes array always nests a theme-list marker pair so
+  // `nexpress theme add <pkg>` from `@nexpress/cli-nexpress`
+  // has an anchor to append into. When the scaffold includes
+  // example content (the default), the array starts as
+  // `[...defaultThemes, /* markers */]`; the empty-content
+  // variant just has the marker pair.
   const themes = config.includeExampleContent
-    ? "defaultThemes"
-    : "[]";
+    ? "[\n    ...defaultThemes,\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]"
+    : "[\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]";
   const defaultsImports = config.includeExampleContent
     ? 'import {\n  defaultCollections,\n  defaultI18n,\n  defaultThemes,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n'
     : 'import {\n  defaultI18n,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n';
 
-  // Marker comments let `nexpress plugin add/remove <pkg>` from
-  // `@nexpress/cli` edit this file automatically. Keep them in
-  // place even when no plugins are installed — removing them
-  // forces the operator to do manual edits later.
-  const importsBlock = `// @nexpress:plugins-imports-start\n// @nexpress:plugins-imports-end\n\n`;
+  // Marker comments let `nexpress plugin add/remove <pkg>` and
+  // `nexpress theme add <pkg>` from `@nexpress/cli-nexpress` edit
+  // this file automatically. Keep them in place even when no
+  // plugins or themes are installed — removing them forces the
+  // operator to do manual edits later.
+  const importsBlock =
+    `// @nexpress:plugins-imports-start\n// @nexpress:plugins-imports-end\n` +
+    `// @nexpress:themes-imports-start\n// @nexpress:themes-imports-end\n\n`;
   const pluginsList = `  plugins: [\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ],`;
 
   return (

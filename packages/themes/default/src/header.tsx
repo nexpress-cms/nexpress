@@ -4,8 +4,8 @@ import { getCachedNavigation, resolveAvailableLocales } from "@nexpress/next";
 import Link from "next/link";
 
 // `next/headers` lives in the Next-build-context-only world —
-// outside a Next bundle (e.g. when `pnpm nexpress theme:install`
-// dynamically imports this module to read its `requires` field)
+// outside a Next bundle (e.g. when `pnpm nexpress theme add`
+// dynamically imports this module to probe its export shape)
 // resolution fails with ERR_MODULE_NOT_FOUND. Lazy-importing
 // inside the request-scoped function body keeps the top-level
 // import graph free of Next-only specifiers, so CLI tooling can

@@ -6,8 +6,8 @@ import { MagazineMobileNav } from "./components/mobile-nav.js";
 
 // `next/headers` is a Next-build-context-only specifier — Next's
 // bundler resolves it, but a plain `node` / `tsx` import from
-// outside Next (e.g. `pnpm nexpress theme:install` walking this
-// theme module to read its `requires` field) blows up with
+// outside Next (e.g. `pnpm nexpress theme add` probing this
+// theme module's export shape) blows up with
 // `ERR_MODULE_NOT_FOUND` at module load. Lazy-importing inside
 // the request-scoped function body keeps the top-level evaluation
 // free of Next-only specifiers, so CLI tooling can load the

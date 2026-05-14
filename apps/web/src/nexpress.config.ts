@@ -20,6 +20,8 @@ import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
 import { seoAuditPlugin } from "@nexpress/plugin-seo-audit";
 // @nexpress:plugins-imports-end
+// @nexpress:themes-imports-start
+// @nexpress:themes-imports-end
 
 import { i18nConfig } from "./i18n.config";
 
@@ -56,7 +58,11 @@ export default defineConfig({
     locales: [...i18nConfig.locales],
     defaultLocale: i18nConfig.defaultLocale,
   },
-  themes: defaultThemes,
+  themes: [
+    ...defaultThemes,
+    // @nexpress:themes-list-start
+    // @nexpress:themes-list-end
+  ],
   plugins: [
     forumPlugin,
     // @nexpress:plugins-list-start

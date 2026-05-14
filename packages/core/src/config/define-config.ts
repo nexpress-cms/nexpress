@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 
+import { mergeThemeRequirements } from "../themes/merge-requirements.js";
 import { type NpConfig } from "./types.js";
 import { npConfigSchema } from "./validation.js";
 
@@ -18,6 +19,13 @@ import { npConfigSchema } from "./validation.js";
  *
  * Unknown plugin entries are accepted here — the plugin loader does the
  * deeper validation of manifests against @nexpress/plugin-sdk.
+ *
+ * After validation, theme requirements are auto-merged into the
+ * `collections` array via `mergeThemeRequirements`. Operators no
+ * longer need to AST-patch `src/collections/*.ts` when adopting a
+ * theme — adding the theme to `themes: [...]` is enough; the next
+ * `pnpm db:generate && pnpm db:migrate` picks up the new
+ * theme-declared columns.
  */
 export function defineConfig(config: NpConfig): NpConfig {
   try {
@@ -42,7 +50,16 @@ export function defineConfig(config: NpConfig): NpConfig {
     }
   }
 
-  return config;
+  // Theme auto-merge. Non-destructive: operator-authored fields
+  // are never overwritten, and a no-op when no themes (or no
+  // themes with `requires`) are registered. Returns the input
+  // array unchanged in that case, so the equality semantics
+  // existing callers rely on hold.
+  const mergedCollections = mergeThemeRequirements(config.collections, config.themes);
+  if (mergedCollections === config.collections) {
+    return config;
+  }
+  return { ...config, collections: mergedCollections };
 }
 
 const FRIENDLY_HINTS: Record<string, string> = {

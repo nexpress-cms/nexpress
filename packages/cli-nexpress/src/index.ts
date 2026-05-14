@@ -18,7 +18,7 @@ import {
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
 import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
-import { runThemeInstall } from "./theme-install/run.js";
+import { runThemeAdd } from "./theme-add/run.js";
 import { runThemeUninstall } from "./theme-uninstall/run.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
@@ -26,10 +26,10 @@ const HELP_TEXT = `nexpress — project-side CLI
 Usage:
   nexpress plugin add <package>                       Install a plugin and register it
   nexpress plugin remove <package>                    Uninstall a plugin and unregister it
-  nexpress theme:install <package>                    Install a theme: AST-patch collection files for declared requirements
-  nexpress theme:install <package> --dry-run          Same, but print the plan and exit without mutating
-  nexpress theme:install <package> --yes              Same, but skip the interactive confirm prompt
-  nexpress theme:install <package> --apply            Same, but auto-chain db:migrate after generate (one-shot install)
+  nexpress theme add <package>                        Install a theme and register it in nexpress.config.ts
+  nexpress theme add <package> --dry-run              Same, but print the plan and exit without mutating
+  nexpress theme add <package> --yes                  Same, but skip the interactive confirm prompt
+  nexpress theme add <package> --apply                Same, but chain db:generate + db:migrate after registration
   nexpress theme:uninstall <package>                  Uninstall: AST-remove fields the theme contributed
   nexpress theme:uninstall <package> --dry-run        Same, but print the plan and exit without mutating
   nexpress theme:uninstall <package> --yes            Same, but skip the destructive confirm prompt
@@ -43,17 +43,23 @@ Usage:
   nexpress create scheduled-plugin <slug>             Scaffold a scheduled-task plugin
 
 Notes:
-  - "plugin add/remove" runs from the project root (where nexpress.config.ts lives).
+  - "plugin add/remove" and "theme add" run from the project root (where
+    nexpress.config.ts lives).
+  - "theme add" only registers the theme. The framework auto-merges the
+    theme's manifest.requires.collections into your \`collections\` array at
+    config-resolution time, so a follow-up \`pnpm db:generate && pnpm
+    db:migrate\` (or \`--apply\` here) is all you need to materialise
+    theme-declared columns. No more AST patches to your collection files.
   - "create *-plugin" writes a starter package to the current directory; you
     then add it to your workspace (e.g. into packages/plugins/<slug>/) and run
     pnpm install + pnpm --filter <packageName> build before importing.
   - --interactive (block kind only) emits a second client entry with the boundary
     wiring (splitting off, self-import external, DOM lib) pre-configured.
-  - The config file must include marker comments for automated plugin add/remove:
-      // @nexpress:plugins-imports-start
-      // @nexpress:plugins-imports-end
-      // @nexpress:plugins-list-start
-      // @nexpress:plugins-list-end
+  - The config file must include marker comments for automated edits:
+      // @nexpress:plugins-imports-start         // @nexpress:themes-imports-start
+      // @nexpress:plugins-imports-end           // @nexpress:themes-imports-end
+      // @nexpress:plugins-list-start            // @nexpress:themes-list-start
+      // @nexpress:plugins-list-end              // @nexpress:themes-list-end
     Without them the CLI prints the snippet to paste manually.
 `;
 
@@ -221,32 +227,41 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  if (args[0] === "theme:install") {
-    let themePackage: string | undefined;
-    let dryRun = false;
-    let yes = false;
-    let apply = false;
-    for (const arg of args.slice(1)) {
-      if (arg === "--dry-run") dryRun = true;
-      else if (arg === "--yes" || arg === "-y") yes = true;
-      else if (arg === "--apply") apply = true;
-      else if (arg.startsWith("--")) {
-        process.stderr.write(`Unknown flag for theme:install: ${arg}\n`);
-        return 2;
-      } else if (themePackage === undefined) {
-        themePackage = arg;
-      } else {
-        process.stderr.write(`Unexpected positional: ${arg}\n`);
+  if (args[0] === "theme") {
+    // `nexpress theme add <pkg> [flags]` — the only theme
+    // subcommand for now. `theme:install` was retired in this
+    // release (the framework auto-merges theme requirements at
+    // config-resolution time, so the AST-patch path is gone).
+    const sub = args[1];
+    if (sub === "add") {
+      let themePackage: string | undefined;
+      let dryRun = false;
+      let yes = false;
+      let apply = false;
+      for (const arg of args.slice(2)) {
+        if (arg === "--dry-run") dryRun = true;
+        else if (arg === "--yes" || arg === "-y") yes = true;
+        else if (arg === "--apply") apply = true;
+        else if (arg.startsWith("--")) {
+          process.stderr.write(`Unknown flag for theme add: ${arg}\n`);
+          return 2;
+        } else if (themePackage === undefined) {
+          themePackage = arg;
+        } else {
+          process.stderr.write(`Unexpected positional: ${arg}\n`);
+          return 2;
+        }
+      }
+      if (!themePackage) {
+        process.stderr.write(
+          `theme add requires a theme package name. Example: nexpress theme add @nexpress/theme-magazine\n`,
+        );
         return 2;
       }
+      return runThemeAdd({ themePackage, flags: { dryRun, yes, apply } });
     }
-    if (!themePackage) {
-      process.stderr.write(
-        `theme:install requires a theme package name. Example: nexpress theme:install @nexpress/theme-magazine\n`,
-      );
-      return 2;
-    }
-    return runThemeInstall({ themePackage, flags: { dryRun, yes, apply } });
+    process.stderr.write(`Unknown subcommand: theme ${sub ?? ""}\n${HELP_TEXT}`);
+    return 2;
   }
 
   if (args[0] === "theme:uninstall") {

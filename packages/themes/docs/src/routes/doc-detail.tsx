@@ -18,8 +18,9 @@ import { DocPageTemplate } from "../templates/doc-page.js";
  * call: the docs collection schema lives in the user's project,
  * not the theme, so we re-declare the minimal shape the template
  * needs (title + body + parent + order) and trust runtime row
- * data to match. Operators who run `theme:install
- * @nexpress/theme-docs` get those fields generated for them.
+ * data to match. Operators who run `theme add
+ * @nexpress/theme-docs` get those fields auto-merged into their
+ * docs collection by `defineConfig`.
  *
  * Membership / access: same path the catch-all uses for `pages`
  * — `findDocuments` already enforces `access.read` and

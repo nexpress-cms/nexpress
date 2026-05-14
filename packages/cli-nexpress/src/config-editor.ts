@@ -30,6 +30,21 @@ const IMPORTS_END = "// @nexpress:plugins-imports-end";
 const LIST_START = "// @nexpress:plugins-list-start";
 const LIST_END = "// @nexpress:plugins-list-end";
 
+/**
+ * Marker pair for theme imports and the `themes: [...]` array,
+ * mirroring the plugin marker shape. `theme add <pkg>` from
+ * `@nexpress/cli-nexpress` inserts the theme's `import` and its
+ * identifier into these regions.
+ *
+ * Existing scaffolds without these markers fall through to
+ * `kind: "no-markers"` exactly like the plugin path — the CLI
+ * prints a snippet for manual paste and exits non-zero.
+ */
+const THEMES_IMPORTS_START = "// @nexpress:themes-imports-start";
+const THEMES_IMPORTS_END = "// @nexpress:themes-imports-end";
+const THEMES_LIST_START = "// @nexpress:themes-list-start";
+const THEMES_LIST_END = "// @nexpress:themes-list-end";
+
 export interface PluginEntry {
   /** npm package name, e.g. `"@nexpress/reading-time"` or `"my-plugin"`. */
   packageName: string;
@@ -194,6 +209,140 @@ export function buildManualSnippet(entry: PluginEntry): string {
     `import ${entry.identifier} from "${entry.packageName}";`,
     ``,
     `// Add to defineConfig({ plugins: [...] }):`,
+    `${entry.identifier},`,
+  ].join("\n");
+}
+
+// ────────────────────────────────────────────────────────────
+// Theme add — marker-driven theme registration.
+// ────────────────────────────────────────────────────────────
+
+export interface ThemeEntry {
+  /** npm package name, e.g. `"@nexpress/theme-magazine"`. */
+  packageName: string;
+  /**
+   * JS identifier used in the config. Derived deterministically
+   * from the package name via `packageToThemeIdentifier` —
+   * `@nexpress/theme-magazine` → `magazineTheme`.
+   */
+  identifier: string;
+}
+
+/**
+ * Turns an npm theme package name into the conventional
+ * `<name>Theme` identifier:
+ *
+ *   "@nexpress/theme-magazine"  → "magazineTheme"
+ *   "@me/theme-cool"            → "coolTheme"
+ *   "theme-personal"            → "personalTheme"
+ *   "@nexpress/theme-default"   → "defaultTheme"
+ *
+ * The unscoped portion must start with `theme-` so the suffix
+ * lookup is unambiguous; everything after that is camel-cased
+ * and a final `Theme` is appended. This matches the export
+ * shape every existing reference theme uses (`magazineTheme`,
+ * `defaultTheme`, etc.), so adding a third-party theme drops in
+ * without a per-theme rename.
+ *
+ * Throws `Error` for packages whose unscoped name doesn't start
+ * with `theme-` — the caller surfaces that as a "rename your
+ * package or expose a `<name>Theme` named export" hint to the
+ * operator.
+ */
+export function packageToThemeIdentifier(packageName: string): string {
+  const unscoped = packageName.replace(/^@[^/]+\//, "");
+  const match = unscoped.match(/^theme[-_](.+)$/);
+  if (!match) {
+    throw new Error(
+      `Theme package name must contain "theme-" so the CLI can derive an identifier. Got "${packageName}". Rename the package to e.g. "@scope/theme-cool" or expose a named export and add it manually.`,
+    );
+  }
+  const tail = match[1] ?? "";
+  const parts = tail
+    .split(/[^A-Za-z0-9]+/)
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    throw new Error(
+      `Cannot derive identifier from package name: "${packageName}"`,
+    );
+  }
+  const [first, ...rest] = parts;
+  const camelHead =
+    (first ?? "").toLowerCase() +
+    rest.map((p) => p[0]?.toUpperCase() + p.slice(1).toLowerCase()).join("");
+  return `${camelHead}Theme`;
+}
+
+function checkThemeMarkers(
+  content: string,
+): { ok: true; lines: string[] } | { ok: false; missing: string[] } {
+  const lines = content.split("\n");
+  const missing: string[] = [];
+  if (!content.includes(THEMES_IMPORTS_START) || !content.includes(THEMES_IMPORTS_END)) {
+    missing.push(`${THEMES_IMPORTS_START} / ${THEMES_IMPORTS_END}`);
+  }
+  if (!content.includes(THEMES_LIST_START) || !content.includes(THEMES_LIST_END)) {
+    missing.push(`${THEMES_LIST_START} / ${THEMES_LIST_END}`);
+  }
+  if (missing.length > 0) return { ok: false, missing };
+  return { ok: true, lines };
+}
+
+/**
+ * Inserts an import + themes-list entry for `entry` into
+ * `content`. Idempotent: a second call with the same entry is
+ * `kind: "no-op"` because the import line already exists.
+ *
+ * The list entry is appended INSIDE the marker pair, i.e.
+ * between `themes-list-start` and `themes-list-end`. Operators
+ * typically nest the marker inside a `[...defaultThemes, …]`
+ * spread so the resulting array reads:
+ *
+ *   themes: [
+ *     ...defaultThemes,
+ *     // @nexpress:themes-list-start
+ *     magazineTheme,
+ *     // @nexpress:themes-list-end
+ *   ],
+ *
+ * Matches the plugin marker behaviour 1:1 so anyone who's
+ * touched `plugin add` already knows the shape.
+ */
+export function addThemeToConfig(content: string, entry: ThemeEntry): EditOutcome {
+  const check = checkThemeMarkers(content);
+  if (!check.ok) return { kind: "no-markers", missing: check.missing };
+  const lines = check.lines;
+
+  const importsSpan = findSpan(lines, THEMES_IMPORTS_START, THEMES_IMPORTS_END);
+  const listSpan = findSpan(lines, THEMES_LIST_START, THEMES_LIST_END);
+  if (!importsSpan || !listSpan) {
+    return { kind: "no-markers", missing: ["malformed theme marker pairs"] };
+  }
+
+  // Match the plugin shape: use a `{ identifier }` named import
+  // because every reference theme ships its theme via a named
+  // export (`export const magazineTheme = defineTheme(...)`).
+  const importLine = `${importsSpan.indent}import { ${entry.identifier} } from "${entry.packageName}";`;
+  const listLine = `${listSpan.indent}${entry.identifier},`;
+
+  const importsBlock = lines.slice(importsSpan.startLine + 1, importsSpan.endLine).join("\n");
+  if (importsBlock.includes(`from "${entry.packageName}"`)) {
+    return { kind: "no-op", reason: `import for "${entry.packageName}" already present` };
+  }
+
+  const next = [...lines];
+  next.splice(listSpan.endLine, 0, listLine);
+  next.splice(importsSpan.endLine, 0, importLine);
+  return { kind: "ok", content: next.join("\n") };
+}
+
+/** Snippet printed when theme markers are missing. */
+export function buildManualThemeSnippet(entry: ThemeEntry): string {
+  return [
+    `// Add to the imports section of your nexpress.config.ts:`,
+    `import { ${entry.identifier} } from "${entry.packageName}";`,
+    ``,
+    `// Add to defineConfig({ themes: [...] }):`,
     `${entry.identifier},`,
   ].join("\n");
 }

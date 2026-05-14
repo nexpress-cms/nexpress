@@ -43,6 +43,7 @@ site name, and optional sample content.
 | Site identity, auth secret, DB URL | `src/nexpress.config.ts` + `.env` |
 | New collection (Type-safe Drizzle + Zod) | Drop a `src/collections/<name>.ts`, append to `defineConfig({ collections })` |
 | Active theme | `themes` array in `nexpress.config.ts` + admin → Appearance |
+| Install a theme | `pnpm nexpress theme add @scope/theme-foo` (auto-wires `nexpress.config.ts` + `--apply` chains migrations) |
 | Author a theme | Separate npm package — see [`docs/theme-authoring.md`](./docs/theme-authoring.md) |
 | Install a plugin | `pnpm nexpress plugin add @scope/plugin-foo` (auto-wires `nexpress.config.ts`) |
 | Author a plugin | Separate npm package — see [`docs/plugin-quickstart.md`](./docs/plugin-quickstart.md) |

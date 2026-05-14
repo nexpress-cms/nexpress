@@ -305,11 +305,27 @@ export function ThemeSwitcher({
                         : "text-amber-600 dark:text-amber-400"
                     }`}
                   >
-                    {summarizeMismatches(theme.requirements)}. Run{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
-                      pnpm nexpress theme:install {theme.id}
-                    </code>{" "}
-                    to resolve.
+                    {summarizeMismatches(theme.requirements)}.{" "}
+                    {theme.requirements.typeConflicts.length > 0 ||
+                    theme.requirements.relationConflicts.length > 0 ? (
+                      <>
+                        Resolve the conflicting field types in your{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                          src/collections/*.ts
+                        </code>{" "}
+                        — the framework auto-merges theme-declared fields, but
+                        an operator-defined field with a different type wins
+                        and needs a manual fix.
+                      </>
+                    ) : (
+                      <>
+                        Run{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                          pnpm db:generate && pnpm db:migrate
+                        </code>{" "}
+                        to materialise theme-declared columns.
+                      </>
+                    )}
                   </p>
                 ) : null}
               </div>

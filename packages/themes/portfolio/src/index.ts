@@ -44,9 +44,10 @@ export const portfolioTheme = defineTheme({
       "Image-led dark theme for studios and designers. Hero-led project detail template, archive grid, gallery and centered page templates.",
     author: { name: "NexPress" },
     nexpress: { minVersion: "0.1.0" },
-    // Phase F.1 — declared data-shape requirements. The CLI
-    // (`pnpm nexpress theme:install @nexpress/theme-portfolio`)
-    // patches operator collections to satisfy these.
+    // Phase F.1 — declared data-shape requirements. The
+    // framework auto-merges these at `defineConfig` time;
+    // `pnpm nexpress theme add @nexpress/theme-portfolio` + a
+    // `pnpm db:generate && pnpm db:migrate` is all that's needed.
     requires: {
       collections: {
         posts: {
