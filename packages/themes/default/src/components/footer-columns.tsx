@@ -8,14 +8,16 @@ import { SocialLinks } from "./social-links.js";
 /**
  * Production-grade footer with four columns:
  *
- *   1. Brand (logo + tagline + social)
- *   2. Sitemap (the site's `footer` navigation menu)
- *   3. Resources (links to /blog, /search, /sitemap.xml, /feed.xml)
- *   4. Subscribe (newsletter form)
+ *   1. Brand — logo mark + wordmark, tagline, social row
+ *   2. Sitemap — the site's `footer` navigation menu
+ *   3. Resources — feeds, search, sitemap
+ *   4. Newsletter — inline subscribe form
  *
  * All four are server-rendered except `NewsletterForm`, which
- * needs a client island for submit handling. Columns collapse
- * to a single column below ~640px (CSS-driven, no JS).
+ * needs a client island for submit handling. Columns collapse to
+ * two columns at ~800px and to one column at ~480px (CSS-driven,
+ * no JS). The bottom row carries the copyright and a small set
+ * of secondary links (RSS / Sitemap / Privacy / Colophon).
  */
 export async function DefaultFooter() {
   const footerNav = await getCachedNavigation("footer");
@@ -27,10 +29,11 @@ export async function DefaultFooter() {
         <div className="np-site-footer-grid">
           <section className="np-site-footer-col np-site-footer-brand">
             <Link href="/" className="np-site-footer-logo">
-              NexPress
+              <span className="np-site-logo-mark" aria-hidden="true" />
+              <span>NexPress</span>
             </Link>
             <p className="np-site-footer-tagline">
-              The Next.js-native CMS for content-led teams.
+              A team blog about the systems we ship — built on NexPress.
             </p>
             <SocialLinks />
           </section>
@@ -65,24 +68,24 @@ export async function DefaultFooter() {
             <h2 className="np-site-footer-heading">Resources</h2>
             <ul className="np-site-footer-links">
               <li>
-                <Link href="/blog">Blog</Link>
-              </li>
-              <li>
-                <Link href="/search">Search</Link>
-              </li>
-              <li>
                 <a href="/feed.xml">RSS feed</a>
               </li>
               <li>
-                <a href="/sitemap.xml">Sitemap.xml</a>
+                <a href="/feed.json">JSON feed</a>
+              </li>
+              <li>
+                <Link href="/now">Now page</Link>
+              </li>
+              <li>
+                <Link href="/colophon">Colophon</Link>
               </li>
             </ul>
           </section>
 
           <section className="np-site-footer-col np-site-footer-subscribe">
-            <h2 className="np-site-footer-heading">Subscribe</h2>
+            <h2 className="np-site-footer-heading">Newsletter</h2>
             <p className="np-site-footer-subscribe-blurb">
-              Occasional updates. No spam.
+              One post every other Tuesday. No threads, no roundups.
             </p>
             <NewsletterForm />
           </section>
@@ -94,10 +97,16 @@ export async function DefaultFooter() {
           </p>
           <ul className="np-site-footer-meta">
             <li>
+              <a href="/feed.xml">RSS</a>
+            </li>
+            <li>
+              <a href="/sitemap.xml">Sitemap</a>
+            </li>
+            <li>
               <Link href="/privacy">Privacy</Link>
             </li>
             <li>
-              <Link href="/terms">Terms</Link>
+              <Link href="/colophon">Colophon</Link>
             </li>
           </ul>
         </div>

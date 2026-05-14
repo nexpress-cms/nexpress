@@ -84,53 +84,78 @@ export const defaultThemeCss = `
 }
 
 /* ----------------------------------------------------------------
- * Header — sticky desktop bar + mobile drawer
+ * Header — sticky bar, hairline border, blurred translucent surface.
+ * Grid keeps logo on the left, nav centered, tools (search +
+ * Subscribe CTA) on the right at desktop widths. Mobile drawer
+ * machinery lives further down — collapses the nav into a hamburger.
  * --------------------------------------------------------------- */
 .np-site-header {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: color-mix(in oklch, var(--np-color-background, #fff) 92%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--np-color-border, #e5e7eb);
+  background: color-mix(in oklab, var(--np-color-background, #fff) 78%, transparent);
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--np-color-border, #ececef);
 }
 .np-site-header-inner {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  max-width: 1200px;
+  max-width: var(--np-content-max, 1180px);
   margin: 0 auto;
-  padding: 0.85rem 1.5rem;
+  padding: 0.85rem 1.75rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 2rem;
 }
 .np-site-logo {
-  font-weight: 800;
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.0625rem;
   text-decoration: none;
   color: inherit;
-  letter-spacing: -0.02em;
   white-space: nowrap;
 }
+.np-site-logo-mark {
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--np-color-primary, #4f46e5) 0%, color-mix(in oklab, var(--np-color-primary, #4f46e5) 60%, #7c3aed) 100%);
+  position: relative;
+  flex: none;
+}
+.np-site-logo-mark::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 3px;
+  background: var(--np-color-background, #fff);
+  opacity: 0.95;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 60% 100%, 0 35%);
+}
 .np-site-nav-desktop {
-  flex: 1;
+  justify-self: center;
 }
 .np-site-nav {
   display: flex;
   align-items: center;
-  gap: 1.4rem;
+  gap: 1.5rem;
   list-style: none;
   padding: 0;
   margin: 0;
 }
 .np-site-nav a {
-  color: var(--np-color-muted-foreground, #64748b);
+  color: var(--np-color-muted-foreground, #6b6b74);
   text-decoration: none;
   font-size: 0.9375rem;
   font-weight: 500;
   transition: color 0.15s ease;
 }
-.np-site-nav a:hover {
-  color: var(--np-color-foreground, #0f172a);
+.np-site-nav a:hover,
+.np-site-nav a[aria-current="page"] {
+  color: var(--np-color-foreground, #0a0a0c);
 }
 /* Sub-menu — desktop hover dropdown. Hidden until parent <li> is
  * hovered or focus enters the subtree. Shallow drop, neutral
@@ -168,28 +193,66 @@ export const defaultThemeCss = `
 .np-site-header-tools {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  margin-inline-start: auto;
+  gap: 0.5rem;
 }
 .np-site-search {
-  display: contents;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem 0.4rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  background: var(--np-color-muted, #f5f5f7);
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: var(--np-radius-md, 10px);
+  min-width: 16rem;
+  cursor: text;
+  text-decoration: none;
+}
+.np-site-search svg {
+  flex: none;
+  opacity: 0.7;
+}
+.np-site-search kbd {
+  margin-left: auto;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: var(--np-color-background, #fff);
+  border: 1px solid var(--np-color-border, #ececef);
+  color: var(--np-color-muted-foreground, #6b6b74);
 }
 .np-site-search-input {
-  padding: 0.4rem 0.75rem;
+  flex: 1;
+  padding: 0;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: inherit;
-  background: var(--np-color-muted, #f8fafc);
-  border: 1px solid var(--np-color-border, #e5e7eb);
-  border-radius: var(--np-radius-md, 0.5rem);
-  width: 12rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, width 0.15s ease;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  min-width: 0;
 }
-.np-site-search-input:focus {
-  outline: none;
-  border-color: var(--np-color-ring, #4f46e5);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--np-color-ring, #4f46e5) 20%, transparent);
-  width: 14rem;
+.np-site-search-input::placeholder { color: color-mix(in oklab, currentColor 75%, transparent); }
+.np-site-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--np-color-primary-foreground, #fff);
+  background: var(--np-color-foreground, #0a0a0c);
+  border-radius: var(--np-radius-md, 10px);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+.np-site-cta:hover { opacity: 0.9; }
+@media (max-width: 900px) {
+  .np-site-header-inner { grid-template-columns: auto auto; gap: 1rem; }
+  .np-site-nav-desktop { display: none; }
+  .np-site-search { display: none; }
 }
 
 /* Mobile drawer machinery */
@@ -307,25 +370,28 @@ export const defaultThemeCss = `
 }
 
 /* ----------------------------------------------------------------
- * Footer — 4-column grid, social strip, newsletter signup
+ * Footer — 4-column grid: brand+colophon+social / sitemap /
+ * resources / newsletter. Slightly muted surface (np-color-muted)
+ * so the page break reads even on white backgrounds. Bottom row
+ * carries copyright + secondary links.
  * --------------------------------------------------------------- */
 .np-site-footer {
-  margin-top: 6rem;
-  background: var(--np-color-muted, #f8fafc);
-  border-top: 1px solid var(--np-color-border, #e5e7eb);
+  margin-top: 4rem;
+  background: var(--np-color-muted, #f5f5f7);
+  border-top: 1px solid var(--np-color-border, #ececef);
 }
 .np-site-footer-inner {
-  max-width: 1200px;
+  max-width: var(--np-content-max, 1180px);
   margin: 0 auto;
-  padding: 3rem 1.5rem 1.5rem;
+  padding: 4rem 1.75rem 1.5rem;
 }
 .np-site-footer-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
-  gap: 2.5rem;
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr;
+  gap: 3rem;
   align-items: start;
 }
-@media (max-width: 768px) {
+@media (max-width: 800px) {
   .np-site-footer-grid {
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
@@ -346,25 +412,30 @@ export const defaultThemeCss = `
 }
 .np-site-footer-col { min-width: 0; }
 .np-site-footer-logo {
-  font-weight: 800;
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.1rem;
   text-decoration: none;
   color: inherit;
   letter-spacing: -0.02em;
 }
 .np-site-footer-tagline {
-  margin: 0.5rem 0 1rem;
-  color: var(--np-color-muted-foreground, #64748b);
+  margin: 0.65rem 0 1.25rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
   font-size: 0.9rem;
-  line-height: 1.5;
+  line-height: 1.55;
+  max-width: 22rem;
 }
 .np-site-footer-heading {
-  font-size: 0.75rem;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--np-color-muted-foreground, #64748b);
-  margin: 0 0 0.85rem;
-  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  margin: 0 0 1rem;
+  font-weight: 500;
 }
 .np-site-footer-links {
   list-style: none;
@@ -372,23 +443,23 @@ export const defaultThemeCss = `
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.6rem;
   font-size: 0.9rem;
 }
 .np-site-footer-links a {
-  color: var(--np-color-muted-foreground, #64748b);
+  color: var(--np-color-muted-foreground, #6b6b74);
   text-decoration: none;
   transition: color 0.15s ease;
 }
 .np-site-footer-links a:hover {
-  color: var(--np-color-foreground, #0f172a);
+  color: var(--np-color-foreground, #0a0a0c);
 }
 .np-site-footer-social {
   list-style: none;
-  margin: 1rem 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 .np-site-footer-social a {
   display: inline-flex;
@@ -396,21 +467,22 @@ export const defaultThemeCss = `
   justify-content: center;
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid var(--np-color-border, #e5e7eb);
-  border-radius: var(--np-radius-md, 0.5rem);
-  color: var(--np-color-muted-foreground, #64748b);
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: var(--np-radius-md, 10px);
+  color: var(--np-color-muted-foreground, #6b6b74);
   text-decoration: none;
-  transition: all 0.15s ease;
+  background: var(--np-color-background, #fff);
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 .np-site-footer-social a:hover {
-  color: var(--np-color-foreground, #0f172a);
-  border-color: var(--np-color-foreground, #0f172a);
-  transform: translateY(-1px);
+  color: var(--np-color-foreground, #0a0a0c);
+  border-color: var(--np-color-foreground, #0a0a0c);
 }
 .np-site-footer-subscribe-blurb {
   margin: 0 0 0.75rem;
   font-size: 0.85rem;
-  color: var(--np-color-muted-foreground, #64748b);
+  color: var(--np-color-muted-foreground, #6b6b74);
+  line-height: 1.5;
 }
 .np-site-footer-subscribe-form {
   display: flex;
@@ -418,28 +490,28 @@ export const defaultThemeCss = `
   gap: 0.5rem;
 }
 .np-site-footer-subscribe-form input[type="email"] {
-  padding: 0.55rem 0.75rem;
+  padding: 0.6rem 0.8rem;
   font: inherit;
-  font-size: 0.9rem;
-  border: 1px solid var(--np-color-border, #e5e7eb);
-  border-radius: var(--np-radius-md, 0.5rem);
+  font-size: 0.875rem;
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: var(--np-radius-md, 10px);
   background: var(--np-color-background, #fff);
   color: inherit;
 }
 .np-site-footer-subscribe-form input[type="email"]:focus {
   outline: none;
   border-color: var(--np-color-ring, #4f46e5);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--np-color-ring, #4f46e5) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--np-color-ring, #4f46e5) 18%, transparent);
 }
 .np-site-footer-subscribe-form button {
-  padding: 0.55rem 0.75rem;
+  padding: 0.6rem 0.8rem;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  background: var(--np-color-foreground, #0f172a);
+  background: var(--np-color-foreground, #0a0a0c);
   color: var(--np-color-background, #fff);
   border: none;
-  border-radius: var(--np-radius-md, 0.5rem);
+  border-radius: var(--np-radius-md, 10px);
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
@@ -448,10 +520,10 @@ export const defaultThemeCss = `
 .np-site-footer-subscribe-success {
   margin: 0;
   font-size: 0.9rem;
-  color: var(--np-color-foreground, #0f172a);
-  background: color-mix(in oklch, var(--np-color-primary, #4f46e5) 12%, transparent);
+  color: var(--np-color-foreground, #0a0a0c);
+  background: color-mix(in oklab, var(--np-color-primary, #4f46e5) 12%, transparent);
   padding: 0.6rem 0.75rem;
-  border-radius: var(--np-radius-md, 0.5rem);
+  border-radius: var(--np-radius-md, 10px);
 }
 .np-site-footer-subscribe-error {
   margin: 0;
@@ -459,33 +531,30 @@ export const defaultThemeCss = `
   color: var(--np-color-destructive, #b91c1c);
 }
 .np-site-footer-bottom {
-  margin-top: 2.5rem;
+  margin-top: 3rem;
   padding-top: 1.25rem;
-  border-top: 1px solid color-mix(in oklch, var(--np-color-border, #e5e7eb) 70%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--np-color-border, #ececef) 60%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-size: 0.8125rem;
 }
-.np-site-footer-copy {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--np-color-muted-foreground, #64748b);
-}
+.np-site-footer-copy { margin: 0; }
 .np-site-footer-meta {
   display: flex;
   list-style: none;
   margin: 0;
   padding: 0;
-  gap: 1rem;
-  font-size: 0.8rem;
+  gap: 1.25rem;
 }
 .np-site-footer-meta a {
-  color: var(--np-color-muted-foreground, #64748b);
+  color: inherit;
   text-decoration: none;
 }
-.np-site-footer-meta a:hover { color: var(--np-color-foreground, #0f172a); }
+.np-site-footer-meta a:hover { color: var(--np-color-foreground, #0a0a0c); }
 
 /* ----------------------------------------------------------------
  * Page templates: default, wide, landing, sidebar
@@ -629,147 +698,466 @@ export const defaultThemeCss = `
 
 /* ----------------------------------------------------------------
  * Post list (blog index)
+ *
+ * Page header centers on a small eyebrow pill + display headline
+ * + intro lede + categorical tax-strip. The feature card sits in
+ * its own row above the 3-up grid; each grid card pairs a colored
+ * cover gradient with a small kicker, title, excerpt, and author/
+ * read-time meta. Inline newsletter (dark slab) follows the grid;
+ * pagination closes the page.
  * --------------------------------------------------------------- */
 .np-post-list {
-  max-width: var(--np-content-max-wide);
+  max-width: var(--np-content-max, 1180px);
   margin: 0 auto;
-  padding: 3rem 1.5rem 4rem;
+  padding: 0 1.75rem 4rem;
 }
 .np-post-list-header {
-  margin-bottom: 2.5rem;
+  padding: 5rem 0 3rem;
   text-align: center;
 }
-.np-post-list-header h1 { margin: 0; }
-.np-post-list-intro {
-  margin: 0.75rem auto 0;
-  max-width: 38rem;
-  color: var(--np-color-muted-foreground, #64748b);
-  font-size: 1.05rem;
-  line-height: 1.6;
+.np-post-list-header h1 {
+  font-size: clamp(2.5rem, 4.5vw, 3.75rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  margin: 0 0 1rem;
+  text-wrap: balance;
 }
-.np-post-list-feature { margin-bottom: 2rem; }
-.np-post-list-feature .np-post-card { display: block; }
-.np-post-list-feature .np-post-card-link {
+.np-post-list-eyebrow {
+  display: inline-block;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--np-color-primary, #4f46e5);
+  background: color-mix(in oklab, var(--np-color-primary, #4f46e5) 10%, transparent);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  margin-bottom: 1.25rem;
+}
+.np-post-list-intro {
+  margin: 0 auto;
+  max-width: 38rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-size: 1.125rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+/* Category strip — pill links under the page header. */
+.np-tax-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+.np-tax-strip a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  background: var(--np-color-background, #fff);
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: 999px;
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.np-tax-strip a:hover {
+  color: var(--np-color-foreground, #0a0a0c);
+  border-color: var(--np-color-foreground, #0a0a0c);
+}
+.np-tax-strip a[data-active="true"] {
+  background: var(--np-color-foreground, #0a0a0c);
+  color: var(--np-color-background, #fff);
+  border-color: var(--np-color-foreground, #0a0a0c);
+}
+.np-tax-strip span { color: color-mix(in oklab, currentColor 50%, transparent); }
+
+/* Feature card — 2-col split with a gradient cover on the left and
+ * a typographic body block on the right. Bigger headline, more
+ * generous padding, and a subtle lift on hover. */
+.np-post-list-feature {
+  margin: 1.5rem 0 4rem;
+}
+.np-post-card.np-post-card-feature {
+  display: block;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  transform: none;
+  transition: none;
+}
+.np-post-card.np-post-card-feature .np-post-card-link {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 0;
   align-items: stretch;
   background: var(--np-color-card, #fff);
-  border: 1px solid var(--np-color-border, #e5e7eb);
-  border-radius: var(--np-radius-lg, 0.75rem);
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: var(--np-radius-xl, 20px);
   overflow: hidden;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.15s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease, transform 0.3s ease, box-shadow 0.3s ease;
 }
-.np-post-list-feature .np-post-card-link:hover {
-  border-color: var(--np-color-foreground, #0f172a);
+.np-post-card.np-post-card-feature .np-post-card-link:hover {
+  border-color: color-mix(in oklab, var(--np-color-foreground, #0a0a0c) 25%, var(--np-color-border, #ececef));
   transform: translateY(-2px);
+  box-shadow: 0 24px 48px -32px rgba(0,0,0,0.18);
 }
-.np-post-list-feature .np-post-card-cover {
-  aspect-ratio: 16 / 10;
-  margin: 0;
+.np-post-card.np-post-card-feature .np-post-card-cover {
+  aspect-ratio: auto;
+  min-height: 22rem;
+  background: linear-gradient(135deg, #1e1b4b 0%, var(--np-color-primary, #4f46e5) 45%, #818cf8 100%);
+  position: relative;
   overflow: hidden;
 }
-.np-post-list-feature .np-post-card-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.np-post-card.np-post-card-feature .np-post-card-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 25% 35%, rgba(255,255,255,0.25), transparent 60%),
+    radial-gradient(ellipse 50% 60% at 80% 70%, rgba(124,58,237,0.6), transparent 60%);
 }
-.np-post-list-feature .np-post-card-body {
-  padding: 1.75rem;
+.np-post-card.np-post-card-feature .np-post-card-cover-figure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.18);
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 6rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+.np-post-card.np-post-card-feature .np-post-card-cover-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 1.5rem 1.75rem;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.04em;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+}
+.np-post-card.np-post-card-feature .np-post-card-body {
+  padding: 2.5rem 2.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.85rem;
   justify-content: center;
 }
-.np-post-list-feature .np-post-card-title {
-  font-size: clamp(1.4rem, 2.4vw, 1.85rem);
+.np-post-card.np-post-card-feature .np-post-card-kicker {
+  display: inline-flex;
+  gap: 0.5rem;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--np-color-primary, #4f46e5);
+  text-transform: uppercase;
+}
+.np-post-card.np-post-card-feature .np-post-card-title {
+  font-size: clamp(1.65rem, 2.6vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
   margin: 0;
+  text-wrap: balance;
+}
+.np-post-card.np-post-card-feature .np-post-card-excerpt {
+  font-size: 1rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 30rem;
+}
+@media (max-width: 900px) {
+  .np-post-card.np-post-card-feature .np-post-card-link {
+    grid-template-columns: 1fr;
+  }
+  .np-post-card.np-post-card-feature .np-post-card-cover {
+    min-height: 16rem;
+    aspect-ratio: 16/10;
+  }
+  .np-post-card.np-post-card-feature .np-post-card-body {
+    padding: 1.75rem;
+  }
+}
+
+/* Section head — small h2 over the grid with right-justified
+ * meta (count, sort). The 1px rule separates it from the grid. */
+.np-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0 1.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--np-color-border, #ececef);
+}
+.np-section-head h2 {
+  font-size: 1.25rem;
   letter-spacing: -0.015em;
+  font-weight: 600;
+  margin: 0;
 }
-@media (max-width: 768px) {
-  .np-post-list-feature .np-post-card-link { grid-template-columns: 1fr; }
-  .np-post-list-feature .np-post-card-cover { aspect-ratio: 16 / 9; }
+.np-section-head-meta {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
 }
+
+/* Grid + grid card — cover on top, kicker tags row, title, excerpt,
+ * author+reading-time meta. Card itself is borderless; the cover
+ * carries the only visible boundary. */
 .np-post-list-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
+@media (max-width: 900px) { .np-post-list-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .np-post-list-grid { grid-template-columns: 1fr; } }
+
 .np-post-card {
-  background: var(--np-color-card, #fff);
-  border: 1px solid var(--np-color-border, #e5e7eb);
-  border-radius: var(--np-radius-lg, 0.75rem);
-  overflow: hidden;
-  transition: border-color 0.15s ease, transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  transition: transform 0.25s ease;
 }
-.np-post-card:hover {
-  border-color: var(--np-color-foreground, #0f172a);
-  transform: translateY(-2px);
-}
+.np-post-card:hover { transform: translateY(-2px); }
 .np-post-card-link {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
   text-decoration: none;
   color: inherit;
 }
 .np-post-card-cover {
-  margin: 0;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--np-radius-lg, 14px);
   overflow: hidden;
-  background: var(--np-color-muted, #f1f5f9);
+  position: relative;
+  background: var(--np-color-muted, #f5f5f7);
 }
 .np-post-card-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.np-post-card-body {
-  padding: 1.25rem;
+.np-post-card-cover-figure {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+/* Cover gradient variants — referenced from the template by
+ * cycling .np-cover-grad-1 through 6 across the grid index.
+ * Each variant ships its own foreground figure color so the
+ * monogram reads at low contrast against its background. */
+.np-cover-grad-1 { background: linear-gradient(135deg, #0f172a, #334155); }
+.np-cover-grad-1 .np-post-card-cover-figure { color: rgba(255,255,255,0.18); font-size: 4rem; }
+.np-cover-grad-2 { background: linear-gradient(135deg, #fef3c7, #f59e0b); }
+.np-cover-grad-2 .np-post-card-cover-figure { color: rgba(120,53,15,0.2); font-size: 4rem; }
+.np-cover-grad-3 { background: linear-gradient(135deg, #ecfeff 0%, #06b6d4 100%); }
+.np-cover-grad-3 .np-post-card-cover-figure { color: rgba(8,47,73,0.18); font-size: 4rem; }
+.np-cover-grad-4 { background: linear-gradient(135deg, #fce7f3, #be185d); }
+.np-cover-grad-4 .np-post-card-cover-figure { color: rgba(159,18,57,0.2); font-size: 4rem; }
+.np-cover-grad-5 { background: linear-gradient(135deg, #ddd6fe, #6d28d9); }
+.np-cover-grad-5 .np-post-card-cover-figure { color: rgba(76,29,149,0.2); font-size: 4rem; }
+.np-cover-grad-6 { background: linear-gradient(135deg, #d1fae5, #047857); }
+.np-cover-grad-6 .np-post-card-cover-figure { color: rgba(6,78,59,0.22); font-size: 4rem; }
+
+.np-post-card-tags {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: -0.25rem;
+  list-style: none;
+  padding: 0;
+}
+.np-post-card-tags li,
+.np-post-card-tags span,
+.np-post-card-tags a {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  text-decoration: none;
 }
 .np-post-card-title {
-  margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.1875rem;
+  font-weight: 600;
   line-height: 1.3;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+  color: inherit;
 }
 .np-post-card-excerpt {
   margin: 0;
-  font-size: 0.9rem;
-  color: var(--np-color-muted-foreground, #64748b);
+  font-size: 0.9375rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
   line-height: 1.55;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .np-post-card-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  font-size: 0.78rem;
-  color: var(--np-color-muted-foreground, #64748b);
-  margin-top: 0.25rem;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.8125rem;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  margin-top: 0.3rem;
 }
+.np-post-card-meta-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--np-color-foreground, #0a0a0c);
+  font-weight: 500;
+}
+.np-post-card-meta-avatar {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fbbf24, #ef4444);
+  flex-shrink: 0;
+}
+.np-post-card-meta-avatar.tone-1 { background: linear-gradient(135deg, #10b981, #0ea5e9); }
+.np-post-card-meta-avatar.tone-2 { background: linear-gradient(135deg, #f472b6, #a855f7); }
+.np-post-card-meta-avatar.tone-3 { background: linear-gradient(135deg, #fb7185, #fb923c); }
+.np-post-card-meta-avatar.tone-4 { background: linear-gradient(135deg, var(--np-color-primary, #4f46e5), #06b6d4); }
+.np-post-card-meta-sep::before {
+  content: "·";
+  margin: 0 0.1rem;
+}
+.np-post-card-tags-sep {
+  color: color-mix(in oklab, currentColor 50%, transparent);
+}
+
 .np-post-list-empty header {
   text-align: center;
   padding: 4rem 1.5rem;
-  color: var(--np-color-muted-foreground, #64748b);
+  color: var(--np-color-muted-foreground, #6b6b74);
 }
-.np-post-list-empty h1 { color: var(--np-color-foreground, #0f172a); }
+.np-post-list-empty h1 { color: var(--np-color-foreground, #0a0a0c); }
+
+/* Inline newsletter — dark slab with a radial glow on the right.
+ * Two-column on desktop (copy / form), stacks on mobile. */
+.np-newsletter-inline {
+  margin: 5rem 0 4rem;
+  padding: 3rem 3rem;
+  background: var(--np-color-foreground, #0a0a0c);
+  color: var(--np-color-background, #fff);
+  border-radius: var(--np-radius-xl, 20px);
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.np-newsletter-inline::after {
+  content: "";
+  position: absolute;
+  right: -10%;
+  top: -50%;
+  width: 70%;
+  height: 200%;
+  background: radial-gradient(ellipse, rgba(124,58,237,0.3), transparent 65%);
+  pointer-events: none;
+}
+.np-newsletter-inline h3 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.np-newsletter-inline p {
+  margin: 0;
+  color: color-mix(in oklab, var(--np-color-background, #fff) 70%, transparent);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-width: 32rem;
+}
+.np-newsletter-form {
+  display: flex;
+  gap: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+.np-newsletter-form input {
+  flex: 1;
+  padding: 0.85rem 1rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--np-color-background, #fff);
+  background: color-mix(in oklab, var(--np-color-background, #fff) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--np-color-background, #fff) 18%, transparent);
+  border-radius: var(--np-radius-md, 10px);
+  outline: none;
+}
+.np-newsletter-form input::placeholder {
+  color: color-mix(in oklab, var(--np-color-background, #fff) 45%, transparent);
+}
+.np-newsletter-form input:focus {
+  border-color: color-mix(in oklab, var(--np-color-background, #fff) 60%, transparent);
+}
+.np-newsletter-form button {
+  padding: 0.85rem 1.4rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--np-color-foreground, #0a0a0c);
+  background: var(--np-color-background, #fff);
+  border: none;
+  border-radius: var(--np-radius-md, 10px);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.np-newsletter-form button:hover { opacity: 0.9; }
+@media (max-width: 800px) {
+  .np-newsletter-inline {
+    grid-template-columns: 1fr;
+    padding: 2.25rem 1.75rem;
+    gap: 1.5rem;
+  }
+}
 
 /* ----------------------------------------------------------------
- * Pagination
+ * Pagination — pill row centered under the grid. Current page
+ * inverts to the foreground color so the cursor lands obviously;
+ * gap (…) drops its border so the row breathes between numbers.
  * --------------------------------------------------------------- */
 .np-pagination {
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  margin: 3rem auto 0;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 3rem 0 2rem;
 }
 .np-pagination-step,
 .np-pagination-page,
@@ -777,33 +1165,36 @@ export const defaultThemeCss = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.25rem;
-  height: 2.25rem;
+  min-width: 2.4rem;
+  height: 2.4rem;
   padding: 0 0.6rem;
   font-size: 0.875rem;
-  border: 1px solid var(--np-color-border, #e5e7eb);
-  border-radius: var(--np-radius-md, 0.5rem);
+  font-weight: 500;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  background: var(--np-color-background, #fff);
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: var(--np-radius-md, 10px);
   text-decoration: none;
-  color: inherit;
-  background: transparent;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 .np-pagination-page:hover,
-.np-pagination-step:hover { border-color: var(--np-color-foreground, #0f172a); }
+.np-pagination-step:hover {
+  color: var(--np-color-foreground, #0a0a0c);
+  border-color: var(--np-color-foreground, #0a0a0c);
+}
 .np-pagination-current {
-  background: var(--np-color-foreground, #0f172a);
   color: var(--np-color-background, #fff);
-  border-color: var(--np-color-foreground, #0f172a);
+  background: var(--np-color-foreground, #0a0a0c);
+  border-color: var(--np-color-foreground, #0a0a0c);
 }
 .np-pagination-disabled {
-  color: var(--np-color-muted-foreground, #94a3b8);
-  border-color: var(--np-color-border, #e5e7eb);
+  color: color-mix(in oklab, var(--np-color-muted-foreground, #6b6b74) 60%, transparent);
   pointer-events: none;
 }
 .np-pagination-pages {
   list-style: none;
   display: flex;
-  gap: 0.4rem;
+  gap: 0.45rem;
   margin: 0;
   padding: 0;
 }
