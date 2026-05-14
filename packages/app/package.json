@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/app",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Shared Next.js page implementations for NexPress reference + scaffolded apps. Consumers import via thin re-export so both apps/web and `npx create-nexpress` projects render byte-identical UIs.",
   "license": "MIT",
   "author": "Nexpress",
@@ -145,8 +145,12 @@
     "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
-    "drizzle-kit": { "optional": true },
-    "pg-boss": { "optional": true }
+    "drizzle-kit": {
+      "optional": true
+    },
+    "pg-boss": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

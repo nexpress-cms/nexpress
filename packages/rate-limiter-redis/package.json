@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/rate-limiter-redis",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Redis-backed NpRateLimiterAdapter for multi-node NexPress deploys.",
   "license": "MIT",
   "author": "Nexpress",
