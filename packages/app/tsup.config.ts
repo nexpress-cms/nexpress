@@ -70,6 +70,15 @@ export default defineConfig({
   dts: true,
   clean: true,
   target: "es2022",
+  // Use React 17+ automatic JSX runtime. Without this, esbuild
+  // emits `React.createElement(...)` and expects a runtime
+  // `React` import to be present — but the source files don't
+  // import React (since the automatic runtime makes it
+  // unnecessary), so dist would throw `React is not defined` at
+  // runtime. Verified on `lib/search-highlight.tsx`.
+  esbuildOptions(options) {
+    options.jsx = "automatic";
+  },
   // Anything that's the consumer's responsibility (peer deps + the
   // `@/...` aliases that resolve at consumer compile time) must NOT
   // be inlined — leave the runtime resolver to find them in the
