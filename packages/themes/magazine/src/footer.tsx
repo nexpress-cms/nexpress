@@ -1,7 +1,6 @@
 import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
-import { MagazineNewsletterForm } from "./components/newsletter-form.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
 /** Display labels for the supported social platform enum values
@@ -16,76 +15,48 @@ const SOCIAL_LABELS: Record<string, string> = {
   rss: "RSS",
 };
 
+const FOOTER_MARK = "The Northbound Review";
+
 /**
- * Editorial footer. Three columns above a thin colophon line:
+ * Magazine colophon footer — three columns above a thin meta
+ * row.
  *
- *   - Subscribe (newsletter form + blurb) — toggles via
- *     `settings.newsletterEnabled`
- *   - Sections (the `footer` navigation menu)
- *   - About (masthead echo + colophon + social links from
- *     `settings.socialLinks`)
+ *   - Brand block: display-italic mark + italic colophon
+ *     paragraph + small-caps editor / art / web credit, plus
+ *     any social links from `settings.socialLinks`.
+ *   - Sections (left of the two right columns): the site's
+ *     `footer` (or `footerSections`) navigation menu. Falls
+ *     back to a short stub when nothing is wired so the column
+ *     never reads as empty on a fresh install.
+ *   - Colophon: about / masthead / submissions / contact-style
+ *     secondary links from the `footerColophon` location.
  *
- * Collapses to a single column on phones. Designed to feel like
- * the back-page colophon of a print magazine.
+ * Subscribe form lives in its own subscribe band rendered by
+ * the post-list template — keeping it out of the footer matches
+ * the design and lets pages that aren't post-list still include
+ * the band when they want it.
+ *
+ * Bottom row: copyright + RSS / Newsletter / Privacy / Terms,
+ * separated by a hairline rule.
  */
 export async function MagazineFooter() {
-  const items = await getCachedNavigation("footer");
+  const sectionsNav = await getCachedNavigation("footer");
+  const colophonNav = await getCachedNavigation("footerColophon");
   const settings = await resolveMagazineSettings();
   const year = new Date().getFullYear();
 
   return (
-    <footer className="np-site-footer np-magazine-footer">
+    <footer className="np-magazine-footer">
       <div className="np-magazine-footer-grid">
-        {settings.newsletterEnabled ? (
-          <section className="np-magazine-footer-col">
-            <h2 className="np-magazine-footer-heading">Subscribe</h2>
-            <p className="np-magazine-footer-blurb">
-              Get the next issue in your inbox. Read at your own pace.
-            </p>
-            <MagazineNewsletterForm />
-          </section>
-        ) : null}
-
-        <section className="np-magazine-footer-col">
-          <h2 className="np-magazine-footer-heading">Sections</h2>
-          {items.length > 0 ? (
-            <ul className="np-magazine-footer-nav">
-              {items.map((item: NpNavItem, index: number) => (
-                <li key={`magazine-footer-${index.toString()}`}>
-                  <a href={item.url}>{item.label}</a>
-                  {item.children && item.children.length > 0 ? (
-                    <ul className="np-magazine-footer-subnav">
-                      {item.children.map((child: NpNavItem, childIndex: number) => (
-                        <li key={`magazine-footer-${index.toString()}-${childIndex.toString()}`}>
-                          <a href={child.url}>{child.label}</a>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ul className="np-magazine-footer-nav">
-              <li>
-                <a href="/blog">Stories</a>
-              </li>
-              <li>
-                <a href="/about">About</a>
-              </li>
-              <li>
-                <a href="/feed.xml">RSS</a>
-              </li>
-            </ul>
-          )}
-        </section>
-
-        <section className="np-magazine-footer-col">
-          <h2 className="np-magazine-footer-heading">Colophon</h2>
-          <p className="np-magazine-footer-mark">NexPress</p>
+        <section>
+          <p className="np-magazine-footer-mark">{FOOTER_MARK}</p>
+          <p className="np-magazine-footer-colophon">
+            A small, independent magazine — set in Newsreader and Hanken
+            Grotesk, published online and (when the issue calls for it) in
+            print.
+          </p>
           <p className="np-magazine-footer-meta">
-            Stories, essays, and reports.
-            <br />© {year.toString()} · Built with NexPress
+            Editor · Art · Web — Built on NexPress
           </p>
           {settings.socialLinks.length > 0 ? (
             <ul
@@ -93,16 +64,25 @@ export async function MagazineFooter() {
               style={{
                 listStyle: "none",
                 padding: 0,
-                margin: "1rem 0 0",
+                margin: "1.25rem 0 0",
                 display: "flex",
                 flexWrap: "wrap",
-                gap: "0.75rem",
-                fontSize: "0.875rem",
+                gap: "0.85rem",
+                fontFamily:
+                  'var(--np-font-chrome, "Hanken Grotesk", sans-serif)',
+                fontSize: "0.72rem",
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
               }}
             >
               {settings.socialLinks.map((link, i) => (
                 <li key={`magazine-social-${i.toString()}`}>
-                  <a href={link.url} target="_blank" rel="noreferrer">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ textDecoration: "none" }}
+                  >
                     {SOCIAL_LABELS[link.platform] ?? link.platform}
                   </a>
                 </li>
@@ -110,7 +90,91 @@ export async function MagazineFooter() {
             </ul>
           ) : null}
         </section>
+
+        <section>
+          <h2 className="np-magazine-footer-heading">Sections</h2>
+          <ul className="np-magazine-footer-nav">
+            {sectionsNav.length > 0 ? (
+              sectionsNav.map((item: NpNavItem, index: number) => (
+                <li key={`magazine-footer-sections-${index.toString()}`}>
+                  <a href={item.url}>{item.label}</a>
+                </li>
+              ))
+            ) : (
+              <FooterSectionsFallback />
+            )}
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="np-magazine-footer-heading">Colophon</h2>
+          <ul className="np-magazine-footer-nav">
+            {colophonNav.length > 0 ? (
+              colophonNav.map((item: NpNavItem, index: number) => (
+                <li key={`magazine-footer-colophon-${index.toString()}`}>
+                  <a href={item.url}>{item.label}</a>
+                </li>
+              ))
+            ) : (
+              <FooterColophonFallback />
+            )}
+          </ul>
+        </section>
+      </div>
+
+      <div className="np-magazine-footer-bottom">
+        <span>© {year.toString()} · All rights reserved</span>
+        <div className="np-magazine-footer-bottom-right">
+          <a href="/feed.xml">RSS</a>
+          <a href="/newsletter">Newsletter</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+        </div>
       </div>
     </footer>
+  );
+}
+
+function FooterSectionsFallback() {
+  return (
+    <>
+      <li>
+        <a href="/features">Features</a>
+      </li>
+      <li>
+        <a href="/dispatches">Dispatches</a>
+      </li>
+      <li>
+        <a href="/profiles">Profiles</a>
+      </li>
+      <li>
+        <a href="/essays">Essays</a>
+      </li>
+      <li>
+        <a href="/photography">Photography</a>
+      </li>
+    </>
+  );
+}
+
+function FooterColophonFallback() {
+  return (
+    <>
+      <li>
+        <a href="/about">About</a>
+      </li>
+      <li>
+        <a href="/masthead">Masthead</a>
+      </li>
+      <li>
+        <a href="/submissions">Submissions</a>
+      </li>
+      <li>
+        <a href="/archive">Print archive</a>
+      </li>
+      <li>
+        <a href="/contact">Contact</a>
+      </li>
+    </>
   );
 }
