@@ -52,7 +52,7 @@ export const portfolioTheme = defineTheme({
       collections: {
         posts: {
           fields: {
-            heroImage: { type: "upload" },
+            heroImage: { type: "upload", relationTo: "media" },
             client: { type: "text", hard: false },
             year: { type: "number", hard: false },
             role: { type: "text", hard: false },

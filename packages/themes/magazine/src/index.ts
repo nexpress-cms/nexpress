@@ -52,7 +52,7 @@ export const magazineTheme = defineTheme({
         posts: {
           fields: {
             featured: { type: "checkbox" },
-            coverImage: { type: "upload" },
+            coverImage: { type: "upload", relationTo: "media" },
             categories: {
               type: "relationship",
               relationTo: "categories",

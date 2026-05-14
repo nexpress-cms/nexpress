@@ -32,6 +32,11 @@ export interface PostsDocument {
   wpOriginalAuthor: string | null;
   categories: string[] | null;
   tags: string[] | null;
+  featured: boolean | null;
+  heroImage: string | null;
+  client: string | null;
+  year: number | null;
+  role: string | null;
 }
 
 export interface PagesDocument {
@@ -88,6 +93,30 @@ export interface DiscussionsDocument {
   category: string | null;
   pinned: boolean | null;
   locked: boolean | null;
+}
+
+export interface AuthorsDocument {
+  id: string;
+  status: "draft" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  name: string | null;
+  bio: string | null;
+}
+
+export interface DocsDocument {
+  id: string;
+  status: "draft" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  title: string | null;
+  body: unknown | null;
+  parent: string | null;
+  order: number | null;
 }
 
 /**
@@ -252,4 +281,36 @@ export function getDiscussionsDocument(
   user?: NpAuthUser,
 ): Promise<DiscussionsDocument | null> {
   return getDocumentById<DiscussionsDocument>("discussions", id, user);
+}
+
+/** Typed listing query for the `authors` collection. */
+export function findAuthors(
+  options: NpFindOptions<AuthorsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<AuthorsDocument>> {
+  return findDocuments<AuthorsDocument>("authors", options, user);
+}
+
+/** Typed by-id fetch for the `authors` collection. */
+export function getAuthorsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<AuthorsDocument | null> {
+  return getDocumentById<AuthorsDocument>("authors", id, user);
+}
+
+/** Typed listing query for the `docs` collection. */
+export function findDocs(
+  options: NpFindOptions<DocsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<DocsDocument>> {
+  return findDocuments<DocsDocument>("docs", options, user);
+}
+
+/** Typed by-id fetch for the `docs` collection. */
+export function getDocsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<DocsDocument | null> {
+  return getDocumentById<DocsDocument>("docs", id, user);
 }

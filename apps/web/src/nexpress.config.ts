@@ -43,7 +43,10 @@ export default defineConfig({
     connectionString: process.env.DATABASE_URL ?? "",
   },
   storage: storageFromEnv(),
-  collections: [...defaultCollections, discussionsCollection],
+  collections: [
+    ...defaultCollections.filter((c) => c.slug !== "discussions"),
+    discussionsCollection,
+  ],
   // Phase 12.1 — i18n config. Required when any collection
   // sets `i18n: true`. `pagesCollection` opts in: each row
   // carries a locale + translation_group_id, and the admin

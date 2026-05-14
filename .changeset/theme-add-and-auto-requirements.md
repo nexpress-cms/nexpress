@@ -2,6 +2,8 @@
 "@nexpress/core": patch
 "@nexpress/cli": patch
 "@nexpress/admin": patch
+"@nexpress/theme-magazine": patch
+"@nexpress/theme-portfolio": patch
 "create-nexpress": patch
 ---
 
@@ -14,6 +16,8 @@ Replace `pnpm nexpress theme:install <pkg>` with a friendlier two-piece flow: fr
 **`@nexpress/admin`** — Themes page guidance no longer suggests `theme:install`. When `checkThemeRequirements` still flags missing fields after the auto-merge (only possible when an operator-declared field has a conflicting TYPE), the hint surfaces the conflicting types and points at `src/collections/*.ts`. Otherwise the hint is the plain `pnpm db:generate && pnpm db:migrate` reminder.
 
 **`create-nexpress`** — scaffolded `nexpress.config.ts` ships with the new `@nexpress:themes-imports-*` and `@nexpress:themes-list-*` markers so future `theme add` invocations have anchors out of the box.
+
+**`@nexpress/theme-magazine` / `@nexpress/theme-portfolio`** — their `requires.collections.posts.*Image` upload fields now declare `relationTo: "media"` explicitly. Without it `mergeThemeRequirements` silently skipped the field (no scalar relation target), so the column never landed in the generated schema and the theme's hero/cover slot rendered against an empty value. The merge layer keeps the warning for any other upload requirement missing `relationTo` to surface the same gap in third-party themes.
 
 Operator-visible migration:
 
