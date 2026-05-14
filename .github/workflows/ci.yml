@@ -254,32 +254,23 @@ jobs:
       - name: Build (CLI + every package the scaffold pulls in)
         run: pnpm build
 
-      # Pack every @nexpress/* package the scaffold pulls (direct
-      # or transitive). `pnpm pack` resolves `workspace:*` to the
-      # actual version pin at tarball time — which is why we need
-      # the pnpm.overrides block the link script adds below; the
-      # unpacked tarballs say e.g. "@nexpress/core": "0.1.3" and
-      # would otherwise chase npm registry on install.
+      # Pack every @nexpress/* workspace package so the scaffold's
+      # direct AND transitive deps all resolve to local tarballs
+      # (the link script's `pnpm.overrides` redirects every packed
+      # name). Manual enumeration drifted: PR #727 added 11 plugin
+      # deps to @nexpress/app without updating this listing, so
+      # post-publish CI on main hit ERR_PNPM_NO_MATCHING_VERSION
+      # because pnpm fell through to npm registry for un-packed
+      # plugin tarballs. Auto-discovery via `pnpm m ls` removes the
+      # listing as a drift surface.
       - name: Pack workspace packages as tarballs
         run: |
           mkdir -p "$RUNNER_TEMP/tarballs"
-          for dir in \
-            packages/core \
-            packages/admin \
-            packages/app \
-            packages/auth-pages \
-            packages/editor \
-            packages/blocks \
-            packages/theme \
-            packages/themes/default \
-            packages/themes/docs \
-            packages/themes/magazine \
-            packages/themes/portfolio \
-            packages/next \
-            packages/plugin-sdk \
-            packages/cli-nexpress; do
-            (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/tarballs")
-          done
+          pnpm m ls --json --depth=-1 \
+            | jq -r '.[] | select(.name and (.name | test("^@nexpress/"))) | .path' \
+            | while read -r dir; do
+                (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/tarballs")
+              done
           ls "$RUNNER_TEMP/tarballs"
 
       - name: Scaffold a fresh project (outside the workspace)
