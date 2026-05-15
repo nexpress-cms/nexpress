@@ -7,13 +7,16 @@ export interface ProjectConfig {
   includeExampleContent: boolean;
   dockerSetup: boolean;
   /**
-   * Id of the built-in theme the scaffold should pre-select for the
-   * first-boot setup wizard. The wizard ALSO renders a picker — this
-   * value just seeds its initial selection via `NP_ADMIN_THEME` in
-   * the generated `.env`. The bundled-themes prebake makes swapping
-   * migration-free, so no choice here is binding.
+   * Optional pre-pick for the first-boot admin setup wizard. Only
+   * set when the operator passes `--theme <id>` — there is no
+   * interactive prompt for it. The id is written into the scaffold's
+   * `.env` as `NP_ADMIN_THEME=<id>` so headless / CI installs (no
+   * browser available for `/admin/setup`) can still ship a chosen
+   * theme; the wizard reads the env var as the picker's initial
+   * selection. Operators with a browser don't need to set this —
+   * just open the wizard and pick.
    */
-  themeId: string;
+  themeId?: string;
   localMode?: boolean;
 }
 
@@ -24,64 +27,45 @@ export interface ProjectConfig {
  * in automatically when stdin isn't a TTY (CI, piped scaffolds, …)
  * because `prompts` would otherwise hang waiting for input that never
  * arrives.
+ *
+ * `themeId` is a flag-only knob. The full theme picker lives in the
+ * first-boot admin wizard at `/admin/setup` (browser); this exists
+ * solely so headless flows that can't reach the browser have a way
+ * to commit the pick at scaffold time.
  */
 export interface CliFlags {
   projectName?: string;
   includeExampleContent?: boolean;
   dockerSetup?: boolean;
-  /** `--theme <id>` — must match a built-in theme id (see `BUILTIN_THEMES`). */
+  /** `--theme <id>` — validated against `BUILTIN_THEMES`. No prompt. */
   themeId?: string;
   yes?: boolean;
 }
 
 /**
- * Static list of built-in theme options for the scaffold picker.
- *
+ * Static list of built-in theme ids for `--theme` flag validation.
  * Hardcoded here (not imported from `@nexpress/app/config-defaults`)
  * because the CLI binary runs BEFORE the project is created — at
- * scaffold time nothing is `pnpm add`'d yet, so theme packages
- * aren't installable to introspect. Mirrors `defaultThemes` from
+ * scaffold time nothing is `pnpm add`'d yet, so theme packages aren't
+ * installable to introspect. Mirrors `defaultThemes` from
  * `@nexpress/app/config-defaults` and must be kept in sync when a
  * built-in theme is added or renamed.
  *
- * Third-party themes don't appear here; the operator picks them
- * later through the admin's Appearance panel after `pnpm nexpress
- * theme add @vendor/theme-foo`.
+ * Third-party themes don't appear here — the operator installs them
+ * later via `pnpm nexpress theme add @vendor/theme-foo`, then picks
+ * them in the admin wizard.
  */
-export interface BuiltinThemeOption {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export const BUILTIN_THEMES: BuiltinThemeOption[] = [
-  {
-    id: "default",
-    name: "Default",
-    description: "Clean, modern marketing layout. Good starting point for most sites.",
-  },
-  {
-    id: "magazine",
-    name: "Magazine",
-    description: "Editorial layout — display-serif masthead, feature-article posts.",
-  },
-  {
-    id: "portfolio",
-    name: "Portfolio",
-    description: "Minimal portfolio shell — dark-on-light, project-focused.",
-  },
-  {
-    id: "docs",
-    name: "Docs",
-    description: "Documentation layout — sidebar nav, version selector, search.",
-  },
+export const BUILTIN_THEME_IDS: readonly string[] = [
+  "default",
+  "magazine",
+  "portfolio",
+  "docs",
 ];
 
 const DEFAULTS = {
   projectName: "my-nexpress-site",
   includeExampleContent: true,
   dockerSetup: true,
-  themeId: BUILTIN_THEMES[0]!.id,
 };
 
 export async function promptForProjectConfig(
@@ -130,33 +114,17 @@ export async function promptForProjectConfig(
     });
   }
 
-  const themeProvided = typeof flags.themeId === "string" && flags.themeId.length > 0;
-  if (themeProvided && !BUILTIN_THEMES.some((t) => t.id === flags.themeId)) {
-    // Surface the misspelling at flag-validation time rather than
-    // letting the scaffold ship with a typo'd `NP_ADMIN_THEME` that
-    // silently falls back at wizard time. Lists the valid ids so the
-    // operator can retry without consulting docs.
-    const known = BUILTIN_THEMES.map((t) => t.id).join(", ");
-    throw new Error(
-      `Unknown --theme value: '${flags.themeId}'. Built-in themes: ${known}.`,
-    );
-  }
-  if (!themeProvided && !yes) {
-    questions.push({
-      type: "select",
-      name: "themeId",
-      message: "Theme",
-      // Switching themes from the admin's Appearance panel is
-      // migration-free thanks to the bundled-themes prebake, so
-      // first-pick isn't a commitment.
-      hint: "You can change this later from /admin/appearance",
-      choices: BUILTIN_THEMES.map((t) => ({
-        title: t.name,
-        description: t.description,
-        value: t.id,
-      })),
-      initial: 0,
-    });
+  // `--theme` is opt-in only — no prompt. Validate here so a typo
+  // surfaces at flag time rather than baking a typo'd `NP_ADMIN_THEME`
+  // into `.env` that the wizard would silently fall back to the
+  // first registered theme for.
+  if (typeof flags.themeId === "string" && flags.themeId.length > 0) {
+    if (!BUILTIN_THEME_IDS.includes(flags.themeId)) {
+      const known = BUILTIN_THEME_IDS.join(", ");
+      throw new Error(
+        `Unknown --theme value: '${flags.themeId}'. Built-in themes: ${known}.`,
+      );
+    }
   }
 
   const response =
@@ -188,8 +156,8 @@ export async function promptForProjectConfig(
       (typeof response.dockerSetup === "boolean"
         ? response.dockerSetup
         : DEFAULTS.dockerSetup),
-    themeId:
-      flags.themeId ??
-      (typeof response.themeId === "string" ? response.themeId : DEFAULTS.themeId),
+    ...(typeof flags.themeId === "string" && flags.themeId.length > 0
+      ? { themeId: flags.themeId }
+      : {}),
   } satisfies ProjectConfig;
 }

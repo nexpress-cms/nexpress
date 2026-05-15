@@ -51,10 +51,12 @@ export interface SetupWizardProps {
     email?: string;
     name?: string;
     /**
-     * Pre-selected theme id (from `NP_ADMIN_THEME` written by
-     * `create-nexpress --theme <id>`). The wizard validates it
-     * against `themes` server-side; when absent or unknown the
-     * picker falls back to the first registered theme.
+     * Pre-selected theme id, set when `NP_ADMIN_THEME` names a
+     * registered theme. Source is either `create-nexpress
+     * --theme <id>` at scaffold time or an operator hand-writing
+     * `.env` for a headless install. The interactive picker still
+     * wins when the operator reaches the browser — this just
+     * seeds the initial selection.
      */
     themeId?: string;
   };

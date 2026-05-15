@@ -8,7 +8,6 @@ const baseConfig = {
   includeExampleContent: true,
   dockerSetup: true,
   localMode: true,
-  themeId: "default",
   secret: "test-secret-32characters-min-aaaaaaaaaaaa",
 };
 
@@ -88,14 +87,24 @@ describe("getProjectFiles", () => {
     expect(remote["package.json"]).not.toMatch(/"@nexpress\/core":\s*"latest"/);
   });
 
-  it("bakes the picked theme into .env / .env.example as NP_ADMIN_THEME", () => {
+  it("omits NP_ADMIN_THEME by default — the picker lives in the wizard", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    // No --theme flag → no live NP_ADMIN_THEME line, just a
+    // commented hint. Theme picking happens in /admin/setup at
+    // first boot; the wizard works without any env seeding.
+    expect(files[".env.example"]).not.toMatch(/^NP_ADMIN_THEME=/m);
+    expect(files[".env"]).not.toMatch(/^NP_ADMIN_THEME=/m);
+    expect(files[".env.example"]).toMatch(/^# NP_ADMIN_THEME=/m);
+  });
+
+  it("bakes NP_ADMIN_THEME when --theme was passed (headless escape hatch)", () => {
     const files = textFiles(getProjectFiles({ ...baseConfig, themeId: "magazine" }));
-    // The wizard reads NP_ADMIN_THEME server-side and forwards it
-    // as the picker's initial selection; the bundled-themes
-    // prebake makes the operator's actual choice migration-free
-    // regardless of what we pre-seed here.
-    expect(files[".env.example"]).toMatch(/NP_ADMIN_THEME=magazine\b/);
-    expect(files[".env"]).toMatch(/NP_ADMIN_THEME=magazine\b/);
+    // With --theme set, the wizard reads NP_ADMIN_THEME and uses
+    // it as the picker's initial selection. This is the only way
+    // to commit a theme at scaffold time for installs that can't
+    // reach the browser wizard.
+    expect(files[".env.example"]).toMatch(/^NP_ADMIN_THEME=magazine$/m);
+    expect(files[".env"]).toMatch(/^NP_ADMIN_THEME=magazine$/m);
   });
 
   it("declares @nexpress/app as a dependency so subpath wrappers resolve", () => {

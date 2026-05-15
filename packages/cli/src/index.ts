@@ -37,9 +37,12 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
     } else if (arg === "--no-docker") {
       flags.dockerSetup = false;
     } else if (arg === "--theme") {
-      // `--theme <id>` (space-separated). The validation against
-      // the built-in id list happens inside `promptForProjectConfig`
-      // so the same gate covers both space-form and `=`-form.
+      // `--theme <id>` (space-separated). The built-in id check
+      // happens inside `promptForProjectConfig` so the same gate
+      // covers both space-form and `=`-form. There is NO
+      // interactive prompt — this flag is the only way to set a
+      // theme at scaffold time, and it's intended for headless /
+      // CI installs that can't reach the browser wizard.
       const value = args.shift();
       if (!value || value.startsWith("--")) {
         throw new Error("--theme requires a value (e.g. --theme magazine).");
@@ -77,10 +80,17 @@ Flags:
   --no-example         skip sample collections
   --docker             include docker/docker-compose.yml + Dockerfile
   --no-docker          skip docker artifacts
-  --theme <id>         pre-select theme for the setup wizard
+  --theme <id>         pre-pick theme for headless installs that can't
+                       reach the browser wizard at /admin/setup
                        (default | magazine | portfolio | docs)
   --local              use workspace:* deps (only inside the NexPress monorepo)
   -h, --help           show this help
+
+Theme picking normally happens in the first-boot admin setup wizard
+at /admin/setup (browser). All four built-in themes are bundled into
+every scaffold regardless. The --theme flag exists for headless / CI
+flows that can't open the wizard; it writes NP_ADMIN_THEME=<id> to
+.env, which the wizard reads as the picker's initial selection.
 
 Examples:
   pnpm create nexpress my-site

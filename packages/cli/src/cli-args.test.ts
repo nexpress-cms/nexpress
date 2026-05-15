@@ -37,7 +37,7 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["a", "b"])).toThrow(/Unexpected positional/);
   });
 
-  it("supports --theme <id> in space form", () => {
+  it("supports --theme <id> in space form (headless escape hatch)", () => {
     expect(parseCliArgs(["--theme", "magazine"]).flags.themeId).toBe("magazine");
   });
 
