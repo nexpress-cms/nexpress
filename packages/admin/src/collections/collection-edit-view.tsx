@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
-import { CalendarClock, Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronRight, Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -18,9 +18,11 @@ import { TranslationTabs } from "./translation-tabs.js";
 import { SaveEventsProvider, useSaveEmitter } from "../blocks/shared/save-events.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
 import { Form } from "../ui/form.js";
 import { StatusBadge } from "../ui/status-badge.js";
 import { Switch } from "../ui/switch.js";
+import { cn } from "../ui/utils.js";
 import { npFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
@@ -282,6 +284,86 @@ const passesCondition = (
 };
 
 type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
+
+/**
+ * Collapsible sidebar group Card. Each group renders as a normal
+ * Card with a chevron in the header; clicking the header toggles
+ * the content area. State is per-collection per-group via
+ * localStorage so the operator's "I always collapse Hierarchy"
+ * preference survives reloads.
+ *
+ * Default: all groups expanded. Pre-collapsing essential groups
+ * (Publish, Lead) would hide common editing targets behind a
+ * click, which trades the visual decluttering for an extra
+ * interaction per session. Operators can collapse what they
+ * personally don't use; the framework doesn't second-guess.
+ */
+function SidebarGroupCard({
+  name,
+  storageKey,
+  children,
+}: {
+  name: string;
+  storageKey: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState<boolean>(true);
+  // Hydrate from localStorage on mount. Two-stage default so SSR
+  // and first paint stay consistent (open) regardless of what
+  // the operator previously stored — the snap-to-stored happens
+  // post-mount and Radix animates the collapse if needed.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(storageKey);
+      if (stored === "closed") setOpen(false);
+    } catch {
+      // see other localStorage call sites
+    }
+  }, [storageKey]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(storageKey, open ? "open" : "closed");
+    } catch {
+      // see above
+    }
+  }, [storageKey, open]);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader
+            className="cursor-pointer select-none flex flex-row items-center justify-between"
+            role="button"
+            tabIndex={0}
+            aria-expanded={open}
+            aria-controls={`np-sidebar-group-${storageKey}`}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setOpen((v) => !v);
+              }
+            }}
+          >
+            <CardTitle>{name}</CardTitle>
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-4 text-muted-foreground transition-transform",
+                open && "rotate-90",
+              )}
+            />
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent id={`np-sidebar-group-${storageKey}`}>
+          <CardContent className="space-y-6">{children}</CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
 
 function formatRelative(timestamp: number): string {
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
@@ -800,25 +882,24 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
 
               {sidebarGroups.length > 0 ? (
                 sidebarGroups.map((group) => (
-                  <Card key={group.name}>
-                    <CardHeader>
-                      <CardTitle>{group.name}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      {group.fields.map((field, index) => (
-                        <FieldRenderer
-                          key={
-                            field.type === "row" || field.type === "collapsible"
-                              ? `${field.type}-${index}`
-                              : field.name
-                          }
-                          field={field}
-                          control={form.control}
-                          collectionSlug={collectionSlug}
-                        />
-                      ))}
-                    </CardContent>
-                  </Card>
+                  <SidebarGroupCard
+                    key={group.name}
+                    name={group.name}
+                    storageKey={`np-admin.sidebar-group.${collectionSlug}.${group.name}`}
+                  >
+                    {group.fields.map((field, index) => (
+                      <FieldRenderer
+                        key={
+                          field.type === "row" || field.type === "collapsible"
+                            ? `${field.type}-${index}`
+                            : field.name
+                        }
+                        field={field}
+                        control={form.control}
+                        collectionSlug={collectionSlug}
+                      />
+                    ))}
+                  </SidebarGroupCard>
                 ))
               ) : (
                 <Card>
