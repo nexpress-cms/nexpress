@@ -79,3 +79,5 @@ export type {
 export { invalidateAllSessions, sha256, verifyTokenFull } from "./session.js";
 export { isTokenVerificationError, signToken, verifyToken } from "./token.js";
 export type { NpTokenPayload } from "./token.js";
+export { getUserById } from "./users.js";
+export type { NpUserBasic } from "./users.js";

@@ -190,6 +190,8 @@ export { generateTypeScript, generateDocumentsModule } from "./db/type-generator
 
 export { signToken, verifyToken, isTokenVerificationError } from "./auth/token.js";
 export type { NpTokenPayload } from "./auth/token.js";
+export { getUserById } from "./auth/users.js";
+export type { NpUserBasic } from "./auth/users.js";
 export { hashPassword, verifyPassword, ARGON2_OPTIONS } from "./auth/password.js";
 export { verifyCsrf } from "./auth/csrf.js";
 export { can, type NpCapability } from "./auth/capabilities.js";

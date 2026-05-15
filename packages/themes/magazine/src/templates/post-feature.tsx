@@ -34,7 +34,7 @@ interface FeatureDoc {
  *     title. Falls back to `excerpt`.
  *   - `content` (richText) — Lexical body. First paragraph
  *     gets the drop cap.
- *   - `author` (relationship → authors) or `authorName` (text)
+ *   - `author` (relationship → users) or `authorName` (text)
  *     for sites without the authors collection.
  *   - `publishedAt`, `readingTime` — meta row segments.
  *

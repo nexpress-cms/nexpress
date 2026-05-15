@@ -282,16 +282,20 @@ const SEED_NAV = {
  *
  * `requires.collections`:
  *   - `posts` extended with `featured`, `coverImage`,
- *     `categories`, `author` (relationship → authors).
- *   - `categories` and `authors` created via `createIfAbsent`.
+ *     `categories`, `author` (relationship → users).
+ *   - `categories` created via `createIfAbsent`.
+ *
+ * Bylines resolve through `np_users` — the same user rows that
+ * authenticate into the admin. A site that wants guest authors
+ * without admin access can add a custom collection later, but
+ * the default reuses the user table so a fresh install doesn't
+ * carry a parallel "authors" table that's just a name + bio.
  *
  * `seedContent` ships 14 demo posts laid out for the index
  * template's editorial zones (1 lead + 3 secondary + 4
  * dispatches + 6 archive), six categories, and primary +
  * footer navigation. All posts attach to the seeding admin
- * user — diversifying authors across the seeded posts needs
- * the seedContent contract to grow per-author wiring; queued
- * as a follow-up.
+ * user as their author.
  */
 export const magazineTheme = defineTheme({
   manifest: {
@@ -315,7 +319,7 @@ export const magazineTheme = defineTheme({
             },
             author: {
               type: "relationship",
-              relationTo: "authors",
+              relationTo: "users",
               hard: false,
             },
           },
@@ -325,13 +329,6 @@ export const magazineTheme = defineTheme({
           fields: {
             name: { type: "text", required: true },
             description: { type: "textarea", hard: false },
-          },
-        },
-        authors: {
-          createIfAbsent: true,
-          fields: {
-            name: { type: "text", required: true },
-            bio: { type: "textarea", hard: false },
           },
         },
       },
