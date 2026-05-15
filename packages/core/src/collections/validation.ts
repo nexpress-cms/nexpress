@@ -43,12 +43,32 @@ export function buildZodSchema(
  * `data` and collecting the names of fields the condition would
  * hide. Used by the pipeline + admin client to drop required
  * checks for fields the operator can't see / set.
+ *
+ * When a `group` field's own condition hides the group, every
+ * nested name is added too — operators can't see the inner
+ * fields, so requiring them would block save with an invisible
+ * error. Nested fields with their own conditions are evaluated
+ * normally when the group is visible.
  */
 export function collectHiddenFieldNames(
   fields: NpFieldConfig[],
   data: Record<string, unknown>,
 ): Set<string> {
   const out = new Set<string>();
+  const addAllNames = (fs: NpFieldConfig[]): void => {
+    for (const field of fs) {
+      if (field.type === "row" || field.type === "collapsible") {
+        addAllNames(field.fields);
+        continue;
+      }
+      if (field.type === "group") {
+        out.add(field.name);
+        addAllNames(field.fields);
+        continue;
+      }
+      out.add(field.name);
+    }
+  };
   const walk = (fs: NpFieldConfig[]): void => {
     for (const field of fs) {
       if (field.type === "row" || field.type === "collapsible") {
@@ -56,18 +76,16 @@ export function collectHiddenFieldNames(
         continue;
       }
       if (field.type === "group") {
-        // A group field with a condition that hides the group is
-        // valid; its inner fields are unreachable too.
         const condition = field.admin?.condition;
         if (condition) {
           try {
             if (!condition(data, data)) {
               out.add(field.name);
-              walk(field.fields);
+              addAllNames(field.fields);
               continue;
             }
           } catch {
-            // see comment below
+            // see below
           }
         }
         walk(field.fields);
