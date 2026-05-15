@@ -89,10 +89,31 @@ export function buildZodSchema(
     }
 
     const effectiveRequired = field.required && !hiddenByCondition.has(field.name);
-    shape[field.name] = applyOptionality(buildFieldSchema(field), effectiveRequired);
+    shape[field.name] = applyFieldDefault(
+      applyOptionality(buildFieldSchema(field), effectiveRequired),
+      field,
+    );
   }
 
   return z.object(shape);
+}
+
+/**
+ * Chain `.default(field.defaultValue)` onto a Zod schema when the field
+ * declares one. Without this, a field like `posts.kind` (required + select
+ * with a single option + `defaultValue: "article"`) rejects API callers who
+ * omit the field — even though the framework expected the default to fill
+ * in. Drizzle column defaults run at INSERT time and don't help the Zod
+ * parse step that runs first; this is the validation-layer pair.
+ *
+ * Only applies when `defaultValue !== undefined`. `null` is a legit
+ * default for nullable text/json fields and gets forwarded as-is.
+ */
+function applyFieldDefault(schema: z.ZodTypeAny, field: NpFieldConfig): z.ZodTypeAny {
+  if (field.type === "row" || field.type === "collapsible") return schema;
+  if (!("defaultValue" in field)) return schema;
+  if (field.defaultValue === undefined) return schema;
+  return schema.default(field.defaultValue as never);
 }
 
 /**
