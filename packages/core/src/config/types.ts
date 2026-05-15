@@ -77,6 +77,24 @@ interface NpFieldBase {
      * surfacing a date input in the primary column.
      */
     position?: "main" | "sidebar";
+    /**
+     * Sidebar grouping label. Sidebar fields with the same
+     * `group` render together in one collapsible Card with the
+     * group name as the title. Fields with no group fall into
+     * the default "Publish" Card. Group order in the rendered
+     * sidebar follows first-seen order in the collection's
+     * `fields` array — operators control layout by ordering.
+     *
+     * Examples: `"Publish"`, `"Lead"`, `"Taxonomy"`, `"Author"`,
+     * `"Hierarchy"`, `"SEO"`. The group label is the visible
+     * Card title (not a slug), so it doesn't have to be
+     * machine-friendly.
+     *
+     * Only meaningful when `position: "sidebar"`. Main-column
+     * fields ignore this — they render in field-array order
+     * without grouping.
+     */
+    group?: string;
   };
   validate?: NpFieldValidator;
 }
@@ -810,6 +828,26 @@ export interface NpThemeFieldRequirement {
    * doesn't carry enough to construct a valid `NpSelectField`).
    */
   options?: Array<{ label: string; value: string }>;
+  /**
+   * Optional admin hints forwarded onto the synthesised field's
+   * `admin` slot. Themes use these to bucket their contributed
+   * fields into the right sidebar group and hide fields when
+   * irrelevant to the active kind.
+   *
+   * `group` — sidebar Card grouping label
+   *           (e.g. `"Media"`, `"SEO"`).
+   * `condition` — runtime visibility gate. Receives the live form
+   *               values; returns true to show. Common shape:
+   *               `(data) => data.kind === "doc"` for kind-scoped
+   *               fields.
+   * `position` — main vs sidebar column. Defaults to the
+   *              framework's `isSidebarField` heuristic.
+   */
+  admin?: {
+    group?: string;
+    condition?: (data: Record<string, unknown>, siblingData: Record<string, unknown>) => boolean;
+    position?: "main" | "sidebar";
+  };
 }
 
 export interface NpRegisteredTheme {

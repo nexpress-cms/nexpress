@@ -75,15 +75,33 @@ export const docsTheme = defineTheme({
             },
             // Short opening paragraph rendered as a lede under
             // the h1. Optional — the article still renders
-            // without it.
-            lede: { type: "textarea", hard: false },
+            // without it. Lives in a "Docs" sidebar group with
+            // `stableSince`; the group + fields hide entirely
+            // when the active kind isn't `"doc"`.
+            lede: {
+              type: "textarea",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Docs",
+                condition: (data) => data.kind === "doc",
+              },
+            },
             // Meta-pill slot — advisory hint the doc-page
             // template surfaces in the strap row. Note: portfolio
             // theme also contributes a `badge: text` field on
             // posts; the merge-requirements union picks the first
             // declarer. Docs reads `doc.badge` regardless of which
             // theme declared the column.
-            stableSince: { type: "text", hard: false },
+            stableSince: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Docs",
+                condition: (data) => data.kind === "doc",
+              },
+            },
           },
           kinds: {
             doc: {

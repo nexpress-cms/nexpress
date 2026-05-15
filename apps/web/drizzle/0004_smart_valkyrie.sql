@@ -1,0 +1,1 @@
+DROP TABLE "np_c_authors" CASCADE;

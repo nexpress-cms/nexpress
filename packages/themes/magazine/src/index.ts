@@ -310,7 +310,14 @@ export const magazineTheme = defineTheme({
       collections: {
         posts: {
           fields: {
-            featured: { type: "checkbox" },
+            featured: {
+              type: "checkbox",
+              admin: {
+                position: "sidebar",
+                group: "Magazine",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
             coverImage: { type: "upload", relationTo: "media" },
             categories: {
               type: "relationship",
