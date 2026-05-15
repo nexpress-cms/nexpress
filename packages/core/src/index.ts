@@ -39,6 +39,7 @@ export type {
   NpConfig,
   NpThemeManifest,
   NpThemeCollectionRequirement,
+  NpThemeCollectionKind,
   NpThemeFieldRequirement,
   NpRegisteredTheme,
   NpI18nConfig,

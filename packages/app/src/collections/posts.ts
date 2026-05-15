@@ -22,7 +22,16 @@ export const postsCollection = defineCollection({
   seo: {
     urlPath: (doc) => {
       const slug = typeof doc.slug === "string" ? doc.slug : null;
-      return slug ? `/blog/${slug}` : null;
+      if (!slug) return null;
+      // Universal-content-model #748 — per-kind URL routing.
+      // Themes that contribute a kind also contribute its
+      // `urlPattern` via `requires.collections.posts.kinds`.
+      // Operators with custom kinds register their own
+      // `seo.urlPath` override; built-in kinds fall through
+      // this switch.
+      const kind = typeof doc.kind === "string" ? doc.kind : "article";
+      if (kind === "doc") return `/docs/${slug}`;
+      return `/blog/${slug}`;
     },
     changefreq: "weekly",
     priority: 0.7,
