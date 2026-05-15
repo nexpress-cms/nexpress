@@ -1,5 +1,158 @@
 # @nexpress/app
 
+## 0.3.0
+
+### Patch Changes
+
+- 36187da: Add `/api/newsletter` framework stub.
+
+  Themes ship a footer subscribe form that POSTs `{ email }` to
+  `/api/newsletter`. Before this change the route existed in no
+  package, so the form's success path always hit a 404 and rendered
+  "Newsletter endpoint not configured." — operator UX was "open
+  the file and write something" before the form's golden path
+  worked at all.
+
+  The new stub:
+  - Lives at `@nexpress/app/api/newsletter/route` and is wired into
+    `apps/web/src/app/api/newsletter/route.ts` like the other app
+    routes.
+  - Accepts `POST { email: string }`, validates RFC 5321-ish shape
+    - 254-char ceiling, and returns `{ subscribed: true }` on
+      success. Bad input surfaces a `VALIDATION_ERROR` 400 with the
+      per-field message the form already knows how to render.
+  - Does NOT deliver mail or persist anywhere — it only logs the
+    address in dev so an operator notices the stub is wired and
+    needs to be replaced with a real provider call (Buttondown,
+    ConvertKit, Resend, Mailchimp, …). The route's JSDoc carries
+    the replacement recipe.
+
+  Production deployments should overwrite the app's route file
+  with the operator's actual provider integration; the stub stays
+  shipped from `@nexpress/app` for fresh installs and dev.
+
+  Proxy wiring:
+  - `/api/newsletter` is added to `CSRF_EXEMPT_PATTERNS` in
+    `packages/app/src/proxy/index.ts`. Anonymous visitors have no
+    `np-csrf` cookie, so gating the submit on CSRF would 403 every
+    fresh visitor — same reason `/api/admin/setup` is exempt.
+  - A dedicated rate-limit rule (5 req/min/IP) is the floor against
+    subscribe-spam in lieu of the CSRF gate. Operators with their
+    own provider may want to tighten or loosen this in their app
+    copy of the proxy.
+
+- ab3afa7: Bundled-themes prebake: built-in theme swaps no longer need a migration.
+
+  **Background** — scaffolded sites already ship `themes: [...defaultThemes]`, and `defineConfig` already runs `mergeThemeRequirements` over every entry. The union of every built-in's `requires.collections` therefore lands in the merged schema at boot, and the first `pnpm db:generate && pnpm db:migrate` materialises every column any built-in needs. What was missing was (a) a CI gate that asserts the union is conflict-free, and (b) an admin UI that hides theme-synthesised collections whose owning theme isn't active. Without (b), the docs-only operator sees Magazine's `authors` slug in the sidebar despite never picking Magazine.
+
+  **`@nexpress/core`** — `mergeThemeRequirements` now stamps `admin._themeOrigin: <themeId>` on collections it synthesises via a theme's `requires.collections.<slug>.createIfAbsent: true`. Collections the operator declared (or that two themes both declare via `createIfAbsent`) carry no origin tag — they're owned by the operator. `NpCollectionConfig.admin._themeOrigin` is a new optional string field; never set it by hand from operator config.
+
+  **`@nexpress/app`** — the protected admin layout reads `_themeOrigin` and filters out collections whose origin theme is not the active one. Operator-declared collections always pass; theme-synthesised collections appear in the sidebar only while their owning theme is active. The collection's database table remains in place across swaps, so re-activating the theme re-surfaces any previously captured rows.
+
+  A CI gate (`apps/web/tests/builtin-themes-union.unit.test.ts`) asserts that the union of every built-in's `requires` produces zero theme-vs-theme field conflicts against the default collections array. Future built-ins that collide with an existing one fail this test before reaching `main`.
+
+  Field-level visibility (e.g. hiding Magazine's `posts.featured` while running Docs) is intentionally NOT filtered today — the column stays on the edit view so any data captured under another theme remains addressable. Promote this to a separate follow-up once the data-preservation UX is settled.
+
+- bb1bd30: Theme-aware first-boot seed + setup-wizard theme picker.
+
+  **Why** — the framework's `seedAll` shipped one set of "Welcome to NexPress" pages + framework-themed posts. For a magazine site that's the wrong visual; for a portfolio site that's the wrong visual; for docs that's very wrong. With the bundled-themes prebake landed, the missing piece is letting each theme ship its own demo content so the first-boot view actually matches what the operator picked.
+
+  **`@nexpress/theme`** — new `NpThemeImpl.seedContent?` slot on the theme contract. Shape: `{ tags?, categories?, pages?, posts?, navigation? }` (see `NpThemeSeedContent`). Each slot is independent — a theme that overrides only `posts` keeps the framework's generic pages and seeds the posts on top. Static data only; themes declare WHAT to seed, not HOW (the framework's seeder owns the `saveDocument` call so access control / hooks / validation always run). Asset URLs in block props bake into the seeded pages exactly as authored.
+
+  **`@nexpress/app`** — `seedAll(actor, theme?)` accepts an optional theme. When `theme.impl.seedContent` is set, each per-slot seeder takes the theme's samples; unset slots fall through to today's hardcoded framework content (same content as v0.1 today). The single-arg form `seedAll(actor)` still works for the existing `seed:content` script. Internal sample types switched to the public `NpThemeSeedPage` / `NpThemeSeedPost` / `NpThemeSeedTerm`.
+
+  **Setup wizard** — `/api/admin/setup` accepts an optional `themeId` in the body. When provided, the handler calls `setActiveThemeId(themeId, …)` inside the same `withCurrentSite` block as `seedAll` so the activation lands atomically with the seed. Unknown ids fail with a `NpValidationError` before the user write, so a stale tab can't silently fall back to the default. The wizard UI renders a text-only picker (name + one-line description) in step 2; the bundled-themes prebake makes the pick non-binding so the description ends with "you can change this from Appearance."
+
+  **`create-nexpress`** — new `--theme <id>` (and `--theme=<id>`) flag plus an interactive picker that runs when neither `--theme` nor `--yes` is set. The chosen id is written to the scaffold's `.env` as `NP_ADMIN_THEME=<id>`; the setup wizard reads that env var and forwards it as the picker's initial selection. The CLI's static option list is hardcoded (mirrors `defaultThemes`) so it doesn't depend on workspace packages that aren't installed yet at scaffold time.
+
+  What this does NOT do — the four built-in themes don't ship `seedContent` data yet. Each theme drops in its own demo content with its respective design refactor; today the operator picks a theme and gets the framework default seed. The plumbing exists end-to-end so theme refactor PRs only have to author the static data.
+
+- f10d5b7: Add `NpThemeSeedContent.documents` — seed arbitrary collections
+  beyond pages/posts.
+
+  Themes that bundle their own collections (a magazine theme's
+  `authors`, a docs theme's `glossary`, a portfolio's `clients`)
+  previously had no way to ship matching demo data. The two
+  first-class slots (`pages`, `posts`) covered the common case but
+  left every other collection blank after first-boot — operators
+  had to hand-author the first row themselves.
+
+  The new slot is keyed by collection slug:
+
+  ```ts
+  seedContent: {
+    documents: {
+      authors: [
+        { slug: "ada", title: "Ada Lovelace", data: { bio: "…" } },
+      ],
+      glossary: [
+        { slug: "lexical", title: "Lexical", data: { definition: "…" } },
+      ],
+    },
+  }
+  ```
+
+  Each `NpThemeSeedDocument` is `{ slug, title, status?,
+publishedAt?, data? }`. The `data` payload is merged onto the
+  document; the pipeline's Zod validation strips fields the
+  collection doesn't declare, so themes don't have to gate on each
+  operator's exact field list.
+
+  Seeder behavior matches the existing pages/posts slots:
+  - Idempotent per collection — skipped when the collection has
+    any row.
+  - Unknown collection slugs (theme references a collection the
+    operator hasn't activated) are logged at warn level and
+    reported as `unknown: true` in `SeedAllResult.documents[slug]`,
+    rather than aborting the wizard.
+  - `author: actor.id` is auto-injected for collections that
+    declare an `author` field, so themes don't have to know the
+    operator's user id.
+
+  The setup wizard's response gains a `seeded.documents` map
+  keyed by collection slug. `NpThemeSeedDocument` joins the v0.1
+  stable seed-content surface (adding optional fields is
+  non-breaking).
+
+  Closes follow-up HIGH #2 from the theme redesign track.
+
+- Updated dependencies [ab3afa7]
+- Updated dependencies [9ae3da3]
+- Updated dependencies [5449b6b]
+- Updated dependencies [23a77a3]
+- Updated dependencies [f36c0f2]
+- Updated dependencies [bb1bd30]
+- Updated dependencies [0c096f1]
+- Updated dependencies [5faaede]
+- Updated dependencies [44010a8]
+- Updated dependencies [68c42cf]
+- Updated dependencies [41df9e4]
+- Updated dependencies [83d140f]
+- Updated dependencies [f10d5b7]
+  - @nexpress/core@0.3.0
+  - @nexpress/theme-docs@0.3.0
+  - @nexpress/theme-magazine@0.3.0
+  - @nexpress/editor@0.3.0
+  - @nexpress/theme@0.3.0
+  - @nexpress/theme-default@0.3.0
+  - @nexpress/theme-portfolio@0.3.0
+  - @nexpress/next@0.3.0
+  - @nexpress/admin@0.3.0
+  - @nexpress/auth-pages@0.3.0
+  - @nexpress/blocks@0.3.0
+  - @nexpress/plugin-sdk@0.3.0
+  - @nexpress/plugin-forum@0.3.0
+  - @nexpress/plugin-oauth-github@0.3.0
+  - @nexpress/plugin-oauth-google@0.3.0
+  - @nexpress/plugin-block-callout@0.3.0
+  - @nexpress/plugin-block-embed@0.3.0
+  - @nexpress/plugin-block-latest-posts@0.3.0
+  - @nexpress/plugin-block-newsletter@0.3.0
+  - @nexpress/plugin-block-pricing@0.3.0
+  - @nexpress/plugin-block-stats@0.3.0
+  - @nexpress/plugin-reading-time@0.3.0
+  - @nexpress/plugin-seo-audit@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes
