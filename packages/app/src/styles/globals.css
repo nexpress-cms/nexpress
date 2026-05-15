@@ -975,3 +975,38 @@
 .np-autosave-pulse {
   animation: np-autosave-pulse 2s ease-out infinite;
 }
+
+/* ==========================================================================
+   Sidebar group card collapsible animation. Drives the group cards in the
+   document editor (PR #757) — clicking the card header slides content open
+   or closed rather than snapping. Radix exposes
+   `--radix-collapsible-content-height` as the content's natural height; the
+   keyframes interpolate between 0 and that value. `.np-sidebar-group-content`
+   is the marker class applied by `SidebarGroupCard` so we don't catch every
+   Radix Collapsible in the admin.
+   ========================================================================== */
+@keyframes np-collapsible-slide-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+@keyframes np-collapsible-slide-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+.np-sidebar-group-content {
+  overflow: hidden;
+}
+.np-sidebar-group-content[data-state="open"] {
+  animation: np-collapsible-slide-down 180ms ease-out;
+}
+.np-sidebar-group-content[data-state="closed"] {
+  animation: np-collapsible-slide-up 180ms ease-out;
+}
