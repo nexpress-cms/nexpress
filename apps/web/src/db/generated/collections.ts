@@ -32,6 +32,9 @@ export const postsTable = pgTable(
     wpOriginalAuthor: text("wp_original_author"),
     parent: uuid("parent").references(() => postsTable.id),
     order: doublePrecision("order"),
+    seoMetaTitle: text("seo_meta_title"),
+    seoMetaDescription: text("seo_meta_description"),
+    seoOgImage: uuid("seo_og_image").references(() => npMedia.id),
     featured: boolean("featured"),
     heroImage: uuid("hero_image").references(() => npMedia.id),
     client: text("client"),
@@ -58,6 +61,7 @@ export const postsTableRelations = relations(postsTable, ({ many, one }) => ({
   coverImage: one(npMedia, { fields: [postsTable.coverImage], references: [npMedia.id] }),
   author: one(npUsers, { fields: [postsTable.author], references: [npUsers.id] }),
   parent: one(postsTable, { fields: [postsTable.parent], references: [postsTable.id] }),
+  seoOgImage: one(npMedia, { fields: [postsTable.seoOgImage], references: [npMedia.id] }),
   heroImage: one(npMedia, { fields: [postsTable.heroImage], references: [npMedia.id] }),
 }));
 

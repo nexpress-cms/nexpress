@@ -173,5 +173,39 @@ export const postsCollection = defineCollection({
         condition: (data) => data.kind === "doc",
       },
     },
+    // Per-doc SEO meta. Flat fields (not a `group`) because the
+    // `NpGroupField` codegen path has a known type-vs-runtime
+    // inconsistency (type says nested object, drizzle column is
+    // flat) — flat keeps the contract honest. The frontend route
+    // reads these directly and falls back to title / excerpt /
+    // coverImage when unset.
+    {
+      type: "text",
+      name: "seoMetaTitle",
+      admin: {
+        position: "sidebar",
+        group: "SEO",
+        description: "Overrides the page's <title> tag. Falls back to the post title.",
+      },
+    },
+    {
+      type: "textarea",
+      name: "seoMetaDescription",
+      admin: {
+        position: "sidebar",
+        group: "SEO",
+        description: "Meta description / social card description. Falls back to the post excerpt.",
+      },
+    },
+    {
+      type: "upload",
+      name: "seoOgImage",
+      relationTo: "media",
+      admin: {
+        position: "sidebar",
+        group: "SEO",
+        description: "Open Graph / Twitter Card image. Falls back to the cover image.",
+      },
+    },
   ],
 });

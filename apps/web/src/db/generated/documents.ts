@@ -35,6 +35,9 @@ export interface PostsDocument {
   tags: string[] | null;
   parent: string | null;
   order: number | null;
+  seoMetaTitle: string | null;
+  seoMetaDescription: string | null;
+  seoOgImage: string | null;
   featured: boolean | null;
   heroImage: string | null;
   client: string | null;

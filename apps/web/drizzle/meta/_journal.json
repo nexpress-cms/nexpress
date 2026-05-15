@@ -36,6 +36,13 @@
       "when": 1778843613070,
       "tag": "0004_smart_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778845071975,
+      "tag": "0005_fat_fantastic_four",
+      "breakpoints": true
     }
   ]
 }
