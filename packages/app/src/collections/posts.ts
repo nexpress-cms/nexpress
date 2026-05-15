@@ -15,6 +15,20 @@ export const postsCollection = defineCollection({
     defaultSort: "-publishedAt",
     description: "Blog posts — long-form rich-text content.",
     icon: "Newspaper",
+    // Editor sidebar group icons (#8 of the editor progressive-
+    // disclosure track). The icon name is a Lucide identifier;
+    // unknown names are silently ignored. Themes contributing
+    // their own groups (Magazine, Portfolio, Docs) add their
+    // entries via `requires.collections.posts.groupMeta` and
+    // the merge-requirements step unions them in.
+    groupMeta: {
+      Publish: { icon: "Calendar", description: "Status, kind, and publish date." },
+      Lead: { icon: "Layout", description: "Excerpt + cover image used in cards and social previews." },
+      Author: { icon: "User", description: "Byline + import-preserved attribution." },
+      Taxonomy: { icon: "Tag", description: "Categories + tags." },
+      SEO: { icon: "Search", description: "Search-result preview + social card meta." },
+      Hierarchy: { icon: "FolderTree", description: "Parent post + sort order for hierarchical kinds." },
+    },
   },
   versions: { drafts: { autosave: true }, max: 20 },
   community: { comments: true },

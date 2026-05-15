@@ -38,6 +38,7 @@ export type {
   NpNavItem,
   NpConfig,
   NpThemeManifest,
+  NpAdminGroupMeta,
   NpThemeCollectionRequirement,
   NpThemeCollectionKind,
   NpThemeFieldRequirement,
