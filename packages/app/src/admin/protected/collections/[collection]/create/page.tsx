@@ -3,6 +3,7 @@ import { CollectionEditView } from "@nexpress/admin/client";
 import { toClientCollectionConfig } from "@nexpress/next";
 import { notFound } from "next/navigation";
 import { ensureFor } from "../../../../../lib/init-core";
+import { getCachedActiveTheme } from "../../../../../lib/cached-theme";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +37,14 @@ export default async function CreatePage({ params, searchParams }: Props) {
   const initialDoc =
     typeof kind === "string" && kind.length > 0 ? { kind } : undefined;
 
+  // Active-theme gate for theme-contributed fields — same as the
+  // edit page. See `[id]/page.tsx` for the longer rationale.
+  const activeTheme = await getCachedActiveTheme();
+  const activeThemeId = activeTheme?.manifest.id ?? null;
+
   return (
     <CollectionEditView
-      config={toClientCollectionConfig(config)}
+      config={toClientCollectionConfig(config, activeThemeId)}
       collectionSlug={collection}
       {...(initialDoc ? { doc: initialDoc } : {})}
     />

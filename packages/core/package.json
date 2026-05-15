@@ -48,6 +48,11 @@
       "import": "./dist/db.js",
       "default": "./dist/db.js"
     },
+    "./fields": {
+      "types": "./dist/fields.d.ts",
+      "import": "./dist/fields.js",
+      "default": "./dist/fields.js"
+    },
     "./i18n": {
       "types": "./dist/i18n.d.ts",
       "import": "./dist/i18n.js",

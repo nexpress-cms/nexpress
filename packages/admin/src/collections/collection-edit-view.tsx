@@ -12,7 +12,11 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collectHiddenFieldNames, evaluateFieldCondition } from "@nexpress/core";
+// Client-safe subpath — the root `@nexpress/core` import dragged
+// `pg` / `argon2` / `sharp` into the admin's client bundle via
+// the auth re-exports, breaking the Next build (#776). `fields`
+// re-exports just the pure predicate / walker helpers we need.
+import { collectHiddenFieldNames, evaluateFieldCondition } from "@nexpress/core/fields";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import {
   BookOpen,

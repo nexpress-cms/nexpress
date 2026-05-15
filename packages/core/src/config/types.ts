@@ -131,6 +131,17 @@ interface NpFieldBase {
      * without grouping.
      */
     group?: string;
+    /**
+     * The id of the theme whose `requires.collections.<slug>.fields`
+     * contributed this field. Stamped by `mergeThemeRequirements`;
+     * never set this from operator config. Same convention as
+     * `admin._themeOrigin` at the collection level and per-`kinds`
+     * entry: when an operator switches to a different active
+     * theme, the admin filters out fields whose origin doesn't
+     * match. Operator-declared fields carry no origin and always
+     * pass through.
+     */
+    _themeOrigin?: string;
   };
   validate?: NpFieldValidator;
 }

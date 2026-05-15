@@ -111,6 +111,46 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     });
   });
 
+  it("stamps `_themeOrigin` on every theme-contributed field so the admin can gate by active theme", () => {
+    // Without this, Magazine-active sites surface Portfolio's
+    // sidebar groups on the post editor — the bundled-themes
+    // prebake merges every built-in theme's `requires.collections`
+    // into the resolved config, and field-level filtering is the
+    // only thing keeping foreign theme chrome out of the editor.
+    const magazineTheme = theme("magazine", {
+      posts: {
+        fields: {
+          featured: { type: "checkbox" },
+          coverImage: { type: "upload", relationTo: "media" },
+        },
+      },
+    });
+    const portfolioTheme = theme("portfolio", {
+      posts: {
+        fields: {
+          badge: { type: "text", admin: { group: "Portfolio" } },
+        },
+      },
+    });
+
+    const out = mergeThemeRequirements([basePosts], [magazineTheme, portfolioTheme]);
+    const posts = out[0];
+    if (!posts) throw new Error("expected merged posts");
+
+    const featured = posts.fields.find((f) => "name" in f && f.name === "featured");
+    expect(featured && "admin" in featured ? featured.admin?._themeOrigin : undefined).toBe(
+      "magazine",
+    );
+    const cover = posts.fields.find((f) => "name" in f && f.name === "coverImage");
+    expect(cover && "admin" in cover ? cover.admin?._themeOrigin : undefined).toBe("magazine");
+    const badge = posts.fields.find((f) => "name" in f && f.name === "badge");
+    expect(badge && "admin" in badge ? badge.admin?._themeOrigin : undefined).toBe("portfolio");
+    // Operator-declared fields stay untagged so they always pass
+    // the active-theme gate (no origin → not theme-owned).
+    const title = posts.fields.find((f) => "name" in f && f.name === "title");
+    expect(title && "admin" in title ? title.admin?._themeOrigin : undefined).toBeUndefined();
+  });
+
   it("synthesises a collection when createIfAbsent is true and slug is missing", () => {
     const themeWithCreate = theme("magazine", {
       categories: {
