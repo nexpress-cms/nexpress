@@ -198,19 +198,29 @@ export const postsCollection = defineCollection({
     {
       type: "text",
       name: "seoMetaTitle",
+      // ~60 char soft limit is the search-result snippet
+      // truncation point on Google + Bing. The hard `maxLength`
+      // here gives operators a tactile signal (input rejects
+      // further keystrokes) before they exceed the truncation
+      // threshold. Leaving 4 extra chars buffer for fudge.
+      maxLength: 64,
       admin: {
         position: "sidebar",
         group: "SEO",
-        description: "Overrides the page's <title> tag. Falls back to the post title.",
+        description: "Overrides the page's <title> tag. ~60 chars before search-result truncation. Falls back to the post title.",
       },
     },
     {
       type: "textarea",
       name: "seoMetaDescription",
+      // ~155 char soft limit per the same convention.
+      // Operators routinely write blog excerpts that bust this
+      // — the maxLength keeps them honest.
+      maxLength: 160,
       admin: {
         position: "sidebar",
         group: "SEO",
-        description: "Meta description / social card description. Falls back to the post excerpt.",
+        description: "Meta description / social card description. ~155 chars before search-result truncation. Falls back to the post excerpt.",
       },
     },
     {
