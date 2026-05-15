@@ -11,6 +11,7 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ensureFor } from "../../../../../lib/init-core";
 import { getAuthRuntimeConfig } from "../../../../../lib/auth-helpers";
+import { getCachedActiveTheme } from "../../../../../lib/cached-theme";
 import { getDb } from "../../../../../lib/db";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,15 @@ export default async function EditPage({ params }: Props) {
   const doc = await getDocumentById(collection, id, user);
   if (!doc) notFound();
 
+  // Active-theme gate for theme-contributed fields. Without this
+  // Magazine-active sites see Portfolio's sidebar group cards (the
+  // bundled-themes prebake merges every built-in theme's
+  // `requires.collections` into the resolved config). The layout
+  // already gates collections / kinds / blocks / patterns the same
+  // way; this is the field-level pair.
+  const activeTheme = await getCachedActiveTheme();
+  const activeThemeId = activeTheme?.manifest.id ?? null;
+
   const tabs: CollectionTabDescriptor[] = getCollectionTabsForSlug(collection).map((tab) => ({
     pluginId: tab.pluginId,
     pluginName: tab.pluginName,
@@ -52,7 +62,7 @@ export default async function EditPage({ params }: Props) {
 
   return (
     <CollectionEditView
-      config={toClientCollectionConfig(config)}
+      config={toClientCollectionConfig(config, activeThemeId)}
       doc={doc}
       collectionSlug={collection}
       collectionTabs={tabs}

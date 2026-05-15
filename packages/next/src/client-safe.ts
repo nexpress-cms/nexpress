@@ -9,16 +9,54 @@ import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
  * grow), and any per-field `validate`/`admin.condition` functions — the
  * admin UI never needs them and they're always re-evaluated on the server
  * anyway.
+ *
+ * When `activeThemeId` is provided, also drops fields whose
+ * `admin._themeOrigin` doesn't match. `mergeThemeRequirements` stamps every
+ * theme-contributed field with its origin so the admin doesn't surface
+ * Portfolio's sidebar groups while Magazine is active. The same gate
+ * already runs for collections / kinds / blocks / patterns in the admin
+ * layout; this is the field-level pair.
  */
-export function toClientCollectionConfig(config: NpCollectionConfig): NpCollectionConfig {
+export function toClientCollectionConfig(
+  config: NpCollectionConfig,
+  activeThemeId?: string | null,
+): NpCollectionConfig {
   const { access: _access, hooks: _hooks, seo, fields, ...rest } = config;
   void _access;
   void _hooks;
   return {
     ...rest,
     ...(seo ? { seo: stripSeoFunctions(seo) } : {}),
-    fields: fields.map(stripFieldFunctions),
+    fields: fields
+      .map((f) => filterFieldByThemeOrigin(f, activeThemeId))
+      .filter((f): f is NpFieldConfig => f !== null)
+      .map(stripFieldFunctions),
   };
+}
+
+/**
+ * Drop fields whose `admin._themeOrigin` doesn't match the active theme.
+ * Recurses into `row` / `collapsible` containers so a theme-contributed
+ * field nested in a row still gets gated. `group` / `array` keep their
+ * structure — their nested fields are operator-authored when the parent
+ * is operator-authored. Returns null when the field itself should be
+ * dropped (so the caller can filter it out).
+ */
+function filterFieldByThemeOrigin(
+  field: NpFieldConfig,
+  activeThemeId: string | null | undefined,
+): NpFieldConfig | null {
+  if (field.type === "row" || field.type === "collapsible") {
+    const kept = field.fields
+      .map((c) => filterFieldByThemeOrigin(c, activeThemeId))
+      .filter((c): c is NpFieldConfig => c !== null);
+    if (kept.length === 0) return null;
+    return { ...field, fields: kept };
+  }
+  if (activeThemeId === undefined) return field;
+  const origin = "admin" in field ? field.admin?._themeOrigin : undefined;
+  if (origin && origin !== activeThemeId) return null;
+  return field;
 }
 
 function stripSeoFunctions(seo: NonNullable<NpCollectionConfig["seo"]>): NonNullable<NpCollectionConfig["seo"]> {

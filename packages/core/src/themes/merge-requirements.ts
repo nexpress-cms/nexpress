@@ -104,20 +104,26 @@ const SUPPORTED_REQUIREMENT_TYPES = new Set<NpThemeFieldRequirement["type"]>([
  */
 function buildAdminSlot(
   req: NpThemeFieldRequirement,
+  themeId: string,
 ): Record<string, unknown> | undefined {
-  if (!req.admin) return undefined;
-  const out: Record<string, unknown> = {};
-  if (req.admin.group !== undefined) out.group = req.admin.group;
-  if (req.admin.condition !== undefined) out.condition = req.admin.condition;
-  if (req.admin.position !== undefined) out.position = req.admin.position;
-  return Object.keys(out).length > 0 ? out : undefined;
+  const out: Record<string, unknown> = { _themeOrigin: themeId };
+  if (req.admin?.group !== undefined) out.group = req.admin.group;
+  if (req.admin?.condition !== undefined) out.condition = req.admin.condition;
+  if (req.admin?.position !== undefined) out.position = req.admin.position;
+  // `_themeOrigin` always present — the admin gates fields by it
+  // so the bundled-themes prebake doesn't surface Portfolio's
+  // sidebar groups when Magazine is the active theme. Tag every
+  // theme-contributed field, even ones the operator's config
+  // didn't ask for a separate admin slot.
+  return out;
 }
 
 function requirementToField(
   name: string,
   req: NpThemeFieldRequirement,
+  themeId: string,
 ): NpFieldConfig | null {
-  const admin = buildAdminSlot(req);
+  const admin = buildAdminSlot(req, themeId);
   switch (req.type) {
     case "text":
     case "textarea":
@@ -275,11 +281,11 @@ function synthesiseCollection(
     if (!SUPPORTED_REQUIREMENT_TYPES.has(fieldReq.type)) {
       // requirementToField will log the skip — call through so
       // the warning fires from a single place.
-      const synth = requirementToField(fieldName, fieldReq);
+      const synth = requirementToField(fieldName, fieldReq, themeId);
       if (synth) fields.push(synth);
       continue;
     }
-    const synth = requirementToField(fieldName, fieldReq);
+    const synth = requirementToField(fieldName, fieldReq, themeId);
     if (synth) {
       fields.push(synth);
       injectedNames.add(fieldName);
@@ -441,7 +447,7 @@ export function mergeThemeRequirements(
           }
           continue;
         }
-        const synth = requirementToField(fieldName, fieldReq);
+        const synth = requirementToField(fieldName, fieldReq, theme.manifest.id);
         if (!synth) continue;
         ensureCloned().push(synth);
         alreadyDeclared.add(fieldName);
