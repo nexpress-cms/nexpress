@@ -8,7 +8,6 @@ const baseConfig = {
   includeExampleContent: true,
   dockerSetup: true,
   localMode: true,
-  themeId: "default",
   secret: "test-secret-32characters-min-aaaaaaaaaaaa",
 };
 
@@ -88,14 +87,13 @@ describe("getProjectFiles", () => {
     expect(remote["package.json"]).not.toMatch(/"@nexpress\/core":\s*"latest"/);
   });
 
-  it("bakes the picked theme into .env / .env.example as NP_ADMIN_THEME", () => {
-    const files = textFiles(getProjectFiles({ ...baseConfig, themeId: "magazine" }));
-    // The wizard reads NP_ADMIN_THEME server-side and forwards it
-    // as the picker's initial selection; the bundled-themes
-    // prebake makes the operator's actual choice migration-free
-    // regardless of what we pre-seed here.
-    expect(files[".env.example"]).toMatch(/NP_ADMIN_THEME=magazine\b/);
-    expect(files[".env"]).toMatch(/NP_ADMIN_THEME=magazine\b/);
+  it("does not bake a theme id into .env (picker lives in the wizard)", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    // Theme picking happens in /admin/setup at first boot. The
+    // scaffold bundles every built-in theme regardless, so no
+    // .env value gates which themes the operator can choose.
+    expect(files[".env.example"]).not.toMatch(/^NP_ADMIN_THEME=/m);
+    expect(files[".env"]).not.toMatch(/^NP_ADMIN_THEME=/m);
   });
 
   it("declares @nexpress/app as a dependency so subpath wrappers resolve", () => {

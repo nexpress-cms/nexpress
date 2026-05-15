@@ -6,14 +6,6 @@ export interface ProjectConfig {
   projectName: string;
   includeExampleContent: boolean;
   dockerSetup: boolean;
-  /**
-   * Id of the built-in theme the scaffold should pre-select for the
-   * first-boot setup wizard. The wizard ALSO renders a picker — this
-   * value just seeds its initial selection via `NP_ADMIN_THEME` in
-   * the generated `.env`. The bundled-themes prebake makes swapping
-   * migration-free, so no choice here is binding.
-   */
-  themeId: string;
   localMode?: boolean;
 }
 
@@ -24,64 +16,25 @@ export interface ProjectConfig {
  * in automatically when stdin isn't a TTY (CI, piped scaffolds, …)
  * because `prompts` would otherwise hang waiting for input that never
  * arrives.
+ *
+ * Theme picking deliberately does NOT live here. All four built-in
+ * themes are bundled into every scaffold; the operator picks the
+ * active one in the first-boot admin setup wizard at `/admin/setup`.
+ * Keeping the choice in one place (the browser wizard) means the
+ * scaffold has nothing to invalidate later — first-boot picks aren't
+ * "committed" by the scaffold step.
  */
 export interface CliFlags {
   projectName?: string;
   includeExampleContent?: boolean;
   dockerSetup?: boolean;
-  /** `--theme <id>` — must match a built-in theme id (see `BUILTIN_THEMES`). */
-  themeId?: string;
   yes?: boolean;
 }
-
-/**
- * Static list of built-in theme options for the scaffold picker.
- *
- * Hardcoded here (not imported from `@nexpress/app/config-defaults`)
- * because the CLI binary runs BEFORE the project is created — at
- * scaffold time nothing is `pnpm add`'d yet, so theme packages
- * aren't installable to introspect. Mirrors `defaultThemes` from
- * `@nexpress/app/config-defaults` and must be kept in sync when a
- * built-in theme is added or renamed.
- *
- * Third-party themes don't appear here; the operator picks them
- * later through the admin's Appearance panel after `pnpm nexpress
- * theme add @vendor/theme-foo`.
- */
-export interface BuiltinThemeOption {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export const BUILTIN_THEMES: BuiltinThemeOption[] = [
-  {
-    id: "default",
-    name: "Default",
-    description: "Clean, modern marketing layout. Good starting point for most sites.",
-  },
-  {
-    id: "magazine",
-    name: "Magazine",
-    description: "Editorial layout — display-serif masthead, feature-article posts.",
-  },
-  {
-    id: "portfolio",
-    name: "Portfolio",
-    description: "Minimal portfolio shell — dark-on-light, project-focused.",
-  },
-  {
-    id: "docs",
-    name: "Docs",
-    description: "Documentation layout — sidebar nav, version selector, search.",
-  },
-];
 
 const DEFAULTS = {
   projectName: "my-nexpress-site",
   includeExampleContent: true,
   dockerSetup: true,
-  themeId: BUILTIN_THEMES[0]!.id,
 };
 
 export async function promptForProjectConfig(
@@ -130,35 +83,6 @@ export async function promptForProjectConfig(
     });
   }
 
-  const themeProvided = typeof flags.themeId === "string" && flags.themeId.length > 0;
-  if (themeProvided && !BUILTIN_THEMES.some((t) => t.id === flags.themeId)) {
-    // Surface the misspelling at flag-validation time rather than
-    // letting the scaffold ship with a typo'd `NP_ADMIN_THEME` that
-    // silently falls back at wizard time. Lists the valid ids so the
-    // operator can retry without consulting docs.
-    const known = BUILTIN_THEMES.map((t) => t.id).join(", ");
-    throw new Error(
-      `Unknown --theme value: '${flags.themeId}'. Built-in themes: ${known}.`,
-    );
-  }
-  if (!themeProvided && !yes) {
-    questions.push({
-      type: "select",
-      name: "themeId",
-      message: "Theme",
-      // Switching themes from the admin's Appearance panel is
-      // migration-free thanks to the bundled-themes prebake, so
-      // first-pick isn't a commitment.
-      hint: "You can change this later from /admin/appearance",
-      choices: BUILTIN_THEMES.map((t) => ({
-        title: t.name,
-        description: t.description,
-        value: t.id,
-      })),
-      initial: 0,
-    });
-  }
-
   const response =
     questions.length === 0
       ? ({} as Record<string, unknown>)
@@ -188,8 +112,5 @@ export async function promptForProjectConfig(
       (typeof response.dockerSetup === "boolean"
         ? response.dockerSetup
         : DEFAULTS.dockerSetup),
-    themeId:
-      flags.themeId ??
-      (typeof response.themeId === "string" ? response.themeId : DEFAULTS.themeId),
   } satisfies ProjectConfig;
 }

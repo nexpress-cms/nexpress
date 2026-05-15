@@ -16,9 +16,6 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
   let localMode = false;
   let showHelp = false;
 
-  // Two-pass walk so `--theme` can consume the next argv entry as
-  // its value without complicating the main loop. Same trick we'd
-  // use for any future `--<key> <value>` flag.
   const args = [...argv];
   while (args.length > 0) {
     const arg = args.shift()!;
@@ -36,17 +33,6 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
       flags.dockerSetup = true;
     } else if (arg === "--no-docker") {
       flags.dockerSetup = false;
-    } else if (arg === "--theme") {
-      // `--theme <id>` (space-separated). The validation against
-      // the built-in id list happens inside `promptForProjectConfig`
-      // so the same gate covers both space-form and `=`-form.
-      const value = args.shift();
-      if (!value || value.startsWith("--")) {
-        throw new Error("--theme requires a value (e.g. --theme magazine).");
-      }
-      flags.themeId = value;
-    } else if (arg.startsWith("--theme=")) {
-      flags.themeId = arg.slice("--theme=".length);
     } else if (arg.startsWith("--")) {
       // Unknown flag — prefer a hard error over silently scaffolding
       // with the default. The operator probably meant to set
@@ -77,16 +63,17 @@ Flags:
   --no-example         skip sample collections
   --docker             include docker/docker-compose.yml + Dockerfile
   --no-docker          skip docker artifacts
-  --theme <id>         pre-select theme for the setup wizard
-                       (default | magazine | portfolio | docs)
   --local              use workspace:* deps (only inside the NexPress monorepo)
   -h, --help           show this help
+
+Theme picking happens in the first-boot admin setup wizard at
+/admin/setup — all four built-in themes are bundled into every
+scaffold, so there's nothing to pick at the CLI step.
 
 Examples:
   pnpm create nexpress my-site
   pnpm create nexpress my-site --yes --no-example
   pnpm create nexpress my-site --no-docker --no-example --yes
-  pnpm create nexpress my-site --theme magazine --yes
 `;
 
 async function main(): Promise<void> {

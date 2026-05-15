@@ -41,19 +41,9 @@ export default async function SetupPage() {
     description: theme.manifest.description ?? null,
   }));
 
-  // `NP_ADMIN_THEME` is the scaffold-emitted pre-pick (see
-  // `create-nexpress --theme <id>`). Only forward it when the
-  // value names a registered theme — otherwise an env carrying a
-  // typo'd id would silently fall back to the wizard's first
-  // option, leaving the operator unsure which pick is active.
-  const envThemeId = process.env.NP_ADMIN_THEME;
-  const themeId =
-    envThemeId && themes.some((t) => t.id === envThemeId) ? envThemeId : undefined;
-
   const prefill = {
     email: process.env.NP_ADMIN_EMAIL ?? "",
     name: process.env.NP_ADMIN_NAME ?? "",
-    ...(themeId ? { themeId } : {}),
   };
 
   return <SetupWizard prefill={prefill} themes={themes} />;
