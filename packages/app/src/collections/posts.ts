@@ -1,4 +1,9 @@
-import { defineCollection, isEditorOrAbove, isOwnerOrAdmin } from "@nexpress/core";
+import {
+  defineCollection,
+  getCollectionConfig,
+  isEditorOrAbove,
+  isOwnerOrAdmin,
+} from "@nexpress/core";
 
 export const postsCollection = defineCollection({
   slug: "posts",
@@ -25,12 +30,25 @@ export const postsCollection = defineCollection({
       if (!slug) return null;
       // Universal-content-model #748 — per-kind URL routing.
       // Themes that contribute a kind also contribute its
-      // `urlPattern` via `requires.collections.posts.kinds`.
-      // Operators with custom kinds register their own
-      // `seo.urlPath` override; built-in kinds fall through
-      // this switch.
+      // `urlPattern` via `requires.collections.posts.kinds`;
+      // the merge-requirements step lands the union on
+      // `admin.kinds`. Read that here and substitute `:slug`
+      // — `kind="article"` (and any kind without a urlPattern)
+      // falls back to `/blog/<slug>`, matching the framework's
+      // built-in `/blog/[slug]` route.
       const kind = typeof doc.kind === "string" ? doc.kind : "article";
-      if (kind === "doc") return `/docs/${slug}`;
+      try {
+        const config = getCollectionConfig("posts");
+        const pattern = config.admin?.kinds?.[kind]?.urlPattern;
+        if (pattern && pattern.includes(":slug")) {
+          return pattern.replace(":slug", slug);
+        }
+      } catch {
+        // Registry not initialised yet (e.g. seed scripts running
+        // before `loadCollections` completes) — fall through to
+        // the framework default rather than crashing the urlPath
+        // resolver.
+      }
       return `/blog/${slug}`;
     },
     changefreq: "weekly",

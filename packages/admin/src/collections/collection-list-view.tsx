@@ -42,6 +42,15 @@ interface CollectionListViewProps {
   totalDocs: number;
   totalPages: number;
   currentPage: number;
+  /**
+   * Active kind filter from `?kind=` (universal-content-model
+   * #748). When set, the "Create" CTA threads the kind through
+   * to `/admin/collections/<slug>/create?kind=<v>` so the new
+   * doc lands in the same kind-scoped view the operator was
+   * just looking at. Absent → no kind filter; create form
+   * defaults to the kind field's own `defaultValue`.
+   */
+  activeKind?: string;
 }
 
 const getNamedFields = (fields: NpFieldConfig[]): Array<Extract<NpFieldConfig, { name: string }>> => {
@@ -126,7 +135,16 @@ export function CollectionListView({
   totalDocs,
   totalPages,
   currentPage,
+  activeKind,
 }: CollectionListViewProps) {
+  // Thread `?kind=` onto the Create CTA so the new-doc form opens
+  // with the same kind pre-set the operator was filtering by.
+  // Empty / absent kind → bare `/create` URL (kind defaults to
+  // the field's `defaultValue` from the collection config).
+  const createHref =
+    activeKind && activeKind.length > 0
+      ? `/admin/collections/${config.slug}/create?kind=${encodeURIComponent(activeKind)}`
+      : `/admin/collections/${config.slug}/create`;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -287,7 +305,7 @@ export function CollectionListView({
         description={config.admin?.description}
         actions={
           <Button asChild>
-            <Link href={`/admin/collections/${config.slug}/create`}>
+            <Link href={createHref}>
               <Plus />
               Create
             </Link>
@@ -311,7 +329,7 @@ export function CollectionListView({
               </p>
             </div>
             <Button asChild>
-              <Link href={`/admin/collections/${config.slug}/create`}>
+              <Link href={createHref}>
                 <Plus />
                 New {config.labels.singular.toLowerCase()}
               </Link>

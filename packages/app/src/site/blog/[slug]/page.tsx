@@ -79,6 +79,7 @@ export default async function PostPage({ params }: PostPageProps) {
   // framework's inline body renders below.
   const DetailTemplate = await resolvePostDetailTemplate(
     typeof post.template === "string" ? post.template : null,
+    typeof post.kind === "string" ? post.kind : null,
   );
 
   if (DetailTemplate) {
@@ -160,18 +161,28 @@ type PostDetailTemplate = ComponentType<{
 }>;
 
 /**
- * Walk the conventional post-detail template IDs: the doc's
- * own `template` field wins if set (matching the pages
- * catch-all), then `detail`, then `default`. Both magazine
- * (`templates.posts.feature` for hero-led layout) and portfolio
- * (`templates.posts.detail`) honor this priority by naming
- * their entries accordingly.
+ * Walk the conventional post-detail template IDs in priority
+ * order: the doc's own `template` field wins if set (matching
+ * the pages catch-all), then the post's `kind` value
+ * (universal-content-model #748 — `templates.posts.doc` for
+ * doc-kind posts, etc.), then the legacy `detail` / `default` /
+ * `feature` triple. Both magazine (`templates.posts.feature`)
+ * and portfolio (`templates.posts.detail`) honor this priority
+ * by naming their entries accordingly.
+ *
+ * Note: the `/blog/<slug>` route 404s when `post.kind !==
+ * "article"` (see earlier guard) so the kind candidate is only
+ * exercised for article-kind posts that happen to register
+ * `templates.posts.article` — a theme that wants per-kind
+ * templates without going through their own theme route.
  */
 async function resolvePostDetailTemplate(
   explicitTemplateId: string | null,
+  kind: string | null,
 ): Promise<PostDetailTemplate | null> {
   const candidates: string[] = [];
   if (explicitTemplateId) candidates.push(explicitTemplateId);
+  if (kind && kind.length > 0) candidates.push(kind);
   candidates.push("detail", "default", "feature");
   for (const templateId of candidates) {
     const entry = (await resolveTemplateComponent("posts", templateId)) as

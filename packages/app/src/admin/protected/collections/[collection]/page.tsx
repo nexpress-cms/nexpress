@@ -72,6 +72,7 @@ export default async function CollectionListPage({
       totalDocs={result.totalDocs}
       totalPages={result.totalPages}
       currentPage={result.page}
+      {...(typeof kind === "string" && kind.length > 0 ? { activeKind: kind } : {})}
     />
   );
 }
