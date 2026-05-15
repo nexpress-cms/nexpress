@@ -2,6 +2,7 @@ import * as React from "react";
 import type { NpRouteRenderProps, NpThemeArchives } from "@nexpress/theme";
 import {
   findDocuments,
+  getUserById,
   type NpFindResult,
 } from "@nexpress/core";
 import { cachedThemeFetch } from "@nexpress/next";
@@ -200,19 +201,16 @@ export async function AuthorArchive({
   const id = params.id ?? "";
   const settings = await resolveMagazineSettings();
   // v0.3 (H) — same caching shape as CategoryArchive. /author/<id>
-  // shares one entry per id. extraTags cover both reads:
-  //   - `nx:collection:posts`   — author publishes a new post
-  //   - `nx:collection:authors` — author renames / updates bio
-  // and the auto-applied `nx:theme:<siteId>` covers theme switch
-  // / settings save / uninstall.
+  // shares one entry per id. extraTag covers the posts read; the
+  // author display name comes from `np_users` (no `nx:collection:*`
+  // tag exists for system tables, so a user rename surfaces after
+  // the 60s TTL or a manual revalidate, not instantly). The
+  // auto-applied `nx:theme:<siteId>` covers theme switch / settings
+  // save / uninstall.
   const data = await cachedThemeFetch(
     ["magazine.author-archive", id, String(settings.postsPerPage)],
     async () => {
-      const authorRes = await findDocuments<Record<string, unknown>>(
-        "authors",
-        { where: { id }, limit: 1 },
-      );
-      const author = authorRes.docs[0] ?? null;
+      const author = await getUserById(id);
       const posts = await findDocuments<Record<string, unknown>>("posts", {
         where: { status: "published", author: id },
         sort: "-publishedAt",
@@ -222,22 +220,16 @@ export async function AuthorArchive({
     },
     {
       revalidate: 60,
-      extraTags: ["nx:collection:posts", "nx:collection:authors"],
+      extraTags: ["nx:collection:posts"],
     },
   );
 
   const displayName =
-    typeof data.author?.name === "string" && data.author.name.length > 0
-      ? data.author.name
-      : id;
+    data.author?.name && data.author.name.length > 0 ? data.author.name : id;
   return (
     <ArchiveLayout
       title={`Stories by ${displayName}`}
-      subtitle={
-        typeof data.author?.bio === "string" && data.author.bio.length > 0
-          ? data.author.bio
-          : "Recent posts from this author."
-      }
+      subtitle="Recent posts from this author."
       result={data.posts}
     />
   );
