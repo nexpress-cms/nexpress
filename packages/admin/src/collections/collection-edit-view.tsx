@@ -328,10 +328,23 @@ type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
 function SidebarGroupCard({
   name,
   storageKey,
+  forceOpen,
   children,
 }: {
   name: string;
   storageKey: string;
+  /**
+   * Override the user's collapse preference for this render
+   * cycle. Used to force-open a group when validation fails on
+   * a field inside it — operator can't fix what they can't
+   * see. The override is ephemeral: when the parent stops
+   * forcing (errors cleared / submit succeeds), the user's
+   * preference takes over again.
+   *
+   * User clicks during force-open update the local preference
+   * silently; once force lifts, the new preference applies.
+   */
+  forceOpen?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState<boolean>(true);
@@ -364,15 +377,21 @@ function SidebarGroupCard({
   // hyphens.
   const contentId = `np-sidebar-group-${storageKey.replace(/\./g, "-")}`;
 
+  // `forceOpen` short-circuits the user's collapse preference for
+  // this render. The local `open` state still tracks intent — so
+  // when the force lifts, the card reverts to whatever the
+  // operator had set.
+  const effectiveOpen = forceOpen ? true : open;
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen} asChild>
+    <Collapsible open={effectiveOpen} onOpenChange={setOpen} asChild>
       <Card>
         <CollapsibleTrigger asChild>
           <CardHeader
             className="cursor-pointer select-none flex flex-row items-center justify-between outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] rounded-t-xl"
             role="button"
             tabIndex={0}
-            aria-expanded={open}
+            aria-expanded={effectiveOpen}
             aria-controls={contentId}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -386,7 +405,7 @@ function SidebarGroupCard({
               aria-hidden="true"
               className={cn(
                 "size-4 text-muted-foreground transition-transform",
-                open && "rotate-90",
+                effectiveOpen && "rotate-90",
               )}
             />
           </CardHeader>
@@ -1026,26 +1045,40 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
               ) : null}
 
               {sidebarGroups.length > 0 ? (
-                sidebarGroups.map((group) => (
-                  <SidebarGroupCard
-                    key={group.name}
-                    name={group.name}
-                    storageKey={`np-admin.sidebar-group.${collectionSlug}.${group.name}`}
-                  >
-                    {group.fields.map((field, index) => (
-                      <FieldRenderer
-                        key={
-                          field.type === "row" || field.type === "collapsible"
-                            ? `${field.type}-${index}`
-                            : field.name
-                        }
-                        field={field}
-                        control={form.control}
-                        collectionSlug={collectionSlug}
-                      />
-                    ))}
-                  </SidebarGroupCard>
-                ))
+                sidebarGroups.map((group) => {
+                  // Force-open this group when a field inside it
+                  // has a current validation error. PR 6 already
+                  // surfaces the error toast + focuses the
+                  // failing input; without this the field can
+                  // still be inside a collapsed Card, defeating
+                  // the focus + scroll. Force lifts as soon as
+                  // the operator fixes the field (errors clear).
+                  const hasError = group.fields.some((f) => {
+                    if (f.type === "row" || f.type === "collapsible") return false;
+                    return Boolean(form.formState.errors[f.name]);
+                  });
+                  return (
+                    <SidebarGroupCard
+                      key={group.name}
+                      name={group.name}
+                      storageKey={`np-admin.sidebar-group.${collectionSlug}.${group.name}`}
+                      forceOpen={hasError}
+                    >
+                      {group.fields.map((field, index) => (
+                        <FieldRenderer
+                          key={
+                            field.type === "row" || field.type === "collapsible"
+                              ? `${field.type}-${index}`
+                              : field.name
+                          }
+                          field={field}
+                          control={form.control}
+                          collectionSlug={collectionSlug}
+                        />
+                      ))}
+                    </SidebarGroupCard>
+                  );
+                })
               ) : (
                 <Card>
                   <CardHeader>
