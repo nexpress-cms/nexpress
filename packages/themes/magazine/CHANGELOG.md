@@ -1,5 +1,279 @@
 # @nexpress/theme-magazine
 
+## 0.3.1
+
+### Patch Changes
+
+- 4067401: feat(admin, core, themes): editor sidebar group icons + descriptions (8/14)
+
+  Adds visual hierarchy to sidebar group cards introduced in
+  #757. Operators currently see plain text titles ("Publish",
+  "Author", "Taxonomy") — scanning ~6 groups visually is
+  slower than necessary. Each group now renders with a Lucide
+  icon next to the title and an optional one-line description
+  beneath when open.
+
+  ## Type contract
+  - `NpAdminGroupMeta` — `{ icon?: string, description?: string }`.
+  - `NpCollectionConfig.admin.groupMeta?: Record<string, NpAdminGroupMeta>`.
+  - `NpThemeCollectionRequirement.groupMeta?: Record<string, NpAdminGroupMeta>`
+    — themes contribute icons for their own groups; merge unions
+    across themes (last-write-wins per key).
+
+  ## Built-in posts groups
+  - Publish → Calendar
+  - Lead → Layout
+  - Author → User
+  - Taxonomy → Tag
+  - SEO → Search
+  - Hierarchy → FolderTree
+
+  ## Theme contributions
+  - **theme-magazine** Magazine → Newspaper
+  - **theme-portfolio** Portfolio → Briefcase
+  - **theme-docs** Docs → BookOpen
+
+  ## Admin client
+
+  `SidebarGroupCard` gains `icon` + `description` props. The
+  header layout reflows: icon → title + description (truncated
+  when long) → chevron. `GROUP_ICONS` registry mirrors the
+  existing `COLLECTION_ICONS` pattern in `admin-shell`. Unknown
+  names fall back to no icon (silent — no warning).
+
+  ## What's queued for the next 6 PRs
+  - **PR 9 (CRITICAL)**: `admin.condition` is currently stripped
+    in `toClientCollectionConfig` so the editor never sees it
+    on the client. Kind-based field hiding (the entire PR 1
+    promise) doesn't work in the browser today — server-side
+    validation works because the pipeline has the original
+    config. Needs a serializable condition predicate language
+    (e.g. `{ when: "kind", equals: "doc" }`) so both server +
+    client can evaluate.
+  - PR 10: Empty state when every sidebar group is hidden
+  - PR 11: Main column field grouping (symmetry)
+  - PR 12: SEO field `maxLength` hints
+  - PR 13: Container-nested field condition evaluation
+  - PR 14: Nested-group error aggregation in toast + auto-expand
+
+  ## Test plan
+  - [x] core 452/452
+  - [x] All themes build + typecheck clean
+  - [x] admin build + typecheck clean
+  - [ ] Browser: sidebar groups render with icons + descriptions
+
+- 1eb6255: feat(admin, core, themes): progressive disclosure in the document editor
+
+  The bundled-themes prebake stacks every theme's contributed
+  fields on `posts` — magazine, portfolio, docs all add columns
+  the operator may never need on a given post. The previous edit
+  view dumped them all into one "Publishing" sidebar Card,
+  forcing the operator to scroll through ~20 controls per post.
+
+  This redesign shapes the sidebar around what the operator is
+  actually authoring:
+
+  ## Field grouping
+  - New `admin.group?: string` on `NpFieldBase` — sidebar fields
+    with the same `group` label render together in their own
+    collapsible-style Card. Default group = `"Publish"`.
+  - Group order in the rendered sidebar follows the first-seen
+    order of fields in the collection's `fields` array, so
+    operators control layout by ordering.
+
+  ## Kind-aware conditional visibility
+  - `admin.condition` was already typed but unread; the edit view
+    now honors it. The renderer subscribes to live form values
+    via `form.watch()` and re-evaluates conditions on change.
+  - Built-in `posts` fields tagged:
+    - `parent` / `order`: only when `kind === "doc"` (hierarchy)
+    - `wpOriginalAuthor`: only when populated (no value → hidden)
+  - Theme-contributed fields tagged:
+    - **theme-magazine** `featured`: hidden for `kind === "doc"`
+    - **theme-portfolio** `heroImage`, `client`, `year`, `role`,
+      `discipline`, `span`, `coverVariant`, `coverFigure`,
+      `badge`: hidden for `kind === "doc"`, grouped under
+      "Portfolio"
+    - **theme-docs** `lede`, `stableSince`: only when
+      `kind === "doc"`, grouped under "Docs"
+
+  ## "Show all fields" escape hatch
+  - Sidebar header shows a toggle when at least one field is
+    hidden by an active condition. Flipping it reveals every
+    field including ones the kind filter is suppressing.
+  - Toggle state persists per-collection via `localStorage`.
+
+  ## Theme requirement contract change
+
+  `NpThemeFieldRequirement` gains an optional `admin` block
+  forwarded onto the synthesised field's `admin` slot:
+
+  ```ts
+  admin?: {
+    group?: string;
+    condition?: (data, siblingData) => boolean;
+    position?: "main" | "sidebar";
+  }
+  ```
+
+  Themes use these to bucket their contributed fields into
+  sidebar groups and gate visibility by kind.
+
+  ## Schema drift cleanup
+
+  `apps/web/drizzle/0004_smart_valkyrie.sql` drops the orphan
+  `np_c_authors` table. The magazine theme stopped declaring
+  `requires.collections.authors` in #747 but the migration to
+  drop the leftover table was never generated. This PR's
+  schema:gen pass surfaced the drift; the auto-generated
+  migration cleans it up. No data loss (table never populated).
+
+  ## What does NOT change
+  - Main column rendering is unchanged — title + body flow as
+    before.
+  - 2-column layout preserved.
+  - No field-level data loss: hidden fields keep their stored
+    values; `condition` is view-only.
+  - Theme swap behavior unchanged: switching themes doesn't
+    remove fields from the schema, only hides irrelevant ones
+    from the editor.
+
+  ## Tests
+  - `core` 442/442
+  - `web` 85/85 (builtin-themes-union gate covers field-merge)
+  - All themes + admin + app build + typecheck clean
+
+- 712c11c: fix(core, admin, themes): serializable condition predicates — fixes broken client-side field hiding (9/14)
+
+  ## The bug
+
+  PR 1 (#756) wired `admin.condition` in the admin editor's
+  `passesCondition` helper, but `packages/next/src/client-safe.ts`
+  already stripped `admin.condition` from the collection config
+  before it reached the client component (Next.js can't serialize
+  functions across the RSC boundary). The browser never saw the
+  condition function, so the kind-based field hiding **never
+  worked client-side** — every operator editing any post saw
+  every field regardless of kind.
+
+  Server-side validation (PR 4 #759) was unaffected because the
+  pipeline uses the original (un-stripped) config.
+
+  ## Fix
+
+  New `NpFieldConditionExpr` discriminated-union type — a
+  serializable JSON predicate that survives RSC serialization:
+
+  ```ts
+  condition: { when: "kind", equals: "doc" }
+  condition: { when: "kind", notEquals: "doc" }
+  condition: { when: "kind", in: ["doc", "page"] }
+  condition: { when: "kind", notIn: ["doc"] }
+  condition: { when: "wpOriginalAuthor", exists: true }
+  condition: { all: [...] }                              // AND
+  condition: { any: [...] }                              // OR
+  ```
+
+  `evaluateFieldCondition(condition, data)` (exported from
+  `@nexpress/core`) handles both the function form (server-only)
+  and the expression form (works both env), so the admin client +
+  server pipeline run the same evaluator against the same data.
+
+  `admin.condition` type widens to
+  `NpFieldCondition | NpFieldConditionExpr` — both accepted, but
+  **the expression form is required for client-side hiding to
+  work**. Function-form conditions still run server-side (pipeline
+  validation drops `required` for hidden fields, sitemap walks
+  honor them) but are silently stripped client-side.
+
+  `toClientCollectionConfig` now strips only function-form
+  conditions; expression-form passes through verbatim.
+
+  ## Migration of in-tree conditions
+
+  All built-in / theme conditions migrate from function form:
+  - `posts.parent` / `posts.order`: `{ when: "kind", equals: "doc" }`
+  - `posts.wpOriginalAuthor`: `{ when: "wpOriginalAuthor", exists: true }`
+  - `theme-magazine.featured`: `{ when: "kind", notEquals: "doc" }`
+  - `theme-portfolio.*` (9 fields): `{ when: "kind", notEquals: "doc" }`
+  - `theme-docs.lede` / `stableSince`: `{ when: "kind", equals: "doc" }`
+
+  ## Edge handling
+  - **Function condition that throws** → fails open (field visible).
+  - **Malformed expression** (unknown shape) → fails open.
+  - **`exists: true`** → false for `undefined`, `null`, `""`, `[]`.
+  - **`all` / `any`** compose nested expressions for AND / OR logic.
+
+  ## Tests
+
+  `validation.test.ts` adds 9 cases covering function form, every
+  expression operator, malformed shape, and `collectHiddenFieldNames`
+  recursing through expression conditions. Core 452 → 461.
+
+  ## What this unlocks
+
+  The kind-based hiding the entire editor sequence (#756-#762) was
+  designed around now actually works in the browser. Operators
+  editing `kind="article"` posts won't see docs / portfolio
+  fields; operators editing `kind="doc"` won't see magazine /
+  portfolio fields.
+
+- 6f46b5a: chore(theme-magazine): use np_users for bylines instead of a separate authors collection
+
+  The magazine theme used to declare its own `authors` collection
+  (`name` + `bio`, `createIfAbsent: true`) and point
+  `posts.author` at it. That table mirrored what `np_users`
+  already provides — every staff/editor user has `name`, and is
+  referenceable by id — and ran on the bundled-themes prebake
+  path, so every scaffolded site got an empty `np_c_authors`
+  table whether magazine was active or not.
+
+  Magazine now matches the built-in `posts` collection in
+  `@nexpress/app`: `author` is `relationTo: "users"`. Bylines
+  resolve through `np_users` directly. The byline render path
+  in `archives.tsx` / `post-feature.tsx` / `post-card.tsx` was
+  already shape-agnostic (`author.name` works on either row), so
+  no template change is needed.
+
+  **Author archive at `/author/:id`** — the route stays, but now
+  queries `np_users` via the new `getUserById` helper exported
+  from `@nexpress/core/auth` (mirrored at the package root). The
+  "author bio" sub-line on the archive header is dropped — bio
+  is not part of the `np_users` schema. Sites that want guest
+  authors without admin accounts can re-add an authors collection
+  on their own; the framework no longer ships one by default.
+
+  New on `@nexpress/core`:
+  - `getUserById(id): Promise<NpUserBasic | null>` — minimal
+    `{ id, name, email }` projection. The supported entry point
+    for theme code that needs to render a byline from
+    `posts.author: relationTo("users")`. Available from both
+    the package root and `@nexpress/core/auth`.
+
+  Migration: sites that activated magazine before this release
+  have an `np_c_authors` table in their database. Drizzle won't
+  drop it (the framework only adds via `createIfAbsent`); operators
+  can drop it manually if it's empty. Magazine no longer reads
+  that table.
+
+- Updated dependencies [07c763b]
+- Updated dependencies [4067401]
+- Updated dependencies [3de8716]
+- Updated dependencies [1eb6255]
+- Updated dependencies [712c11c]
+- Updated dependencies [d76a0c9]
+- Updated dependencies [d76a0c9]
+- Updated dependencies [4d38283]
+- Updated dependencies [88bd29b]
+- Updated dependencies [48ce0d1]
+- Updated dependencies [6f46b5a]
+- Updated dependencies [17c90d6]
+  - @nexpress/core@0.3.1
+  - @nexpress/next@0.3.1
+  - @nexpress/theme@0.3.1
+  - @nexpress/blocks@0.3.1
+  - @nexpress/editor@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

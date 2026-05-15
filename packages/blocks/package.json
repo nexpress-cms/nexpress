@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/blocks",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Block-based page builder for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
