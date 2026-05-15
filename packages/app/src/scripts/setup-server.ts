@@ -50,11 +50,23 @@ const ENV_PATH = resolve(PROJECT_DIR, process.env.NP_SETUP_ENV_PATH ?? ".env");
 // gets its own DB so two projects on the same machine (or the
 // scaffold + the monorepo dev DB) don't clobber each other's
 // migration tracking.
+//
+// `NP_SETUP_DB_NAME` is the wrapper escape hatch: the monorepo's
+// `apps/web` setup script sets it to `nexpress` so the wizard
+// default matches the repo's checked-in `docker/docker-compose.yml`
+// (POSTGRES_DB=nexpress) and `.env.example` (DATABASE_URL=…/nexpress).
+// Without the override the wizard would default to `web` (the dir
+// name), creating a DB the compose stack never provisions.
+// Scaffolded projects don't set this — basename derivation gives
+// each scaffold its own DB matching its own `docker-compose.yml`
+// (the CLI templates the same project name into both).
 const DEFAULT_DB_NAME =
+  process.env.NP_SETUP_DB_NAME ||
   basename(PROJECT_DIR)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "nexpress";
+    .replace(/^_+|_+$/g, "") ||
+  "nexpress";
 const DEFAULT_DATABASE_URL = `postgres://nexpress:nexpress@localhost:5433/${DEFAULT_DB_NAME}`;
 const DEFAULT_TEST_DATABASE_URL = `postgres://nexpress:nexpress@localhost:5433/${DEFAULT_DB_NAME}_test`;
 
