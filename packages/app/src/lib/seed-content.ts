@@ -320,7 +320,7 @@ export async function seedPosts(
   // `parentSlug` resolves to a real id. Article-kind posts (no
   // parentSlug) ignore the second pass.
   const slugToId = new Map<string, string>();
-  const pendingParents: Array<{ slug: string; parentSlug: string; data: Record<string, unknown> }> = [];
+  const pendingParents: Array<{ childId: string; parentSlug: string }> = [];
 
   for (const sample of samples) {
     const tagRefs = (sample.tagNames ?? [])
@@ -354,21 +354,15 @@ export async function seedPosts(
       typeof saved.doc.slug === "string" ? saved.doc.slug : null;
     const savedId = typeof saved.doc.id === "string" ? saved.doc.id : null;
     if (savedSlug && savedId) slugToId.set(savedSlug, savedId);
-    if (parentSlug && savedSlug && savedId) {
-      pendingParents.push({ slug: savedSlug, parentSlug, data: payload });
+    if (parentSlug && savedId) {
+      pendingParents.push({ childId: savedId, parentSlug });
     }
   }
 
-  for (const { slug, parentSlug } of pendingParents) {
+  for (const { childId, parentSlug } of pendingParents) {
     const parentId = slugToId.get(parentSlug);
-    const selfId = slugToId.get(slug);
-    if (!parentId || !selfId) continue;
-    await saveDocument(
-      "posts",
-      selfId,
-      { parent: parentId },
-      actor,
-    );
+    if (!parentId) continue;
+    await saveDocument("posts", childId, { parent: parentId }, actor);
   }
 
   return { created: samples.length, skipped: false };

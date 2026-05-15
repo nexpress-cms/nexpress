@@ -101,4 +101,106 @@ describe("generateDrizzleSchema", () => {
       'import { npMedia, npUsers } from "../../some/relative/schema.js";',
     );
   });
+
+  // Universal-content-model Phase U.1 (#748): generator honors
+  // `field.defaultValue` for SQL-mappable scalar types so a NOT
+  // NULL column can be added to a populated table via a single
+  // ALTER TABLE with a DEFAULT clause.
+  describe("field.defaultValue", () => {
+    it('emits .default("<value>") for select fields with a string default', () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          {
+            type: "select",
+            name: "kind",
+            required: true,
+            defaultValue: "article",
+            options: [{ label: "Article", value: "article" }],
+          },
+        ]),
+      ]);
+      expect(out).toContain('kind: text("kind").default("article").notNull()');
+    });
+
+    it("emits .default for text / textarea / email / radio with string defaults", () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          { type: "text", name: "a", defaultValue: "hello" },
+          { type: "textarea", name: "b", defaultValue: "world" },
+          { type: "email", name: "c", defaultValue: "x@y.z" },
+          {
+            type: "radio",
+            name: "d",
+            required: true,
+            defaultValue: "x",
+            options: [{ label: "X", value: "x" }],
+          },
+        ]),
+      ]);
+      expect(out).toContain('a: text("a").default("hello")');
+      expect(out).toContain('b: text("b").default("world")');
+      expect(out).toContain('c: text("c").default("x@y.z")');
+      expect(out).toContain('d: text("d").default("x").notNull()');
+    });
+
+    it("emits .default for number + checkbox with the right literal kind", () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          { type: "number", name: "n", defaultValue: 7 },
+          { type: "number", name: "i", integerOnly: true, defaultValue: 3 },
+          { type: "checkbox", name: "flag", defaultValue: true },
+        ]),
+      ]);
+      expect(out).toContain('n: doublePrecision("n").default(7)');
+      expect(out).toContain('i: integer("i").default(3)');
+      expect(out).toContain('flag: boolean("flag").default(true)');
+    });
+
+    it("escapes embedded quotes + backslashes in string defaults", () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          { type: "text", name: "s", defaultValue: 'has "quote" and \\ back' },
+        ]),
+      ]);
+      // The generator's output is TS source compiled by tsc; an
+      // unescaped embedded quote would break the build.
+      expect(out).toContain('s: text("s").default("has \\"quote\\" and \\\\ back")');
+    });
+
+    it("ignores defaultValue for jsonb / relation / upload columns", () => {
+      // richText / blocks / json — these don't have a sensible
+      // SQL default and the generator skips the `.default(…)`
+      // emission so the migration doesn't get garbage like
+      // `DEFAULT '{...lexical json...}'`.
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          { type: "richText", name: "body", defaultValue: { root: {} } },
+          { type: "blocks", name: "blocks", defaultValue: [] },
+          { type: "json", name: "j", defaultValue: { a: 1 } },
+        ]),
+      ]);
+      expect(out).toContain('body: jsonb("body")');
+      expect(out).not.toMatch(/body:.*\.default\(/);
+      expect(out).not.toMatch(/blocks:.*\.default\(/);
+      expect(out).not.toMatch(/j:.*\.default\(/);
+    });
+
+    it("skips defaultValue when the value type doesn't match the field type", () => {
+      // Defensive: a number field with a string `defaultValue`
+      // shouldn't emit `default("3")` — drizzle would build wrong
+      // SQL. The generator drops the value silently; validation
+      // surfaces the type mismatch separately.
+      // Cast through unknown so the test compiles — operator code
+      // shouldn't pass mismatched types in practice; the generator
+      // is being defensive about a malformed config.
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          { type: "number", name: "n", defaultValue: "not-a-number" as unknown as number },
+          { type: "checkbox", name: "flag", defaultValue: "yes" as unknown as boolean },
+        ]),
+      ]);
+      expect(out).not.toMatch(/n:.*\.default\(/);
+      expect(out).not.toMatch(/flag:.*\.default\(/);
+    });
+  });
 });

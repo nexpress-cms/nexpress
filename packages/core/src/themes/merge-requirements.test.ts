@@ -233,7 +233,10 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     expect(out[0]?.fields).toBe(wrappedPosts.fields);
   });
 
-  it("skips select requirements and warns (no synthesisable default)", () => {
+  it("skips select requirements that ship no options and warns", () => {
+    // Without `options`, the field schema's `options.min(1)`
+    // would reject the synthesised field; the merge skips it
+    // entirely rather than producing an invalid collection.
     const themeSelect = theme("badtheme", {
       posts: { fields: { mood: { type: "select" } } },
     });
@@ -241,6 +244,30 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     const mood = out[0]?.fields.find((f) => "name" in f && f.name === "mood");
     expect(mood).toBeUndefined();
     expect(warnings.some((w) => w.message.toLowerCase().includes("select"))).toBe(true);
+  });
+
+  it("synthesises a select requirement when options are present", () => {
+    // The symmetric case to the union path: a brand-new select
+    // field on a collection that doesn't have one yet. As long as
+    // the theme provides options, the synthesised field is valid.
+    const themeKind = theme("docs", {
+      posts: {
+        fields: {
+          kind: {
+            type: "select",
+            options: [
+              { label: "Article", value: "article" },
+              { label: "Doc", value: "doc" },
+            ],
+          },
+        },
+      },
+    });
+    const out = mergeThemeRequirements([basePosts], [themeKind]);
+    const kind = out[0]?.fields.find((f) => "name" in f && f.name === "kind");
+    expect(kind?.type).toBe("select");
+    if (kind?.type !== "select") return;
+    expect(kind.options.map((o) => o.value).sort()).toEqual(["article", "doc"]);
   });
 
   it("skips upload requirements with no relationTo and warns", () => {

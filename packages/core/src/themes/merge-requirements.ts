@@ -135,17 +135,28 @@ function requirementToField(
       };
       return req.hasMany ? { ...baseField, hasMany: true } : baseField;
     }
-    case "select":
-      // `NpThemeFieldRequirement` doesn't carry an `options`
-      // array, and the field schema requires at least one
-      // option. Theme authors that need a select have to ship
-      // the collection themselves (legacy theme:install path
-      // is gone) — there's no sensible default to synthesise.
-      log().warn(
-        "Skipping theme-required select field: cannot synthesise without an options list.",
-        { field: name },
-      );
-      return null;
+    case "select": {
+      // A theme can synthesise a select when it provides at least
+      // one option on the requirement (universal-content-model
+      // Phase U.1 #748). Without options the field schema would
+      // reject the synthesised config (`options.min(1)`), so a
+      // contribution with no options is still a no-op + warning.
+      // Themes that contribute options to an EXISTING select don't
+      // come through here — that path unions options inside
+      // `mergeThemeRequirements`.
+      if (!req.options || req.options.length === 0) {
+        log().warn(
+          "Skipping theme-required select field: requirement is missing an `options` list.",
+          { field: name },
+        );
+        return null;
+      }
+      return {
+        type: "select",
+        name,
+        options: [...req.options],
+      };
+    }
     default: {
       // Exhaustiveness — adding a requirement type forces an
       // update here. Cast through `never` so a missed case is a
