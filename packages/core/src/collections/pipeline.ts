@@ -554,7 +554,12 @@ async function initSaveContext(
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
-  const validatedData = toRecord(getCollectionZodSchema(config).parse(data));
+  // Pass `data` so the schema evaluates `admin.condition` and
+  // drops `required` for hidden fields. Mirrors the admin
+  // client's condition-aware resolver introduced in #759 — a
+  // hidden field can't be filled by the operator, so requiring
+  // it on save would block writes the operator can't fix.
+  const validatedData = toRecord(getCollectionZodSchema(config, data as Record<string, unknown>).parse(data));
   const operation: "create" | "update" = docId ? "update" : "create";
   const originalDoc = docId ? await getDocumentByIdInternal(db, table, collection, docId) : null;
   return {

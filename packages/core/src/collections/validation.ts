@@ -4,29 +4,123 @@ import { type NpCollectionConfig, type NpFieldConfig } from "../config/types.js"
 
 export function buildZodSchema(
   fields: NpFieldConfig[],
+  /**
+   * Field names whose `admin.condition` returned false against
+   * the current document data. `required` is dropped for these
+   * — a hidden field can't be filled in by the operator, so
+   * enforcing required on save would block writes the operator
+   * can't fix. Pass an empty set (the default) for static
+   * contexts that don't have current data to evaluate
+   * conditions against; the schema then enforces every `required`
+   * verbatim, matching pre-#759 behavior.
+   */
+  hiddenByCondition: ReadonlySet<string> = new Set(),
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const shape: Record<string, z.ZodTypeAny> = {};
 
   for (const field of fields) {
     if (field.type === "row" || field.type === "collapsible") {
-      Object.assign(shape, buildZodSchema(field.fields).shape);
+      Object.assign(shape, buildZodSchema(field.fields, hiddenByCondition).shape);
       continue;
     }
 
     if (field.type === "group") {
-      const schema = buildZodSchema(field.fields);
-      shape[field.name] = applyOptionality(schema, field.required);
+      const schema = buildZodSchema(field.fields, hiddenByCondition);
+      const effectiveRequired = field.required && !hiddenByCondition.has(field.name);
+      shape[field.name] = applyOptionality(schema, effectiveRequired);
       continue;
     }
 
-    shape[field.name] = applyOptionality(buildFieldSchema(field), field.required);
+    const effectiveRequired = field.required && !hiddenByCondition.has(field.name);
+    shape[field.name] = applyOptionality(buildFieldSchema(field), effectiveRequired);
   }
 
   return z.object(shape);
 }
 
-export function getCollectionZodSchema(config: NpCollectionConfig): z.ZodSchema {
-  const base = buildZodSchema(config.fields).extend({
+/**
+ * Walk fields recursively, evaluating `admin.condition` against
+ * `data` and collecting the names of fields the condition would
+ * hide. Used by the pipeline + admin client to drop required
+ * checks for fields the operator can't see / set.
+ *
+ * When a `group` field's own condition hides the group, every
+ * nested name is added too — operators can't see the inner
+ * fields, so requiring them would block save with an invisible
+ * error. Nested fields with their own conditions are evaluated
+ * normally when the group is visible.
+ */
+export function collectHiddenFieldNames(
+  fields: NpFieldConfig[],
+  data: Record<string, unknown>,
+): Set<string> {
+  const out = new Set<string>();
+  const addAllNames = (fs: NpFieldConfig[]): void => {
+    for (const field of fs) {
+      if (field.type === "row" || field.type === "collapsible") {
+        addAllNames(field.fields);
+        continue;
+      }
+      if (field.type === "group") {
+        out.add(field.name);
+        addAllNames(field.fields);
+        continue;
+      }
+      out.add(field.name);
+    }
+  };
+  const walk = (fs: NpFieldConfig[]): void => {
+    for (const field of fs) {
+      if (field.type === "row" || field.type === "collapsible") {
+        walk(field.fields);
+        continue;
+      }
+      if (field.type === "group") {
+        const condition = field.admin?.condition;
+        if (condition) {
+          try {
+            if (!condition(data, data)) {
+              out.add(field.name);
+              addAllNames(field.fields);
+              continue;
+            }
+          } catch {
+            // see below
+          }
+        }
+        walk(field.fields);
+        continue;
+      }
+      const condition = field.admin?.condition;
+      if (!condition) continue;
+      try {
+        if (!condition(data, data)) out.add(field.name);
+      } catch {
+        // Buggy condition: treat as "not hidden" — better to
+        // surface a required error than to silently drop it.
+      }
+    }
+  };
+  walk(fields);
+  return out;
+}
+
+export function getCollectionZodSchema(
+  config: NpCollectionConfig,
+  /**
+   * Current document data. When provided, `admin.condition` is
+   * evaluated against it and `required` is dropped for fields
+   * the condition hides — mirrors the admin client's
+   * condition-aware resolver so a hidden field can't bypass
+   * the editor and still fail server validation.
+   *
+   * Pass `undefined` (or omit) for code paths that need the
+   * unconditional schema — pre-#759 behavior.
+   */
+  forData?: Record<string, unknown>,
+): z.ZodSchema {
+  const hidden = forData ? collectHiddenFieldNames(config.fields, forData) : new Set<string>();
+  const base = buildZodSchema(config.fields, hidden).extend({
     // Phase 21.17 — per-doc visibility flag. Optional on writes;
     // the pipeline lets the column default to "public" when the
     // caller doesn't specify. Allowed values are the same
