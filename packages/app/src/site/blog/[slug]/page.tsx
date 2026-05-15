@@ -200,9 +200,24 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
   const post = await getPostBySlug(slug, { draft: isDraft });
   if (!post) return {};
 
-  const title = (post.seo as Record<string, unknown>)?.metaTitle ?? post.title;
-  const description = (post.seo as Record<string, unknown>)?.metaDescription ?? post.excerpt;
-  const ogImageId = (post.seo as Record<string, unknown>)?.ogImage as string | undefined;
+  // Per-doc SEO meta lives on flat fields with `seo` prefix
+  // (`seoMetaTitle` / `seoMetaDescription` / `seoOgImage`).
+  // Each falls back to the post's primary field when unset:
+  // title → title, description → excerpt, image → coverImage.
+  const title =
+    typeof post.seoMetaTitle === "string" && post.seoMetaTitle.length > 0
+      ? post.seoMetaTitle
+      : post.title;
+  const description =
+    typeof post.seoMetaDescription === "string" && post.seoMetaDescription.length > 0
+      ? post.seoMetaDescription
+      : post.excerpt;
+  const ogImageId =
+    typeof post.seoOgImage === "string" && post.seoOgImage.length > 0
+      ? post.seoOgImage
+      : typeof post.coverImage === "string"
+        ? post.coverImage
+        : undefined;
 
   return {
     title: title as string,
