@@ -315,7 +315,7 @@ export const magazineTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Magazine",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             coverImage: { type: "upload", relationTo: "media" },

@@ -84,7 +84,7 @@ export const docsTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Docs",
-                condition: (data) => data.kind === "doc",
+                condition: { when: "kind", equals: "doc" },
               },
             },
             // Meta-pill slot — advisory hint the doc-page
@@ -99,7 +99,7 @@ export const docsTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Docs",
-                condition: (data) => data.kind === "doc",
+                condition: { when: "kind", equals: "doc" },
               },
             },
           },

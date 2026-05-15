@@ -1,6 +1,63 @@
 import { z } from "zod";
 
-import { type NpCollectionConfig, type NpFieldConfig } from "../config/types.js";
+import {
+  type NpCollectionConfig,
+  type NpFieldCondition,
+  type NpFieldConditionExpr,
+  type NpFieldConfig,
+} from "../config/types.js";
+
+/**
+ * Evaluate a field condition — handles both the legacy function
+ * form (`NpFieldCondition`, server-side only) and the serializable
+ * expression form (`NpFieldConditionExpr`, works in both env).
+ * Unset → returns true (field shows / required holds).
+ *
+ * Used by `collectHiddenFieldNames` server-side and by the admin
+ * editor's `passesCondition` client-side. The same evaluator runs
+ * both places so server validation + client visibility never
+ * disagree.
+ */
+export function evaluateFieldCondition(
+  condition: NpFieldCondition | NpFieldConditionExpr | undefined,
+  data: Record<string, unknown>,
+): boolean {
+  if (!condition) return true;
+  if (typeof condition === "function") {
+    try {
+      return condition(data, data);
+    } catch {
+      // Buggy condition: treat as "field visible" — surface a
+      // required error is more recoverable than silently dropping.
+      return true;
+    }
+  }
+  return evaluateExpr(condition, data);
+}
+
+function evaluateExpr(
+  expr: NpFieldConditionExpr,
+  data: Record<string, unknown>,
+): boolean {
+  if ("all" in expr) return expr.all.every((e) => evaluateExpr(e, data));
+  if ("any" in expr) return expr.any.some((e) => evaluateExpr(e, data));
+  const value = data[expr.when];
+  if ("equals" in expr) return value === expr.equals;
+  if ("notEquals" in expr) return value !== expr.notEquals;
+  if ("in" in expr) return expr.in.includes(value);
+  if ("notIn" in expr) return !expr.notIn.includes(value);
+  if ("exists" in expr) {
+    const present =
+      value !== undefined &&
+      value !== null &&
+      value !== "" &&
+      !(Array.isArray(value) && value.length === 0);
+    return expr.exists ? present : !present;
+  }
+  // Exhaustiveness — unknown shape fails open (field visible)
+  // so a malformed config doesn't silently hide an entire group.
+  return true;
+}
 
 export function buildZodSchema(
   fields: NpFieldConfig[],
@@ -77,27 +134,18 @@ export function collectHiddenFieldNames(
       }
       if (field.type === "group") {
         const condition = field.admin?.condition;
-        if (condition) {
-          try {
-            if (!condition(data, data)) {
-              out.add(field.name);
-              addAllNames(field.fields);
-              continue;
-            }
-          } catch {
-            // see below
-          }
+        if (condition && !evaluateFieldCondition(condition, data)) {
+          out.add(field.name);
+          addAllNames(field.fields);
+          continue;
         }
         walk(field.fields);
         continue;
       }
       const condition = field.admin?.condition;
       if (!condition) continue;
-      try {
-        if (!condition(data, data)) out.add(field.name);
-      } catch {
-        // Buggy condition: treat as "not hidden" — better to
-        // surface a required error than to silently drop it.
+      if (!evaluateFieldCondition(condition, data)) {
+        out.add(field.name);
       }
     }
   };

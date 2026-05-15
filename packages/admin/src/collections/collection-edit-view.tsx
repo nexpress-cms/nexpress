@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collectHiddenFieldNames } from "@nexpress/core";
+import { collectHiddenFieldNames, evaluateFieldCondition } from "@nexpress/core";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import {
   BookOpen,
@@ -342,15 +342,13 @@ const passesCondition = (
 ): boolean => {
   if (showAll) return true;
   if (field.type === "row" || field.type === "collapsible") return true;
-  const condition = field.admin?.condition;
-  if (!condition) return true;
-  try {
-    return condition(formValues, formValues);
-  } catch {
-    // A buggy condition shouldn't crash the editor — fall back
-    // to showing the field so the operator can still author.
-    return true;
-  }
+  // `evaluateFieldCondition` handles both the legacy function
+  // form (server-only — stripped by `toClientCollectionConfig`
+  // before reaching here, so it'd be undefined client-side) and
+  // the serializable expression form (`{ when, equals, ... }`)
+  // which survives the RSC boundary. Same evaluator as the
+  // server pipeline → no behavioral divergence (#763).
+  return evaluateFieldCondition(field.admin?.condition, formValues);
 };
 
 type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
