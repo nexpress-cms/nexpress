@@ -3,6 +3,7 @@ export type {
   NpAuthUser,
   NpAccessFunction,
   NpFieldCondition,
+  NpFieldConditionExpr,
   NpFieldValidator,
   NpRichTextContent,
   NpEditorConfig,
@@ -183,6 +184,7 @@ export {
 export {
   buildZodSchema,
   collectHiddenFieldNames,
+  evaluateFieldCondition,
   getCollectionZodSchema,
 } from "./collections/validation.js";
 

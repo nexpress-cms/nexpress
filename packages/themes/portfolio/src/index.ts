@@ -242,7 +242,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             client: {
@@ -251,7 +251,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             year: {
@@ -260,7 +260,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             role: {
@@ -269,7 +269,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             // New fields the redesigned index template reads.
@@ -288,7 +288,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             span: {
@@ -297,7 +297,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             coverVariant: {
@@ -306,7 +306,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             coverFigure: {
@@ -315,7 +315,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
             badge: {
@@ -324,7 +324,7 @@ export const portfolioTheme = defineTheme({
               admin: {
                 position: "sidebar",
                 group: "Portfolio",
-                condition: (data) => data.kind !== "doc",
+                condition: { when: "kind", notEquals: "doc" },
               },
             },
           },

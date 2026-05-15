@@ -44,11 +44,35 @@ function stripFieldFunctions(field: NpFieldConfig): NpFieldConfig {
   const { validate: _validate, admin, ...rest } = field;
   void _validate;
 
+  // `admin.condition` may be a function (`NpFieldCondition`) — strip
+  // those because RSC can't serialize them. Expression-form
+  // conditions (`NpFieldConditionExpr`, plain JSON) survive
+  // verbatim so the admin client can re-evaluate them against
+  // live form values. Migrating function conditions to the
+  // expression form is the operator's escape from "field doesn't
+  // hide in the browser" (#763).
   const strippedAdmin = admin
     ? (() => {
-        const { condition: _condition, ...safeAdmin } = admin;
-        void _condition;
-        return safeAdmin;
+        if (typeof admin.condition === "function") {
+          const fieldName = "name" in field && typeof field.name === "string" ? field.name : "<unknown>";
+          if (process.env.NODE_ENV !== "production") {
+            // One-line dev warning so theme authors who wrote
+            // `condition: (data) => ...` see why their field
+            // still shows up in the admin browser. Production
+            // stays quiet to avoid log noise on hot paths.
+            console.warn(
+              `[nexpress] Field "${fieldName}" uses a function-form admin.condition. ` +
+                `Functions are stripped at the RSC boundary, so the field will always ` +
+                `show in the admin editor. Migrate to the serializable expression form ` +
+                `(e.g. { when: "kind", equals: "doc" }) to enable client-side hiding. ` +
+                `Server-side validation still honors the function.`,
+            );
+          }
+          const { condition: _condition, ...safeAdmin } = admin;
+          void _condition;
+          return safeAdmin;
+        }
+        return admin;
       })()
     : undefined;
 
