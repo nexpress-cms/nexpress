@@ -1,5 +1,13 @@
 # @nexpress/plugin-sdk
 
+## 0.3.0
+
+### Patch Changes
+
+- Updated dependencies [ab3afa7]
+  - @nexpress/core@0.3.0
+  - @nexpress/blocks@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes

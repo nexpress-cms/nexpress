@@ -1,5 +1,15 @@
 # @nexpress/admin
 
+## 0.3.0
+
+### Patch Changes
+
+- Updated dependencies [ab3afa7]
+- Updated dependencies [f36c0f2]
+  - @nexpress/core@0.3.0
+  - @nexpress/editor@0.3.0
+  - @nexpress/blocks@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes

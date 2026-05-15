@@ -1,5 +1,142 @@
 # @nexpress/theme-magazine
 
+## 0.3.0
+
+### Minor Changes
+
+- 68c42cf: Theme-magazine redesign — editorial magazine identity (The Northbound
+  Review).
+
+  Visual surface overhauled to a print-magazine register: full-width
+  dateline strip at the top with date + volume / issue label and
+  secondary chrome links; double-rule masthead with a Newsreader
+  display-italic title, small-caps ornamental rules flanking an "Est."
+  ornament, and an italic tagline; primary section nav under a single
+  hairline rule; cover-story 2-col lead (5/6 hero cover with a Roman-
+  numeral figure overlay and caption, body block with kicker rule +
+  italic display title + italic deck + byline rule with a "Read →"
+  link); "In this issue" 3-up secondary row with story-cover gradients;
+  dispatches + archive split (1-col timed dispatch list + 2-col archive
+  grid with square thumbnails); deep-ink full-bleed subscribe band with
+  double-rule top/bottom; three-column colophon footer (brand mark +
+  italic colophon paragraph / sections / colophon links) above a
+  hairline meta row.
+
+  `impl.tokens` overlay updates the identity — cream `#f6f1e7` surface,
+  deep ink `#1a1411` foreground, terracotta `#b04a26` primary; Newsreader
+  display-italic + body, Hanken Grotesk for chrome (mono slot points
+  at it so kicker / byline / nav letter-spacing works at all sizes).
+
+  `impl.seedContent` ships fourteen demo posts laid out for the index
+  template's zones — 1 lead (`featured: true`) + 3 secondary + 4
+  timed dispatches + 6 archive items — plus six categories (Features /
+  Dispatches / Profiles / Essays / Reporting / Photography) and primary
+  - footer navigation. Posts attach to the seeding admin user;
+    diversifying authors across the seed set needs the seedContent
+    contract to grow per-author wiring (queued as a follow-up).
+
+  `i18n.{en,ko}` adds three new keys the masthead reads via `t()`:
+  `magazine.title`, `magazine.ornament`, `magazine.tagline`. Operators
+  that rename the publication override these in their site-level UI
+  string bundle (last-writer-wins on key collision).
+
+  Component-level changes:
+  - `header.tsx`: now emits the dateline strip + masthead with
+    ornaments + display-italic logo + section nav, all in one slot
+    output (returns a Fragment of `<div className="np-magazine-
+dateline">` + `<header>`). Volume / issue derived from the year
+    so the masthead stays editorially accurate without an admin step.
+  - `footer.tsx`: restructured to a 3-col colophon (brand block /
+    sections / colophon) above a hairline meta row. Reads from
+    `footer` + `footerColophon` nav locations; falls back to a short
+    stub when neither is wired.
+  - `post-list.tsx`: full rewrite — renders the lead / 3-up /
+    dispatches+archive / subscribe zones inline rather than via
+    `MagazinePostCard`. `MagazinePostCard` is kept for sites that
+    embed it elsewhere.
+  - `post-feature.tsx`: adds `deck` field support + centered byline
+    with reading time. Drop cap on the first paragraph remains
+    CSS-driven.
+  - `MagazinePostCardDoc` gains `readingTime`, `featured`, and
+    `categories` as optional fields the new template reads.
+
+  `np-magazine-*` class prefix preserved across all surfaces so theme
+  swaps don't leave residue.
+
+### Patch Changes
+
+- 23a77a3: Restore RTL-safety gate on the magazine theme + relax the
+  brittle tagline assertion that drifted in #735.
+
+  CI's integration job (restored on push) caught two real
+  violations that slipped through when #735 (magazine redesign)
+  landed:
+  - The drop-cap on the first paragraph of a feature article used
+    `float: left` and the byline link used `margin-left: auto`,
+    plus the secondary-row reset used physical `padding-left/
+right`. The repo's RTL-safety gate at
+    `apps/web/tests/theme-magazine-portfolio.integration.test.ts`
+    forbids physical-direction CSS — RTL locales would mis-align
+    the drop-cap, byline, and row gutters. Migrated to logical
+    equivalents (`float: inline-start`, `margin-inline-start`,
+    `padding-inline`). No visual change in LTR sites; RTL sites
+    now mirror correctly.
+  - `apps/web/tests/i18n-strings.integration.test.ts` pinned the
+    exact magazine tagline (`"Stories, essays, and reports"`)
+    which #735 swapped for the "Long-form reporting on craft…"
+    copy. The test is now structural — it asserts the bundle
+    resolves to a non-empty string per locale and the two locales
+    differ. Tagline content can evolve without churning the test
+    suite.
+
+- 41df9e4: Theme polish bundle:
+  - **`@nexpress/next`** ships a new `getCachedSite()` (+
+    `siteCacheTag`) so themes can read the operator's site name
+    from the `np_sites` row without each one wiring its own DB
+    query. Same `unstable_cache` pattern as the other cached
+    helpers; tag is `np:site:<siteId>`.
+  - **`@nexpress/theme-default`** and **`@nexpress/theme-docs`**
+    now read the site name from `getCachedSite()` for the
+    masthead logo, footer brand, and footer copyright. Operators
+    who rename their site in the Setup wizard or in admin no
+    longer see "NexPress" baked into the chrome. Empty / missing
+    rows fall back to the literal `"NexPress"` so a degraded DB
+    doesn't leave the header blank.
+  - **`@nexpress/theme-magazine`** adds optional
+    `leadIssueNumber` to its settings schema. When unset, the
+    cover-story figure falls back to an ISO-style week-of-year so
+    a fresh install ships with a sensibly rotating counter
+    (previously hardcoded to `47`).
+  - **`@nexpress/theme-portfolio`** restores typecheck on `main`:
+    - `socialLinks` added to `portfolioSettingsSchema` (the
+      template was rendering it but the schema didn't declare it
+      — a regression from #736's self-review).
+    - `publishedAt` added to `PortfolioProjectDoc` so the year
+      fallback in the project-index template compiles.
+    - Removes `gridColumns` / `cardAspect` / `galleryGutter` /
+      `hoverStyle` from settings + shell (orphaned by the #736
+      redesign — the redesigned card grid uses hardcoded
+      per-span `aspect-ratio` and dropped the per-card hover-
+      variant data attribute). The auto-form drops these
+      sections automatically.
+
+  The portfolio settings drop is the only intentionally-breaking
+  piece here. Operators who had values saved against
+  `gridColumns` / `cardAspect` / `galleryGutter` / `hoverStyle`
+  will see them silently ignored on the next save; the strings
+  weren't doing anything since #736 anyway.
+
+- Updated dependencies [ab3afa7]
+- Updated dependencies [f36c0f2]
+- Updated dependencies [bb1bd30]
+- Updated dependencies [41df9e4]
+- Updated dependencies [f10d5b7]
+  - @nexpress/core@0.3.0
+  - @nexpress/editor@0.3.0
+  - @nexpress/theme@0.3.0
+  - @nexpress/next@0.3.0
+  - @nexpress/blocks@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes

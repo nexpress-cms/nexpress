@@ -1,5 +1,129 @@
 # @nexpress/theme-default
 
+## 0.3.0
+
+### Minor Changes
+
+- 5faaede: Theme-default redesign — production blog baseline with seed content.
+
+  The visual surface is overhauled to a low-key engineering-blog identity:
+  hairline sticky header with a logo mark + centered nav + ⌘K search pill +
+  Subscribe CTA; centered page header with a primary-tinted eyebrow pill +
+  big headline + intro + category strip; two-column feature card with a
+  gradient cover (figure + issue/read-time overlay) above a three-up post
+  grid where each card cycles through six cover gradients and four avatar
+  tones so the grid reads as a typographic mosaic; dark inline newsletter
+  slab with a radial glow; four-column footer (brand / sitemap / resources
+  / newsletter) with a bottom secondary-links row.
+
+  `impl.tokens` overlay sets the new identity — indigo `#4f46e5` primary,
+  Geist Sans + Geist Mono font stacks (system-font fallback chain so no
+  webfont request at boot), refreshed radii (6 / 10 / 14 px).
+
+  `impl.seedContent` ships out of the box:
+  - **11 tags**: Engineering, Postgres, TypeScript, Distributed, Product,
+    Notes, RFC, Caches, Indexes, Types, Queues.
+  - **7 posts** (one feature + six grid): production-shaped pieces on
+    read-replica routing, planner pathology, branded primitives, the
+    transactional outbox, latency budgets, cache stampedes, and the
+    RFC template.
+  - **Navigation**: header (Writing / Notes / Talks / About) and footer
+    (same + Archive).
+
+  `PostCard` gains optional props (`coverGradient`, `coverFigure`,
+  `coverOverlay`, `kicker`, `avatarTone`) that the post-list template
+  supplies based on card index. `PostListDoc` (the doc shape the list
+  template reads) gains `eyebrow`, `categories`, `sectionMeta`,
+  `pagination`, `newsletter` — all optional, so existing sites that route
+  plain `{ docs, heading, intro }` through the template keep working.
+
+  Inline newsletter renders a plain `<form action="/api/subscribe">`
+  (operators wire the endpoint) rather than pulling the
+  `useState`-backed `NewsletterForm` into the server-template bundle.
+  Footer continues to render the client `NewsletterForm` for inline
+  success / error feedback.
+
+### Patch Changes
+
+- 0c096f1: Wires three small client-side affordances the themes already
+  hinted at but didn't actually deliver:
+  - **`@nexpress/theme-default`** + **`@nexpress/theme-docs`**:
+    the masthead ⌘K affordance now works. A new
+    `SearchKeyboardShortcut` client island listens for Cmd+K /
+    Ctrl+K on `document` and focuses + selects the search input.
+    Drops into both themes as a sibling of the search form;
+    hidden in the DOM (renders `null`).
+  - **`@nexpress/theme-docs`**: TOC scrollspy. A new
+    `TocScrollspy` client island reads the heading ids the
+    template already emits (h2/h3 from `renderRichText`) and
+    stamps `aria-current="true"` on the matching TOC anchor as
+    the user scrolls. CSS already targeted `aria-current`
+    styling, but no walker was emitting the attribute — now there
+    is. Uses `IntersectionObserver` with a top-biased margin so
+    activation happens when a heading enters the top third of
+    the viewport.
+  - **`@nexpress/theme-portfolio`**: live-ticking local-time
+    pill. The masthead's `City · HH:MM` label was SSR-only and
+    drifted as the page sat idle. A new `LocalTimeTicker` client
+    island re-derives the same `Intl.DateTimeFormat` output once
+    a minute, aligned to the next minute boundary so all
+    visitors see the rollover at the same wall-clock second.
+    SSR initial label is reused as the first state — no
+    hydration flicker.
+
+  Each island is module-scoped, mount-only side effects, and
+  disposes its listener/observer on unmount. None of them ship
+  new operator-visible settings; they're polish on the chrome
+  the themes already render.
+
+- 41df9e4: Theme polish bundle:
+  - **`@nexpress/next`** ships a new `getCachedSite()` (+
+    `siteCacheTag`) so themes can read the operator's site name
+    from the `np_sites` row without each one wiring its own DB
+    query. Same `unstable_cache` pattern as the other cached
+    helpers; tag is `np:site:<siteId>`.
+  - **`@nexpress/theme-default`** and **`@nexpress/theme-docs`**
+    now read the site name from `getCachedSite()` for the
+    masthead logo, footer brand, and footer copyright. Operators
+    who rename their site in the Setup wizard or in admin no
+    longer see "NexPress" baked into the chrome. Empty / missing
+    rows fall back to the literal `"NexPress"` so a degraded DB
+    doesn't leave the header blank.
+  - **`@nexpress/theme-magazine`** adds optional
+    `leadIssueNumber` to its settings schema. When unset, the
+    cover-story figure falls back to an ISO-style week-of-year so
+    a fresh install ships with a sensibly rotating counter
+    (previously hardcoded to `47`).
+  - **`@nexpress/theme-portfolio`** restores typecheck on `main`:
+    - `socialLinks` added to `portfolioSettingsSchema` (the
+      template was rendering it but the schema didn't declare it
+      — a regression from #736's self-review).
+    - `publishedAt` added to `PortfolioProjectDoc` so the year
+      fallback in the project-index template compiles.
+    - Removes `gridColumns` / `cardAspect` / `galleryGutter` /
+      `hoverStyle` from settings + shell (orphaned by the #736
+      redesign — the redesigned card grid uses hardcoded
+      per-span `aspect-ratio` and dropped the per-card hover-
+      variant data attribute). The auto-form drops these
+      sections automatically.
+
+  The portfolio settings drop is the only intentionally-breaking
+  piece here. Operators who had values saved against
+  `gridColumns` / `cardAspect` / `galleryGutter` / `hoverStyle`
+  will see them silently ignored on the next save; the strings
+  weren't doing anything since #736 anyway.
+
+- Updated dependencies [ab3afa7]
+- Updated dependencies [f36c0f2]
+- Updated dependencies [bb1bd30]
+- Updated dependencies [41df9e4]
+- Updated dependencies [f10d5b7]
+  - @nexpress/core@0.3.0
+  - @nexpress/editor@0.3.0
+  - @nexpress/theme@0.3.0
+  - @nexpress/next@0.3.0
+  - @nexpress/blocks@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes
