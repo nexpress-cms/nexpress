@@ -40,8 +40,9 @@ export async function DocsSidebar(): Promise<React.ReactElement> {
 
   // Pull every doc and assemble the hierarchy. Capped at 500 to
   // keep the query bounded — typical doc sites stay well under.
-  const result = await findDocuments<Record<string, unknown>>("docs", {
-    where: { status: "published" },
+  // Universal-content-model #748: docs are posts with kind="doc".
+  const result = await findDocuments<Record<string, unknown>>("posts", {
+    where: { status: "published", kind: "doc" },
     sort: "order",
     limit: 500,
   });

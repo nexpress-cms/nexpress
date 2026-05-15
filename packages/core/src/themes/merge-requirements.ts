@@ -2,6 +2,7 @@ import type {
   NpCollectionConfig,
   NpFieldConfig,
   NpRegisteredTheme,
+  NpThemeCollectionKind,
   NpThemeCollectionRequirement,
   NpThemeFieldRequirement,
 } from "../config/types.js";
@@ -420,16 +421,50 @@ export function mergeThemeRequirements(
         injectedHere.add(fieldName);
       }
 
-      if (!fieldsCloned) continue;
+      // Kinds metadata (universal-content-model #748). Themes
+      // contribute one entry per kind they author; the merge
+      // unions across themes and stamps the result onto
+      // `target.admin.kinds`. Last-write-wins on per-kind props
+      // (label, icon, urlPattern, …) — two themes claiming the
+      // same kind value is unusual and the second theme's
+      // description wins.
+      let nextAdmin = target.admin;
+      let adminCloned = false;
+      if (req.kinds) {
+        const existingKinds = target.admin?.kinds ?? {};
+        const merged = { ...existingKinds };
+        let changed = false;
+        for (const [kindValue, kindMeta] of Object.entries(req.kinds)) {
+          merged[kindValue] = { ...(merged[kindValue] ?? {}), ...kindMeta };
+          changed = true;
+        }
+        if (changed) {
+          nextAdmin = { ...(target.admin ?? {}), kinds: merged };
+          adminCloned = true;
+        }
+      }
 
-      // Clone the collection record + its fields so we don't
-      // mutate the operator's defineCollection() output. Mutating
-      // the caller's array would surprise consumers that re-use
-      // collection objects (tests, multi-site sandboxes).
-      merged[existingIndex] = { ...target, fields: nextFields };
+      if (!fieldsCloned && !adminCloned) continue;
+
+      // Clone the collection record + its fields / admin so we
+      // don't mutate the operator's defineCollection() output.
+      // Mutating the caller's array would surprise consumers that
+      // re-use collection objects (tests, multi-site sandboxes).
+      merged[existingIndex] = {
+        ...target,
+        ...(fieldsCloned ? { fields: nextFields } : {}),
+        ...(adminCloned ? { admin: nextAdmin } : {}),
+      };
       existingFieldsBySlug.set(slug, alreadyDeclared);
     }
   }
 
   return merged;
 }
+
+/**
+ * Type re-export — `NpThemeCollectionKind` is imported as a value
+ * here only so consumers of `mergeThemeRequirements` don't have to
+ * pull the same type from `../config/types.js` separately.
+ */
+export type { NpThemeCollectionKind };

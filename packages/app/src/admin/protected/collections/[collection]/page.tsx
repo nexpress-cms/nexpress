@@ -11,7 +11,20 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ collection: string }>;
-  searchParams: Promise<{ page?: string; sort?: string; search?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    sort?: string;
+    search?: string;
+    /**
+     * Universal-content-model #748 — when present, narrows the
+     * list view to rows with `kind = <value>`. The admin
+     * sidebar's per-kind entries set this. Unknown kinds yield
+     * an empty list rather than an error (operators bookmark
+     * URLs, themes change kinds — silent degradation beats a
+     * confusing 404 on a still-existing collection).
+     */
+    kind?: string;
+  }>;
 }
 
 export default async function CollectionListPage({
@@ -36,7 +49,7 @@ export default async function CollectionListPage({
   const user = await verifyTokenFull(token, secret, getDb());
   if (!user) redirect("/admin/login");
 
-  const { page, sort, search } = await searchParams;
+  const { page, sort, search, kind } = await searchParams;
 
   const result = await findDocuments(
     collection,
@@ -45,6 +58,9 @@ export default async function CollectionListPage({
       limit: 25,
       sort: sort || config.admin?.defaultSort || "-createdAt",
       search,
+      ...(typeof kind === "string" && kind.length > 0
+        ? { where: { kind } }
+        : {}),
     },
     user,
   );

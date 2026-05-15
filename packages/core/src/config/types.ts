@@ -424,6 +424,18 @@ export interface NpCollectionConfig {
      * before merge) keep this unset and always show.
      */
     _themeOrigin?: string;
+    /**
+     * Framework-set. Stamped by `mergeThemeRequirements` from
+     * `theme.manifest.requires.collections.<slug>.kinds`,
+     * unioned across all registered themes. The admin sidebar
+     * walks this map to render per-kind entries under "Content"
+     * (universal-content-model #748).
+     *
+     * Keyed by the discriminator value declared on the
+     * `kind` field's options. Empty / missing → admin shows a
+     * single collection entry like before.
+     */
+    kinds?: Record<string, NpThemeCollectionKind>;
   };
   upload?: NpUploadConfig;
 }
@@ -686,6 +698,62 @@ export interface NpThemeCollectionRequirement {
    *  slug is registered. Operator-authored collections of the
    *  same slug always take precedence. */
   createIfAbsent?: boolean;
+  /**
+   * Per-kind metadata for the `kind` discriminator field
+   * (universal-content-model #748). Themes contribute one entry
+   * per kind they author content for; the framework's auto-merge
+   * unions entries across registered themes so the admin sidebar
+   * and the public-site router both see one canonical map.
+   *
+   * Keyed by the option value declared on `fields.kind.options`
+   * (e.g. `kinds.doc` matches the option whose `value: "doc"`).
+   * The collection slug remains `posts`; kinds are a presentation
+   * split, not a separate table.
+   *
+   * The `kind` field itself doesn't have to live on this
+   * collection's `fields` for the metadata to apply — themes that
+   * extend a single kind (`fields.kind.options: [{value:"doc"}]`
+   * + `kinds.doc: {...}`) ship both together and the merge unions
+   * them with whatever other themes declare. A `kinds` block on a
+   * collection without a corresponding select field is a no-op
+   * (the admin shows the regular collection list view).
+   */
+  kinds?: Record<string, NpThemeCollectionKind>;
+}
+
+/**
+ * One kind entry — admin nav + public URL metadata for a single
+ * discriminator value on a `select` field (typically `posts.kind`).
+ *
+ * Field merge: two themes declaring the same kind value get
+ * last-wins on every property. Operators rarely need to redefine
+ * a kind their theme already ships.
+ */
+export interface NpThemeCollectionKind {
+  /** Singular human label — "Doc", "Project", "Article". */
+  label: string;
+  /** Plural label for the admin sidebar entry — "Documentation". */
+  labelPlural: string;
+  /** Lucide icon name (no `Icon` suffix) — "BookOpen", "Briefcase". */
+  icon?: string;
+  /**
+   * Public-site URL pattern. `:slug` is the only supported param;
+   * the catch-all router (`apps/web/src/app/(site)/[[...slug]]/page.tsx`)
+   * matches the path, extracts the slug, and queries the host
+   * collection with `where: { kind: "<this-key>", slug: "<match>" }`.
+   *
+   * Omit to fall back to the framework default (`/<collection-slug>/<slug>`,
+   * shared with the kind=null catch-all path). Two kinds declaring
+   * the same urlPattern collide and the first wins; the admin
+   * surfaces this via the requirements diff.
+   */
+  urlPattern?: string;
+  /**
+   * True → admin's per-kind list view surfaces `parent` + `order`
+   * controls and renders rows as a tree. Themes with hierarchical
+   * content (docs, sections) opt in; flat kinds leave it false.
+   */
+  hierarchical?: boolean;
 }
 
 /**

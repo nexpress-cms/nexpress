@@ -45,6 +45,8 @@ export interface PostsDocument {
   coverVariant: string | null;
   coverFigure: string | null;
   badge: string | null;
+  lede: string | null;
+  stableSince: string | null;
 }
 
 export interface PagesDocument {
@@ -112,22 +114,6 @@ export interface AuthorsDocument {
   updatedBy: string | null;
   name: string | null;
   bio: string | null;
-}
-
-export interface DocsDocument {
-  id: string;
-  status: "draft" | "published" | "archived" | "pending";
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string | null;
-  updatedBy: string | null;
-  title: string | null;
-  lede: string | null;
-  body: unknown | null;
-  parent: string | null;
-  order: number | null;
-  stableSince: string | null;
-  badge: string | null;
 }
 
 /**
@@ -308,20 +294,4 @@ export function getAuthorsDocument(
   user?: NpAuthUser,
 ): Promise<AuthorsDocument | null> {
   return getDocumentById<AuthorsDocument>("authors", id, user);
-}
-
-/** Typed listing query for the `docs` collection. */
-export function findDocs(
-  options: NpFindOptions<DocsDocument> = {},
-  user?: NpAuthUser,
-): Promise<NpFindResult<DocsDocument>> {
-  return findDocuments<DocsDocument>("docs", options, user);
-}
-
-/** Typed by-id fetch for the `docs` collection. */
-export function getDocsDocument(
-  id: string,
-  user?: NpAuthUser,
-): Promise<DocsDocument | null> {
-  return getDocumentById<DocsDocument>("docs", id, user);
 }

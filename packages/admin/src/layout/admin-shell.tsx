@@ -75,6 +75,25 @@ export interface AdminShellCollection {
     hidden?: boolean;
     /** Lucide icon name; resolved against COLLECTION_ICONS at render time. */
     icon?: string;
+    /**
+     * Per-kind nav entries (universal-content-model #748). When a
+     * collection's `kind` select is themed-extended (e.g. `posts`
+     * gaining `kind: "doc"` from theme-docs), each kind contributes
+     * its own sidebar entry under the same group. The collection's
+     * top-level entry stays — operators can still see "All posts"
+     * with the kinds filter cleared.
+     *
+     * Keyed by the discriminator value the theme registered. The
+     * label / icon flow through to the rendered nav item; clicking
+     * routes to `/admin/collections/<slug>?kind=<kind>`.
+     */
+    kinds?: Record<
+      string,
+      {
+        labelPlural: string;
+        icon?: string;
+      }
+    >;
   };
 }
 
@@ -182,6 +201,35 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       },
     ];
 
+    /**
+     * Expand one collection into its nav entries. The collection's
+     * top-level entry always renders; any registered kinds get
+     * their own siblings below. Universal-content-model #748 —
+     * docs theme contributes `kinds.doc` on posts, which renders
+     * as a "Documentation" entry pointing at
+     * `/admin/collections/posts?kind=doc`.
+     */
+    const navEntriesFor = (collection: AdminShellCollection): NavItem[] => {
+      const items: NavItem[] = [
+        {
+          href: `/admin/collections/${collection.slug}`,
+          label: collection.labels.plural,
+          icon: resolveCollectionIcon(collection.admin?.icon),
+        },
+      ];
+      const kinds = collection.admin?.kinds;
+      if (kinds) {
+        for (const [kindValue, meta] of Object.entries(kinds)) {
+          items.push({
+            href: `/admin/collections/${collection.slug}?kind=${encodeURIComponent(kindValue)}`,
+            label: meta.labelPlural,
+            icon: resolveCollectionIcon(meta.icon),
+          });
+        }
+      }
+      return items;
+    };
+
     const collectionEntries = Object.entries(collectionGroups);
     if (collectionEntries.length > 0) {
       const [firstGroup, ...rest] = collectionEntries;
@@ -189,22 +237,14 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
       result.push({
         eyebrow: firstName,
         items: [
-          ...firstItems.map((collection) => ({
-            href: `/admin/collections/${collection.slug}`,
-            label: collection.labels.plural,
-            icon: resolveCollectionIcon(collection.admin?.icon),
-          })),
+          ...firstItems.flatMap((collection) => navEntriesFor(collection)),
           { href: "/admin/media", label: "Media", icon: Image },
         ],
       });
       for (const [groupName, items] of rest) {
         result.push({
           eyebrow: groupName,
-          items: items.map((collection) => ({
-            href: `/admin/collections/${collection.slug}`,
-            label: collection.labels.plural,
-            icon: resolveCollectionIcon(collection.admin?.icon),
-          })),
+          items: items.flatMap((collection) => navEntriesFor(collection)),
         });
       }
     } else {
