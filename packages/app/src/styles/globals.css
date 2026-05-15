@@ -1010,3 +1010,9 @@
 .np-sidebar-group-content[data-state="closed"] {
   animation: np-collapsible-slide-up 180ms ease-out;
 }
+@media (prefers-reduced-motion: reduce) {
+  .np-sidebar-group-content[data-state="open"],
+  .np-sidebar-group-content[data-state="closed"] {
+    animation: none;
+  }
+}
