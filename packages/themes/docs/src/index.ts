@@ -37,18 +37,17 @@ const SEED_NAV = {
  * right. Sidebar collapses out at the tablet breakpoint; TOC
  * collapses out below 1100px.
  *
- * Pairs with a `docs` collection (auto-created via
- * `requires.collections.docs.createIfAbsent` on the bundled-themes
- * prebake path). Operator-declared fields with the same names win
- * on collision so a site that ships its own `docs` schema is
- * never overwritten.
+ * Pairs with `posts` rows of `kind: "doc"`
+ * (universal-content-model #748 — docs are posts with a kind
+ * discriminator, not a separate collection). The doc-specific
+ * fields (`lede`, `stableSince`) are contributed via
+ * `requires.collections.posts.fields` and merged onto the
+ * built-in posts collection at config-resolution time.
  *
  * `seedContent.navigation` ships the primary header / footer
- * links; the `docs` collection rows are operator-authored.
- * Seeding actual doc rows requires the seedContent contract to
- * grow a `documents?: Record<slug, ...>` slot, which is queued as
- * a follow-up — without it, themes that target non-page / non-post
- * collections (docs, projects, products) can only seed nav.
+ * links. Doc rows are operator-authored; themes that want to
+ * seed kind="doc" content use `seedContent.posts` with the
+ * `kind` field set on each entry (see U.1 #749).
  */
 export const docsTheme = defineTheme({
   manifest: {
