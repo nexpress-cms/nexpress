@@ -761,9 +761,15 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
   const passes = (field: NpFieldConfig): boolean =>
     passesCondition(field, formValues, showAllFields);
   const sidebarFields = visibleFields.filter(isSidebarField).filter(passes);
-  const mainFields = visibleFields
-    .filter((field) => !isSidebarField(field))
-    .filter(passes);
+  const mainCandidates = visibleFields.filter((field) => !isSidebarField(field));
+  const mainFields = mainCandidates.filter(passes);
+  // Mirror the sidebar's empty-state contract: when every main
+  // field is gated out by the current kind, surface the reason +
+  // escape hatch rather than leaving the column blank. The check
+  // only fires when there *were* candidates to begin with — a
+  // collection with no main-position fields stays empty silently.
+  const mainHiddenByKind =
+    !showAllFields && mainCandidates.length > 0 && mainFields.length === 0;
 
   // Group sidebar fields by `admin.group`, preserving the first-
   // seen order of groups so operators control layout by ordering
@@ -786,10 +792,12 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
   // Has the active kind filter actually hidden any field? Used to
   // decide whether to show the "Show all fields" toggle at all —
   // no hidden fields → no point in offering the escape hatch.
-  const hasHiddenFields = !showAllFields && visibleFields.some((field) => {
-    if (field.type === "row" || field.type === "collapsible") return false;
-    return field.admin?.condition !== undefined && !passesCondition(field, formValues, false);
-  });
+  // Delegates to `collectHiddenFieldNames` so container-nested
+  // (row / collapsible / group) conditional fields are detected
+  // too — a `row` child with a failing condition shouldn't
+  // silently hide the escape hatch from the operator.
+  const hasHiddenFields =
+    !showAllFields && collectHiddenFieldNames(visibleFields, formValues).size > 0;
 
   const successMessage = (status: SaveStatus, publishedAt?: string): string => {
     if (status === "scheduled" && publishedAt) {
@@ -1193,6 +1201,23 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                 multiple main-position fields (e.g. a products
                 collection with name + sku + dimensions) can group
                 them naturally. */}
+            {mainHiddenByKind ? (
+              <Card>
+                <CardContent className="flex flex-col items-start gap-3 px-4 py-5">
+                  <p className="text-[13px] text-muted-foreground">
+                    Every editor field is hidden for this kind. Toggle{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFields(true)}
+                      className="font-medium text-[var(--np-color-brand)] underline-offset-[3px] hover:underline"
+                    >
+                      Show all fields
+                    </button>{" "}
+                    on the right to surface them.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
             {(() => {
               const out: ReactElement[] = [];
               let pending: { name: string; fields: NpFieldConfig[]; startIdx: number } | null = null;
