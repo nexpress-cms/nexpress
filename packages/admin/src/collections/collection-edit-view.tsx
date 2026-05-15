@@ -1157,6 +1157,29 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                     </SidebarGroupCard>
                   );
                 })
+              ) : hasHiddenFields ? (
+                /* Every sidebar field is hidden by `admin.condition`
+                   against the current kind. Distinct from "no
+                   sidebar fields configured" — operator might
+                   wonder if the editor is broken when their
+                   familiar Publish / Author / Taxonomy cards
+                   disappear after kind change. Surface the
+                   reason + escape hatch. */
+                <Card>
+                  <CardContent className="flex flex-col items-start gap-3 px-4 py-5">
+                    <p className="text-[13px] text-muted-foreground">
+                      Every sidebar field is hidden for this kind. Toggle{" "}
+                      <button
+                        type="button"
+                        onClick={() => setShowAllFields(true)}
+                        className="font-medium text-[var(--np-color-brand)] underline-offset-[3px] hover:underline"
+                      >
+                        Show all fields
+                      </button>{" "}
+                      above to surface them.
+                    </p>
+                  </CardContent>
+                </Card>
               ) : (
                 <Card>
                   <CardHeader>
