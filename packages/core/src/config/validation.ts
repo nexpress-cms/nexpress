@@ -4,6 +4,27 @@ const functionSchema = z.custom<(...args: unknown[]) => unknown>(
   (value) => typeof value === "function",
 );
 
+/**
+ * Serializable condition predicate (NpFieldConditionExpr) — the
+ * Zod mirror of the type defined in `config/types.ts`. Permissive
+ * (no exhaustive variant validation) because adding new operators
+ * to the type union shouldn't force a schema bump. `z.unknown()`
+ * on the value slots tolerates the wide payload shapes the editor
+ * uses; the runtime evaluator (`evaluateFieldCondition`)
+ * fail-opens on malformed expressions.
+ */
+const conditionExprSchema: z.ZodType = z.lazy(() =>
+  z.union([
+    z.object({ when: z.string().min(1), equals: z.unknown() }),
+    z.object({ when: z.string().min(1), notEquals: z.unknown() }),
+    z.object({ when: z.string().min(1), in: z.array(z.unknown()) }),
+    z.object({ when: z.string().min(1), notIn: z.array(z.unknown()) }),
+    z.object({ when: z.string().min(1), exists: z.boolean() }),
+    z.object({ all: z.array(conditionExprSchema) }),
+    z.object({ any: z.array(conditionExprSchema) }),
+  ]),
+);
+
 const fieldBaseSchema = z.object({
   name: z.string().min(1),
   label: z.string().min(1).optional(),
@@ -15,7 +36,10 @@ const fieldBaseSchema = z.object({
       description: z.string().min(1).optional(),
       placeholder: z.string().optional(),
       readOnly: z.boolean().optional(),
-      condition: functionSchema.optional(),
+      // Accepts either the legacy function form (server-only, stripped
+      // at the RSC boundary) or the serializable expression form
+      // (#764). The runtime evaluator handles both.
+      condition: z.union([functionSchema, conditionExprSchema]).optional(),
       width: z.string().optional(),
     })
     .optional(),
