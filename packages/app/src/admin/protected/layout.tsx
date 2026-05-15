@@ -96,6 +96,20 @@ export default async function AdminLayout({
             group: c.admin.group,
             hidden: c.admin.hidden,
             icon: c.admin.icon,
+            // Universal-content-model #748 — themes contribute
+            // per-kind admin nav metadata via
+            // `requires.collections.<slug>.kinds`; the merge step
+            // stamps it onto `admin.kinds`. Project the
+            // subset the client shell needs (label + icon) so
+            // the rest of the AdminShellCollection stays opaque.
+            kinds: c.admin.kinds
+              ? Object.fromEntries(
+                  Object.entries(c.admin.kinds).map(([k, v]) => [
+                    k,
+                    { labelPlural: v.labelPlural, ...(v.icon ? { icon: v.icon } : {}) },
+                  ]),
+                )
+              : undefined,
           }
         : undefined,
     }));

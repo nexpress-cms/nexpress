@@ -253,8 +253,8 @@ async function loadBreadcrumbs(current: DocDoc): Promise<Crumb[]> {
   }
   // Walk parents in a single bounded query — sidebar already
   // pulls the same list so the row count is small.
-  const result = await findDocuments<Record<string, unknown>>("docs", {
-    where: { status: "published" },
+  const result = await findDocuments<Record<string, unknown>>("posts", {
+    where: { status: "published", kind: "doc" },
     sort: "order",
     limit: 500,
   });
@@ -277,8 +277,8 @@ async function loadBreadcrumbs(current: DocDoc): Promise<Crumb[]> {
 async function loadPrevNext(
   current: DocDoc,
 ): Promise<{ prev: DocDoc | null; next: DocDoc | null }> {
-  const result = await findDocuments<Record<string, unknown>>("docs", {
-    where: { status: "published" },
+  const result = await findDocuments<Record<string, unknown>>("posts", {
+    where: { status: "published", kind: "doc" },
     sort: "order",
     limit: 500,
   });

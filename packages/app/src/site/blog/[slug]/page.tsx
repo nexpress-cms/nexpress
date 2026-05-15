@@ -32,6 +32,17 @@ export default async function PostPage({ params }: PostPageProps) {
   const post = await getPostBySlug(slug, { draft: isDraft });
   if (!post) notFound();
 
+  // Universal-content-model #748: `/blog/<slug>` is the article
+  // surface. Doc-kind posts have their own canonical URL
+  // (`/docs/<slug>`) wired through the docs theme's route +
+  // `posts.seo.urlPath`. Visiting `/blog/<slug>` for a doc-kind
+  // post would render through the article template chrome,
+  // which is wrong — 404 instead. (Operators with a string-
+  // matched bookmark land on `/docs/<slug>` after slug-history
+  // resolves the kind.)
+  const postKind = typeof post.kind === "string" ? post.kind : "article";
+  if (postKind !== "article") notFound();
+
   const content = post.content as NpRichTextContent | undefined;
 
   const { head, bodyEnd } = await collectRenderContributions({

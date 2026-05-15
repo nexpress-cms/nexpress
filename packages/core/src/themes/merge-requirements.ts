@@ -2,6 +2,7 @@ import type {
   NpCollectionConfig,
   NpFieldConfig,
   NpRegisteredTheme,
+  NpThemeCollectionKind,
   NpThemeCollectionRequirement,
   NpThemeFieldRequirement,
 } from "../config/types.js";
@@ -344,10 +345,13 @@ export function mergeThemeRequirements(
 
       // Existing collection — append the theme's fields that
       // aren't already present (or, for select fields, union the
-      // options into the existing select). Skip entirely when
-      // the requirement has no fields to contribute.
+      // options into the existing select), and stamp the kinds
+      // metadata. A theme that contributes only `kinds` (no
+      // `fields`) still gets the merge — the early skip on
+      // missing fields would have dropped it pre-#750.
       const reqFields = req.fields;
-      if (!reqFields) continue;
+      const reqKinds = req.kinds;
+      if (!reqFields && !reqKinds) continue;
 
       const alreadyDeclared = existingFieldsBySlug.get(slug) ?? new Set<string>();
       const target = merged[existingIndex];
@@ -362,7 +366,7 @@ export function mergeThemeRequirements(
         return nextFields;
       };
 
-      for (const [fieldName, fieldReq] of Object.entries(reqFields)) {
+      for (const [fieldName, fieldReq] of Object.entries(reqFields ?? {})) {
         if (alreadyDeclared.has(fieldName)) {
           // Select-options union (universal-content-model Phase U.1).
           // When both sides are `select`, the requirement's
@@ -420,16 +424,49 @@ export function mergeThemeRequirements(
         injectedHere.add(fieldName);
       }
 
-      if (!fieldsCloned) continue;
+      // Kinds metadata (universal-content-model #748). Themes
+      // contribute one entry per kind they author; the merge
+      // unions across themes and stamps the result onto
+      // `target.admin.kinds`. Last-write-wins on per-kind props
+      // (label, icon, urlPattern, …) — two themes claiming the
+      // same kind value is unusual and the second theme's
+      // description wins.
+      let nextAdmin = target.admin;
+      let adminCloned = false;
+      if (reqKinds && Object.keys(reqKinds).length > 0) {
+        const existingKinds = target.admin?.kinds ?? {};
+        const mergedKinds = { ...existingKinds };
+        for (const [kindValue, kindMeta] of Object.entries(reqKinds)) {
+          mergedKinds[kindValue] = {
+            ...(mergedKinds[kindValue] ?? {}),
+            ...kindMeta,
+          };
+        }
+        nextAdmin = { ...(target.admin ?? {}), kinds: mergedKinds };
+        adminCloned = true;
+      }
 
-      // Clone the collection record + its fields so we don't
-      // mutate the operator's defineCollection() output. Mutating
-      // the caller's array would surprise consumers that re-use
-      // collection objects (tests, multi-site sandboxes).
-      merged[existingIndex] = { ...target, fields: nextFields };
+      if (!fieldsCloned && !adminCloned) continue;
+
+      // Clone the collection record + its fields / admin so we
+      // don't mutate the operator's defineCollection() output.
+      // Mutating the caller's array would surprise consumers that
+      // re-use collection objects (tests, multi-site sandboxes).
+      merged[existingIndex] = {
+        ...target,
+        ...(fieldsCloned ? { fields: nextFields } : {}),
+        ...(adminCloned ? { admin: nextAdmin } : {}),
+      };
       existingFieldsBySlug.set(slug, alreadyDeclared);
     }
   }
 
   return merged;
 }
+
+/**
+ * Type re-export — `NpThemeCollectionKind` is imported as a value
+ * here only so consumers of `mergeThemeRequirements` don't have to
+ * pull the same type from `../config/types.js` separately.
+ */
+export type { NpThemeCollectionKind };

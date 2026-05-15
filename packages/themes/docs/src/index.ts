@@ -37,18 +37,17 @@ const SEED_NAV = {
  * right. Sidebar collapses out at the tablet breakpoint; TOC
  * collapses out below 1100px.
  *
- * Pairs with a `docs` collection (auto-created via
- * `requires.collections.docs.createIfAbsent` on the bundled-themes
- * prebake path). Operator-declared fields with the same names win
- * on collision so a site that ships its own `docs` schema is
- * never overwritten.
+ * Pairs with `posts` rows of `kind: "doc"`
+ * (universal-content-model #748 — docs are posts with a kind
+ * discriminator, not a separate collection). The doc-specific
+ * fields (`lede`, `stableSince`) are contributed via
+ * `requires.collections.posts.fields` and merged onto the
+ * built-in posts collection at config-resolution time.
  *
  * `seedContent.navigation` ships the primary header / footer
- * links; the `docs` collection rows are operator-authored.
- * Seeding actual doc rows requires the seedContent contract to
- * grow a `documents?: Record<slug, ...>` slot, which is queued as
- * a follow-up — without it, themes that target non-page / non-post
- * collections (docs, projects, products) can only seed nav.
+ * links. Doc rows are operator-authored; themes that want to
+ * seed kind="doc" content use `seedContent.posts` with the
+ * `kind` field set on each entry (see U.1 #749).
  */
 export const docsTheme = defineTheme({
   manifest: {
@@ -61,24 +60,44 @@ export const docsTheme = defineTheme({
     nexpress: { minVersion: "0.1.0" },
     requires: {
       collections: {
-        docs: {
-          createIfAbsent: true,
+        posts: {
+          // Universal-content-model #748 — docs are posts with
+          // `kind: "doc"`. The framework's built-in `posts`
+          // collection already supplies `title` / `body` /
+          // `parent` (rel→posts) / `order`. Docs theme adds the
+          // doc-specific meta pills and contributes the kind
+          // option + kinds metadata block for admin / URL
+          // routing.
           fields: {
-            title: { type: "text", required: true },
-            // Short opening paragraph rendered as a lede under the
-            // h1. Optional — the article still renders without it.
-            lede: { type: "textarea", hard: false },
-            body: { type: "richText" },
-            parent: {
-              type: "relationship",
-              relationTo: "docs",
-              hard: false,
+            kind: {
+              type: "select",
+              options: [{ label: "Doc", value: "doc" }],
             },
-            order: { type: "number" },
-            // Meta-pill slots — all optional, all advisory hints
-            // the doc-page template surfaces in the strap row.
+            // Short opening paragraph rendered as a lede under
+            // the h1. Optional — the article still renders
+            // without it.
+            lede: { type: "textarea", hard: false },
+            // Meta-pill slot — advisory hint the doc-page
+            // template surfaces in the strap row. Note: portfolio
+            // theme also contributes a `badge: text` field on
+            // posts; the merge-requirements union picks the first
+            // declarer. Docs reads `doc.badge` regardless of which
+            // theme declared the column.
             stableSince: { type: "text", hard: false },
-            badge: { type: "text", hard: false },
+          },
+          kinds: {
+            doc: {
+              label: "Doc",
+              labelPlural: "Documentation",
+              icon: "BookOpen",
+              // Public-site URL pattern. The catch-all router
+              // matches `/docs/<slug>` and queries posts with
+              // `where: { kind: "doc", slug }`.
+              urlPattern: "/docs/:slug",
+              // Hint to admin: show parent + order controls and
+              // render the list as a tree, not a flat table.
+              hierarchical: true,
+            },
           },
         },
       },
@@ -121,8 +140,14 @@ export const docsTheme = defineTheme({
       navigation: SEED_NAV,
     },
     templates: {
-      docs: {
-        default: {
+      // Universal-content-model #748 — docs are posts with
+      // `kind: "doc"`. The template key matches the kind value so
+      // the per-kind template lookup picks this up automatically.
+      // Article-kind posts continue rendering through the
+      // framework's inline article markup unless the operator
+      // declares a `templates.posts.default` of their own.
+      posts: {
+        doc: {
           label: "Doc page",
           description:
             "Three-column reference layout — breadcrumbs + lede + meta + Lexical body + feedback + prev/next, with the docs sidebar slotted on the left and the on-page TOC on the right.",
@@ -146,12 +171,11 @@ export const docsTheme = defineTheme({
       // by the parametric detail route below (dispatcher is
       // first-match-wins).
       { pattern: "/docs/search", component: DocsSearch },
-      // Doc detail dispatch (#614). The sidebar + template emit
-      // `/docs/<slug>` links; without this route those 404 in
-      // the reference app — the catch-all only resolves `pages`
-      // rows, not arbitrary `docs` collection rows. The
-      // component looks up the docs row by slug and renders
-      // through `templates.docs.default` (DocPageTemplate).
+      // Doc detail dispatch. The sidebar + template emit
+      // `/docs/<slug>` links; the route component looks up the
+      // doc-kind post by slug and renders through DocPageTemplate.
+      // Universal-content-model #748 — docs are posts with
+      // `kind="doc"`; the lookup filters on kind, not collection.
       { pattern: "/docs/:slug", component: DocsDetailRoute },
     ],
     navLocations: {

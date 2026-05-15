@@ -6,21 +6,21 @@ import * as React from "react";
 import { DocPageTemplate } from "../templates/doc-page.js";
 
 /**
- * Theme route for `/docs/:slug` — looks up a docs collection row
- * and renders it through `DocPageTemplate` (#614).
+ * Theme route for `/docs/:slug` — looks up a doc-kind post and
+ * renders it through `DocPageTemplate`.
  *
- * Without this route, the sidebar's `/docs/<slug>` links and the
- * doc template's prev/next links 404 in the reference app — the
- * catch-all only resolves `pages` rows + theme archive routes;
- * arbitrary `docs` collection rows weren't reachable by URL.
+ * Universal-content-model #748: docs are posts with `kind="doc"`.
+ * The framework's catch-all also matches `/docs/:slug` via the
+ * theme's `kinds.doc.urlPattern` metadata; this explicit theme
+ * route stays for two reasons:
  *
- * The lookup is a defensive untyped `findDocuments<DocsRow>`
- * call: the docs collection schema lives in the user's project,
- * not the theme, so we re-declare the minimal shape the template
- * needs (title + body + parent + order) and trust runtime row
- * data to match. Operators who run `theme add
- * @nexpress/theme-docs` get those fields auto-merged into their
- * docs collection by `defineConfig`.
+ *   1. It's the supported path for theme-internal navigation
+ *      that bypasses the kinds-metadata dispatcher (prev/next,
+ *      sidebar links).
+ *   2. It runs ahead of the kinds dispatcher in the precedence
+ *      order so a future themes feature that needs to wrap
+ *      doc-page rendering (e.g. signing-aware drafts) can hook
+ *      in here without touching the framework.
  *
  * Membership / access: same path the catch-all uses for `pages`
  * — `findDocuments` already enforces `access.read` and
@@ -36,6 +36,7 @@ interface DocsRow {
   order?: number;
   status?: string;
   excerpt?: string;
+  kind?: string;
 }
 
 export async function DocsDetailRoute({
@@ -45,8 +46,8 @@ export async function DocsDetailRoute({
   const slug = typeof params.slug === "string" ? params.slug : "";
   if (!slug) notFound();
 
-  const result = await findDocuments<DocsRow>("docs", {
-    where: { slug, status: "published" },
+  const result = await findDocuments<DocsRow>("posts", {
+    where: { slug, status: "published", kind: "doc" },
     limit: 1,
   });
   const doc = result.docs[0];

@@ -42,6 +42,8 @@ export const postsTable = pgTable(
     coverVariant: text("cover_variant"),
     coverFigure: text("cover_figure"),
     badge: text("badge"),
+    lede: text("lede"),
+    stableSince: text("stable_since"),
     slug: text("slug").notNull(),
     siteId: text("site_id").default("default").notNull(),
     _status: text("_status", { enum: ["draft", "published"] }).default("draft").notNull(),
@@ -219,33 +221,4 @@ export const authorsTable = pgTable(
 export const authorsTableRelations = relations(authorsTable, ({ many, one }) => ({
   createdByUser: one(npUsers, { fields: [authorsTable.createdBy], references: [npUsers.id] }),
   updatedByUser: one(npUsers, { fields: [authorsTable.updatedBy], references: [npUsers.id] }),
-}));
-
-export const docsTable = pgTable(
-  "np_c_docs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] }).default("draft").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => npUsers.id),
-    updatedBy: uuid("updated_by").references(() => npUsers.id),
-    visibility: text("visibility", { enum: ["public", "private"] }).default("public").notNull(),
-    title: text("title"),
-    lede: text("lede"),
-    body: jsonb("body"),
-    parent: uuid("parent").references(() => docsTable.id),
-    order: doublePrecision("order"),
-    stableSince: text("stable_since"),
-    badge: text("badge"),
-    siteId: text("site_id").default("default").notNull(),
-    searchVector: tsvector("search_vector"),
-  },
-  (table) => [index("np_c_docs_status_idx").on(table.status), index("np_c_docs_site_idx").on(table.siteId)],
-);
-
-export const docsTableRelations = relations(docsTable, ({ many, one }) => ({
-  createdByUser: one(npUsers, { fields: [docsTable.createdBy], references: [npUsers.id] }),
-  updatedByUser: one(npUsers, { fields: [docsTable.updatedBy], references: [npUsers.id] }),
-  parent: one(docsTable, { fields: [docsTable.parent], references: [docsTable.id] }),
 }));
