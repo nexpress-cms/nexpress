@@ -68,7 +68,7 @@ export const postsCollection = defineCollection({
       required: true,
       defaultValue: "article",
       options: [{ label: "Article", value: "article" }],
-      admin: { position: "sidebar" },
+      admin: { position: "sidebar", group: "Publish" },
     },
     {
       type: "text",
@@ -81,6 +81,7 @@ export const postsCollection = defineCollection({
       name: "excerpt",
       admin: {
         position: "sidebar",
+        group: "Lead",
         description: "Short summary shown in lists and social previews.",
       },
     },
@@ -93,31 +94,40 @@ export const postsCollection = defineCollection({
       type: "upload",
       name: "coverImage",
       relationTo: "media",
-      admin: { position: "sidebar" },
+      admin: { position: "sidebar", group: "Lead" },
     },
     {
       type: "date",
       name: "publishedAt",
-      admin: { description: "Publish date — used for sort order and archive pages." },
+      admin: {
+        position: "sidebar",
+        group: "Publish",
+        description: "Publish date — used for sort order and archive pages.",
+      },
     },
     {
       type: "relationship",
       name: "author",
       relationTo: "users",
-      admin: { position: "sidebar" },
+      admin: { position: "sidebar", group: "Author" },
     },
     {
       // Phase 21.11 — preserves the original WP byline when the
-      // importer can't resolve `author` to an `np_users` row (the
-      // `--no-create-authors` opt-out, or a custom resolver that
-      // returns null for a specific login). Empty when the staff
-      // link survived. Themes that want to surface "Originally
-      // by …" lines read this field as a fallback.
+      // importer can't resolve `author` to an `np_users` row.
+      // `condition`: only surface when the field actually carries
+      // a value — operators creating posts by hand never need this,
+      // and showing an empty "WP original author" input on every
+      // post is noise. Imported posts that retained the byline
+      // will pass the predicate and render normally.
       type: "text",
       name: "wpOriginalAuthor",
       admin: {
         position: "sidebar",
+        group: "Author",
         description: "WP author byline preserved from import — read-only in admin.",
+        condition: (data) =>
+          typeof data.wpOriginalAuthor === "string" &&
+          data.wpOriginalAuthor.trim().length > 0,
       },
     },
     {
@@ -125,26 +135,32 @@ export const postsCollection = defineCollection({
       name: "categories",
       relationTo: "categories",
       hasMany: true,
-      admin: { position: "sidebar" },
+      admin: { position: "sidebar", group: "Taxonomy" },
     },
     {
       type: "relationship",
       name: "tags",
       relationTo: "tags",
       hasMany: true,
-      admin: { position: "sidebar" },
+      admin: { position: "sidebar", group: "Taxonomy" },
     },
     {
       // Hierarchical-kind support (universal-content-model Phase U.1).
-      // Optional for every kind. Themes whose kind is hierarchical
-      // (e.g. docs) read `parent` + `order` to build their sidebar
-      // tree; article-kind posts leave both null and ignore them.
+      // `condition`: only surfaces for kinds whose theme registered
+      // `hierarchical: true` in its kinds metadata. Today only the
+      // docs theme's `kind: "doc"` qualifies; the hardcoded check
+      // keeps the condition self-contained (the alternative — reading
+      // `admin.kinds.<x>.hierarchical` from the registry inside the
+      // condition — would require widening the condition signature
+      // for one call site).
       type: "relationship",
       name: "parent",
       relationTo: "posts",
       admin: {
         position: "sidebar",
+        group: "Hierarchy",
         description: "Parent post — used by hierarchical kinds (e.g. docs).",
+        condition: (data) => data.kind === "doc",
       },
     },
     {
@@ -152,7 +168,9 @@ export const postsCollection = defineCollection({
       name: "order",
       admin: {
         position: "sidebar",
+        group: "Hierarchy",
         description: "Sort order within a parent. Only used by hierarchical kinds.",
+        condition: (data) => data.kind === "doc",
       },
     },
   ],

@@ -88,10 +88,36 @@ const SUPPORTED_REQUIREMENT_TYPES = new Set<NpThemeFieldRequirement["type"]>([
  * without options, `upload` without `relationTo`). The caller
  * logs a warning so the operator sees what was skipped.
  */
+/**
+ * Build the `admin` slot for a synthesised field from the theme
+ * requirement's `admin` hints. Only forwards keys that the
+ * field-base type accepts so a theme-author typo doesn't
+ * silently land in the runtime config.
+ *
+ * Typed as `Record<string, unknown>` because `NpFieldConfig` is
+ * a discriminated union with at least one variant (row /
+ * collapsible) that lacks the `admin` slot — the union type
+ * `NpFieldConfig["admin"]` doesn't resolve. The runtime shape is
+ * the same `NpFieldBase.admin` object for every field that
+ * accepts it; we're just side-stepping a TypeScript union
+ * narrowing limitation.
+ */
+function buildAdminSlot(
+  req: NpThemeFieldRequirement,
+): Record<string, unknown> | undefined {
+  if (!req.admin) return undefined;
+  const out: Record<string, unknown> = {};
+  if (req.admin.group !== undefined) out.group = req.admin.group;
+  if (req.admin.condition !== undefined) out.condition = req.admin.condition;
+  if (req.admin.position !== undefined) out.position = req.admin.position;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function requirementToField(
   name: string,
   req: NpThemeFieldRequirement,
 ): NpFieldConfig | null {
+  const admin = buildAdminSlot(req);
   switch (req.type) {
     case "text":
     case "textarea":
@@ -106,7 +132,7 @@ function requirementToField(
       // that have no value; making them NOT NULL blocks the
       // very next migration. Theme authors that need a non-null
       // guarantee enforce it in their template/read path.
-      return { type: req.type, name };
+      return admin ? { type: req.type, name, admin } : { type: req.type, name };
     case "upload": {
       if (!req.relationTo || Array.isArray(req.relationTo)) {
         log().warn(
@@ -115,11 +141,12 @@ function requirementToField(
         );
         return null;
       }
-      return {
-        type: "upload",
+      const base = {
+        type: "upload" as const,
         name,
         relationTo: req.relationTo,
       };
+      return admin ? { ...base, admin } : base;
     }
     case "relationship": {
       if (!req.relationTo) {
@@ -134,7 +161,8 @@ function requirementToField(
         name,
         relationTo: req.relationTo,
       };
-      return req.hasMany ? { ...baseField, hasMany: true } : baseField;
+      const withMany = req.hasMany ? { ...baseField, hasMany: true } : baseField;
+      return admin ? { ...withMany, admin } : withMany;
     }
     case "select": {
       // A theme can synthesise a select when it provides at least
@@ -152,11 +180,12 @@ function requirementToField(
         );
         return null;
       }
-      return {
-        type: "select",
+      const base = {
+        type: "select" as const,
         name,
         options: [...req.options],
       };
+      return admin ? { ...base, admin } : base;
     }
     default: {
       // Exhaustiveness — adding a requirement type forces an

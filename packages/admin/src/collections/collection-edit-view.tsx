@@ -20,6 +20,7 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Form } from "../ui/form.js";
 import { StatusBadge } from "../ui/status-badge.js";
+import { Switch } from "../ui/switch.js";
 import { npFetch } from "../lib/api-client.js";
 
 interface CollectionEditViewProps {
@@ -242,6 +243,44 @@ const isVisibleField = (field: NpFieldConfig): boolean => {
   return !field.hidden;
 };
 
+const DEFAULT_SIDEBAR_GROUP = "Publish";
+
+/**
+ * Resolve a sidebar field's group label. Containers (row,
+ * collapsible) and unnamed structural fields don't get grouped —
+ * they keep their authored shape inside the default group.
+ */
+const fieldGroup = (field: NpFieldConfig): string => {
+  if (field.type === "row" || field.type === "collapsible") {
+    return DEFAULT_SIDEBAR_GROUP;
+  }
+  return field.admin?.group ?? DEFAULT_SIDEBAR_GROUP;
+};
+
+/**
+ * Apply `admin.condition` against the live form values. Returns
+ * true when the field has no condition, or the condition returns
+ * true, or the operator has "Show all fields" toggled on.
+ * Containers always pass — their members handle their own gating.
+ */
+const passesCondition = (
+  field: NpFieldConfig,
+  formValues: Record<string, unknown>,
+  showAll: boolean,
+): boolean => {
+  if (showAll) return true;
+  if (field.type === "row" || field.type === "collapsible") return true;
+  const condition = field.admin?.condition;
+  if (!condition) return true;
+  try {
+    return condition(formValues, formValues);
+  } catch {
+    // A buggy condition shouldn't crash the editor — fall back
+    // to showing the field so the operator can still author.
+    return true;
+  }
+};
+
 type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
 
 function formatRelative(timestamp: number): string {
@@ -401,9 +440,71 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
     return () => window.clearInterval(handle);
   }, [autosaveStatus.kind]);
 
+  // Show-all toggle — when on, condition-hidden fields are
+  // revealed (with no other styling change). Persisted per-
+  // collection in localStorage so the operator's preference
+  // survives page reloads.
+  const showAllStorageKey = `np-admin.show-all-fields.${collectionSlug}`;
+  const [showAllFields, setShowAllFields] = useState<boolean>(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(showAllStorageKey);
+      if (stored === "1") setShowAllFields(true);
+    } catch {
+      // localStorage access can throw in restricted contexts
+      // (private mode, sandboxed iframes). Silent fallback.
+    }
+  }, [showAllStorageKey]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(showAllStorageKey, showAllFields ? "1" : "0");
+    } catch {
+      // see above
+    }
+  }, [showAllStorageKey, showAllFields]);
+
+  // Live form values for `admin.condition` evaluation. `form.watch()`
+  // returns the current snapshot and resubscribes on render —
+  // expensive on big forms, but the form values are small JSON
+  // and the alternative (per-field subscriptions) would scatter
+  // the condition logic across renderers.
+  const formValues = form.watch();
+
   const visibleFields = effectiveFields.filter(isVisibleField);
-  const sidebarFields = visibleFields.filter(isSidebarField);
-  const mainFields = visibleFields.filter((field) => !isSidebarField(field));
+  const passes = (field: NpFieldConfig): boolean =>
+    passesCondition(field, formValues, showAllFields);
+  const sidebarFields = visibleFields.filter(isSidebarField).filter(passes);
+  const mainFields = visibleFields
+    .filter((field) => !isSidebarField(field))
+    .filter(passes);
+
+  // Group sidebar fields by `admin.group`, preserving the first-
+  // seen order of groups so operators control layout by ordering
+  // fields. Default group label = "Publish".
+  const sidebarGroups: Array<{ name: string; fields: NpFieldConfig[] }> = [];
+  {
+    const indexByName = new Map<string, number>();
+    for (const field of sidebarFields) {
+      const name = fieldGroup(field);
+      let idx = indexByName.get(name);
+      if (idx === undefined) {
+        idx = sidebarGroups.length;
+        indexByName.set(name, idx);
+        sidebarGroups.push({ name, fields: [] });
+      }
+      sidebarGroups[idx]!.fields.push(field);
+    }
+  }
+
+  // Has the active kind filter actually hidden any field? Used to
+  // decide whether to show the "Show all fields" toggle at all —
+  // no hidden fields → no point in offering the escape hatch.
+  const hasHiddenFields = !showAllFields && visibleFields.some((field) => {
+    if (field.type === "row" || field.type === "collapsible") return false;
+    return field.admin?.condition !== undefined && !passesCondition(field, formValues, false);
+  });
 
   const successMessage = (status: SaveStatus, publishedAt?: string): string => {
     if (status === "scheduled" && publishedAt) {
@@ -680,25 +781,57 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
 
           <div className="xl:col-span-4">
             <div className="sticky top-20 space-y-6">
-              <Card className="">
-                <CardHeader>
-                  <CardTitle>Publishing</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {sidebarFields.length > 0 ? (
-                    sidebarFields.map((field, index) => (
-                      <FieldRenderer
-                        key={field.type === "row" || field.type === "collapsible" ? `${field.type}-${index}` : field.name}
-                        field={field}
-                        control={form.control}
-                        collectionSlug={collectionSlug}
-                      />
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No sidebar fields configured for this collection.</p>
-                  )}
-                </CardContent>
-              </Card>
+              {/* Show-all toggle — only rendered when some field
+                  has an `admin.condition` that's currently hiding
+                  it. Operators on collections without conditional
+                  fields don't see a useless control. */}
+              {(hasHiddenFields || showAllFields) ? (
+                <div className="flex items-center justify-between rounded-md border border-dashed border-neutral-200 bg-neutral-50/50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
+                  <span className="text-muted-foreground">
+                    {showAllFields ? "Showing all fields" : "Showing fields relevant to this kind"}
+                  </span>
+                  <Switch
+                    checked={showAllFields}
+                    onCheckedChange={setShowAllFields}
+                    aria-label="Show all fields, including ones hidden by the current kind"
+                  />
+                </div>
+              ) : null}
+
+              {sidebarGroups.length > 0 ? (
+                sidebarGroups.map((group) => (
+                  <Card key={group.name}>
+                    <CardHeader>
+                      <CardTitle>{group.name}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {group.fields.map((field, index) => (
+                        <FieldRenderer
+                          key={
+                            field.type === "row" || field.type === "collapsible"
+                              ? `${field.type}-${index}`
+                              : field.name
+                          }
+                          field={field}
+                          control={form.control}
+                          collectionSlug={collectionSlug}
+                        />
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Publishing</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      No sidebar fields configured for this collection.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               {doc?.id && config.admin?.navMembership ? (
                 <NavMembershipPanel

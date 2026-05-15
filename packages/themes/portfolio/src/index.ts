@@ -229,10 +229,49 @@ export const portfolioTheme = defineTheme({
       collections: {
         posts: {
           fields: {
-            heroImage: { type: "upload", relationTo: "media" },
-            client: { type: "text", hard: false },
-            year: { type: "number", hard: false },
-            role: { type: "text", hard: false },
+            // All portfolio-contributed fields share two admin
+            // hints: `group: "Portfolio"` (one sidebar Card)
+            // and `condition: (data) => data.kind !== "doc"`
+            // (irrelevant for documentation pages). When the
+            // editor's active kind is `"doc"`, the whole
+            // Portfolio group hides; on `"article"` or operator-
+            // added kinds, the fields show.
+            heroImage: {
+              type: "upload",
+              relationTo: "media",
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            client: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            year: {
+              type: "number",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            role: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
             // New fields the redesigned index template reads.
             // All optional + hard: false so operator-authored
             // posts collections don't break on a theme swap.
@@ -243,11 +282,51 @@ export const portfolioTheme = defineTheme({
             // gate test. The portfolio template reads
             // `doc.featured` regardless; the column exists in
             // the merged schema.
-            discipline: { type: "text", hard: false },
-            span: { type: "number", hard: false },
-            coverVariant: { type: "text", hard: false },
-            coverFigure: { type: "text", hard: false },
-            badge: { type: "text", hard: false },
+            discipline: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            span: {
+              type: "number",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            coverVariant: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            coverFigure: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
+            badge: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Portfolio",
+                condition: (data) => data.kind !== "doc",
+              },
+            },
           },
         },
       },
