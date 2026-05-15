@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1065,32 +1073,105 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                 documentId={String(doc.id)}
               />
             ) : null}
-            {mainFields.map((field, index) => {
-              const key =
-                field.type === "row" || field.type === "collapsible"
-                  ? `${field.type}-${index}`
-                  : field.name;
-              // Title + blocks render naked so they form a single
-              // editing composition: large title flows into the
-              // editor canvas with no Card seam between them.
-              if (isUnwrappedField(field)) {
-                return (
-                  <FieldRenderer
-                    key={key}
-                    field={field}
-                    control={form.control}
-                    collectionSlug={collectionSlug}
-                  />
+            {/* Main column render. Mirrors the sidebar's grouping
+                semantics for consumer symmetry — fields tagged
+                with `admin.group` cluster into a single titled
+                Card; ungrouped wrapped fields keep their own
+                Card; unwrapped fields (title / richText / blocks)
+                render naked so the editor canvas flows seamlessly.
+                Walk in field-array order so operators control
+                the layout by ordering.
+                For built-in `posts` there's nothing in main with
+                a group (title + content are unwrapped); the
+                infrastructure exists so custom collections with
+                multiple main-position fields (e.g. a products
+                collection with name + sku + dimensions) can group
+                them naturally. */}
+            {(() => {
+              const out: ReactElement[] = [];
+              let pending: { name: string; fields: NpFieldConfig[]; startIdx: number } | null = null;
+              const flush = (): void => {
+                if (!pending) return;
+                const meta = config.admin?.groupMeta?.[pending.name];
+                const Icon = resolveGroupIcon(meta?.icon);
+                out.push(
+                  <Card key={`group-${pending.startIdx.toString()}-${pending.name}`}>
+                    <CardHeader className="flex flex-row items-center gap-2">
+                      {Icon ? (
+                        <span
+                          aria-hidden="true"
+                          className="flex size-5 shrink-0 items-center justify-center text-neutral-500 dark:text-neutral-400"
+                        >
+                          <Icon className="size-3.5" />
+                        </span>
+                      ) : null}
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <CardTitle>{pending.name}</CardTitle>
+                        {meta?.description ? (
+                          <p className="truncate text-[11.5px] font-normal text-neutral-500 dark:text-neutral-400">
+                            {meta.description}
+                          </p>
+                        ) : null}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {pending.fields.map((field, i) => (
+                        <FieldRenderer
+                          key={
+                            field.type === "row" || field.type === "collapsible"
+                              ? `${field.type}-${i.toString()}`
+                              : field.name
+                          }
+                          field={field}
+                          control={form.control}
+                          collectionSlug={collectionSlug}
+                        />
+                      ))}
+                    </CardContent>
+                  </Card>,
                 );
-              }
-              return (
-                <Card key={key}>
-                  <CardContent>
-                    <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
-                  </CardContent>
-                </Card>
-              );
-            })}
+                pending = null;
+              };
+              mainFields.forEach((field, index) => {
+                const key =
+                  field.type === "row" || field.type === "collapsible"
+                    ? `${field.type}-${index.toString()}`
+                    : field.name;
+                if (isUnwrappedField(field)) {
+                  flush();
+                  out.push(
+                    <FieldRenderer
+                      key={key}
+                      field={field}
+                      control={form.control}
+                      collectionSlug={collectionSlug}
+                    />,
+                  );
+                  return;
+                }
+                const groupName =
+                  field.type === "row" || field.type === "collapsible" ? null : field.admin?.group ?? null;
+                if (!groupName) {
+                  flush();
+                  out.push(
+                    <Card key={key}>
+                      <CardContent>
+                        <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
+                      </CardContent>
+                    </Card>,
+                  );
+                  return;
+                }
+                if (pending && pending.name === groupName) {
+                  pending.fields.push(field);
+                } else {
+                  flush();
+                  pending = { name: groupName, fields: [field], startIdx: index };
+                }
+              });
+              flush();
+              return out;
+            })()}
           </div>
 
           <div className="xl:col-span-4">
