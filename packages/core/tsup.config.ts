@@ -34,6 +34,11 @@ export default defineConfig({
     auth: "src/auth/index.ts",
     community: "src/community/index.ts",
     db: "src/db/index.ts",
+    // Client-safe pure helpers (admin.condition evaluator, hidden-
+    // field walker, zod schema builder). Used by `@nexpress/admin`
+    // from "use client" components — importing them from the root
+    // dragged argon2/pg into the browser bundle (#774 audit gap).
+    fields: "src/fields/index.ts",
     i18n: "src/i18n/index.ts",
     jobs: "src/jobs/index.ts",
     media: "src/media/index.ts",
