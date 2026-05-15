@@ -44,11 +44,21 @@ function stripFieldFunctions(field: NpFieldConfig): NpFieldConfig {
   const { validate: _validate, admin, ...rest } = field;
   void _validate;
 
+  // `admin.condition` may be a function (`NpFieldCondition`) — strip
+  // those because RSC can't serialize them. Expression-form
+  // conditions (`NpFieldConditionExpr`, plain JSON) survive
+  // verbatim so the admin client can re-evaluate them against
+  // live form values. Migrating function conditions to the
+  // expression form is the operator's escape from "field doesn't
+  // hide in the browser" (#763).
   const strippedAdmin = admin
     ? (() => {
-        const { condition: _condition, ...safeAdmin } = admin;
-        void _condition;
-        return safeAdmin;
+        if (typeof admin.condition === "function") {
+          const { condition: _condition, ...safeAdmin } = admin;
+          void _condition;
+          return safeAdmin;
+        }
+        return admin;
       })()
     : undefined;
 

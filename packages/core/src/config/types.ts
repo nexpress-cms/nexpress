@@ -14,10 +14,46 @@ export type NpAccessFunction = (args: {
   data?: Record<string, unknown>;
 }) => boolean | Promise<boolean>;
 
+/**
+ * Free-form predicate. Server-only — functions don't survive the
+ * server→client boundary in Next.js (the framework's
+ * `toClientCollectionConfig` strips them). For conditions that
+ * need to run in the admin editor's browser-side renderer, use
+ * `NpFieldConditionExpr` (serializable JSON shape) instead.
+ */
 export type NpFieldCondition = (
   data: Record<string, unknown>,
   siblingData: Record<string, unknown>,
 ) => boolean;
+
+/**
+ * Serializable condition predicate. Evaluated client-side (admin
+ * editor) AND server-side (pipeline validation) from the same
+ * declaration — survives the RSC serialization boundary because
+ * it's plain JSON.
+ *
+ * Examples:
+ *   `{ when: "kind", equals: "doc" }`
+ *   `{ when: "kind", notEquals: "doc" }`
+ *   `{ when: "kind", in: ["doc", "page"] }`
+ *   `{ when: "wpOriginalAuthor", exists: true }`
+ *   `{ all: [{ when: "kind", equals: "doc" }, { when: "publishedAt", exists: true }] }`
+ *   `{ any: [{ when: "kind", equals: "doc" }, { when: "kind", equals: "page" }] }`
+ *
+ * `exists: true` returns true when the value is defined, not null,
+ * not the empty string, and not an empty array. `exists: false`
+ * is the inverse. `equals` / `notEquals` use strict equality.
+ * `in` / `notIn` check membership against an unknown[] list.
+ * `all` / `any` are AND / OR over a list of nested expressions.
+ */
+export type NpFieldConditionExpr =
+  | { when: string; equals: unknown }
+  | { when: string; notEquals: unknown }
+  | { when: string; in: unknown[] }
+  | { when: string; notIn: unknown[] }
+  | { when: string; exists: boolean }
+  | { all: NpFieldConditionExpr[] }
+  | { any: NpFieldConditionExpr[] };
 
 export type NpFieldValidator = (
   value: unknown,
@@ -45,7 +81,7 @@ interface NpFieldBase {
     description?: string;
     placeholder?: string;
     readOnly?: boolean;
-    condition?: NpFieldCondition;
+    condition?: NpFieldCondition | NpFieldConditionExpr;
     width?: string;
     /**
      * Optional override for the admin field renderer. The default
@@ -886,16 +922,22 @@ export interface NpThemeFieldRequirement {
    *
    * `group` — sidebar Card grouping label
    *           (e.g. `"Media"`, `"SEO"`).
-   * `condition` — runtime visibility gate. Receives the live form
-   *               values; returns true to show. Common shape:
-   *               `(data) => data.kind === "doc"` for kind-scoped
-   *               fields.
+   * `condition` — runtime visibility gate. Either a function
+   *               (server-only — stripped at the RSC boundary)
+   *               or a serializable expression (works in both
+   *               environments). Prefer the expression form so
+   *               the admin's client renderer can re-evaluate
+   *               on live form values:
+   *                 `{ when: "kind", equals: "doc" }`
+   *                 `{ when: "kind", notEquals: "doc" }`
+   *                 `{ when: "kind", in: ["doc", "page"] }`
+   *                 `{ when: "wpOriginalAuthor", exists: true }`
    * `position` — main vs sidebar column. Defaults to the
    *              framework's `isSidebarField` heuristic.
    */
   admin?: {
     group?: string;
-    condition?: (data: Record<string, unknown>, siblingData: Record<string, unknown>) => boolean;
+    condition?: NpFieldCondition | NpFieldConditionExpr;
     position?: "main" | "sidebar";
   };
 }

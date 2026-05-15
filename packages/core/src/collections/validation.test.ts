@@ -4,6 +4,7 @@ import type { NpCollectionConfig, NpFieldConfig } from "../config/types.js";
 import {
   buildZodSchema,
   collectHiddenFieldNames,
+  evaluateFieldCondition,
   getCollectionZodSchema,
 } from "./validation.js";
 
@@ -160,5 +161,98 @@ describe("buildZodSchema — hiddenByCondition param", () => {
     const schema = buildZodSchema(fields, new Set(["b"]));
     expect(schema.safeParse({ a: "x" }).success).toBe(true);
     expect(schema.safeParse({ b: "y" }).success).toBe(false);
+  });
+});
+
+describe("evaluateFieldCondition — serializable expressions (#763)", () => {
+  it("undefined → returns true (field visible)", () => {
+    expect(evaluateFieldCondition(undefined, {})).toBe(true);
+  });
+
+  it("function form: legacy server-only path still works", () => {
+    expect(evaluateFieldCondition((d) => d.kind === "doc", { kind: "doc" })).toBe(true);
+    expect(evaluateFieldCondition((d) => d.kind === "doc", { kind: "article" })).toBe(false);
+  });
+
+  it("function form: throw → fail open (return true)", () => {
+    expect(evaluateFieldCondition(() => { throw new Error("oops"); }, {})).toBe(true);
+  });
+
+  it("equals / notEquals", () => {
+    expect(evaluateFieldCondition({ when: "kind", equals: "doc" }, { kind: "doc" })).toBe(true);
+    expect(evaluateFieldCondition({ when: "kind", equals: "doc" }, { kind: "article" })).toBe(false);
+    expect(evaluateFieldCondition({ when: "kind", notEquals: "doc" }, { kind: "article" })).toBe(true);
+    expect(evaluateFieldCondition({ when: "kind", notEquals: "doc" }, { kind: "doc" })).toBe(false);
+  });
+
+  it("in / notIn", () => {
+    expect(evaluateFieldCondition({ when: "kind", in: ["doc", "page"] }, { kind: "doc" })).toBe(true);
+    expect(evaluateFieldCondition({ when: "kind", in: ["doc", "page"] }, { kind: "x" })).toBe(false);
+    expect(evaluateFieldCondition({ when: "kind", notIn: ["doc"] }, { kind: "x" })).toBe(true);
+    expect(evaluateFieldCondition({ when: "kind", notIn: ["doc"] }, { kind: "doc" })).toBe(false);
+  });
+
+  it("exists treats undefined / null / empty string / empty array as absent", () => {
+    expect(evaluateFieldCondition({ when: "a", exists: true }, { a: "value" })).toBe(true);
+    expect(evaluateFieldCondition({ when: "a", exists: true }, { a: undefined })).toBe(false);
+    expect(evaluateFieldCondition({ when: "a", exists: true }, { a: null })).toBe(false);
+    expect(evaluateFieldCondition({ when: "a", exists: true }, { a: "" })).toBe(false);
+    expect(evaluateFieldCondition({ when: "a", exists: true }, { a: [] })).toBe(false);
+    expect(evaluateFieldCondition({ when: "a", exists: false }, { a: undefined })).toBe(true);
+  });
+
+  it("all (AND) / any (OR) composition", () => {
+    const data = { kind: "doc", featured: true };
+    expect(
+      evaluateFieldCondition(
+        {
+          all: [
+            { when: "kind", equals: "doc" },
+            { when: "featured", equals: true },
+          ],
+        },
+        data,
+      ),
+    ).toBe(true);
+    expect(
+      evaluateFieldCondition(
+        {
+          all: [
+            { when: "kind", equals: "doc" },
+            { when: "featured", equals: false },
+          ],
+        },
+        data,
+      ),
+    ).toBe(false);
+    expect(
+      evaluateFieldCondition(
+        {
+          any: [
+            { when: "kind", equals: "page" },
+            { when: "kind", equals: "doc" },
+          ],
+        },
+        data,
+      ),
+    ).toBe(true);
+  });
+
+  it("malformed expression → fails open (field visible)", () => {
+    expect(
+      evaluateFieldCondition({ bogus: true } as unknown as Parameters<typeof evaluateFieldCondition>[0], {}),
+    ).toBe(true);
+  });
+
+  it("collectHiddenFieldNames evaluates expression conditions", () => {
+    const fields: NpFieldConfig[] = [
+      field({
+        type: "text",
+        name: "parent",
+        admin: { condition: { when: "kind", equals: "doc" } },
+      }),
+    ];
+    expect(collectHiddenFieldNames(fields, { kind: "article" }).has("parent")).toBe(true);
+    expect(collectHiddenFieldNames(fields, { kind: "doc" }).has("parent")).toBe(false);
   });
 });

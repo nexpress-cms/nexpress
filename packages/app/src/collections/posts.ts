@@ -139,9 +139,11 @@ export const postsCollection = defineCollection({
         position: "sidebar",
         group: "Author",
         description: "WP author byline preserved from import — read-only in admin.",
-        condition: (data) =>
-          typeof data.wpOriginalAuthor === "string" &&
-          data.wpOriginalAuthor.trim().length > 0,
+        // Serializable form (#763) so the client editor evaluates
+        // the same condition as the server pipeline. `exists: true`
+        // hides the field on freshly authored posts (empty value)
+        // and surfaces it on imported posts that retained a byline.
+        condition: { when: "wpOriginalAuthor", exists: true },
       },
     },
     {
@@ -174,7 +176,7 @@ export const postsCollection = defineCollection({
         position: "sidebar",
         group: "Hierarchy",
         description: "Parent post — used by hierarchical kinds (e.g. docs).",
-        condition: (data) => data.kind === "doc",
+        condition: { when: "kind", equals: "doc" },
       },
     },
     {
@@ -184,7 +186,7 @@ export const postsCollection = defineCollection({
         position: "sidebar",
         group: "Hierarchy",
         description: "Sort order within a parent. Only used by hierarchical kinds.",
-        condition: (data) => data.kind === "doc",
+        condition: { when: "kind", equals: "doc" },
       },
     },
     // Per-doc SEO meta. Flat fields (not a `group`) because the
