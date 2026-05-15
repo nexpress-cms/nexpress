@@ -812,27 +812,86 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
    * `field.name` itself. Containers without an addressable name
    * fall back to the raw name.
    */
-  const fieldLabelByName = (name: string): string => {
-    const find = (fs: NpFieldConfig[]): NpFieldConfig | null => {
-      for (const f of fs) {
-        if (f.type === "row" || f.type === "collapsible") {
-          const inner = find(f.fields);
-          if (inner) return inner;
-          continue;
-        }
-        if ("name" in f && f.name === name) return f;
-        if (f.type === "group") {
-          const inner = find(f.fields);
-          if (inner) return inner;
-        }
+  /**
+   * Find a named field at the current container level — walks
+   * through `row` / `collapsible` containers (which don't have
+   * names) but stops at `group` (groups DO have names; the
+   * caller decides whether to recurse into them).
+   */
+  const findNamed = (fields: NpFieldConfig[], name: string): NpFieldConfig | null => {
+    for (const f of fields) {
+      if (f.type === "row" || f.type === "collapsible") {
+        const inner = findNamed(f.fields, name);
+        if (inner) return inner;
+        continue;
       }
-      return null;
-    };
-    const found = find(effectiveFields);
+      if ("name" in f && f.name === name) return f;
+    }
+    return null;
+  };
+
+  const fieldLabelByName = (path: string): string => {
+    // Path is either a top-level field name (`"title"`) or a
+    // dot-separated path into a group (`"seo.metaTitle"`).
+    // Walk the field tree by segment so we resolve nested fields
+    // even when their `f.name` doesn't equal the full path.
+    const segments = path.split(".");
+    let cursor: NpFieldConfig[] | undefined = effectiveFields;
+    let found: NpFieldConfig | null = null;
+    for (let i = 0; i < segments.length; i += 1) {
+      const segment = segments[i]!;
+      if (!cursor) break;
+      const next = findNamed(cursor, segment);
+      if (!next) {
+        found = null;
+        break;
+      }
+      if (i === segments.length - 1) {
+        found = next;
+        break;
+      }
+      if (next.type === "group") {
+        cursor = next.fields;
+      } else {
+        cursor = undefined;
+      }
+    }
     if (found && "label" in found && typeof found.label === "string" && found.label.length > 0) {
       return found.label;
     }
-    return name;
+    // Fall back to the last segment as a sensible default —
+    // `seo.metaTitle` → `metaTitle`. Better than echoing the
+    // full dot path which leaks internal structure.
+    return segments[segments.length - 1] ?? path;
+  };
+
+  /**
+   * Flatten react-hook-form's nested errors object into dot-paths
+   * to leaf errors. Leaves have `type` (and usually `message`)
+   * — anything that lacks `type` is a container of nested
+   * errors and gets walked recursively.
+   *
+   * `{ title: { type, message }, seo: { metaTitle: { type } } }`
+   * → `["title", "seo.metaTitle"]`
+   */
+  const flattenErrorPaths = (
+    errors: Record<string, unknown>,
+    prefix: string[] = [],
+  ): string[] => {
+    const out: string[] = [];
+    for (const [key, value] of Object.entries(errors)) {
+      if (!value || typeof value !== "object") continue;
+      const obj = value as Record<string, unknown>;
+      if ("type" in obj && typeof obj.type === "string") {
+        out.push([...prefix, key].join("."));
+        continue;
+      }
+      // Container — recurse. Skip RHF's `root` key which holds
+      // form-level errors, not field-specific ones.
+      if (key === "root") continue;
+      out.push(...flattenErrorPaths(obj, [...prefix, key]));
+    }
+    return out;
   };
 
   /**
@@ -846,9 +905,13 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
    * input.
    */
   const handleValidationErrors = (errors: Record<string, unknown>): void => {
-    const names = Object.keys(errors);
-    if (names.length === 0) return;
-    const labels = names.map((n) => fieldLabelByName(n));
+    // Flatten nested error paths so a failing `seo.metaTitle`
+    // surfaces as `"metaTitle"` (or its label) in the toast,
+    // not `"seo"` (which is the group container, not the field
+    // the operator needs to fix).
+    const paths = flattenErrorPaths(errors);
+    if (paths.length === 0) return;
+    const labels = paths.map((p) => fieldLabelByName(p));
     setToast({
       type: "error",
       message:
@@ -865,17 +928,18 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
     // applied by the time we scroll.
     if (typeof window !== "undefined") {
       window.requestAnimationFrame(() => {
-        const firstName = names[0];
-        if (!firstName) return;
-        // react-hook-form's `setFocus` handles inputs the form
-        // registered. Falls back to a manual DOM lookup for
-        // fields whose renderer wraps the input in a custom
-        // way (e.g. block editors, upload tiles).
+        const firstPath = paths[0];
+        if (!firstPath) return;
+        // react-hook-form's `setFocus` accepts dot-paths for
+        // nested fields (`"seo.metaTitle"`) and resolves them
+        // through its internal registry. Falls back to a
+        // manual DOM lookup for fields whose renderer wraps
+        // the input atypically (block editors, upload tiles).
         try {
-          form.setFocus(firstName as never);
+          form.setFocus(firstPath as never);
         } catch {
           const el = document.querySelector<HTMLElement>(
-            `[name="${firstName}"], [data-field-name="${firstName}"]`,
+            `[name="${firstPath}"], [data-field-name="${firstPath}"]`,
           );
           el?.scrollIntoView({ behavior: "smooth", block: "center" });
           el?.focus();
