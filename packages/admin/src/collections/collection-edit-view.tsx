@@ -661,6 +661,85 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
    * Scheduling is just `_status: "published"` + a future `publishedAt` —
    * the pipeline coerces that to `status: "scheduled"` server-side.
    */
+  /**
+   * Build a readable label for a field name. Walks effectiveFields
+   * (including row / collapsible / group containers) to find the
+   * matching field and prefers `field.label` if set, else
+   * `field.name` itself. Containers without an addressable name
+   * fall back to the raw name.
+   */
+  const fieldLabelByName = (name: string): string => {
+    const find = (fs: NpFieldConfig[]): NpFieldConfig | null => {
+      for (const f of fs) {
+        if (f.type === "row" || f.type === "collapsible") {
+          const inner = find(f.fields);
+          if (inner) return inner;
+          continue;
+        }
+        if ("name" in f && f.name === name) return f;
+        if (f.type === "group") {
+          const inner = find(f.fields);
+          if (inner) return inner;
+        }
+      }
+      return null;
+    };
+    const found = find(effectiveFields);
+    if (found && "label" in found && typeof found.label === "string" && found.label.length > 0) {
+      return found.label;
+    }
+    return name;
+  };
+
+  /**
+   * Validation-error surfacing on Save. Without this, a required
+   * field that fails react-hook-form's validation just leaves
+   * `formState.errors` set — no toast, no scroll, and if the
+   * field lives in a collapsed sidebar group the operator sees
+   * nothing happen on click. The error toast lists the affected
+   * field labels; we also scroll the first one into view + focus
+   * it so the operator's next interaction targets the right
+   * input.
+   */
+  const handleValidationErrors = (errors: Record<string, unknown>): void => {
+    const names = Object.keys(errors);
+    if (names.length === 0) return;
+    const labels = names.map((n) => fieldLabelByName(n));
+    setToast({
+      type: "error",
+      message:
+        labels.length === 1
+          ? `Please complete the "${labels[0]}" field.`
+          : `Please complete ${labels.length.toString()} required fields: ${labels.slice(0, 3).join(", ")}${
+              labels.length > 3 ? `, +${(labels.length - 3).toString()} more` : ""
+            }.`,
+    });
+    setSavingAs(null);
+    // Defer scroll until after React commits the toast — the
+    // error renderers in FieldRenderer also re-render on this
+    // tick, so the matching input has its error-state styling
+    // applied by the time we scroll.
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        const firstName = names[0];
+        if (!firstName) return;
+        // react-hook-form's `setFocus` handles inputs the form
+        // registered. Falls back to a manual DOM lookup for
+        // fields whose renderer wraps the input in a custom
+        // way (e.g. block editors, upload tiles).
+        try {
+          form.setFocus(firstName as never);
+        } catch {
+          const el = document.querySelector<HTMLElement>(
+            `[name="${firstName}"], [data-field-name="${firstName}"]`,
+          );
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          el?.focus();
+        }
+      });
+    }
+  };
+
   const submitWithStatus = (status: SaveStatus, publishedAtOverride?: string) =>
     form.handleSubmit(async (values) => {
       setSavingAs(status);
@@ -724,7 +803,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
       } finally {
         setSavingAs(null);
       }
-    });
+    }, handleValidationErrors);
 
   const handleSaveDraft = submitWithStatus("draft");
   const handlePublish = submitWithStatus("published");
