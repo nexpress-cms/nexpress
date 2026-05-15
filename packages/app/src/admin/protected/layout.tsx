@@ -99,15 +99,21 @@ export default async function AdminLayout({
             // Universal-content-model #748 — themes contribute
             // per-kind admin nav metadata via
             // `requires.collections.<slug>.kinds`; the merge step
-            // stamps it onto `admin.kinds`. Project the
-            // subset the client shell needs (label + icon) so
-            // the rest of the AdminShellCollection stays opaque.
+            // stamps it onto `admin.kinds`, each entry carrying
+            // `_themeOrigin`. Filter by active theme so the
+            // bundled-themes prebake doesn't surface every
+            // built-in's kinds on every operator's sidebar (an
+            // operator on `default` shouldn't see a "Documentation"
+            // entry contributed by `theme-docs`). Project the
+            // subset the client shell needs (label + icon).
             kinds: c.admin.kinds
               ? Object.fromEntries(
-                  Object.entries(c.admin.kinds).map(([k, v]) => [
-                    k,
-                    { labelPlural: v.labelPlural, ...(v.icon ? { icon: v.icon } : {}) },
-                  ]),
+                  Object.entries(c.admin.kinds)
+                    .filter(([, v]) => !v._themeOrigin || v._themeOrigin === activeThemeId)
+                    .map(([k, v]) => [
+                      k,
+                      { labelPlural: v.labelPlural, ...(v.icon ? { icon: v.icon } : {}) },
+                    ]),
                 )
               : undefined,
           }
