@@ -6,7 +6,7 @@ import {
   isSuperAdmin,
   updateSite,
 } from "@nexpress/core";
-import { readJsonBody } from "@nexpress/next";
+import { readJsonBody, siteCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -84,6 +84,16 @@ export async function PATCH(
       patch.description = body.description;
     }
     const site = await updateSite(id, patch);
+    // Site name + hostname flow through `getCachedSite()` (600s TTL)
+    // into every theme's masthead / footer / canonical URL. Without
+    // this bust an admin rename surfaces on the public site after a
+    // 10-minute stall. `revalidate*` throws outside a request
+    // context, but PATCH always runs inside one — no need to guard.
+    if (patch.name !== undefined || patch.hostname !== undefined) {
+      const { revalidatePath, revalidateTag } = await import("next/cache");
+      revalidateTag(siteCacheTag(id), "default");
+      revalidatePath("/", "layout");
+    }
     return npSuccessResponse(site);
   } catch (error) {
     return npErrorResponse(

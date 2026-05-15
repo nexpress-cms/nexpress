@@ -13,7 +13,7 @@ import {
   withCurrentSite,
 } from "@nexpress/core";
 import { count, eq } from "drizzle-orm";
-import { readJsonBody, themeCacheTag } from "@nexpress/next";
+import { readJsonBody, siteCacheTag, themeCacheTag } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
@@ -206,6 +206,19 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (body.siteName) {
       try {
         await updateSite(NP_DEFAULT_SITE_ID, { name: body.siteName });
+        // Site name is read through `getCachedSite()` (600s TTL) by
+        // every theme's masthead + footer. Without this bust the
+        // wizard rename takes up to 10 min to surface on the public
+        // site — the most visible first-boot moment. `revalidate*`
+        // throws outside a request context (test harness scripts),
+        // so guard it like the theme-bust block below.
+        try {
+          const { revalidatePath, revalidateTag } = await import("next/cache");
+          revalidateTag(siteCacheTag(NP_DEFAULT_SITE_ID), "default");
+          revalidatePath("/", "layout");
+        } catch {
+          // ignore — see comment above
+        }
       } catch (siteErr) {
         const msg = siteErr instanceof Error ? siteErr.message : String(siteErr);
         console.error("[admin-setup] updateSite failed:", siteErr);
