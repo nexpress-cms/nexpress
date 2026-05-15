@@ -1,5 +1,24 @@
 # @nexpress/blocks
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [07c763b]
+- Updated dependencies [4067401]
+- Updated dependencies [3de8716]
+- Updated dependencies [1eb6255]
+- Updated dependencies [712c11c]
+- Updated dependencies [d76a0c9]
+- Updated dependencies [d76a0c9]
+- Updated dependencies [4d38283]
+- Updated dependencies [88bd29b]
+- Updated dependencies [48ce0d1]
+- Updated dependencies [6f46b5a]
+- Updated dependencies [17c90d6]
+  - @nexpress/core@0.3.1
+  - @nexpress/editor@0.3.1
+
 ## 0.3.0
 
 ### Patch Changes

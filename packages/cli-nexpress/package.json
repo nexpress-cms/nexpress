@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Project-side CLI for NexPress — manage plugins (add/remove), inspect config.",
   "license": "MIT",
   "author": "Nexpress",

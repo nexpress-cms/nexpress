@@ -1,5 +1,611 @@
 # @nexpress/core
 
+## 0.3.1
+
+### Patch Changes
+
+- 07c763b: feat(theme-docs, core, app, admin): universal-content-model Phase U.2+U.3+U.4 — docs collapse into posts.kind
+
+  Docs are now posts with `kind: "doc"`. Bundles U.2 (theme query
+  rewrite + admin sidebar per-kind), U.3 (drop docs table — no
+  data to migrate since pre-1.0 has no users), and U.4 cleanup
+  (remove docs slug from registry) into one PR. Pages stay
+  separate (the page-builder body is a different writing
+  experience from prose).
+
+  ## Theme contract (@nexpress/core)
+  - `NpThemeCollectionRequirement.kinds` — keyed by discriminator
+    value, each entry carries `label`, `labelPlural`, `icon`
+    (lucide), optional `urlPattern`, optional `hierarchical`. The
+    merge-requirements step unions across registered themes and
+    stamps the result onto `admin.kinds` on the collection.
+  - `NpThemeCollectionKind` exported from both
+    `@nexpress/core` root and via the requirement type.
+  - Merge logic now handles the `kinds` block (last-write-wins on
+    per-kind props), in addition to the field-options union from
+    U.1.
+
+  ## Docs theme (@nexpress/theme-docs)
+  - `requires.collections.docs` removed. The collection is gone.
+  - `requires.collections.posts` now contributes `kind: "doc"`
+    options, `lede` + `stableSince` fields, and
+    `kinds.doc: { label, labelPlural: "Documentation",
+icon: "BookOpen", urlPattern: "/docs/:slug", hierarchical: true }`.
+  - `templates.docs.default` moves to `templates.posts.doc` —
+    template id matches the kind value.
+  - Sidebar / doc-detail route / doc-page template queries all
+    switch from `findDocuments("docs", ...)` →
+    `findDocuments("posts", { where: { kind: "doc", ... } })`.
+
+  ## Built-in posts (@nexpress/app)
+  - `seo.urlPath` reads `doc.kind` and returns `/docs/<slug>`
+    when kind=doc, `/blog/<slug>` otherwise. Operators with
+    custom kinds register their own override.
+
+  ## Admin (@nexpress/admin)
+  - `AdminShellCollection.admin.kinds` — per-kind nav metadata.
+    Sidebar walks the merged map and renders one entry per kind
+    under the collection's group, linking to
+    `/admin/collections/<slug>?kind=<value>`.
+  - Reference app's protected layout projects `c.admin.kinds`
+    into the shell props.
+  - Collection list view (`/admin/collections/<slug>`) reads
+    `?kind=` from searchParams and adds it to the `findDocuments`
+    where clause. Unknown kinds yield empty results rather than
+    errors.
+
+  ## Schema
+  - `apps/web/drizzle/0003_tiresome_harry_osborn.sql`:
+    `DROP TABLE np_c_docs CASCADE` + ADD COLUMN lede + ADD COLUMN
+    stable_since on np_c_posts.
+  - Pre-1.0 + no users → destructive drop is OK. Operators with
+    doc data run U.1 first to add `kind` to posts, then export
+    np_c_docs rows to `kind="doc"` posts manually before
+    upgrading to this release.
+
+  ## Open follow-ups (deliberately deferred)
+  - **Create-form kind pre-fill** — clicking "New doc" from
+    `/admin/collections/posts?kind=doc` should pre-set the kind
+    field to "doc". Today the operator picks it manually.
+  - **Generic kind URL resolver** — `seo.urlPath` hardcodes the
+    `doc` branch. A reads-from-`admin.kinds.<x>.urlPattern`
+    helper would generalise; not needed until a third kind lands.
+  - **Kind-aware capabilities** — `content.publish.<kind>`
+    capability strings designed-in but not implemented. Add when
+    an operator asks for the split.
+
+- 4067401: feat(admin, core, themes): editor sidebar group icons + descriptions (8/14)
+
+  Adds visual hierarchy to sidebar group cards introduced in
+  #757. Operators currently see plain text titles ("Publish",
+  "Author", "Taxonomy") — scanning ~6 groups visually is
+  slower than necessary. Each group now renders with a Lucide
+  icon next to the title and an optional one-line description
+  beneath when open.
+
+  ## Type contract
+  - `NpAdminGroupMeta` — `{ icon?: string, description?: string }`.
+  - `NpCollectionConfig.admin.groupMeta?: Record<string, NpAdminGroupMeta>`.
+  - `NpThemeCollectionRequirement.groupMeta?: Record<string, NpAdminGroupMeta>`
+    — themes contribute icons for their own groups; merge unions
+    across themes (last-write-wins per key).
+
+  ## Built-in posts groups
+  - Publish → Calendar
+  - Lead → Layout
+  - Author → User
+  - Taxonomy → Tag
+  - SEO → Search
+  - Hierarchy → FolderTree
+
+  ## Theme contributions
+  - **theme-magazine** Magazine → Newspaper
+  - **theme-portfolio** Portfolio → Briefcase
+  - **theme-docs** Docs → BookOpen
+
+  ## Admin client
+
+  `SidebarGroupCard` gains `icon` + `description` props. The
+  header layout reflows: icon → title + description (truncated
+  when long) → chevron. `GROUP_ICONS` registry mirrors the
+  existing `COLLECTION_ICONS` pattern in `admin-shell`. Unknown
+  names fall back to no icon (silent — no warning).
+
+  ## What's queued for the next 6 PRs
+  - **PR 9 (CRITICAL)**: `admin.condition` is currently stripped
+    in `toClientCollectionConfig` so the editor never sees it
+    on the client. Kind-based field hiding (the entire PR 1
+    promise) doesn't work in the browser today — server-side
+    validation works because the pipeline has the original
+    config. Needs a serializable condition predicate language
+    (e.g. `{ when: "kind", equals: "doc" }`) so both server +
+    client can evaluate.
+  - PR 10: Empty state when every sidebar group is hidden
+  - PR 11: Main column field grouping (symmetry)
+  - PR 12: SEO field `maxLength` hints
+  - PR 13: Container-nested field condition evaluation
+  - PR 14: Nested-group error aggregation in toast + auto-expand
+
+  ## Test plan
+  - [x] core 452/452
+  - [x] All themes build + typecheck clean
+  - [x] admin build + typecheck clean
+  - [ ] Browser: sidebar groups render with icons + descriptions
+
+- 3de8716: feat(core, admin): hidden field validation safety (4/7)
+
+  PR 4 of the editor progressive-disclosure sequence. Closes the
+  gap where a `required` field gated by `admin.condition` would
+  block save with an invisible validation error: operator sees
+  no failing input but the form refuses to submit.
+
+  ## The gap
+
+  PR 1 wired `admin.condition` to hide fields from the editor. A
+  field marked `required: true` + `condition: (data) => data.kind
+=== "doc"` would:
+  - Hide for kind=article posts (correct)
+  - Still fail Zod's `required` check on submit (wrong)
+
+  Operator sees nothing to fix; the only signal is the form
+  refusing to advance. Same gap on the server-side pipeline —
+  even if the client let the submit through, `pipeline.ts` rebuilt
+  the schema unconditionally and rejected too.
+
+  ## Fix
+
+  `@nexpress/core/collections/validation` gains a
+  `hiddenByCondition: ReadonlySet<string>` parameter on
+  `buildZodSchema` + `getCollectionZodSchema(config, forData?)`.
+  When set, `required` is dropped for the named fields — they
+  slip through as if `required: false`. `collectHiddenFieldNames`
+  is the public helper that walks fields + evaluates conditions
+  against current data.
+
+  ### Admin client
+
+  `useForm`'s `zodResolver` is replaced with a custom resolver
+  that computes hidden names per submit, rebuilds a dynamic
+  schema, then delegates to `zodResolver`. Resolver fires only
+  on submit (`mode: "onSubmit"` default), so the rebuild cost is
+  trivial.
+
+  ### Server pipeline
+
+  `saveDocument`'s validation call passes the incoming `data` to
+  `getCollectionZodSchema(config, data)`. The schema mirrors the
+  client's drop set — a hidden field can't sneak through the
+  admin's required check and then trip a server-side one.
+
+  ### Deduplication
+
+  Both surfaces share `collectHiddenFieldNames` from
+  `@nexpress/core/collections/validation`. The admin had a local
+  copy from PR 1; that's gone now in favor of the core export.
+  Single source of truth, single condition-evaluation behavior.
+
+  ## Edge handling
+  - **`row` / `collapsible` containers**: walked transparently
+    (their nested fields are checked individually).
+  - **`group` fields**: when the group itself has a condition
+    that hides it, the group name + every nested name are all
+    marked hidden. Required on a hidden group OR any nested
+    required is dropped.
+  - **Buggy conditions** (throws): treated as "not hidden" —
+    surfacing a required error is more recoverable than silently
+    dropping the check.
+
+  ## What does NOT change
+  - Public surface of `getCollectionZodSchema(config)` (no
+    `forData`) — back-compat. Callers that don't have current
+    data continue getting the unconditional schema (matches
+    pre-#759 behavior).
+  - Required-without-condition fields: unchanged.
+  - Default Zod error messages on visible required fields:
+    unchanged.
+
+  ## Test plan
+  - [x] `core` 442/442 (existing tests cover the unchanged
+        unconditional path)
+  - [x] `admin` build + typecheck clean
+  - [ ] Browser: edit a doc-kind post → leave `parent` blank →
+        save fails with visible error
+  - [ ] Edit an article post → `parent` hidden → save succeeds
+        (previously would have failed with no visible error)
+
+- 1eb6255: feat(admin, core, themes): progressive disclosure in the document editor
+
+  The bundled-themes prebake stacks every theme's contributed
+  fields on `posts` — magazine, portfolio, docs all add columns
+  the operator may never need on a given post. The previous edit
+  view dumped them all into one "Publishing" sidebar Card,
+  forcing the operator to scroll through ~20 controls per post.
+
+  This redesign shapes the sidebar around what the operator is
+  actually authoring:
+
+  ## Field grouping
+  - New `admin.group?: string` on `NpFieldBase` — sidebar fields
+    with the same `group` label render together in their own
+    collapsible-style Card. Default group = `"Publish"`.
+  - Group order in the rendered sidebar follows the first-seen
+    order of fields in the collection's `fields` array, so
+    operators control layout by ordering.
+
+  ## Kind-aware conditional visibility
+  - `admin.condition` was already typed but unread; the edit view
+    now honors it. The renderer subscribes to live form values
+    via `form.watch()` and re-evaluates conditions on change.
+  - Built-in `posts` fields tagged:
+    - `parent` / `order`: only when `kind === "doc"` (hierarchy)
+    - `wpOriginalAuthor`: only when populated (no value → hidden)
+  - Theme-contributed fields tagged:
+    - **theme-magazine** `featured`: hidden for `kind === "doc"`
+    - **theme-portfolio** `heroImage`, `client`, `year`, `role`,
+      `discipline`, `span`, `coverVariant`, `coverFigure`,
+      `badge`: hidden for `kind === "doc"`, grouped under
+      "Portfolio"
+    - **theme-docs** `lede`, `stableSince`: only when
+      `kind === "doc"`, grouped under "Docs"
+
+  ## "Show all fields" escape hatch
+  - Sidebar header shows a toggle when at least one field is
+    hidden by an active condition. Flipping it reveals every
+    field including ones the kind filter is suppressing.
+  - Toggle state persists per-collection via `localStorage`.
+
+  ## Theme requirement contract change
+
+  `NpThemeFieldRequirement` gains an optional `admin` block
+  forwarded onto the synthesised field's `admin` slot:
+
+  ```ts
+  admin?: {
+    group?: string;
+    condition?: (data, siblingData) => boolean;
+    position?: "main" | "sidebar";
+  }
+  ```
+
+  Themes use these to bucket their contributed fields into
+  sidebar groups and gate visibility by kind.
+
+  ## Schema drift cleanup
+
+  `apps/web/drizzle/0004_smart_valkyrie.sql` drops the orphan
+  `np_c_authors` table. The magazine theme stopped declaring
+  `requires.collections.authors` in #747 but the migration to
+  drop the leftover table was never generated. This PR's
+  schema:gen pass surfaced the drift; the auto-generated
+  migration cleans it up. No data loss (table never populated).
+
+  ## What does NOT change
+  - Main column rendering is unchanged — title + body flow as
+    before.
+  - 2-column layout preserved.
+  - No field-level data loss: hidden fields keep their stored
+    values; `condition` is view-only.
+  - Theme swap behavior unchanged: switching themes doesn't
+    remove fields from the schema, only hides irrelevant ones
+    from the editor.
+
+  ## Tests
+  - `core` 442/442
+  - `web` 85/85 (builtin-themes-union gate covers field-merge)
+  - All themes + admin + app build + typecheck clean
+
+- 712c11c: fix(core, admin, themes): serializable condition predicates — fixes broken client-side field hiding (9/14)
+
+  ## The bug
+
+  PR 1 (#756) wired `admin.condition` in the admin editor's
+  `passesCondition` helper, but `packages/next/src/client-safe.ts`
+  already stripped `admin.condition` from the collection config
+  before it reached the client component (Next.js can't serialize
+  functions across the RSC boundary). The browser never saw the
+  condition function, so the kind-based field hiding **never
+  worked client-side** — every operator editing any post saw
+  every field regardless of kind.
+
+  Server-side validation (PR 4 #759) was unaffected because the
+  pipeline uses the original (un-stripped) config.
+
+  ## Fix
+
+  New `NpFieldConditionExpr` discriminated-union type — a
+  serializable JSON predicate that survives RSC serialization:
+
+  ```ts
+  condition: { when: "kind", equals: "doc" }
+  condition: { when: "kind", notEquals: "doc" }
+  condition: { when: "kind", in: ["doc", "page"] }
+  condition: { when: "kind", notIn: ["doc"] }
+  condition: { when: "wpOriginalAuthor", exists: true }
+  condition: { all: [...] }                              // AND
+  condition: { any: [...] }                              // OR
+  ```
+
+  `evaluateFieldCondition(condition, data)` (exported from
+  `@nexpress/core`) handles both the function form (server-only)
+  and the expression form (works both env), so the admin client +
+  server pipeline run the same evaluator against the same data.
+
+  `admin.condition` type widens to
+  `NpFieldCondition | NpFieldConditionExpr` — both accepted, but
+  **the expression form is required for client-side hiding to
+  work**. Function-form conditions still run server-side (pipeline
+  validation drops `required` for hidden fields, sitemap walks
+  honor them) but are silently stripped client-side.
+
+  `toClientCollectionConfig` now strips only function-form
+  conditions; expression-form passes through verbatim.
+
+  ## Migration of in-tree conditions
+
+  All built-in / theme conditions migrate from function form:
+  - `posts.parent` / `posts.order`: `{ when: "kind", equals: "doc" }`
+  - `posts.wpOriginalAuthor`: `{ when: "wpOriginalAuthor", exists: true }`
+  - `theme-magazine.featured`: `{ when: "kind", notEquals: "doc" }`
+  - `theme-portfolio.*` (9 fields): `{ when: "kind", notEquals: "doc" }`
+  - `theme-docs.lede` / `stableSince`: `{ when: "kind", equals: "doc" }`
+
+  ## Edge handling
+  - **Function condition that throws** → fails open (field visible).
+  - **Malformed expression** (unknown shape) → fails open.
+  - **`exists: true`** → false for `undefined`, `null`, `""`, `[]`.
+  - **`all` / `any`** compose nested expressions for AND / OR logic.
+
+  ## Tests
+
+  `validation.test.ts` adds 9 cases covering function form, every
+  expression operator, malformed shape, and `collectHiddenFieldNames`
+  recursing through expression conditions. Core 452 → 461.
+
+  ## What this unlocks
+
+  The kind-based hiding the entire editor sequence (#756-#762) was
+  designed around now actually works in the browser. Operators
+  editing `kind="article"` posts won't see docs / portfolio
+  fields; operators editing `kind="doc"` won't see magazine /
+  portfolio fields.
+
+- d76a0c9: fix(core, next, app): active-theme gate for theme-contributed fields in the admin editor
+
+  Magazine-active sites surfaced Portfolio's sidebar group cards on
+  the post editor — the bundled-themes prebake merges every built-in
+  theme's `requires.collections.<slug>.fields` into the resolved
+  config, but only collections / kinds / blocks / patterns were
+  gated by the active theme. Theme-contributed FIELDS slipped
+  through, so an operator on Magazine saw "Portfolio" sidebar
+  chrome anyway.
+  - `mergeThemeRequirements` now stamps `admin._themeOrigin: <themeId>`
+    on every theme-contributed field (same convention as the
+    collection-level and per-kind tags). Operator-declared fields
+    carry no origin; they always pass the gate.
+  - `toClientCollectionConfig(config, activeThemeId)` takes a new
+    optional argument and filters out fields whose `_themeOrigin`
+    doesn't match. Recurses into `row` / `collapsible` containers;
+    drops empty containers after gating.
+  - The admin's edit + create pages resolve the active theme via
+    `getCachedActiveTheme()` and pass the id through.
+
+  Bump kind: patch on all three. The `_themeOrigin` field on
+  `NpFieldBase.admin` is internal-by-convention (never set from
+  operator config); the optional arg on `toClientCollectionConfig`
+  is additive.
+
+  Tests:
+  - `merge-requirements.test.ts` — new case asserts `_themeOrigin`
+    lands on every theme-contributed field across two themes.
+  - `client-safe.test.ts` — new suite covering the gate, container
+    recursion, empty-container drop, and operator-field pass-through.
+
+- d76a0c9: fix(core, admin): admin client bundle no longer drags argon2 / pg
+
+  `@nexpress/admin`'s `collection-edit-view` (a `"use client"`
+  component) imported `collectHiddenFieldNames` and
+  `evaluateFieldCondition` from the `@nexpress/core` root. The
+  root re-exports `@nexpress/core/auth`, which transitively pulls
+  `@node-rs/argon2` and `pg` into the bundle — Next's client
+  bundler tried to resolve `argon2/browser.js`'s `verify` export
+  and failed, killing every CI build since #756 landed:
+
+  ```
+  The export verify was not found in module @node-rs/argon2/browser.js
+  ```
+
+  Adds a new client-safe subpath `@nexpress/core/fields` that
+  re-exports only the pure helpers (`evaluateFieldCondition`,
+  `collectHiddenFieldNames`, `buildZodSchema`,
+  `getCollectionZodSchema`). No transitive auth / db / sharp /
+  argon2 imports — verified by grepping the produced
+  `dist/chunk-*.js` files that the new entry pulls in.
+
+  The admin's runtime import switches to `@nexpress/core/fields`;
+  the type-only `import type { NpCollectionConfig, NpFieldConfig }`
+  stays on the root (type imports are erased and don't drag
+  runtime code).
+
+  Bump kind: patch. Adding a new export is arguably minor by
+  strict semver, but pre-1.0 we default to patch unless the user
+  explicitly approves otherwise.
+
+- 4d38283: fix(admin): hide per-kind sidebar entries whose contributing theme isn't active
+
+  The bundled-themes prebake unions every built-in theme's
+  `requires.collections.<slug>.kinds` onto `admin.kinds`. Without
+  a per-kind theme-origin gate, an operator running the `default`
+  theme would still see a "Documentation" entry under Content
+  because `theme-docs`'s `kinds.doc` landed on `posts.admin.kinds`
+  during the merge.
+
+  Fix mirrors the existing collection-level `_themeOrigin`
+  pattern: `mergeThemeRequirements` now stamps `_themeOrigin` on
+  each merged kind entry, and the admin layout's projection
+  filters kinds whose origin doesn't match the active theme id.
+  Operator-declared kinds (no origin tag) always show.
+
+  Tests: `core` 442/442 (+1 covering the origin stamp), `web`
+  85/85 (builtin-themes-union gate unchanged).
+
+- 88bd29b: fix(core): pipeline applies `defaultValue` before Zod validation
+
+  Integration tests started failing across every `saveDocument`
+  call after universal-content-model #748 added a required
+  `posts.kind` field with `defaultValue: "article"`. Callers that
+  omit the field (the canonical "minimal create" path) hit:
+
+  ```
+  ZodError: { code: 'invalid_value', values: ['article'],
+    path: ['kind'], message: 'Invalid input: expected "article"' }
+  ```
+
+  `buildZodSchema` was building the field schemas without chaining
+  `.default(field.defaultValue)`. The Drizzle column default runs
+  at INSERT time, but the pipeline parses with Zod first, so the
+  "missing required field" hit before the DB could fill it.
+
+  Fix: `applyFieldDefault` chains `.default(field.defaultValue)`
+  onto the schema when the field declares one. Callers that DO
+  provide a value get their input through unchanged; callers that
+  omit get the default substituted before validation. Operator-
+  authored configs with `defaultValue` now actually work for the
+  zero-input case the docs imply they should.
+
+  Local: core 462/462 unit + 46/46 integration pass against the
+  test Postgres instance.
+
+- 48ce0d1: fix(core): config Zod schema accepts the serializable `admin.condition` expression form
+
+  #764 widened the TypeScript type of `admin.condition` to accept
+  either a function or a serializable expression object, but
+  `collectionConfigSchema`'s `fieldBaseSchema.admin.condition` was
+  still constrained to `functionSchema`. Booting any site whose
+  config had migrated to the expression form (built-in posts,
+  theme-docs, theme-magazine, theme-portfolio) crashed at
+  `defineConfig`'s validation step with "admin.condition: Invalid
+  input".
+
+  `apps/web/tests/system-health-checks.unit.test.ts` caught this
+  after #764 merged. The fix is a union — the Zod schema now
+  accepts either the function or the new `conditionExprSchema`
+  (which mirrors the type's union: `equals` / `notEquals` /
+  `in` / `notIn` / `exists` / `all` / `any` recursively). The
+  runtime evaluator is the single source of truth for shape
+  correctness; the schema is permissive (`z.unknown()` for
+  operand values) so future operator additions don't force a
+  schema bump.
+
+- 6f46b5a: chore(theme-magazine): use np_users for bylines instead of a separate authors collection
+
+  The magazine theme used to declare its own `authors` collection
+  (`name` + `bio`, `createIfAbsent: true`) and point
+  `posts.author` at it. That table mirrored what `np_users`
+  already provides — every staff/editor user has `name`, and is
+  referenceable by id — and ran on the bundled-themes prebake
+  path, so every scaffolded site got an empty `np_c_authors`
+  table whether magazine was active or not.
+
+  Magazine now matches the built-in `posts` collection in
+  `@nexpress/app`: `author` is `relationTo: "users"`. Bylines
+  resolve through `np_users` directly. The byline render path
+  in `archives.tsx` / `post-feature.tsx` / `post-card.tsx` was
+  already shape-agnostic (`author.name` works on either row), so
+  no template change is needed.
+
+  **Author archive at `/author/:id`** — the route stays, but now
+  queries `np_users` via the new `getUserById` helper exported
+  from `@nexpress/core/auth` (mirrored at the package root). The
+  "author bio" sub-line on the archive header is dropped — bio
+  is not part of the `np_users` schema. Sites that want guest
+  authors without admin accounts can re-add an authors collection
+  on their own; the framework no longer ships one by default.
+
+  New on `@nexpress/core`:
+  - `getUserById(id): Promise<NpUserBasic | null>` — minimal
+    `{ id, name, email }` projection. The supported entry point
+    for theme code that needs to render a byline from
+    `posts.author: relationTo("users")`. Available from both
+    the package root and `@nexpress/core/auth`.
+
+  Migration: sites that activated magazine before this release
+  have an `np_c_authors` table in their database. Drizzle won't
+  drop it (the framework only adds via `createIfAbsent`); operators
+  can drop it manually if it's empty. Magazine no longer reads
+  that table.
+
+- 17c90d6: feat(core, app, theme): universal-content-model Phase U.1 — `posts.kind` field + select-options union
+
+  First implementation phase of the universal-content-model track
+  (design lock: PR #748, design doc: `docs/design/universal-content-model.md`).
+  This phase introduces the data-model primitives. **Articles still
+  work exactly as today** — nothing visible changes until Phase U.2
+  when theme-docs declares `kind="doc"`.
+
+  ## What lands
+
+  ### Built-in `posts` collection (`@nexpress/app`)
+  - New `kind` field: `select`, required, default `"article"`. One
+    option shipped (`Article`); themes union additional kinds via
+    `requires.collections.posts.fields.kind.options`.
+  - New `parent` field: `relationship → posts` (nullable). Used by
+    hierarchical kinds (docs, sections). Article-kind posts ignore it.
+  - New `order` field: `number` (nullable). Sort order within a
+    parent. Only meaningful for hierarchical kinds.
+
+  ### Theme contract changes (`@nexpress/theme`)
+  - `NpThemeSeedPost` gains optional `kind`, `parentSlug`, `order`,
+    and `data` fields. `kind` defaults to `"article"`; theme seed
+    data can declare `kind: "doc"` (etc.) once a theme registers
+    that kind. `parentSlug` references a sibling seed row by slug
+    — the seeder writes children in pass 1 and resolves parents
+    in pass 2.
+  - **`NpThemeSeedDocument` + `seedContent.documents` slot
+    REMOVED.** Per design decision §10.5 (#748): zero theme
+    consumers in-tree, no transition period. Themes that want to
+    seed non-article kinds use `seedContent.posts` with `kind` set
+    on each entry.
+
+  ### Schema codegen + migration (`@nexpress/core`)
+  - The generator now honors `field.defaultValue` for text /
+    select / radio / textarea / email / number / checkbox columns
+    — it previously dropped the value silently. Drizzle emits
+    `DEFAULT '<value>'` in the migration, so adding a NOT NULL
+    column to a table with existing rows succeeds without manual
+    SQL fixups.
+  - `apps/web/drizzle/0002_good_jack_murdock.sql` includes the
+    Phase U.1 columns AND catches up accumulated post-#727 schema
+    drift (portfolio's project fields, docs theme's lede /
+    stable-since / badge). Run `pnpm db:generate && pnpm db:migrate`
+    after pulling.
+
+  ### Merge logic (`@nexpress/core`)
+  - `merge-requirements.ts` gains select-options union semantics
+    (design decision §10.3). When two themes contribute select
+    options on the same field, options are deduped by `value` and
+    last-wins on `label`. This is what lets theme-docs add
+    `kind="doc"` to the shared `kind` select without colliding
+    with the operator's `"article"` option.
+  - `NpThemeFieldRequirement` gains an optional `options` field
+    (select-only). Other field types ignore it; the same
+    last-write-wins applies to non-select shapes via the existing
+    name-collision path.
+
+  ## What does NOT land in this phase
+  - The kinds-metadata block (`requires.collections.<slug>.kinds`)
+    that drives per-kind admin sidebar entries. Deferred to Phase
+    U.2 where theme-docs declares `kind: "doc"` end-to-end so the
+    sidebar logic ships alongside its first consumer.
+  - `docs` collection migration. Still its own collection; Phase
+    U.3 moves rows.
+
+  ## Tests
+  - `merge-requirements.test.ts` adds 3 unit tests covering the
+    select-options union (additive, dedupe-by-value, refuse to
+    union into a non-select field).
+  - `@nexpress/core` 430 tests pass, `apps/web` 85, all themes
+    build + typecheck clean.
+
 ## 0.3.0
 
 ### Patch Changes

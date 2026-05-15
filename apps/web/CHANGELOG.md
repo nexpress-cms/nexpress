@@ -1,5 +1,85 @@
 # @nexpress/web
 
+## 0.0.12
+
+### Patch Changes
+
+- 0ba8ea7: fix(web/tests): apps/web integration tests no longer crash on `next/cache` + missing SITE_URL
+
+  CI's `apps/web#test:integration` job has been red on main since
+  the previous core integration failure unblocked (the core failure
+  hid these). Two distinct issues, one PR:
+  1. **`next/cache` outside Next runtime**. Route handlers that call
+     `revalidateTag` / `revalidatePath` after a write (sites admin,
+     theme settings, plugin config, setup wizard, active theme — 7
+     routes total) crashed under vitest with
+     `Invariant: static generation store missing`. The cache bust is
+     a side-effect the route's own tests aren't trying to exercise.
+     New `setup-next-cache-mock.ts` setupFile replaces `next/cache`
+     with no-op stubs process-wide.
+  2. **Missing `SITE_URL` env**. `siteUrlStrict` (#598) refuses to
+     build email-deliverable URLs from the request `Host` header,
+     so password-reset / email-verify flows crashed when the env
+     var was unset. `setup-env.ts` now sets a stable
+     `http://localhost:3000` default when the env is absent.
+
+  After both fixes: apps/web integration is 645/650 (5 skipped), 0
+  failures.
+
+- Updated dependencies [fbb9efc]
+- Updated dependencies [07c763b]
+- Updated dependencies [1c07056]
+- Updated dependencies [95cbc46]
+- Updated dependencies [218906d]
+- Updated dependencies [a8b732f]
+- Updated dependencies [ee20a2d]
+- Updated dependencies [4067401]
+- Updated dependencies [3de8716]
+- Updated dependencies [6d5deef]
+- Updated dependencies [63c4997]
+- Updated dependencies [1eb6255]
+- Updated dependencies [5165249]
+- Updated dependencies [3baac0d]
+- Updated dependencies [712c11c]
+- Updated dependencies [b3f70ff]
+- Updated dependencies [d76a0c9]
+- Updated dependencies [d76a0c9]
+- Updated dependencies [4d38283]
+- Updated dependencies [88bd29b]
+- Updated dependencies [48ce0d1]
+- Updated dependencies [4cae8cf]
+- Updated dependencies [2a83f97]
+- Updated dependencies [b5f5bb3]
+- Updated dependencies [6f46b5a]
+- Updated dependencies [17c90d6]
+- Updated dependencies [73c919b]
+  - @nexpress/app@0.3.1
+  - @nexpress/core@0.3.1
+  - @nexpress/admin@0.3.1
+  - @nexpress/theme-docs@0.3.1
+  - @nexpress/theme-magazine@0.3.1
+  - @nexpress/theme-portfolio@0.3.1
+  - @nexpress/next@0.3.1
+  - @nexpress/theme@0.3.1
+  - @nexpress/auth-pages@0.3.1
+  - @nexpress/blocks@0.3.1
+  - @nexpress/plugin-sdk@0.3.1
+  - @nexpress/plugin-forum@0.3.1
+  - @nexpress/plugin-oauth-github@0.3.1
+  - @nexpress/plugin-oauth-google@0.3.1
+  - @nexpress/theme-default@0.3.1
+  - @nexpress/wp-import@0.3.1
+  - @nexpress/xliff@0.3.1
+  - @nexpress/plugin-block-callout@0.3.1
+  - @nexpress/plugin-block-embed@0.3.1
+  - @nexpress/plugin-block-latest-posts@0.3.1
+  - @nexpress/plugin-block-newsletter@0.3.1
+  - @nexpress/plugin-block-pricing@0.3.1
+  - @nexpress/plugin-block-stats@0.3.1
+  - @nexpress/plugin-reading-time@0.3.1
+  - @nexpress/plugin-seo-audit@0.3.1
+  - @nexpress/editor@0.3.1
+
 ## 0.0.11
 
 ### Patch Changes
