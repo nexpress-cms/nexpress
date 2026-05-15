@@ -487,4 +487,102 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     );
     expect(kind?.type).toBe("text");
   });
+
+  // ──────────────────────────────────────────────────────────────
+  // Universal-content-model Phase U.2 (#750): kinds-metadata union
+  // ──────────────────────────────────────────────────────────────
+
+  it("stamps a theme's `kinds` metadata onto `admin.kinds`", () => {
+    const themeDocs = theme("docs", {
+      posts: {
+        kinds: {
+          doc: {
+            label: "Doc",
+            labelPlural: "Documentation",
+            icon: "BookOpen",
+            urlPattern: "/docs/:slug",
+            hierarchical: true,
+          },
+        },
+      },
+    });
+    const out = mergeThemeRequirements([basePosts], [themeDocs]);
+    const merged = out.find((c) => c.slug === "posts");
+    expect(merged?.admin?.kinds?.doc).toEqual({
+      label: "Doc",
+      labelPlural: "Documentation",
+      icon: "BookOpen",
+      urlPattern: "/docs/:slug",
+      hierarchical: true,
+    });
+  });
+
+  it("unions kinds across two themes contributing different keys", () => {
+    const themeDocs = theme("docs", {
+      posts: {
+        kinds: {
+          doc: { label: "Doc", labelPlural: "Documentation" },
+        },
+      },
+    });
+    const themePortfolio = theme("portfolio", {
+      posts: {
+        kinds: {
+          project: { label: "Project", labelPlural: "Projects" },
+        },
+      },
+    });
+    const out = mergeThemeRequirements(
+      [basePosts],
+      [themeDocs, themePortfolio],
+    );
+    const merged = out.find((c) => c.slug === "posts");
+    expect(Object.keys(merged?.admin?.kinds ?? {}).sort()).toEqual([
+      "doc",
+      "project",
+    ]);
+  });
+
+  it("last-wins on per-property when two themes claim the same kind value", () => {
+    const themeA = theme("a", {
+      posts: {
+        kinds: {
+          doc: { label: "Doc", labelPlural: "Docs", icon: "Book" },
+        },
+      },
+    });
+    const themeB = theme("b", {
+      posts: {
+        kinds: {
+          // theme B re-labels and changes the icon. Last-write
+          // wins (mirrors the select-options union rule).
+          doc: { label: "Document", labelPlural: "Documentation", icon: "BookOpen" },
+        },
+      },
+    });
+    const out = mergeThemeRequirements([basePosts], [themeA, themeB]);
+    const kind = out.find((c) => c.slug === "posts")?.admin?.kinds?.doc;
+    expect(kind?.label).toBe("Document");
+    expect(kind?.labelPlural).toBe("Documentation");
+    expect(kind?.icon).toBe("BookOpen");
+  });
+
+  it("preserves other admin props when stamping kinds", () => {
+    // Regression: the kinds merge spreads admin via `...target.admin`
+    // — make sure it doesn't drop `group` / `icon` / etc.
+    const postsWithAdmin: NpCollectionConfig = {
+      ...basePosts,
+      admin: { group: "Content", icon: "Newspaper" },
+    };
+    const themeDocs = theme("docs", {
+      posts: {
+        kinds: { doc: { label: "Doc", labelPlural: "Docs" } },
+      },
+    });
+    const out = mergeThemeRequirements([postsWithAdmin], [themeDocs]);
+    const merged = out.find((c) => c.slug === "posts");
+    expect(merged?.admin?.group).toBe("Content");
+    expect(merged?.admin?.icon).toBe("Newspaper");
+    expect(merged?.admin?.kinds?.doc?.label).toBe("Doc");
+  });
 });

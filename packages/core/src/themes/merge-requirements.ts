@@ -345,10 +345,13 @@ export function mergeThemeRequirements(
 
       // Existing collection — append the theme's fields that
       // aren't already present (or, for select fields, union the
-      // options into the existing select). Skip entirely when
-      // the requirement has no fields to contribute.
+      // options into the existing select), and stamp the kinds
+      // metadata. A theme that contributes only `kinds` (no
+      // `fields`) still gets the merge — the early skip on
+      // missing fields would have dropped it pre-#750.
       const reqFields = req.fields;
-      if (!reqFields) continue;
+      const reqKinds = req.kinds;
+      if (!reqFields && !reqKinds) continue;
 
       const alreadyDeclared = existingFieldsBySlug.get(slug) ?? new Set<string>();
       const target = merged[existingIndex];
@@ -363,7 +366,7 @@ export function mergeThemeRequirements(
         return nextFields;
       };
 
-      for (const [fieldName, fieldReq] of Object.entries(reqFields)) {
+      for (const [fieldName, fieldReq] of Object.entries(reqFields ?? {})) {
         if (alreadyDeclared.has(fieldName)) {
           // Select-options union (universal-content-model Phase U.1).
           // When both sides are `select`, the requirement's
@@ -430,18 +433,17 @@ export function mergeThemeRequirements(
       // description wins.
       let nextAdmin = target.admin;
       let adminCloned = false;
-      if (req.kinds) {
+      if (reqKinds && Object.keys(reqKinds).length > 0) {
         const existingKinds = target.admin?.kinds ?? {};
-        const merged = { ...existingKinds };
-        let changed = false;
-        for (const [kindValue, kindMeta] of Object.entries(req.kinds)) {
-          merged[kindValue] = { ...(merged[kindValue] ?? {}), ...kindMeta };
-          changed = true;
+        const mergedKinds = { ...existingKinds };
+        for (const [kindValue, kindMeta] of Object.entries(reqKinds)) {
+          mergedKinds[kindValue] = {
+            ...(mergedKinds[kindValue] ?? {}),
+            ...kindMeta,
+          };
         }
-        if (changed) {
-          nextAdmin = { ...(target.admin ?? {}), kinds: merged };
-          adminCloned = true;
-        }
+        nextAdmin = { ...(target.admin ?? {}), kinds: mergedKinds };
+        adminCloned = true;
       }
 
       if (!fieldsCloned && !adminCloned) continue;
