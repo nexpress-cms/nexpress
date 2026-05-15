@@ -295,7 +295,7 @@ export const magazineCss = `
 }
 .np-magazine-byline-sep { opacity: 0.35; }
 .np-magazine-byline-link {
-  margin-left: auto;
+  margin-inline-start: auto;
   text-decoration: none;
   color: var(--np-color-primary, #b04a26);
   letter-spacing: 0.18em;
@@ -333,8 +333,7 @@ export const magazineCss = `
   border-bottom: 1px solid var(--np-color-border, #d8ccb4);
   list-style: none;
   margin: 0;
-  padding-left: 0;
-  padding-right: 0;
+  padding-inline: 0;
   padding-top: 0;
 }
 @media (max-width: 880px) {
@@ -821,8 +820,14 @@ export const magazineCss = `
   font-weight: 700;
   font-size: 4.25rem;
   line-height: 0.85;
-  float: left;
-  margin: 0.25rem 0.6rem 0 0;
+  /* Use the logical-property form (inline-start) so RTL
+     locales mirror the drop-cap to the leading edge instead of
+     pinning it visually left. Repo gate at
+     apps/web/tests/theme-magazine-portfolio.integration.test.ts
+     enforces logical equivalents on every theme. */
+  float: inline-start;
+  margin-block-start: 0.25rem;
+  margin-inline-end: 0.6rem;
   color: var(--np-color-primary, #b04a26);
 }
 .np-magazine-feature-body p { margin: 0 0 1rem; }
