@@ -454,6 +454,22 @@ export interface NpCollectionConfig {
      * single collection entry like before.
      */
     kinds?: Record<string, NpThemeCollectionKind>;
+    /**
+     * Visual metadata for sidebar field groups. Keyed by the
+     * `admin.group` label used on individual fields. The editor's
+     * `SidebarGroupCard` reads this to render an icon next to
+     * the group title and optionally surface a description.
+     *
+     * Operator-declared collections set this directly. Themes
+     * contribute their own group icons via
+     * `requires.collections.<slug>.groupMeta` (merged through
+     * `mergeThemeRequirements`, unioned across themes with
+     * last-write-wins on per-key props).
+     *
+     * Groups without an entry render without an icon — same
+     * behavior as before this surface existed.
+     */
+    groupMeta?: Record<string, NpAdminGroupMeta>;
   };
   upload?: NpUploadConfig;
 }
@@ -737,6 +753,20 @@ export interface NpThemeCollectionRequirement {
    * (the admin shows the regular collection list view).
    */
   kinds?: Record<string, NpThemeCollectionKind>;
+  /**
+   * Sidebar group metadata the theme contributes. Keyed by the
+   * `admin.group` label the theme uses on its contributed fields
+   * (e.g. theme-magazine contributes `Magazine: { icon: "Newspaper" }`).
+   * Merged into the collection's `admin.groupMeta` via
+   * last-write-wins union — two themes claiming the same group
+   * label get the later theme's icon / description.
+   *
+   * Declaring a group key without contributing fields with the
+   * same `admin.group` is allowed (the entry is unused but
+   * harmless) — useful for overriding a framework default's
+   * icon without adding any new fields.
+   */
+  groupMeta?: Record<string, NpAdminGroupMeta>;
 }
 
 /**
@@ -747,6 +777,26 @@ export interface NpThemeCollectionRequirement {
  * last-wins on every property. Operators rarely need to redefine
  * a kind their theme already ships.
  */
+/**
+ * Per-group sidebar metadata. Resolves at runtime in the admin
+ * edit view; not codegen'd into the DB schema.
+ */
+export interface NpAdminGroupMeta {
+  /**
+   * Lucide icon name (no `Icon` suffix) shown next to the
+   * group title in the editor sidebar. Examples: `"Calendar"`,
+   * `"BookOpen"`, `"Briefcase"`. Resolved client-side; unknown
+   * names render no icon (silent fallback, no warning).
+   */
+  icon?: string;
+  /**
+   * One-line description shown beneath the group title. Useful
+   * for operator hints like "Search-result preview + social
+   * card." Truncated by the admin if it's long.
+   */
+  description?: string;
+}
+
 export interface NpThemeCollectionKind {
   /** Singular human label — "Doc", "Project", "Article". */
   label: string;

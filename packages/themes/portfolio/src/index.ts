@@ -328,6 +328,12 @@ export const portfolioTheme = defineTheme({
               },
             },
           },
+          groupMeta: {
+            Portfolio: {
+              icon: "Briefcase",
+              description: "Project metadata — hero, client, year, role, cover treatment.",
+            },
+          },
         },
       },
     },

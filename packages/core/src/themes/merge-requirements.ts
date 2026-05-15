@@ -484,6 +484,27 @@ export function mergeThemeRequirements(
         adminCloned = true;
       }
 
+      // Group metadata (#8 of the editor track). Themes contribute
+      // icon / description per sidebar group label. Merged
+      // last-wins on per-key props. Unlike `kinds`, groupMeta has
+      // no `_themeOrigin` gate — the metadata is purely
+      // presentational, and showing an icon contributed by an
+      // inactive theme is harmless (the group itself only renders
+      // when an active field declares `admin.group: <name>`).
+      const reqGroupMeta = req.groupMeta;
+      if (reqGroupMeta && Object.keys(reqGroupMeta).length > 0) {
+        const existingMeta = nextAdmin?.groupMeta ?? target.admin?.groupMeta ?? {};
+        const mergedMeta = { ...existingMeta };
+        for (const [groupName, meta] of Object.entries(reqGroupMeta)) {
+          mergedMeta[groupName] = {
+            ...(mergedMeta[groupName] ?? {}),
+            ...meta,
+          };
+        }
+        nextAdmin = { ...(nextAdmin ?? target.admin ?? {}), groupMeta: mergedMeta };
+        adminCloned = true;
+      }
+
       if (!fieldsCloned && !adminCloned) continue;
 
       // Clone the collection record + its fields / admin so we
