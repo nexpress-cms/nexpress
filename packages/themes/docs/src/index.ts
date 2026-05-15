@@ -103,6 +103,12 @@ export const docsTheme = defineTheme({
               },
             },
           },
+          groupMeta: {
+            Docs: {
+              icon: "BookOpen",
+              description: "Doc-specific meta — lede and API stability hint.",
+            },
+          },
           kinds: {
             doc: {
               label: "Doc",

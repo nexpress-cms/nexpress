@@ -330,6 +330,16 @@ export const magazineTheme = defineTheme({
               hard: false,
             },
           },
+          // Editor sidebar icon for the theme's own group
+          // (#8 of the editor progressive-disclosure track).
+          // Merged into the collection's `admin.groupMeta` via
+          // mergeThemeRequirements; the bundled-themes prebake
+          // means every site that registers any theme gets this
+          // entry, but it only renders when an active field
+          // declares `admin.group: "Magazine"`.
+          groupMeta: {
+            Magazine: { icon: "Newspaper", description: "Cover-story + featured controls." },
+          },
         },
         categories: {
           createIfAbsent: true,

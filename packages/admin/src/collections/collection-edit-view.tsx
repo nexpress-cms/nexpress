@@ -1,12 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { collectHiddenFieldNames } from "@nexpress/core";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
-import { CalendarClock, ChevronRight, Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  Briefcase,
+  Calendar,
+  CalendarClock,
+  ChevronRight,
+  Eye,
+  FileText,
+  FolderTree,
+  Layout,
+  Loader2,
+  Newspaper,
+  Save,
+  Search,
+  Tag,
+  Trash2,
+  User,
+  type LucideIcon,
+} from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -275,6 +293,31 @@ const isVisibleField = (field: NpFieldConfig): boolean => {
 const DEFAULT_SIDEBAR_GROUP = "Publish";
 
 /**
+ * Lucide-name → component map for `admin.groupMeta.<group>.icon`
+ * resolution. Mirrors the same pattern as `admin.icon` in
+ * admin-shell. Small on purpose — the bundle pulls only the
+ * icons the editor actually mounts. Add an entry when a theme
+ * declares a new group icon.
+ */
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  BookOpen,
+  Briefcase,
+  Calendar,
+  FileText,
+  FolderTree,
+  Layout,
+  Newspaper,
+  Search,
+  Tag,
+  User,
+};
+
+function resolveGroupIcon(name: string | undefined): LucideIcon | undefined {
+  if (!name) return undefined;
+  return GROUP_ICONS[name];
+}
+
+/**
  * Resolve a sidebar field's group label. Containers (row,
  * collapsible) and unnamed structural fields don't get grouped —
  * they keep their authored shape inside the default group.
@@ -329,6 +372,8 @@ function SidebarGroupCard({
   name,
   storageKey,
   forceOpen,
+  icon,
+  description,
   children,
 }: {
   name: string;
@@ -345,6 +390,18 @@ function SidebarGroupCard({
    * silently; once force lifts, the new preference applies.
    */
   forceOpen?: boolean;
+  /**
+   * Optional Lucide icon component rendered before the group
+   * title. Resolved by the parent against the collection's
+   * `admin.groupMeta` map; unknown names fall back to no icon
+   * (silent — same fallback pattern as `admin.icon`).
+   */
+  icon?: ComponentType<{ className?: string }>;
+  /**
+   * Optional one-line hint shown beneath the title when the
+   * group is open. Truncated visually if long.
+   */
+  description?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState<boolean>(true);
@@ -388,7 +445,7 @@ function SidebarGroupCard({
       <Card>
         <CollapsibleTrigger asChild>
           <CardHeader
-            className="cursor-pointer select-none flex flex-row items-center justify-between outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] rounded-t-xl"
+            className="cursor-pointer select-none flex flex-row items-center justify-between gap-2 outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] rounded-t-xl"
             role="button"
             tabIndex={0}
             aria-expanded={effectiveOpen}
@@ -400,11 +457,31 @@ function SidebarGroupCard({
               }
             }}
           >
-            <CardTitle>{name}</CardTitle>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {icon ? (
+                <span
+                  aria-hidden="true"
+                  className="flex size-5 shrink-0 items-center justify-center text-neutral-500 dark:text-neutral-400"
+                >
+                  {(() => {
+                    const Icon = icon;
+                    return <Icon className="size-3.5" />;
+                  })()}
+                </span>
+              ) : null}
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <CardTitle>{name}</CardTitle>
+                {description && effectiveOpen ? (
+                  <p className="truncate text-[11.5px] font-normal text-neutral-500 dark:text-neutral-400">
+                    {description}
+                  </p>
+                ) : null}
+              </div>
+            </div>
             <ChevronRight
               aria-hidden="true"
               className={cn(
-                "size-4 text-muted-foreground transition-transform",
+                "size-4 shrink-0 text-muted-foreground transition-transform",
                 effectiveOpen && "rotate-90",
               )}
             />
@@ -1057,12 +1134,15 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                     if (f.type === "row" || f.type === "collapsible") return false;
                     return Boolean(form.formState.errors[f.name]);
                   });
+                  const meta = config.admin?.groupMeta?.[group.name];
                   return (
                     <SidebarGroupCard
                       key={group.name}
                       name={group.name}
                       storageKey={`np-admin.sidebar-group.${collectionSlug}.${group.name}`}
                       forceOpen={hasError}
+                      icon={resolveGroupIcon(meta?.icon)}
+                      {...(meta?.description ? { description: meta.description } : {})}
                     >
                       {group.fields.map((field, index) => (
                         <FieldRenderer
