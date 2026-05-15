@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { collectHiddenFieldNames } from "@nexpress/core";
 import type { NpCollectionConfig, NpFieldConfig } from "@nexpress/core";
 import { CalendarClock, ChevronRight, Eye, FileText, Loader2, Save, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -152,18 +153,29 @@ const buildFieldSchema = (field: NpFieldConfig): z.ZodType<unknown> => {
   }
 };
 
-const buildSchemaShape = (fields: NpFieldConfig[]): Record<string, z.ZodType<unknown>> => {
+const buildSchemaShape = (
+  fields: NpFieldConfig[],
+  /**
+   * Names of fields whose `admin.condition` evaluated to false
+   * against the current form data — `required` is dropped for
+   * these so a hidden field can never block submit with an
+   * invisible validation error.
+   */
+  hiddenByCondition: ReadonlySet<string> = new Set(),
+): Record<string, z.ZodType<unknown>> => {
   const shape: Record<string, z.ZodType<unknown>> = {};
 
   for (const field of fields) {
     if (field.type === "row" || field.type === "collapsible") {
-      Object.assign(shape, buildSchemaShape(field.fields));
+      Object.assign(shape, buildSchemaShape(field.fields, hiddenByCondition));
       continue;
     }
 
     let schema = buildFieldSchema(field);
 
-    if (!field.required) {
+    const effectiveRequired =
+      field.required && !hiddenByCondition.has(field.name);
+    if (!effectiveRequired) {
       schema = schema.optional();
     }
 
@@ -173,7 +185,22 @@ const buildSchemaShape = (fields: NpFieldConfig[]): Record<string, z.ZodType<unk
   return shape;
 };
 
-const generateZodSchema = (fields: NpFieldConfig[]) => z.object(buildSchemaShape(fields));
+const generateZodSchema = (
+  fields: NpFieldConfig[],
+  hiddenByCondition: ReadonlySet<string> = new Set(),
+) => z.object(buildSchemaShape(fields, hiddenByCondition));
+
+/**
+ * Walk fields (recursing into row / collapsible containers) and
+ * collect names whose `admin.condition` evaluates falsy against
+ * `data`. The result feeds `generateZodSchema` so hidden fields
+ * never block submission with a required-but-missing error the
+ * operator can't see or correct.
+ *
+ * Implementation lives in `@nexpress/core` so the pipeline's
+ * server-side validation evaluates the same set of conditions
+ * the admin client honored. Single source of truth.
+ */
 
 /**
  * Adds an implicit `slug` text input to the form when the
@@ -406,14 +433,36 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
     [config.fields, config.slugField],
   );
 
-  const schema = useMemo(() => generateZodSchema(effectiveFields), [effectiveFields]);
   const defaultValues = useMemo(
     () => buildDefaultValues(effectiveFields, doc ?? {}),
     [effectiveFields, doc],
   );
 
+  // Custom resolver that drops `required` for fields hidden by
+  // their `admin.condition`. Without this, a required field
+  // gated by `kind === "doc"` would block save on an article
+  // post with an "invisible" validation error: the operator
+  // sees no failing input but the form refuses to submit.
+  //
+  // Schema is rebuilt per submit (resolver call) rather than
+  // memoized — react-hook-form's default `mode: "onSubmit"`
+  // means the resolver fires once per save click, so the
+  // rebuild cost is trivial relative to the network round-trip
+  // it precedes.
+  const resolver = useMemo(() => {
+    return async (
+      values: Record<string, unknown>,
+      context: unknown,
+      options: Parameters<ReturnType<typeof zodResolver>>[2],
+    ) => {
+      const hidden = collectHiddenFieldNames(effectiveFields, values);
+      const dynamicSchema = generateZodSchema(effectiveFields, hidden);
+      return zodResolver(dynamicSchema)(values, context, options);
+    };
+  }, [effectiveFields]);
+
   const form = useForm<Record<string, unknown>>({
-    resolver: zodResolver(schema),
+    resolver,
     defaultValues,
   });
 
