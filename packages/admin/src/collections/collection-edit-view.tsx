@@ -369,7 +369,7 @@ function SidebarGroupCard({
       <Card>
         <CollapsibleTrigger asChild>
           <CardHeader
-            className="cursor-pointer select-none flex flex-row items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--np-color-brand)] focus-visible:ring-offset-2 rounded-t-xl"
+            className="cursor-pointer select-none flex flex-row items-center justify-between outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] rounded-t-xl"
             role="button"
             tabIndex={0}
             aria-expanded={open}
