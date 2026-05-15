@@ -514,7 +514,23 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
       icon: "BookOpen",
       urlPattern: "/docs/:slug",
       hierarchical: true,
+      _themeOrigin: "docs",
     });
+  });
+
+  it("stamps `_themeOrigin` on every kind entry so the admin can gate by active theme", () => {
+    const themeDocs = theme("docs", {
+      posts: { kinds: { doc: { label: "Doc", labelPlural: "Docs" } } },
+    });
+    const themePortfolio = theme("portfolio", {
+      posts: {
+        kinds: { project: { label: "Project", labelPlural: "Projects" } },
+      },
+    });
+    const out = mergeThemeRequirements([basePosts], [themeDocs, themePortfolio]);
+    const kinds = out.find((c) => c.slug === "posts")?.admin?.kinds;
+    expect(kinds?.doc?._themeOrigin).toBe("docs");
+    expect(kinds?.project?._themeOrigin).toBe("portfolio");
   });
 
   it("unions kinds across two themes contributing different keys", () => {

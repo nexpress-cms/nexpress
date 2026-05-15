@@ -431,6 +431,14 @@ export function mergeThemeRequirements(
       // (label, icon, urlPattern, …) — two themes claiming the
       // same kind value is unusual and the second theme's
       // description wins.
+      //
+      // Each merged kind carries a `_themeOrigin` tag so the
+      // admin sidebar can hide kinds whose contributing theme
+      // isn't active. Without this, the bundled-themes prebake
+      // would surface every built-in theme's kinds on every
+      // operator's sidebar — an operator on `default` would see
+      // a "Documentation" entry contributed by `theme-docs`
+      // (#754 follow-up).
       let nextAdmin = target.admin;
       let adminCloned = false;
       if (reqKinds && Object.keys(reqKinds).length > 0) {
@@ -440,6 +448,7 @@ export function mergeThemeRequirements(
           mergedKinds[kindValue] = {
             ...(mergedKinds[kindValue] ?? {}),
             ...kindMeta,
+            _themeOrigin: theme.manifest.id,
           };
         }
         nextAdmin = { ...(target.admin ?? {}), kinds: mergedKinds };

@@ -754,6 +754,19 @@ export interface NpThemeCollectionKind {
    * content (docs, sections) opt in; flat kinds leave it false.
    */
   hierarchical?: boolean;
+  /**
+   * Framework-set. Stamped by `mergeThemeRequirements` with the
+   * id of the theme whose `requires.collections.<slug>.kinds`
+   * contributed this entry. The admin sidebar reads it to gate
+   * per-kind nav entries on the active theme — the bundled-themes
+   * prebake unions every built-in's kinds onto the schema, but
+   * only the active theme's kinds deserve sidebar real estate.
+   *
+   * NEVER set this by hand from operator config. The underscore
+   * is intentional — same convention as `admin._themeOrigin` at
+   * the collection level.
+   */
+  _themeOrigin?: string;
 }
 
 /**
