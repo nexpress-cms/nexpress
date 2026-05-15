@@ -29,7 +29,6 @@ export type {
   NpThemeErrorProps,
   NpThemeSeoHooks,
   NpThemeSeedContent,
-  NpThemeSeedDocument,
   NpThemeSeedNavigation,
   NpThemeSeedPage,
   NpThemeSeedPost,

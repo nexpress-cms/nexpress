@@ -2,11 +2,8 @@ import { and, eq, sql } from "drizzle-orm";
 
 import {
   findDocuments,
-  getAllCollectionSlugs,
-  getCollectionConfig,
   getCurrentSiteId,
   getDb,
-  getLogger,
   NP_DEFAULT_SITE_ID,
   npNavigation,
   saveDocument,
@@ -16,7 +13,6 @@ import {
 } from "@nexpress/core";
 import type {
   NpThemeSeedContent,
-  NpThemeSeedDocument,
   NpThemeSeedPage,
   NpThemeSeedPost,
   NpThemeSeedTerm,
@@ -66,23 +62,11 @@ export interface SeedNavigationResult {
   footerSkipped: boolean;
 }
 
-export interface SeedDocumentsCollectionResult {
-  /** Number of documents written. `0` when the collection already had rows. */
-  created: number;
-  /** True when the slot was skipped because the collection isn't empty. */
-  skipped: boolean;
-  /** True when the theme referenced a collection slug nothing has registered. */
-  unknown?: true;
-}
-
-export type SeedDocumentsResult = Record<string, SeedDocumentsCollectionResult>;
-
 export interface SeedAllResult {
   terms: SeedTermsResult;
   pages: SeedPagesResult;
   posts: SeedPostsResult;
   navigation: SeedNavigationResult;
-  documents: SeedDocumentsResult;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -330,19 +314,63 @@ export async function seedPosts(
   const tagIds = await tagIdsByName();
   const samples = options.posts ?? buildPostSamples(new Date());
 
+  // Two-pass write to support `parentSlug` references across the
+  // seeded batch: pass 1 writes every row with parent=null and
+  // records the slug→id mapping; pass 2 updates rows whose
+  // `parentSlug` resolves to a real id. Article-kind posts (no
+  // parentSlug) ignore the second pass.
+  const slugToId = new Map<string, string>();
+  const pendingParents: Array<{ slug: string; parentSlug: string; data: Record<string, unknown> }> = [];
+
   for (const sample of samples) {
     const tagRefs = (sample.tagNames ?? [])
       .map((name) => tagIds.get(name))
       .filter((id): id is string => typeof id === "string");
-    const { tagNames: _tagNames, status, ...rest } = sample;
-    await saveDocument(
+    const {
+      tagNames: _tagNames,
+      status,
+      kind,
+      parentSlug,
+      order,
+      data: extraData,
+      ...rest
+    } = sample;
+    const payload: Record<string, unknown> = {
+      ...rest,
+      ...(extraData ?? {}),
+      author: actor.id,
+      tags: tagRefs,
+    };
+    if (kind) payload.kind = kind;
+    if (typeof order === "number") payload.order = order;
+    const saved = await saveDocument(
       "posts",
       null,
-      { ...rest, author: actor.id, tags: tagRefs },
+      payload,
       actor,
       { status: status ?? "published" },
     );
+    const savedSlug =
+      typeof saved.doc.slug === "string" ? saved.doc.slug : null;
+    const savedId = typeof saved.doc.id === "string" ? saved.doc.id : null;
+    if (savedSlug && savedId) slugToId.set(savedSlug, savedId);
+    if (parentSlug && savedSlug && savedId) {
+      pendingParents.push({ slug: savedSlug, parentSlug, data: payload });
+    }
   }
+
+  for (const { slug, parentSlug } of pendingParents) {
+    const parentId = slugToId.get(parentSlug);
+    const selfId = slugToId.get(slug);
+    if (!parentId || !selfId) continue;
+    await saveDocument(
+      "posts",
+      selfId,
+      { parent: parentId },
+      actor,
+    );
+  }
+
   return { created: samples.length, skipped: false };
 }
 
@@ -434,111 +462,6 @@ export async function seedNavigation(
 // ──────────────────────────────────────────────────────────────────
 // Orchestrator — terms first so post tag/category refs resolve.
 // ──────────────────────────────────────────────────────────────────
-// Documents — generic seeder for collections beyond pages/posts.
-// ──────────────────────────────────────────────────────────────────
-
-export interface SeedDocumentsOptions {
-  /** Keyed by collection slug. */
-  documents?: Record<string, NpThemeSeedDocument[]>;
-}
-
-/**
- * Seed arbitrary user-declared collections from a theme's
- * `seedContent.documents` map.
- *
- * Each list is idempotent — if the collection already has any
- * row, the whole slot is skipped (same rule pages/posts use).
- * Unknown collection slugs (a theme that ships seed for `authors`
- * but the operator hasn't activated that collection) are logged
- * at warn level and reported in the result as `unknown: true` so
- * the setup wizard can surface them without aborting.
- *
- * Field shape: the seeder forwards `{ slug, title, publishedAt,
- * author: actor.id, ...data }` to `saveDocument`. The pipeline's
- * Zod validation strips fields the collection doesn't declare,
- * so themes can include extras (e.g. `body` for docs collections)
- * without checking each operator's exact field list. The auto-
- * injected `author` is dropped for collections that don't declare
- * one — themes shouldn't have to special-case it.
- */
-export async function seedDocuments(
-  actor: NpAuthUser,
-  options: SeedDocumentsOptions = {},
-): Promise<SeedDocumentsResult> {
-  const out: SeedDocumentsResult = {};
-  const map = options.documents;
-  if (!map) return out;
-
-  const knownSlugs = new Set(getAllCollectionSlugs());
-
-  for (const [collectionSlug, docs] of Object.entries(map)) {
-    if (!knownSlugs.has(collectionSlug)) {
-      getLogger().warn(
-        `Theme seedContent.documents references unknown collection "${collectionSlug}" — skipping. Operator likely hasn't activated this collection.`,
-      );
-      out[collectionSlug] = { created: 0, skipped: true, unknown: true };
-      continue;
-    }
-
-    const existing = await findDocuments(collectionSlug, { limit: 1 });
-    if (existing.docs.length > 0) {
-      out[collectionSlug] = { created: 0, skipped: true };
-      continue;
-    }
-
-    // Inject `author: actor.id` only when the collection has that
-    // field — themes shouldn't have to special-case it, and we
-    // shouldn't rely on the Zod stripper to silently drop it.
-    const config = getCollectionConfig(collectionSlug);
-    const hasAuthorField = collectFieldNames(config.fields).has("author");
-
-    let created = 0;
-    for (const doc of docs) {
-      const base: Record<string, unknown> = { ...(doc.data ?? {}) };
-      if (hasAuthorField && base.author === undefined) {
-        base.author = actor.id;
-      }
-      base.slug = doc.slug;
-      base.title = doc.title;
-      if (doc.publishedAt !== undefined) {
-        base.publishedAt = doc.publishedAt;
-      }
-      await saveDocument(collectionSlug, null, base, actor, {
-        status: doc.status ?? "published",
-      });
-      created += 1;
-    }
-    out[collectionSlug] = { created, skipped: false };
-  }
-
-  return out;
-}
-
-/**
- * Walk a collection's fields config and return every leaf field
- * name. Row / collapsible / group fields are containers, so
- * recurse into them to surface the real names.
- */
-function collectFieldNames(
-  fields: ReadonlyArray<{ type: string; name?: string; fields?: unknown }>,
-  out: Set<string> = new Set(),
-): Set<string> {
-  for (const field of fields) {
-    if (field.type === "row" || field.type === "collapsible" || field.type === "group") {
-      if (Array.isArray(field.fields)) {
-        collectFieldNames(
-          field.fields as ReadonlyArray<{ type: string; name?: string; fields?: unknown }>,
-          out,
-        );
-      }
-      continue;
-    }
-    if (typeof field.name === "string") out.add(field.name);
-  }
-  return out;
-}
-
-// ──────────────────────────────────────────────────────────────────
 
 /**
  * Theme-aware seed orchestrator.
@@ -569,12 +492,11 @@ export async function seedAll(
   });
   const pages = await seedPages(actor, { pages: themed.pages });
   const posts = await seedPosts(actor, { posts: themed.posts });
-  const documents = await seedDocuments(actor, { documents: themed.documents });
   const nav = await seedNavigation(actor, {
     header: themed.navigation?.header,
     footer: themed.navigation?.footer,
   });
-  return { terms, pages, posts, navigation: nav, documents };
+  return { terms, pages, posts, navigation: nav };
 }
 
 // ──────────────────────────────────────────────────────────────────

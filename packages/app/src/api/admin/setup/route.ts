@@ -328,9 +328,6 @@ export async function POST(request: NextRequest): Promise<Response> {
             tags: seeded.terms.tagsCreated,
             categories: seeded.terms.categoriesCreated,
             navItems: seeded.navigation.header + seeded.navigation.footer,
-            documents: Object.fromEntries(
-              Object.entries(seeded.documents).map(([slug, r]) => [slug, r.created]),
-            ),
           }
         : null,
       warnings: warnings.length > 0 ? warnings : undefined,

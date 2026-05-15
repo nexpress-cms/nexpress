@@ -357,12 +357,40 @@ export interface NpThemeSeedPost {
   publishedAt: string;
   status?: "draft" | "published";
   /**
+   * Content-type discriminator. Defaults to `"article"`. Themes
+   * seeding hierarchical content (docs, projects, …) set this
+   * to the kind they registered via
+   * `requires.collections.posts.fields.kind.options`. Unknown
+   * kinds fail validation at seed time — the merge-requirements
+   * union is the source of truth for valid kinds.
+   * Universal-content-model Phase U.1 (#748).
+   */
+  kind?: string;
+  /**
+   * Hierarchical-kind support: parent post's slug. The seeder
+   * resolves the slug to an id at seed time, after all sibling
+   * rows have been written (two-pass), so seed authors can
+   * reference parents declared later in the same array.
+   * Optional and only meaningful for hierarchical kinds.
+   */
+  parentSlug?: string;
+  /** Sort order within a parent. Only meaningful for hierarchical kinds. */
+  order?: number;
+  /**
    * Tag names to link via the `tags` collection. Names that
    * don't resolve (the seeder didn't create the tag, or the
    * theme didn't seed tags but referenced one) are skipped
    * silently — the post still seeds, just without that link.
    */
   tagNames?: string[];
+  /**
+   * Extra fields merged onto the seeded post. The pipeline's
+   * Zod validation strips keys the collection doesn't declare,
+   * so extra fields are silently dropped rather than rejected.
+   * Use this for theme-contributed fields (lede, stableSince,
+   * badge, …) that don't have first-class slots on this type.
+   */
+  data?: Record<string, unknown>;
 }
 
 export interface NpThemeSeedNavigation {
@@ -370,55 +398,20 @@ export interface NpThemeSeedNavigation {
   footer?: LocalNpNavItem[];
 }
 
-/**
- * Generic seed-document descriptor for the `documents?` slot.
- *
- * `pages` / `posts` are first-class because every theme uses them;
- * `documents` is the catch-all for everything else (a magazine
- * theme's `authors`, a docs theme's `glossary`, a portfolio's
- * `clients`). Keyed by collection slug at the `NpThemeSeedContent`
- * level; the seeder iterates each list with the same idempotency
- * rule as posts/pages — if the collection already has any rows,
- * the whole slot is skipped.
- */
-export interface NpThemeSeedDocument {
-  /** Used as the canonical `slug` field on the seeded document. */
-  slug: string;
-  /** Used as the canonical `title` field. */
-  title: string;
-  /** Defaults to `"published"`. */
-  status?: "draft" | "published";
-  /** ISO date string. Past = published; future = scheduled. */
-  publishedAt?: string;
-  /**
-   * Collection-specific fields merged onto the document. The
-   * pipeline's Zod validation strips keys the collection doesn't
-   * declare, so extra fields are silently dropped rather than
-   * rejected. Themes that don't know the operator's `author` id
-   * shouldn't include one — the seeder injects `author: actor.id`
-   * for any collection that declares an `author` field.
-   */
-  data?: Record<string, unknown>;
-}
-
 export interface NpThemeSeedContent {
   tags?: NpThemeSeedTerm[];
   categories?: NpThemeSeedTerm[];
   pages?: NpThemeSeedPage[];
+  /**
+   * Posts seed. Each entry may carry a `kind` field (defaults to
+   * `"article"`) so themes can seed documentation, projects, and
+   * other content kinds through the same slot — the docs / project
+   * rows land in `np_c_posts` with their kind set, the same as
+   * runtime-authored content. Universal-content-model Phase U.1
+   * (#748) — the legacy `documents` slot is gone.
+   */
   posts?: NpThemeSeedPost[];
   navigation?: NpThemeSeedNavigation;
-  /**
-   * Seed documents into arbitrary user-declared collections beyond
-   * pages/posts. Keyed by collection slug (`{ authors: [...],
-   * glossary: [...] }`). Each list is idempotent: if the
-   * collection already has rows, the whole slot is skipped.
-   *
-   * Unknown collection slugs are skipped with a warning rather
-   * than failing the boot — a theme that ships seed data for a
-   * collection an operator hasn't activated should degrade rather
-   * than crash the setup wizard.
-   */
-  documents?: Record<string, NpThemeSeedDocument[]>;
 }
 
 export interface NpThemeImpl {

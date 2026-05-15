@@ -23,6 +23,7 @@ export interface PostsDocument {
   updatedBy: string | null;
   slug: string;
   _status: "draft" | "published";
+  kind: string;
   title: string;
   excerpt: string | null;
   content: unknown;
@@ -32,11 +33,18 @@ export interface PostsDocument {
   wpOriginalAuthor: string | null;
   categories: string[] | null;
   tags: string[] | null;
+  parent: string | null;
+  order: number | null;
   featured: boolean | null;
   heroImage: string | null;
   client: string | null;
   year: number | null;
   role: string | null;
+  discipline: string | null;
+  span: number | null;
+  coverVariant: string | null;
+  coverFigure: string | null;
+  badge: string | null;
 }
 
 export interface PagesDocument {
@@ -114,9 +122,12 @@ export interface DocsDocument {
   createdBy: string | null;
   updatedBy: string | null;
   title: string | null;
+  lede: string | null;
   body: unknown | null;
   parent: string | null;
   order: number | null;
+  stableSince: string | null;
+  badge: string | null;
 }
 
 /**

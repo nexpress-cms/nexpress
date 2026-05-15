@@ -383,23 +383,52 @@ function buildScalarColumn(
 ): ScalarFieldResult | null {
   const notNull = field.required ? ".notNull()" : "";
 
+  // Honors `field.defaultValue` for SQL-mappable scalar types
+  // (text family, number, checkbox). Drizzle's `.default(<expr>)`
+  // emits a `DEFAULT` clause in the generated migration, which is
+  // required for adding a NOT NULL column to a table that already
+  // has rows. Non-scalar types (`relationship`, `upload`, `array`,
+  // `group`, `richText`, `blocks`, `json`) ignore the value — those
+  // either don't map to a single column or have no sensible
+  // server-side default.
+  const defaultClause = ((): string => {
+    if (field.defaultValue === undefined || field.defaultValue === null) return "";
+    if (field.type === "text" || field.type === "textarea" || field.type === "email" || field.type === "select" || field.type === "radio") {
+      if (typeof field.defaultValue !== "string") return "";
+      // Escape `\` and `"` so the emitted TS literal is a valid
+      // double-quoted string. The generator's output is consumed
+      // by tsc, which would reject an unescaped embedded quote.
+      const literal = field.defaultValue.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      return `.default("${literal}")`;
+    }
+    if (field.type === "number") {
+      if (typeof field.defaultValue !== "number" || !Number.isFinite(field.defaultValue)) return "";
+      return `.default(${field.defaultValue.toString()})`;
+    }
+    if (field.type === "checkbox") {
+      if (typeof field.defaultValue !== "boolean") return "";
+      return `.default(${field.defaultValue.toString()})`;
+    }
+    return "";
+  })();
+
   switch (field.type) {
     case "text":
     case "textarea":
     case "email":
     case "select":
     case "radio":
-      return { columns: [`${propertyName}: text("${columnName}")${notNull}`], relations: [] };
+      return { columns: [`${propertyName}: text("${columnName}")${defaultClause}${notNull}`], relations: [] };
     case "number": {
       const builder = field.integerOnly ? "integer" : "doublePrecision";
-      return { columns: [`${propertyName}: ${builder}("${columnName}")${notNull}`], relations: [] };
+      return { columns: [`${propertyName}: ${builder}("${columnName}")${defaultClause}${notNull}`], relations: [] };
     }
     case "richText":
     case "blocks":
     case "json":
       return { columns: [`${propertyName}: jsonb("${columnName}")${notNull}`], relations: [] };
     case "checkbox":
-      return { columns: [`${propertyName}: boolean("${columnName}")${notNull}`], relations: [] };
+      return { columns: [`${propertyName}: boolean("${columnName}")${defaultClause}${notNull}`], relations: [] };
     case "date":
       return {
         columns: [`${propertyName}: timestamp("${columnName}", { withTimezone: true })${notNull}`],

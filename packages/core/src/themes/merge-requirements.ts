@@ -162,6 +162,38 @@ function requirementToField(
 }
 
 /**
+ * Universal-content-model Phase U.1 (#748): union two select
+ * option lists. Dedupe on `value` (so two themes contributing
+ * the same kind don't double up); last-wins on `label` (theme B
+ * loaded after theme A can re-label the shared option).
+ *
+ * Returns the original `base` array unchanged when the
+ * contribution is empty or adds no new values — callers use
+ * referential equality to decide whether to clone the field.
+ */
+function mergeSelectOptions(
+  base: ReadonlyArray<{ label: string; value: string }>,
+  contribution: ReadonlyArray<{ label: string; value: string }>,
+): Array<{ label: string; value: string }> | ReadonlyArray<{ label: string; value: string }> {
+  if (contribution.length === 0) return base;
+  const byValue = new Map(base.map((o) => [o.value, o]));
+  let changed = false;
+  for (const opt of contribution) {
+    const existing = byValue.get(opt.value);
+    if (!existing) {
+      byValue.set(opt.value, opt);
+      changed = true;
+    } else if (existing.label !== opt.label) {
+      // Last-wins on label — keep value stable, refresh label.
+      byValue.set(opt.value, opt);
+      changed = true;
+    }
+  }
+  if (!changed) return base;
+  return Array.from(byValue.values());
+}
+
+/**
  * Set of names already declared on a collection. Walks
  * containers (`row`, `collapsible`) like the requirement
  * checker does so a field declared inside a row counts as
@@ -300,15 +332,55 @@ export function mergeThemeRequirements(
       }
 
       // Existing collection — append the theme's fields that
-      // aren't already present. Skip entirely when the
-      // requirement has no fields to contribute.
+      // aren't already present (or, for select fields, union the
+      // options into the existing select). Skip entirely when
+      // the requirement has no fields to contribute.
       const reqFields = req.fields;
       if (!reqFields) continue;
 
       const alreadyDeclared = existingFieldsBySlug.get(slug) ?? new Set<string>();
-      const toAdd: NpFieldConfig[] = [];
+      const target = merged[existingIndex];
+      if (!target) continue; // defensive; the index was just looked up
+      let nextFields: NpFieldConfig[] = target.fields;
+      let fieldsCloned = false;
+      const ensureCloned = (): NpFieldConfig[] => {
+        if (!fieldsCloned) {
+          nextFields = [...nextFields];
+          fieldsCloned = true;
+        }
+        return nextFields;
+      };
+
       for (const [fieldName, fieldReq] of Object.entries(reqFields)) {
         if (alreadyDeclared.has(fieldName)) {
+          // Select-options union (universal-content-model Phase U.1).
+          // When both sides are `select`, the requirement's
+          // `options` add to the existing field's options instead
+          // of being skipped. Two themes contributing disjoint
+          // option sets (e.g. `kind=doc` + `kind=project`) is
+          // exactly the case this enables.
+          if (fieldReq.type === "select" && fieldReq.options && fieldReq.options.length > 0) {
+            const idx = nextFields.findIndex(
+              (f) => "name" in f && f.name === fieldName,
+            );
+            const existing = idx >= 0 ? nextFields[idx] : undefined;
+            if (existing && existing.type === "select") {
+              const merged = mergeSelectOptions(existing.options, fieldReq.options);
+              if (merged !== existing.options) {
+                const list = ensureCloned();
+                // Spread copy ensures the result is a fresh mutable
+                // array even when `mergeSelectOptions` returned the
+                // input untouched in a code path the caller doesn't
+                // see; cheap, removes the readonly union in the type.
+                list[idx] = { ...existing, options: [...merged] };
+              }
+              continue;
+            }
+            // Falls through to the same-name warning path when the
+            // existing field isn't a select — a select requirement
+            // can't union into a text / number / etc.
+          }
+
           // If this name was injected by an earlier theme on
           // this same merge pass, surface that explicitly —
           // operators reading the log can tell "operator wins"
@@ -327,7 +399,7 @@ export function mergeThemeRequirements(
         }
         const synth = requirementToField(fieldName, fieldReq);
         if (!synth) continue;
-        toAdd.push(synth);
+        ensureCloned().push(synth);
         alreadyDeclared.add(fieldName);
         let injectedHere = stats.injected.get(slug);
         if (!injectedHere) {
@@ -336,18 +408,14 @@ export function mergeThemeRequirements(
         }
         injectedHere.add(fieldName);
       }
-      if (toAdd.length === 0) continue;
 
-      const target = merged[existingIndex];
-      if (!target) continue; // defensive; the index was just looked up
+      if (!fieldsCloned) continue;
+
       // Clone the collection record + its fields so we don't
       // mutate the operator's defineCollection() output. Mutating
       // the caller's array would surprise consumers that re-use
       // collection objects (tests, multi-site sandboxes).
-      merged[existingIndex] = {
-        ...target,
-        fields: [...target.fields, ...toAdd],
-      };
+      merged[existingIndex] = { ...target, fields: nextFields };
       existingFieldsBySlug.set(slug, alreadyDeclared);
     }
   }
