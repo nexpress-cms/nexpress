@@ -29,6 +29,21 @@ export const postsCollection = defineCollection({
   },
   fields: [
     {
+      // Content-type discriminator (universal-content-model Phase U.1).
+      // Themes contribute extra options via
+      // `requires.collections.posts.fields.kind`, which the
+      // merge-requirements union folds into the runtime schema.
+      // Single-kind sites see "article" everywhere and never
+      // notice this field; multi-kind sites get a per-kind
+      // sidebar entry from the kinds metadata block.
+      type: "select",
+      name: "kind",
+      required: true,
+      defaultValue: "article",
+      options: [{ label: "Article", value: "article" }],
+      admin: { position: "sidebar" },
+    },
+    {
       type: "text",
       name: "title",
       required: true,
@@ -91,6 +106,27 @@ export const postsCollection = defineCollection({
       relationTo: "tags",
       hasMany: true,
       admin: { position: "sidebar" },
+    },
+    {
+      // Hierarchical-kind support (universal-content-model Phase U.1).
+      // Optional for every kind. Themes whose kind is hierarchical
+      // (e.g. docs) read `parent` + `order` to build their sidebar
+      // tree; article-kind posts leave both null and ignore them.
+      type: "relationship",
+      name: "parent",
+      relationTo: "posts",
+      admin: {
+        position: "sidebar",
+        description: "Parent post — used by hierarchical kinds (e.g. docs).",
+      },
+    },
+    {
+      type: "number",
+      name: "order",
+      admin: {
+        position: "sidebar",
+        description: "Sort order within a parent. Only used by hierarchical kinds.",
+      },
     },
   ],
 });

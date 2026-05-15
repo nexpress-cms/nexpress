@@ -716,6 +716,19 @@ export interface NpThemeFieldRequirement {
    * severity, and a future F.8 may treat it as opt-in patch.
    */
   hard?: boolean;
+  /**
+   * For `select` only — extra options to union into the existing
+   * select field. Two themes can contribute disjoint option sets
+   * (e.g. theme-docs adds `kind="doc"`, theme-portfolio adds
+   * `kind="project"`); the merge dedupes on `value` and last-wins
+   * on `label`. Universal-content-model Phase U.1 (#748).
+   *
+   * Ignored when the merge can't find an existing select with the
+   * same `name`; theme authors that need a brand-new select can't
+   * synthesise one through requirements (`NpThemeFieldRequirement`
+   * doesn't carry enough to construct a valid `NpSelectField`).
+   */
+  options?: Array<{ label: string; value: string }>;
 }
 
 export interface NpRegisteredTheme {

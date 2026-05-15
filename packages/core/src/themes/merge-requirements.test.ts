@@ -233,7 +233,10 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     expect(out[0]?.fields).toBe(wrappedPosts.fields);
   });
 
-  it("skips select requirements and warns (no synthesisable default)", () => {
+  it("skips select requirements that ship no options and warns", () => {
+    // Without `options`, the field schema's `options.min(1)`
+    // would reject the synthesised field; the merge skips it
+    // entirely rather than producing an invalid collection.
     const themeSelect = theme("badtheme", {
       posts: { fields: { mood: { type: "select" } } },
     });
@@ -241,6 +244,30 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     const mood = out[0]?.fields.find((f) => "name" in f && f.name === "mood");
     expect(mood).toBeUndefined();
     expect(warnings.some((w) => w.message.toLowerCase().includes("select"))).toBe(true);
+  });
+
+  it("synthesises a select requirement when options are present", () => {
+    // The symmetric case to the union path: a brand-new select
+    // field on a collection that doesn't have one yet. As long as
+    // the theme provides options, the synthesised field is valid.
+    const themeKind = theme("docs", {
+      posts: {
+        fields: {
+          kind: {
+            type: "select",
+            options: [
+              { label: "Article", value: "article" },
+              { label: "Doc", value: "doc" },
+            ],
+          },
+        },
+      },
+    });
+    const out = mergeThemeRequirements([basePosts], [themeKind]);
+    const kind = out[0]?.fields.find((f) => "name" in f && f.name === "kind");
+    expect(kind?.type).toBe("select");
+    if (kind?.type !== "select") return;
+    expect(kind.options.map((o) => o.value).sort()).toEqual(["article", "doc"]);
   });
 
   it("skips upload requirements with no relationTo and warns", () => {
@@ -343,5 +370,121 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     // categories + authors synthesised
     expect(out.find((c) => c.slug === "categories")).toBeDefined();
     expect(out.find((c) => c.slug === "authors")).toBeDefined();
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // Universal-content-model Phase U.1 (#748): select-options union
+  // ──────────────────────────────────────────────────────────────
+
+  it("unions select.options when both sides target a select with the same name", () => {
+    const posts: NpCollectionConfig = {
+      slug: "posts",
+      labels: { singular: "Post", plural: "Posts" },
+      fields: [
+        {
+          type: "select",
+          name: "kind",
+          required: true,
+          defaultValue: "article",
+          options: [{ label: "Article", value: "article" }],
+        },
+      ],
+    };
+    const themeA = theme("docs", {
+      posts: {
+        fields: {
+          kind: {
+            type: "select",
+            options: [{ label: "Doc", value: "doc" }],
+          },
+        },
+      },
+    });
+    const themeB = theme("portfolio", {
+      posts: {
+        fields: {
+          kind: {
+            type: "select",
+            options: [{ label: "Project", value: "project" }],
+          },
+        },
+      },
+    });
+
+    const out = mergeThemeRequirements([posts], [themeA, themeB]);
+    const merged = out.find((c) => c.slug === "posts");
+    const kind = merged?.fields.find(
+      (f) => "name" in f && f.name === "kind",
+    );
+    expect(kind?.type).toBe("select");
+    if (kind?.type !== "select") return; // type narrow
+    const values = kind.options.map((o) => o.value).sort();
+    expect(values).toEqual(["article", "doc", "project"]);
+    // Operator-declared "Article" option preserved; no warning fired
+    // for the additive case.
+    expect(warnings).toEqual([]);
+  });
+
+  it("dedupes select.options by value and last-wins on label", () => {
+    const posts: NpCollectionConfig = {
+      slug: "posts",
+      labels: { singular: "Post", plural: "Posts" },
+      fields: [
+        {
+          type: "select",
+          name: "kind",
+          options: [{ label: "Article", value: "article" }],
+        },
+      ],
+    };
+    const themeRelabel = theme("rebrand", {
+      posts: {
+        fields: {
+          kind: {
+            type: "select",
+            options: [{ label: "Story", value: "article" }],
+          },
+        },
+      },
+    });
+
+    const out = mergeThemeRequirements([posts], [themeRelabel]);
+    const merged = out.find((c) => c.slug === "posts");
+    const kind = merged?.fields.find(
+      (f) => "name" in f && f.name === "kind",
+    );
+    if (kind?.type !== "select") {
+      throw new Error("expected merged kind to remain a select");
+    }
+    expect(kind.options).toHaveLength(1);
+    expect(kind.options[0]).toEqual({ label: "Story", value: "article" });
+  });
+
+  it("does NOT union when the same-name field on the existing collection is not a select", () => {
+    // Sanity: a `select` requirement against a `text` field of the
+    // same name should still fall into the warn-and-skip path —
+    // there is no sensible way to coerce a text column into a
+    // select choice list mid-merge.
+    const posts: NpCollectionConfig = {
+      slug: "posts",
+      labels: { singular: "Post", plural: "Posts" },
+      fields: [{ type: "text", name: "kind" }],
+    };
+    const bogus = theme("bogus", {
+      posts: {
+        fields: {
+          kind: {
+            type: "select",
+            options: [{ label: "Doc", value: "doc" }],
+          },
+        },
+      },
+    });
+    const out = mergeThemeRequirements([posts], [bogus]);
+    const merged = out.find((c) => c.slug === "posts");
+    const kind = merged?.fields.find(
+      (f) => "name" in f && f.name === "kind",
+    );
+    expect(kind?.type).toBe("text");
   });
 });

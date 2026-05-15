@@ -15,6 +15,13 @@
       "when": 1778754333195,
       "tag": "0001_previous_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778824263772,
+      "tag": "0002_good_jack_murdock",
+      "breakpoints": true
     }
   ]
 }
