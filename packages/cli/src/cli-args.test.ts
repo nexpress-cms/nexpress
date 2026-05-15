@@ -37,13 +37,17 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["a", "b"])).toThrow(/Unexpected positional/);
   });
 
-  it("rejects --theme (theme picking moved to the browser wizard)", () => {
-    // Theme picking lives at /admin/setup, not the CLI. The flag
-    // used to exist (it baked NP_ADMIN_THEME into .env); a typo'd
-    // invocation today is more useful as an error than a silent
-    // ignore — operators with old scripts get told where to look.
-    expect(() => parseCliArgs(["--theme", "magazine"])).toThrow(/Unknown flag/);
-    expect(() => parseCliArgs(["--theme=magazine"])).toThrow(/Unknown flag/);
+  it("supports --theme <id> in space form (headless escape hatch)", () => {
+    expect(parseCliArgs(["--theme", "magazine"]).flags.themeId).toBe("magazine");
+  });
+
+  it("supports --theme=<id> in equals form", () => {
+    expect(parseCliArgs(["--theme=portfolio"]).flags.themeId).toBe("portfolio");
+  });
+
+  it("rejects --theme without a value", () => {
+    expect(() => parseCliArgs(["--theme"])).toThrow(/--theme requires a value/);
+    expect(() => parseCliArgs(["--theme", "--yes"])).toThrow(/--theme requires a value/);
   });
 
   it("combines all flags in one call", () => {
@@ -53,12 +57,15 @@ describe("parseCliArgs", () => {
       "--no-example",
       "--no-docker",
       "--local",
+      "--theme",
+      "magazine",
     ]);
     expect(out.flags).toEqual({
       projectName: "demo",
       yes: true,
       includeExampleContent: false,
       dockerSetup: false,
+      themeId: "magazine",
     });
     expect(out.localMode).toBe(true);
   });

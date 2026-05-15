@@ -420,8 +420,12 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# so headless / CI installs don't have to click through it.",
     "# These values DO NOT persist; the wizard writes the actual",
     "# rows (admin user, site, active theme) when the operator finishes.",
-    "# Theme is picked in the wizard itself — all bundled themes are",
-    "# always available regardless of what's in .env.",
+    "# Theme is normally picked in the wizard itself; NP_ADMIN_THEME",
+    "# is only useful when the operator can't reach a browser and",
+    "# pre-commits the choice at scaffold time via `--theme <id>`.",
+    ...(config.themeId
+      ? [`NP_ADMIN_THEME=${config.themeId}`]
+      : ["# NP_ADMIN_THEME=default"]),
     "# NP_ADMIN_EMAIL=admin@example.com",
     "# NP_ADMIN_NAME=Site Admin",
     "",

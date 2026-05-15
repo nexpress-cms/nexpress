@@ -3,35 +3,39 @@
 "@nexpress/app": patch
 ---
 
-chore: theme picker lives only in the first-boot setup wizard
+chore: theme picker moves to the browser wizard; CLI keeps a flag for headless
 
-The scaffold CLI used to ask "Theme?" up front, bake the answer
-into `NP_ADMIN_THEME=<id>` in `.env`, and the wizard then read
-that env var as the picker's initial selection. Two pickers for
-one decision — and the CLI's was the wrong place: the operator
-hasn't seen any of the themes yet at scaffold time.
+The scaffold CLI used to **always** ask "Theme?" up front and then
+the browser wizard at `/admin/setup` re-asked the same question.
+Two pickers for one decision — and the CLI's interactive prompt
+was the wrong place since the operator hasn't seen any of the
+themes yet at scaffold time.
 
-Theme picking now happens exclusively in `/admin/setup` (the
-browser wizard) at first boot. The four built-in themes are
-bundled into every scaffold regardless, so there's nothing the
-CLI needs to commit. Removed:
+The interactive prompt is gone. `/admin/setup` (browser) is now
+the sole place an operator picks a theme. The four built-in
+themes are bundled into every scaffold regardless.
 
-  - `create-nexpress`: `--theme <id>` flag, the interactive
-    select prompt, and the `NP_ADMIN_THEME=<id>` line written
-    into `.env` / `.env.example`. The CLI's `BUILTIN_THEMES`
-    list is gone too — keeping it in sync with the runtime
-    theme list was a pure maintenance tax with no payoff.
-  - `@nexpress/app`: the `NP_ADMIN_THEME` read in
-    `admin/setup/page.tsx` and the matching `prefill.themeId`
-    prop on `<SetupWizard>`. The wizard's first registered
-    theme is the new initial selection; operator arrow-keys to
-    swap before submitting.
+`--theme <id>` survives as a flag-only escape hatch for headless /
+CI installs that can't open the wizard:
 
-The flag, env var, and prop were all introduced together in
-#731. None of them had real consumers outside this loop —
-nothing in the repo or in operator-facing docs leans on
-`NP_ADMIN_THEME` for anything else.
+```sh
+pnpm create nexpress my-site --theme magazine --yes
+```
 
-Migration: drop `--theme <id>` from any scaffold automation;
-the wizard will ask. If `NP_ADMIN_THEME` lingers in an existing
-`.env`, it's silently ignored (still safe to remove).
+The flag writes `NP_ADMIN_THEME=<id>` into the scaffold's `.env`;
+`/admin/setup` reads that env var as the picker's initial
+selection (operators with a browser can still arrow-key to swap).
+Without the flag, `NP_ADMIN_THEME` is left commented in `.env`
+and the wizard's first registered theme is selected by default.
+
+Removed:
+
+  - `create-nexpress`: the interactive theme select prompt (the
+    flag stays). `BUILTIN_THEMES` simplified to a `BUILTIN_THEME_IDS`
+    string list used only for flag validation.
+  - `@nexpress/app`: no public-surface change. `prefill.themeId`
+    stays on `<SetupWizard>`; only its source changed (from
+    "CLI prompt → env" to "CLI flag → env" — same env var).
+
+Migration: nothing required. Operators with a browser stop seeing
+the CLI prompt; operators using `--theme <id>` see no change.

@@ -50,6 +50,15 @@ export interface SetupWizardProps {
   prefill?: {
     email?: string;
     name?: string;
+    /**
+     * Pre-selected theme id, set when `NP_ADMIN_THEME` names a
+     * registered theme. Source is either `create-nexpress
+     * --theme <id>` at scaffold time or an operator hand-writing
+     * `.env` for a headless install. The interactive picker still
+     * wins when the operator reaches the browser — this just
+     * seeds the initial selection.
+     */
+    themeId?: string;
   };
   /**
    * Registered themes resolved server-side. The wizard renders a
@@ -60,8 +69,8 @@ export interface SetupWizardProps {
    *
    * When empty (no themes registered), the picker is hidden
    * entirely and the wizard falls back to the framework's
-   * default-theme resolution. Otherwise the first option is
-   * selected by default; operator arrow-keys to swap.
+   * default-theme resolution. When `prefill?.themeId` is set, that
+   * theme is selected by default; otherwise the first option wins.
    */
   themes?: SetupWizardThemeOption[];
 }
@@ -75,10 +84,14 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
     passwordConfirm: "",
     name: prefill?.name ?? "",
   });
+  const initialThemeId =
+    (prefill?.themeId && themes.some((t) => t.id === prefill.themeId)
+      ? prefill.themeId
+      : themes[0]?.id) ?? "";
   const [site, setSite] = useState<SiteState>({
     siteName: "My Site",
     sampleContent: true,
-    themeId: themes[0]?.id ?? "",
+    themeId: initialThemeId,
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);

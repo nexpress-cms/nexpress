@@ -29,6 +29,30 @@ describe("promptForProjectConfig — non-interactive paths", () => {
     });
   });
 
+  it("threads --theme through when set; omits it otherwise", async () => {
+    const withTheme = await promptForProjectConfig({
+      yes: true,
+      projectName: "demo",
+      themeId: "magazine",
+    });
+    expect(withTheme.themeId).toBe("magazine");
+    const withoutTheme = await promptForProjectConfig({
+      yes: true,
+      projectName: "demo",
+    });
+    expect(withoutTheme.themeId).toBeUndefined();
+  });
+
+  it("rejects an unknown --theme value", async () => {
+    await expect(
+      promptForProjectConfig({
+        yes: true,
+        projectName: "demo",
+        themeId: "no-such-theme",
+      }),
+    ).rejects.toThrow(/Unknown --theme value/);
+  });
+
   it("normalizes the project name (whitespace / case / spaces → kebab)", async () => {
     const out = await promptForProjectConfig({
       yes: true,
