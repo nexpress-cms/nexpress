@@ -179,7 +179,11 @@ export {
   getAllPageSlugs,
   getSetting,
 } from "./content/index.js";
-export { buildZodSchema, getCollectionZodSchema } from "./collections/validation.js";
+export {
+  buildZodSchema,
+  collectHiddenFieldNames,
+  getCollectionZodSchema,
+} from "./collections/validation.js";
 
 export { collectionConfigSchema, npConfigSchema } from "./config/validation.js";
 
