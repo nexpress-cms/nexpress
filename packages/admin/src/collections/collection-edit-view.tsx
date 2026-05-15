@@ -359,6 +359,48 @@ const passesCondition = (
   return evaluateFieldCondition(field.admin?.condition, formValues);
 };
 
+/**
+ * Recursively strip conditional fields that don't pass the
+ * current form values out of `row` / `collapsible` containers.
+ * Returns the field unchanged when it isn't a container or has
+ * no nested fields to filter. Used in the main + sidebar render
+ * walks so a container's children honor their own
+ * `admin.condition` — without this, nested conditional fields
+ * always show, even when the framework's `collectHiddenFieldNames`
+ * already marked them for required-drop on the server.
+ */
+const filterContainerChildren = (
+  field: NpFieldConfig,
+  formValues: Record<string, unknown>,
+  showAll: boolean,
+): NpFieldConfig => {
+  if (field.type !== "row" && field.type !== "collapsible") return field;
+  const filtered = field.fields
+    .filter((child) => passesCondition(child, formValues, showAll))
+    .map((child) => filterContainerChildren(child, formValues, showAll));
+  return { ...field, fields: filtered };
+};
+
+/**
+ * Walk a field tree and return true when any leaf field has a
+ * current validation error. Used by the sidebar group's
+ * `forceOpen` decision so a group containing a container with
+ * a nested-error field still gets force-opened on save failure.
+ */
+const fieldTreeHasError = (
+  fields: NpFieldConfig[],
+  errors: Record<string, unknown>,
+): boolean => {
+  for (const f of fields) {
+    if (f.type === "row" || f.type === "collapsible") {
+      if (fieldTreeHasError(f.fields, errors)) return true;
+      continue;
+    }
+    if ("name" in f && Boolean(errors[f.name])) return true;
+  }
+  return false;
+};
+
 type SaveStatus = "draft" | "published" | "scheduled" | "unschedule";
 
 /**
@@ -1122,7 +1164,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                               ? `${field.type}-${i.toString()}`
                               : field.name
                           }
-                          field={field}
+                          field={filterContainerChildren(field, formValues, showAllFields)}
                           control={form.control}
                           collectionSlug={collectionSlug}
                         />
@@ -1142,7 +1184,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   out.push(
                     <FieldRenderer
                       key={key}
-                      field={field}
+                      field={filterContainerChildren(field, formValues, showAllFields)}
                       control={form.control}
                       collectionSlug={collectionSlug}
                     />,
@@ -1156,7 +1198,11 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   out.push(
                     <Card key={key}>
                       <CardContent>
-                        <FieldRenderer field={field} control={form.control} collectionSlug={collectionSlug} />
+                        <FieldRenderer
+                          field={filterContainerChildren(field, formValues, showAllFields)}
+                          control={form.control}
+                          collectionSlug={collectionSlug}
+                        />
                       </CardContent>
                     </Card>,
                   );
@@ -1209,10 +1255,15 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                   // still be inside a collapsed Card, defeating
                   // the focus + scroll. Force lifts as soon as
                   // the operator fixes the field (errors clear).
-                  const hasError = group.fields.some((f) => {
-                    if (f.type === "row" || f.type === "collapsible") return false;
-                    return Boolean(form.formState.errors[f.name]);
-                  });
+                  // Recursive check: errors inside `row` /
+                  // `collapsible` containers count too. Without
+                  // this, a required nested field that fails
+                  // validation wouldn't force its parent group
+                  // open, defeating the focus + scroll from PR 6.
+                  const hasError = fieldTreeHasError(
+                    group.fields,
+                    form.formState.errors as Record<string, unknown>,
+                  );
                   const meta = config.admin?.groupMeta?.[group.name];
                   return (
                     <SidebarGroupCard
@@ -1230,7 +1281,7 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
                               ? `${field.type}-${index}`
                               : field.name
                           }
-                          field={field}
+                          field={filterContainerChildren(field, formValues, showAllFields)}
                           control={form.control}
                           collectionSlug={collectionSlug}
                         />
