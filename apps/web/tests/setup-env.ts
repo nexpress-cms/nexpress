@@ -16,6 +16,14 @@
 if (!process.env.NP_SECRET) {
   process.env.NP_SECRET = "test-secret-for-integration-tests-only-32ch";
 }
+// `siteUrlStrict` (#598) refuses to build email-deliverable URLs
+// from the request `Host` header — password-reset / email-verify
+// endpoints throw on missing SITE_URL. Tests exercise those flows;
+// set a stable origin so the strict resolver returns a URL instead
+// of crashing into a generic 500.
+if (!process.env.SITE_URL) {
+  process.env.SITE_URL = "http://localhost:3000";
+}
 if (process.env.TEST_DATABASE_URL) {
   const u = new URL(process.env.TEST_DATABASE_URL);
   const id = process.env.VITEST_POOL_ID;

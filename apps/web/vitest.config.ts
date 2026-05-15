@@ -19,7 +19,14 @@ export default defineConfig({
     globals: false,
     // Set env vars (NP_SECRET, etc.) before any test module's imports are
     // evaluated — nexpress.config.ts validates them at module load time.
-    setupFiles: ["./tests/setup-env.ts", "./tests/setup-site-resolver.ts"],
+    setupFiles: [
+      "./tests/setup-env.ts",
+      "./tests/setup-site-resolver.ts",
+      // Stubs `next/cache` so route handlers that call
+      // `revalidateTag` / `revalidatePath` after a write don't
+      // crash when invoked outside Next's request context.
+      "./tests/setup-next-cache-mock.ts",
+    ],
     // Builds the migrated `${TEST_DATABASE_URL}_template` once before any
     // worker forks; workers then lazily clone it into per-worker `_wN`
     // databases. Lets fileParallelism: true stay safe — see
