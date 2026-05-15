@@ -357,16 +357,23 @@ function SidebarGroupCard({
     }
   }, [storageKey, open]);
 
+  // Stable, selector-friendly id for ARIA wiring + the animation
+  // CSS hook. `storageKey` contains dots; HTML id attributes
+  // accept them but CSS attribute / id selectors choke on the
+  // unescaped dot, and dev-tools navigation is friendlier with
+  // hyphens.
+  const contentId = `np-sidebar-group-${storageKey.replace(/\./g, "-")}`;
+
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
       <Card>
         <CollapsibleTrigger asChild>
           <CardHeader
-            className="cursor-pointer select-none flex flex-row items-center justify-between"
+            className="cursor-pointer select-none flex flex-row items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--np-color-brand)] focus-visible:ring-offset-2 rounded-t-xl"
             role="button"
             tabIndex={0}
             aria-expanded={open}
-            aria-controls={`np-sidebar-group-${storageKey}`}
+            aria-controls={contentId}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
@@ -384,7 +391,10 @@ function SidebarGroupCard({
             />
           </CardHeader>
         </CollapsibleTrigger>
-        <CollapsibleContent id={`np-sidebar-group-${storageKey}`}>
+        <CollapsibleContent
+          id={contentId}
+          className="np-sidebar-group-content"
+        >
           <CardContent className="space-y-6">{children}</CardContent>
         </CollapsibleContent>
       </Card>
@@ -915,13 +925,20 @@ function CollectionEditViewInner({ config, doc, collectionSlug, collectionTabs }
               {/* Show-all toggle — only rendered when some field
                   has an `admin.condition` that's currently hiding
                   it. Operators on collections without conditional
-                  fields don't see a useless control. */}
+                  fields don't see a useless control. The label
+                  is wired to the Switch via a stable id so a
+                  screen reader announces the relationship; the
+                  Switch primitive supplies its own aria-checked. */}
               {(hasHiddenFields || showAllFields) ? (
                 <div className="flex items-center justify-between rounded-md border border-dashed border-neutral-200 bg-neutral-50/50 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/40">
-                  <span className="text-muted-foreground">
+                  <label
+                    htmlFor="np-show-all-fields-toggle"
+                    className="text-muted-foreground select-none cursor-pointer"
+                  >
                     {showAllFields ? "Showing all fields" : "Showing fields relevant to this kind"}
-                  </span>
+                  </label>
                   <Switch
+                    id="np-show-all-fields-toggle"
                     checked={showAllFields}
                     onCheckedChange={setShowAllFields}
                     aria-label="Show all fields, including ones hidden by the current kind"
