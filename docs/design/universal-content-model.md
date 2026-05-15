@@ -1,8 +1,9 @@
 # Universal Content Model — Design Plan
 
-> Version: draft 1
+> Version: draft 2 (decisions locked, implementation pending)
 > Date: 2026-05-15
-> Status: design draft — implementation hasn't started.
+> Status: design lock — all five decision checkpoints resolved (§10).
+>         Phase U.1 implementation next.
 > Prerequisites:
 >   - Collection authoring contract
 >     (`packages/core/src/config/define-collection.ts`)
@@ -343,22 +344,23 @@ export const postsTable = pgTable("np_c_posts", {
 // docsTable: gone
 ```
 
-### 5.5 SetupWizard `documents` seed slot (#739)
+### 5.5 SetupWizard `documents` seed slot (#739) — removed
 
-The `documents?: Record<slug, NpThemeSeedDocument[]>` slot
-introduced for theme-contributed seed data was designed assuming
-arbitrary new collections (docs, projects, products). After the
-universal collapse, it becomes "posts seed with kind set":
+The `documents?: Record<slug, NpThemeSeedDocument[]>` slot was
+introduced in #739 anticipating arbitrary new collections (docs,
+projects, products). After the universal collapse those rows
+land in `posts` with `kind` set, so the existing
+`seedContent.posts` slot covers them:
 
 ```ts
-// Old (#739)
+// Before (#739, never actually consumed by any theme)
 seedContent: {
   documents: {
     docs: [{ data: { title: "...", body: ... } }, ...],
   },
 }
 
-// New
+// After
 seedContent: {
   posts: [
     { kind: "doc", data: { title: "...", body: ... } },
@@ -367,9 +369,18 @@ seedContent: {
 }
 ```
 
-The `documents` slot stays in the contract as a deprecated
-alias (operators with `documents.docs = [...]` still get those
-rows seeded as `kind="doc"` posts), removed in a future minor.
+**Decision (5):** the `documents` slot is **removed in the
+same PR that introduces `kind`** — no deprecation transition.
+Grep confirms zero theme consumers in-tree
+(`grep -rn "seedContent.*documents" packages/themes/` matches
+only a CHANGELOG line). Operators using it would have an empty
+seed surface today; removing the slot loses no real behavior.
+
+`NpThemeSeedPost` gains an optional `kind?: string` field
+(defaults to `"article"` to match the column default). The
+seed-content runner already enforces that the kind value names
+a registered option on `posts.kind` — the merge-requirements
+union (§6) is the source of valid kinds.
 
 ---
 
@@ -457,12 +468,13 @@ URLs keep resolving.
 
 ### Phase U.4 — Cleanup
 
-10. **#739 `documents` seed slot** becomes a deprecated alias
-    for `seedContent.posts.kind`.
-11. **`docs` collection slug** removed from the registry's
+10. **`docs` collection slug** removed from the registry's
     "known slugs" — operator-declared `docs` collections
     (third-party) still work; the framework just stops
     materialising one automatically.
+
+(`documents` seed slot removal lands inside Phase U.1's
+`kind`-introduction PR — see §5.5.)
 
 ---
 
@@ -537,25 +549,25 @@ referencing the old slug fails fast). Pre-1.0 we can move.
 
 ---
 
-## 10. Decision checkpoints
+## 10. Decision checkpoints — LOCKED 2026-05-15
 
-These need explicit sign-off before code lands:
-
-1. **Bundle the universal collapse as one PR per phase
-   (U.1–U.4) vs one giant PR.** Recommend per-phase — each is
-   independently revertable.
-2. **Default `kind` value: `"article"` vs `null` vs no default.**
-   Recommend `"article"` — every existing post gets it via
-   migration default, no manual backfill.
-3. **Field-merge select-options union** — confirm the union
-   semantics in §6. Last-wins on label, dedupe on value.
-4. **Per-kind URL: theme contributes the pattern vs framework
-   reads `posts.slug` only.** Recommend theme-contributed — the
-   `/docs/<slug>` pattern is a docs-theme concern, not a
-   framework one. Themes that don't declare a pattern get
-   `/posts/<slug>` automatically.
-5. **`documents` seed slot deprecation timeline.** Recommend
-   keep through v0.4 as deprecated alias, remove in v0.5.
+1. **PR split.** ✅ **Per phase (U.1–U.4) as separate PRs.** Each
+   is independently revertable; the four-phase plan in §7 stands.
+2. **Default `kind` value.** ✅ **`"article"`.** Every existing
+   post gets it via migration default — no manual backfill.
+3. **Field-merge select-options union.** ✅ **Last-wins on label,
+   dedupe on value.** Detail in §6. Two themes declaring the
+   same kind value with different labels is allowed; later
+   theme's label wins.
+4. **Per-kind URL pattern source.** ✅ **Theme-contributed.**
+   `/docs/<slug>` is a docs-theme concern, not a framework one.
+   Themes that don't declare `urlPattern` get `/posts/<slug>`
+   automatically.
+5. **`documents` seed slot.** ✅ **Removed immediately in
+   Phase U.1.** No deprecation alias. Grep confirms zero theme
+   consumers (CHANGELOG mention only). The replacement is the
+   existing `seedContent.posts` slot with an added optional
+   `kind?: string` field — see §5.5.
 
 ---
 
