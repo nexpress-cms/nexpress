@@ -279,10 +279,21 @@ export async function seedPosts(
     }
   }
 
+  // Pass 2: set the `parent` column on each child row. Goes through
+  // raw SQL on purpose — `saveDocument(id, { parent })` would run a
+  // partial-update payload through the pipeline's Zod schema, and
+  // the schema validates the *patch* (not a merge with the existing
+  // row) so required fields like `title` / `content` fail as
+  // undefined. A pure-relationship column write doesn't need
+  // hook fan-out (no search-vector recompute, no slug change), so
+  // bypassing the pipeline here is correct.
+  const db = getDb();
   for (const { childId, parentSlug } of pendingParents) {
     const parentId = slugToId.get(parentSlug);
     if (!parentId) continue;
-    await saveDocument("posts", childId, { parent: parentId }, actor);
+    await db.execute(
+      sql`update np_c_posts set parent = ${parentId} where id = ${childId}`,
+    );
   }
 
   return { created: samples.length, skipped: false };
