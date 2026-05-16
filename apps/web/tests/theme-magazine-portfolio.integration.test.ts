@@ -37,11 +37,13 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     expect(magazineTheme.impl.slots?.header).toBeTypeOf("function");
     expect(magazineTheme.impl.slots?.footer).toBeTypeOf("function");
 
-    // Templates: pages.default + pages.cover, posts.feature + posts.list.
+    // Templates: pages.default + pages.cover + pages.front, posts.feature + posts.list.
     // posts.list was added in the v0.2 reference impl (#612) for the
     // blog index route's theme template dispatch.
+    // pages.front was added in the seed-architecture track (#782) so
+    // magazine's seeded "/" page renders the editorial home layout.
     const pageTemplates = magazineTheme.impl.templates?.pages ?? {};
-    expect(Object.keys(pageTemplates).sort()).toEqual(["cover", "default"]);
+    expect(Object.keys(pageTemplates).sort()).toEqual(["cover", "default", "front"]);
     const postTemplates = magazineTheme.impl.templates?.posts ?? {};
     expect(Object.keys(postTemplates).sort()).toEqual(["feature", "list"]);
   });
@@ -80,8 +82,10 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     expect(portfolioTheme.impl.shell).toBeTypeOf("function");
     expect(portfolioTheme.impl.slots?.header).toBeTypeOf("function");
     expect(portfolioTheme.impl.slots?.footer).toBeTypeOf("function");
+    // pages.front added by #783 — portfolio's seeded "/" lands on
+    // the project-grid home layout.
     const pageTemplates = portfolioTheme.impl.templates?.pages ?? {};
-    expect(Object.keys(pageTemplates).sort()).toEqual(["default", "gallery"]);
+    expect(Object.keys(pageTemplates).sort()).toEqual(["default", "front", "gallery"]);
   });
 
   it("portfolio gallery template wraps blocks in the grid container", async () => {
