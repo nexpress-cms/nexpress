@@ -1,5 +1,9 @@
 import { findDocuments } from "@nexpress/core";
-import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
+import {
+  defineTheme,
+  type NpThemeSeedPage,
+  type NpThemeSeedPost,
+} from "@nexpress/theme";
 
 import { magazineArchives } from "./archives.js";
 import { magazineBlocks } from "./blocks.js";
@@ -14,6 +18,7 @@ import { MagazineShell } from "./shell.js";
 import { magazineCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageCoverTemplate } from "./templates/page-cover.js";
+import { PageFrontTemplate } from "./templates/page-front.js";
 import { PostFeatureTemplate } from "./templates/post-feature.js";
 import { PostListTemplate } from "./templates/post-list.js";
 
@@ -263,6 +268,69 @@ const SEED_NAV = {
 };
 
 /**
+ * Magazine theme home page + ancillary pages.
+ *
+ * Home (`/`) ships with `template: "front"` so the catch-all dispatches
+ * into `PageFrontTemplate`, which pulls posts at render time and lays
+ * them out as the editorial index (lead + 3-up + dispatches + archive
+ * + subscribe). The page itself carries no blocks — the template owns
+ * the visual; the page row is essentially a route facade.
+ *
+ * About + Contact stubs match the magazine voice. Both use the default
+ * template (centered prose column).
+ */
+const SEED_PAGES: NpThemeSeedPage[] = [
+  {
+    title: "The Northbound Review",
+    slug: "/",
+    seoDescription:
+      "A small editorial review, published every other Sunday — features, dispatches, profiles, and photography from Seoul, New York, and the long road between them.",
+    blocks: [],
+    data: { template: "front" },
+  },
+  {
+    title: "Colophon",
+    slug: "colophon",
+    seoDescription:
+      "About The Northbound Review — its founding, its editors, and the type and paper it's set in.",
+    blocks: [
+      {
+        type: "richText",
+        id: "seed-mag-colophon-body",
+        props: {
+          content: lexicalDoc([
+            "The Northbound Review was founded in 2014, in a third-floor office above a bookstore in Hapjeong-dong. Twelve volumes in, we still publish every other Sunday — by post for subscribers who prefer paper, by inbox for everyone else.",
+            "We commission long-form reporting, profiles, essays, and photography from writers and photographers working in Korea, Japan, the Pacific Northwest, and occasionally somewhere unexpected. We pay on acceptance, edit lightly, and run the work the writer brought us — not the work we wished they had.",
+            "The Review is set in Newsreader for body and display, with Hanken Grotesk for the small-caps chrome. It prints on Mohawk Superfine 80lb text in eggshell. It runs on NexPress.",
+          ]),
+        },
+      },
+    ],
+  },
+  {
+    title: "Contact",
+    slug: "contact",
+    seoDescription:
+      "How to reach The Northbound Review — pitches, subscriptions, press, and the address for letters.",
+    blocks: [
+      {
+        type: "richText",
+        id: "seed-mag-contact-body",
+        props: {
+          content: lexicalDoc([
+            "Pitches: pitches@northbound.review. We read every one, and we respond — usually within ten working days, sometimes sooner.",
+            "Subscriptions and circulation: hello@northbound.review.",
+            "Press, syndication, and rights: press@northbound.review.",
+            "Letters to the editor: editor@northbound.review. We publish a selection in the second issue of each volume.",
+            "The Review · 3F, 14 Yanghwa-ro, Mapo-gu, Seoul 04035.",
+          ]),
+        },
+      },
+    ],
+  },
+];
+
+/**
  * `@nexpress/theme-magazine` — editorial magazine identity.
  *
  * Post-redesign visual: full-width dateline strip at the top,
@@ -395,6 +463,7 @@ export const magazineTheme = defineTheme({
     },
     seedContent: {
       categories: SEED_CATEGORIES,
+      pages: SEED_PAGES,
       posts: SEED_POSTS,
       navigation: SEED_NAV,
     },
@@ -410,6 +479,12 @@ export const magazineTheme = defineTheme({
           description:
             "Full-bleed hero at the top with the page title overlaid; body content flows below in the standard column.",
           component: PageCoverTemplate,
+        },
+        front: {
+          label: "Front page",
+          description:
+            "Editorial index — lead cover story + 'In this issue' three-up + dispatch desk + archive grid + subscribe band. Pulls posts from the server at render time. The seeded home page (slug \"/\") ships with this template.",
+          component: PageFrontTemplate,
         },
       },
       posts: {

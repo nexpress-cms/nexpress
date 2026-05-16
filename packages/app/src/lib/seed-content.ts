@@ -178,8 +178,11 @@ export async function seedPages(
 
   const db = getDb();
   for (const sample of pages) {
-    const { slug, ...data } = sample;
-    const payload: Record<string, unknown> = { ...data };
+    const { slug, data: extraData, ...rest } = sample;
+    const payload: Record<string, unknown> = {
+      ...rest,
+      ...(extraData ?? {}),
+    };
     if (seedSource) payload.seedSource = seedSource;
     const result = await saveDocument("pages", null, payload, actor, {
       status: "published",
