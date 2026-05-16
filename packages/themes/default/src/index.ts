@@ -1,6 +1,7 @@
 import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { DefaultFooter } from "./footer.js";
+import { defaultCategories, defaultPages } from "./seed-content.js";
 import { DefaultHeader } from "./header.js";
 import { DefaultShell } from "./shell.js";
 import { defaultThemeCss } from "./styles.js";
@@ -249,6 +250,8 @@ export const defaultTheme = defineTheme({
     },
     seedContent: {
       tags: SEED_TAGS,
+      categories: defaultCategories,
+      pages: defaultPages,
       posts: SEED_POSTS,
       navigation: SEED_NAV,
     },
