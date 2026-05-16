@@ -342,6 +342,15 @@ export interface NpThemeSeedPage {
    * and writes it to the `blocks` field on the seeded page.
    */
   blocks: unknown[];
+  /**
+   * Extra fields merged onto the seeded page. The pipeline's
+   * Zod validation strips keys the collection doesn't declare,
+   * so extra fields are silently dropped rather than rejected.
+   * Use this for fields the theme contributes (e.g. `template`
+   * to lock the home page to a specific layout) that aren't
+   * first-class on this type.
+   */
+  data?: Record<string, unknown>;
 }
 
 export interface NpThemeSeedPost {
