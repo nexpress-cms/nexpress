@@ -48,8 +48,9 @@ export async function DocsSearch({
   if (query.length === 0) {
     return (
       <div className="np-docs-search">
-        <h1>Search</h1>
-        <p style={{ color: "var(--np-color-muted-foreground)" }}>
+        <p className="np-docs-search-heading">Search</p>
+        <h1>Search the docs</h1>
+        <p className="np-docs-search-empty">
           Enter a query in the masthead search box to find pages.
         </p>
       </div>
@@ -59,11 +60,12 @@ export async function DocsSearch({
   const result = await searchCollections({ q: query, limit: 20 });
   return (
     <div className="np-docs-search">
-      <h1>Search results for &ldquo;{query}&rdquo;</h1>
+      <p className="np-docs-search-heading">Search results for</p>
+      <h1>&ldquo;{query}&rdquo;</h1>
       {result.results.length === 0 ? (
-        <p style={{ color: "var(--np-color-muted-foreground)" }}>No matches.</p>
+        <p className="np-docs-search-empty">No matches.</p>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: "1.5rem 0 0" }}>
+        <ul className="np-docs-search-results">
           {result.results.map((item, i) => {
             const doc = item.doc;
             const slug = typeof doc.slug === "string" ? doc.slug : null;
@@ -73,39 +75,14 @@ export async function DocsSearch({
             return (
               <li
                 key={`${item.collection}:${(doc.id as string | undefined) ?? i}`}
-                style={{
-                  padding: "1rem 0",
-                  borderBottom: "1px solid var(--np-color-border)",
-                }}
+                className="np-docs-search-result"
               >
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.75rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: "var(--np-color-muted-foreground)",
-                  }}
-                >
-                  {item.collection}
-                </p>
-                <h2 style={{ margin: "0.25rem 0 0.5rem", fontSize: "1.125rem" }}>
-                  <a
-                    href={url}
-                    style={{ color: "inherit", textDecoration: "none" }}
-                  >
-                    {title}
-                  </a>
+                <p className="np-docs-search-result-eyebrow">{item.collection}</p>
+                <h2>
+                  <a href={url}>{title}</a>
                 </h2>
                 {typeof doc.excerpt === "string" ? (
-                  <p
-                    style={{
-                      margin: 0,
-                      color: "var(--np-color-muted-foreground)",
-                    }}
-                  >
-                    {doc.excerpt}
-                  </p>
+                  <p className="np-docs-search-result-excerpt">{doc.excerpt}</p>
                 ) : null}
               </li>
             );

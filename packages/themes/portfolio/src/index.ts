@@ -2,10 +2,6 @@ import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { portfolioBlocks } from "./blocks.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
-import {
-  PortfolioProjectCard,
-  type PortfolioProjectDoc,
-} from "./components/project-card.js";
 import { PortfolioFooter } from "./footer.js";
 import { PortfolioHeader } from "./header.js";
 import { PortfolioMembersNotFound } from "./members-not-found.js";
@@ -18,7 +14,10 @@ import { portfolioCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageGalleryTemplate } from "./templates/page-gallery.js";
 import { ProjectDetailTemplate } from "./templates/project-detail.js";
-import { ProjectIndexTemplate } from "./templates/project-index.js";
+import {
+  ProjectIndexTemplate,
+  type PortfolioProjectDoc,
+} from "./templates/project-index.js";
 
 /**
  * Minimal Lexical-shaped rich-text doc helper. Inlined so the
@@ -82,6 +81,15 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: ISO(2026, 3, 1),
     tagNames: ["Identity"],
+    data: {
+      year: 2026,
+      role: "Identity · Custom type · Signage",
+      discipline: "Identity · Custom type · Signage",
+      span: 7,
+      coverVariant: "a",
+      coverFigure: "Aa",
+      badge: "Featured",
+    },
   },
   {
     title: "Aperture — <em>journal redesign</em>",
@@ -93,6 +101,14 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: ISO(2026, 1, 14),
     tagNames: ["Editorial"],
+    data: {
+      year: 2026,
+      role: "Editorial · Art direction",
+      discipline: "Editorial · Art direction",
+      span: 5,
+      coverVariant: "b",
+      coverFigure: "No.\u00a001",
+    },
   },
   {
     title: "Ø Studio — <em>display typeface</em>",
@@ -104,17 +120,33 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: ISO(2025, 9, 8),
     tagNames: ["Typography"],
+    data: {
+      year: 2025,
+      role: "Typography · 3 weights",
+      discipline: "Typography · 3 weights",
+      span: 4,
+      coverVariant: "c",
+      coverFigure: "\u00c6",
+    },
   },
   {
-    title: "Northern Annex — <em>exhibit graphics</em>",
+    title: "MoMA PS1 — <em>exhibit graphics</em>",
     excerpt:
-      "Environmental graphics for a contemporary annex on the city's north side. Six-week engagement, six rooms, one set of large-format wall types.",
+      "Environmental graphics for a single autumn exhibition at MoMA PS1. Six-week engagement, six rooms, one set of large-format wall types.",
     content: lexicalDoc([
-      "The annex opened with a single exhibition that ran through the autumn. Our work covered the wall types — exhibition title, room markers, artist labels, and the small set of tertiary labels around the audio guide stations.",
+      "The exhibition opened in early autumn and ran through the end of the year. Our work covered the wall types — exhibition title, room markers, artist labels, and the small set of tertiary labels around the audio guide stations.",
       "Everything is set in a single drawn face. The labels are printed at three sizes; the rest of the system follows from there.",
     ]),
     publishedAt: ISO(2025, 6, 4),
     tagNames: ["Environmental"],
+    data: {
+      year: 2025,
+      role: "Environmental · Print",
+      discipline: "Environmental · Print",
+      span: 4,
+      coverVariant: "d",
+      coverFigure: "PS1",
+    },
   },
   {
     title: "Hanok Press — <em>book series</em>",
@@ -126,28 +158,53 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: ISO(2025, 4, 22),
     tagNames: ["Editorial"],
+    data: {
+      year: 2025,
+      role: "Editorial · 16 vols.",
+      discipline: "Editorial · 16 vols.",
+      span: 4,
+      coverVariant: "e",
+      coverFigure: "Hanok",
+      badge: "Press",
+    },
   },
   {
-    title: "Sōen Coffee — <em>packaging system</em>",
+    title: "S\u014den Coffee — <em>packaging system</em>",
     excerpt:
       "Identity + 12-SKU packaging system for a small-batch coffee roaster. Two-color print on uncoated kraft, single bag size, twelve labels.",
     content: lexicalDoc([
-      "Sōen roasts in small batches out of a warehouse in Yeonnam-dong and sells through one shop and two cafes. They asked for a packaging system that could run twelve coffees off a single bag size and a two-color print, on the assumption (correct) that their best decisions would be made later, in the shop, not earlier, in the design.",
+      "S\u014den roasts in small batches out of a warehouse in Yeonnam-dong and sells through one shop and two cafes. They asked for a packaging system that could run twelve coffees off a single bag size and a two-color print, on the assumption (correct) that their best decisions would be made later, in the shop, not earlier, in the design.",
       "The system is a fixed bag, a fixed bag color, a fixed type stack — and twelve labels we redraw every season.",
     ]),
     publishedAt: ISO(2024, 11, 17),
     tagNames: ["Packaging"],
+    data: {
+      year: 2024,
+      role: "Packaging · Identity · 12 SKUs",
+      discipline: "Packaging · Identity · 12 SKUs",
+      span: 8,
+      coverVariant: "f",
+      coverFigure: "S\u014den",
+    },
   },
   {
-    title: "Civic Centennial — <em>centennial mark</em>",
+    title: "City of Seoul — <em>centennial mark</em>",
     excerpt:
-      "Bilingual centennial mark for a municipal organization's hundredth anniversary year. One mark, two scripts, four primary uses.",
+      "Bilingual centennial mark for a municipal centennial year. One mark, two scripts, four primary uses.",
     content: lexicalDoc([
       "The mark was drawn to read at four sizes — letterhead, a public banner along the river promenade, a small enamel pin, and a transit-station vinyl. It needed to work bilingually (Korean + English) at every size, with neither script reading as primary.",
       "We worked through forty-three rounds. The version that shipped is the thirty-eighth.",
     ]),
     publishedAt: ISO(2024, 8, 9),
     tagNames: ["Identity"],
+    data: {
+      year: 2024,
+      role: "Identity · Bilingual",
+      discipline: "Identity · Bilingual",
+      span: 6,
+      coverVariant: "g",
+      coverFigure: "100\u00d7",
+    },
   },
   {
     title: "Field Notebooks — <em>full rebrand</em>",
@@ -159,17 +216,34 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: ISO(2023, 10, 30),
     tagNames: ["Identity"],
+    data: {
+      year: 2023,
+      role: "Identity · Packaging",
+      discipline: "Identity · Packaging",
+      span: 6,
+      coverVariant: "h",
+      coverFigure: "Field",
+    },
   },
   {
-    title: "Atelier Marlow — <em>collaborative type cut</em>",
+    title: "Pentagram (NY) — <em>collaborative type cut</em>",
     excerpt:
-      "Eight-month collaboration with a New York atelier on a custom display cut. Three weights, one mock italic, used internally only.",
+      "Eight-month collaboration with a New York office on a custom display cut. Three weights, one mock italic, used internally only.",
     content: lexicalDoc([
-      "The atelier reached out about a custom display cut they wanted to use across their internal presentations and a small set of client deliverables. We split the work: they drew the master shapes, we drew the spacing and the secondary weights.",
+      "The office reached out about a custom display cut they wanted to use across their internal presentations and a small set of client deliverables. We split the work: they drew the master shapes, we drew the spacing and the secondary weights.",
       "The face is not for sale. Three of us in this studio still get to use it on the work we do for them; everyone else, including their clients, only ever sees the output.",
     ]),
     publishedAt: ISO(2023, 5, 12),
     tagNames: ["Typography"],
+    data: {
+      year: 2023,
+      role: "Typography · Custom commission",
+      discipline: "Typography · Custom commission",
+      span: 12,
+      coverVariant: "a",
+      coverFigure: "Pentagram, NY",
+      badge: "D&AD \u00b7 Yellow Pencil",
+    },
   },
 ];
 
@@ -410,6 +484,12 @@ export const portfolioTheme = defineTheme({
         description: "Top nav links (Work / Studio / Journal / Press).",
         maxItems: 5,
       },
+      footerSecondary: {
+        label: "Footer secondary links",
+        description:
+          "Meta links shown on the right of the footer (Index / Colophon / etc.). Falls back to a default Index + Colophon pair when empty.",
+        maxItems: 6,
+      },
       footerSocial: {
         label: "Footer social links",
         description: "Social profile links shown in the footer.",
@@ -430,7 +510,6 @@ export {
   PortfolioShell,
   PortfolioMembersShell,
   PortfolioMembersNotFound,
-  PortfolioProjectCard,
   PortfolioMobileNav,
   PortfolioNotFound,
 };

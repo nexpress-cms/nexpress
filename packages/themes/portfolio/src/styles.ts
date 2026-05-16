@@ -133,7 +133,9 @@ export const portfolioCss = `
     gap: 1rem;
   }
   .np-portfolio-nav,
-  .np-portfolio-nav-desktop,
+  .np-portfolio-nav-desktop { display: none; }
+}
+@media (max-width: 720px) {
   .np-portfolio-header-meta { display: none; }
 }
 
@@ -406,6 +408,7 @@ export const portfolioCss = `
     radial-gradient(ellipse 50% 60% at 70% 80%, rgba(0, 0, 0, 0.35), transparent 60%);
   pointer-events: none;
 }
+.np-portfolio-card-cover[data-has-image="true"]::after { content: none; }
 
 /* Asymmetric grid spans. Cards default to span-6; templates
  * promote selected cards to span-7 / 8 / 12 for the editorial

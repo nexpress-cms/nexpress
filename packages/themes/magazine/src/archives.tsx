@@ -7,6 +7,10 @@ import {
 } from "@nexpress/core";
 import { cachedThemeFetch } from "@nexpress/next";
 
+import {
+  MagazineArchiveItem,
+  type MagazineArchiveItemDoc,
+} from "./components/archive-item.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
 /**
@@ -26,102 +30,48 @@ import { resolveMagazineSettings } from "./settings-helpers.js";
  */
 
 interface ArchiveLayoutProps {
+  eyebrow: string;
   title: string;
   subtitle?: string;
   result: NpFindResult<Record<string, unknown>>;
 }
 
 function ArchiveLayout({
+  eyebrow,
   title,
   subtitle,
   result,
 }: ArchiveLayoutProps): React.ReactElement {
-  // `<div>` — (site)/layout.tsx already emits the page's `<main>`.
+  const stories = result.totalDocs === 1 ? "story" : "stories";
   return (
-    <div
-      className="np-magazine-archive"
-      style={{ maxWidth: 720, margin: "3rem auto", padding: "0 1.5rem" }}
-    >
-      <header
-        style={{
-          marginBottom: "2rem",
-          borderBottom: "3px double var(--np-color-foreground)",
-          paddingBottom: "1rem",
-        }}
-      >
-        <p
-          style={{
-            margin: 0,
-            color: "var(--np-color-muted-foreground)",
-            fontSize: "0.8125rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            fontFamily: "var(--np-font-heading)",
-          }}
-        >
-          Archive
-        </p>
-        <h1
-          style={{
-            margin: "0.5rem 0 0",
-            fontSize: "2rem",
-            fontFamily: "var(--np-font-heading)",
-          }}
-        >
-          {title}
-        </h1>
-        {subtitle ? (
-          <p style={{ margin: "0.75rem 0 0", color: "var(--np-color-muted-foreground)" }}>
-            {subtitle}
+    <section className="np-magazine-index">
+      <div className="np-magazine-container">
+        <header className="np-magazine-archive-masthead">
+          <p className="np-magazine-archive-eyebrow">{eyebrow}</p>
+          <h1 className="np-magazine-archive-title">{title}</h1>
+          {subtitle ? (
+            <p className="np-magazine-archive-subtitle">{subtitle}</p>
+          ) : null}
+          <p className="np-magazine-archive-count">
+            {result.totalDocs.toString()} {stories}
           </p>
-        ) : null}
-        <p style={{ margin: "0.75rem 0 0", color: "var(--np-color-muted-foreground)", fontSize: "0.875rem" }}>
-          {result.totalDocs} {result.totalDocs === 1 ? "story" : "stories"}
-        </p>
-      </header>
-      {result.docs.length === 0 ? (
-        <p style={{ color: "var(--np-color-muted-foreground)" }}>
-          No stories yet.
-        </p>
-      ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-          {result.docs.map((doc) => (
-            <li
-              key={doc.id as string}
-              style={{
-                padding: "1.25rem 0",
-                borderBottom: "1px solid var(--np-color-border)",
-              }}
-            >
-              <h2
-                style={{
-                  fontFamily: "var(--np-font-heading)",
-                  fontSize: "1.25rem",
-                  margin: 0,
-                }}
-              >
-                <a
-                  href={`/blog/${doc.slug as string}`}
-                  style={{ color: "inherit", textDecoration: "none" }}
-                >
-                  {doc.title as string}
-                </a>
-              </h2>
-              {doc.excerpt ? (
-                <p
-                  style={{
-                    margin: "0.5rem 0 0",
-                    color: "var(--np-color-muted-foreground)",
-                  }}
-                >
-                  {doc.excerpt as string}
-                </p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+        </header>
+        {result.docs.length === 0 ? (
+          <p className="np-magazine-archive-empty">No stories yet.</p>
+        ) : (
+          <ul className="np-magazine-archive">
+            {result.docs.map((doc, index) => (
+              <li key={(doc.id as string) ?? `archive-${index.toString()}`}>
+                <MagazineArchiveItem
+                  doc={doc as MagazineArchiveItemDoc}
+                  romanIndex={index}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -130,20 +80,6 @@ export async function CategoryArchive({
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const slug = params.slug ?? "";
   const settings = await resolveMagazineSettings();
-  // v0.3 (H) — wrap the category + posts fetch in
-  // `cachedThemeFetch` so /category/<slug> shares cache entries
-  // per slug. The `nx:theme:<siteId>` tag (auto-applied) busts
-  // on theme switch / settings save / theme uninstall.
-  //
-  // extraTags cover BOTH collections this archive reads:
-  //   - `nx:collection:posts`     — new published post under
-  //     this category re-renders the listing
-  //   - `nx:collection:categories` — newly-created / renamed
-  //     category invalidates the "not found" branch and lets
-  //     `name`/`description` updates land within seconds
-  // saveDocument fires `revalidateTag("nx:collection:<slug>")`
-  // on every write through revalidateCollection, so this is
-  // automatic — operators don't have to think about it.
   const data = await cachedThemeFetch(
     ["magazine.category-archive", slug, String(settings.postsPerPage)],
     async () => {
@@ -172,10 +108,17 @@ export async function CategoryArchive({
   );
 
   if (!data.category) {
-    return <ArchiveLayout title="Category not found" result={data.posts} />;
+    return (
+      <ArchiveLayout
+        eyebrow="Archive"
+        title="Category not found"
+        result={data.posts}
+      />
+    );
   }
   return (
     <ArchiveLayout
+      eyebrow="Category"
       title={(data.category.name as string) ?? slug}
       subtitle={data.category.description as string | undefined}
       result={data.posts}
@@ -200,13 +143,6 @@ export async function AuthorArchive({
 }: NpRouteRenderProps): Promise<React.ReactElement> {
   const id = params.id ?? "";
   const settings = await resolveMagazineSettings();
-  // v0.3 (H) — same caching shape as CategoryArchive. /author/<id>
-  // shares one entry per id. extraTag covers the posts read; the
-  // author display name comes from `np_users` (no `nx:collection:*`
-  // tag exists for system tables, so a user rename surfaces after
-  // the 60s TTL or a manual revalidate, not instantly). The
-  // auto-applied `nx:theme:<siteId>` covers theme switch / settings
-  // save / uninstall.
   const data = await cachedThemeFetch(
     ["magazine.author-archive", id, String(settings.postsPerPage)],
     async () => {
@@ -228,6 +164,7 @@ export async function AuthorArchive({
     data.author?.name && data.author.name.length > 0 ? data.author.name : id;
   return (
     <ArchiveLayout
+      eyebrow="By the author"
       title={`Stories by ${displayName}`}
       subtitle="Recent posts from this author."
       result={data.posts}

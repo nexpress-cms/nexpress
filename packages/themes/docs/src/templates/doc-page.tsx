@@ -67,7 +67,7 @@ export async function DocPageTemplate({
   const updatedLabel = formatUpdated(doc.updatedAt ?? doc.publishedAt);
   const readingLabel = readingMinutesLabel(doc.readingTime);
   const editHref = settings.githubRepo
-    ? `${settings.githubRepo}/edit/main/docs/${doc.slug}.md`
+    ? `${settings.githubRepo}/edit/${settings.githubBranch}/${settings.githubDocsPath}/${doc.slug}${settings.githubExtension}`
     : null;
   const toc = extractHeadingToc(doc.body);
   const reportIssueHref = settings.githubRepo
@@ -133,7 +133,10 @@ export async function DocPageTemplate({
           // refines it to `{ root: ... }`. Structural cast at
           // the boundary — both sides go through the same
           // Lexical serializer.
-          renderRichText(doc.body as unknown as Parameters<typeof renderRichText>[0])
+          renderRichText(
+            doc.body as unknown as Parameters<typeof renderRichText>[0],
+            { headingAnchors: true },
+          )
         ) : (
           <p style={{ color: "var(--np-color-muted-foreground)" }}>
             No body content yet.
@@ -155,30 +158,38 @@ export async function DocPageTemplate({
         </div>
       </div>
 
-      <nav className="np-docs-prev-next" aria-label="Pagination">
-        {navInfo.prev ? (
-          <a
-            href={`/docs/${navInfo.prev.slug}`}
-            className="np-docs-prev-next-prev"
-          >
-            <div className="np-docs-prev-next-dir">← Previous</div>
-            <div className="np-docs-prev-next-title">{navInfo.prev.title}</div>
-          </a>
-        ) : (
-          <span />
-        )}
-        {navInfo.next ? (
-          <a
-            href={`/docs/${navInfo.next.slug}`}
-            className="np-docs-prev-next-next"
-          >
-            <div className="np-docs-prev-next-dir">Next →</div>
-            <div className="np-docs-prev-next-title">{navInfo.next.title}</div>
-          </a>
-        ) : (
-          <span />
-        )}
-      </nav>
+      {navInfo.prev || navInfo.next ? (
+        <nav
+          className="np-docs-prev-next"
+          aria-label="Pagination"
+          data-single={
+            navInfo.prev && !navInfo.next
+              ? "prev"
+              : navInfo.next && !navInfo.prev
+                ? "next"
+                : undefined
+          }
+        >
+          {navInfo.prev ? (
+            <a
+              href={`/docs/${navInfo.prev.slug}`}
+              className="np-docs-prev-next-prev"
+            >
+              <div className="np-docs-prev-next-dir">← Previous</div>
+              <div className="np-docs-prev-next-title">{navInfo.prev.title}</div>
+            </a>
+          ) : null}
+          {navInfo.next ? (
+            <a
+              href={`/docs/${navInfo.next.slug}`}
+              className="np-docs-prev-next-next"
+            >
+              <div className="np-docs-prev-next-dir">Next →</div>
+              <div className="np-docs-prev-next-title">{navInfo.next.title}</div>
+            </a>
+          ) : null}
+        </nav>
+      ) : null}
     </article>
 
     {toc.length > 0 ? (
@@ -188,7 +199,7 @@ export async function DocPageTemplate({
           {toc.map((entry) => (
             <li
               key={`toc-${entry.id}`}
-              style={entry.level === 3 ? { marginLeft: "0.85rem" } : undefined}
+              className={entry.level === 3 ? "np-docs-toc-l3" : undefined}
             >
               <a href={`#${entry.id}`}>{entry.text}</a>
             </li>

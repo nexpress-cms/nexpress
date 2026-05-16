@@ -23,6 +23,7 @@ export default defineConfig([
       "@nexpress/editor",
       "@nexpress/next",
       "@nexpress/theme",
+      "./components/copy-button.js",
       "./components/error.js",
       "./components/members-error.js",
       "./components/search-keyboard-shortcut.js",
@@ -31,6 +32,7 @@ export default defineConfig([
   },
   {
     entry: {
+      "components/copy-button": "src/components/copy-button.tsx",
       "components/error": "src/components/error.tsx",
       "components/members-error": "src/components/members-error.tsx",
       "components/search-keyboard-shortcut":

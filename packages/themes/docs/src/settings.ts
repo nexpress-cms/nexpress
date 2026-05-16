@@ -21,6 +21,24 @@ export const docsSettingsSchema = z.object({
     .describe(
       "Optional repository URL — when set, page templates render an 'Edit on GitHub' link in the prev/next bar.",
     ),
+  githubBranch: z
+    .string()
+    .default("main")
+    .describe(
+      "Branch the 'Edit on GitHub' link points at. Default 'main' — change to 'master' / 'docs' / whatever the repo uses.",
+    ),
+  githubDocsPath: z
+    .string()
+    .default("docs")
+    .describe(
+      "Path under the repo where doc source files live. Joined with the doc slug to build the edit link target.",
+    ),
+  githubExtension: z
+    .string()
+    .default(".md")
+    .describe(
+      "File extension appended to the slug when building the edit link (e.g. '.md', '.mdx'). Include the leading dot.",
+    ),
   sidebarHeading: z
     .string()
     .default("Documentation")

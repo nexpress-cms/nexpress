@@ -211,6 +211,30 @@ export const magazineCss = `
   background:
     radial-gradient(ellipse 70% 50% at 30% 30%, rgba(252, 250, 243, 0.18), transparent 60%),
     radial-gradient(ellipse 50% 60% at 70% 80%, rgba(0, 0, 0, 0.4), transparent 60%);
+  z-index: 1;
+  pointer-events: none;
+}
+.np-magazine-lead-cover[data-has-image="true"]::before {
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.45) 100%);
+}
+.np-magazine-cover-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+}
+.np-magazine-lead-cover-figure,
+.np-magazine-lead-cover-caption,
+.np-magazine-story-cover-figure,
+.np-magazine-archive-item-cover-fig { z-index: 2; }
+.np-magazine-story-cover,
+.np-magazine-archive-item-cover { isolation: isolate; }
+.np-magazine-story-cover[data-has-image="true"] .np-magazine-story-cover-figure,
+.np-magazine-archive-item-cover[data-has-image="true"] .np-magazine-archive-item-cover-fig {
+  display: none;
 }
 .np-magazine-lead-cover-figure {
   position: absolute;
@@ -752,6 +776,21 @@ export const magazineCss = `
 .np-magazine-footer-bottom a:hover { color: var(--np-color-primary, #b04a26); }
 .np-magazine-footer-bottom-right { display: flex; gap: 1.5rem; }
 
+.np-magazine-footer-social {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.np-magazine-footer-social a { text-decoration: none; }
+.np-magazine-footer-social a:hover { color: var(--np-color-primary, #b04a26); }
+
 /* ============================================================
  * Single-post feature template — long-form article body with a
  * drop cap and centered byline rule. Used by templates/post-
@@ -854,16 +893,21 @@ export const magazineCss = `
  * Page templates — default centered column, cover hero.
  * ============================================================ */
 .np-magazine-default {
-  max-width: 720px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 3rem 1.75rem 5rem;
 }
-.np-magazine-default h1 {
+.np-magazine-default > h1 {
   font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
   font-size: clamp(2.25rem, 4.4vw, 3.25rem);
   letter-spacing: -0.018em;
   line-height: 1.05;
-  margin: 0 0 1rem;
+  margin: 0 auto 2rem;
+  max-width: 32ch;
+  text-align: center;
+}
+.np-magazine-default > h1 + * {
+  margin-top: 0;
 }
 
 .np-magazine-cover {
@@ -920,10 +964,23 @@ export const magazineCss = `
   inset: 0;
   background: var(--np-color-background, #f6f1e7);
   z-index: 50;
-  display: flex;
+  display: none;
   flex-direction: column;
   padding: 1.5rem 1.75rem;
   gap: 1rem;
+}
+.np-magazine-mobile-nav-drawer[data-open="true"] {
+  display: flex;
+}
+.np-magazine-mobile-nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(
+    in oklab,
+    var(--np-color-foreground, #1a1411) 40%,
+    transparent
+  );
+  z-index: 49;
 }
 .np-magazine-mobile-nav-drawer ul {
   list-style: none;
@@ -949,5 +1006,136 @@ export const magazineCss = `
   letter-spacing: 0.18em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+/* ============================================================
+ * Member + 404 surfaces — centered column, Newsreader display
+ * heading, small-caps eyebrow, terracotta CTA pill. Shared
+ * between the public 404, member 404, and error boundaries so
+ * any chrome change lands in one place.
+ * ============================================================ */
+.np-magazine-message {
+  max-width: 36rem;
+  margin: 5rem auto;
+  padding: 0 1.75rem;
+  text-align: center;
+}
+.np-magazine-message-eyebrow {
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--np-color-primary, #b04a26);
+  font-weight: 600;
+  margin: 0;
+}
+.np-magazine-message-title {
+  font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
+  font-weight: 700;
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.06;
+  letter-spacing: -0.018em;
+  margin: 1.25rem 0 0;
+  text-wrap: balance;
+  border-top: 3px double var(--np-color-foreground, #1a1411);
+  border-bottom: 1px solid var(--np-color-border, #d8ccb4);
+  padding: 1.5rem 0;
+}
+.np-magazine-message-body {
+  font-style: italic;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  margin: 1.5rem auto 0;
+  max-width: 32rem;
+  text-wrap: pretty;
+}
+.np-magazine-message-actions {
+  margin-top: 2rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.np-magazine-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1.5rem;
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: var(--np-color-primary, #b04a26);
+  color: var(--np-color-primary-foreground, #fcfaf3);
+  border: 1px solid var(--np-color-primary, #b04a26);
+  border-radius: 0.25rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.np-magazine-cta:hover { opacity: 0.92; }
+.np-magazine-cta-ghost {
+  background: transparent;
+  color: var(--np-color-foreground, #1a1411);
+  border-color: var(--np-color-border, #d8ccb4);
+}
+.np-magazine-cta-ghost:hover {
+  color: var(--np-color-primary, #b04a26);
+  border-color: var(--np-color-primary, #b04a26);
+}
+
+.np-magazine-members {
+  padding: 3rem 1.75rem 4rem;
+}
+.np-magazine-members-column {
+  max-width: 32rem;
+  margin: 0 auto;
+}
+
+/* ============================================================
+ * Archive index masthead — used by /category/:slug and
+ * /author/:id pages above the .np-magazine-archive grid.
+ * ============================================================ */
+.np-magazine-archive-masthead {
+  margin: 3rem 0 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 3px double var(--np-color-foreground, #1a1411);
+}
+.np-magazine-archive-eyebrow {
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--np-color-primary, #b04a26);
+  font-weight: 600;
+  margin: 0;
+}
+.np-magazine-archive-title {
+  font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
+  font-weight: 700;
+  font-size: clamp(2rem, 4.2vw, 3rem);
+  letter-spacing: -0.018em;
+  margin: 0.75rem 0 0;
+  text-wrap: balance;
+}
+.np-magazine-archive-subtitle {
+  font-style: italic;
+  font-size: 1.125rem;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  margin: 0.75rem 0 0;
+  max-width: 36rem;
+}
+.np-magazine-archive-count {
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  margin: 0.85rem 0 0;
+}
+.np-magazine-archive-empty {
+  font-style: italic;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  padding: 2rem 0;
 }
 `;
