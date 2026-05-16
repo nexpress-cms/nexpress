@@ -34,13 +34,15 @@ test.describe("publish a page", () => {
     await page.goto("/admin/collections/pages/create");
     await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
 
-    // Scope the Publish button to the form. The admin sidebar's
-    // "Publish" group header is also exposed as a role=button (it
-    // expands/collapses), so an unscoped getByRole hits both and
-    // trips Playwright's strict-mode assertion.
+    // Target the real <button type="submit"> directly. The admin
+    // sidebar's "Publish" group header is a CardHeader rendered
+    // as <div role="button"> for expand/collapse, so getByRole
+    // matches both. Scoping to <form> doesn't help — the sidebar
+    // group is rendered inside the same form. Tag + type pins
+    // the submit button unambiguously.
     const publishButton = page
-      .locator("form")
-      .getByRole("button", { name: /^Publish$/ });
+      .locator('button[type="submit"]')
+      .filter({ hasText: /^Publish$/ });
 
     // Wait for the form to be interactive before filling — same
     // hydration story as the login form.
