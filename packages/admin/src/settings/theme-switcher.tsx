@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Loader2, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, Loader2, RotateCcw, Sparkles } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card.js";
+import { ThemeReseedDialog } from "./theme-reseed-dialog.js";
 
 /**
  * Phase 11.4 — admin theme switcher.
@@ -113,6 +114,7 @@ export function ThemeSwitcher({
   // layer shows them as placeholder cards until the operator
   // strips them via /admin/themes/cleanup.
   const [showCleanupHint, setShowCleanupHint] = useState(false);
+  const [reseedTarget, setReseedTarget] = useState<ThemeSummary | null>(null);
 
   useEffect(() => {
     void load();
@@ -329,7 +331,20 @@ export function ThemeSwitcher({
                   </p>
                 ) : null}
               </div>
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setReseedTarget(theme)}
+                  title={
+                    theme.isActive
+                      ? "Wipe seed-marked demo content and replace with this theme's seed."
+                      : "Switch to this theme and replace the previous theme's seed with this one's."
+                  }
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  {theme.isActive ? "Reseed demo" : "Switch & reseed"}
+                </button>
                 <Button
                   size="sm"
                   variant={theme.isActive ? "outline" : "default"}
@@ -352,6 +367,31 @@ export function ThemeSwitcher({
           ))}
         </div>
       </CardContent>
+      {reseedTarget ? (
+        <ThemeReseedDialog
+          open={reseedTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setReseedTarget(null);
+          }}
+          targetThemeId={reseedTarget.id}
+          targetThemeName={reseedTarget.name}
+          isCurrentlyActive={reseedTarget.isActive}
+          onReseedComplete={(result) => {
+            setMessage(
+              `Reseed complete — activated ${reseedTarget.name}. ${result.wiped.pages + result.wiped.posts} rows wiped, ${result.seeded.pages.created + result.seeded.posts.created} rows seeded.`,
+            );
+            setThemes((current) =>
+              current
+                ? current.map((t) => ({
+                    ...t,
+                    isActive: t.id === result.activeId,
+                  }))
+                : current,
+            );
+            onActivated?.(result.activeId);
+          }}
+        />
+      ) : null}
     </Card>
   );
 }
