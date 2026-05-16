@@ -38,6 +38,7 @@ export interface PostsDocument {
   seoMetaTitle: string | null;
   seoMetaDescription: string | null;
   seoOgImage: string | null;
+  seedSource: string | null;
   featured: boolean | null;
   heroImage: string | null;
   client: string | null;
@@ -65,6 +66,7 @@ export interface PagesDocument {
   seoDescription: string | null;
   template: string | null;
   blocks: unknown | null;
+  seedSource: string | null;
 }
 
 export interface CategoriesDocument {

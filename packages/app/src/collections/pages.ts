@@ -115,5 +115,21 @@ export const pagesCollection = defineCollection({
       type: "blocks",
       name: "blocks",
     },
+    {
+      // Marker for theme-seeded demo content (e.g. "theme:magazine").
+      // Empty for operator-authored rows. Reseed wipes only rows
+      // carrying a value here so operator content survives a theme
+      // switch.
+      type: "text",
+      name: "seedSource",
+      admin: {
+        position: "sidebar",
+        group: "System",
+        description:
+          "Set by the seeder. Empty for operator-authored pages. Reseed wipes only rows that carry a value here.",
+        readOnly: true,
+        condition: { when: "seedSource", exists: true },
+      },
+    },
   ],
 });

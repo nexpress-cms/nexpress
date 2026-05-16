@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import {
+  deleteDocument,
   findDocuments,
   getCurrentSiteId,
   getDb,
@@ -186,6 +187,15 @@ const PAGE_SAMPLES: NpThemeSeedPage[] = [
 
 export interface SeedPagesOptions {
   pages?: NpThemeSeedPage[];
+  /**
+   * Theme that owns this seed. Stamped onto every created row as
+   * `seedSource = "theme:{themeId}"` so a later reseed can wipe just
+   * the seed-marked rows without touching operator-authored content.
+   * When omitted, rows are still seeded but carry no marker — only
+   * useful for one-off CLI tests; the admin seed flow always supplies
+   * a themeId.
+   */
+  themeId?: string;
 }
 
 export async function seedPages(
@@ -193,16 +203,33 @@ export async function seedPages(
   options: SeedPagesOptions = {},
 ): Promise<SeedPagesResult> {
   const pages = options.pages ?? PAGE_SAMPLES;
+  const seedSource = options.themeId ? `theme:${options.themeId}` : null;
 
-  const existing = await findDocuments("pages", { limit: 1 });
-  if (existing.docs.length > 0) {
-    return { created: 0, skipped: true };
+  // Per-theme idempotency: if a row with this seedSource already
+  // exists, the seeder has run before for this theme — skip. Lets
+  // first-boot run once and later reseed (which wipes first) re-run
+  // cleanly, while keeping operator-authored rows untouched.
+  if (seedSource) {
+    const existing = await findDocuments("pages", {
+      where: { seedSource } as Record<string, unknown>,
+      limit: 1,
+    });
+    if (existing.docs.length > 0) {
+      return { created: 0, skipped: true };
+    }
+  } else {
+    const existing = await findDocuments("pages", { limit: 1 });
+    if (existing.docs.length > 0) {
+      return { created: 0, skipped: true };
+    }
   }
 
   const db = getDb();
   for (const sample of pages) {
     const { slug, ...data } = sample;
-    const result = await saveDocument("pages", null, data, actor, {
+    const payload: Record<string, unknown> = { ...data };
+    if (seedSource) payload.seedSource = seedSource;
+    const result = await saveDocument("pages", null, payload, actor, {
       status: "published",
     });
     if (slug) {
@@ -300,15 +327,28 @@ function buildPostSamples(now: Date): NpThemeSeedPost[] {
 
 export interface SeedPostsOptions {
   posts?: NpThemeSeedPost[];
+  /** Theme that owns this seed. See `SeedPagesOptions.themeId`. */
+  themeId?: string;
 }
 
 export async function seedPosts(
   actor: NpAuthUser,
   options: SeedPostsOptions = {},
 ): Promise<SeedPostsResult> {
-  const existing = await findDocuments("posts", { limit: 1 });
-  if (existing.docs.length > 0) {
-    return { created: 0, skipped: true };
+  const seedSource = options.themeId ? `theme:${options.themeId}` : null;
+  if (seedSource) {
+    const existing = await findDocuments("posts", {
+      where: { seedSource } as Record<string, unknown>,
+      limit: 1,
+    });
+    if (existing.docs.length > 0) {
+      return { created: 0, skipped: true };
+    }
+  } else {
+    const existing = await findDocuments("posts", { limit: 1 });
+    if (existing.docs.length > 0) {
+      return { created: 0, skipped: true };
+    }
   }
 
   const tagIds = await tagIdsByName();
@@ -343,6 +383,7 @@ export async function seedPosts(
     };
     if (kind) payload.kind = kind;
     if (typeof order === "number") payload.order = order;
+    if (seedSource) payload.seedSource = seedSource;
     const saved = await saveDocument(
       "posts",
       null,
@@ -479,18 +520,103 @@ export async function seedAll(
   // sides go through the `defineTheme` author surface.
   const impl = (theme?.impl ?? null) as { seedContent?: NpThemeSeedContent } | null;
   const themed: NpThemeSeedContent = impl?.seedContent ?? {};
+  const themeId =
+    typeof theme?.manifest?.id === "string" && theme.manifest.id.length > 0
+      ? theme.manifest.id
+      : null;
 
   const terms = await seedTerms(actor, {
     tags: themed.tags,
     categories: themed.categories,
   });
-  const pages = await seedPages(actor, { pages: themed.pages });
-  const posts = await seedPosts(actor, { posts: themed.posts });
+  const pages = await seedPages(actor, {
+    pages: themed.pages,
+    ...(themeId ? { themeId } : {}),
+  });
+  const posts = await seedPosts(actor, {
+    posts: themed.posts,
+    ...(themeId ? { themeId } : {}),
+  });
   const nav = await seedNavigation(actor, {
     header: themed.navigation?.header,
     footer: themed.navigation?.footer,
   });
   return { terms, pages, posts, navigation: nav };
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Wipe — deletes seed-marked pages + posts so a theme switch can
+// reseed without nuking operator-authored content. Goes through
+// `deleteDocument` so beforeDelete / afterDelete hooks (cache
+// busts, nav-cache invalidation, media-ref refcount drops) fire
+// for every row. Slower than a raw SQL delete; right for ~tens of
+// rows where correctness beats throughput.
+// ──────────────────────────────────────────────────────────────────
+
+export interface WipeSeededOptions {
+  /**
+   * Restrict the wipe to rows seeded by this theme id. When omitted,
+   * every row carrying any seedSource value is deleted. The admin's
+   * reseed flow passes the *outgoing* theme id so a switch from
+   * magazine → portfolio only deletes magazine's seed (portfolio's
+   * may not exist yet; the subsequent seed call writes it).
+   */
+  themeId?: string;
+}
+
+export interface WipeSeededResult {
+  pagesDeleted: number;
+  postsDeleted: number;
+}
+
+export async function wipeSeededContent(
+  actor: NpAuthUser,
+  options: WipeSeededOptions = {},
+): Promise<WipeSeededResult> {
+  const where = options.themeId
+    ? ({ seedSource: `theme:${options.themeId}` } as Record<string, unknown>)
+    : ({} as Record<string, unknown>);
+
+  let pagesDeleted = 0;
+  let postsDeleted = 0;
+
+  // Pages first — no FK ordering constraint between pages/posts, but
+  // pages tend to be fewer rows so they finish quickly and a partial
+  // failure leaves the larger posts wipe pending rather than the
+  // other way around.
+  const pageRows = await findDocuments<{ id: string; seedSource?: string }>(
+    "pages",
+    {
+      ...(options.themeId ? { where } : {}),
+      limit: 500,
+    },
+  );
+  for (const page of pageRows.docs) {
+    if (!options.themeId && !page.seedSource) continue;
+    if (typeof page.id !== "string") continue;
+    await deleteDocument("pages", page.id, actor);
+    pagesDeleted += 1;
+  }
+
+  // Posts — include drafts and scheduled (the seeder writes a future-
+  // dated draft as part of the marketing-blog demo). The pipeline's
+  // default findDocuments doesn't filter by status, so the cap of 500
+  // is the only bound here.
+  const postRows = await findDocuments<{ id: string; seedSource?: string }>(
+    "posts",
+    {
+      ...(options.themeId ? { where } : {}),
+      limit: 500,
+    },
+  );
+  for (const post of postRows.docs) {
+    if (!options.themeId && !post.seedSource) continue;
+    if (typeof post.id !== "string") continue;
+    await deleteDocument("posts", post.id, actor);
+    postsDeleted += 1;
+  }
+
+  return { pagesDeleted, postsDeleted };
 }
 
 // ──────────────────────────────────────────────────────────────────
