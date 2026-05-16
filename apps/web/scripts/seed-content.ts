@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 
 import {
   createDbConnection,
+  getActiveTheme,
   getSiteById,
   npUsers,
   withCurrentSite,
@@ -14,28 +15,25 @@ import {
 import type { NpAuthUser } from "@nexpress/core";
 
 import { ensureFor } from "../src/lib/init-core";
-import {
-  seedNavigation,
-  seedPages,
-  seedPosts,
-  seedTerms,
-} from "../src/lib/seed-content";
+import { seedAll } from "../src/lib/seed-content";
 
 /**
- * `pnpm seed:content` — populate a fresh install with a small
- * demo set so the public site renders something meaningful
- * before an editor logs in.
+ * `pnpm seed:content` — populate a fresh install with the active
+ * theme's demo content so the public site renders something
+ * meaningful before an editor logs in.
  *
- * Idempotent: the underlying seeders skip a section that already
- * has rows. The intent is "make a fresh install look alive" —
- * once an editor publishes real content, this script is a no-op.
+ * The framework's seeder is a pure orchestrator: every fixture
+ * (pages, posts, tags, categories, navigation) lives in the active
+ * theme's `seedContent` block. This script resolves the active theme
+ * and dispatches to `seedAll(actor, theme)`. Per-theme idempotency is
+ * keyed on `seed_source = "theme:<id>"` — running this twice for the
+ * same theme is a no-op; switching themes leaves the previous theme's
+ * seed alongside the new one until the admin reseed flow wipes it.
  *
  * Requires at least one user in `np_users` (use `pnpm seed:admin`
- * to create one). The seeded content is authored by the first
- * admin so revision history and audit log have a sensible owner.
- *
- * The actual content lives in `src/lib/seed-content.ts` so the
- * Admin Setup wizard can reuse the same fixtures.
+ * to create one) and an active theme. If no theme is active, the
+ * script exits with guidance to pick one through the admin or via
+ * the setup wizard.
  */
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -94,41 +92,37 @@ async function main(): Promise<void> {
     console.error("No admin user found. Run `pnpm seed:admin` first.");
     process.exit(1);
   }
-  console.log(`Seeding content for site "${siteId}" as ${actor.email}…`);
+  const theme = await getActiveTheme();
+  if (!theme) {
+    console.error(
+      "No active theme — pick one in the admin (or run the setup wizard) before seeding content.",
+    );
+    process.exit(1);
+  }
+  console.log(
+    `Seeding "${theme.manifest.id}" theme content for site "${siteId}" as ${actor.email}…`,
+  );
 
   const { terms, pages, posts, navigation } = await withCurrentSite(
     siteId,
-    async () => {
-      // Order matters — posts reference tag rows, so terms come first.
-      const terms = await seedTerms(actor);
-      if (terms.skipped)
-        console.log("• terms: already populated, skipping");
-      else
-        console.log(
-          `  ✓ terms: ${terms.tagsCreated} tags + ${terms.categoriesCreated} categories created`,
-        );
-
-      const pages = await seedPages(actor);
-      if (pages.skipped) console.log("• pages: already populated, skipping");
-      else console.log(`  ✓ pages: ${pages.created} created`);
-
-      const posts = await seedPosts(actor);
-      if (posts.skipped) console.log("• posts: already populated, skipping");
-      else console.log(`  ✓ posts: ${posts.created} created`);
-
-      const navigation = await seedNavigation(actor);
-      if (navigation.headerSkipped)
-        console.log("• header navigation: already exists, skipping");
-      else
-        console.log(`  ✓ header navigation: ${navigation.header} items`);
-      if (navigation.footerSkipped)
-        console.log("• footer navigation: already exists, skipping");
-      else
-        console.log(`  ✓ footer navigation: ${navigation.footer} items`);
-
-      return { terms, pages, posts, navigation };
-    },
+    async () => seedAll(actor, theme),
   );
+
+  if (terms.skipped) console.log("• terms: already populated, skipping");
+  else
+    console.log(
+      `  ✓ terms: ${terms.tagsCreated} tags + ${terms.categoriesCreated} categories created`,
+    );
+  if (pages.skipped) console.log("• pages: already populated, skipping");
+  else console.log(`  ✓ pages: ${pages.created} created`);
+  if (posts.skipped) console.log("• posts: already populated, skipping");
+  else console.log(`  ✓ posts: ${posts.created} created`);
+  if (navigation.headerSkipped)
+    console.log("• header navigation: already exists, skipping");
+  else console.log(`  ✓ header navigation: ${navigation.header} items`);
+  if (navigation.footerSkipped)
+    console.log("• footer navigation: already exists, skipping");
+  else console.log(`  ✓ footer navigation: ${navigation.footer} items`);
 
   console.log("");
   console.log(
