@@ -349,18 +349,22 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
                   })}
                 </div>
                 <p className="text-[11px] leading-[1.4] text-neutral-500 dark:text-neutral-500">
-                  You can switch themes anytime from Appearance — no migration needed.
+                  You can switch themes anytime from Admin → Settings → Themes
+                  — no migration needed. Use "Switch & reseed" to replace this
+                  theme's demo content with the chosen theme's.
                 </p>
               </div>
             ) : null}
             <div className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200/80 bg-neutral-50/60 px-3 py-2.5 dark:border-neutral-800/80 dark:bg-neutral-900/40">
               <div className="flex-1">
                 <div className="text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">
-                  Add sample content
+                  Add demo content
                 </div>
                 <p className="mt-0.5 text-[11.5px] leading-[1.5] text-neutral-500 dark:text-neutral-400">
-                  Three pages, three posts, and a starter navigation menu so the public
-                  site renders something out of the box. You can delete or edit them later.
+                  Pages, posts, and navigation tuned to the theme you picked
+                  above — so the public site renders something matching the
+                  design out of the box. Each row is tagged so you can wipe
+                  and reseed when switching themes.
                 </p>
               </div>
               <Switch
@@ -368,7 +372,7 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
                 onCheckedChange={(checked) =>
                   setSite({ ...site, sampleContent: checked })
                 }
-                aria-label="Add sample content"
+                aria-label="Add demo content"
               />
             </div>
             <div className="flex gap-2">

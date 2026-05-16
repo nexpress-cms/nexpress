@@ -373,13 +373,24 @@ export async function seedNavigation(
 /**
  * Theme-aware seed orchestrator.
  *
- * When `theme.impl.seedContent` is set, each slot drives its
- * respective seeder. Unset slots fall through to the framework's
- * generic content per-slot — so a theme that overrides only
- * `posts` keeps the generic pages, tags, and nav. Pass no `theme`
- * (or one without `seedContent`) to run the pure framework
- * default — the current call signature `seedAll(actor)` still
- * works for back-compat with `seed:content` scripts.
+ * Reads every fixture (`pages`, `posts`, `tags`, `categories`,
+ * `navigation`) from `theme.impl.seedContent`. The framework keeps
+ * no demo content — themes own theirs. Pass no `theme` (or one
+ * without `seedContent`) and every slot no-ops.
+ *
+ * Idempotency is **per-theme**, keyed on `seed_source = "theme:{id}"`:
+ *
+ *   - First run for theme A → seedPages/seedPosts write rows stamped
+ *     `theme:A`.
+ *   - Second run for theme A → finds existing rows with the marker,
+ *     skips with `skipped: true`.
+ *   - Run for theme B without a prior wipe → finds no rows with
+ *     marker `theme:B`, writes B's rows alongside A's (8 pages
+ *     total). Use `wipeSeededContent(actor)` first if you want
+ *     replacement semantics — the admin reseed UI
+ *     (`/api/admin/themes/reseed`) does exactly this.
+ *
+ * Operator-authored rows (no `seed_source`) are never touched.
  */
 export async function seedAll(
   actor: NpAuthUser,
