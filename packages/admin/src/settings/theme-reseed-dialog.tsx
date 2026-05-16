@@ -73,6 +73,23 @@ export interface ThemeReseedDialogProps {
   onReseedComplete?: (result: ReseedResult) => void;
 }
 
+function formatErrorDetails(details: unknown): string | null {
+  if (!Array.isArray(details)) return null;
+  const lines: string[] = [];
+  for (const item of details) {
+    if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      const field = typeof obj.field === "string" ? obj.field : null;
+      const path = Array.isArray(obj.path) ? obj.path.join(".") : null;
+      const message = typeof obj.message === "string" ? obj.message : null;
+      const label = field ?? path;
+      if (label && message) lines.push(`• ${label}: ${message}`);
+      else if (message) lines.push(`• ${message}`);
+    }
+  }
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 export function ThemeReseedDialog({
   open,
   onOpenChange,
@@ -140,10 +157,17 @@ export function ThemeReseedDialog({
         body: JSON.stringify({ themeId: targetThemeId }),
       });
       const payload = (await res.json().catch(() => null)) as
-        | (ReseedResult & { error?: { message?: string } })
+        | (ReseedResult & {
+            error?: {
+              message?: string;
+              details?: unknown;
+            };
+          })
         | null;
       if (!res.ok) {
-        setError(payload?.error?.message ?? "Reseed failed.");
+        const detailLines = formatErrorDetails(payload?.error?.details);
+        const top = payload?.error?.message ?? "Reseed failed.";
+        setError(detailLines ? `${top}\n${detailLines}` : top);
         setPhase("error");
         return;
       }
@@ -260,7 +284,7 @@ export function ThemeReseedDialog({
         ) : null}
 
         {phase === "error" && error ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
           </div>
         ) : null}
