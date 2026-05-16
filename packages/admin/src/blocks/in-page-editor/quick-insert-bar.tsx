@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { NpBlockMetadata } from "@nexpress/blocks";
 import { CornerDownLeft } from "lucide-react";
 
-import type { EditorAction } from "../editor-engine/index.js";
 import { Input } from "../../ui/input.js";
 import { cn } from "../../ui/utils.js";
 
@@ -12,8 +11,13 @@ import { BlockIcon } from "../shared/block-icon.js";
 
 interface QuickInsertBarProps {
   definitions: ReadonlyMap<string, NpBlockMetadata>;
-  dispatch: Dispatch<EditorAction>;
+  availableBlocks?: readonly NpBlockMetadata[];
+  onInsertBlock: (blockType: string) => void;
   onInsertText: (text: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  onCancel?: () => void;
+  className?: string;
 }
 
 // Cap the slash menu at this many entries so a registry with
@@ -51,7 +55,8 @@ export function filterSlashMenuDefinitions(
 }
 
 /**
- * Bottom-of-canvas insert bar. Two modes, picked by what the
+ * Notion-ish insert bar used both at the bottom of the canvas and
+ * inline under a hovered block. Two modes, picked by what the
  * operator types:
  *
  *   - Plain text + Enter → appends a rich-text block with the
@@ -68,14 +73,19 @@ export function filterSlashMenuDefinitions(
  * already show up in the registry-context map and adding them
  * costs nothing.
  *
- * Insertion always lands at the top level. Operators who want to
- * slot a block AFTER an existing one use the per-row Plus button
- * in the hover rail (which routes through the palette modal).
+ * Placement is owned by the parent through `onInsertBlock` /
+ * `onInsertText`, so this component stays focused on input,
+ * filtering, keyboard navigation, and presentation.
  */
 export function QuickInsertBar({
   definitions,
-  dispatch,
+  availableBlocks,
+  onInsertBlock,
   onInsertText,
+  placeholder = "Write something, or type / to insert a block",
+  autoFocus = false,
+  onCancel,
+  className,
 }: QuickInsertBarProps) {
   const [value, setValue] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -86,10 +96,14 @@ export function QuickInsertBar({
   // changes only when the registry does), so the filter below
   // can derive cheaply.
   const allDefinitions = useMemo(() => {
-    return Array.from(definitions.values()).sort((a, b) =>
-      (a.label ?? a.type).localeCompare(b.label ?? b.type),
-    );
-  }, [definitions]);
+    const blocks = availableBlocks ?? Array.from(definitions.values());
+    return [...blocks].sort((a, b) => (a.label ?? a.type).localeCompare(b.label ?? b.type));
+  }, [availableBlocks, definitions]);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    inputRef.current?.focus();
+  }, [autoFocus]);
 
   const isSlashMode = value.startsWith("/");
   const slashQuery = isSlashMode ? value.slice(1).toLowerCase() : "";
@@ -106,7 +120,7 @@ export function QuickInsertBar({
 
   const commitSlash = (def: NpBlockMetadata | undefined) => {
     if (!def) return;
-    dispatch({ type: "ADD", blockType: def.type });
+    onInsertBlock(def.type);
     setValue("");
     setActiveIndex(0);
     inputRef.current?.focus();
@@ -120,8 +134,15 @@ export function QuickInsertBar({
   };
 
   return (
-    <div className="relative">
-      <div className="flex items-center gap-2 rounded-xl border border-dashed border-neutral-300 bg-background px-3 py-2 transition-colors focus-within:border-primary/50 focus-within:bg-background dark:border-neutral-700">
+    <div className={cn("relative", className)}>
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-xl border border-dashed border-neutral-300",
+          "bg-background px-3 py-2 shadow-sm transition-colors",
+          "focus-within:border-primary/50 focus-within:bg-background",
+          "dark:border-neutral-700",
+        )}
+      >
         <span className="text-sm text-neutral-400 dark:text-neutral-500">
           {isSlashMode ? "/" : "+"}
         </span>
@@ -146,19 +167,33 @@ export function QuickInsertBar({
               } else if (e.key === "Escape") {
                 e.preventDefault();
                 setValue("");
+                onCancel?.();
               }
               return;
             }
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               commitText(value);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setValue("");
+              onCancel?.();
             }
           }}
-          placeholder="Write something, or type / to insert a block"
-          className="flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          placeholder={placeholder}
+          className={cn(
+            "flex-1 border-0 bg-transparent px-0 text-sm shadow-none",
+            "focus-visible:ring-0 focus-visible:ring-offset-0",
+          )}
         />
         {value && !isSlashMode ? (
-          <kbd className="hidden items-center gap-1 rounded border border-neutral-200 bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline-flex dark:border-neutral-800">
+          <kbd
+            className={cn(
+              "hidden items-center gap-1 rounded border border-neutral-200",
+              "bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground",
+              "sm:inline-flex dark:border-neutral-800",
+            )}
+          >
             <CornerDownLeft className="h-3 w-3" /> Enter
           </kbd>
         ) : null}
@@ -171,7 +206,8 @@ export function QuickInsertBar({
             // edge; `max-w-md` keeps it from stretching to the full
             // canvas width on wide layouts so it reads as a
             // popover, not a full-width list.
-            "absolute bottom-full left-0 z-20 mb-2 max-h-72 w-full max-w-md overflow-auto rounded-xl border border-neutral-200 bg-popover py-1 shadow-lg",
+            "absolute bottom-full left-0 z-20 mb-2 max-h-72 w-full max-w-md",
+            "overflow-auto rounded-xl border border-neutral-200 bg-popover py-1 shadow-lg",
             "dark:border-neutral-800",
           )}
           role="listbox"
@@ -186,22 +222,24 @@ export function QuickInsertBar({
                 aria-selected={isActive}
                 className={cn(
                   "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
-                  isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "hover:bg-accent/60",
+                  isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                 )}
                 onMouseEnter={() => setActiveIndex(idx)}
                 onClick={() => commitSlash(def)}
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200/80 bg-background text-muted-foreground dark:border-neutral-800/80">
+                <span
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-md border",
+                    "border-neutral-200/80 bg-background text-muted-foreground",
+                    "dark:border-neutral-800/80",
+                  )}
+                >
                   <BlockIcon icon={def.icon} kind={def.iconKind} />
                 </span>
                 <span className="flex flex-col">
                   <span className="font-medium">{def.label ?? def.type}</span>
                   {def.category ? (
-                    <span className="text-xs text-muted-foreground">
-                      {def.category}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{def.category}</span>
                   ) : null}
                 </span>
                 <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -216,7 +254,8 @@ export function QuickInsertBar({
       {isSlashMode && filtered.length === 0 ? (
         <div
           className={cn(
-            "absolute bottom-full left-0 z-20 mb-2 w-full max-w-md rounded-xl border border-neutral-200 bg-popover px-3 py-2 text-sm text-muted-foreground shadow-lg",
+            "absolute bottom-full left-0 z-20 mb-2 w-full max-w-md rounded-xl",
+            "border border-neutral-200 bg-popover px-3 py-2 text-sm text-muted-foreground shadow-lg",
             "dark:border-neutral-800",
           )}
         >
