@@ -1,4 +1,8 @@
-import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
+import {
+  defineTheme,
+  type NpThemeSeedPage,
+  type NpThemeSeedPost,
+} from "@nexpress/theme";
 
 import { portfolioBlocks } from "./blocks.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
@@ -12,6 +16,7 @@ import { portfolioSettingsSchema } from "./settings.js";
 import { PortfolioShell } from "./shell.js";
 import { portfolioCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
+import { PageFrontTemplate } from "./templates/page-front.js";
 import { PageGalleryTemplate } from "./templates/page-gallery.js";
 import { ProjectDetailTemplate } from "./templates/project-detail.js";
 import {
@@ -261,6 +266,65 @@ const SEED_NAV = {
 };
 
 /**
+ * Portfolio theme home page + ancillary pages.
+ *
+ * Home (`/`) ships with `template: "front"` so the catch-all dispatches
+ * into `PageFrontTemplate`, which pulls projects at render time and
+ * lays them out as the 12-col asymmetric grid + studio strip + contact
+ * strip. The page row has no blocks — the template owns the visual.
+ *
+ * Studio + Journal stubs use the default template (centered text
+ * column on the dark canvas).
+ */
+const SEED_PAGES: NpThemeSeedPage[] = [
+  {
+    title: "Owen & Spruce",
+    slug: "/",
+    seoDescription:
+      "A studio for studios. Identity, type, and editorial systems for brands at the inflection.",
+    blocks: [],
+    data: { template: "front" },
+  },
+  {
+    title: "Studio",
+    slug: "studio",
+    seoDescription:
+      "About the studio — what we do, who we work with, and how we work.",
+    blocks: [
+      {
+        type: "richText",
+        id: "seed-port-studio-body",
+        props: {
+          content: lexicalDoc([
+            "Owen & Spruce is a five-person studio working at the intersection of identity, custom type, and editorial design. We were founded in 2018 in a converted printer's shop in Mapo, Seoul; we opened a second desk in New York in 2024.",
+            "We work with brands at the inflection — when the way they look needs to catch up to who they've become. That usually means an identity refresh, sometimes a full rebrand, and occasionally a one-off display cut drawn for a single use.",
+            "We accept four engagements a year. The studio's calendar runs roughly six months ahead.",
+          ]),
+        },
+      },
+    ],
+  },
+  {
+    title: "Journal",
+    slug: "journal",
+    seoDescription:
+      "Notes from the studio — process, references, occasional opinions on type and editorial.",
+    blocks: [
+      {
+        type: "richText",
+        id: "seed-port-journal-body",
+        props: {
+          content: lexicalDoc([
+            "We post twice a month on average — process notes, references we keep coming back to, opinions on type and editorial work that didn't quite fit on a project page.",
+            "The journal isn't a feed. We don't optimise for engagement. If a post takes nine months to land, it takes nine months.",
+          ]),
+        },
+      },
+    ],
+  },
+];
+
+/**
  * `@nexpress/theme-portfolio` — image-led dark studio theme.
  *
  * Post-redesign visual: sticky blurred masthead with a display-
@@ -442,6 +506,7 @@ export const portfolioTheme = defineTheme({
     },
     css: portfolioCss,
     seedContent: {
+      pages: SEED_PAGES,
       posts: SEED_PROJECTS,
       navigation: SEED_NAV,
     },
@@ -457,6 +522,12 @@ export const portfolioTheme = defineTheme({
           description:
             "Auto-fill block grid for image-led project pages and case studies.",
           component: PageGalleryTemplate,
+        },
+        front: {
+          label: "Front page",
+          description:
+            "Studio front page — hero + filter tablist + 12-col asymmetric project grid + studio strip + contact strip. Pulls projects from the server at render time. The seeded home page (slug \"/\") ships with this template.",
+          component: PageFrontTemplate,
         },
       },
       posts: {
