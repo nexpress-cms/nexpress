@@ -927,4 +927,197 @@ export const docsCss = `
   color: var(--np-color-muted-foreground);
   line-height: 1.55;
 }
+
+/* ============================================================
+ * Front-page landing — eyebrow + display heading + lede +
+ * primary CTA + 2x2 group cards + recently-updated row.
+ * Renders inside the single-column page layout
+ * (data-layout="page" on the shell collapses the 3-col grid).
+ * ============================================================ */
+.np-docs-front {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 2.5rem 0 4rem;
+  display: grid;
+  gap: 3rem;
+}
+.np-docs-front-hero {
+  display: grid;
+  gap: 1rem;
+}
+.np-docs-front-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--np-color-primary);
+  background: var(--np-color-primary-soft, color-mix(in oklab, var(--np-color-primary) 10%, transparent));
+  padding: 0.32rem 0.6rem;
+  border-radius: 999px;
+  align-self: start;
+  justify-self: start;
+}
+.np-docs-front-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--np-color-success, currentColor);
+  display: inline-block;
+}
+.np-docs-front h1 {
+  font-size: clamp(2.4rem, 4.2vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0;
+  text-wrap: balance;
+}
+.np-docs-front-lede {
+  font-size: 1.125rem;
+  line-height: 1.55;
+  color: var(--np-color-muted-foreground);
+  max-width: 60ch;
+  margin: 0;
+}
+.np-docs-front-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+}
+.np-docs-front-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+  padding: 0.55rem 1.05rem;
+  border-radius: 999px;
+  background: var(--np-color-foreground);
+  color: var(--np-color-background);
+  text-decoration: none;
+}
+.np-docs-front-cta-primary:hover {
+  background: color-mix(in oklab, var(--np-color-foreground) 85%, transparent);
+}
+.np-docs-front-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.92rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 999px;
+  color: var(--np-color-foreground);
+  text-decoration: none;
+  border: 1px solid var(--np-color-border);
+}
+.np-docs-front-cta-secondary:hover {
+  background: var(--np-color-muted);
+}
+
+.np-docs-front-groups {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+@media (max-width: 720px) {
+  .np-docs-front-groups { grid-template-columns: 1fr; }
+}
+.np-docs-front-group {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1.4rem 1.4rem 1.6rem;
+  border-radius: var(--np-radius-lg, 10px);
+  border: 1px solid var(--np-color-border);
+  background: var(--np-color-card);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.np-docs-front-group:hover {
+  border-color: var(--np-color-primary);
+  transform: translateY(-1px);
+}
+.np-docs-front-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+}
+.np-docs-front-group-count {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--np-color-muted-foreground);
+  font-weight: 400;
+}
+.np-docs-front-group-lede {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--np-color-muted-foreground);
+}
+.np-docs-front-group-children {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.np-docs-front-group-children li {
+  font-size: 0.86rem;
+  color: var(--np-color-muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.np-docs-front-recent {
+  display: grid;
+  gap: 0.75rem;
+}
+.np-docs-front-recent-eyebrow {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--np-color-muted-foreground);
+  margin: 0;
+}
+.np-docs-front-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.np-docs-front-recent-list a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--np-color-border);
+  text-decoration: none;
+  color: inherit;
+}
+.np-docs-front-recent-list li:last-child a {
+  border-bottom: 0;
+}
+.np-docs-front-recent-list a:hover {
+  color: var(--np-color-primary);
+}
+.np-docs-front-recent-title {
+  font-size: 0.95rem;
+}
+.np-docs-front-recent-time {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: var(--np-color-muted-foreground);
+  flex-shrink: 0;
+}
 `;
