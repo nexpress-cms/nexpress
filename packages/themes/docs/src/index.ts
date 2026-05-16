@@ -1,4 +1,8 @@
-import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
+import {
+  defineTheme,
+  type NpThemeSeedPage,
+  type NpThemeSeedPost,
+} from "@nexpress/theme";
 
 import { docsBlocks } from "./blocks/index.js";
 import { CopyButton } from "./copy-button-bridge.js";
@@ -13,6 +17,7 @@ import { DocsSidebar } from "./sidebar.js";
 import { docsCss } from "./styles.js";
 import { docsSettingsSchema } from "./settings.js";
 import { DocPageTemplate } from "./templates/doc-page.js";
+import { PageFrontTemplate } from "./templates/page-front.js";
 
 const SEED_NAV = {
   header: [
@@ -196,6 +201,17 @@ const QUICKSTART_BODY = lexicalDoc([
     "Add collections. Plugins can declare their own collections, which the admin surfaces alongside the operator's. See the Plugin manifest reference.",
   ]),
 ]);
+
+const SEED_PAGES: NpThemeSeedPage[] = [
+  {
+    title: "Documentation",
+    slug: "/",
+    seoDescription:
+      "Install NexPress, learn the core concepts, write plugins, and look up the API.",
+    blocks: [],
+    data: { template: "front" },
+  },
+];
 
 const SEED_DOCS: NpThemeSeedPost[] = [
   stubDoc({
@@ -401,9 +417,18 @@ export const docsTheme = defineTheme({
     },
     seedContent: {
       navigation: SEED_NAV,
+      pages: SEED_PAGES,
       posts: SEED_DOCS,
     },
     templates: {
+      pages: {
+        front: {
+          label: "Front page",
+          description:
+            "Docs landing — hero + 2x2 group cards walking the kind=\"doc\" tree + recently-updated row. The seeded home page (slug \"/\") ships with this template.",
+          component: PageFrontTemplate,
+        },
+      },
       // Universal-content-model #748 — docs are posts with
       // `kind: "doc"`. The template key matches the kind value so
       // the per-kind template lookup picks this up automatically.
