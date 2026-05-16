@@ -18,6 +18,8 @@ export default defineConfig([
       "@nexpress/theme",
       "./components/mobile-nav.js",
       "./components/newsletter-form.js",
+      "./components/error.js",
+      "./components/members-error.js",
     ],
   },
   {

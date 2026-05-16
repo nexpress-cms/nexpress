@@ -482,6 +482,11 @@ export const magazineTheme = defineTheme({
 
 export { MagazineHeader, MagazineFooter, MagazineShell };
 export { magazineCss };
+export {
+  MagazineArchiveItem,
+  type MagazineArchiveItemDoc,
+  type MagazineArchiveItemProps,
+} from "./components/archive-item.js";
 export { MagazineMobileNav } from "./components/mobile-nav.js";
 export { MagazineNewsletterForm } from "./components/newsletter-form.js";
 export {

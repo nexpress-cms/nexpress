@@ -1,25 +1,31 @@
+import type { NpNavItem } from "@nexpress/core";
+import { getCachedNavigation } from "@nexpress/next";
+
 import { resolvePortfolioSettings } from "./settings-helpers.js";
 
 /**
  * Portfolio footer — single thin row.
  *
- *   - **Left**: studio copyright + a small clock pill ("Open ·
- *     Mon — Fri") with a pulse dot indicator. The pulse is
- *     decorative; sites that want a real on/off signal flip
- *     the copy via a future setting or a custom slot.
- *   - **Right**: secondary meta links — Index / Colophon /
- *     "Built on NexPress" credit. The credit is gated by
+ *   - **Left**: studio copyright + a small clock pill with a
+ *     pulse dot indicator. The pulse is decorative; the pill
+ *     text is driven by `settings.footerHoursLine`.
+ *   - **Right**: secondary meta links. Pulls from the
+ *     `footerSecondary` nav location when the operator has wired
+ *     one; falls back to Index / Colophon / "Built on NexPress"
+ *     so a fresh install matches the design out of the box. The
+ *     "Built on NexPress" credit is still gated by
  *     `settings.showFooterCredit` for studios that prefer an
  *     unbranded footer.
  *
  * Optional `settings.aboutCopy` renders as a short bio
- * paragraph above the meta row when set. Sticks to a single
- * row at desktop widths; wraps on narrow viewports via the
- * CSS `flex-wrap` rule.
+ * paragraph above the meta row when set.
  */
 export async function PortfolioFooter() {
   const settings = await resolvePortfolioSettings();
+  const secondary = await getCachedNavigation("footerSecondary");
   const year = settings.copyrightYear ?? new Date().getFullYear();
+  const links: NpNavItem[] = secondary.length > 0 ? secondary : [];
+
   return (
     <footer className="np-portfolio-footer">
       {settings.aboutCopy.length > 0 ? (
@@ -49,12 +55,25 @@ export async function PortfolioFooter() {
               className="np-portfolio-footer-clock-dot"
               aria-hidden="true"
             />
-            Open · Mon — Fri
+            {settings.footerHoursLine}
           </span>
         </div>
         <div className="np-portfolio-footer-right">
-          <a href="/index">Index</a>
-          <a href="/colophon">Colophon</a>
+          {links.length > 0 ? (
+            links.map((item, index) => (
+              <a
+                key={`portfolio-footer-link-${index.toString()}`}
+                href={item.url}
+              >
+                {item.label}
+              </a>
+            ))
+          ) : (
+            <>
+              <a href="/index">Index</a>
+              <a href="/colophon">Colophon</a>
+            </>
+          )}
           {settings.showFooterCredit ? (
             <a href="https://nexpress.dev">Built on NexPress</a>
           ) : null}

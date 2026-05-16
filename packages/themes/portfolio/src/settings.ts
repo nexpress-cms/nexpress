@@ -30,7 +30,7 @@ export const portfolioSettingsSchema = z.object({
     ),
   studioName: z
     .string()
-    .default("Studio")
+    .default("Owen & Spruce")
     .describe("Studio / personal name shown in the masthead and footer."),
   timezone: z
     .string()
@@ -57,6 +57,89 @@ export const portfolioSettingsSchema = z.object({
     .meta({ widget: "textarea", rows: 4 })
     .describe(
       "Optional short bio for the studio. Renders as a multi-line textarea in admin (4 rows) and as a small paragraph above the footer contact line on the public site.",
+    ),
+  // Hero meta — three label/value pairs shown under the hero
+  // headline. Matches the prototype's What we do / Selected
+  // clients / Recognition triplet. Empty array hides the meta
+  // row entirely.
+  heroMeta: z
+    .array(
+      z.object({
+        label: z.string().describe("Block label (e.g. 'What we do')"),
+        value: z.string().describe("Block value text"),
+      }),
+    )
+    .default([
+      {
+        label: "What we do",
+        value:
+          "Identity systems, custom typefaces, art direction. Twelve projects a year, no more.",
+      },
+      {
+        label: "Selected clients",
+        value:
+          "Aperture, MoMA PS1, Pentagram (NY), Hanmi Gallery, the City of Seoul.",
+      },
+      {
+        label: "Recognition",
+        value:
+          "D&AD Yellow Pencil, TDC Tokyo, ADC Gold, Brand New of the Year.",
+      },
+    ])
+    .describe(
+      "Three meta blocks rendered under the hero headline (label + value). Empty array hides the row.",
+    ),
+  // Studio strip — eyebrow + display headline + body paragraphs
+  // + 2x2 stats grid. The strip is hidden when both `studioBody`
+  // and `studioStats` are empty.
+  studioHeading: z
+    .string()
+    .default(
+      "A four-person practice that <em>thinks</em> in book pages and <em>ships</em> in vector files.",
+    )
+    .describe(
+      "Studio strip headline. Supports inline <em>...</em> runs for the italic-accent color.",
+    ),
+  studioBody: z
+    .array(z.string())
+    .default([
+      "We work with one client at a time, on contracts that last between three months and two years. Every project goes through a small standing weekly review with the whole studio — the four of us and a long table.",
+      "We share two desks with a typeface foundry in Hapjeong, two streets back from the river. Visitors are welcome on Fridays.",
+    ])
+    .meta({ widget: "textarea", rows: 3 })
+    .describe(
+      "Studio strip body paragraphs. Each entry renders as one <p>. Empty array hides the body column.",
+    ),
+  studioStats: z
+    .array(
+      z.object({
+        value: z.string().describe("Stat figure (e.g. '2018', '04', '96')"),
+        label: z.string().describe("Stat label (e.g. 'Projects shipped')"),
+      }),
+    )
+    .default([
+      { value: "2018", label: "Founded — Seoul, MA" },
+      { value: "04", label: "People in the room" },
+      { value: "96", label: "Projects shipped" },
+      { value: "12 / yr", label: "Our annual ceiling" },
+    ])
+    .describe(
+      "2x2 grid of studio stats. Empty array hides the stats column.",
+    ),
+  footerHoursLine: z
+    .string()
+    .default("Open · Mon — Fri")
+    .describe(
+      "Short status / hours line rendered next to the pulse dot in the footer's left column.",
+    ),
+  // View toggle — decorative in v0.1 (no client island wired).
+  // Hidden by default; operators flip it on when they wire a
+  // list-view template themselves.
+  showViewToggle: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Show the grid / list view toggle in the index controls strip. Off by default — the toggle is decorative until a list template is wired.",
     ),
   // Footer
   showFooterCredit: z

@@ -213,6 +213,29 @@ export const docsCss = `
   .np-docs-sidebar { display: none; }
 }
 
+/* Non-docs routes (home / about / pricing / contact / member pages):
+ * collapse the 3-col grid to a single wide column and hide the
+ * doc-only chrome (sidebar + TOC) so a generic pages doc has full
+ * canvas width instead of being squeezed into the 800-ish px
+ * article column reserved for the /docs reading lane. */
+.np-docs-shell[data-layout="page"] .np-docs-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.np-docs-shell[data-layout="page"] .np-docs-sidebar,
+.np-docs-shell[data-layout="page"] .np-docs-toc {
+  display: none;
+}
+/* Framework's globals.css caps .np-page at 48rem (~768px) so a
+ * regular pages doc rendered through the catch-all's fallback
+ * wrapper stays squeezed even after the grid collapse above.
+ * Lift the cap inside the page-layout so block-level content
+ * (hero, features, stats) can stretch to the docs container. */
+.np-docs-shell[data-layout="page"] .np-page {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
 /* ============================================================
  * Sidebar — grouped link list with bullet eyebrow + badges.
  * ============================================================ */
@@ -355,16 +378,16 @@ export const docsCss = `
   background: var(--np-color-card);
 }
 .np-docs-page-meta-pill.status {
-  color: #047857;
+  color: var(--np-color-success, #047857);
   border-color: #bbf7d0;
-  background: #f0fdf4;
+  background: var(--np-color-success-soft, #f0fdf4);
 }
 .np-docs-page-meta-pill.status::before {
   content: "";
   width: 0.4rem;
   height: 0.4rem;
   border-radius: 50%;
-  background: #047857;
+  background: var(--np-color-success, #047857);
 }
 .np-docs-page-meta-sep { opacity: 0.4; }
 .np-docs-page-meta a {
@@ -465,12 +488,12 @@ export const docsCss = `
   color: var(--np-color-foreground);
 }
 .np-docs-callout--warn {
-  border-left-color: #b45309;
-  background: #fffbeb;
+  border-left-color: var(--np-color-warning, #b45309);
+  background: var(--np-color-warning-soft, #fffbeb);
   border-color: #fde68a;
 }
 .np-docs-callout--warn .np-docs-callout-icon,
-.np-docs-callout--warn > svg { color: #b45309; }
+.np-docs-callout--warn > svg { color: var(--np-color-warning, #b45309); }
 .np-docs-callout--note {
   border-left-color: #6366f1;
   background: #eef2ff;
@@ -479,12 +502,12 @@ export const docsCss = `
 .np-docs-callout--note .np-docs-callout-icon,
 .np-docs-callout--note > svg { color: #4338ca; }
 .np-docs-callout--danger {
-  border-left-color: #b91c1c;
-  background: #fef2f2;
+  border-left-color: var(--np-color-danger, #b91c1c);
+  background: var(--np-color-danger-soft, #fef2f2);
   border-color: #fecaca;
 }
 .np-docs-callout--danger .np-docs-callout-icon,
-.np-docs-callout--danger > svg { color: #b91c1c; }
+.np-docs-callout--danger > svg { color: var(--np-color-danger, #b91c1c); }
 
 /* ============================================================
  * Code blocks — dark surface with a file-named header and a
@@ -496,17 +519,17 @@ export const docsCss = `
 .np-docs-code {
   margin: 1.25rem 0;
   border-radius: 10px;
-  background: #0b1220;
-  color: #e6edf6;
+  background: var(--np-color-code-bg, #0b1220);
+  color: var(--np-color-code-fg, #e6edf6);
   overflow: hidden;
-  border: 1px solid #1e2939;
+  border: 1px solid var(--np-color-code-head, #1e2939);
 }
 .np-docs-code-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.55rem 0.85rem;
-  background: #0f1a2b;
+  background: var(--np-color-code-border, #0f1a2b);
   border-bottom: 1px solid #1e293b;
 }
 .np-docs-code-file {
@@ -568,8 +591,8 @@ export const docsCss = `
   align-items: center;
   padding: 0.75rem 1rem;
   margin: 1.25rem 0;
-  background: #0b1220;
-  color: #e6edf6;
+  background: var(--np-color-code-bg, #0b1220);
+  color: var(--np-color-code-fg, #e6edf6);
   border-radius: 9px;
   font-family: var(--np-font-mono);
   font-size: 0.875rem;
@@ -708,6 +731,11 @@ export const docsCss = `
 }
 .np-docs-prev-next a.np-docs-prev-next-next,
 .np-docs-prev-next a:last-child { text-align: right; }
+.np-docs-prev-next[data-single="prev"],
+.np-docs-prev-next[data-single="next"] { grid-template-columns: 1fr; }
+.np-docs-prev-next[data-single="prev"] a.np-docs-prev-next-prev,
+.np-docs-prev-next[data-single="next"] a.np-docs-prev-next-next { width: 100%; }
+.np-docs-prev-next[data-single="prev"] a.np-docs-prev-next-prev { text-align: left; }
 
 /* ============================================================
  * Feedback row — Yes / Could be better buttons under each page.
@@ -797,6 +825,7 @@ export const docsCss = `
   );
 }
 .np-docs-toc ul ul { margin-left: 0.85rem; }
+.np-docs-toc-l3 { margin-left: 0.85rem; }
 .np-docs-toc-secondary {
   margin-top: 1.5rem;
   padding-top: 1rem;
@@ -823,5 +852,79 @@ export const docsCss = `
   font-size: 1.5rem;
   margin: 0 0 0.5rem;
   color: var(--np-color-foreground);
+}
+
+/* ============================================================
+ * Search route — wraps DocsSearch's output. Eyebrow + result
+ * cards reuse the docs chrome (mono small caps, hairline rules,
+ * bordered card with hover lift).
+ * ============================================================ */
+.np-docs-search {
+  max-width: 800px;
+  margin: 0 auto;
+  padding-top: 2.25rem;
+}
+.np-docs-search-heading {
+  font-family: var(--np-font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--np-color-muted-foreground);
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.np-docs-search h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.5rem;
+  text-wrap: balance;
+}
+.np-docs-search-empty {
+  color: var(--np-color-muted-foreground);
+  padding: 1.5rem 0;
+  font-size: 0.95rem;
+}
+.np-docs-search-results {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  display: grid;
+  gap: 1rem;
+}
+.np-docs-search-result {
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--np-color-border);
+  border-radius: 10px;
+  background: var(--np-color-card);
+  transition: border-color 0.15s ease, transform 0.2s ease;
+}
+.np-docs-search-result:hover {
+  border-color: var(--np-color-primary);
+  transform: translateY(-1px);
+}
+.np-docs-search-result-eyebrow {
+  font-family: var(--np-font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--np-color-muted-foreground);
+  margin: 0 0 0.35rem;
+}
+.np-docs-search-result h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+}
+.np-docs-search-result h2 a {
+  color: var(--np-color-foreground);
+  text-decoration: none;
+}
+.np-docs-search-result h2 a:hover { color: var(--np-color-primary); }
+.np-docs-search-result-excerpt {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--np-color-muted-foreground);
+  line-height: 1.55;
 }
 `;

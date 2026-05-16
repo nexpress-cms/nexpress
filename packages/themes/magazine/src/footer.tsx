@@ -3,10 +3,6 @@ import { getCachedNavigation } from "@nexpress/next";
 
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
-/** Display labels for the supported social platform enum values
- *  in `magazineSettingsSchema.socialLinks[].platform`. Falls back
- *  to the raw value (lowercased) if a future platform isn't
- *  listed here. */
 const SOCIAL_LABELS: Record<string, string> = {
   twitter: "Twitter",
   github: "GitHub",
@@ -15,7 +11,10 @@ const SOCIAL_LABELS: Record<string, string> = {
   rss: "RSS",
 };
 
-const FOOTER_MARK = "The Northbound Review";
+const FOOTER_MARK = "The Northbound Review";
+const FOOTER_COLOPHON_DEFAULT =
+  "A small, independent magazine — set in Newsreader and Hanken Grotesk, published online and (when the issue calls for it) in print.";
+const FOOTER_CREDITS_DEFAULT = "Editor · Art · Web — Built on NexPress";
 
 /**
  * Magazine colophon footer — three columns above a thin meta
@@ -23,66 +22,36 @@ const FOOTER_MARK = "The Northbound Review";
  *
  *   - Brand block: display-italic mark + italic colophon
  *     paragraph + small-caps editor / art / web credit, plus
- *     any social links from `settings.socialLinks`.
- *   - Sections (left of the two right columns): the site's
- *     `footer` (or `footerSections`) navigation menu. Falls
- *     back to a short stub when nothing is wired so the column
- *     never reads as empty on a fresh install.
- *   - Colophon: about / masthead / submissions / contact-style
- *     secondary links from the `footerColophon` location.
+ *     any social links from `settings.socialLinks`. Colophon
+ *     paragraph and credit line are overridable from theme
+ *     settings (`footerColophon` / `footerCredits`).
+ *   - Sections: the `footer` navigation menu, fallback stub on
+ *     fresh installs.
+ *   - Colophon: the `footerColophon` location's nav.
  *
- * Subscribe form lives in its own subscribe band rendered by
- * the post-list template — keeping it out of the footer matches
- * the design and lets pages that aren't post-list still include
- * the band when they want it.
- *
- * Bottom row: copyright + RSS / Newsletter / Privacy / Terms,
- * separated by a hairline rule.
+ * Subscribe form lives in the post-list template's subscribe
+ * band — keeping it out of the footer matches the design.
  */
 export async function MagazineFooter() {
   const sectionsNav = await getCachedNavigation("footer");
   const colophonNav = await getCachedNavigation("footerColophon");
   const settings = await resolveMagazineSettings();
   const year = new Date().getFullYear();
+  const colophon = settings.footerColophon ?? FOOTER_COLOPHON_DEFAULT;
+  const credits = settings.footerCredits ?? FOOTER_CREDITS_DEFAULT;
 
   return (
     <footer className="np-magazine-footer">
       <div className="np-magazine-footer-grid">
         <section>
           <p className="np-magazine-footer-mark">{FOOTER_MARK}</p>
-          <p className="np-magazine-footer-colophon">
-            A small, independent magazine — set in Newsreader and Hanken
-            Grotesk, published online and (when the issue calls for it) in
-            print.
-          </p>
-          <p className="np-magazine-footer-meta">
-            Editor · Art · Web — Built on NexPress
-          </p>
+          <p className="np-magazine-footer-colophon">{colophon}</p>
+          <p className="np-magazine-footer-meta">{credits}</p>
           {settings.socialLinks.length > 0 ? (
-            <ul
-              className="np-magazine-footer-social"
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: "1.25rem 0 0",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.85rem",
-                fontFamily:
-                  'var(--np-font-chrome, "Hanken Grotesk", sans-serif)',
-                fontSize: "0.72rem",
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}
-            >
+            <ul className="np-magazine-footer-social">
               {settings.socialLinks.map((link, i) => (
                 <li key={`magazine-social-${i.toString()}`}>
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ textDecoration: "none" }}
-                  >
+                  <a href={link.url} target="_blank" rel="noreferrer">
                     {SOCIAL_LABELS[link.platform] ?? link.platform}
                   </a>
                 </li>

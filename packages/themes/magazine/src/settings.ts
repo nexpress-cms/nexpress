@@ -55,6 +55,24 @@ export const magazineSettingsSchema = z.object({
     )
     .default([])
     .describe("Social profile links rendered in the footer's Colophon column."),
+  footerColophon: z
+    .string()
+    .optional()
+    .describe(
+      "Italic colophon paragraph in the footer's brand column. Falls back to the theme-shipped default when unset.",
+    ),
+  footerCredits: z
+    .string()
+    .optional()
+    .describe(
+      "Single-line credit under the colophon (e.g. \"Editor — Helena Park · Art — Iseul Ha · Web — Built on NexPress\"). Falls back to a neutral default when unset.",
+    ),
+  subscribeStats: z
+    .string()
+    .optional()
+    .describe(
+      "Optional stats line under the subscribe button (e.g. \"28,412 readers · 54 countries · 0 ads\"). Hidden when unset.",
+    ),
 });
 
 export type MagazineSettings = z.infer<typeof magazineSettingsSchema>;

@@ -134,6 +134,18 @@ interface RenderContext {
    * documents on the same page don't bleed numbering.
    */
   headingSlugs: Map<string, number>;
+  headingAnchors: boolean;
+}
+
+export interface NpRenderRichTextOptions {
+  /**
+   * When true, h2/h3 renders append a `<a class="np-docs-anchor"
+   * href="#<id>">#</a>` link after the heading text so docs-style
+   * themes can surface a hover-visible permalink. Defaults to false
+   * — existing call sites (article body, forum, blog) keep emitting
+   * plain headings.
+   */
+  headingAnchors?: boolean;
 }
 
 function nextHeadingId(slug: string, ctx: RenderContext): string {
@@ -172,10 +184,25 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
           id = nextHeadingId(slugifyHeading(text), ctx);
         }
       }
+      const children = renderChildren(toArray(node.children), key, ctx);
+      const finalChildren: React.ReactNode[] =
+        ctx.headingAnchors && id ? [
+          ...children,
+          React.createElement(
+            "a",
+            {
+              key: `${key}:anchor`,
+              className: "np-docs-anchor",
+              href: `#${id}`,
+              "aria-hidden": "true",
+            },
+            "#",
+          ),
+        ] : children;
       return React.createElement(
         tag,
         { key, id, dir: node.direction ?? undefined },
-        renderChildren(toArray(node.children), key, ctx),
+        finalChildren,
       );
     }
     case "quote":
@@ -219,13 +246,22 @@ function renderNode(node: RichTextNode, key: string, ctx: RenderContext): React.
   }
 }
 
-export function renderRichText(content: NpRichTextContent): React.ReactElement | null;
-export function renderRichText(content: NpRichTextContent | null | undefined): React.ReactElement | null {
+export function renderRichText(
+  content: NpRichTextContent,
+  options?: NpRenderRichTextOptions,
+): React.ReactElement | null;
+export function renderRichText(
+  content: NpRichTextContent | null | undefined,
+  options?: NpRenderRichTextOptions,
+): React.ReactElement | null {
   if (!content) {
     return null;
   }
 
-  const ctx: RenderContext = { headingSlugs: new Map() };
+  const ctx: RenderContext = {
+    headingSlugs: new Map(),
+    headingAnchors: options?.headingAnchors === true,
+  };
   return React.createElement(
     React.Fragment,
     null,

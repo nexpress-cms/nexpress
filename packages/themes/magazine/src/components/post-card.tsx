@@ -11,6 +11,9 @@ export interface MagazinePostCardDoc {
   kicker?: string;
   excerpt?: string;
   cover?: { url?: string; alt?: string } | string | null;
+  /** Theme-contributed upload field (`requires.collections.posts.coverImage`).
+   *  Used by the index template's lead / 3-up / archive cards. */
+  coverImage?: { url?: string; alt?: string } | string | null;
   publishedAt?: string | Date;
   authorName?: string;
   author?: { name?: string } | string;
@@ -24,6 +27,9 @@ export interface MagazinePostCardDoc {
   /** Category references — relationship rows or just names.
    *  Surfaced as the kicker eyebrow on grid / archive cards. */
   categories?: Array<{ name?: string } | string>;
+  /** Tag references — used as the kicker fallback when no
+   *  category is set on the post. */
+  tags?: Array<{ name?: string } | string>;
 }
 
 function coverUrl(value: MagazinePostCardDoc["cover"]): string | null {

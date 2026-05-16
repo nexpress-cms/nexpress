@@ -17,6 +17,16 @@ import { toRoman } from "./lib/roman.js";
 const MASTHEAD_TITLE = "The Northbound Review";
 const MASTHEAD_ORNAMENT = "Est. 2014 · Seoul · New York";
 
+function isCurrentNavItem(
+  itemUrl: string | undefined,
+  pathname: string | null,
+): boolean {
+  if (!itemUrl || !pathname) return false;
+  if (itemUrl === pathname) return true;
+  if (itemUrl === "/") return false;
+  return pathname.startsWith(`${itemUrl}/`);
+}
+
 /**
  * Magazine masthead.
  *
@@ -46,10 +56,12 @@ const MASTHEAD_ORNAMENT = "Est. 2014 · Seoul · New York";
 export async function MagazineHeader() {
   const items = await getCachedNavigation("header");
   let locale: string | undefined;
+  let pathname: string | null = null;
   try {
     const { headers } = await import("next/headers");
     const headerList = await headers();
     locale = headerList.get("x-np-locale") ?? undefined;
+    pathname = headerList.get("x-np-pathname");
   } catch {
     // Outside a request scope (or outside Next entirely — e.g.
     // CLI tooling that loaded this module). t()'s default-locale
@@ -118,27 +130,48 @@ export async function MagazineHeader() {
             <>
               <nav aria-label="Sections">
                 <ul className="np-magazine-sections">
-                  {items.map((item: NpNavItem, index: number) => (
-                    <li
-                      key={`magazine-nav-${index.toString()}`}
-                      className="np-magazine-nav-item"
-                    >
-                      <a href={item.url}>{item.label}</a>
-                      {item.children && item.children.length > 0 ? (
-                        <ul className="np-magazine-subnav">
-                          {item.children.map(
-                            (child: NpNavItem, childIndex: number) => (
-                              <li
-                                key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}
-                              >
-                                <a href={child.url}>{child.label}</a>
-                              </li>
-                            ),
-                          )}
-                        </ul>
-                      ) : null}
-                    </li>
-                  ))}
+                  {items.map((item: NpNavItem, index: number) => {
+                    const isCurrent = isCurrentNavItem(item.url, pathname);
+                    return (
+                      <li
+                        key={`magazine-nav-${index.toString()}`}
+                        className="np-magazine-nav-item"
+                      >
+                        <a
+                          href={item.url}
+                          aria-current={isCurrent ? "page" : undefined}
+                        >
+                          {item.label}
+                        </a>
+                        {item.children && item.children.length > 0 ? (
+                          <ul className="np-magazine-subnav">
+                            {item.children.map(
+                              (child: NpNavItem, childIndex: number) => {
+                                const childCurrent = isCurrentNavItem(
+                                  child.url,
+                                  pathname,
+                                );
+                                return (
+                                  <li
+                                    key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}
+                                  >
+                                    <a
+                                      href={child.url}
+                                      aria-current={
+                                        childCurrent ? "page" : undefined
+                                      }
+                                    >
+                                      {child.label}
+                                    </a>
+                                  </li>
+                                );
+                              },
+                            )}
+                          </ul>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               </nav>
               <MagazineMobileNav items={items} />

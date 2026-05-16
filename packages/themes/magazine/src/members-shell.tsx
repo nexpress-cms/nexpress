@@ -4,6 +4,8 @@ import { MagazineFooter } from "./footer.js";
 import { MagazineHeader } from "./header.js";
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
+const MAGAZINE_TOKEN_FALLBACKS = `:root{--np-color-rule:#d8ccb4;--np-color-background-elev:#fcfaf3;--np-color-accent:#c08a3e;--np-font-chrome:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}`;
+
 /**
  * Phase M.ref — magazine's member-tree shell.
  *
@@ -12,15 +14,9 @@ import { resolveMagazineSettings } from "./settings-helpers.js";
  * auth forms (login / register / verify / etc.) don't stretch
  * to the full editorial column width.
  *
- * Reuses `MagazineHeader` / `MagazineFooter` directly so a theme
- * version bump that touches the masthead also touches member
- * pages — single source of truth for chrome.
- *
- * Does its own `np-magazine` root wrapper (and accent-color
- * inline style) for the same reason `MagazineShell` does — the
- * (member)/layout.tsx replaces `impl.shell` with this for member
- * routes (per the M.1 fallback chain), so this component owns
- * the theme root attribute.
+ * Mirrors `MagazineShell`'s font + token-fallback bootstrap so
+ * member surfaces look identical to the public site without
+ * relying on the public-site layout having rendered them first.
  */
 export async function MagazineMembersShell({ children }: { children: ReactNode }) {
   const settings = await resolveMagazineSettings();
@@ -28,27 +24,29 @@ export async function MagazineMembersShell({ children }: { children: ReactNode }
   if (settings.accentColor) {
     styleVars["--np-color-primary"] = settings.accentColor;
   }
-  // Note: this wrapper uses `<div>` not `<main>` for the
-  // membership zone. The (member)/layout.tsx already emits a
-  // `<main className="np-member-main">` inside `children`, so a
-  // second `<main>` here would nest two semantic landmarks
-  // (HTML spec: one `<main>` per page). Matches the pattern
-  // `MagazineShell` uses for the public site — shells stay
-  // structural, the `<main>` lives one level deeper in `children`.
   return (
-    <div
-      className="np-magazine"
-      style={
-        Object.keys(styleVars).length > 0
-          ? (styleVars as CSSProperties)
-          : undefined
-      }
-    >
-      <MagazineHeader />
-      <div className="np-magazine-members">
-        <div className="np-magazine-members-column">{children}</div>
+    <>
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..800;1,6..72,400..800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
+      />
+      <style>{MAGAZINE_TOKEN_FALLBACKS}</style>
+      <div
+        className="np-magazine"
+        style={
+          Object.keys(styleVars).length > 0
+            ? (styleVars as CSSProperties)
+            : undefined
+        }
+      >
+        <MagazineHeader />
+        <div className="np-magazine-members">
+          <div className="np-magazine-members-column">{children}</div>
+        </div>
+        <MagazineFooter />
       </div>
-      <MagazineFooter />
-    </div>
+    </>
   );
 }

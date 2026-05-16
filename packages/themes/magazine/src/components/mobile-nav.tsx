@@ -36,28 +36,28 @@ export function MagazineMobileNav({ items }: MagazineMobileNavProps) {
     <>
       <button
         type="button"
-        className="np-magazine-nav-toggle"
+        className="np-magazine-mobile-nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
-        aria-controls="np-magazine-nav-drawer"
+        aria-controls="np-magazine-mobile-nav-drawer"
         onClick={() => setOpen((prev) => !prev)}
       >
         <span aria-hidden="true">{open ? "Close" : "Menu"}</span>
       </button>
       {open ? (
         <div
-          className="np-magazine-nav-overlay"
+          className="np-magazine-mobile-nav-overlay"
           role="presentation"
           onClick={() => setOpen(false)}
         />
       ) : null}
       <aside
-        id="np-magazine-nav-drawer"
-        className="np-magazine-nav-drawer"
+        id="np-magazine-mobile-nav-drawer"
+        className="np-magazine-mobile-nav-drawer"
         data-open={open ? "true" : "false"}
         aria-hidden={open ? "false" : "true"}
       >
-        <ul className="np-magazine-nav-drawer-list">
+        <ul className="np-magazine-mobile-nav-drawer-list">
           {items.map((item, index) => (
             <li key={`magazine-mobile-${index.toString()}`}>
               <a href={item.url} onClick={() => setOpen(false)}>

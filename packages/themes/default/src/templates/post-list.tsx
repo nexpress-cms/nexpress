@@ -115,13 +115,32 @@ function readingMinutes(value: PostCardDoc["readingTime"]): number | null {
   return null;
 }
 
+function deriveCategoryStrip(
+  docs: PostCardWithTags[],
+): Array<{ label: string; href?: string; count?: number; active?: boolean }> {
+  const counts = new Map<string, number>();
+  for (const d of docs) {
+    for (const tag of d.tags ?? []) {
+      if (typeof tag === "string" && tag.length > 0) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+  }
+  const top = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, count]) => ({ label, count }));
+  return [{ label: "All", count: docs.length, active: true }, ...top];
+}
+
 export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const data = doc as PostListDoc;
   const heading = data.heading ?? "Posts";
   const eyebrow = data.eyebrow;
   const intro = data.intro;
-  const categories = data.categories ?? [];
   const all = data.docs ?? [];
+  const categories =
+    data.categories ?? (all.length > 0 ? deriveCategoryStrip(all) : []);
 
   if (all.length === 0) {
     return (
@@ -140,16 +159,20 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   }
 
   const [feature, ...rest] = all;
-  const featureCoverOverlay =
-    feature && feature.readingTime
-      ? {
-          left: `ISSUE #${(all.length).toString().padStart(2, "0")}`,
-          right: (() => {
-            const m = readingMinutes(feature.readingTime);
-            return m ? `${m.toString()} MIN READ` : "FEATURED";
-          })(),
-        }
-      : undefined;
+  const featureCoverOverlay = feature
+    ? {
+        left: `ISSUE #${all.length.toString().padStart(2, "0")}`,
+        right: (() => {
+          const m = readingMinutes(feature.readingTime);
+          return m ? `${m.toString()} MIN READ` : "FEATURED";
+        })(),
+      }
+    : undefined;
+  const sectionMetaCopy =
+    data.sectionMeta ??
+    (rest.length > 0
+      ? `${rest.length.toString()} ${rest.length === 1 ? "post" : "posts"} · sorted by date`
+      : undefined);
   const newsletter = data.newsletter === false ? null : data.newsletter ?? {};
   const pagination = data.pagination ?? [];
 
@@ -199,8 +222,8 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
         <>
           <div className="np-section-head">
             <h2>Latest</h2>
-            {data.sectionMeta ? (
-              <span className="np-section-head-meta">{data.sectionMeta}</span>
+            {sectionMetaCopy ? (
+              <span className="np-section-head-meta">{sectionMetaCopy}</span>
             ) : null}
           </div>
           <ul className="np-post-list-grid">

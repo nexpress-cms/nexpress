@@ -11,10 +11,10 @@ import { ProjectDetailTemplate } from "../templates/project-detail.js";
  * renders it through `templates.posts.detail`
  * (ProjectDetailTemplate) — #613.
  *
- * Without this route, `PortfolioProjectCard`'s `/work/<slug>`
- * links 404 in the reference app. The card emits the URL on its
- * own (`projectHref(doc)`) and the framework had no route to
- * back it.
+ * Without this route, the project-index template's `/work/<slug>`
+ * card links 404 in the reference app — the card emits the URL
+ * on its own (`projectHref(doc)`) and the framework had no route
+ * to back it.
  *
  * Defensive untyped `findDocuments<ProjectRow>` lookup — the
  * posts schema lives in the operator's project, not the theme.

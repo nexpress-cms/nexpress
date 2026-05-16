@@ -66,7 +66,7 @@ export async function DocsHeader(): Promise<React.ReactElement> {
         </form>
         <SearchKeyboardShortcut targetId="np-docs-search-input" />
         <nav className="np-docs-nav" aria-label="Primary">
-          <NavMenu location="primary" className="np-docs-primary-nav" />
+          <NavMenu location="header" className="np-docs-primary-nav" />
           {settings.githubRepo ? (
             <a
               href={settings.githubRepo}

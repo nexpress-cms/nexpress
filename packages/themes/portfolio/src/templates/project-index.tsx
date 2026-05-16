@@ -1,8 +1,22 @@
 import * as React from "react";
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
-import type { PortfolioProjectDoc } from "../components/project-card.js";
 import { resolvePortfolioSettings } from "../settings-helpers.js";
+
+/**
+ * Doc shape consumed by the project-index template + re-exported
+ * from the package root for callers that compose their own
+ * index routes. Lives here (not in a sibling component file)
+ * because the index template is the only consumer of this type.
+ */
+export interface PortfolioProjectDoc {
+  id?: string;
+  slug?: string;
+  title?: string;
+  category?: string;
+  cover?: { url?: string; alt?: string } | string | null;
+  publishedAt?: string | Date | null;
+}
 
 /**
  * Project index — the portfolio site's front page.
@@ -114,6 +128,27 @@ function coverFigure(doc: PortfolioProjectDoc): string {
   return letters.charAt(0).toUpperCase() + letters.slice(1).toLowerCase();
 }
 
+/**
+ * Pick a cover URL from either the legacy `cover` field
+ * (string | object) or the portfolio-contributed `heroImage`
+ * upload (object with `.url`). Returns null when neither
+ * yields a usable string.
+ */
+function resolveCoverUrl(doc: PortfolioProjectDoc): string | null {
+  const cover = doc.cover;
+  if (typeof cover === "string" && cover.length > 0) return cover;
+  if (cover && typeof cover === "object" && typeof cover.url === "string" && cover.url.length > 0) {
+    return cover.url;
+  }
+  const hero = (doc as { heroImage?: unknown }).heroImage;
+  if (typeof hero === "string" && hero.length > 0) return hero;
+  if (hero && typeof hero === "object") {
+    const url = (hero as { url?: unknown }).url;
+    if (typeof url === "string" && url.length > 0) return url;
+  }
+  return null;
+}
+
 function projectHref(doc: PortfolioProjectDoc): string {
   if (doc.slug) {
     return doc.slug.startsWith("/") ? doc.slug : `/projects/${doc.slug}`;
@@ -126,6 +161,66 @@ function disciplineParts(doc: PortfolioProjectDoc): string[] {
   if (Array.isArray(raw)) return raw.filter((s): s is string => typeof s === "string");
   if (typeof raw === "string") return raw.split(/\s*[·,]\s*/).filter(Boolean);
   return [];
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Build a tablist from the most-frequent tag/discipline values
+ * across `docs`. Output is `[All, top-4-tags]` so the strip
+ * matches the design's 5-pill layout. No href tracking — the
+ * `active` flag stays on `All` until a host route threads a
+ * `?tag=` filter through.
+ */
+function deriveFiltersFromDocs(
+  docs: PortfolioProjectDoc[],
+): Array<{ label: string; href?: string; count?: number; active?: boolean }> {
+  if (docs.length === 0) return [];
+  const counts = new Map<string, number>();
+  for (const d of docs) {
+    const disciplines = (d as { discipline?: unknown }).discipline;
+    const list: string[] = [];
+    if (typeof disciplines === "string") {
+      list.push(...disciplines.split(/\s*[·,]\s*/).filter(Boolean));
+    } else if (Array.isArray(disciplines)) {
+      for (const item of disciplines) {
+        if (typeof item === "string") list.push(item);
+      }
+    }
+    const tags = (d as { tags?: unknown }).tags;
+    if (Array.isArray(tags)) {
+      for (const t of tags) {
+        if (typeof t === "string") list.push(t);
+        else if (t && typeof t === "object") {
+          const name = (t as { name?: unknown }).name;
+          if (typeof name === "string") list.push(name);
+        }
+      }
+    }
+    const category = (d as { category?: unknown }).category;
+    if (typeof category === "string" && category.length > 0) list.push(category);
+    const dedup = Array.from(new Set(list.map((s) => s.trim()).filter(Boolean)));
+    for (const tag of dedup) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  const top = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+  return [
+    { label: "All", count: docs.length, active: true },
+    ...top.map(([label, count]) => ({
+      label,
+      count,
+      href: `?tag=${slugify(label)}`,
+      active: false,
+    })),
+  ];
 }
 
 function projectYear(doc: PortfolioProjectDoc): string | null {
@@ -169,12 +264,12 @@ export async function ProjectIndexTemplate({
   const docs = data.docs ?? [];
   const heroEyebrow = data.heroEyebrow ?? "Selected work — 2018 — 2026";
   const heading = data.heading ?? "A small studio for <em>identity, type,</em> and the long view of a brand.";
-  const heroMeta: MetaBlock[] = data.heroMeta ?? [];
-  const filters = data.filters ?? [];
+  const heroMeta: MetaBlock[] = data.heroMeta ?? settings.heroMeta;
+  const filters = data.filters ?? deriveFiltersFromDocs(docs);
   const studioEyebrow = data.studioEyebrow ?? "The studio";
-  const studioHeading = data.studioHeading;
-  const studioBody = data.studioBody ?? [];
-  const studioStats = data.studioStats ?? [];
+  const studioHeading = data.studioHeading ?? settings.studioHeading;
+  const studioBody = data.studioBody ?? settings.studioBody;
+  const studioStats = data.studioStats ?? settings.studioStats;
   const contactHref = settings.contactEmail
     ? `mailto:${settings.contactEmail}`
     : null;
@@ -242,55 +337,57 @@ export async function ProjectIndexTemplate({
                 </li>
               ))}
             </ul>
-            <div className="np-portfolio-view">
-              <span>
-                {docs.length > 0
-                  ? `${(latestYear(docs) ?? "—").toString()} — ${(oldestYear(docs) ?? "—").toString()} ·`
-                  : ""}
-              </span>
-              <div className="np-portfolio-view-toggle" role="group">
-                <button
-                  type="button"
-                  aria-pressed="true"
-                  aria-label="Grid view"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
+            {settings.showViewToggle ? (
+              <div className="np-portfolio-view">
+                <span>
+                  {docs.length > 0
+                    ? `${(latestYear(docs) ?? "—").toString()} — ${(oldestYear(docs) ?? "—").toString()} ·`
+                    : ""}
+                </span>
+                <div className="np-portfolio-view-toggle" role="group">
+                  <button
+                    type="button"
+                    aria-pressed="true"
+                    aria-label="Grid view"
                   >
-                    <rect x="3" y="3" width="7" height="7" />
-                    <rect x="14" y="3" width="7" height="7" />
-                    <rect x="3" y="14" width="7" height="7" />
-                    <rect x="14" y="14" width="7" height="7" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed="false"
-                  aria-label="List view"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <rect x="3" y="3" width="7" height="7" />
+                      <rect x="14" y="3" width="7" height="7" />
+                      <rect x="3" y="14" width="7" height="7" />
+                      <rect x="14" y="14" width="7" height="7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="List view"
                   >
-                    <line x1="8" y1="6" x2="21" y2="6" />
-                    <line x1="8" y1="12" x2="21" y2="12" />
-                    <line x1="8" y1="18" x2="21" y2="18" />
-                    <line x1="3" y1="6" x2="3.01" y2="6" />
-                    <line x1="3" y1="12" x2="3.01" y2="12" />
-                    <line x1="3" y1="18" x2="3.01" y2="18" />
-                  </svg>
-                </button>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <line x1="8" y1="6" x2="21" y2="6" />
+                      <line x1="8" y1="12" x2="21" y2="12" />
+                      <line x1="8" y1="18" x2="21" y2="18" />
+                      <line x1="3" y1="6" x2="3.01" y2="6" />
+                      <line x1="3" y1="12" x2="3.01" y2="12" />
+                      <line x1="3" y1="18" x2="3.01" y2="18" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -307,12 +404,12 @@ export async function ProjectIndexTemplate({
               const span = spanForIndex(project, index);
               const yearLabel = projectYear(project);
               const disc = disciplineParts(project);
-              const cover = typeof project.cover === "object" && project.cover
-                ? project.cover.url
-                : typeof project.cover === "string"
-                  ? project.cover
-                  : null;
+              const cover = resolveCoverUrl(project);
+              const hasImage = typeof cover === "string" && cover.length > 0;
               const badge = (project as { badge?: unknown }).badge;
+              const coverClassName = hasImage
+                ? "np-portfolio-card-cover"
+                : `np-portfolio-card-cover ${coverClass(project, index)}`;
               return (
                 <li
                   key={project.id ?? project.slug ?? `card-${index.toString()}`}
@@ -323,7 +420,8 @@ export async function ProjectIndexTemplate({
                     className="np-portfolio-card"
                   >
                     <div
-                      className={`np-portfolio-card-cover ${coverClass(project, index)}`}
+                      className={coverClassName}
+                      data-has-image={hasImage ? "true" : undefined}
                     >
                       {typeof badge === "string" && badge.length > 0 ? (
                         <span
