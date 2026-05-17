@@ -50,6 +50,33 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["--theme", "--yes"])).toThrow(/--theme requires a value/);
   });
 
+  it("supports --starter <id> as a friendly alias (blog → default)", () => {
+    expect(parseCliArgs(["--starter", "blog"]).flags.themeId).toBe("default");
+    expect(parseCliArgs(["--starter=blog"]).flags.themeId).toBe("default");
+  });
+
+  it("--starter passes raw theme ids through unchanged", () => {
+    expect(parseCliArgs(["--starter", "magazine"]).flags.themeId).toBe("magazine");
+    expect(parseCliArgs(["--starter=docs"]).flags.themeId).toBe("docs");
+  });
+
+  it("rejects --starter without a value", () => {
+    expect(() => parseCliArgs(["--starter"])).toThrow(/--starter requires a value/);
+    expect(() => parseCliArgs(["--starter", "--yes"])).toThrow(/--starter requires a value/);
+  });
+
+  it("last-wins when both --theme and --starter are passed", () => {
+    // The two flags are aliases; mixing them is a no-op error case
+    // (no one writes both deliberately). Last-wins keeps the parser
+    // simple and matches standard CLI convention.
+    expect(
+      parseCliArgs(["--theme=magazine", "--starter=docs"]).flags.themeId,
+    ).toBe("docs");
+    expect(
+      parseCliArgs(["--starter=blog", "--theme=portfolio"]).flags.themeId,
+    ).toBe("portfolio");
+  });
+
   it("combines all flags in one call", () => {
     const out = parseCliArgs([
       "demo",
