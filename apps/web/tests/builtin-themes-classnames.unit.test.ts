@@ -144,9 +144,8 @@ const themes: ThemeUnderTest[] = [
 ];
 
 /**
- * Baseline of currently-unstyled classes per theme, captured when
- * this test landed. The test asserts exact equality against this
- * list (sorted), so:
+ * Baseline of currently-unstyled classes per theme. The test
+ * asserts exact equality against this list (sorted), so:
  *
  *   - A NEW unstyled class fails the test → catches typos like the
  *     magazine `np-magazine-nav-mobile` vs `np-magazine-mobile-nav`
@@ -155,22 +154,55 @@ const themes: ThemeUnderTest[] = [
  *     baseline to shrink over time rather than rubber-stamping the
  *     gaps forever.
  *
- * Most entries are member-surface / error / not-found landmarks
- * that render with framework-default styling; some are real gaps
- * waiting for a per-theme polish pass. Either way the gate is
- * "known shape — don't grow it accidentally."
+ * Entries are split into two buckets per theme:
+ *
+ *   VERIFIED_LANDMARK: rendered alongside a styled sibling that
+ *     provides the visual layout. The class is a semantic /
+ *     ARIA / test-id hook with no styles of its own — by design.
+ *     Example: `np-magazine-not-found` on `<div className=
+ *     "np-magazine-not-found np-magazine-message">` where
+ *     `.np-magazine-message` carries the actual message styling.
+ *
+ *   UNVERIFIED: the class is the primary one on its element AND
+ *     no styled sibling carries the layout — the element renders
+ *     with browser-default styling. Could be (a) an intentional
+ *     bare landmark (e.g. `<main className="np-member-main">`
+ *     relying on framework defaults), (b) a dormant component
+ *     exported but not yet consumed, or (c) a real visible bug
+ *     that needs CSS in a separate per-theme polish PR.
+ *
+ *     Triage notes per entry below. Real visible-bug surfaces
+ *     identified so far:
+ *       - `magazine.hero-feature` page-builder block — operators
+ *         can add it; renders unstyled (blocks.tsx:149+).
+ *       - portfolio project-detail template (`/work/:slug`) —
+ *         publicly routable; renders unstyled
+ *         (templates/project-detail.tsx).
+ *
+ *     Per-theme CSS PRs should pick from the UNVERIFIED bucket
+ *     and either add the missing rules + trim the baseline, or
+ *     reclassify as VERIFIED_LANDMARK with a sibling citation.
  */
 const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
   default: [
+    // UNVERIFIED — member-status widget (member-status-widget.tsx).
+    // The 5 np-member-status* + np-button-primary + np-text-button
+    // classes are the entire widget; no styled parent provides
+    // layout. Widget renders unstyled when a member is signed in.
     "np-button-primary",
     "np-member-status",
     "np-member-status-handle",
     "np-member-status-loading",
-    "np-post-meta-date",
-    "np-post-meta-reading",
+    "np-post-meta-date", // VERIFIED_LANDMARK — sibling `.np-post-meta` styled.
+    "np-post-meta-reading", // VERIFIED_LANDMARK — sibling `.np-post-meta` styled.
     "np-text-button",
   ],
   magazine: [
+    // UNVERIFIED — post-card.tsx (`np-magazine-card-*`, 7 entries).
+    // Component is exported from `@nexpress/theme-magazine` but
+    // has no internal callers in the reference app or other
+    // themes today. Dormant export. Reclassify to VERIFIED if it
+    // stays unused, or fix when first consumer lands.
     "np-magazine-card-body",
     "np-magazine-card-cover",
     "np-magazine-card-excerpt",
@@ -178,7 +210,17 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-magazine-card-link",
     "np-magazine-card-meta",
     "np-magazine-card-title",
+    // VERIFIED_LANDMARK — sibling `.np-magazine-message` styled
+    // (styles.ts:1017). Both error + not-found use the message
+    // surface for visuals; the typed classes are hooks.
     "np-magazine-error",
+    "np-magazine-members-error",
+    "np-magazine-members-not-found",
+    "np-magazine-not-found",
+    // UNVERIFIED — page-builder hero block (`magazine.hero-feature`,
+    // registered as a block type at blocks.tsx:410). Operators can
+    // add it; renders unstyled today. **Real visible-bug surface.**
+    // 11 classes covering carousel + grid + feature variants.
     "np-magazine-hero-card-category",
     "np-magazine-hero-carousel",
     "np-magazine-hero-carousel-card",
@@ -190,47 +232,79 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-magazine-hero-grid-tile",
     "np-magazine-hero-grid-tiles",
     "np-magazine-hero-header",
-    "np-magazine-members-error",
-    "np-magazine-members-not-found",
+    // VERIFIED_LANDMARK — drawer list/subnav sit inside the styled
+    // `.np-magazine-mobile-nav-drawer` parent (mobile-nav.tsx).
     "np-magazine-mobile-nav-drawer-list",
     "np-magazine-mobile-subnav",
-    "np-magazine-not-found",
+    // UNVERIFIED — section-strip is a block container; needs
+    // verification of parent block-render context.
     "np-magazine-section-strip",
+    // VERIFIED_LANDMARK — subscribe states are <p> inside the
+    // styled newsletter-form, no layout needed on them.
     "np-magazine-subscribe-error",
     "np-magazine-subscribe-success",
   ],
   portfolio: [
+    // UNVERIFIED — np-member-main is a `<main>` landmark in
+    // members-not-found.tsx. Browser-default `<main>` styling is
+    // usually fine; verify against design intent.
     "np-member-main",
+    // UNVERIFIED — case-study + client-logos + image-grid are
+    // page-builder block containers. Need block-render context
+    // verification.
     "np-portfolio-case-study-hero",
     "np-portfolio-client-logos",
-    "np-portfolio-error",
     "np-portfolio-image-grid",
+    // UNVERIFIED — error / not-found / member shells. Browser
+    // default block flow renders the text content; layout may or
+    // may not look right depending on design intent.
+    "np-portfolio-error",
     "np-portfolio-members",
     "np-portfolio-members-column",
     "np-portfolio-members-error",
     "np-portfolio-members-not-found",
+    "np-portfolio-not-found",
+    // VERIFIED_LANDMARK — nav-item / nav-toggle / subnav /
+    // mobile-subnav sit inside the styled `.np-portfolio-nav*`
+    // family (styles.ts). Parents provide layout.
     "np-portfolio-mobile-subnav",
     "np-portfolio-nav-item",
     "np-portfolio-nav-toggle",
-    "np-portfolio-not-found",
+    "np-portfolio-subnav",
+    // VERIFIED_LANDMARK — `.np-portfolio-page-default` IS styled
+    // (styles.ts:688); `np-portfolio-page` is a parent hook.
     "np-portfolio-page",
+    // UNVERIFIED — project-detail.tsx renders `/work/:slug` route
+    // (registered at index.ts:549). Public-facing page; entire
+    // surface unstyled. **Real visible-bug surface.** 6 classes.
     "np-portfolio-project-body",
     "np-portfolio-project-detail",
     "np-portfolio-project-excerpt",
     "np-portfolio-project-header",
     "np-portfolio-project-hero",
     "np-portfolio-project-meta",
-    "np-portfolio-subnav",
   ],
   docs: [
+    // UNVERIFIED — `np-docs` (bare) appears as a sibling of
+    // `np-docs-shell` (styled) in members-shell.tsx → LANDMARK
+    // there. But also appears with `np-docs-error` (unstyled)
+    // and `np-docs-members-error` (unstyled) → UNVERIFIED at
+    // those sites. Single entry classification can't capture
+    // both; treat as UNVERIFIED conservatively.
     "np-docs",
+    // UNVERIFIED — error / not-found / members shells. Browser
+    // default block flow; layout may or may not match design.
     "np-docs-error",
     "np-docs-members",
     "np-docs-members-column",
     "np-docs-members-error",
     "np-docs-members-not-found",
     "np-docs-not-found",
+    // VERIFIED_LANDMARK — child of `<article className="np-docs-page">`
+    // (styled, styles.ts). Parent article handles padding /
+    // max-width / typography; body div is a content hook.
     "np-docs-page-body",
+    // UNVERIFIED — `<main>` landmark; same triage as portfolio.
     "np-member-main",
   ],
 };
