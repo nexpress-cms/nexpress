@@ -1,7 +1,6 @@
-import { findDocuments } from "@nexpress/core";
+import { fetchFrontListPosts } from "@nexpress/next";
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
-import type { MagazinePostCardDoc } from "../components/post-card.js";
 import { PostListTemplate } from "./post-list.js";
 
 /**
@@ -14,18 +13,18 @@ import { PostListTemplate } from "./post-list.js";
  * list) and `/` (page-with-front-template) share one source of truth
  * for the visual.
  *
+ * Scoped to `kind: "article"` so a multi-theme install that also has
+ * portfolio's `kind: "project"` posts doesn't surface them in the
+ * editorial layout. Today's single-active-theme install is fine
+ * either way; the filter keeps the layout correct as soon as
+ * cross-kind installs land.
+ *
  * Operators who want a marketing-style home page just pick a different
  * template (e.g. the default `pages.default` template) from the admin
  * picker — the seeded home page ships with `template: "front"` so the
  * design renders out of the box.
  */
 export async function PageFrontTemplate(props: NpTemplateRenderProps) {
-  const result = await findDocuments<MagazinePostCardDoc>("posts", {
-    where: { status: "published" },
-    sort: "-publishedAt",
-    limit: 20,
-  });
-  const docs = result.docs;
-  const fauxDoc = { docs };
-  return PostListTemplate({ doc: fauxDoc, blockCtx: props.blockCtx });
+  const docs = await fetchFrontListPosts({ kind: "article", limit: 20 });
+  return PostListTemplate({ doc: { docs }, blockCtx: props.blockCtx });
 }

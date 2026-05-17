@@ -97,3 +97,8 @@ export { buildPageMetadata } from "./page-metadata.js";
 export { getSiteMember } from "./site-member.js";
 
 export { JsonLd } from "./json-ld.js";
+
+export {
+  fetchFrontListPosts,
+  type FetchFrontListPostsOptions,
+} from "./list-front-posts.js";
