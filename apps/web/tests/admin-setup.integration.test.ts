@@ -105,9 +105,8 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
   });
 
   it("unknown themeId returns 400 AND leaves the install fresh", async () => {
-    // Regression for the 400 → 409 race in
-    // `project-setup-wizard-followups`: theme validation used to
-    // run AFTER the admin insert, so a stale tab posting an
+    // Regression for the 400 → 409 race: theme validation used
+    // to run AFTER the admin insert, so a stale tab posting an
     // unknown themeId would commit the admin row and every retry
     // would then hit `Setup already completed`. The fix moves
     // theme validation upstream — this test pins it.
