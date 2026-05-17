@@ -1,27 +1,10 @@
 "use client";
 
-import {
-  GripVertical,
-  Loader2,
-  Plus,
-  Settings,
-  Trash2,
-} from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-} from "react";
+import { GripVertical, Loader2, Plus, Settings, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch } from "react";
 import type { NpBlockInstance, NpBlockMetadata } from "@nexpress/blocks";
 
-import {
-  canAcceptChild,
-  locateBlock,
-  type EditorAction,
-} from "../editor-engine/index.js";
+import { canAcceptChild, locateBlock, type EditorAction } from "../editor-engine/index.js";
 import { Button } from "../../ui/button.js";
 import { cn } from "../../ui/utils.js";
 import { PaletteModal } from "../shared/palette-modal.js";
@@ -51,7 +34,6 @@ export interface DocCanvasProps {
   onSelectBlock: (id: string | null) => void;
 }
 
-
 /**
  * Document-mode canvas: a server-rendered preview iframe with a
  * hover affordance overlay anchored to the LEFT edge of every
@@ -73,10 +55,9 @@ export interface DocCanvasProps {
  * mouseup dispatches `MOVE_WITHIN_PARENT`. Cross-container moves
  * still live in Page builder.
  *
- * Block insertion routes through the same `<PaletteModal>` Page
- * builder uses — Doc and Page modes share one picker. The
- * `<QuickInsertBar>` underneath the canvas adds a `/`-triggered
- * slash menu and a plain-text → rich-text shortcut.
+ * Block insertion uses a lightweight inline `<QuickInsertBar>` under
+ * the active block for Notion-style writing flow, plus the shared
+ * `<PaletteModal>` Page builder uses for browsing the whole registry.
  */
 export function DocCanvas({
   blocks,
@@ -93,6 +74,7 @@ export function DocCanvas({
   const [settingsTargetId, setSettingsTargetId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
+  const [inlineInsertAfterId, setInlineInsertAfterId] = useState<string | null>(null);
 
   // Walk every recursive block in the tree so the overlay can
   // resolve a hovered id to its definition + parent context.
@@ -113,10 +95,7 @@ export function DocCanvas({
   // v1 doc-canvas drag we only support top-level reordering, so any
   // dragged block must resolve to a top-level id and the drop
   // target must too. Cross-container moves stay in Page builder.
-  const topLevelIds = useMemo(
-    () => new Set(blocks.map((b) => b.id)),
-    [blocks],
-  );
+  const topLevelIds = useMemo(() => new Set(blocks.map((b) => b.id)), [blocks]);
 
   // Bumps on every iframe `load` event — replaces the old
   // `[html]`-dependent listener attach. `srcDoc` is set
@@ -131,25 +110,20 @@ export function DocCanvas({
   // 120 ms hide debounce with a "pin while cursor is on the rail"
   // escape hatch — see use-hover-debounce.ts for the race
   // investigation that drove this pattern.
-  const { cancelHide, scheduleHide, pinHover, releaseHover } = useHoverDebounce(
-    () => {
-      setHoveredId(null);
-      setHoverRect(null);
-    },
-  );
+  const { cancelHide, scheduleHide, pinHover, releaseHover } = useHoverDebounce(() => {
+    setHoveredId(null);
+    setHoverRect(null);
+  });
 
   // Thin wrapper around `iframe-coords.ts`'s pure helpers — pulls
   // the iframe + container refs from the closure so call sites
   // stay one-liners. Returns null when refs aren't ready or the
   // point isn't over a block.
-  const resolveHit = useCallback(
-    (clientX: number, clientY: number) => {
-      const iframe = iframeRef.current;
-      if (!iframe) return null;
-      return resolveBlockAt(iframe, clientX, clientY);
-    },
-    [],
-  );
+  const resolveHit = useCallback((clientX: number, clientY: number) => {
+    const iframe = iframeRef.current;
+    if (!iframe) return null;
+    return resolveBlockAt(iframe, clientX, clientY);
+  }, []);
 
   const projectIntoContainer = useCallback(
     (blockRect: DOMRect, iframeRect: DOMRect): OverlayPosition | null => {
@@ -176,9 +150,7 @@ export function DocCanvas({
       const target = event.target as Element | null;
       if (!target || target.nodeType !== 1) return;
       if (typeof (target as HTMLElement).closest !== "function") return;
-      const blockEl = (target as HTMLElement).closest<HTMLElement>(
-        "[data-np-block-id]",
-      );
+      const blockEl = (target as HTMLElement).closest<HTMLElement>("[data-np-block-id]");
       if (!blockEl) {
         setHoveredId(null);
         setHoverRect(null);
@@ -187,10 +159,7 @@ export function DocCanvas({
       const id = blockEl.dataset.npBlockId;
       if (!id) return;
       const iframeRect = iframe.getBoundingClientRect();
-      const projected = projectIntoContainer(
-        unionVisibleRect(blockEl),
-        iframeRect,
-      );
+      const projected = projectIntoContainer(unionVisibleRect(blockEl), iframeRect);
       if (!projected) return;
       cancelHide();
       setHoveredId(id);
@@ -215,15 +184,10 @@ export function DocCanvas({
       const iframe = iframeRef.current;
       const doc = iframe?.contentDocument;
       if (!iframe || !doc) return;
-      const blockEl = doc.querySelector<HTMLElement>(
-        `[data-np-block-id="${hoveredId}"]`,
-      );
+      const blockEl = doc.querySelector<HTMLElement>(`[data-np-block-id="${hoveredId}"]`);
       if (!blockEl) return;
       const iframeRect = iframe.getBoundingClientRect();
-      const projected = projectIntoContainer(
-        unionVisibleRect(blockEl),
-        iframeRect,
-      );
+      const projected = projectIntoContainer(unionVisibleRect(blockEl), iframeRect);
       if (projected) setHoverRect(projected);
     };
     window.addEventListener("scroll", recompute, true);
@@ -234,12 +198,8 @@ export function DocCanvas({
     };
   }, [hoveredId, projectIntoContainer]);
 
-  const settingsBlock = settingsTargetId
-    ? (blocksById.get(settingsTargetId) ?? null)
-    : null;
-  const settingsDefinition = settingsBlock
-    ? (definitions.get(settingsBlock.type) ?? null)
-    : null;
+  const settingsBlock = settingsTargetId ? (blocksById.get(settingsTargetId) ?? null) : null;
+  const settingsDefinition = settingsBlock ? (definitions.get(settingsBlock.type) ?? null) : null;
 
   // Filter the palette's offerings to what the current insertion
   // target's parent container actually accepts (#525). When
@@ -250,26 +210,61 @@ export function DocCanvas({
   // hide types that would push past `maxChildren`. Without this the
   // operator picks a type that the reducer's INSERT_AFTER gate
   // (#523) silently rejects as a no-op.
-  const paletteBlocks = useMemo(() => {
-    if (!insertAfterId) return availableBlocks;
-    const loc = locateBlock(blocks, insertAfterId);
-    if (!loc || loc.parentId === null) return availableBlocks;
-    const parent = blocksById.get(loc.parentId);
-    const parentDef = parent ? definitions.get(parent.type) : null;
-    if (!parentDef) return availableBlocks;
-    const childCount = parent?.children?.length ?? 0;
-    return availableBlocks.filter((def) =>
-      canAcceptChild(parentDef, def.type, childCount),
-    );
-  }, [insertAfterId, availableBlocks, blocks, blocksById, definitions]);
+  const getAllowedBlocksForInsertAfter = useCallback(
+    (targetId: string | null) => {
+      if (!targetId) return availableBlocks;
+      const loc = locateBlock(blocks, targetId);
+      if (!loc || loc.parentId === null) return availableBlocks;
+      const parent = blocksById.get(loc.parentId);
+      const parentDef = parent ? definitions.get(parent.type) : null;
+      if (!parentDef) return availableBlocks;
+      const childCount = parent?.children?.length ?? 0;
+      return availableBlocks.filter((def) => canAcceptChild(parentDef, def.type, childCount));
+    },
+    [availableBlocks, blocks, blocksById, definitions],
+  );
 
-  // Adding from the bottom inserter or quick-insert bar appends to
-  // the top level. Adding from a hovered block's `+` rail inserts
-  // the new block AFTER that block so the picked type slots into
-  // the operator's reading flow.
+  const paletteBlocks = useMemo(
+    () => getAllowedBlocksForInsertAfter(insertAfterId),
+    [getAllowedBlocksForInsertAfter, insertAfterId],
+  );
+
+  const inlineInsertBlocks = useMemo(
+    () => getAllowedBlocksForInsertAfter(inlineInsertAfterId),
+    [getAllowedBlocksForInsertAfter, inlineInsertAfterId],
+  );
+
+  const inlineInsertRect = useMemo(() => {
+    if (!inlineInsertAfterId) return null;
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!iframe || !doc) return null;
+    const blockEl = doc.querySelector<HTMLElement>(`[data-np-block-id="${inlineInsertAfterId}"]`);
+    if (!blockEl) return null;
+    const projected = projectIntoContainer(
+      unionVisibleRect(blockEl),
+      iframe.getBoundingClientRect(),
+    );
+    if (!projected) return null;
+    return projected;
+  }, [inlineInsertAfterId, hoverRect, iframeLoadCount, projectIntoContainer]);
+
+  // Closing the inline prompt after structural changes keeps the
+  // parent overlay from pointing at a stale block id.
+  useEffect(() => {
+    if (!inlineInsertAfterId || blocksById.has(inlineInsertAfterId)) return;
+    setInlineInsertAfterId(null);
+  }, [blocksById, inlineInsertAfterId]);
+
+  // Palette insertion appends to the top level by default. When a
+  // target id is set, the picked type slots in after that block.
   const handleAdd = (type: string) => {
     if (insertAfterId) {
-      dispatch({ type: "INSERT_AFTER", targetId: insertAfterId, blockType: type });
+      dispatch({
+        type: "INSERT_AFTER",
+        targetId: insertAfterId,
+        blockType: type,
+      });
     } else {
       dispatch({ type: "ADD", blockType: type });
     }
@@ -277,7 +272,7 @@ export function DocCanvas({
     setInsertAfterId(null);
   };
 
-  const handleInsertText = (text: string) => {
+  const insertTextBlock = (text: string, targetId: string | null) => {
     // Plain text → rich-text block at the bottom. The rich-text
     // editor stores Lexical JSON; the simplest valid root for a
     // bare text run is one paragraph node carrying one text node.
@@ -313,30 +308,35 @@ export function DocCanvas({
         ],
       },
     };
-    dispatch({
-      type: "ADD",
-      blockType: "rich-text",
-      props: { content: lexicalRoot },
-    });
+    const props = { content: lexicalRoot };
+    if (targetId) {
+      dispatch({
+        type: "INSERT_AFTER",
+        targetId,
+        blockType: "rich-text",
+        props,
+      });
+    } else {
+      dispatch({
+        type: "ADD",
+        blockType: "rich-text",
+        props,
+      });
+    }
+    setInlineInsertAfterId(null);
   };
 
-  const {
-    draggingId,
-    dragOverId,
-    dragOverRect,
-    dragSide,
-    onGripMouseDown,
-    isDragging,
-  } = useDocCanvasDrag({
-    dispatch,
-    topLevelIds,
-    resolveHit,
-    projectIntoContainer,
-    // Release the hover pin when drag starts so the rail unmounts
-    // cleanly behind the drag shield. Without this a stale pin
-    // keeps the rail alive after drag ends.
-    onDragStart: releaseHover,
-  });
+  const { draggingId, dragOverId, dragOverRect, dragSide, onGripMouseDown, isDragging } =
+    useDocCanvasDrag({
+      dispatch,
+      topLevelIds,
+      resolveHit,
+      projectIntoContainer,
+      // Release the hover pin when drag starts so the rail unmounts
+      // cleanly behind the drag shield. Without this a stale pin
+      // keeps the rail alive after drag ends.
+      onDragStart: releaseHover,
+    });
   // While dragging, the shield captures pointer events so cursor
   // movement above the iframe still fires mousemove on the parent.
   // The shield sits above the iframe (z-30) and the rail (z-10).
@@ -377,7 +377,13 @@ export function DocCanvas({
       </div>
 
       {loading ? (
-        <div className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+        <div
+          className={cn(
+            "absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full",
+            "border border-border/60 bg-background/80 px-2.5 py-1",
+            "text-[11px] text-muted-foreground shadow-sm backdrop-blur",
+          )}
+        >
           <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
           Updating preview…
         </div>
@@ -416,10 +422,10 @@ export function DocCanvas({
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              aria-label="Insert block below"
+              aria-label="Write or insert below"
               onClick={() => {
-                setInsertAfterId(hoveredId);
-                setPaletteOpen(true);
+                setInlineInsertAfterId(hoveredId);
+                setInsertAfterId(null);
               }}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -448,8 +454,7 @@ export function DocCanvas({
               size="icon"
               className="h-6 w-6"
               aria-label={`Settings for ${
-                definitions.get(blocksById.get(hoveredId)?.type ?? "")?.label ??
-                "block"
+                definitions.get(blocksById.get(hoveredId)?.type ?? "")?.label ?? "block"
               }`}
               onClick={() => {
                 setSettingsTargetId(hoveredId);
@@ -472,6 +477,35 @@ export function DocCanvas({
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
+        </div>
+      ) : null}
+
+      {inlineInsertAfterId && inlineInsertRect && !isDragging ? (
+        <div
+          className="pointer-events-auto absolute z-20"
+          style={{
+            top: inlineInsertRect.top + inlineInsertRect.height + 8,
+            left: 16,
+            width: "calc(100% - 32px)",
+          }}
+        >
+          <QuickInsertBar
+            definitions={definitions}
+            availableBlocks={inlineInsertBlocks}
+            onInsertBlock={(blockType) => {
+              dispatch({
+                type: "INSERT_AFTER",
+                targetId: inlineInsertAfterId,
+                blockType,
+              });
+              setInlineInsertAfterId(null);
+            }}
+            onInsertText={(text) => insertTextBlock(text, inlineInsertAfterId)}
+            placeholder="Write below, or type / for blocks"
+            autoFocus
+            onCancel={() => setInlineInsertAfterId(null)}
+          />
+          <div className="mt-1 h-px rounded-full bg-primary/60" />
         </div>
       ) : null}
 
@@ -505,10 +539,7 @@ export function DocCanvas({
           events while dragging so the cursor doesn't fall into the
           iframe (which wouldn't bubble events back out). */}
       {isDragging ? (
-        <div
-          className="absolute inset-0 z-30 cursor-grabbing"
-          aria-hidden="true"
-        />
+        <div className="absolute inset-0 z-30 cursor-grabbing" aria-hidden="true" />
       ) : null}
 
       {/* Trailing add area — a quick-insert prompt + the standard
@@ -518,8 +549,8 @@ export function DocCanvas({
       <div className="mt-4 flex flex-col gap-3">
         <QuickInsertBar
           definitions={definitions}
-          dispatch={dispatch}
-          onInsertText={handleInsertText}
+          onInsertBlock={(blockType) => dispatch({ type: "ADD", blockType })}
+          onInsertText={(text) => insertTextBlock(text, null)}
         />
         <div className="flex justify-center">
           <Button
@@ -559,4 +590,3 @@ export function DocCanvas({
     </div>
   );
 }
-
