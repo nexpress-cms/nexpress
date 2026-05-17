@@ -8,7 +8,7 @@ import {
   setActiveThemeId,
   can,
 } from "@nexpress/core";
-import { readJsonBody, themeCacheTag } from "@nexpress/next";
+import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -75,34 +75,12 @@ export async function PUT(request: NextRequest) {
     await setActiveThemeId(id, user.id);
 
     // Theme swap changes the rendered shell + CSS for every
-    // page on the site, so the layout cache needs a full
-    // bust. The /admin and /api routes don't need invalidation
-    // because they don't render the theme.
-    //
-    // Wrapped in try/catch because `revalidateTag` /
-    // `revalidatePath` throw "Invariant: static generation
-    // store missing" when called outside Next.js's request
-    // context (integration tests, scripts). The persistence
-    // already succeeded; cache bust failure shouldn't surface
-    // as a 500.
-    try {
-      const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-      const { revalidatePath, revalidateTag } = await import("next/cache");
-      revalidateTag(themeCacheTag(siteId), "default");
-      // Phase F.7 — bust SEO tags unconditionally on theme
-      // switch. Gating on `activeThemeContributesSeo` (i.e. the
-      // NEW theme's hooks) misses the case where the OLD theme
-      // contributed SEO entries that are still in cache; those
-      // would linger until natural expiry. Design doc §4.7
-      // shows theme switch with no "only when" qualifier — the
-      // unconditional bust is correct + cheap (one extra tag
-      // call, sitemap/feed caches re-walk on next read).
-      revalidateTag(`nx:sitemap:${siteId}`, "default");
-      revalidateTag(`nx:feed:${siteId}`, "default");
-      revalidatePath("/", "layout");
-    } catch {
-      // ignore — see comment above
-    }
+    // page on the site, so the layout cache needs a full bust.
+    // The /admin and /api routes don't need invalidation
+    // because they don't render the theme. Helper swallows the
+    // throw that fires outside a request context.
+    const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+    await bustThemeCache(siteId);
 
     return npSuccessResponse({ activeId: id });
   } catch (error) {

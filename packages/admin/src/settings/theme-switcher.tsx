@@ -380,6 +380,8 @@ export function ThemeSwitcher({
             setMessage(
               `Reseed complete — activated ${reseedTarget.name}. ${result.wiped.pages + result.wiped.posts} rows wiped, ${result.seeded.pages.created + result.seeded.posts.created} rows seeded.`,
             );
+            // Optimistic local update so the panel flips
+            // immediately while the refetch is in-flight.
             setThemes((current) =>
               current
                 ? current.map((t) => ({
@@ -388,6 +390,11 @@ export function ThemeSwitcher({
                   }))
                 : current,
             );
+            // Refetch the full themes list so any state that
+            // changed concurrently (another tab's reseed, a
+            // theme setting edit) reconciles instead of drifting
+            // off the in-memory snapshot.
+            void load();
             onActivated?.(result.activeId);
           }}
         />
