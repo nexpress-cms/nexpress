@@ -9,6 +9,10 @@ const baseConfig = {
   dockerSetup: true,
   localMode: true,
   secret: "test-secret-32characters-min-aaaaaaaaaaaa",
+  // Pinned port so the test isn't coupled to dbPortFromProject's
+  // exact hash output. Picked a value clearly inside the 5433–6432
+  // range so the assertions can match it literally.
+  dbPort: 5500,
 };
 
 /**
@@ -195,6 +199,20 @@ describe("getProjectFiles", () => {
     expect(env).toMatch(/NP_EMAIL_ADAPTER=smtp/);
     expect(env).toMatch(/NP_SMTP_HOST=localhost/);
     expect(env).toMatch(/NP_SMTP_PORT=1025/);
+  });
+
+  it(".env writes the project-specific DB port to both NEXPRESS_DB_PORT and DATABASE_URL", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    for (const path of [".env", ".env.example"]) {
+      const env = files[path];
+      expect(env, `${path} missing`).toBeDefined();
+      // The compose file reads `${NEXPRESS_DB_PORT:-5433}`; the
+      // DATABASE_URL must point at the same host port or the
+      // wizard's Postgres connection fails after compose binds
+      // somewhere else.
+      expect(env).toMatch(/^NEXPRESS_DB_PORT=5500$/m);
+      expect(env).toMatch(/DATABASE_URL=postgres:\/\/[^@]+@localhost:5500\//);
+    }
   });
 
   it("emits vercel.json with the scheduled-publish cron entry", () => {
