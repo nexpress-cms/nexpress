@@ -34,9 +34,19 @@ test.describe("publish a page", () => {
     await page.goto("/admin/collections/pages/create");
     await expect(page).toHaveURL(/\/admin\/collections\/pages\/create$/);
 
+    // Target the real <button type="submit"> directly. The admin
+    // sidebar's "Publish" group header is a CardHeader rendered
+    // as <div role="button"> for expand/collapse, so getByRole
+    // matches both. Scoping to <form> doesn't help — the sidebar
+    // group is rendered inside the same form. Tag + type pins
+    // the submit button unambiguously.
+    const publishButton = page
+      .locator('button[type="submit"]')
+      .filter({ hasText: /^Publish$/ });
+
     // Wait for the form to be interactive before filling — same
     // hydration story as the login form.
-    await expect(page.getByRole("button", { name: /^Publish$/ })).toBeEnabled();
+    await expect(publishButton).toBeEnabled();
 
     // The pages collection's required field is `title` (text).
     // react-hook-form spreads the field name onto the input, so
@@ -53,7 +63,7 @@ test.describe("publish a page", () => {
       (r) =>
         r.url().endsWith("/api/collections/pages") && r.request().method() === "POST",
     );
-    await page.getByRole("button", { name: /^Publish$/ }).click();
+    await publishButton.click();
     const apiRes = await publishResponse;
     expect(apiRes.status()).toBe(201);
 

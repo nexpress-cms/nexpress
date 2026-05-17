@@ -73,6 +73,23 @@ export interface ThemeReseedDialogProps {
   onReseedComplete?: (result: ReseedResult) => void;
 }
 
+function formatErrorDetails(details: unknown): string | null {
+  if (!Array.isArray(details)) return null;
+  const lines: string[] = [];
+  for (const item of details) {
+    if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      const field = typeof obj.field === "string" ? obj.field : null;
+      const path = Array.isArray(obj.path) ? obj.path.join(".") : null;
+      const message = typeof obj.message === "string" ? obj.message : null;
+      const label = field ?? path;
+      if (label && message) lines.push(`• ${label}: ${message}`);
+      else if (message) lines.push(`• ${message}`);
+    }
+  }
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 export function ThemeReseedDialog({
   open,
   onOpenChange,
@@ -100,23 +117,25 @@ export function ThemeReseedDialog({
         const res = await npFetch(
           `/api/admin/themes/reseed?themeId=${encodeURIComponent(targetThemeId)}`,
         );
-        const payload = (await res.json().catch(() => null)) as {
-          data?: PreviewCounts;
-          error?: { message?: string };
-        } | null;
+        const payload = (await res.json().catch(() => null)) as
+          | (PreviewCounts & { error?: { message?: string } })
+          | null;
         if (cancelled) return;
         if (!res.ok) {
           setError(payload?.error?.message ?? "Unable to read current state.");
           setPhase("error");
           return;
         }
-        const data = payload?.data ?? null;
-        if (!data) {
+        if (!payload || !payload.seedMarked || !payload.legacyUnmarked) {
           setError("Empty preview response.");
           setPhase("error");
           return;
         }
-        setPreview(data);
+        setPreview({
+          target: payload.target,
+          seedMarked: payload.seedMarked,
+          legacyUnmarked: payload.legacyUnmarked,
+        });
       } catch {
         if (cancelled) return;
         setError("Unable to read current state.");
@@ -137,24 +156,33 @@ export function ThemeReseedDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ themeId: targetThemeId }),
       });
-      const payload = (await res.json().catch(() => null)) as {
-        data?: ReseedResult;
-        error?: { message?: string };
-      } | null;
+      const payload = (await res.json().catch(() => null)) as
+        | (ReseedResult & {
+            error?: {
+              message?: string;
+              details?: unknown;
+            };
+          })
+        | null;
       if (!res.ok) {
-        setError(payload?.error?.message ?? "Reseed failed.");
+        const detailLines = formatErrorDetails(payload?.error?.details);
+        const top = payload?.error?.message ?? "Reseed failed.";
+        setError(detailLines ? `${top}\n${detailLines}` : top);
         setPhase("error");
         return;
       }
-      const data = payload?.data ?? null;
-      if (!data) {
+      if (!payload || !payload.activeId || !payload.wiped || !payload.seeded) {
         setError("Empty reseed response.");
         setPhase("error");
         return;
       }
-      setResult(data);
+      setResult({
+        activeId: payload.activeId,
+        wiped: payload.wiped,
+        seeded: payload.seeded,
+      });
       setPhase("done");
-      onReseedComplete?.(data);
+      onReseedComplete?.(payload);
     } catch {
       setError("Reseed request failed.");
       setPhase("error");
@@ -256,7 +284,7 @@ export function ThemeReseedDialog({
         ) : null}
 
         {phase === "error" && error ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
           </div>
         ) : null}
