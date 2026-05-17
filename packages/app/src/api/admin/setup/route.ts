@@ -139,6 +139,22 @@ export async function POST(request: NextRequest): Promise<Response> {
     await ensureFor("write");
     const body = validateBody(await readJsonBody(request));
 
+    // Theme registry lookup is cheap (in-memory) and validating it
+    // here means an unknown id surfaces a 400 BEFORE the admin
+    // insert below. The previous shape validated theme right
+    // before seeding (after the insert), so a stale wizard tab
+    // posting an unknown theme would leave an admin row behind
+    // and every retry would then hit the `Setup already completed`
+    // gate. Integration test pins the regression.
+    if (body.themeId && !getThemeById(body.themeId)) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "themeId",
+          message: `Unknown theme '${body.themeId}'. Register it in nexpress.config.ts first.`,
+        },
+      ]);
+    }
+
     if ((await adminCount()) > 0) {
       // Belt: the page-level redirect already keeps a logged-out
       // visitor away. Braces: a stale tab that POSTs after another
@@ -228,20 +244,10 @@ export async function POST(request: NextRequest): Promise<Response> {
       }
     }
 
-    // Theme picker: validate up front (fail-fast before we touch
-    // the seed) so an unknown id doesn't leave the wizard in a
-    // half-applied state. `setActiveThemeId` revalidates against
-    // the registry inside `withCurrentSite` below; this early
-    // check just surfaces the error before we open the wider
-    // try-block that swallows seed failures.
-    if (body.themeId && !getThemeById(body.themeId)) {
-      throw new NpValidationError("Invalid input", [
-        {
-          field: "themeId",
-          message: `Unknown theme '${body.themeId}'. Register it in nexpress.config.ts first.`,
-        },
-      ]);
-    }
+    // Theme id was validated up-top (pre-insert) so we don't
+    // re-check here. `setActiveThemeId` revalidates against the
+    // registry inside `withCurrentSite` below as a belt-and-braces
+    // anyway.
 
     let seeded: Awaited<ReturnType<typeof seedAll>> | null = null;
     if (body.sampleContent || body.themeId) {

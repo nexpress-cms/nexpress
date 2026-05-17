@@ -103,4 +103,36 @@ describe.skipIf(skipIfNoTestDb())("first-boot Admin Setup wizard", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("unknown themeId returns 400 AND leaves the install fresh", async () => {
+    // Regression for the 400 → 409 race in
+    // `project-setup-wizard-followups`: theme validation used to
+    // run AFTER the admin insert, so a stale tab posting an
+    // unknown themeId would commit the admin row and every retry
+    // would then hit `Setup already completed`. The fix moves
+    // theme validation upstream — this test pins it.
+    const { POST, GET } = await import("@/app/api/admin/setup/route");
+    const res = await POST(
+      buildRequest("/api/admin/setup", {
+        method: "POST",
+        body: {
+          email: "founder@example.com",
+          password: "correct horse battery",
+          themeId: "no-such-theme",
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+
+    // Setup must still be available — no partial admin row got
+    // through.
+    const { body } = await readJson<{ available: boolean }>(await GET());
+    expect(body.available).toBe(true);
+
+    const { getDb } = await import("@/lib/db");
+    const { npUsers } = await import("@nexpress/core");
+    const db = getDb();
+    const rows = await db.select({ id: npUsers.id }).from(npUsers);
+    expect(rows.length).toBe(0);
+  });
 });
