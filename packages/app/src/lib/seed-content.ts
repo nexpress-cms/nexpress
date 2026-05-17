@@ -479,6 +479,14 @@ const WIPE_PAGE_SIZE = 200;
  * given `seedSource`. Re-fetches page 1 after every batch because
  * delete shifts the offset — `page: 2` would skip rows that moved
  * into the previous slot. Exits when a fetch returns no rows.
+ *
+ * The loop is NOT transactional (see `wipeSeededContent`'s caller
+ * comment for why — hook callbacks use the singleton `getDb()`
+ * handle, not a tx-bound one). When a per-row delete throws, the
+ * surrounding try/catch re-throws with the deleted-so-far count
+ * appended so the operator sees how far the wipe got before
+ * failing. Re-running the endpoint resumes from the first
+ * still-seeded row.
  */
 async function wipeCollectionBySeedSource(
   collection: "pages" | "posts",
@@ -486,20 +494,28 @@ async function wipeCollectionBySeedSource(
   actor: NpAuthUser,
 ): Promise<number> {
   let deleted = 0;
-  while (true) {
-    const result = await findDocuments<{ id: string; seedSource?: string }>(
-      collection,
-      {
-        where: { seedSource },
-        limit: WIPE_PAGE_SIZE,
-      },
-    );
-    if (result.docs.length === 0) break;
-    for (const doc of result.docs) {
-      if (typeof doc.id !== "string") continue;
-      await deleteDocument(collection, doc.id, actor);
-      deleted += 1;
+  try {
+    while (true) {
+      const result = await findDocuments<{ id: string; seedSource?: string }>(
+        collection,
+        {
+          where: { seedSource },
+          limit: WIPE_PAGE_SIZE,
+        },
+      );
+      if (result.docs.length === 0) break;
+      for (const doc of result.docs) {
+        if (typeof doc.id !== "string") continue;
+        await deleteDocument(collection, doc.id, actor);
+        deleted += 1;
+      }
     }
+  } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Wipe of ${collection} (seedSource="${seedSource}") failed after deleting ${deleted} row${deleted === 1 ? "" : "s"}: ${cause}`,
+      error instanceof Error ? { cause: error } : undefined,
+    );
   }
   return deleted;
 }
