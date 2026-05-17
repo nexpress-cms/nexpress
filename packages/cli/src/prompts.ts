@@ -64,20 +64,15 @@ export const BUILTIN_THEME_IDS: readonly string[] = [
 ];
 
 /**
- * Friendly starter alias → built-in theme id. `--starter` exists as a
- * UX layer on top of `--theme`: operators searching for "nexpress blog
- * starter" find a working command, even though the underlying theme is
- * named `default`. Theme ids passed verbatim (`--starter=default`) flow
- * through `resolveStarter` unchanged so flag-mixing doesn't surprise.
- *
- * Keep in sync with `STARTER_OPTIONS` below — the interactive prompt
- * pulls its choices from the same source of truth.
+ * Friendly starter aliases that map to a different theme id. Only
+ * real aliases live here — `magazine`, `portfolio`, `docs` are both
+ * the starter name AND the theme id, so they fall through
+ * `resolveStarter` unchanged. The `blog` → `default` mapping is the
+ * only case where the operator-facing name diverges from the
+ * underlying theme id.
  */
 const STARTER_TO_THEME: Record<string, string> = {
   blog: "default",
-  magazine: "magazine",
-  portfolio: "portfolio",
-  docs: "docs",
 };
 
 /**
@@ -228,6 +223,10 @@ export async function promptForProjectConfig(
     throw new Error("Project name is required");
   }
 
+  const pickedThemeId =
+    flags.themeId ??
+    (typeof response.themeId === "string" ? response.themeId : undefined);
+
   return {
     projectName,
     includeExampleContent:
@@ -240,11 +239,8 @@ export async function promptForProjectConfig(
       (typeof response.dockerSetup === "boolean"
         ? response.dockerSetup
         : DEFAULTS.dockerSetup),
-    ...(() => {
-      const picked =
-        flags.themeId ??
-        (typeof response.themeId === "string" ? response.themeId : undefined);
-      return picked && picked.length > 0 ? { themeId: picked } : {};
-    })(),
+    ...(pickedThemeId && pickedThemeId.length > 0
+      ? { themeId: pickedThemeId }
+      : {}),
   } satisfies ProjectConfig;
 }
