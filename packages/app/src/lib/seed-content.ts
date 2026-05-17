@@ -5,6 +5,7 @@ import {
   findDocuments,
   getCurrentSiteId,
   getDb,
+  getRegisteredThemes,
   NP_DEFAULT_SITE_ID,
   npNavigation,
   saveDocument,
@@ -463,51 +464,68 @@ export interface WipeSeededResult {
   postsDeleted: number;
 }
 
+const WIPE_PAGE_SIZE = 200;
+
+/**
+ * Page through `findDocuments` and delete every row matching the
+ * given `seedSource`. Re-fetches page 1 after every batch because
+ * delete shifts the offset — `page: 2` would skip rows that moved
+ * into the previous slot. Exits when a fetch returns no rows.
+ */
+async function wipeCollectionBySeedSource(
+  collection: "pages" | "posts",
+  seedSource: string,
+  actor: NpAuthUser,
+): Promise<number> {
+  let deleted = 0;
+  while (true) {
+    const result = await findDocuments<{ id: string }>(
+      collection,
+      {
+        where: { seedSource } as Record<string, unknown>,
+        limit: WIPE_PAGE_SIZE,
+      },
+    );
+    if (result.docs.length === 0) break;
+    for (const doc of result.docs) {
+      if (typeof doc.id !== "string") continue;
+      await deleteDocument(collection, doc.id, actor);
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
 export async function wipeSeededContent(
   actor: NpAuthUser,
   options: WipeSeededOptions = {},
 ): Promise<WipeSeededResult> {
-  const where = options.themeId
-    ? ({ seedSource: `theme:${options.themeId}` } as Record<string, unknown>)
-    : ({} as Record<string, unknown>);
+  // Resolve the set of seed_source values to delete. When the
+  // caller passes a themeId, we wipe just that theme's rows. When
+  // omitted, walk every registered theme — covers the common case
+  // of "wipe all framework seed before reseeding" without a
+  // `seedSource IS NOT NULL` predicate (which isn't part of v0.1
+  // FindOptions and would require a contract extension).
+  //
+  // Orphaned rows from a theme that has since been uninstalled
+  // stay on disk; the operator deletes them manually. Acceptable
+  // because reseed callers always pass the active theme registry,
+  // so uninstall is the only way to land in that state.
+  const themeIds = options.themeId
+    ? [options.themeId]
+    : getRegisteredThemes().map((t) => t.manifest.id);
 
   let pagesDeleted = 0;
   let postsDeleted = 0;
 
-  // Pages first — no FK ordering constraint between pages/posts, but
-  // pages tend to be fewer rows so they finish quickly and a partial
-  // failure leaves the larger posts wipe pending rather than the
-  // other way around.
-  const pageRows = await findDocuments<{ id: string; seedSource?: string }>(
-    "pages",
-    {
-      ...(options.themeId ? { where } : {}),
-      limit: 500,
-    },
-  );
-  for (const page of pageRows.docs) {
-    if (!options.themeId && !page.seedSource) continue;
-    if (typeof page.id !== "string") continue;
-    await deleteDocument("pages", page.id, actor);
-    pagesDeleted += 1;
-  }
-
-  // Posts — include drafts and scheduled (the seeder writes a future-
-  // dated draft as part of the marketing-blog demo). The pipeline's
-  // default findDocuments doesn't filter by status, so the cap of 500
-  // is the only bound here.
-  const postRows = await findDocuments<{ id: string; seedSource?: string }>(
-    "posts",
-    {
-      ...(options.themeId ? { where } : {}),
-      limit: 500,
-    },
-  );
-  for (const post of postRows.docs) {
-    if (!options.themeId && !post.seedSource) continue;
-    if (typeof post.id !== "string") continue;
-    await deleteDocument("posts", post.id, actor);
-    postsDeleted += 1;
+  // Pages first — no FK ordering constraint between pages/posts,
+  // but pages tend to be fewer rows so they finish quickly and a
+  // partial failure leaves the larger posts wipe pending rather
+  // than the other way around.
+  for (const themeId of themeIds) {
+    const seedSource = `theme:${themeId}`;
+    pagesDeleted += await wipeCollectionBySeedSource("pages", seedSource, actor);
+    postsDeleted += await wipeCollectionBySeedSource("posts", seedSource, actor);
   }
 
   return { pagesDeleted, postsDeleted };

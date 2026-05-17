@@ -1,5 +1,6 @@
 import {
   NP_DEFAULT_SITE_ID,
+  NpConflictError,
   NpForbiddenError,
   NpValidationError,
   can,
@@ -20,6 +21,28 @@ import {
   seedAll,
   wipeSeededContent,
 } from "../../../../lib/seed-content";
+
+/**
+ * Pull the offending slug out of a postgres unique-violation error.
+ * pg-node surfaces the constraint failure as a `DatabaseError` with
+ * `code: "23505"` and a `detail` field of the form
+ * `Key (site_id, locale, slug)=(default, en, /) already exists.`.
+ * When detail is missing or unparseable, returns null so the caller
+ * falls back to re-throwing the original error.
+ */
+function parseSlugCollision(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  const detail = (error as { detail?: unknown }).detail;
+  const message = error instanceof Error ? error.message : "";
+  const isUniqueViolation =
+    code === "23505" ||
+    /np_c_pages_site_locale_slug_idx|unique constraint|duplicate key/i.test(message);
+  if (!isUniqueViolation) return null;
+  const detailStr = typeof detail === "string" ? detail : message;
+  const match = detailStr.match(/slug\)=\(.*?,\s*[^,]+,\s*([^)]+)\)/);
+  return match?.[1]?.trim() ?? null;
+}
 
 /**
  * POST /api/admin/themes/reseed
@@ -46,13 +69,14 @@ import {
  *     wipe + seed loop runs hook-per-row instead of inside a
  *     single transaction. A mid-flow failure leaves partial
  *     state; the operator re-runs the endpoint to finish.
- *   - Pre-PR1 installs have unmarked legacy seed rows
- *     (Welcome / About / Pricing / Contact pages with
- *     `seed_source IS NULL`). Reseed will *not* delete those
- *     — the operator either moves them to the trash manually
- *     or the new theme's pages slot in alongside them. A
- *     future migration may backfill `seed_source = "theme:default"`
- *     onto matched legacy rows; not done here.
+ *   - Pre-PR1 installs have unmarked legacy seed rows. Migration
+ *     `0007_legacy_seed_backfill` stamps `seed_source =
+ *     "theme:default"` onto pages whose slug matches the
+ *     framework's original marketing seed (`/`, `about`,
+ *     `pricing`, `contact`). Operator-edited slugs are left
+ *     untouched on purpose — if reseed then hits a slug
+ *     uniqueness violation we surface a 409 with the offending
+ *     slug, so the operator knows which row to resolve.
  *
  * Capability: `admin.manage`. CSRF is enforced by `apps/web/src/proxy.ts`.
  */
@@ -103,8 +127,18 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const seeded = await seedAll(user, newActive);
-      return { wiped, seeded };
+      try {
+        const seeded = await seedAll(user, newActive);
+        return { wiped, seeded };
+      } catch (error) {
+        const collisionSlug = parseSlugCollision(error);
+        if (collisionSlug) {
+          throw new NpConflictError(
+            `Cannot seed theme "${themeId}" — a page with slug "${collisionSlug}" already exists and isn't marked as framework seed. Delete or rename it and re-run reseed.`,
+          );
+        }
+        throw error;
+      }
     });
 
     // Bust theme + SEO + sitemap + feed caches so the next public
