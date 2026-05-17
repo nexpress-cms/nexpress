@@ -90,6 +90,7 @@ export function QuickInsertBar({
   const [value, setValue] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const activeOptionRef = useRef<HTMLButtonElement | null>(null);
 
   // Sorted list of every registered block — used as the slash-
   // menu corpus. Stable across renders (definitions identity
@@ -117,6 +118,10 @@ export function QuickInsertBar({
   useEffect(() => {
     setActiveIndex((prev) => Math.min(prev, Math.max(0, filtered.length - 1)));
   }, [filtered.length]);
+
+  useEffect(() => {
+    activeOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, filtered]);
 
   const commitSlash = (def: NpBlockMetadata | undefined) => {
     if (!def) return;
@@ -207,8 +212,8 @@ export function QuickInsertBar({
             // canvas width on wide layouts so it reads as a
             // popover, not a full-width list.
             "absolute bottom-full left-0 z-20 mb-2 max-h-72 w-full max-w-md",
-            "overflow-auto rounded-xl border border-neutral-200 bg-popover py-1 shadow-lg",
-            "dark:border-neutral-800",
+            "overflow-auto rounded-xl border border-neutral-200 bg-white py-1 shadow-lg",
+            "dark:border-neutral-800 dark:bg-neutral-950",
           )}
           role="listbox"
         >
@@ -217,6 +222,7 @@ export function QuickInsertBar({
             return (
               <button
                 key={def.type}
+                ref={isActive ? activeOptionRef : undefined}
                 type="button"
                 role="option"
                 aria-selected={isActive}
@@ -255,8 +261,8 @@ export function QuickInsertBar({
         <div
           className={cn(
             "absolute bottom-full left-0 z-20 mb-2 w-full max-w-md rounded-xl",
-            "border border-neutral-200 bg-popover px-3 py-2 text-sm text-muted-foreground shadow-lg",
-            "dark:border-neutral-800",
+            "border border-neutral-200 bg-white px-3 py-2 text-sm text-muted-foreground shadow-lg",
+            "dark:border-neutral-800 dark:bg-neutral-950",
           )}
         >
           No blocks match{slashQuery ? ` "${slashQuery}"` : ""}.

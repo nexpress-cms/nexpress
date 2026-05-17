@@ -485,9 +485,8 @@ export function DocCanvas({
           className="pointer-events-auto absolute z-20"
           style={{
             top: inlineInsertRect.top + inlineInsertRect.height + 8,
-            left: inlineInsertRect.left,
-            width: Math.min(Math.max(inlineInsertRect.width, 360), 720),
-            maxWidth: "calc(100% - 24px)",
+            left: 16,
+            width: "calc(100% - 32px)",
           }}
         >
           <QuickInsertBar
