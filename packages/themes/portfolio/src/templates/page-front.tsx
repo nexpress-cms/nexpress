@@ -20,7 +20,7 @@ import { ProjectIndexTemplate } from "./project-index.js";
  */
 export async function PageFrontTemplate(props: NpTemplateRenderProps) {
   const result = await findDocuments<Record<string, unknown>>("posts", {
-    where: { status: "published" } as Record<string, unknown>,
+    where: { status: "published" },
     sort: "-publishedAt",
     limit: 24,
   });

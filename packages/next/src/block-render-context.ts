@@ -13,21 +13,20 @@ import { getCachedActiveThemeId } from "./cache.js";
  * public-page rendering; surfacing draft / scheduled rows to anonymous
  * visitors is almost always a bug, so we make safe-by-default the path
  * of least resistance. Plugins that explicitly want a different status
- * can pass `where: { status: { equals: "draft" } }` and we won't
- * overwrite it.
+ * can pass `where: { status: "draft" }` and we won't overwrite it.
  */
 function applyPublishedDefault(
   options: Partial<NpFindOptions> | undefined,
 ): Partial<NpFindOptions> {
   const next: Partial<NpFindOptions> = { ...(options ?? {}) };
-  const existingWhere = (next.where ?? {}) as Record<string, unknown>;
+  const existingWhere = next.where ?? {};
   const callerSpecifiedStatus =
     "status" in existingWhere && existingWhere.status !== undefined;
   if (!callerSpecifiedStatus) {
     next.where = {
       ...existingWhere,
-      status: { equals: "published" },
-    } as NpFindOptions["where"];
+      status: "published",
+    };
   }
   return next;
 }

@@ -286,7 +286,7 @@ const SEED_PAGES: NpThemeSeedPage[] = [
     seoDescription:
       "A small editorial review, published every other Sunday — features, dispatches, profiles, and photography from Seoul, New York, and the long road between them.",
     blocks: [],
-    data: { template: "front" },
+    template: "front",
   },
   {
     title: "Colophon",

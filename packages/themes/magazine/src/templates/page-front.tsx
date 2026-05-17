@@ -21,7 +21,7 @@ import { PostListTemplate } from "./post-list.js";
  */
 export async function PageFrontTemplate(props: NpTemplateRenderProps) {
   const result = await findDocuments<MagazinePostCardDoc>("posts", {
-    where: { status: "published" } as Record<string, unknown>,
+    where: { status: "published" },
     sort: "-publishedAt",
     limit: 20,
   });

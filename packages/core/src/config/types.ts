@@ -1105,6 +1105,14 @@ export interface NpFindWhereSystemTokens {
    * a `locale` field (only i18n-enabled collections do).
    */
   locale?: string;
+  /**
+   * Lifecycle status filter. Every collection in the framework
+   * carries a `status` column (codegen-enforced), so exposing it
+   * here lets a typed `where` clause filter to published rows
+   * without the doc type having to redeclare it. Accepts a
+   * single value or an array (IN match).
+   */
+  status?: NpDocumentStatus | NpDocumentStatus[];
 }
 
 /**

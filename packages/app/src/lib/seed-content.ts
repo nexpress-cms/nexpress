@@ -164,7 +164,7 @@ export async function seedPages(
   // cleanly, while keeping operator-authored rows untouched.
   if (seedSource) {
     const existing = await findDocuments("pages", {
-      where: { seedSource } as Record<string, unknown>,
+      where: { seedSource },
       limit: 1,
     });
     if (existing.docs.length > 0) {
@@ -180,9 +180,14 @@ export async function seedPages(
   const db = getDb();
   for (const sample of pages) {
     const { slug, data: extraData, ...rest } = sample;
+    // `extraData` (the `data` escape hatch) first, then `rest`
+    // (the first-class slots) so a typed field on NpThemeSeedPage
+    // always wins when both are set. Reverse order would let a
+    // legacy `data: { template: "x" }` silently override the new
+    // first-class `template` slot — wrong precedence.
     const payload: Record<string, unknown> = {
-      ...rest,
       ...(extraData ?? {}),
+      ...rest,
     };
     if (seedSource) payload.seedSource = seedSource;
     const result = await saveDocument("pages", null, payload, actor, {
@@ -215,7 +220,7 @@ export async function seedPosts(
   const seedSource = options.themeId ? `theme:${options.themeId}` : null;
   if (seedSource) {
     const existing = await findDocuments("posts", {
-      where: { seedSource } as Record<string, unknown>,
+      where: { seedSource },
       limit: 1,
     });
     if (existing.docs.length > 0) {
@@ -255,9 +260,12 @@ export async function seedPosts(
       data: extraData,
       ...rest
     } = sample;
+    // `extraData` first, first-class slots second so a typed
+    // field on NpThemeSeedPost always wins over a legacy
+    // `data: { … }` setting the same key.
     const payload: Record<string, unknown> = {
-      ...rest,
       ...(extraData ?? {}),
+      ...rest,
       author: actor.id,
       tags: tagRefs,
     };
@@ -479,10 +487,10 @@ async function wipeCollectionBySeedSource(
 ): Promise<number> {
   let deleted = 0;
   while (true) {
-    const result = await findDocuments<{ id: string }>(
+    const result = await findDocuments<{ id: string; seedSource?: string }>(
       collection,
       {
-        where: { seedSource } as Record<string, unknown>,
+        where: { seedSource },
         limit: WIPE_PAGE_SIZE,
       },
     );

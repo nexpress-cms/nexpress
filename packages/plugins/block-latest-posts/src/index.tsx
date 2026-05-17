@@ -71,7 +71,7 @@ async function LatestPostsBody({
   const result = await ctx.content.find(collection, {
     limit,
     sort: "-publishedAt",
-    where: { status: { equals: "published" } },
+    where: { status: "published" },
   });
   const posts = result.docs.map(readPost).filter((p): p is PostLike => p !== null);
 

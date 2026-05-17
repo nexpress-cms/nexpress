@@ -283,7 +283,7 @@ const SEED_PAGES: NpThemeSeedPage[] = [
     seoDescription:
       "A studio for studios. Identity, type, and editorial systems for brands at the inflection.",
     blocks: [],
-    data: { template: "front" },
+    template: "front",
   },
   {
     title: "Studio",

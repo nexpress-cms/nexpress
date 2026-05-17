@@ -14,6 +14,8 @@ interface DocRow {
   badge: unknown;
   publishedAt: unknown;
   updatedAt: unknown;
+  /** Universal-content-model discriminator (#748) — filtered at query time. */
+  kind?: string;
 }
 
 interface DocNode {
@@ -46,7 +48,7 @@ interface DocNode {
 export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
   const settings = await resolveDocsSettings();
   const result = await findDocuments<DocRow>("posts", {
-    where: { status: "published", kind: "doc" } as Record<string, unknown>,
+    where: { status: "published", kind: "doc" },
     sort: "order",
     limit: 200,
   });

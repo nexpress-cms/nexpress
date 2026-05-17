@@ -343,12 +343,21 @@ export interface NpThemeSeedPage {
    */
   blocks: unknown[];
   /**
+   * Theme template key — locks the seeded page to a specific
+   * `templates.pages[<key>]` entry. Used by magazine / portfolio /
+   * docs to land the seeded home page on `front` instead of the
+   * collection's default template. Forwarded as the `template`
+   * field on the seeded row; unknown keys silently fall back to
+   * the default template (the public renderer's same fallback).
+   */
+  template?: string;
+  /**
    * Extra fields merged onto the seeded page. The pipeline's
    * Zod validation strips keys the collection doesn't declare,
    * so extra fields are silently dropped rather than rejected.
-   * Use this for fields the theme contributes (e.g. `template`
-   * to lock the home page to a specific layout) that aren't
-   * first-class on this type.
+   * Use this for theme-contributed fields that aren't first-class
+   * on this type. (`template` was first-class as of 2026-05; use
+   * the dedicated field instead.)
    */
   data?: Record<string, unknown>;
 }

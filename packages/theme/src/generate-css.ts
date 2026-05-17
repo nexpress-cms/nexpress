@@ -13,6 +13,7 @@ type ThemeShapeKey = Extract<keyof NpThemeShape, string>;
 const COLOR_KEYS: ThemeColorKey[] = [
   "primary",
   "primaryForeground",
+  "primarySoft",
   "background",
   "foreground",
   "muted",
@@ -81,7 +82,15 @@ function formatDeclaration(name: string, value: string): string {
  */
 export function generateThemeCss(theme: NpThemeTokens): string {
   const rootDeclarations = [
-    ...COLOR_KEYS.map((key) => formatDeclaration(`--np-color-${camelToKebab(key)}`, theme.colors[key])),
+    ...COLOR_KEYS.flatMap((key) => {
+      // Optional color slots — only emit a declaration when the
+      // theme actually populated the value. Consumers reference
+      // these vars with a `color-mix(...)` fallback so the omitted
+      // case still renders.
+      const value = theme.colors[key];
+      if (value === undefined) return [];
+      return [formatDeclaration(`--np-color-${camelToKebab(key)}`, value)];
+    }),
     ...TYPOGRAPHY_KEYS.map((key) => formatDeclaration(getTypographyVarName(key), theme.typography[key])),
     ...SHAPE_KEYS.map((key) => formatDeclaration(`--np-${camelToKebab(key)}`, theme.shape[key])),
   ];
