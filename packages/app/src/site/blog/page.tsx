@@ -1,5 +1,7 @@
-import { findPosts, resolveTemplateComponent } from "@nexpress/core";
+import { findDocuments, findPosts, resolveTemplateComponent } from "@nexpress/core";
 import { createSiteScopedBlockRenderContext } from "@nexpress/next";
+import { getActiveTheme } from "@nexpress/theme";
+import type { Metadata } from "next";
 import Link from "next/link";
 import type { ComponentType } from "react";
 
@@ -8,6 +10,43 @@ import { ensureFor } from "../../lib/init-core";
 
 interface BlogPageProps {
   searchParams: Promise<{ page?: string }>;
+}
+
+/**
+ * SEO canonical for `/blog`.
+ *
+ * Some themes (magazine, portfolio) ship a `pages.front` template
+ * that's literally the post-list / project-grid layout, and their
+ * seeded home page renders it. That makes `/` and `/blog`
+ * effectively the same content. Search engines would dedupe in
+ * unpredictable ways; we want to tell them which URL is the
+ * canonical one.
+ *
+ * Heuristic: when the active theme has both a `pages.front`
+ * template registered AND the home page (`slug = "/"`) is set to
+ * use it, point canonical at `/`. Otherwise (default theme, or
+ * operator-edited home template) emit no canonical and let
+ * `/blog` stand on its own.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  await ensureFor("read");
+
+  const active = await getActiveTheme();
+  const hasFrontTemplate = Boolean(active?.impl.templates?.pages?.front);
+  if (!hasFrontTemplate) return {};
+
+  const home = await findDocuments<{ slug?: string; template?: string }>(
+    "pages",
+    {
+      where: { slug: "/", status: "published" },
+      limit: 1,
+    },
+  );
+  const homeTemplate =
+    typeof home.docs[0]?.template === "string" ? home.docs[0].template : null;
+  if (homeTemplate !== "front") return {};
+
+  return { alternates: { canonical: "/" } };
 }
 
 /**

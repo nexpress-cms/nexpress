@@ -1,6 +1,7 @@
 import * as React from "react";
 import { findDocuments } from "@nexpress/core";
 
+import { buildDocTree } from "./lib/doc-tree.js";
 import { resolveDocsSettings } from "./settings-helpers.js";
 
 interface DocNode {
@@ -117,12 +118,10 @@ async function currentPathSlug(): Promise<string | null> {
 
 function buildTree(rawDocs: Record<string, unknown>[]): DocNode[] {
   const docs = rawDocs as unknown as DocRow[];
-  const byId = new Map<string, DocNode>();
-  // First pass: every doc as a flat node with empty children.
-  for (const d of docs) {
-    if (typeof d.id !== "string") continue;
-    if (typeof d.slug !== "string") continue;
-    byId.set(d.id, {
+  return buildDocTree<DocNode, DocRow>(docs, (d) => {
+    if (typeof d.id !== "string") return null;
+    if (typeof d.slug !== "string") return null;
+    return {
       id: d.id,
       slug: d.slug,
       title: typeof d.title === "string" ? d.title : d.slug,
@@ -130,24 +129,8 @@ function buildTree(rawDocs: Record<string, unknown>[]): DocNode[] {
       order: typeof d.order === "number" ? d.order : 0,
       badge: typeof d.badge === "string" ? d.badge : null,
       children: [],
-    });
-  }
-  // Second pass: hang each non-root under its parent.
-  const roots: DocNode[] = [];
-  for (const node of byId.values()) {
-    if (node.parent && byId.has(node.parent)) {
-      byId.get(node.parent)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-  // Sort by order at every level.
-  const sortRec = (list: DocNode[]) => {
-    list.sort((a, b) => a.order - b.order);
-    for (const n of list) sortRec(n.children);
-  };
-  sortRec(roots);
-  return roots;
+    };
+  });
 }
 
 function NavTree({

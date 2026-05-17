@@ -518,15 +518,17 @@ function buildContactPageBlocks(): unknown[] {
 
 
 /**
- * Demo categories that the marketing home pricing card references.
- * Operators replace these with their own taxonomy once content goes
- * live — `category-with-posts` keeps the row from being orphaned and
- * losing analytics history.
+ * The default theme intentionally ships NO categories. The 11
+ * seeded tags already cover the topic axis well, and categories
+ * vs tags is a per-site editorial decision — empty is a friendlier
+ * starting point than a half-populated coarse taxonomy. Operators
+ * who want categories create them in admin.
+ *
+ * Re-exported as an empty array so `seedTerms` sees a defined slot
+ * (and the seedAll pre-existing-row check covers categories) but
+ * doesn't write anything.
  */
-export const defaultCategories: NpThemeSeedTerm[] = [
-  { name: "Engineering", description: "Architecture, internals, and tooling." },
-  { name: "Product", description: "Roadmap, decisions, and announcements." },
-];
+export const defaultCategories: NpThemeSeedTerm[] = [];
 
 /**
  * Marketing pages — Welcome (home), About, Pricing, Contact. Walks the
