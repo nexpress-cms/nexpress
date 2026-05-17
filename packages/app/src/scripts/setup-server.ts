@@ -540,9 +540,44 @@ async function testDbConnection(
     }
     return {
       ok: false,
-      message: err instanceof Error ? err.message : String(err),
+      message: messageForConnectionError(url, err),
     };
   }
+}
+
+/**
+ * Friendlier wording for the connection errors operators actually
+ * hit in setup. Most pg-node errors are clear enough on their own
+ * (`password authentication failed`, `connect ECONNREFUSED`), but
+ * sqlstate 3D000 ("database does not exist") is a common first-run
+ * stumble that benefits from spelling out the exact `psql` command
+ * to fix it — the operator has the URL, they just need a
+ * one-liner to materialise the DB.
+ */
+function messageForConnectionError(url: string, err: unknown): string {
+  const fallback = err instanceof Error ? err.message : String(err);
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code !== "3D000") return fallback;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return fallback;
+  }
+  const dbName = parsed.pathname.replace(/^\//, "") || "<db>";
+  const dbUser = decodeURIComponent(parsed.username) || "nexpress";
+  const dbHost = parsed.hostname || "localhost";
+  const dbPort = parsed.port || "5432";
+  return (
+    `Database "${dbName}" does not exist yet (sqlstate 3D000). ` +
+    `Create it with:\n\n` +
+    `  psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d postgres -c 'CREATE DATABASE "${dbName}"'\n\n` +
+    `If you're using the scaffold's docker-compose, the container's POSTGRES_DB ` +
+    `auto-creates the DB on first boot — stop the container, ` +
+    `\`docker volume rm <project>_pgdata\` to wipe the old data dir, then ` +
+    `\`docker compose -f docker/docker-compose.yml up -d db\` again.`
+  );
 }
 
 interface SetupSystemCheck {
@@ -655,6 +690,19 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
       `Then re-run setup.`;
     console.log("[setup] db pre-flight FAILED — DB already populated");
     return { ok: false, output: message };
+  }
+
+  // Verify the DB actually exists before kicking off drizzle-kit.
+  // `probeExistingFrameworkTables` above silently treats connection
+  // failure as "no existing tables", which lets us proceed to
+  // drizzle-kit. But sqlstate 3D000 (database does not exist) at
+  // the drizzle-kit layer surfaces as a raw error string the
+  // operator has to decode. Calling `testDbConnection` here pulls
+  // the friendly create-database hint into the migrate output too.
+  const connTest = await testDbConnection(body.databaseUrl);
+  if (!connTest.ok) {
+    console.log("[setup] db connection failed before migration");
+    return { ok: false, output: connTest.message };
   }
 
   console.log("[setup] running pnpm db:generate …");
