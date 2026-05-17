@@ -1,5 +1,5 @@
 import { findDocuments, findPosts, resolveTemplateComponent } from "@nexpress/core";
-import { createSiteScopedBlockRenderContext } from "@nexpress/next";
+import { buildPageMetadata, createSiteScopedBlockRenderContext } from "@nexpress/next";
 import { getActiveTheme } from "@nexpress/theme";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -13,27 +13,73 @@ interface BlogPageProps {
 }
 
 /**
- * SEO canonical for `/blog`.
+ * Metadata for `/blog`.
  *
- * Some themes (magazine, portfolio) ship a `pages.front` template
- * that's literally the post-list / project-grid layout, and their
- * seeded home page renders it. That makes `/` and `/blog`
- * effectively the same content. Search engines would dedupe in
- * unpredictable ways; we want to tell them which URL is the
- * canonical one.
+ * Baseline: a stable title + description so the page has
+ * meaningful SEO defaults instead of inheriting whatever the
+ * root layout exposes. Operators who want a different copy can
+ * override by registering their own theme template for the blog
+ * index — the metadata only fires when this framework route is
+ * the one that renders.
  *
- * Heuristic: when the active theme has both a `pages.front`
- * template registered AND the home page (`slug = "/"`) is set to
- * use it, point canonical at `/`. Otherwise (default theme, or
- * operator-edited home template) emit no canonical and let
- * `/blog` stand on its own.
+ * Canonical: some themes (magazine, portfolio) ship a
+ * `pages.front` template that's literally the post-list /
+ * project-grid layout, and their seeded home page renders it.
+ * That makes `/` and `/blog` effectively the same content;
+ * search engines would dedupe unpredictably. We emit
+ * `alternates.canonical: "/"` only when the active theme meets
+ * all of the following:
+ *
+ *   - `pages.front` template is registered
+ *   - The home page (`slug = "/"`) is set to use it
+ *   - The theme also provides `templates.posts.list` or
+ *     `templates.posts.index` — the keys the framework actually
+ *     dispatches to from `/blog`
+ *
+ * The third condition rules out docs: docs has `pages.front`
+ * and a seeded `/` that uses it, but `/blog` falls back to the
+ * framework default list because docs only ships
+ * `templates.posts.doc`. Different content → no canonical.
  */
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({
+  searchParams,
+}: BlogPageProps): Promise<Metadata> {
   await ensureFor("read");
 
+  const { page } = await searchParams;
+  // Parse the same way the page component does so an invalid
+  // `?page=abc` falls back to page 1 in BOTH the metadata and
+  // the rendered list — otherwise the metadata canonical and
+  // the body would describe different pages.
+  const pageNum = Math.max(1, Number.parseInt(page ?? "1", 10) || 1);
+  const isFirstPage = pageNum === 1;
+
+  // When the heuristic fires AND the request is page 1, we point
+  // canonical at `/`. Paginated pages (page 2+) always canonical
+  // to themselves — they have distinct content from the home and
+  // shouldn't dedupe away.
+  const canonicalPath =
+    isFirstPage && (await shouldCanonicalizeToHome())
+      ? "/"
+      : isFirstPage
+        ? "/blog"
+        : `/blog?page=${pageNum}`;
+
+  return buildPageMetadata({
+    title: isFirstPage ? "Blog" : `Blog — page ${pageNum}`,
+    description: "Recent posts from the blog.",
+    path: canonicalPath,
+  });
+}
+
+async function shouldCanonicalizeToHome(): Promise<boolean> {
   const active = await getActiveTheme();
+  const postTemplates = active?.impl.templates?.posts;
+  const hasListOrIndex = Boolean(
+    postTemplates?.list ?? postTemplates?.index,
+  );
   const hasFrontTemplate = Boolean(active?.impl.templates?.pages?.front);
-  if (!hasFrontTemplate) return {};
+  if (!hasFrontTemplate || !hasListOrIndex) return false;
 
   const home = await findDocuments<{ slug?: string; template?: string }>(
     "pages",
@@ -44,9 +90,7 @@ export async function generateMetadata(): Promise<Metadata> {
   );
   const homeTemplate =
     typeof home.docs[0]?.template === "string" ? home.docs[0].template : null;
-  if (homeTemplate !== "front") return {};
-
-  return { alternates: { canonical: "/" } };
+  return homeTemplate === "front";
 }
 
 /**
