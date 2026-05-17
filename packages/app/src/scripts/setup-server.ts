@@ -8,7 +8,8 @@
  * chicken-and-egg by booting a tiny `node:http` server that
  * doesn't import any NexPress runtime: it serves one HTML form,
  * accepts the form's POST, writes `.env`, optionally runs
- * `db:generate` + `db:migrate`, then exits.
+ * `db:generate` + `db:migrate`, optionally creates the first
+ * admin / activates a theme / seeds demo content, then exits.
  *
  * Hard guards (the server is otherwise the keys to the kingdom):
  *   - binds 127.0.0.1 only
@@ -23,11 +24,12 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { access, copyFile, writeFile } from "node:fs/promises";
+import { access, copyFile, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { pathToFileURL } from "node:url";
 
 /**
  * `PROJECT_DIR` is the project root — where `package.json` lives.
@@ -137,7 +139,7 @@ if (mode === "non-interactive") {
   });
 
   server.listen(PORT, "127.0.0.1", () => {
-    const url = `http://localhost:${PORT}/?token=${TOKEN}`;
+    const url = `http://localhost:${PORT}/setup?token=${TOKEN}`;
     console.log("");
     console.log("  NexPress setup");
     console.log("  --------------");
@@ -153,6 +155,12 @@ if (mode === "non-interactive") {
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
+  if (req.method === "GET" && url.pathname === "/favicon.ico") {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
   // Token gate. Every endpoint requires `?token=…` matching the
   // one printed at startup. Saves the operator from a stray
   // process on the same machine racing the setup form.
@@ -163,9 +171,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/") {
+  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/setup")) {
     res.setHeader("content-type", "text/html; charset=utf-8");
     res.end(renderHtml());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/system-check") {
+    sendJson(res, 200, { ok: true, checks: await getSystemChecks() });
     return;
   }
 
@@ -194,11 +207,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (validated.body.runMigrate) {
       migrate = await runMigrations(validated.body);
     }
-    sendJson(res, 200, { ok: true, migrate });
+    let firstBoot: { ok: boolean; output: string; skipped?: boolean } | null = null;
+    if (!migrate || migrate.ok) {
+      firstBoot = await completeFirstBoot(validated.body);
+    }
+    sendJson(res, 200, { ok: true, migrate, firstBoot });
     // Quit only on full success — if any step failed, keep the
     // server alive so the operator can fix the form and re-submit
     // (instead of having to restart `pnpm run setup`).
-    const allOk = !migrate || migrate.ok;
+    const allOk = (!migrate || migrate.ok) && (!firstBoot || firstBoot.ok);
     if (allOk) {
       setTimeout(() => {
         console.log("");
@@ -226,6 +243,10 @@ async function saveEnv(body: SetupBody): Promise<void> {
   ];
   if (body.testDatabaseUrl) lines.push(`TEST_DATABASE_URL=${body.testDatabaseUrl}`);
   lines.push(`NP_SECRET=${body.npSecret}`, `SITE_URL=${body.siteUrl}`, "");
+  if (body.siteName) lines.push(`NP_SITE_NAME=${body.siteName}`);
+  if (body.defaultLocale) lines.push(`NP_DEFAULT_LOCALE=${body.defaultLocale}`);
+  if (body.timezone) lines.push(`NP_DEFAULT_TZ=${body.timezone}`);
+  if (body.siteName || body.defaultLocale || body.timezone) lines.push("");
 
   if (body.storage === "s3") {
     lines.push(
@@ -236,6 +257,13 @@ async function saveEnv(body: SetupBody): Promise<void> {
     if (body.s3Endpoint) lines.push(`NP_S3_ENDPOINT=${body.s3Endpoint}`);
   } else {
     lines.push("# NP_STORAGE_ADAPTER=local (default)");
+  }
+
+  if (body.adminEmail || body.adminName || body.adminThemeId) {
+    lines.push("", "# First-boot admin wizard prefill");
+    if (body.adminEmail) lines.push(`NP_ADMIN_EMAIL=${body.adminEmail}`);
+    if (body.adminName) lines.push(`NP_ADMIN_NAME=${body.adminName}`);
+    if (body.adminThemeId) lines.push(`NP_ADMIN_THEME=${body.adminThemeId}`);
   }
 
   // Email — defaults to the Mailpit container in
@@ -419,6 +447,85 @@ async function testDbConnection(
   }
 }
 
+interface SetupSystemCheck {
+  name: string;
+  required: string;
+  version: string;
+  tone: "ok" | "warn" | "err";
+}
+
+async function getSystemChecks(): Promise<SetupSystemCheck[]> {
+  const [pnpm, git, pg] = await Promise.all([
+    probeCommand("pnpm", ["--version"]),
+    probeCommand("git", ["--version"]),
+    resolveInstalledPackageVersion("pg"),
+  ]);
+  const nodeMajor = Number(process.versions.node.split(".")[0] ?? "0");
+  return [
+    {
+      name: "Node.js",
+      required: ">=20.0",
+      version: `v${process.versions.node}`,
+      tone: nodeMajor >= 20 ? "ok" : "err",
+    },
+    {
+      name: "pnpm",
+      required: ">=10.0",
+      version: pnpm.ok ? pnpm.output : "not found",
+      tone: pnpm.ok && Number(pnpm.output.split(".")[0] ?? "0") >= 10 ? "ok" : "err",
+    },
+    {
+      name: "Postgres driver",
+      required: "pg >=8.13",
+      version: pg ?? "not found",
+      tone: pg ? "ok" : "warn",
+    },
+    {
+      name: "Git",
+      required: ">=2.30",
+      version: git.ok ? git.output.replace(/^git version\s+/, "") : "not found",
+      tone: git.ok ? "ok" : "warn",
+    },
+  ];
+}
+
+function probeCommand(
+  command: string,
+  argv: string[],
+): Promise<{ ok: boolean; output: string }> {
+  return new Promise((resolveProbe) => {
+    const child = spawn(command, argv, {
+      cwd: PROJECT_DIR,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+    });
+    const chunks: Buffer[] = [];
+    child.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.on("error", (err) => {
+      resolveProbe({ ok: false, output: err.message });
+    });
+    child.on("close", (code) => {
+      resolveProbe({
+        ok: code === 0,
+        output: Buffer.concat(chunks).toString("utf8").trim(),
+      });
+    });
+  });
+}
+
+async function resolveInstalledPackageVersion(name: string): Promise<string | null> {
+  try {
+    const require = createRequire(resolve(PROJECT_DIR, "package.json"));
+    const pkgPath = require.resolve(`${name}/package.json`);
+    const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { version?: string };
+    return pkg.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: string }> {
   // `pnpm` resolves through PATH; the script is meant to run inside
   // `apps/web` where the package's own `db:generate` / `db:migrate`
@@ -474,6 +581,194 @@ async function runMigrations(body: SetupBody): Promise<{ ok: boolean; output: st
   }
   console.log("[setup] migrations applied");
   return { ok: true, output: gen.output + mig.output };
+}
+
+async function completeFirstBoot(
+  body: SetupBody,
+): Promise<{ ok: boolean; output: string; skipped?: boolean }> {
+  if (!body.adminEmail || !body.adminPassword) {
+    return { ok: true, skipped: true, output: "First admin skipped" };
+  }
+
+  const env = { ...process.env, ...envForChild(body) };
+  if (body.adminEmail) env.NP_ADMIN_EMAIL = body.adminEmail;
+  if (body.adminName) env.NP_ADMIN_NAME = body.adminName;
+  if (body.adminThemeId) env.NP_ADMIN_THEME = body.adminThemeId;
+  if (body.siteName) env.NP_SITE_NAME = body.siteName;
+  if (body.defaultLocale) env.NP_DEFAULT_LOCALE = body.defaultLocale;
+  if (body.timezone) env.NP_DEFAULT_TZ = body.timezone;
+
+  console.log("");
+  console.log("[setup] creating first admin …");
+
+  try {
+    const core = await import("@nexpress/core");
+    const drizzle = await import("drizzle-orm");
+    const db = core.createDbConnection({ connectionString: body.databaseUrl });
+    const rows = await db
+      .select({
+        id: core.npUsers.id,
+        email: core.npUsers.email,
+      })
+      .from(core.npUsers)
+      .where(drizzle.eq(core.npUsers.role, "admin"))
+      .limit(1);
+    const existingAdmin = rows[0];
+
+    if (body.adminThemeId) {
+      const knownThemeIds = await readRegisteredThemeIds(env);
+      if (knownThemeIds.length > 0 && !knownThemeIds.includes(body.adminThemeId)) {
+        return {
+          ok: false,
+          output:
+            `Unknown theme '${body.adminThemeId}'. Registered themes: ` +
+            knownThemeIds.join(", "),
+        };
+      }
+    }
+
+    const admin = existingAdmin
+      ? existingAdmin
+      : (
+          await db
+            .insert(core.npUsers)
+            .values({
+              email: body.adminEmail,
+              password: await core.hashPassword(body.adminPassword),
+              name: body.adminName ?? "Admin",
+              role: "admin",
+            })
+            .returning({ id: core.npUsers.id, email: core.npUsers.email })
+        )[0];
+
+    if (!admin) {
+      return { ok: false, output: "Failed to create first admin." };
+    }
+
+    const now = new Date();
+    const siteSettings = {
+      ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
+      ...(body.timezone ? { timezone: body.timezone } : {}),
+      siteUrl: body.siteUrl,
+    };
+    await db
+      .insert(core.npSites)
+      .values({
+        id: core.NP_DEFAULT_SITE_ID,
+        name: body.siteName ?? "Default site",
+        hostname: null,
+        isDefault: true,
+        settings: siteSettings,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: core.npSites.id,
+        set: {
+          ...(body.siteName ? { name: body.siteName } : {}),
+          settings: siteSettings,
+          updatedAt: now,
+        },
+      });
+
+    await db
+      .insert(core.npSettings)
+      .values({
+        siteId: core.NP_DEFAULT_SITE_ID,
+        key: "site",
+        value: {
+          name: body.siteName ?? "Default site",
+          url: body.siteUrl,
+          ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
+          ...(body.timezone ? { timezone: body.timezone } : {}),
+        },
+        updatedAt: now,
+        updatedBy: admin.id,
+      })
+      .onConflictDoUpdate({
+        target: [core.npSettings.siteId, core.npSettings.key],
+        set: {
+          value: {
+            name: body.siteName ?? "Default site",
+            url: body.siteUrl,
+            ...(body.defaultLocale ? { defaultLocale: body.defaultLocale } : {}),
+            ...(body.timezone ? { timezone: body.timezone } : {}),
+          },
+          updatedAt: now,
+          updatedBy: admin.id,
+        },
+      });
+
+    if (body.adminThemeId) {
+      await db
+        .insert(core.npSettings)
+        .values({
+          siteId: core.NP_DEFAULT_SITE_ID,
+          key: "activeTheme",
+          value: body.adminThemeId,
+          updatedAt: now,
+          updatedBy: admin.id,
+        })
+        .onConflictDoUpdate({
+          target: [core.npSettings.siteId, core.npSettings.key],
+          set: { value: body.adminThemeId, updatedAt: now, updatedBy: admin.id },
+        });
+    }
+
+    console.log(
+      existingAdmin
+        ? `[setup] admin already exists: ${admin.email}`
+        : `[setup] first admin created: ${admin.email}`,
+    );
+
+    if (body.sampleContent) {
+      console.log("[setup] seeding sample content …");
+      const seed = await runChild(["pnpm", "run", "seed:content"], env);
+      if (!seed.ok) return seed;
+    }
+
+    return {
+      ok: true,
+      output: existingAdmin ? "First admin already exists" : "First admin ready",
+    };
+  } catch (err) {
+    return { ok: false, output: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function readRegisteredThemeIds(env: NodeJS.ProcessEnv): Promise<string[]> {
+  const configPath = resolve(PROJECT_DIR, "src/nexpress.config.ts");
+  if (!(await fileExists(configPath))) return [];
+
+  const previous = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    NP_SECRET: process.env.NP_SECRET,
+    SITE_URL: process.env.SITE_URL,
+    NP_STORAGE_ADAPTER: process.env.NP_STORAGE_ADAPTER,
+    NP_S3_BUCKET: process.env.NP_S3_BUCKET,
+    NP_S3_REGION: process.env.NP_S3_REGION,
+    NP_S3_ENDPOINT: process.env.NP_S3_ENDPOINT,
+  };
+  Object.assign(process.env, env);
+  try {
+    const configUrl = pathToFileURL(configPath);
+    configUrl.searchParams.set("setup", String(Date.now()));
+    const mod = (await import(configUrl.href)) as {
+      default?: { themes?: Array<{ manifest?: { id?: string } }> };
+    };
+    return (
+      mod.default?.themes
+        ?.map((theme) => theme.manifest?.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0) ?? []
+    );
+  } catch {
+    return [];
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 function runChild(
@@ -535,6 +830,9 @@ function envForChild(body: SetupBody): Record<string, string> {
     NP_SECRET: body.npSecret,
     SITE_URL: body.siteUrl,
   };
+  if (body.siteName) env.NP_SITE_NAME = body.siteName;
+  if (body.defaultLocale) env.NP_DEFAULT_LOCALE = body.defaultLocale;
+  if (body.timezone) env.NP_DEFAULT_TZ = body.timezone;
   if (body.testDatabaseUrl) env.TEST_DATABASE_URL = body.testDatabaseUrl;
   if (body.storage === "s3") {
     env.NP_STORAGE_ADAPTER = "s3";
@@ -645,6 +943,23 @@ async function runCli(): Promise<void> {
 
     body.runMigrate = await askBool("Run pnpm db:generate + db:migrate now?", true);
 
+    const createAdmin = await askBool(
+      "Create the first admin now? (No = continue at /admin/setup after pnpm dev)",
+      false,
+    );
+    if (createAdmin) {
+      body.adminEmail = await ask("Admin email", process.env.NP_ADMIN_EMAIL);
+      body.adminName = await ask("Admin name", process.env.NP_ADMIN_NAME ?? "Admin");
+      body.adminPassword = await ask("Admin password (min 12 chars)");
+      body.siteName = await ask("Site name", process.env.NP_SITE_NAME ?? "My Site");
+      const theme = await ask(
+        "Theme id (default/magazine/portfolio/docs; blank = app default)",
+        process.env.NP_ADMIN_THEME ?? "",
+      );
+      if (theme) body.adminThemeId = theme;
+      body.sampleContent = await askBool("Add sample content?", true);
+    }
+
     const validated = validateBody(body);
     if ("error" in validated) {
       rl.close();
@@ -665,6 +980,14 @@ async function runCli(): Promise<void> {
         console.error("✗ migrations FAILED — full output above");
         process.exit(1);
       }
+    }
+
+    const firstBoot = await completeFirstBoot(validated.body);
+    if (!firstBoot.ok) {
+      console.error("");
+      console.error("✗ first-admin setup FAILED");
+      console.error(firstBoot.output);
+      process.exit(1);
     }
 
     console.log("");
@@ -706,6 +1029,18 @@ async function runNonInteractive(): Promise<void> {
     if (process.env.NP_S3_ENDPOINT) body.s3Endpoint = process.env.NP_S3_ENDPOINT;
   }
   if (process.env.TEST_DATABASE_URL) body.testDatabaseUrl = process.env.TEST_DATABASE_URL;
+  const shouldCreateAdmin =
+    process.env.NP_SETUP_CREATE_ADMIN === "true" ||
+    Boolean(process.env.NP_ADMIN_EMAIL && process.env.NP_ADMIN_PASSWORD);
+  if (shouldCreateAdmin) {
+    if (process.env.NP_ADMIN_EMAIL) body.adminEmail = process.env.NP_ADMIN_EMAIL;
+    if (process.env.NP_ADMIN_PASSWORD) body.adminPassword = process.env.NP_ADMIN_PASSWORD;
+    if (process.env.NP_ADMIN_NAME) body.adminName = process.env.NP_ADMIN_NAME;
+    if (process.env.NP_ADMIN_THEME) body.adminThemeId = process.env.NP_ADMIN_THEME;
+    if (process.env.NP_SITE_NAME) body.siteName = process.env.NP_SITE_NAME;
+    body.sampleContent =
+      (process.env.NP_SETUP_SAMPLE_CONTENT ?? "true").toLowerCase() !== "false";
+  }
 
   const validated = validateBody(body);
   if ("error" in validated) {
@@ -720,6 +1055,8 @@ async function runNonInteractive(): Promise<void> {
     console.error("  NP_S3_BUCKET / NP_S3_REGION / NP_S3_ENDPOINT");
     console.error("  TEST_DATABASE_URL         (integration tests; copied as-is)");
     console.error("  NP_SETUP_RUN_MIGRATIONS   true | false (default true)");
+    console.error("  NP_ADMIN_EMAIL / NP_ADMIN_PASSWORD / NP_ADMIN_THEME");
+    console.error("  NP_SETUP_CREATE_ADMIN     true to require first-admin creation");
     process.exit(1);
   }
 
@@ -733,6 +1070,14 @@ async function runNonInteractive(): Promise<void> {
       console.error("✗ migrations FAILED — full output above");
       process.exit(1);
     }
+  }
+
+  const firstBoot = await completeFirstBoot(validated.body);
+  if (!firstBoot.ok) {
+    console.error("");
+    console.error("✗ first-admin setup FAILED");
+    console.error(firstBoot.output);
+    process.exit(1);
   }
 
   console.log("");
@@ -750,6 +1095,11 @@ function escapeHtml(s: string): string {
 
 function renderHtml(): string {
   const defaultSecret = generatedSecret();
+  const nexpressMark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <path d="M28 0H64V36L52 24V12H40L28 0Z" fill="#0066FF"></path>
+    <path d="M0 24L24 48V64H0V24Z" fill="#0A0A0A"></path>
+    <path d="M0 0H18L64 46V64H46L0 18V0Z" fill="#0A0A0A"></path>
+  </svg>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -757,230 +1107,666 @@ function renderHtml(): string {
 <title>NexPress · Setup</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
-  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-  p.lead { color: #666; margin-top: 0; }
-  fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
-  legend { font-weight: 600; padding: 0 0.5rem; }
-  label { display: block; font-size: 0.9rem; margin-top: 0.6rem; }
-  label .hint { display: block; font-weight: 400; color: #888; font-size: 0.8rem; margin-top: 0.1rem; }
-  input[type=text], input[type=url], input[type=password] {
-    width: 100%; box-sizing: border-box; padding: 0.5rem 0.7rem; margin-top: 0.25rem;
-    font: inherit; border: 1px solid #bbb; border-radius: 6px; background: white;
+  :root {
+    color-scheme: light dark;
+    --nx-neutral-50:#fafafa; --nx-neutral-100:#f5f5f5; --nx-neutral-200:#e5e5e5;
+    --nx-neutral-300:#d4d4d4; --nx-neutral-400:#a3a3a3; --nx-neutral-500:#737373;
+    --nx-neutral-600:#525252; --nx-neutral-700:#404040; --nx-neutral-800:#262626;
+    --nx-neutral-900:#171717; --nx-neutral-950:#0a0a0a;
+    --nx-brand:#0066ff; --nx-brand-soft:rgb(0 102 255 / .08);
+    --nx-success:#22a764; --nx-warning:#c98710; --nx-danger:#dc2626;
+    --nx-body:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    --nx-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
   }
-  .row { display: flex; gap: 0.75rem; }
-  .row > * { flex: 1; }
-  .radios { display: flex; gap: 1rem; margin-top: 0.5rem; }
-  .radios label { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0; }
-  button {
-    font: inherit; padding: 0.5rem 0.9rem; border-radius: 6px;
-    border: 1px solid #aaa; background: #f5f5f5; cursor: pointer;
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0; font-family: var(--nx-body); color: var(--nx-neutral-950);
+    background:
+      radial-gradient(80% 50% at 50% -10%, rgba(0,102,255,.05), transparent 60%),
+      radial-gradient(60% 40% at 100% 100%, rgba(0,102,255,.025), transparent 60%),
+      #f8f8f7;
+    -webkit-font-smoothing: antialiased;
   }
-  button.primary { background: #1f6feb; color: white; border-color: #1f6feb; }
-  button:disabled { opacity: 0.5; cursor: progress; }
-  .actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-  #status { padding: 0.5rem 0.75rem; border-radius: 6px; margin-top: 0.5rem; font-size: 0.9rem; }
-  #status.ok { background: #ddf4dd; color: #1a6d1a; }
-  #status.err { background: #fde0e0; color: #8b1a1a; }
-  #status.info { background: #eef3fb; color: #345; }
-  .s3-fields[hidden] { display: none; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #111; color: #ddd; }
-    fieldset { border-color: #333; }
-    p.lead, .hint { color: #999; }
-    input { background: #1a1a1a; color: #ddd; border-color: #444; }
-    button { background: #222; color: #ddd; border-color: #444; }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .48; }
+  :focus-visible { outline: 3px solid rgb(0 102 255 / .28); outline-offset: 2px; }
+  .sw-page { min-height: 100vh; display: flex; flex-direction: column; }
+  .sw-top {
+    height: 56px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(0,0,0,.045); background: rgba(248,248,247,.72);
+    backdrop-filter: saturate(140%) blur(10px); position: sticky; top: 0; z-index: 10;
+  }
+  .sw-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+  .sw-mark {
+    width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .sw-mark svg { width: 22px; height: 22px; display: block; }
+  .sw-divider { width: 1px; height: 18px; background: rgba(0,0,0,.08); }
+  .sw-crumb { color: var(--nx-neutral-500); font-size: 12px; font-weight: 500; }
+  .sw-crumb strong { color: var(--nx-neutral-950); }
+  .sw-top-right { display: inline-flex; align-items: center; gap: 12px; color: var(--nx-neutral-500); font-size: 12px; }
+  .sw-pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px;
+    border: 1px solid #e6e6e5; background: #fff; border-radius: 9999px;
+    font-family: var(--nx-mono); font-size: 11px; color: var(--nx-neutral-700);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--nx-success); display: inline-block; }
+  .sw-stage {
+    flex: 1; display: flex; align-items: flex-start; justify-content: center;
+    padding: 36px 24px 60px;
+  }
+  .sw-card {
+    width: 100%; max-width: 940px; max-height: calc(100vh - 116px);
+    background: #fff; border: 1px solid #ececeb;
+    border-radius: 16px; box-shadow:
+      0 1px 0 rgba(0,0,0,.02),
+      0 30px 60px -30px rgba(0,0,0,.08),
+      0 8px 18px -10px rgba(0,0,0,.05);
+    overflow: hidden; display: grid; grid-template-columns: 248px 1fr;
+  }
+  .sw-rail { background: #fbfbfa; border-right: 1px solid #ececeb; padding: 22px 18px 22px 22px; display: flex; flex-direction: column; gap:4px; }
+  .sw-rail-title { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .18em; color: var(--nx-neutral-400); padding: 4px 4px 12px; }
+  .sw-steps { position: relative; display: flex; flex-direction: column; }
+  .sw-steps:before { content:""; position:absolute; left:13px; top:14px; bottom:14px; width:1px; background:#ececeb; }
+  .sw-step {
+    position: relative; display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: center;
+    padding: 7px 4px; border: 0; border-radius: 6px; background: transparent; text-align: left; color: inherit;
+  }
+  .sw-step:hover { background: rgba(0,0,0,.025); }
+  .sw-step-dot {
+    position: relative; width:22px; height:22px; border-radius:50%; background:#fff; border:1px solid #e0e0df;
+    color: var(--nx-neutral-400); display:inline-flex; align-items:center; justify-content:center;
+    font-family: var(--nx-mono); font-size:10.5px; font-weight:600;
+  }
+  .sw-step[data-state="done"] .sw-step-dot { background: var(--nx-brand); border-color: var(--nx-brand); color:#fff; }
+  .sw-step[data-state="active"] .sw-step-dot { background: var(--nx-neutral-950); border-color: var(--nx-neutral-950); color:#fff; box-shadow:0 0 0 4px rgba(10,10,10,.06); }
+  .sw-step-label { font-size:13px; font-weight:500; color:var(--nx-neutral-600); }
+  .sw-step-sub { margin-top:1px; font-size:11px; color:var(--nx-neutral-400); }
+  .sw-step[data-state="active"] .sw-step-label { color:var(--nx-neutral-950); font-weight:600; }
+  .sw-step[data-state="done"] .sw-step-label { color:var(--nx-neutral-700); }
+  .sw-rail-note { margin-top:auto; padding:10px 8px; font:11px/1.5 var(--nx-mono); color:var(--nx-neutral-400); }
+  .sw-main { min-width: 0; min-height:580px; max-height:inherit; display:flex; flex-direction:column; }
+  .sw-head { padding: 28px 32px 8px; display:flex; flex-direction:column; gap:8px; }
+  .sw-eyebrow { font:600 10.5px/1 var(--nx-mono); text-transform:uppercase; letter-spacing:.22em; color:var(--nx-neutral-400); }
+  .sw-h1 { margin:0; font-size:24px; line-height:1.15; font-weight:600; letter-spacing:-.022em; color:var(--nx-neutral-950); }
+  .sw-sub { margin:0; font-size:14px; line-height:1.55; color:var(--nx-neutral-500); max-width:60ch; }
+  .sw-body {
+    flex:1; min-height:0; overflow:auto; padding:18px 32px 24px;
+    display:flex; flex-direction:column; gap:16px;
+  }
+  .step-panel { display:flex; flex-direction:column; gap:16px; }
+  .sw-foot {
+    display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px 14px 28px;
+    border-top:1px solid #ececeb; background:#fafafa;
+  }
+  .sw-foot-meta { display:inline-flex; gap:8px; align-items:center; font:11.5px var(--nx-mono); color:var(--nx-neutral-500); }
+  .sw-actions { display:inline-flex; gap:8px; align-items:center; }
+  .btn {
+    height:32px; padding:0 12px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    border:1px solid transparent; background:var(--nx-neutral-950); color:#fff; font-size:13px; font-weight:500;
+  }
+  .btn-ghost { background:transparent; color:var(--nx-neutral-700); }
+  .btn-outline { background:#fff; color:var(--nx-neutral-800); border-color:#e6e6e5; }
+  .btn-brand { background:var(--nx-brand); color:#fff; }
+  .btn-sm { height:28px; padding:0 10px; font-size:12px; }
+  .svg-icon { width:14px; height:14px; display:inline-block; vertical-align:-2px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .grid-2, .field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .field-stack { display:flex; flex-direction:column; gap:12px; }
+  .welcome-tile, .panel {
+    border:1px solid #ececeb; background:#fafafa; border-radius:10px; padding:12px 14px;
+  }
+  .panel { display:flex; flex-direction:column; gap:12px; }
+  .welcome-tile { display:flex; flex-direction:column; gap:6px; }
+  .welcome-tile b { display:block; font-size:12.5px; font-weight:600; color:var(--nx-neutral-950); }
+  .welcome-tile p { margin:0; font-size:11.5px; color:var(--nx-neutral-500); line-height:1.45; }
+  .icon-tile { width:22px; height:22px; border-radius:6px; background:var(--nx-brand-soft); color:var(--nx-brand); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .icon-tile .svg-icon { width:12px; height:12px; }
+  .env-list, .task-list { border:1px solid #ececeb; border-radius:10px; overflow:hidden; background:#fff; }
+  .env-head { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid #ececeb; background:#fafafa; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.18em; color:var(--nx-neutral-500); }
+  .env-row, .task-row { display:grid; grid-template-columns:22px 1fr auto auto; gap:14px; align-items:center; padding:11px 14px; border-top:1px solid #f4f4f3; }
+  .env-row:first-of-type, .task-row:first-child { border-top:0; }
+  .row-name { font-size:13px; font-weight:500; color:var(--nx-neutral-900); }
+  .row-sub { margin-top:1px; font:11.5px var(--nx-mono); color:var(--nx-neutral-400); }
+  .row-ver, .row-state, .task-time { font:11.5px var(--nx-mono); color:var(--nx-neutral-500); white-space:nowrap; }
+  .tone-ok { color:var(--nx-success); } .tone-warn { color:var(--nx-warning); } .tone-err { color:var(--nx-danger); }
+  .segment { display:inline-flex; border:1px solid #e6e6e5; border-radius:8px; background:#f4f4f3; padding:3px; gap:2px; }
+  .segment button { border:0; background:transparent; padding:5px 12px; border-radius:6px; font-size:12.5px; color:var(--nx-neutral-600); }
+  .segment button[aria-selected="true"] { background:#fff; color:var(--nx-neutral-950); box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .label { font-size:12.5px; font-weight:500; color:var(--nx-neutral-800); }
+  .helper { margin:0; font-size:11.5px; line-height:1.45; color:var(--nx-neutral-500); }
+  .input, .select, .textarea {
+    width:100%; min-width:0; height:32px; border:1px solid #e6e6e5; border-radius:8px; background:#fff;
+    padding:0 10px; color:var(--nx-neutral-950); font-size:13px; line-height:32px;
+  }
+  .textarea { height:auto; min-height:80px; padding:8px 10px; line-height:1.5; resize:vertical; }
+  .input:focus, .select:focus, .textarea:focus { outline:0; border-color:var(--nx-brand); box-shadow:0 0 0 3px rgb(0 102 255 / .18); }
+  .mono { font-family:var(--nx-mono); letter-spacing:0; }
+  .prefixed { display:flex; height:32px; border:1px solid #e6e6e5; border-radius:8px; overflow:hidden; background:#fff; }
+  .prefixed:focus-within { border-color:var(--nx-brand); box-shadow:0 0 0 3px rgb(0 102 255 / .18); }
+  .prefixed span { display:inline-flex; align-items:center; padding:0 10px; border-right:1px solid #ececeb; background:#fafafa; color:var(--nx-neutral-500); font:12px var(--nx-mono); }
+  .prefixed input { border:0; outline:0; flex:1; min-width:0; padding:0 10px; background:transparent; }
+  .input-aff { position:relative; }
+  .input-aff .input { padding-right:40px; }
+  .reveal { position:absolute; right:4px; top:4px; bottom:4px; width:28px; border:0; border-radius:6px; background:transparent; color:var(--nx-neutral-500); }
+  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; padding:0; margin:4px 0 0; }
+  .checklist li { list-style:none; font:11.5px var(--nx-mono); color:var(--nx-neutral-500); }
+  .checklist li[data-ok="true"] { color:var(--nx-success); }
+  .banner { display:grid; grid-template-columns:18px 1fr auto; gap:10px; align-items:start; padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; color:#1e3a8a; border-radius:10px; font-size:13px; }
+  .banner-error { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+  .banner-title { font-weight:600; }
+  .banner-body { margin-top:2px; font:12.5px var(--nx-mono); opacity:.86; }
+  .codepanel { background:#0f0f0e; border:1px solid #1d1d1c; border-radius:10px; overflow:hidden; }
+  .code-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:#161615; border-bottom:1px solid #1d1d1c; color:#c8c8c6; font:11px var(--nx-mono); }
+  .code-actions { display:inline-flex; gap:4px; }
+  .code-btn { border:1px solid transparent; background:transparent; color:#9e9e9c; padding:4px 8px; border-radius:6px; font:11px var(--nx-mono); }
+  .code-btn:hover { background:rgba(255,255,255,.05); color:#fff; }
+  .code-body { padding:14px 16px; overflow:auto; white-space:pre; color:#e6e6e5; font:12px/1.65 var(--nx-mono); }
+  .code-body .k { color:#9e9e9c; } .code-body .s { color:#ffd479; } .code-body .c { color:#6e6e6c; font-style:italic; } .code-body .v { color:#b3e1a4; } .code-body .h { color:#6f8df0; } .code-body .eq { color:#555; }
+  .progress { display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; padding:12px 16px; border:1px solid #ececeb; border-radius:10px; background:#fafafa; }
+  .progress-label { font:12px var(--nx-mono); color:var(--nx-neutral-600); }
+  .bar { height:4px; background:#ececeb; border-radius:999px; overflow:hidden; margin-top:8px; }
+  .fill { height:100%; width:0; background:var(--nx-brand); border-radius:999px; transition:width 300ms ease; }
+  .task-icon { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; border:1px dashed #d8d8d6; font-size:11px; }
+  .task-row[data-state="done"] .task-icon { background:var(--nx-success); color:#fff; border-color:var(--nx-success); }
+  .task-row[data-state="error"] .task-icon { background:var(--nx-danger); color:#fff; border-color:var(--nx-danger); }
+  .task-row[data-state="running"] .task-icon { border:2px solid #d8d8d6; border-top-color:var(--nx-brand); animation:spin 700ms linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .log { height:200px; overflow:auto; background:#0f0f0e; border:1px solid #1d1d1c; border-radius:10px; padding:12px 14px; font:11.5px/1.65 var(--nx-mono); color:#d6d6d4; }
+  .log-row { display:grid; grid-template-columns:56px 24px 1fr; gap:8px; }
+  .log-time, .log-lvl { color:#6e6e6c; } .log-info .log-lvl { color:#6f8df0; } .log-ok .log-lvl { color:#79c87f; } .log-warn .log-lvl { color:#e5b35e; } .log-err .log-lvl { color:#e57b7b; }
+  .done { display:flex; flex-direction:column; gap:22px; align-items:center; padding:18px 8px 8px; }
+  .seal { width:64px; height:64px; border-radius:50%; background:var(--nx-brand-soft); color:var(--nx-brand); display:inline-flex; align-items:center; justify-content:center; font-size:28px; font-weight:700; }
+  .seal .svg-icon { width:28px; height:28px; }
+  .done-copy { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; }
+  .done h2 { margin:0; font-size:26px; letter-spacing:-.022em; text-align:center; }
+  .done p { margin:0; max-width:50ch; text-align:center; font-size:14px; line-height:1.55; color:var(--nx-neutral-500); }
+  .nextcards { width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .nextcard { display:flex; flex-direction:column; gap:6px; padding:14px; border:1px solid #ececeb; border-radius:10px; background:#fff; text-align:left; }
+  .nextcard-top { display:flex; align-items:center; justify-content:space-between; }
+  .nextcard-ico { width:28px; height:28px; border-radius:8px; background:var(--nx-brand-soft); color:var(--nx-brand); display:inline-flex; align-items:center; justify-content:center; }
+  .nextcard b { font-size:13px; } .nextcard span { font-size:11.5px; color:var(--nx-neutral-500); line-height:1.45; }
+  .hidden { display:none !important; }
+  @media (max-width: 820px) {
+    .sw-top { padding:0 16px; } .sw-top-right > span:last-child { display:none; }
+    .sw-stage { padding:18px 12px 36px; }
+    .sw-card { grid-template-columns:1fr; height:auto; max-height:none; }
+    .sw-rail { border-right:0; border-bottom:1px solid #ececeb; }
+    .sw-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+    .sw-steps:before, .sw-step-sub, .sw-rail-note { display:none; }
+    .sw-step { grid-template-columns:22px; justify-content:center; }
+    .sw-step-label { display:none; }
+    .sw-head, .sw-body { padding-left:18px; padding-right:18px; }
+    .grid-3, .grid-2, .field-row, .nextcards { grid-template-columns:1fr; }
+    .sw-foot { align-items:flex-start; flex-direction:column; }
+    .sw-actions { width:100%; justify-content:flex-end; }
   }
 </style>
 </head>
 <body>
-<h1>NexPress setup</h1>
-<p class="lead">One-shot wizard to write <code>.env</code>. The page closes itself when you finish.</p>
-<p class="hint" style="margin-top: 0.35rem;">
-  Saves to <code>${escapeHtml(ENV_PATH)}</code>. Hidden in some editors when <code>.env</code> is gitignored.
-</p>
-
-<form id="form">
-  <fieldset>
-    <legend>Database</legend>
-    <label>
-      <span>DATABASE_URL</span>
-      <span class="hint">Postgres connection string. Default uses your project name as the DB: <code>${DEFAULT_DATABASE_URL}</code>. Create the DB first with <code>psql -c "CREATE DATABASE ${DEFAULT_DB_NAME};"</code> on your Postgres.</span>
-      <input id="databaseUrl" name="databaseUrl" type="text" required spellcheck="false"
-             value="${DEFAULT_DATABASE_URL}" />
-    </label>
-    <label>
-      <span>TEST_DATABASE_URL <em>(optional)</em></span>
-      <span class="hint">Used by <code>pnpm test:integration</code>. Leave blank if you don't run integration tests.</span>
-      <input id="testDatabaseUrl" name="testDatabaseUrl" type="text" spellcheck="false"
-             value="${DEFAULT_TEST_DATABASE_URL}" />
-    </label>
-    <div class="row" style="margin-top: 0.7rem; align-items: center;">
-      <button type="button" id="testBtn">Test connection</button>
-      <span id="testStatus"></span>
+<div class="sw-page">
+  <header class="sw-top">
+    <div class="sw-brand">
+      <span class="sw-mark">${nexpressMark}</span><span>NexPress</span><span class="sw-divider"></span>
+      <span class="sw-crumb"><strong>Setup</strong> · first run</span>
     </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>Secrets &amp; URLs</legend>
-    <label>
-      <span>NP_SECRET</span>
-      <span class="hint">JWT signing key. We generated 32 random bytes; rotate freely. Anything ≥32 chars works.</span>
-      <input id="npSecret" name="npSecret" type="text" required spellcheck="false" value="${defaultSecret}" />
-    </label>
-    <label>
-      <span>SITE_URL</span>
-      <span class="hint">Public origin. Used for og:url, password-reset links, OpenAPI server entry.</span>
-      <input id="siteUrl" name="siteUrl" type="url" required value="http://localhost:3000" />
-    </label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Storage</legend>
-    <div class="radios">
-      <label><input type="radio" name="storage" value="local" checked /> Local filesystem</label>
-      <label><input type="radio" name="storage" value="s3" /> S3 / R2 / MinIO</label>
+    <div class="sw-top-right">
+      <span class="sw-pill"><span class="dot"></span> localhost:${PORT}/setup</span>
+      <span class="mono">v0.1.0 · pnpm run setup</span>
     </div>
-    <div class="s3-fields" hidden>
-      <label>
-        <span>Bucket</span>
-        <input id="s3Bucket" name="s3Bucket" type="text" />
-      </label>
-      <label>
-        <span>Region</span>
-        <input id="s3Region" name="s3Region" type="text" value="us-east-1" />
-      </label>
-      <label>
-        <span>Endpoint <em>(R2 / MinIO)</em></span>
-        <span class="hint">Leave blank for AWS S3.</span>
-        <input id="s3Endpoint" name="s3Endpoint" type="text" />
-      </label>
+  </header>
+  <main class="sw-stage">
+    <div class="sw-card">
+      <aside class="sw-rail">
+        <div class="sw-rail-title">Setup</div>
+        <div class="sw-steps" id="stepRail"></div>
+        <div class="sw-rail-note">You can rerun setup safely.<br />Leave admin blank to continue later in /admin/setup.</div>
+      </aside>
+      <section class="sw-main">
+        <div class="sw-head">
+          <span class="sw-eyebrow" id="eyebrow"></span>
+          <h1 class="sw-h1" id="title"></h1>
+          <p class="sw-sub" id="subtitle"></p>
+        </div>
+        <div class="sw-body">
+          <section class="step-panel" data-step="welcome">
+            <div class="grid-3">
+              <div class="welcome-tile"><span class="icon-tile" data-icon="shield"></span><b>Server-first</b><p>Next.js RSC by default. Public bundles stay slim, admin stays separate.</p></div>
+              <div class="welcome-tile"><span class="icon-tile" data-icon="layers"></span><b>Codegen-driven</b><p>Collections become typed Drizzle tables and admin screens.</p></div>
+              <div class="welcome-tile"><span class="icon-tile" data-icon="key"></span><b>Local stays local</b><p>Secrets and database checks stay on this machine.</p></div>
+            </div>
+            <div class="env-list">
+              <div class="env-head"><span>Detected environment</span><span class="mono" id="scanTime"></span></div>
+              <div id="systemRows"></div>
+            </div>
+          </section>
+
+          <section class="step-panel hidden" data-step="database">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div class="segment">
+                <button type="button" id="dbModeUrl" aria-selected="true">Connection URL</button>
+                <button type="button" id="dbModeFields" aria-selected="false">Discrete fields</button>
+              </div>
+              <span class="sw-pill">Postgres 14+ required</span>
+            </div>
+            <div id="dbUrlPane">
+              <div class="field">
+                <label class="label" for="databaseUrl">Connection string</label>
+                <input class="input mono" id="databaseUrl" value="${escapeHtml(DEFAULT_DATABASE_URL)}" spellcheck="false" />
+                <p class="helper">Default uses your project name as the DB. Create it first if Postgres is already running.</p>
+              </div>
+            </div>
+            <div id="dbFieldsPane" class="field-stack hidden">
+              <div class="field-row">
+                <div class="field"><label class="label" for="dbHost">Host</label><input class="input" id="dbHost" value="localhost" /></div>
+                <div class="field"><label class="label" for="dbPort">Port</label><input class="input" id="dbPort" value="5433" /></div>
+              </div>
+              <div class="field-row">
+                <div class="field"><label class="label" for="dbName">Database</label><input class="input" id="dbName" value="${escapeHtml(DEFAULT_DB_NAME)}" /></div>
+                <div class="field"><label class="label" for="dbUser">User</label><input class="input" id="dbUser" value="nexpress" /></div>
+              </div>
+              <div class="field"><label class="label" for="dbPass">Password</label><input class="input" id="dbPass" type="password" value="nexpress" /></div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn btn-outline" id="testBtn">Test connection</button>
+              <span id="testStatus" class="helper"></span>
+            </div>
+            <details>
+              <summary style="cursor:pointer;font-size:12.5px;color:var(--nx-neutral-600)">No Postgres yet? Start a local container.</summary>
+              <div class="codepanel" style="margin-top:8px"><div class="code-head"><span>docker compose up postgres</span><span>shell</span></div><div class="code-body"><span class="c"># from the nexpress project root</span>
+<span class="h">$</span> docker compose -f docker/docker-compose.yml up <span class="v">-d</span></div></div>
+            </details>
+          </section>
+
+          <section class="step-panel hidden" data-step="admin">
+            <div class="banner"><span data-icon="key"></span><div><div class="banner-title">Optional first-admin shortcut</div><div class="banner-body">Skip this step and NexPress will continue at /admin/setup after pnpm dev.</div></div></div>
+            <div class="field-row">
+              <div class="field"><label class="label" for="adminEmail">Email</label><input class="input" id="adminEmail" type="email" autocomplete="username" placeholder="admin@example.com" /></div>
+              <div class="field"><label class="label" for="adminName">Display name</label><input class="input" id="adminName" autocomplete="name" placeholder="Admin" /></div>
+            </div>
+            <div class="field">
+              <label class="label" for="adminPassword">Password</label>
+              <div class="input-aff"><input class="input" id="adminPassword" type="password" autocomplete="new-password" /><button type="button" class="reveal" id="revealPassword">view</button></div>
+              <p class="helper">Minimum 12 characters. Never written to .env.</p>
+            </div>
+            <ul class="checklist" id="passwordChecks"></ul>
+          </section>
+
+          <section class="step-panel hidden" data-step="site">
+            <div class="field"><label class="label" for="siteName">Site name</label><input class="input" id="siteName" value="My Site" /></div>
+            <div class="field"><label class="label" for="siteUrlHost">Public URL</label><div class="prefixed"><span>http://</span><input id="siteUrlHost" value="localhost:3000" /></div><p class="helper">Used for password-reset links, canonical URLs, and OpenAPI server entries.</p></div>
+            <div class="field-row">
+              <div class="field"><label class="label" for="locale">Default locale</label><select class="select" id="locale"><option>en-US</option><option>ko-KR</option><option>ja-JP</option><option>de-DE</option><option>fr-FR</option></select></div>
+              <div class="field"><label class="label" for="timezone">Time zone</label><select class="select" id="timezone"><option>UTC</option><option>Asia/Seoul</option><option>America/Los_Angeles</option><option>America/New_York</option><option>Europe/London</option></select></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label class="label" for="adminThemeId">Starter theme</label><select class="select" id="adminThemeId"><option value="">App default</option><option value="default">Default</option><option value="magazine">Magazine</option><option value="portfolio">Portfolio</option><option value="docs">Docs</option></select></div>
+              <div class="field"><label class="label" for="sampleContent">Demo content</label><label class="panel" style="display:flex;gap:10px;align-items:flex-start"><input id="sampleContent" type="checkbox" checked style="margin-top:2px" /><span><b style="display:block;font-size:13px">Add sample content</b><span class="helper">Runs only when admin email and password are present.</span></span></label></div>
+            </div>
+          </section>
+
+          <section class="step-panel hidden" data-step="env">
+            <div class="codepanel">
+              <div class="code-head"><span>.env · writes to ${escapeHtml(ENV_PATH)}</span><span class="code-actions"><button type="button" class="code-btn" id="regenSecret">Regenerate secret</button></span></div>
+              <pre class="code-body" id="envPreview"></pre>
+            </div>
+            <div class="panel">
+              <div class="field-row">
+                <div class="field"><label class="label" for="testDatabaseUrl">TEST_DATABASE_URL</label><input class="input mono" id="testDatabaseUrl" value="${escapeHtml(DEFAULT_TEST_DATABASE_URL)}" /></div>
+                <div class="field"><label class="label" for="storage">Storage</label><select class="select" id="storage"><option value="local">Local filesystem</option><option value="s3">S3 / R2 / MinIO</option></select></div>
+              </div>
+              <div id="s3Fields" class="field-row hidden" style="margin-top:12px">
+                <div class="field"><label class="label" for="s3Bucket">Bucket</label><input class="input" id="s3Bucket" /></div>
+                <div class="field"><label class="label" for="s3Region">Region</label><input class="input" id="s3Region" value="us-east-1" /></div>
+                <div class="field"><label class="label" for="s3Endpoint">Endpoint</label><input class="input" id="s3Endpoint" placeholder="https://..." /></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="step-panel hidden" data-step="migrate">
+            <div id="runError" class="banner banner-error hidden"><span>!</span><div><div class="banner-title">Setup failed</div><div class="banner-body" id="runErrorText"></div></div><button type="button" class="btn btn-outline btn-sm" id="retryBtn">Retry</button></div>
+            <div class="progress"><div><div class="progress-label" id="progressLabel">Ready to run · tasks queued</div><div class="bar"><div class="fill" id="progressFill"></div></div></div><div class="mono" id="progressPct"><strong>0</strong>%</div></div>
+            <div class="task-list" id="taskList"></div>
+            <div><div class="sw-eyebrow" style="margin-bottom:8px">Log</div><div class="log" id="runLog"></div></div>
+          </section>
+
+          <section class="step-panel hidden" data-step="done">
+            <div class="done">
+              <div class="seal" data-icon="check"></div>
+              <div class="done-copy"><h2>You're set.</h2><p id="doneText">NexPress is ready on this machine.</p></div>
+              <div class="nextcards">
+                <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="terminal"></span><span class="mono">next</span></div><b>Run the dev server</b><span class="mono">pnpm dev</span></div>
+                <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="logo"></span><span class="mono">then</span></div><b>Open the admin</b><span class="mono">http://localhost:3000/admin</span></div>
+                <div class="nextcard"><div class="nextcard-top"><span class="nextcard-ico" data-icon="layers"></span><span class="mono">edit</span></div><b>Edit collections</b><span class="mono">src/nexpress.config.ts</span></div>
+              </div>
+              <div class="codepanel" style="width:100%"><div class="code-head"><span>terminal · pnpm run setup</span><span style="color:#79c87f">exited 0</span></div><div class="code-body" id="doneLog"></div></div>
+            </div>
+          </section>
+        </div>
+        <div class="sw-foot">
+          <div class="sw-foot-meta"><span>step <strong id="stepNum" style="color:var(--nx-neutral-950)">01</strong>/07</span><span>·</span><span id="stepSlug">welcome</span></div>
+          <div class="sw-actions"><button type="button" class="btn btn-ghost hidden" id="skipBtn">Skip</button><button type="button" class="btn btn-ghost" id="backBtn">Back</button><button type="button" class="btn" id="primaryBtn">Continue</button></div>
+        </div>
+      </section>
     </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>After save</legend>
-    <label style="display: flex; gap: 0.5rem; align-items: flex-start;">
-      <input id="runMigrate" type="checkbox" checked style="margin-top: 0.3rem;" />
-      <span>
-        <span>Run <code>pnpm db:generate</code> + <code>pnpm db:migrate</code> automatically</span>
-        <span class="hint">Skip if you'd rather run them yourself afterward.</span>
-      </span>
-    </label>
-  </fieldset>
-
-  <div id="status"></div>
-  <div class="actions">
-    <button type="submit" class="primary" id="saveBtn">Save and finish</button>
-  </div>
-  <p class="hint" style="margin-top: 0.4rem;">
-    "Save and finish" writes <code>.env</code> and, if checked, runs migrations, then exits.
-  </p>
-</form>
+  </main>
+</div>
 
 <script>
   const TOKEN = ${JSON.stringify(TOKEN)};
   const SETUP_ENV_PATH = ${JSON.stringify(ENV_PATH)};
   const SETUP_PROJECT_DIR = ${JSON.stringify(PROJECT_DIR)};
+  const DEFAULT_SECRET = ${JSON.stringify(defaultSecret)};
+  const STEPS = [
+    ["welcome","Welcome","System check"],
+    ["database","Database","Postgres connection"],
+    ["admin","Admin","First user"],
+    ["site","Site","Name and meta"],
+    ["env","Environment",".env preview"],
+    ["migrate","Initialize","Migrate and seed"],
+    ["done","Done","Next steps"],
+  ];
+  const TITLES = {
+    welcome:["STEP 01 / 07 · WELCOME","Set up NexPress","Three minutes from clone to /admin. We'll check your environment, connect to Postgres, and prepare first-boot defaults."],
+    database:["STEP 02 / 07 · DATABASE","Connect to Postgres","Use the local default, paste a connection string, or fill the fields by hand."],
+    admin:["STEP 03 / 07 · ADMIN","Create the first admin","Optional here. If you skip it, /admin/setup will continue the account and theme flow after pnpm dev."],
+    site:["STEP 04 / 07 · SITE","Name your site","Choose site metadata, the initial theme, and whether to seed demo content."],
+    env:["STEP 05 / 07 · ENVIRONMENT","Review .env","NexPress will write this file to your project root. NP_SECRET is regenerated on demand and never committed."],
+    migrate:["STEP 06 / 07 · INITIALIZE","Initialize the database","Write .env, apply migrations, optionally bootstrap the admin user, and seed starter content."],
+    done:["STEP 07 / 07 · DONE","You're set.",""],
+  };
+  const TASKS = [
+    ["env","Write .env", SETUP_ENV_PATH],
+    ["generate","Generate schema", "pnpm db:generate"],
+    ["migrate","Apply migrations", "scripts/run-migrations.ts"],
+    ["admin","Bootstrap admin user", "optional"],
+    ["theme","Activate starter theme", "optional"],
+    ["seed","Seed demo content", "optional"],
+  ];
   const $ = (id) => document.getElementById(id);
-  const status = $("status");
-  const testStatus = $("testStatus");
+  let step = 0;
+  let secret = DEFAULT_SECRET;
+  let dbMode = "url";
+  let dbOk = false;
+  let setupComplete = false;
+  let runState = "idle";
+  let taskTimer = null;
+  let taskCursor = 0;
+  let lastResult = null;
 
-  function setStatus(msg, kind) {
-    status.textContent = msg;
-    status.className = kind || "";
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[ch]));
   }
-
-  document.querySelectorAll("input[name=storage]").forEach((el) => {
-    el.addEventListener("change", () => {
-      const isS3 = document.querySelector("input[name=storage]:checked").value === "s3";
-      document.querySelector(".s3-fields").hidden = !isS3;
+  const ICONS = {
+    check: '<svg class="svg-icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+    shield: '<svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
+    layers: '<svg class="svg-icon" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>',
+    key: '<svg class="svg-icon" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m12 11 8-8"/><path d="m17 6 3 3"/><path d="m15 8 3 3"/></svg>',
+    terminal: '<svg class="svg-icon" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>',
+    logo: '<svg class="svg-icon" viewBox="0 0 64 64"><path d="M28 0H64V36L52 24V12H40L28 0Z" fill="#0066FF"></path><path d="M0 24L24 48V64H0V24Z"></path><path d="M0 0H18L64 46V64H46L0 18V0Z"></path></svg>',
+  };
+  function hydrateIcons(root = document) {
+    root.querySelectorAll("[data-icon]").forEach((el) => {
+      el.innerHTML = ICONS[el.dataset.icon] || "";
     });
-  });
-
-  $("testBtn").addEventListener("click", async () => {
-    testStatus.textContent = "Testing…";
-    testStatus.className = "info";
-    try {
-      const res = await fetch("/test-db?token=" + TOKEN, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: $("databaseUrl").value }),
-      });
-      const body = await res.json();
-      testStatus.textContent = body.message || (body.ok ? "OK" : "Failed");
-      testStatus.className = body.ok ? "ok" : "err";
-      testStatus.style.padding = "0.25rem 0.6rem";
-      testStatus.style.borderRadius = "6px";
-      testStatus.style.background = body.ok ? "#ddf4dd" : "#fde0e0";
-      testStatus.style.color = body.ok ? "#1a6d1a" : "#8b1a1a";
-    } catch (err) {
-      testStatus.textContent = String(err);
-      testStatus.className = "err";
-    }
-  });
-
-  $("form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    $("saveBtn").disabled = true;
-    setStatus("Saving .env…", "info");
-    const storage = document.querySelector("input[name=storage]:checked").value;
-    const payload = {
-      databaseUrl: $("databaseUrl").value.trim(),
+  }
+  function maxAllowedStep() {
+    if (!dbOk) return 1;
+    if (!setupComplete) return 5;
+    return STEPS.length - 1;
+  }
+  function iconForTone(tone) {
+    if (tone === "ok") return ICONS.check;
+    if (tone === "err") return "!";
+    return "i";
+  }
+  function makeSecret() {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let out = "";
+    for (let i = 0; i < 64; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  }
+  function siteUrl() {
+    const raw = $("siteUrlHost").value.trim() || "localhost:3000";
+    return /^https?:\\/\\//.test(raw) ? raw : "http://" + raw;
+  }
+  function databaseUrl() {
+    if (dbMode === "url") return $("databaseUrl").value.trim();
+    const user = encodeURIComponent($("dbUser").value.trim() || "nexpress");
+    const pass = encodeURIComponent($("dbPass").value || "nexpress");
+    const host = $("dbHost").value.trim() || "localhost";
+    const port = $("dbPort").value.trim() || "5433";
+    const name = $("dbName").value.trim() || ${JSON.stringify(DEFAULT_DB_NAME)};
+    return "postgres://" + user + ":" + pass + "@" + host + ":" + port + "/" + name;
+  }
+  function payload() {
+    const storage = $("storage").value;
+    return {
+      databaseUrl: databaseUrl(),
       testDatabaseUrl: $("testDatabaseUrl").value.trim(),
-      npSecret: $("npSecret").value.trim(),
-      siteUrl: $("siteUrl").value.trim(),
+      npSecret: secret,
+      siteUrl: siteUrl(),
       storage,
       s3Bucket: storage === "s3" ? $("s3Bucket").value.trim() : undefined,
       s3Region: storage === "s3" ? $("s3Region").value.trim() : undefined,
       s3Endpoint: storage === "s3" ? $("s3Endpoint").value.trim() : undefined,
-      runMigrate: $("runMigrate").checked,
+      runMigrate: true,
+      adminEmail: $("adminEmail").value.trim(),
+      adminPassword: $("adminPassword").value,
+      adminName: $("adminName").value.trim(),
+      adminThemeId: $("adminThemeId").value,
+      siteName: $("siteName").value.trim(),
+      defaultLocale: $("locale").value,
+      timezone: $("timezone").value,
+      sampleContent: $("sampleContent").checked,
     };
+  }
+  function renderRail() {
+    $("stepRail").innerHTML = STEPS.map((s, i) => {
+      const state = i < step ? "done" : i === step ? "active" : "todo";
+      const dot = state === "done" ? ICONS.check : String(i + 1).padStart(2, "0");
+      return '<button type="button" class="sw-step" data-index="' + i + '" data-state="' + state + '"><span class="sw-step-dot">' + dot + '</span><span><div class="sw-step-label">' + s[1] + '</div><div class="sw-step-sub">' + s[2] + '</div></span></button>';
+    }).join("");
+    document.querySelectorAll(".sw-step").forEach((btn) => btn.addEventListener("click", () => goto(Number(btn.dataset.index))));
+  }
+  function goto(next) {
+    step = Math.max(0, Math.min(maxAllowedStep(), next));
+    const id = STEPS[step][0];
+    document.querySelectorAll(".step-panel").forEach((el) => el.classList.toggle("hidden", el.dataset.step !== id));
+    renderRail();
+    $("eyebrow").textContent = TITLES[id][0];
+    $("title").textContent = TITLES[id][1];
+    $("subtitle").textContent = TITLES[id][2];
+    $("stepNum").textContent = String(step + 1).padStart(2, "0");
+    $("stepSlug").textContent = STEPS[step][1].toLowerCase();
+    $("backBtn").disabled = step === 0 || runState === "running";
+    $("skipBtn").classList.toggle("hidden", !(id === "admin" || id === "site"));
+    $("skipBtn").disabled = runState === "running";
+    $("primaryBtn").disabled = runState === "running";
+    $("primaryBtn").className = "btn" + (id === "migrate" ? " btn-brand" : "");
+    $("primaryBtn").textContent = id === "database" && !dbOk ? "Test connection" : id === "migrate" ? (runState === "error" ? "Retry" : "Run setup") : id === "done" ? "Finish" : "Continue";
+    if (id === "env") renderEnv();
+    if (id === "migrate") renderTasks();
+    hydrateIcons();
+  }
+  function setDbMode(mode) {
+    dbMode = mode;
+    $("dbModeUrl").setAttribute("aria-selected", String(mode === "url"));
+    $("dbModeFields").setAttribute("aria-selected", String(mode === "fields"));
+    $("dbUrlPane").classList.toggle("hidden", mode !== "url");
+    $("dbFieldsPane").classList.toggle("hidden", mode !== "fields");
+    renderEnv();
+  }
+  function renderEnv() {
+    const p = payload();
+    const rows = [
+      ["comment", "Generated by pnpm run setup"],
+      ["blank", ""],
+      ["kv", "DATABASE_URL", p.databaseUrl],
+      ...(p.testDatabaseUrl ? [["kv", "TEST_DATABASE_URL", p.testDatabaseUrl]] : []),
+      ["kv", "NP_SECRET", p.npSecret],
+      ["kv", "SITE_URL", p.siteUrl],
+      ["kv", "NP_SITE_NAME", p.siteName || "My Site"],
+      ["kv", "NP_DEFAULT_LOCALE", $("locale").value],
+      ["kv", "NP_DEFAULT_TZ", $("timezone").value],
+      ...(p.storage === "s3"
+        ? [["kv", "NP_STORAGE_ADAPTER", "s3"], ["kv", "NP_S3_BUCKET", p.s3Bucket || ""], ["kv", "NP_S3_REGION", p.s3Region || ""], ...(p.s3Endpoint ? [["kv", "NP_S3_ENDPOINT", p.s3Endpoint]] : [])]
+        : [["comment", "NP_STORAGE_ADAPTER=local (default)"]]),
+      ...(p.adminEmail ? [["blank", ""], ["comment", "first-boot admin prefill"], ["kv", "NP_ADMIN_EMAIL", p.adminEmail], ...(p.adminName ? [["kv", "NP_ADMIN_NAME", p.adminName]] : []), ...(p.adminThemeId ? [["kv", "NP_ADMIN_THEME", p.adminThemeId]] : [])] : []),
+      ["blank", ""],
+      ["comment", "Email defaults to Mailpit on localhost:1025"],
+    ];
+    $("envPreview").innerHTML = rows.map((row) => {
+      if (row[0] === "blank") return "";
+      if (row[0] === "comment") return '<span class="c"># ' + esc(row[1]) + '</span>';
+      return '<span class="k">' + esc(row[1]) + '</span><span class="eq">=</span><span class="s">' + esc(row[2]) + '</span>';
+    }).join("\\n");
+  }
+  async function loadSystemChecks() {
+    $("scanTime").textContent = "scanning...";
     try {
-      const res = await fetch("/save?token=" + TOKEN, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch("/system-check?token=" + TOKEN);
       const body = await res.json();
-      if (!body.ok) {
-        setStatus(body.message || "Save failed", "err");
-        $("saveBtn").disabled = false;
-        return;
-      }
-      const failed =
-        body.migrate && !body.migrate.ok && { label: "migrations", output: body.migrate.output };
-      if (failed) {
-        // Pre-flight check (DB already populated) returns a
-        // multi-line actionable message in 'output'. Other
-        // failures (drizzle-kit silent exit etc.) have only a
-        // short footer line — for those we point the operator
-        // at their terminal where drizzle-kit's real output is.
-        const raw = (failed.output || "").trim();
-        const isPreflight = raw.includes("already contains") && raw.includes("NexPress tables");
-        const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-        const preflightBox = isPreflight
-          ? "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;margin-top:.5rem;\\">" + escape(raw) + "</pre>"
-          : "<br>The migration output is in the terminal that's running \\\`pnpm run setup\\\` — switch back to that window to see what drizzle-kit reported." +
-            "<br><br>To re-run the migration directly:" +
-            "<pre style=\\"white-space:pre-wrap;background:#111;color:#eee;padding:.7rem;border-radius:6px;font-size:.8rem;margin-top:.3rem;\\">cd " +
-            escape(SETUP_PROJECT_DIR) + " && pnpm exec drizzle-kit migrate</pre>";
-        status.innerHTML =
-          ".env written, but <strong>" + failed.label + " FAILED</strong>." + preflightBox;
-        status.className = "err";
-        $("saveBtn").disabled = false;
-        return;
-      }
-      const parts = [".env written to " + SETUP_ENV_PATH + "."];
-      if (body.migrate) parts.push("Migrations applied.");
-      parts.push("You can close this tab and run \\\`pnpm dev\\\`.");
-      setStatus(parts.join(" "), "ok");
+      $("scanTime").textContent = "scanned · " + new Date().toISOString().replace("T", " ").slice(0, 19);
+      $("systemRows").innerHTML = body.checks.map((row) => '<div class="env-row"><span class="row-state tone-' + row.tone + '">' + iconForTone(row.tone) + '</span><div><div class="row-name">' + esc(row.name) + '</div><div class="row-sub">requires ' + esc(row.required) + '</div></div><span class="row-ver">' + esc(row.version) + '</span><span class="row-state tone-' + row.tone + '">' + row.tone.toUpperCase() + '</span></div>').join("");
     } catch (err) {
-      setStatus(String(err), "err");
-      $("saveBtn").disabled = false;
+      $("scanTime").textContent = "scan failed";
+      $("systemRows").innerHTML = '<div class="env-row"><span class="row-state tone-err">!</span><div><div class="row-name">System check unavailable</div><div class="row-sub">' + esc(err) + '</div></div><span></span><span class="row-state tone-err">ERR</span></div>';
+    }
+  }
+  function updatePasswordChecks() {
+    const pass = $("adminPassword").value;
+    const checks = [
+      ["at least 12 characters", pass.length >= 12],
+      ["upper and lowercase", /[A-Z]/.test(pass) && /[a-z]/.test(pass)],
+      ["includes a number", /[0-9]/.test(pass)],
+      ["includes a symbol", /[^A-Za-z0-9]/.test(pass)],
+    ];
+    $("passwordChecks").innerHTML = checks.map((c) => '<li data-ok="' + c[1] + '">✓ ' + c[0] + '</li>').join("");
+  }
+  function logRow(level, msg) {
+    const now = (performance.now() / 1000).toFixed(3) + "s";
+    $("runLog").innerHTML += '<div class="log-row log-' + level + '"><span class="log-time">' + now + '</span><span class="log-lvl">' + level + '</span><span>' + esc(msg) + '</span></div>';
+    $("runLog").scrollTop = $("runLog").scrollHeight;
+  }
+  function taskState(i) {
+    if (runState === "success") return "done";
+    if (runState === "error") return i < taskCursor ? "done" : i === taskCursor ? "error" : "pending";
+    if (runState === "running") return i < taskCursor ? "done" : i === taskCursor ? "running" : "pending";
+    return "pending";
+  }
+  function renderTasks() {
+    const done = runState === "success" ? TASKS.length : taskCursor;
+    const pct = runState === "idle" ? 0 : Math.round((done / TASKS.length) * 100);
+    $("progressLabel").innerHTML = runState === "idle" ? "Ready to run · " + TASKS.length + " tasks queued" : runState === "running" ? "Running · task <strong>" + Math.min(done + 1, TASKS.length) + "</strong> of " + TASKS.length : runState === "error" ? "Stopped · " + done + " of " + TASKS.length + " complete" : "Complete · " + TASKS.length + " of " + TASKS.length + " tasks";
+    $("progressFill").style.width = pct + "%";
+    $("progressFill").style.background = runState === "error" ? "var(--nx-danger)" : "var(--nx-brand)";
+    $("progressPct").innerHTML = "<strong>" + pct + "</strong>%";
+    $("taskList").innerHTML = TASKS.map((t, i) => {
+      const st = taskState(i);
+      const mark = st === "done" ? "✓" : st === "error" ? "!" : "";
+      return '<div class="task-row" data-state="' + st + '"><span class="task-icon">' + mark + '</span><div><div class="row-name">' + t[1] + '</div><div class="row-sub">' + esc(t[2]) + '</div></div><span class="task-time">' + (st === "pending" ? "-" : "ok") + '</span><span class="row-state">' + (st === "running" ? "running..." : st === "pending" ? "queued" : st) + '</span></div>';
+    }).join("");
+  }
+  function failRun(message) {
+    runState = "error";
+    clearInterval(taskTimer);
+    $("runErrorText").textContent = message || "Setup failed.";
+    $("runError").classList.remove("hidden");
+    logRow("err", message || "setup failed");
+    renderTasks();
+    goto(5);
+  }
+  function succeedRun(body) {
+    runState = "success";
+    setupComplete = true;
+    taskCursor = TASKS.length;
+    clearInterval(taskTimer);
+    $("runError").classList.add("hidden");
+    logRow("ok", "setup complete");
+    lastResult = body;
+    renderTasks();
+    $("doneText").textContent = body.firstBoot && !body.firstBoot.skipped ? "Admin, theme, and environment are ready." : "Environment is ready. Continue first admin and theme setup at /admin/setup after pnpm dev.";
+    $("doneLog").innerHTML = '<span class="h">$</span> pnpm run setup\\n' +
+      '<span class="c">  -> wrote .env</span>\\n' +
+      '<span class="c">  -> migrations ' + (body.migrate ? "applied" : "skipped") + '</span>\\n' +
+      '<span class="c">  -> ' + (body.firstBoot && !body.firstBoot.skipped ? "first admin ready" : "first admin skipped") + '</span>\\n' +
+      '<span class="v">  ✓ done — run pnpm dev, then open /admin</span>';
+    goto(6);
+  }
+  async function runSetup() {
+    runState = "running"; taskCursor = 0; $("runLog").innerHTML = ""; $("runError").classList.add("hidden"); renderTasks(); goto(5);
+    logRow("info", "starting nexpress setup");
+    taskTimer = setInterval(() => { if (taskCursor < TASKS.length - 1) { taskCursor += 1; renderTasks(); logRow("info", "running " + TASKS[taskCursor][1]); } }, 900);
+    try {
+      const res = await fetch("/save?token=" + TOKEN, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(payload()) });
+      const body = await res.json();
+      if (!body.ok) { failRun(body.message || "Save failed"); return; }
+      const failed = (body.migrate && !body.migrate.ok && { label:"migrations", output:body.migrate.output }) || (body.firstBoot && !body.firstBoot.ok && { label:"first-admin setup", output:body.firstBoot.output });
+      if (failed) { failRun(failed.label + " failed: " + (failed.output || "")); return; }
+      succeedRun(body);
+    } catch (err) {
+      failRun(String(err));
+    }
+  }
+  $("backBtn").addEventListener("click", () => goto(step - 1));
+  $("primaryBtn").addEventListener("click", () => {
+    const id = STEPS[step][0];
+    if (id === "database" && !dbOk) $("testBtn").click();
+    else if (id === "migrate") runSetup();
+    else if (id === "done") window.close();
+    else goto(step + 1);
+  });
+  $("skipBtn").addEventListener("click", () => {
+    const id = STEPS[step][0];
+    if (id === "admin") {
+      $("adminEmail").value = "";
+      $("adminName").value = "";
+      $("adminPassword").value = "";
+      updatePasswordChecks();
+    }
+    goto(step + 1);
+  });
+  $("retryBtn").addEventListener("click", runSetup);
+  $("dbModeUrl").addEventListener("click", () => setDbMode("url"));
+  $("dbModeFields").addEventListener("click", () => setDbMode("fields"));
+  $("testBtn").addEventListener("click", async () => {
+    $("testStatus").textContent = "Testing...";
+    try {
+      const res = await fetch("/test-db?token=" + TOKEN, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify({ url: databaseUrl() }) });
+      const body = await res.json();
+      dbOk = body.ok === true;
+      $("testStatus").innerHTML = '<span class="tone-' + (body.ok ? "ok" : "err") + '">' + esc(body.message || (body.ok ? "Connected" : "Failed")) + '</span>';
+      if (dbOk) goto(step);
+    } catch (err) {
+      dbOk = false;
+      $("testStatus").innerHTML = '<span class="tone-err">' + esc(err) + '</span>';
     }
   });
+  $("revealPassword").addEventListener("click", () => {
+    const input = $("adminPassword");
+    input.type = input.type === "password" ? "text" : "password";
+    $("revealPassword").textContent = input.type === "password" ? "view" : "hide";
+  });
+  $("adminPassword").addEventListener("input", updatePasswordChecks);
+  $("regenSecret").addEventListener("click", () => { secret = makeSecret(); renderEnv(); });
+  $("storage").addEventListener("change", () => { $("s3Fields").classList.toggle("hidden", $("storage").value !== "s3"); renderEnv(); });
+  document.querySelectorAll("input,select,textarea").forEach((el) => el.addEventListener("input", () => {
+    if (["databaseUrl","dbHost","dbPort","dbName","dbUser","dbPass"].includes(el.id)) {
+      dbOk = false;
+      $("testStatus").textContent = "";
+      goto(step);
+    }
+    renderEnv();
+  }));
+  updatePasswordChecks();
+  loadSystemChecks();
+  hydrateIcons();
+  renderRail();
+  goto(0);
 </script>
 </body>
 </html>`;

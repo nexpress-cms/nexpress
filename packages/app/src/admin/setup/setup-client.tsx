@@ -50,6 +50,7 @@ export interface SetupWizardProps {
   prefill?: {
     email?: string;
     name?: string;
+    siteName?: string;
     /**
      * Pre-selected theme id, set when `NP_ADMIN_THEME` names a
      * registered theme. Source is either `create-nexpress
@@ -89,7 +90,7 @@ export function SetupWizard({ prefill, themes = [] }: SetupWizardProps = {}) {
       ? prefill.themeId
       : themes[0]?.id) ?? "";
   const [site, setSite] = useState<SiteState>({
-    siteName: "My Site",
+    siteName: prefill?.siteName ?? "My Site",
     sampleContent: true,
     themeId: initialThemeId,
   });

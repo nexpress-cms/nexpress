@@ -173,4 +173,53 @@ describe("setup-server validateBody", () => {
     const out = ok({ ...baseValid, runMigrate: false });
     expect(out.runMigrate).toBe(false);
   });
+
+  // ── optional first admin ──────────────────────────────────────
+
+  it("allows first-admin fields to be skipped", () => {
+    const out = ok({
+      ...baseValid,
+      adminThemeId: "magazine",
+      siteName: "My Site",
+      sampleContent: true,
+    });
+    expect(out.adminEmail).toBeUndefined();
+    expect(out.adminPassword).toBeUndefined();
+    expect(out.adminThemeId).toBe("magazine");
+    expect(out.sampleContent).toBeUndefined();
+  });
+
+  it("requires a valid admin email when an admin password is supplied", () => {
+    expect(
+      err({
+        ...baseValid,
+        adminPassword: "correct horse battery",
+      }),
+    ).toMatch(/Admin email is required/);
+  });
+
+  it("requires a 12+ character admin password when an admin email is supplied", () => {
+    expect(
+      err({
+        ...baseValid,
+        adminEmail: "founder@example.com",
+        adminPassword: "short",
+      }),
+    ).toMatch(/Admin password must be at least 12 characters/);
+  });
+
+  it("accepts complete first-admin setup fields", () => {
+    const out = ok({
+      ...baseValid,
+      adminEmail: "founder@example.com",
+      adminPassword: "correct horse battery",
+      adminName: "Founder",
+      adminThemeId: "docs",
+      siteName: "Docs Site",
+      sampleContent: true,
+    });
+    expect(out.adminEmail).toBe("founder@example.com");
+    expect(out.adminPassword).toBe("correct horse battery");
+    expect(out.sampleContent).toBe(true);
+  });
 });

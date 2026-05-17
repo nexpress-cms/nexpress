@@ -232,4 +232,13 @@ describe("getProjectFiles", () => {
     };
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
   });
+
+  it("package.json exposes seed:content for setup's one-step sample-content path", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["seed:content"]).toBe("tsx scripts/seed-content.ts");
+    expect(files["scripts/seed-content.ts"]).toMatch(/seedAll/);
+  });
 });
