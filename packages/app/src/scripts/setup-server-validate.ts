@@ -15,6 +15,14 @@ export interface SetupBody {
   s3Region?: string;
   s3Endpoint?: string;
   runMigrate: boolean;
+  adminEmail?: string;
+  adminPassword?: string;
+  adminName?: string;
+  adminThemeId?: string;
+  siteName?: string;
+  defaultLocale?: string;
+  timezone?: string;
+  sampleContent?: boolean;
 }
 
 export function validateBody(
@@ -90,6 +98,29 @@ export function validateBody(
       }
     }
   }
+
+  const adminEmail = raw.adminEmail?.trim() || undefined;
+  const adminPassword =
+    typeof raw.adminPassword === "string" && raw.adminPassword.length > 0
+      ? raw.adminPassword
+      : undefined;
+  const wantsFirstAdmin = Boolean(adminEmail) || Boolean(adminPassword);
+
+  if (wantsFirstAdmin) {
+    if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+      return {
+        error:
+          "Admin email is required when completing first-boot setup now. Leave the first-admin fields blank to continue in /admin/setup.",
+      };
+    }
+    if (!adminPassword || adminPassword.length < 12) {
+      return {
+        error:
+          "Admin password must be at least 12 characters when completing first-boot setup now.",
+      };
+    }
+  }
+
   return {
     body: {
       databaseUrl,
@@ -101,6 +132,14 @@ export function validateBody(
       s3Region: raw.s3Region?.trim() || undefined,
       s3Endpoint: raw.s3Endpoint?.trim() || undefined,
       runMigrate: raw.runMigrate !== false,
+      ...(adminEmail ? { adminEmail } : {}),
+      ...(adminPassword ? { adminPassword } : {}),
+      ...(raw.adminName?.trim() ? { adminName: raw.adminName.trim() } : {}),
+      ...(raw.adminThemeId?.trim() ? { adminThemeId: raw.adminThemeId.trim() } : {}),
+      ...(raw.siteName?.trim() ? { siteName: raw.siteName.trim() } : {}),
+      ...(raw.defaultLocale?.trim() ? { defaultLocale: raw.defaultLocale.trim() } : {}),
+      ...(raw.timezone?.trim() ? { timezone: raw.timezone.trim() } : {}),
+      ...(wantsFirstAdmin && raw.sampleContent === true ? { sampleContent: true } : {}),
     },
   };
 }

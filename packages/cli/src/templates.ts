@@ -56,6 +56,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
     "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
     "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
+    "scripts/seed-content.ts": utf8(seedContentScriptTemplate()),
     "scripts/setup-server.ts": utf8(setupServerScriptTemplate()),
     "scripts/run-migrations.ts": utf8(runMigrationsScriptTemplate()),
     "scripts/worker.ts": utf8(workerScriptTemplate()),
@@ -125,6 +126,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         postinstall: "tsx scripts/postinstall-notice.ts",
         "schema:gen": "tsx scripts/generate-schema.ts",
         "seed:admin": "tsx scripts/seed-admin.ts",
+        "seed:content": "tsx scripts/seed-content.ts",
         setup: "tsx scripts/setup-server.ts",
         worker: "tsx scripts/worker.ts",
         "db:generate": "pnpm schema:gen && drizzle-kit generate",
@@ -304,6 +306,90 @@ function workerScriptTemplate(): string {
 
 function seedAdminScriptTemplate(): string {
   return `import "@nexpress/app/scripts/seed-admin";\n`;
+}
+
+function seedContentScriptTemplate(): string {
+  return (
+    `import "./_load-env.js";\n\n` +
+    `import { eq } from "drizzle-orm";\n\n` +
+    `import {\n` +
+    `  createDbConnection,\n` +
+    `  getActiveTheme,\n` +
+    `  getSiteById,\n` +
+    `  npUsers,\n` +
+    `  withCurrentSite,\n` +
+    `} from "@nexpress/core";\n` +
+    `import type { NpAuthUser } from "@nexpress/core";\n\n` +
+    `import { ensureFor } from "../src/lib/init-core";\n` +
+    `import { seedAll } from "../src/lib/seed-content";\n\n` +
+    `const databaseUrl = process.env.DATABASE_URL;\n` +
+    `if (!databaseUrl) {\n` +
+    `  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");\n` +
+    `  process.exit(1);\n` +
+    `}\n\n` +
+    `async function findFirstAdmin(): Promise<NpAuthUser | null> {\n` +
+    `  const db = createDbConnection({ connectionString: databaseUrl as string });\n` +
+    `  const rows = await db\n` +
+    `    .select({\n` +
+    `      id: npUsers.id,\n` +
+    `      email: npUsers.email,\n` +
+    `      name: npUsers.name,\n` +
+    `      role: npUsers.role,\n` +
+    `      tokenVersion: npUsers.tokenVersion,\n` +
+    `    })\n` +
+    `    .from(npUsers)\n` +
+    `    .where(eq(npUsers.role, "admin"))\n` +
+    `    .limit(1);\n` +
+    `  const row = rows[0];\n` +
+    `  if (!row) return null;\n` +
+    `  return {\n` +
+    `    id: row.id,\n` +
+    `    email: row.email,\n` +
+    `    name: row.name,\n` +
+    `    role: row.role as NpAuthUser["role"],\n` +
+    `    tokenVersion: row.tokenVersion,\n` +
+    `  };\n` +
+    `}\n\n` +
+    `function parseSiteFlag(argv: string[]): string {\n` +
+    `  const arg = argv.slice(2).find((a) => a.startsWith("--site="));\n` +
+    `  if (!arg) return "default";\n` +
+    `  return arg.slice("--site=".length).trim() || "default";\n` +
+    `}\n\n` +
+    `async function main(): Promise<void> {\n` +
+    `  await ensureFor("read");\n` +
+    `  await ensureFor("plugins");\n\n` +
+    `  const siteId = parseSiteFlag(process.argv);\n` +
+    `  if (siteId !== "default") {\n` +
+    `    const target = await getSiteById(siteId);\n` +
+    `    if (!target) {\n` +
+    `      console.error(\`Site "\${siteId}" not found. Create it via /admin/sites or the API first.\`);\n` +
+    `      process.exit(1);\n` +
+    `    }\n` +
+    `  }\n\n` +
+    `  const actor = await findFirstAdmin();\n` +
+    `  if (!actor) {\n` +
+    `    console.error("No admin user found. Run \`pnpm seed:admin\` first.");\n` +
+    `    process.exit(1);\n` +
+    `  }\n` +
+    `  const theme = await getActiveTheme();\n` +
+    `  if (!theme) {\n` +
+    `    console.error("No active theme — pick one in the admin or setup wizard before seeding content.");\n` +
+    `    process.exit(1);\n` +
+    `  }\n\n` +
+    `  const { terms, pages, posts, navigation } = await withCurrentSite(\n` +
+    `    siteId,\n` +
+    `    async () => seedAll(actor, theme),\n` +
+    `  );\n\n` +
+    `  console.log(\n` +
+    `    \`Done. Created \${pages.created} pages, \${posts.created} posts, \${terms.tagsCreated} tags, \${terms.categoriesCreated} categories, \${navigation.header + navigation.footer} nav items.\`,\n` +
+    `  );\n` +
+    `  process.exit(0);\n` +
+    `}\n\n` +
+    `main().catch((error) => {\n` +
+    `  console.error(error);\n` +
+    `  process.exit(1);\n` +
+    `});\n`
+  );
 }
 
 function setupServerScriptTemplate(): string {

@@ -56,6 +56,7 @@ export default async function SetupPage() {
   const prefill = {
     email: process.env.NP_ADMIN_EMAIL ?? "",
     name: process.env.NP_ADMIN_NAME ?? "",
+    siteName: process.env.NP_SITE_NAME ?? "",
     ...(themeId ? { themeId } : {}),
   };
 

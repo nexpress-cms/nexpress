@@ -7,7 +7,7 @@ interface NpMarkProps {
 }
 
 /**
- * NexPress wordmark — geometric N composed of three paths:
+ * NexPress mark — geometric N composed of three paths:
  * a blue notch on the upper-right (`#0066FF`), a black diagonal beam,
  * and a black foot on the lower-left. `currentColor` carries the foot +
  * beam so the mark flips correctly on dark surfaces.
@@ -23,9 +23,9 @@ export function NpMark({ size = 22, className, beamColor }: NpMarkProps) {
       style={{ display: "block", color: beamColor }}
       aria-label="NexPress"
     >
-      <path d="M28 0 L64 0 L64 36 L52 24 L52 12 L40 12 Z" fill="#0066FF" />
-      <path d="M0 24 L24 48 L24 64 L0 64 Z" fill="currentColor" />
-      <path d="M0 0 L20 0 L64 44 L64 64 L44 64 L0 20 Z" fill="currentColor" />
+      <path d="M28 0H64V36L52 24V12H40L28 0Z" fill="#0066FF" />
+      <path d="M0 24L24 48V64H0V24Z" fill="currentColor" />
+      <path d="M0 0H18L64 46V64H46L0 18V0Z" fill="currentColor" />
     </svg>
   );
 }
