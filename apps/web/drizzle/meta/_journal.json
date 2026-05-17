@@ -50,6 +50,13 @@
       "when": 1778930980454,
       "tag": "0006_seed_source",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778989653947,
+      "tag": "0007_legacy_seed_backfill",
+      "breakpoints": true
     }
   ]
 }
