@@ -2,6 +2,7 @@ import * as React from "react";
 import { findDocuments } from "@nexpress/core";
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
+import { buildDocTree } from "../lib/doc-tree.js";
 import { resolveDocsSettings } from "../settings-helpers.js";
 
 interface DocRow {
@@ -55,16 +56,16 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
 
   const tree = buildTree(result.docs);
   const recent = recentlyUpdated(result.docs, 4);
-  const quickstart = tree.find((node) =>
-    node.slug === "plugins"
-      ? node.children.find((c) => c.slug === "author-quickstart")
-      : false,
+  // Primary CTA points at the plugin author quickstart when the
+  // doc set includes it; otherwise falls back to the first leaf
+  // / first root. Split into two explicit lookups so the intent
+  // reads top-to-bottom: find the parent, then the child.
+  const pluginsRoot = tree.find((node) => node.slug === "plugins");
+  const quickstartChild = pluginsRoot?.children.find(
+    (c) => c.slug === "author-quickstart",
   );
   const quickstartTarget =
-    quickstart?.children.find((c) => c.slug === "author-quickstart") ??
-    tree[0]?.children[0] ??
-    tree[0] ??
-    null;
+    quickstartChild ?? tree[0]?.children[0] ?? tree[0] ?? null;
 
   return (
     <article className="np-docs-front">
@@ -168,11 +169,10 @@ export async function PageFrontTemplate(_props: NpTemplateRenderProps) {
 }
 
 function buildTree(rows: DocRow[]): DocNode[] {
-  const byId = new Map<string, DocNode>();
-  for (const r of rows) {
-    if (typeof r.id !== "string") continue;
-    if (typeof r.slug !== "string") continue;
-    byId.set(r.id, {
+  return buildDocTree<DocNode, DocRow>(rows, (r) => {
+    if (typeof r.id !== "string") return null;
+    if (typeof r.slug !== "string") return null;
+    return {
       id: r.id,
       slug: r.slug,
       title: typeof r.title === "string" ? r.title : r.slug,
@@ -184,22 +184,8 @@ function buildTree(rows: DocRow[]): DocNode[] {
         typeof r.publishedAt === "string" ? r.publishedAt : null,
       updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : null,
       children: [],
-    });
-  }
-  const roots: DocNode[] = [];
-  for (const node of byId.values()) {
-    if (node.parent && byId.has(node.parent)) {
-      byId.get(node.parent)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-  const sortRec = (list: DocNode[]) => {
-    list.sort((a, b) => a.order - b.order);
-    for (const n of list) sortRec(n.children);
-  };
-  sortRec(roots);
-  return roots;
+    };
+  });
 }
 
 function recentlyUpdated(rows: DocRow[], limit: number): DocNode[] {
