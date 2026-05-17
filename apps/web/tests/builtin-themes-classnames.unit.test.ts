@@ -171,17 +171,15 @@ const themes: ThemeUnderTest[] = [
  *     exported but not yet consumed, or (c) a real visible bug
  *     that needs CSS in a separate per-theme polish PR.
  *
- *     Triage notes per entry below. Real visible-bug surfaces
- *     identified so far:
- *       - `magazine.hero-feature` page-builder block — operators
- *         can add it; renders unstyled (blocks.tsx:149+).
- *       - portfolio project-detail template (`/work/:slug`) —
- *         publicly routable; renders unstyled
- *         (templates/project-detail.tsx).
- *
  *     Per-theme CSS PRs should pick from the UNVERIFIED bucket
  *     and either add the missing rules + trim the baseline, or
  *     reclassify as VERIFIED_LANDMARK with a sibling citation.
+ *
+ *     Two visible-bug surfaces flagged at gate-merge time were
+ *     fixed in the follow-up CSS PR: magazine.hero-feature page-
+ *     builder block (11 classes) and portfolio project-detail
+ *     template at `/work/:slug` (6 classes). Both removed from
+ *     the baseline below.
  */
 const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
   default: [
@@ -217,21 +215,6 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-magazine-members-error",
     "np-magazine-members-not-found",
     "np-magazine-not-found",
-    // UNVERIFIED — page-builder hero block (`magazine.hero-feature`,
-    // registered as a block type at blocks.tsx:410). Operators can
-    // add it; renders unstyled today. **Real visible-bug surface.**
-    // 11 classes covering carousel + grid + feature variants.
-    "np-magazine-hero-card-category",
-    "np-magazine-hero-carousel",
-    "np-magazine-hero-carousel-card",
-    "np-magazine-hero-carousel-track",
-    "np-magazine-hero-cta",
-    "np-magazine-hero-empty",
-    "np-magazine-hero-feature",
-    "np-magazine-hero-grid",
-    "np-magazine-hero-grid-tile",
-    "np-magazine-hero-grid-tiles",
-    "np-magazine-hero-header",
     // VERIFIED_LANDMARK — drawer list/subnav sit inside the styled
     // `.np-magazine-mobile-nav-drawer` parent (mobile-nav.tsx).
     "np-magazine-mobile-nav-drawer-list",
@@ -274,15 +257,6 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     // VERIFIED_LANDMARK — `.np-portfolio-page-default` IS styled
     // (styles.ts:688); `np-portfolio-page` is a parent hook.
     "np-portfolio-page",
-    // UNVERIFIED — project-detail.tsx renders `/work/:slug` route
-    // (registered at index.ts:549). Public-facing page; entire
-    // surface unstyled. **Real visible-bug surface.** 6 classes.
-    "np-portfolio-project-body",
-    "np-portfolio-project-detail",
-    "np-portfolio-project-excerpt",
-    "np-portfolio-project-header",
-    "np-portfolio-project-hero",
-    "np-portfolio-project-meta",
   ],
   docs: [
     // UNVERIFIED — `np-docs` (bare) appears as a sibling of
