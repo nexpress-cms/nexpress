@@ -15,6 +15,17 @@ pnpm build
 pnpm dev
 ```
 
+Pass `--starter <id>` to skip the interactive starter prompt:
+
+```bash
+npx create-nexpress my-blog --starter blog
+npx create-nexpress my-docs --starter docs --yes
+```
+
+Starters: `blog` (default, friendliest), `magazine`, `portfolio`, `docs`.
+The pick decides the active theme on first boot — all four are bundled
+regardless and can be swapped later from the admin theme switcher.
+
 The site runs at [`localhost:3000`](http://localhost:3000) and the admin
 panel is at [`localhost:3000/admin`](http://localhost:3000/admin).
 

@@ -7,14 +7,12 @@ export interface ProjectConfig {
   includeExampleContent: boolean;
   dockerSetup: boolean;
   /**
-   * Optional pre-pick for the first-boot admin setup wizard. Only
-   * set when the operator passes `--theme <id>` — there is no
-   * interactive prompt for it. The id is written into the scaffold's
-   * `.env` as `NP_ADMIN_THEME=<id>` so headless / CI installs (no
-   * browser available for `/admin/setup`) can still ship a chosen
-   * theme; the wizard reads the env var as the picker's initial
-   * selection. Operators with a browser don't need to set this —
-   * just open the wizard and pick.
+   * Picked starter / theme id. Set from `--starter`, `--theme`, or
+   * the interactive starter prompt. Written into the scaffold's
+   * `.env` as `NP_ADMIN_THEME=<id>`; the first-boot admin setup
+   * wizard at `/admin/setup` reads it as the picker's initial
+   * selection. Operator can still override later in the wizard or
+   * via the admin theme switcher.
    */
   themeId?: string;
   localMode?: boolean;
@@ -28,16 +26,19 @@ export interface ProjectConfig {
  * because `prompts` would otherwise hang waiting for input that never
  * arrives.
  *
- * `themeId` is a flag-only knob. The full theme picker lives in the
- * first-boot admin wizard at `/admin/setup` (browser); this exists
- * solely so headless flows that can't reach the browser have a way
- * to commit the pick at scaffold time.
+ * `themeId` accepts the picked starter at scaffold time: from
+ * `--starter <id>` (friendly alias, e.g. `blog`), from `--theme <id>`
+ * (raw theme id, e.g. `default`), or — when no flag is supplied and
+ * stdin is a TTY — from the interactive starter prompt.
  */
 export interface CliFlags {
   projectName?: string;
   includeExampleContent?: boolean;
   dockerSetup?: boolean;
-  /** `--theme <id>` — validated against `BUILTIN_THEMES`. No prompt. */
+  /**
+   * Canonical theme id (post-`resolveStarter`) for the picked
+   * starter. Validated against `BUILTIN_THEME_IDS`.
+   */
   themeId?: string;
   yes?: boolean;
 }
@@ -60,6 +61,67 @@ export const BUILTIN_THEME_IDS: readonly string[] = [
   "magazine",
   "portfolio",
   "docs",
+];
+
+/**
+ * Friendly starter alias → built-in theme id. `--starter` exists as a
+ * UX layer on top of `--theme`: operators searching for "nexpress blog
+ * starter" find a working command, even though the underlying theme is
+ * named `default`. Theme ids passed verbatim (`--starter=default`) flow
+ * through `resolveStarter` unchanged so flag-mixing doesn't surprise.
+ *
+ * Keep in sync with `STARTER_OPTIONS` below — the interactive prompt
+ * pulls its choices from the same source of truth.
+ */
+const STARTER_TO_THEME: Record<string, string> = {
+  blog: "default",
+  magazine: "magazine",
+  portfolio: "portfolio",
+  docs: "docs",
+};
+
+/**
+ * Resolve a `--starter` value to the canonical theme id. Friendly
+ * aliases (`blog`) map to their theme; raw theme ids pass through.
+ * Unknown values fall through to the existing `BUILTIN_THEME_IDS`
+ * validator, which produces the standard error message naming the
+ * known ids — no need for a parallel error path here.
+ */
+export function resolveStarter(value: string): string {
+  return STARTER_TO_THEME[value] ?? value;
+}
+
+/**
+ * Starter choices rendered in the interactive picker. `title` is the
+ * friendly label, `value` is the underlying theme id written to
+ * `.env` as `NP_ADMIN_THEME`. Order matches a first-time operator's
+ * likely path: a general blog is the safest default, then niche.
+ */
+const STARTER_OPTIONS: ReadonlyArray<{
+  title: string;
+  description: string;
+  value: string;
+}> = [
+  {
+    title: "Blog",
+    description: "Home, about, blog, pricing, contact. Friendliest first pick.",
+    value: "default",
+  },
+  {
+    title: "Magazine",
+    description: "Editorial multi-column layout with feature + dispatches column.",
+    value: "magazine",
+  },
+  {
+    title: "Portfolio",
+    description: "Project grid with asymmetric layouts. Designers and agencies.",
+    value: "portfolio",
+  },
+  {
+    title: "Docs",
+    description: "Sidebar + breadcrumbs, with kind:doc posts. Product / API docs.",
+    value: "docs",
+  },
 ];
 
 const DEFAULTS = {
@@ -96,6 +158,25 @@ export async function promptForProjectConfig(
     });
   }
 
+  // Starter goes BEFORE "include example content" because the theme
+  // is the whole-site shell, not just a seed knob. Even an operator
+  // who declines the sample content still gets the picked theme's
+  // header / footer / layout. Order in the prompt reflects that:
+  // pick the site shape first, then opt into the demo content for it.
+  if (flags.themeId === undefined && !yes) {
+    questions.push({
+      type: "select",
+      name: "themeId",
+      message: "Pick a starter",
+      choices: STARTER_OPTIONS.map((option) => ({
+        title: option.title,
+        description: option.description,
+        value: option.value,
+      })),
+      initial: 0,
+    });
+  }
+
   if (flags.includeExampleContent === undefined && !yes) {
     questions.push({
       type: "confirm",
@@ -114,10 +195,13 @@ export async function promptForProjectConfig(
     });
   }
 
-  // `--theme` is opt-in only — no prompt. Validate here so a typo
-  // surfaces at flag time rather than baking a typo'd `NP_ADMIN_THEME`
-  // into `.env` that the wizard would silently fall back to the
-  // first registered theme for.
+  // Validate any flag-supplied id BEFORE asking the interactive
+  // question — a typo'd `--theme=magaznie` should surface at flag
+  // time rather than bake a typo'd `NP_ADMIN_THEME` into `.env` that
+  // the wizard would silently fall back to the first registered
+  // theme for. The interactive prompt is value-safe by construction
+  // (operator picks from a fixed list), so it doesn't need to flow
+  // through this gate.
   if (typeof flags.themeId === "string" && flags.themeId.length > 0) {
     if (!BUILTIN_THEME_IDS.includes(flags.themeId)) {
       const known = BUILTIN_THEME_IDS.join(", ");
@@ -156,8 +240,11 @@ export async function promptForProjectConfig(
       (typeof response.dockerSetup === "boolean"
         ? response.dockerSetup
         : DEFAULTS.dockerSetup),
-    ...(typeof flags.themeId === "string" && flags.themeId.length > 0
-      ? { themeId: flags.themeId }
-      : {}),
+    ...(() => {
+      const picked =
+        flags.themeId ??
+        (typeof response.themeId === "string" ? response.themeId : undefined);
+      return picked && picked.length > 0 ? { themeId: picked } : {};
+    })(),
   } satisfies ProjectConfig;
 }
