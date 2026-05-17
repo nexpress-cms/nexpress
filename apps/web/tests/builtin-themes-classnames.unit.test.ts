@@ -72,6 +72,27 @@ function listSourceFiles(dir: string): string[] {
 }
 
 /**
+ * Strip JS / JSDoc / line comments before className extraction
+ * so docstring examples like
+ *   ` * `<main className="np-member-main">` landmark.`
+ * don't get matched as if they were real JSX. The original test
+ * surfaced this when both portfolio + docs ended up with the
+ * shared `np-member-main` class in their baseline solely because
+ * each theme's `members-not-found.tsx` docstring referenced it.
+ *
+ * String-literal contents COULD legitimately contain something
+ * that looks like a comment, but in practice no theme `.ts(x)`
+ * source today has a string with `/*` inside it. If that ever
+ * lands, this stripper would over-eat — at which point we'd
+ * switch to a real parser. Until then, regex is good enough.
+ */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+/**
  * Pull static-string className values out of a source file.
  * Matches the two literal forms operators actually write:
  *   - `className="np-foo np-bar"` (plain attribute string)
@@ -81,7 +102,7 @@ function listSourceFiles(dir: string): string[] {
  * intentionally don't match — see the file-level docstring.
  */
 function extractClassTokens(file: string): Set<string> {
-  const source = readFileSync(file, "utf-8");
+  const source = stripComments(readFileSync(file, "utf-8"));
   const tokens = new Set<string>();
   const re = /\bclassName=(?:"([^"]*)"|\{\s*"([^"]*)"\s*\})/g;
   for (const match of source.matchAll(re)) {
@@ -163,6 +184,14 @@ const themes: ThemeUnderTest[] = [
  *     "np-magazine-not-found np-magazine-message">` where
  *     `.np-magazine-message` carries the actual message styling.
  *
+ *   VERIFIED_LANDMARK_INLINE: the element rendering this class
+ *     carries a full `style={{ ... }}` prop covering layout and
+ *     typography. The className exists only as a semantic /
+ *     test-id hook; no CSS rule needed. Example: each theme's
+ *     `not-found.tsx` centers the page with inline `display:
+ *     flex`, sets max-width, picks font-family — the class is
+ *     just there for grep-ability.
+ *
  *   UNVERIFIED: the class is the primary one on its element AND
  *     no styled sibling carries the layout — the element renders
  *     with browser-default styling. Could be (a) an intentional
@@ -183,17 +212,8 @@ const themes: ThemeUnderTest[] = [
  */
 const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
   default: [
-    // UNVERIFIED — member-status widget (member-status-widget.tsx).
-    // The 5 np-member-status* + np-button-primary + np-text-button
-    // classes are the entire widget; no styled parent provides
-    // layout. Widget renders unstyled when a member is signed in.
-    "np-button-primary",
-    "np-member-status",
-    "np-member-status-handle",
-    "np-member-status-loading",
     "np-post-meta-date", // VERIFIED_LANDMARK — sibling `.np-post-meta` styled.
     "np-post-meta-reading", // VERIFIED_LANDMARK — sibling `.np-post-meta` styled.
-    "np-text-button",
   ],
   magazine: [
     // UNVERIFIED — post-card.tsx (`np-magazine-card-*`, 7 entries).
@@ -228,22 +248,19 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-magazine-subscribe-success",
   ],
   portfolio: [
-    // UNVERIFIED — np-member-main is a `<main>` landmark in
-    // members-not-found.tsx. Browser-default `<main>` styling is
-    // usually fine; verify against design intent.
-    "np-member-main",
     // UNVERIFIED — case-study + client-logos + image-grid are
     // page-builder block containers. Need block-render context
     // verification.
     "np-portfolio-case-study-hero",
     "np-portfolio-client-logos",
     "np-portfolio-image-grid",
-    // UNVERIFIED — error / not-found / member shells. Browser
-    // default block flow renders the text content; layout may or
-    // may not look right depending on design intent.
+    // VERIFIED_LANDMARK_INLINE — error.tsx + members-error.tsx +
+    // not-found.tsx + members-not-found.tsx all render their
+    // root element with a full `style={{...}}` prop covering
+    // centering / typography / colors. The classes are semantic
+    // hooks. No CSS rule needed; widening the inline styles
+    // would just duplicate effort.
     "np-portfolio-error",
-    "np-portfolio-members",
-    "np-portfolio-members-column",
     "np-portfolio-members-error",
     "np-portfolio-members-not-found",
     "np-portfolio-not-found",
@@ -259,18 +276,15 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-portfolio-page",
   ],
   docs: [
-    // UNVERIFIED — `np-docs` (bare) appears as a sibling of
-    // `np-docs-shell` (styled) in members-shell.tsx → LANDMARK
-    // there. But also appears with `np-docs-error` (unstyled)
-    // and `np-docs-members-error` (unstyled) → UNVERIFIED at
-    // those sites. Single entry classification can't capture
-    // both; treat as UNVERIFIED conservatively.
+    // VERIFIED_LANDMARK — `np-docs` (bare) appears as a sibling
+    // of `np-docs-shell` (styled) in members-shell.tsx, and as a
+    // sibling of inline-styled error / members-error mains. Each
+    // usage site has a layout-providing sibling.
     "np-docs",
-    // UNVERIFIED — error / not-found / members shells. Browser
-    // default block flow; layout may or may not match design.
+    // VERIFIED_LANDMARK_INLINE — error.tsx + members-error.tsx +
+    // not-found.tsx + members-not-found.tsx all render their
+    // root with a full `style={{...}}` prop. No CSS rule needed.
     "np-docs-error",
-    "np-docs-members",
-    "np-docs-members-column",
     "np-docs-members-error",
     "np-docs-members-not-found",
     "np-docs-not-found",
@@ -278,8 +292,6 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     // (styled, styles.ts). Parent article handles padding /
     // max-width / typography; body div is a content hook.
     "np-docs-page-body",
-    // UNVERIFIED — `<main>` landmark; same triage as portfolio.
-    "np-member-main",
   ],
 };
 

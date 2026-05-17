@@ -1270,6 +1270,86 @@ export const defaultThemeCss = `
 }
 
 /* ----------------------------------------------------------------
+ * Member-status widget
+ *
+ * Compact sign-in / sign-out chrome the operator drops into the
+ * site header. Three states: loading (placeholder span), signed-
+ * in (@handle link + sign-out text-button), signed-out (sign in
+ * + register CTAs). Two button classes — np-button-primary for
+ * the register CTA, np-text-button for the sign-out — are also
+ * reusable outside the widget when the operator wants a matching
+ * pair elsewhere.
+ * --------------------------------------------------------------- */
+.np-member-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+.np-member-status a {
+  color: inherit;
+  text-decoration: none;
+}
+.np-member-status a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.np-member-status-handle {
+  font-weight: 500;
+}
+.np-member-status-loading {
+  display: inline-block;
+  width: 5.5rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: var(--np-color-muted, #f1f5f9);
+  opacity: 0.6;
+  animation: np-member-status-pulse 1.4s ease-in-out infinite;
+}
+@keyframes np-member-status-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+.np-button-primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.375rem;
+  background: var(--np-color-primary, #4f46e5);
+  color: var(--np-color-primary-foreground, #ffffff);
+  text-decoration: none;
+  font-size: 0.825rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.np-button-primary:hover {
+  opacity: 0.9;
+  text-decoration: none;
+}
+.np-text-button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-size: 0.825rem;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+.np-text-button:hover:not(:disabled) {
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.np-text-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* ----------------------------------------------------------------
  * Dark mode — re-skin the design tokens
  * --------------------------------------------------------------- */
 [data-theme="dark"] {
