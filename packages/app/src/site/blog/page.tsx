@@ -54,21 +54,22 @@ export async function generateMetadata({
   const pageNum = Math.max(1, Number.parseInt(page ?? "1", 10) || 1);
   const isFirstPage = pageNum === 1;
 
-  // When the heuristic fires AND the request is page 1, we point
-  // canonical at `/`. Paginated pages (page 2+) always canonical
-  // to themselves — they have distinct content from the home and
-  // shouldn't dedupe away.
+  // `path` is what THIS page is — drives the OpenGraph `url` so
+  // social cards reflect the resource being shared.
+  // `canonicalPath` is where search engines should treat the
+  // content as canonical. They diverge only on page 1 of a
+  // theme that renders the post list at `/` (canonical → "/"
+  // while OG stays at /blog). Paginated pages stay self-
+  // canonical regardless of theme.
+  const path = isFirstPage ? "/blog" : `/blog?page=${pageNum}`;
   const canonicalPath =
-    isFirstPage && (await shouldCanonicalizeToHome())
-      ? "/"
-      : isFirstPage
-        ? "/blog"
-        : `/blog?page=${pageNum}`;
+    isFirstPage && (await shouldCanonicalizeToHome()) ? "/" : path;
 
   return buildPageMetadata({
     title: isFirstPage ? "Blog" : `Blog — page ${pageNum}`,
     description: "Recent posts from the blog.",
-    path: canonicalPath,
+    path,
+    canonicalPath,
   });
 }
 

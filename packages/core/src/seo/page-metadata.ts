@@ -110,11 +110,24 @@ export interface NpPageMetadataInput {
    */
   ogImage?: string | null;
   /**
-   * Path of the current page (no origin). Used to build the
-   * canonical URL. Pass without query / hash; trailing `/` is
-   * normalized off.
+   * Path of the current page (no origin). Drives the OpenGraph
+   * `url` field (which represents "this resource"). Also serves
+   * as the default for `canonicalPath` when that's not set.
+   * Pass without trailing `/` — trailing slashes are normalized
+   * off — but query strings are preserved so paginated /
+   * filtered routes can identify themselves accurately.
    */
   path?: string;
+  /**
+   * Override the canonical URL path when the page represents
+   * one resource but search engines should treat a different
+   * URL as authoritative. Defaults to `path`. Use when /blog
+   * canonicalises to / on a theme that renders the same content
+   * at both, or when a paginated route should dedupe to its
+   * first page. Leaving this unset means "canonical = self",
+   * which is correct for most pages.
+   */
+  canonicalPath?: string;
   /** OpenGraph type. Default `"website"`; posts use `"article"`. */
   ogType?: "website" | "article" | "profile";
   /**
@@ -173,13 +186,16 @@ export async function buildPageMetadata(
 ): Promise<NpPageMetadata> {
   const settings = await getSiteSeoSettings();
   const path = normalizePath(input.path);
+  const canonicalPath = normalizePath(input.canonicalPath ?? input.path);
 
   const titleText = input.title?.trim()
     ? `${input.title.trim()} · ${settings.siteName}`
     : settings.siteName;
   const descriptionText =
     input.description?.trim() ?? settings.defaultDescription;
-  const canonicalUrl = `${settings.siteUrl.replace(/\/+$/, "")}${path}`;
+  const siteOrigin = settings.siteUrl.replace(/\/+$/, "");
+  const canonicalUrl = `${siteOrigin}${canonicalPath}`;
+  const ogUrl = `${siteOrigin}${path}`;
   const ogImage = resolveOgImage(input.ogImage, settings);
   const ogType = input.ogType ?? "website";
 
@@ -191,7 +207,7 @@ export async function buildPageMetadata(
       title: titleText,
       description: descriptionText,
       siteName: settings.siteName,
-      url: canonicalUrl,
+      url: ogUrl,
       type: ogType,
       // Page-supplied locale wins over the site default so
       // translated copies surface their actual language to
