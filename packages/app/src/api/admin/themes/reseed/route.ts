@@ -4,14 +4,15 @@ import {
   NpForbiddenError,
   NpValidationError,
   can,
-  findDocuments,
   getActiveTheme,
   getCurrentSiteId,
+  getDb,
   getThemeById,
   setActiveThemeId,
   withCurrentSite,
 } from "@nexpress/core";
 import { bustThemeCache, readJsonBody } from "@nexpress/next";
+import { sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -68,7 +69,9 @@ function parseSlugCollision(error: unknown): string | null {
  *     callbacks (nav-cache busts, media refcount drops). The
  *     wipe + seed loop runs hook-per-row instead of inside a
  *     single transaction. A mid-flow failure leaves partial
- *     state; the operator re-runs the endpoint to finish.
+ *     state; the error message includes the count wiped before
+ *     failure so the operator knows the resume point, and
+ *     re-running the endpoint finishes the remainder.
  *   - Pre-PR1 installs have unmarked legacy seed rows. Migration
  *     `0007_legacy_seed_backfill` stamps `seed_source =
  *     "theme:default"` onto pages whose slug matches the
@@ -174,6 +177,10 @@ export async function POST(request: NextRequest) {
  * confirm dialog so the operator sees concrete numbers
  * ("4 pages, 14 posts will be deleted") instead of an abstract
  * warning.
+ *
+ * Counts come from two `FILTER`-clause aggregates (one per
+ * collection) so the response is bounded — no row-count cap
+ * and no per-row deserialization. Site-scoped via `site_id`.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -189,24 +196,28 @@ export async function GET(request: NextRequest) {
 
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
     const counts = await withCurrentSite(siteId, async () => {
-      const pages = await findDocuments<{ id: string; seedSource?: string }>(
-        "pages",
-        { limit: 500 },
-      );
-      const posts = await findDocuments<{ id: string; seedSource?: string }>(
-        "posts",
-        { limit: 500 },
-      );
-      const seedPages = pages.docs.filter((d) => Boolean(d.seedSource));
-      const seedPosts = posts.docs.filter((d) => Boolean(d.seedSource));
-      const legacyPages = pages.docs.filter((d) => !d.seedSource);
-      const legacyPosts = posts.docs.filter((d) => !d.seedSource);
+      const db = getDb();
+      const [pagesRow, postsRow] = await Promise.all([
+        db.execute<{ marked: number; unmarked: number }>(sql`
+          select
+            count(*) filter (where seed_source is not null)::int as marked,
+            count(*) filter (where seed_source is null)::int as unmarked
+          from np_c_pages
+          where site_id = ${siteId}
+        `),
+        db.execute<{ marked: number; unmarked: number }>(sql`
+          select
+            count(*) filter (where seed_source is not null)::int as marked,
+            count(*) filter (where seed_source is null)::int as unmarked
+          from np_c_posts
+          where site_id = ${siteId}
+        `),
+      ]);
+      const pages = pagesRow.rows[0] ?? { marked: 0, unmarked: 0 };
+      const posts = postsRow.rows[0] ?? { marked: 0, unmarked: 0 };
       return {
-        seedMarked: { pages: seedPages.length, posts: seedPosts.length },
-        legacyUnmarked: {
-          pages: legacyPages.length,
-          posts: legacyPosts.length,
-        },
+        seedMarked: { pages: pages.marked, posts: posts.marked },
+        legacyUnmarked: { pages: pages.unmarked, posts: posts.unmarked },
       };
     });
 
