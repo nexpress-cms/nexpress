@@ -107,7 +107,7 @@ export function ThemeReseedDialog({
 
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
+    const controller = new AbortController();
     setPhase("preview");
     setPreview(null);
     setResult(null);
@@ -116,11 +116,12 @@ export function ThemeReseedDialog({
       try {
         const res = await npFetch(
           `/api/admin/themes/reseed?themeId=${encodeURIComponent(targetThemeId)}`,
+          { signal: controller.signal },
         );
         const payload = (await res.json().catch(() => null)) as
           | (PreviewCounts & { error?: { message?: string } })
           | null;
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         if (!res.ok) {
           setError(payload?.error?.message ?? "Unable to read current state.");
           setPhase("error");
@@ -136,14 +137,17 @@ export function ThemeReseedDialog({
           seedMarked: payload.seedMarked,
           legacyUnmarked: payload.legacyUnmarked,
         });
-      } catch {
-        if (cancelled) return;
+      } catch (err) {
+        // AbortError when the dialog closed mid-flight — not a
+        // real failure, just skip the setState.
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError("Unable to read current state.");
         setPhase("error");
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [open, targetThemeId]);
 
@@ -251,10 +255,7 @@ export function ThemeReseedDialog({
         ) : null}
 
         {phase === "running" ? (
-          <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Wiping and reseeding…
-          </div>
+          <RunningIndicator preview={preview} />
         ) : null}
 
         {phase === "done" && result ? (
@@ -320,5 +321,57 @@ export function ThemeReseedDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * In-flight indicator for the reseed POST. Splits the work into
+ * named phases (wipe, then seed) and switches the label based on
+ * elapsed time. Numbers are advisory — the server runs the work
+ * as one call so there's no real phase signal — but the wipe is
+ * always quick (hooks + delete per row) and the seed is the
+ * longer half (writes + Lexical processing). The split message
+ * tells the operator the dialog isn't hung when the spinner
+ * sits there for 6 seconds.
+ *
+ * Includes a row-count breakdown pulled from the GET preview so
+ * the operator sees "wiping 14 rows" instead of an opaque
+ * "wiping…". Falls back to a generic label if preview was null.
+ */
+function RunningIndicator({ preview }: { preview: PreviewCounts | null }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const id = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const wipeCount = preview
+    ? preview.seedMarked.pages + preview.seedMarked.posts
+    : null;
+  const totalWork = wipeCount ?? 0;
+  // Roughly: wipe phase lasts 1s per 30 rows (each delete fires
+  // hooks). Switch the message after that budget elapses, with a
+  // small floor so even a 0-row wipe gets a "wiping" beat.
+  const wipeBudgetSec = Math.max(2, Math.ceil(totalWork / 30));
+  const phaseLabel =
+    elapsed < wipeBudgetSec
+      ? wipeCount !== null
+        ? `Wiping ${wipeCount} seed row${wipeCount === 1 ? "" : "s"}…`
+        : "Wiping seed content…"
+      : "Writing new theme content…";
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span>{phaseLabel}</span>
+      </div>
+      <p className="text-xs">
+        This usually takes 5–10 seconds. Keep the tab open until it finishes.
+      </p>
+    </div>
   );
 }

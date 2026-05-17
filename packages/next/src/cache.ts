@@ -67,6 +67,33 @@ export function navCacheTag(siteId: string, location: string): string {
 }
 
 /**
+ * Invalidate every cache surface that depends on the active
+ * theme for a given site: theme tokens, sitemap, Atom feed, and
+ * the root layout. Shared between the active-theme PUT and the
+ * reseed POST so both paths bust the same tags in the same
+ * order. Swallow errors because `revalidateTag` / `revalidatePath`
+ * throw outside a request context (test harnesses, scripts) and
+ * the caller has already persisted state — surfacing a cache-bust
+ * failure as a 500 would be a worse experience than letting the
+ * tag expire naturally.
+ */
+export async function bustThemeCache(siteId: string): Promise<void> {
+  try {
+    const { revalidatePath, revalidateTag } = await import("next/cache");
+    revalidateTag(themeCacheTag(siteId), "default");
+    // F.7 — bust SEO tags unconditionally on theme change. Gating
+    // on the new theme's hooks misses the case where the OLD
+    // theme contributed SEO entries that linger in cache until
+    // natural expiry.
+    revalidateTag(`nx:sitemap:${siteId}`, "default");
+    revalidateTag(`nx:feed:${siteId}`, "default");
+    revalidatePath("/", "layout");
+  } catch {
+    // see docstring
+  }
+}
+
+/**
  * Tag for the active site's `np_sites` row read. Bust whenever
  * the operator renames the site or changes its hostname so
  * themes that render `site.name` in the masthead refresh on

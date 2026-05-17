@@ -80,6 +80,7 @@ export {
   themeCacheTag,
   navCacheTag,
   siteCacheTag,
+  bustThemeCache,
 } from "./cache.js";
 
 export { resolveAvailableLocales } from "./locale-siblings.js";

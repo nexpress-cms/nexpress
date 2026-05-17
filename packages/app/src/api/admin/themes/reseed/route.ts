@@ -11,7 +11,7 @@ import {
   setActiveThemeId,
   withCurrentSite,
 } from "@nexpress/core";
-import { readJsonBody, themeCacheTag } from "@nexpress/next";
+import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
@@ -142,19 +142,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Bust theme + SEO + sitemap + feed caches so the next public
-    // request renders the new theme. Wrapped in try/catch because
-    // `revalidateTag` throws outside a request context (test
-    // harnesses) and we don't want a cache miss to surface as a
-    // 500 when the persistence already succeeded.
-    try {
-      const { revalidatePath, revalidateTag } = await import("next/cache");
-      revalidateTag(themeCacheTag(siteId), "default");
-      revalidateTag(`nx:sitemap:${siteId}`, "default");
-      revalidateTag(`nx:feed:${siteId}`, "default");
-      revalidatePath("/", "layout");
-    } catch {
-      // ignore — see comment above
-    }
+    // request renders the new theme. Helper swallows the throw
+    // that fires outside a request context.
+    await bustThemeCache(siteId);
 
     return npSuccessResponse({
       activeId: themeId,
