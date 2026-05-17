@@ -814,7 +814,9 @@ export const portfolioCss = `
 .np-portfolio-project-body > .np-block-image {
   width: 100vw;
   max-width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  /* margin-inline keeps the full-bleed trick RTL-safe — the
+   * integration test theme-magazine-portfolio.integration rejects
+   * physical margin-left/right for directional layout. */
+  margin-inline: calc(50% - 50vw);
 }
 `;
