@@ -1,6 +1,15 @@
 export interface NpThemeColors {
   primary: string;
   primaryForeground: string;
+  /**
+   * Soft / tinted variant of `primary` — used for backgrounds
+   * behind links and accent regions. Optional; themes that omit
+   * it inherit a CSS-side `color-mix(in oklab, var(--np-color-primary) 10%, transparent)`
+   * fallback wherever the var is referenced. The framework still
+   * emits the var when a value is set so themes can pick a
+   * branded tint rather than the algorithmic mix.
+   */
+  primarySoft?: string;
   background: string;
   foreground: string;
   muted: string;

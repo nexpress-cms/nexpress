@@ -45,7 +45,7 @@ describe("createDefaultBlockRenderContext", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             id: "doc-1",
-            status: { equals: "published" },
+            status: "published",
           }),
           limit: 1,
         }),
@@ -93,7 +93,7 @@ describe("createDefaultBlockRenderContext", () => {
       const callArgs = findDocumentsMock.mock.calls[0]?.[1] as {
         where?: { status?: unknown };
       };
-      expect(callArgs?.where?.status).toEqual({ equals: "published" });
+      expect(callArgs?.where?.status).toBe("published");
     });
 
     it("respects caller-specified status", async () => {
@@ -109,13 +109,13 @@ describe("createDefaultBlockRenderContext", () => {
 
       const ctx = createDefaultBlockRenderContext();
       await ctx.content.find("posts", {
-        where: { status: { equals: "draft" } },
+        where: { status: "draft" },
       });
 
       const callArgs = findDocumentsMock.mock.calls[0]?.[1] as {
         where?: { status?: unknown };
       };
-      expect(callArgs?.where?.status).toEqual({ equals: "draft" });
+      expect(callArgs?.where?.status).toBe("draft");
     });
   });
 });

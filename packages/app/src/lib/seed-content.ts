@@ -164,7 +164,7 @@ export async function seedPages(
   // cleanly, while keeping operator-authored rows untouched.
   if (seedSource) {
     const existing = await findDocuments("pages", {
-      where: { seedSource } as Record<string, unknown>,
+      where: { seedSource },
       limit: 1,
     });
     if (existing.docs.length > 0) {
@@ -215,7 +215,7 @@ export async function seedPosts(
   const seedSource = options.themeId ? `theme:${options.themeId}` : null;
   if (seedSource) {
     const existing = await findDocuments("posts", {
-      where: { seedSource } as Record<string, unknown>,
+      where: { seedSource },
       limit: 1,
     });
     if (existing.docs.length > 0) {
@@ -482,7 +482,7 @@ async function wipeCollectionBySeedSource(
     const result = await findDocuments<{ id: string }>(
       collection,
       {
-        where: { seedSource } as Record<string, unknown>,
+        where: { seedSource },
         limit: WIPE_PAGE_SIZE,
       },
     );

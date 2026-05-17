@@ -209,7 +209,7 @@ const SEED_PAGES: NpThemeSeedPage[] = [
     seoDescription:
       "Install NexPress, learn the core concepts, write plugins, and look up the API.",
     blocks: [],
-    data: { template: "front" },
+    template: "front",
   },
 ];
 
@@ -394,6 +394,10 @@ export const docsTheme = defineTheme({
       colors: {
         primary: "#2563eb",
         primaryForeground: "#ffffff",
+        // 10% tint of primary — equivalent to the color-mix
+        // fallback in styles.ts, but materialised so the
+        // generated theme CSS picks it up explicitly.
+        primarySoft: "rgba(37, 99, 235, 0.1)",
         background: "#fbfcfe",
         foreground: "#0c1320",
         muted: "#f1f4f9",

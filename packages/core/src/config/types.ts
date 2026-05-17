@@ -1105,6 +1105,20 @@ export interface NpFindWhereSystemTokens {
    * a `locale` field (only i18n-enabled collections do).
    */
   locale?: string;
+  /**
+   * Lifecycle status filter. Every document has a `status`, so
+   * exposing it here lets a typed `where` clause filter to
+   * published rows without the doc type having to redeclare it.
+   * Accepts a single value or an array (IN match).
+   */
+  status?: NpDocumentStatus | NpDocumentStatus[];
+  /**
+   * Seed-marker filter. `seed_source` is a system column the
+   * theme seeders stamp onto rows they own. Exposing it on
+   * system tokens means callers don't have to widen their typed
+   * `T` just to filter by it.
+   */
+  seedSource?: string | string[];
 }
 
 /**
