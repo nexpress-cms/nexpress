@@ -72,6 +72,82 @@ const DEFAULT_DB_NAME =
 const DEFAULT_DATABASE_URL = `postgres://nexpress:nexpress@localhost:5433/${DEFAULT_DB_NAME}`;
 const DEFAULT_TEST_DATABASE_URL = `postgres://nexpress:nexpress@localhost:5433/${DEFAULT_DB_NAME}_test`;
 
+interface FormDefaults {
+  databaseUrl: string;
+  testDatabaseUrl: string;
+  dbHost: string;
+  dbPort: string;
+  dbName: string;
+}
+
+const FALLBACK_FORM_DEFAULTS: FormDefaults = {
+  databaseUrl: DEFAULT_DATABASE_URL,
+  testDatabaseUrl: DEFAULT_TEST_DATABASE_URL,
+  dbHost: "localhost",
+  dbPort: "5433",
+  dbName: DEFAULT_DB_NAME,
+};
+
+/**
+ * Reads the existing `.env` (if present) and projects the values
+ * the setup form cares about onto `FormDefaults`. Falls back to
+ * the hardcoded `FALLBACK_FORM_DEFAULTS` whenever a field is
+ * missing or unparseable.
+ *
+ * Why this exists: `create-nexpress` writes a project-derived
+ * `NEXPRESS_DB_PORT` (and a matching DATABASE_URL port) at
+ * scaffold time so two scaffolds on the same machine don't
+ * collide on host port 5433. The wizard form used to hardcode
+ * 5433; submitting it would overwrite the scaffold's port with
+ * the default and break the operator's already-running
+ * `docker compose up`. Reading the existing env at form-render
+ * time keeps the wizard consistent with what the scaffolder
+ * picked.
+ */
+async function getFormDefaults(): Promise<FormDefaults> {
+  let raw: string;
+  try {
+    raw = await readFile(ENV_PATH, "utf8");
+  } catch {
+    return FALLBACK_FORM_DEFAULTS;
+  }
+  const lines = raw.split(/\r?\n/);
+  const find = (key: string): string | null => {
+    const prefix = `${key}=`;
+    const line = lines.find((l) => l.startsWith(prefix));
+    return line ? line.slice(prefix.length).trim() : null;
+  };
+  const databaseUrl = find("DATABASE_URL") ?? FALLBACK_FORM_DEFAULTS.databaseUrl;
+  const envPort = find("NEXPRESS_DB_PORT");
+  let parsedUrl: URL | null = null;
+  try {
+    parsedUrl = new URL(databaseUrl);
+  } catch {
+    // Malformed DATABASE_URL — keep the textbox value (operator
+    // can fix it inline) but fall back on the discrete fields.
+  }
+  const dbHost = parsedUrl?.hostname || FALLBACK_FORM_DEFAULTS.dbHost;
+  const dbPortFromUrl = parsedUrl?.port || "";
+  const dbPort = envPort || dbPortFromUrl || FALLBACK_FORM_DEFAULTS.dbPort;
+  const dbName =
+    parsedUrl?.pathname?.replace(/^\//, "") || FALLBACK_FORM_DEFAULTS.dbName;
+  // Derive the test URL default from the parsed main URL so
+  // operators who picked a non-default port don't see TEST land
+  // on 5433 / different DB name. `find` still wins if the
+  // operator already set an explicit TEST_DATABASE_URL.
+  const derivedTestUrl = parsedUrl
+    ? `postgres://nexpress:nexpress@${dbHost}:${dbPort}/${dbName}_test`
+    : FALLBACK_FORM_DEFAULTS.testDatabaseUrl;
+  const testDatabaseUrl = find("TEST_DATABASE_URL") ?? derivedTestUrl;
+  return {
+    databaseUrl,
+    testDatabaseUrl,
+    dbHost,
+    dbPort,
+    dbName,
+  };
+}
+
 const args = process.argv.slice(2);
 const PORT = Number(getArg("--port") ?? "3001");
 const TOKEN = randomUUID();
@@ -173,7 +249,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/setup")) {
     res.setHeader("content-type", "text/html; charset=utf-8");
-    res.end(renderHtml());
+    res.end(renderHtml(await getFormDefaults()));
     return;
   }
 
@@ -230,6 +306,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   res.end();
 }
 
+function extractDbPort(databaseUrl: string): number | null {
+  try {
+    const parsed = new URL(databaseUrl);
+    if (!parsed.port) return null;
+    const port = Number(parsed.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+    return port;
+  } catch {
+    return null;
+  }
+}
+
 async function saveEnv(body: SetupBody): Promise<void> {
   // Backup any prior .env so a slip on the form never destroys
   // an operator's existing values.
@@ -242,6 +330,16 @@ async function saveEnv(body: SetupBody): Promise<void> {
     `DATABASE_URL=${body.databaseUrl}`,
   ];
   if (body.testDatabaseUrl) lines.push(`TEST_DATABASE_URL=${body.testDatabaseUrl}`);
+  // Mirror DATABASE_URL's port to NEXPRESS_DB_PORT so the
+  // docker-compose template's `${NEXPRESS_DB_PORT:-5433}`
+  // interpolation binds the host on the same port the app
+  // expects to connect to. Without this, an operator who picked
+  // a non-default port in the wizard would see the app try to
+  // hit that port while compose stayed bound to 5433.
+  const parsedDbPort = extractDbPort(body.databaseUrl);
+  if (parsedDbPort !== null && parsedDbPort !== 5433) {
+    lines.push(`NEXPRESS_DB_PORT=${parsedDbPort}`);
+  }
   lines.push(`NP_SECRET=${body.npSecret}`, `SITE_URL=${body.siteUrl}`, "");
   if (body.siteName) lines.push(`NP_SITE_NAME=${body.siteName}`);
   if (body.defaultLocale) lines.push(`NP_DEFAULT_LOCALE=${body.defaultLocale}`);
@@ -1093,7 +1191,7 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function renderHtml(): string {
+function renderHtml(defaults: FormDefaults): string {
   const defaultSecret = generatedSecret();
   const nexpressMark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
     <path d="M28 0H64V36L52 24V12H40L28 0Z" fill="#0066FF"></path>
@@ -1355,17 +1453,17 @@ function renderHtml(): string {
             <div id="dbUrlPane">
               <div class="field">
                 <label class="label" for="databaseUrl">Connection string</label>
-                <input class="input mono" id="databaseUrl" value="${escapeHtml(DEFAULT_DATABASE_URL)}" spellcheck="false" />
+                <input class="input mono" id="databaseUrl" value="${escapeHtml(defaults.databaseUrl)}" spellcheck="false" />
                 <p class="helper">Default uses your project name as the DB. Create it first if Postgres is already running.</p>
               </div>
             </div>
             <div id="dbFieldsPane" class="field-stack hidden">
               <div class="field-row">
-                <div class="field"><label class="label" for="dbHost">Host</label><input class="input" id="dbHost" value="localhost" /></div>
-                <div class="field"><label class="label" for="dbPort">Port</label><input class="input" id="dbPort" value="5433" /></div>
+                <div class="field"><label class="label" for="dbHost">Host</label><input class="input" id="dbHost" value="${escapeHtml(defaults.dbHost)}" /></div>
+                <div class="field"><label class="label" for="dbPort">Port</label><input class="input" id="dbPort" value="${escapeHtml(defaults.dbPort)}" /></div>
               </div>
               <div class="field-row">
-                <div class="field"><label class="label" for="dbName">Database</label><input class="input" id="dbName" value="${escapeHtml(DEFAULT_DB_NAME)}" /></div>
+                <div class="field"><label class="label" for="dbName">Database</label><input class="input" id="dbName" value="${escapeHtml(defaults.dbName)}" /></div>
                 <div class="field"><label class="label" for="dbUser">User</label><input class="input" id="dbUser" value="nexpress" /></div>
               </div>
               <div class="field"><label class="label" for="dbPass">Password</label><input class="input" id="dbPass" type="password" value="nexpress" /></div>
@@ -1415,7 +1513,7 @@ function renderHtml(): string {
             </div>
             <div class="panel">
               <div class="field-row">
-                <div class="field"><label class="label" for="testDatabaseUrl">TEST_DATABASE_URL</label><input class="input mono" id="testDatabaseUrl" value="${escapeHtml(DEFAULT_TEST_DATABASE_URL)}" /></div>
+                <div class="field"><label class="label" for="testDatabaseUrl">TEST_DATABASE_URL</label><input class="input mono" id="testDatabaseUrl" value="${escapeHtml(defaults.testDatabaseUrl)}" /></div>
                 <div class="field"><label class="label" for="storage">Storage</label><select class="select" id="storage"><option value="local">Local filesystem</option><option value="s3">S3 / R2 / MinIO</option></select></div>
               </div>
               <div id="s3Fields" class="field-row hidden" style="margin-top:12px">

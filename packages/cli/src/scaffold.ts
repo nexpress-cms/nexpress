@@ -5,7 +5,7 @@ import pc from "picocolors";
 
 import type { ProjectConfig } from "./prompts.js";
 import { getProjectFiles } from "./templates.js";
-import { generateSecret } from "./utils.js";
+import { dbPortFromProject, generateSecret } from "./utils.js";
 
 export async function scaffoldProject(config: ProjectConfig): Promise<void> {
   const targetDir = path.resolve(process.cwd(), config.projectName);
@@ -13,9 +13,11 @@ export async function scaffoldProject(config: ProjectConfig): Promise<void> {
   await ensureTargetDirectory(targetDir);
 
   const secret = generateSecret();
+  const dbPort = dbPortFromProject(config.projectName);
   const files = getProjectFiles({
     ...config,
     secret,
+    dbPort,
   });
 
   for (const [relativePath, file] of Object.entries(files)) {
