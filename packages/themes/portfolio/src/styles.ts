@@ -721,4 +721,100 @@ export const portfolioCss = `
   color: var(--np-color-foreground, #f5f1ea);
   margin: 0 0 0.75rem;
 }
+
+/* ────────────────────────────────────────────────────────────
+ * Project detail template (/work/:slug)
+ *
+ * Big hero image full-bleed at the top, generous display-serif
+ * title + excerpt + meta dl, then renderBlocks() body inside a
+ * max-width column. The body wrapper opts back out of the max-
+ * width for direct-descendant figures so image blocks render
+ * edge-to-edge — matches the docstring intent on
+ * ProjectDetailTemplate.
+ * ──────────────────────────────────────────────────────────── */
+.np-portfolio-project-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  padding-bottom: 6rem;
+}
+.np-portfolio-project-hero {
+  margin: 0;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--np-color-muted, #1a1a1a);
+  overflow: hidden;
+}
+.np-portfolio-project-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.np-portfolio-project-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  width: 100%;
+}
+.np-portfolio-project-header h1 {
+  font-family: var(--np-font-display, "Instrument Serif", serif);
+  font-weight: 400;
+  font-size: clamp(2.4rem, 6vw, 5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--np-color-foreground, #f5f1ea);
+  margin: 0;
+  text-wrap: balance;
+}
+.np-portfolio-project-excerpt {
+  font-family: var(--np-font-body, "Hanken Grotesk", sans-serif);
+  font-size: clamp(1.125rem, 1.6vw, 1.35rem);
+  line-height: 1.5;
+  color: var(--np-color-muted-foreground, #8a857d);
+  margin: 0;
+  max-width: 44rem;
+}
+.np-portfolio-project-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 1.5rem 2.5rem;
+  margin: 1rem 0 0;
+  padding: 1.5rem 0 0;
+  border-top: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-project-meta dt {
+  font-family: var(--np-font-body, "Hanken Grotesk", sans-serif);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--np-color-muted-foreground, #8a857d);
+  margin: 0 0 0.4rem;
+}
+.np-portfolio-project-meta dd {
+  font-family: var(--np-font-display, "Instrument Serif", serif);
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: var(--np-color-foreground, #f5f1ea);
+  margin: 0;
+}
+.np-portfolio-project-body {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.np-portfolio-project-body > figure,
+.np-portfolio-project-body > .np-block-image {
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
 `;

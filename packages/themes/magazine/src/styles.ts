@@ -1138,4 +1138,153 @@ export const magazineCss = `
   color: var(--np-color-muted-foreground, #6a5a48);
   padding: 2rem 0;
 }
+
+/* ────────────────────────────────────────────────────────────
+ * Hero feature block (magazine.hero-feature)
+ *
+ * Adaptive page-builder block with three layouts that share the
+ * np-magazine-hero-feature root. \`featured\` is inline-styled
+ * for full-bleed background images; \`carousel\` and \`grid\` use
+ * the class rules below. The shared header + card subcomponents
+ * style identically across carousel and grid; the data-hero-style
+ * attribute toggles the layout container.
+ * ──────────────────────────────────────────────────────────── */
+.np-magazine-hero-feature {
+  margin: 2rem 0;
+  padding: 2.5rem 0 3rem;
+  border-top: 3px double var(--np-color-foreground, #1a1411);
+  border-bottom: 1px solid var(--np-color-border, #d8ccb4);
+}
+.np-magazine-hero-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 2rem;
+  max-width: 60ch;
+}
+.np-magazine-hero-header h1 {
+  font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
+  font-weight: 600;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+.np-magazine-hero-header p {
+  font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
+  font-style: italic;
+  font-size: 1.125rem;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  margin: 0;
+}
+.np-magazine-hero-cta {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.25rem;
+  background: var(--np-color-primary, #b04a26);
+  color: var(--np-color-primary-foreground, #fcfaf3);
+  text-decoration: none;
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-weight: 500;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+.np-magazine-hero-empty {
+  font-style: italic;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  padding: 2rem 0;
+  margin: 0;
+}
+.np-magazine-hero-card-category {
+  font-family: var(--np-font-chrome, "Hanken Grotesk", sans-serif);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  margin: 0 0 0.4rem;
+}
+
+/* Carousel variant — horizontally scrolling track with snap.
+ * The modifier on the section is a semantic hook; layout lives
+ * on the .np-magazine-hero-carousel-track child below. */
+.np-magazine-hero-carousel {
+  position: relative;
+}
+.np-magazine-hero-carousel-track {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0;
+  padding-bottom: 0.5rem;
+}
+.np-magazine-hero-carousel-card {
+  flex: 0 0 min(20rem, 80%);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.np-magazine-hero-carousel-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--np-color-muted, #ece4d3);
+}
+.np-magazine-hero-carousel-card h2 {
+  font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  margin: 0;
+}
+.np-magazine-hero-carousel-card a {
+  color: inherit;
+  text-decoration: none;
+}
+.np-magazine-hero-carousel-card a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Grid variant — responsive auto-fit grid. Same modifier-on-
+ * section hook pattern as the carousel; layout is on the
+ * .np-magazine-hero-grid-tiles child. */
+.np-magazine-hero-grid {
+  position: relative;
+}
+.np-magazine-hero-grid-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 1.75rem 1.5rem;
+}
+.np-magazine-hero-grid-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.np-magazine-hero-grid-tile img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--np-color-muted, #ece4d3);
+}
+.np-magazine-hero-grid-tile h2 {
+  font-family: var(--np-font-heading, "Newsreader", Georgia, serif);
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  margin: 0;
+}
+.np-magazine-hero-grid-tile a {
+  color: inherit;
+  text-decoration: none;
+}
+.np-magazine-hero-grid-tile a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 `;
