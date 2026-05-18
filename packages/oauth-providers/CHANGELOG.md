@@ -1,5 +1,15 @@
 # @nexpress/oauth-providers
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [131d969]
+- Updated dependencies [1fe61de]
+- Updated dependencies [4e75c7a]
+- Updated dependencies [0c5b8d9]
+  - @nexpress/core@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes

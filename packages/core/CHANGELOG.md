@@ -1,5 +1,40 @@
 # @nexpress/core
 
+## 0.3.2
+
+### Patch Changes
+
+- 131d969: Closes the last divergence path PR #808's transactional reseed left open: per-row `content:afterDelete` / `content:afterSave` post-commit hooks now defer execution until the caller's outer transaction actually commits. On rollback the deferred queue is discarded — no more ghost pg-boss `afterDelete` jobs or audit-log entries for rows that ended up restored.
+
+  Mechanism: new `withDeferredPostCommit(callback)` from `@nexpress/core` sets up an AsyncLocalStorage-backed queue around `callback`. `runPostCommit` checks the store on every call and pushes onto the queue if a scope is active; outside the scope, behavior is unchanged (fire immediately, swallow errors). After the callback resolves, the queue drains in FIFO order, each hook independently isolated (one failure logs and moves on). If the callback throws, the queue vanishes with it.
+
+  `api/admin/themes/reseed/route.ts` POST wraps its outer `db.transaction` in `withDeferredPostCommit`. The pattern composes — anyone bundling multiple `saveDocument({ tx })` / `deleteDocument({ tx })` calls under one tx can wrap with the same helper and get the same drain-on-commit / discard-on-rollback semantics for free.
+
+- 1fe61de: Drizzle schema generator now honors `field.defaultValue` on `date` fields (previously dropped silently — only scalar text / number / checkbox fields were respected). Accepted shapes:
+  - `"now"` sentinel → emits `.defaultNow()` (compiles to `DEFAULT now()` at migration time).
+  - `Date` instance → emits `.default(new Date("<iso>"))`.
+  - ISO 8601 string → parsed and emitted the same as a Date.
+
+  Anything else is dropped (same defensive shape as the existing scalar fallbacks). Lets a theme / operator add a NOT NULL date column to a populated table in a single ALTER without a manual backfill — `defaultValue: "now"` paired with `required: true` is the common case.
+
+  No imports change in the generated schema file; `new Date(...)` is plain JS and Drizzle converts to SQL at query-build time.
+
+- 4e75c7a: Reseed is now fully atomic — the wipe + active-theme flip + seed all run inside one `db.transaction`. Any failure (most often the slug-collision case the 409 handler catches) rolls back every SQL write the call made; the operator never sees a half-state where the wipe committed but the seed didn't write.
+
+  `saveDocument` joins `deleteDocument` in accepting an `NpTransaction` handle via its existing `NpSaveOptions` bag (`{ status, tx }`). The pipeline threads the handle through every read (`getDocumentByIdInternal`), every write (`createMainDocument` / `updateMainDocument` / `syncChildTables` / `syncJoinTables` / `syncMediaRefsForDocument` / `npSlugHistory` insert / `insertRevision`), and skips opening its own private tx when the caller provided one. Existing call sites that don't pass `tx` are unaffected — `saveDocument(coll, id, data, user)` still opens a private cascade tx like before.
+
+  `setActiveThemeId` learns the same `{ tx }` option so the `np_settings.activeTheme` write joins the same scope. `wipeSeededContent` / `seedTerms` / `seedPages` / `seedPosts` / `seedNavigation` / `seedAll` all gain the option and forward it through.
+
+  Post-commit hooks (`content:afterSave` / `content:afterDelete` jobs + plugin equivalents) still fire per-row inside the tx; their side-effects (cache busts, audit log writes on separate connections) can diverge from final DB state on rollback. Same trade-off as `#807`'s wipe-only transaction.
+
+- 0c5b8d9: `deleteDocument` now accepts an optional `{ tx }` option that threads an outer Drizzle transaction handle through the read + cascade phases. When provided, the existence check and the per-row cascade (child tables, media refs, comments, reactions, reports, the main row itself) run against the caller's transaction — so a wrapping `db.transaction(async (tx) => { … })` covering many `deleteDocument` calls rolls back as a unit on any failure.
+
+  `wipeSeededContent` (`@nexpress/app`'s reseed flow) uses this to make the WHOLE wipe atomic: phase 1 reads all (collection, id) targets matching the seed-source set; phase 2 opens one transaction and threads it into every per-row `deleteDocument({ tx })`. Mid-wipe failure rolls back every previously-completed delete in the same call — the operator re-runs from clean state instead of trying to reason about half-deleted seed content.
+
+  New `NpTransaction` type alias exported from `@nexpress/core` for callers that want to type the `tx` parameter without depending on Drizzle internals. Existing `deleteDocument(collection, id, user)` call sites are unaffected (the new option is optional).
+
+  The seed phase that follows wipe is NOT yet in the same transaction — `saveDocument` doesn't accept the option today, and pulling it into one would force a wider pipeline refactor. Mid-seed failures (most commonly the slug-collision case the 409 handler catches) still leave the wipe committed and the seed half-written; the seeder's per-theme idempotency check makes the re-run safe. The reseed route docstring spells this out.
+
 ## 0.3.1
 
 ### Patch Changes
