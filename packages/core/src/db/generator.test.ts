@@ -219,10 +219,7 @@ describe("generateDrizzleSchema", () => {
           {
             type: "date",
             name: "publishedAt",
-            // Cast through unknown — operator-facing types model
-            // defaultValue as `unknown` on the base, so any of
-            // Date / "now" / ISO string flow through identically.
-            defaultValue: "2026-01-01T00:00:00Z" as unknown as Date,
+            defaultValue: "2026-01-01T00:00:00Z",
           },
         ]),
       ]);
@@ -237,7 +234,7 @@ describe("generateDrizzleSchema", () => {
           {
             type: "date",
             name: "publishedAt",
-            defaultValue: "not a date" as unknown as Date,
+            defaultValue: "not a date",
           },
         ]),
       ]);
