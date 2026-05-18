@@ -8,4 +8,7 @@ This closes the silent-drift bug that surfaced today: `create-nexpress@0.1.19` c
 
 The corollary: `create-nexpress` must republish whenever operators should scaffold against a newer `@nexpress/*` patch. Add a `create-nexpress: patch` changeset alongside any `@nexpress/*` change you want fresh scaffolds to pick up.
 
-Also disables `createGithubReleases` in the changesets action — every release was creating ~30 GitHub Releases (one per package in the `fixed` group), drowning the repo's Releases page in synchronized fixed-group bumps. Git tags + per-package `CHANGELOG.md` + the Version PR body continue to carry the same information without the page-level noise.
+Also slims the publish pipeline's surface noise:
+
+- **GitHub Releases disabled.** Every release was creating ~30 GitHub Release entries (one per package in the `fixed` group), drowning the repo's Releases page in synchronized fixed-group bumps. `createGithubReleases: false` on the changesets action stops creation; per-package `CHANGELOG.md` + Version PR body continue to carry the same information.
+- **Per-package git tag fanout collapsed.** `changeset publish` was emitting one git tag per package per release (`@nexpress/admin@0.3.2`, `@nexpress/app@0.3.2`, …) — `git tag -l` had 557 entries by today, all recoverable from one tag per release event. Pass `--no-git-tag` and let `scripts/tag-release.mts` write a single annotated tag per release: `v<core-version>` for family bumps, `create-nexpress@<version>` for the rare cli-only release. Historical 25 release events were collapsed to 20 single tags out of band (5 ancient Version PR merges that never produced an npm publish were left untagged).
