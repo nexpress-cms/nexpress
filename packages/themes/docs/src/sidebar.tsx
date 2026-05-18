@@ -30,6 +30,11 @@ interface DocNode {
  * Deeper levels render as nested lists with a hairline left
  * rule.
  *
+ * A top-level doc with no children is itself rendered as a
+ * clickable eyebrow rather than an eyebrow + duplicate link
+ * below (the eyebrow text and the only link would otherwise be
+ * the same string).
+ *
  * The current doc is highlighted via `data-current="true"`
  * resolved from the request's pathname. Wired through
  * `next/headers` (`x-np-pathname`) so the highlight survives
@@ -75,21 +80,32 @@ export async function DocsSidebar(): Promise<React.ReactElement> {
 
   return (
     <aside className="np-docs-sidebar" aria-label="Docs navigation">
-      {tree.map((group) => (
-        <div className="np-docs-sidebar-group" key={group.id}>
-          <h2 className="np-docs-sidebar-eyebrow">
-            <span className="np-docs-sidebar-eyebrow-dot" aria-hidden="true" />
-            {group.title}
-          </h2>
-          {group.children.length > 0 ? (
-            <NavTree nodes={group.children} currentSlug={currentSlug} />
-          ) : (
-            <ul>
-              <SidebarLink node={group} currentSlug={currentSlug} />
-            </ul>
-          )}
-        </div>
-      ))}
+      {tree.map((group) => {
+        const isLeaf = group.children.length === 0;
+        const isLeafCurrent = isLeaf && currentSlug === group.slug;
+        return (
+          <div className="np-docs-sidebar-group" key={group.id}>
+            <h2 className="np-docs-sidebar-eyebrow">
+              <span className="np-docs-sidebar-eyebrow-dot" aria-hidden="true" />
+              {isLeaf ? (
+                <a
+                  className="np-docs-sidebar-eyebrow-link"
+                  href={`/docs/${group.slug}`}
+                  data-current={isLeafCurrent ? "true" : undefined}
+                  aria-current={isLeafCurrent ? "page" : undefined}
+                >
+                  {group.title}
+                </a>
+              ) : (
+                group.title
+              )}
+            </h2>
+            {isLeaf ? null : (
+              <NavTree nodes={group.children} currentSlug={currentSlug} />
+            )}
+          </div>
+        );
+      })}
     </aside>
   );
 }
