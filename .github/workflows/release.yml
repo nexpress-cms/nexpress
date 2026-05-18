@@ -133,6 +133,15 @@ jobs:
           publish: pnpm run release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
+          # GitHub Releases generate ~30 entries per Version PR merge
+          # (one per package in the `fixed` group) — the Releases page
+          # becomes incomprehensible noise for a repo where every
+          # publish is a synchronized fixed-group bump. Git tags +
+          # CHANGELOG.md per package + the Version PR's body already
+          # carry the per-package narrative; the GitHub Releases page
+          # was duplicating that without adding signal. Disable
+          # release creation while keeping tags + npm publish intact.
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
