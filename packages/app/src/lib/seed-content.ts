@@ -12,6 +12,7 @@ import {
   type NpAuthUser,
   type NpNavItem,
   type NpRegisteredTheme,
+  type NpTransaction,
 } from "@nexpress/core";
 import type {
   NpThemeSeedContent,
@@ -452,8 +453,29 @@ export async function seedAll(
 // reseed without nuking operator-authored content. Goes through
 // `deleteDocument` so beforeDelete / afterDelete hooks (cache
 // busts, nav-cache invalidation, media-ref refcount drops) fire
-// for every row. Slower than a raw SQL delete; right for ~tens of
-// rows where correctness beats throughput.
+// for every row.
+//
+// Two-phase shape so the wipe is atomic at the SQL layer:
+//
+//   1. Identify — call `findDocuments` against the live DB to
+//      collect every (collection, id) matching the resolved
+//      seed-source set. Reads only; no writes.
+//   2. Delete — open one `db.transaction` and run
+//      `deleteDocument(coll, id, actor, { tx })` for every id
+//      inside it. Mid-loop failure rolls back ALL pending deletes
+//      (the cascade for child / media-ref / comment / reaction /
+//      report tables included).
+//
+// Post-commit hooks (`content:afterDelete` job + plugin hooks)
+// still fire per-row inside the tx and their side-effects (cache
+// busts, audit log writes against a separate connection, etc.)
+// may diverge from the final DB state if the outer tx rolls back.
+// In practice the operator re-runs the wipe, which fires the
+// hooks a second time — and the canonical sources of truth they
+// reflect (cache contents, derived counters) are idempotent under
+// repeat invocation. The mid-loop-DB-failure case the user worries
+// about — "I see N rows half-deleted and have no idea what
+// state the site is in" — is now closed.
 // ──────────────────────────────────────────────────────────────────
 
 export interface WipeSeededOptions {
@@ -472,52 +494,38 @@ export interface WipeSeededResult {
   postsDeleted: number;
 }
 
-const WIPE_PAGE_SIZE = 200;
+interface SeededTarget {
+  collection: "pages" | "posts";
+  id: string;
+}
 
 /**
- * Page through `findDocuments` and delete every row matching the
- * given `seedSource`. Re-fetches page 1 after every batch because
- * delete shifts the offset — `page: 2` would skip rows that moved
- * into the previous slot. Exits when a fetch returns no rows.
- *
- * The loop is NOT transactional (see `wipeSeededContent`'s caller
- * comment for why — hook callbacks use the singleton `getDb()`
- * handle, not a tx-bound one). When a per-row delete throws, the
- * surrounding try/catch re-throws with the deleted-so-far count
- * appended so the operator sees how far the wipe got before
- * failing. Re-running the endpoint resumes from the first
- * still-seeded row.
+ * Identify every (collection, id) matching the resolved seed-
+ * source set. Reads only — no writes happen here. The cap is set
+ * high because a "wipe everything seeded" against a normal install
+ * is ~tens of rows, not hundreds; for a hypothetical install with
+ * thousands the cap should fire and the operator should reseed
+ * after a manual cleanup instead.
  */
-async function wipeCollectionBySeedSource(
-  collection: "pages" | "posts",
-  seedSource: string,
-  actor: NpAuthUser,
-): Promise<number> {
-  let deleted = 0;
-  try {
-    while (true) {
+async function collectSeededTargets(
+  themeIds: string[],
+): Promise<SeededTarget[]> {
+  const targets: SeededTarget[] = [];
+  for (const themeId of themeIds) {
+    const seedSource = `theme:${themeId}`;
+    for (const collection of ["pages", "posts"] as const) {
       const result = await findDocuments<{ id: string; seedSource?: string }>(
         collection,
-        {
-          where: { seedSource },
-          limit: WIPE_PAGE_SIZE,
-        },
+        { where: { seedSource }, limit: 10_000 },
       );
-      if (result.docs.length === 0) break;
       for (const doc of result.docs) {
-        if (typeof doc.id !== "string") continue;
-        await deleteDocument(collection, doc.id, actor);
-        deleted += 1;
+        if (typeof doc.id === "string") {
+          targets.push({ collection, id: doc.id });
+        }
       }
     }
-  } catch (error) {
-    const cause = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Wipe of ${collection} (seedSource="${seedSource}") failed after deleting ${deleted} row${deleted === 1 ? "" : "s"}: ${cause}`,
-      error instanceof Error ? { cause: error } : undefined,
-    );
   }
-  return deleted;
+  return targets;
 }
 
 export async function wipeSeededContent(
@@ -539,18 +547,30 @@ export async function wipeSeededContent(
     ? [options.themeId]
     : getRegisteredThemes().map((t) => t.manifest.id);
 
+  const targets = await collectSeededTargets(themeIds);
+  if (targets.length === 0) {
+    return { pagesDeleted: 0, postsDeleted: 0 };
+  }
+
   let pagesDeleted = 0;
   let postsDeleted = 0;
 
-  // Pages first — no FK ordering constraint between pages/posts,
-  // but pages tend to be fewer rows so they finish quickly and a
-  // partial failure leaves the larger posts wipe pending rather
-  // than the other way around.
-  for (const themeId of themeIds) {
-    const seedSource = `theme:${themeId}`;
-    pagesDeleted += await wipeCollectionBySeedSource("pages", seedSource, actor);
-    postsDeleted += await wipeCollectionBySeedSource("posts", seedSource, actor);
-  }
+  // Single tx for the whole wipe — every cascade (child rows,
+  // media refs, comments, reactions, reports) commits or rolls
+  // back together. `deleteDocument`'s `{ tx }` option threads the
+  // outer handle in so the per-row cascade runs against the same
+  // transaction. Failure on row N rolls back the previous N-1
+  // successful deletes; the operator re-runs from clean state.
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    for (const { collection, id } of targets) {
+      await deleteDocument(collection, id, actor, {
+        tx: tx as unknown as NpTransaction,
+      });
+      if (collection === "pages") pagesDeleted += 1;
+      else postsDeleted += 1;
+    }
+  });
 
   return { pagesDeleted, postsDeleted };
 }

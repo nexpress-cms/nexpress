@@ -73,6 +73,23 @@ interface DrizzleDatabaseLike extends DrizzleTransactionLike {
 }
 
 /**
+ * Opaque transaction handle that external callers can thread into
+ * pipeline write functions to make a sequence of writes atomic.
+ *
+ * Today only `deleteDocument` accepts a `{ tx }` option (used by
+ * `wipeSeededContent` so a multi-row wipe rolls back as a unit on
+ * failure). Callers obtain a handle by wrapping their batch in
+ * Drizzle's `db.transaction(async (tx) => { … })`; the `tx` value
+ * passed to the callback IS the handle to thread on through.
+ *
+ * The shape is intentionally minimal — just the Drizzle methods
+ * the pipeline actually uses — to keep external code from poking
+ * Drizzle internals and to leave room for swapping the backing
+ * implementation if `getDb()` ever moves off Drizzle.
+ */
+export type NpTransaction = DrizzleTransactionLike;
+
+/**
  * Internal actor type. The pipeline accepts either a staff `NpAuthUser`
  * (the original behavior) or a `{ kind: "member", memberId }` shape
  * (Phase 9.7a — `community.memberWrite.create` collections). Member
@@ -1126,8 +1143,9 @@ export async function deleteDocument(
   collection: string,
   docId: string,
   user: NpAuthUser,
+  options?: { tx?: NpTransaction },
 ): Promise<void> {
-  return deleteDocumentImpl(collection, docId, { kind: "staff", user });
+  return deleteDocumentImpl(collection, docId, { kind: "staff", user }, options);
 }
 
 /**
@@ -1311,12 +1329,20 @@ async function deleteDocumentImpl(
   collection: string,
   docId: string,
   actor: SaveActor,
+  options?: { tx?: NpTransaction },
 ): Promise<void> {
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
-  const db = getDb() as unknown as DrizzleDatabaseLike;
-  const originalDoc = await getDocumentByIdInternal(db, table, collection, docId);
+  // When the caller threads an outer transaction (e.g. the
+  // seed-content wipe loop wrapping every row in one tx), use
+  // that handle for the existence read AND the cascade — so the
+  // read sees the tx's own pending deletes and the cascade
+  // commits/rolls back as part of the outer scope. Without an
+  // outer tx, fall back to the singleton pool handle and open a
+  // private tx for the cascade (current behavior).
+  const dbHandle = (options?.tx ?? getDb()) as unknown as DrizzleDatabaseLike;
+  const originalDoc = await getDocumentByIdInternal(dbHandle, table, collection, docId);
 
   // Without this guard the call returns success for non-existent ids:
   // hooks fire with `originalDoc = null`, the DELETE matches zero rows,
@@ -1363,7 +1389,7 @@ async function deleteDocumentImpl(
     principal,
   });
 
-  await db.transaction(async (tx) => {
+  const cascade = async (tx: DrizzleTransactionLike): Promise<void> => {
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
     await tx
@@ -1428,7 +1454,16 @@ async function deleteDocumentImpl(
         sql`${eq(getTableColumn(npReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReports as unknown as PgTable, "targetId"), docId)}`,
       );
     await tx.delete(table).where(eq(getTableColumn(table, "id"), docId));
-  });
+  };
+
+  if (options?.tx) {
+    // Already inside a caller-owned transaction — run the cascade
+    // against it directly. No nested savepoint; the outer tx
+    // commits/rolls back as a unit.
+    await cascade(options.tx);
+  } else {
+    await dbHandle.transaction(cascade);
+  }
 
   const postCommitCtx = { collection, documentId: docId, operation: "delete" };
   await runPostCommit("enqueue:content:afterDelete", postCommitCtx, () =>
