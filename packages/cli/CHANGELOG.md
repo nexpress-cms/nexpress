@@ -1,5 +1,12 @@
 # create-nexpress
 
+## 0.1.19
+
+### Patch Changes
+
+- 8b4d245: Allow `pnpm run setup` to optionally create the first admin, activate a starter theme, and seed sample content, while preserving the `/admin/setup` continuation path when those fields are skipped.
+- 823ad8a: Add an interactive starter prompt to `create-nexpress` and a friendlier `--starter=<id>` flag (alias for `--theme`). Picks one of `blog`, `magazine`, `portfolio`, or `docs` at scaffold time and writes `NP_ADMIN_THEME` to `.env`, which the first-boot admin setup wizard reads as the picker's initial selection. The existing `--theme` flag still works.
+
 ## 0.1.18
 
 ### Patch Changes

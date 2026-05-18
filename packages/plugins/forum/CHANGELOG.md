@@ -1,5 +1,20 @@
 # @nexpress/plugin-forum
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [131d969]
+- Updated dependencies [1fe61de]
+- Updated dependencies [ad4fcba]
+- Updated dependencies [4e75c7a]
+- Updated dependencies [0c5b8d9]
+  - @nexpress/core@0.3.2
+  - @nexpress/next@0.3.2
+  - @nexpress/blocks@0.3.2
+  - @nexpress/plugin-sdk@0.3.2
+  - @nexpress/editor@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes

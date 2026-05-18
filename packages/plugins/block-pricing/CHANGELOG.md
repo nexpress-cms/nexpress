@@ -1,5 +1,12 @@
 # @nexpress/plugin-block-pricing
 
+## 0.3.2
+
+### Patch Changes
+
+- @nexpress/blocks@0.3.2
+- @nexpress/plugin-sdk@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes
