@@ -149,6 +149,7 @@ export {
   getTranslationProgress,
 } from "./collections/index.js";
 export type { NpTransaction } from "./collections/index.js";
+export { withDeferredPostCommit } from "./collections/index.js";
 export type {
   NpTranslationProgress,
   NpCollectionTranslationProgress,

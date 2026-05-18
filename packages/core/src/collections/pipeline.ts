@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
 import { asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
@@ -129,6 +130,77 @@ function actorPrincipal(actor: SaveActor): NpHookPrincipal {
   }
 }
 
+interface DeferredPostCommitHook {
+  label: string;
+  context: { collection: string; documentId: string; operation?: string };
+  fn: () => Promise<unknown>;
+}
+
+/**
+ * AsyncLocalStorage holding a queue of post-commit hooks that
+ * should NOT fire until the surrounding caller-owned scope
+ * resolves successfully. `withDeferredPostCommit` sets the store;
+ * `runPostCommit` checks for it and pushes to the queue instead
+ * of firing. When the scope's callback resolves, the queue is
+ * drained in FIFO order; if the callback throws, the queue is
+ * discarded along with whatever caused the failure.
+ */
+const deferredPostCommitStore = new AsyncLocalStorage<DeferredPostCommitHook[]>();
+
+/**
+ * Wrap a callback in a "deferred post-commit" scope. Any
+ * `runPostCommit` calls made during the callback queue their work
+ * instead of firing. After the callback resolves successfully,
+ * queued hooks drain in FIFO order — each wrapped in its own
+ * try/catch (failures are logged, never surfaced to the caller,
+ * subsequent hooks still fire). If the callback throws, the queue
+ * is discarded and hooks never run.
+ *
+ * Use this around batch operations that pair an outer transaction
+ * with per-row post-commit side-effects — the reseed POST handler
+ * is the motivating case: wipe + setActiveThemeId + seed run inside
+ * one `db.transaction`; without deferral the per-row
+ * `content:afterDelete` / `content:afterSave` hooks would fire
+ * during the tx (committing audit log writes and pg-boss job
+ * inserts through separate connections) even if the tx later
+ * rolls back, leaving ghost entries that don't match the final DB
+ * state. With deferral the queue drains only after commit and
+ * vanishes on rollback.
+ *
+ * Re-entrant: nested calls run their inner queue independently;
+ * the inner queue drains when the inner callback resolves, before
+ * control returns to the outer.
+ */
+export async function withDeferredPostCommit<T>(
+  callback: () => Promise<T>,
+): Promise<T> {
+  const queue: DeferredPostCommitHook[] = [];
+  const result = await deferredPostCommitStore.run(queue, callback);
+  // Drain on success. Each hook is independently isolated — one
+  // failure logs and moves on, mirroring the eager `runPostCommit`
+  // shape. We re-import the logger lazily to avoid a top-of-file
+  // cycle with the observability module.
+  for (const hook of queue) {
+    try {
+      await hook.fn();
+    } catch (err) {
+      const { getLogger } = await import("../observability/logger.js");
+      getLogger().error(
+        `deferred post-commit ${hook.label} failed — outer scope committed, follow-up skipped`,
+        {
+          collection: hook.context.collection,
+          documentId: hook.context.documentId,
+          operation: hook.context.operation,
+          label: hook.label,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        },
+      );
+    }
+  }
+  return result;
+}
+
 /**
  * Run a side-effect that fires AFTER the document transaction has
  * already committed (job enqueue, plugin hook). The doc is durable
@@ -136,7 +208,14 @@ function actorPrincipal(actor: SaveActor): NpHookPrincipal {
  * successful save look like a failure, so we swallow and surface
  * via the framework logger instead.
  *
- * Operators rely on this log line to discover skipped follow-ups
+ * When called inside a `withDeferredPostCommit` scope, the work
+ * is QUEUED on the scope's AsyncLocalStorage list instead of
+ * firing immediately. The scope drains the queue after its
+ * callback resolves (which is the moment the caller-owned outer
+ * transaction has actually committed). Outside the scope, the
+ * behavior is unchanged — fire immediately, swallow errors.
+ *
+ * Operators rely on the log line to discover skipped follow-ups
  * (search reindex, mention fanout, cache invalidation, etc.) and
  * replay manually. The full outbox-pattern fix lives in #277; this
  * is the minimum viable visibility shim.
@@ -150,6 +229,11 @@ export async function runPostCommit(
   context: { collection: string; documentId: string; operation?: string },
   fn: () => Promise<unknown>,
 ): Promise<void> {
+  const queue = deferredPostCommitStore.getStore();
+  if (queue) {
+    queue.push({ label, context, fn });
+    return;
+  }
   try {
     await fn();
   } catch (err) {

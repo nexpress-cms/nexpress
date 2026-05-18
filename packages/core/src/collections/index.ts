@@ -19,6 +19,7 @@ export {
   getDocumentById,
 } from "./pipeline.js";
 export type { NpTransaction } from "./pipeline.js";
+export { withDeferredPostCommit } from "./pipeline.js";
 export {
   listRevisions,
   getRevision,

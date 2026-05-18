@@ -9,6 +9,7 @@ import {
   getThemeById,
   setActiveThemeId,
   withCurrentSite,
+  withDeferredPostCommit,
   type NpTransaction,
 } from "@nexpress/core";
 import { bustThemeCache, readJsonBody } from "@nexpress/next";
@@ -75,12 +76,13 @@ function parseSlugCollision(error: unknown): string | null {
  *     The operator never sees a half-state where the wipe
  *     committed but the seed didn't.
  *   - Post-commit hooks (`content:afterDelete` /
- *     `content:afterSave` jobs + their plugin equivalents) fire
- *     per-row inside the tx but their side-effects (cache busts,
- *     audit log writes through separate connections) can diverge
- *     from final DB state on rollback. Acceptable in practice —
- *     when the operator re-runs after resolving the collision,
- *     hooks re-fire idempotently against canonical sources.
+ *     `content:afterSave` pg-boss jobs + their plugin equivalents)
+ *     are deferred via `withDeferredPostCommit` — they queue
+ *     during the tx and drain ONLY after the outer tx actually
+ *     commits. On rollback the queue is discarded, so a failed
+ *     reseed leaves no ghost audit entries / stale afterDelete
+ *     jobs for rows that ended up restored. (Same shape as the
+ *     full outbox pattern in #277, but scoped to this batch.)
  *   - `bustThemeCache` (line ~163) deliberately runs OUTSIDE the
  *     tx, after commit. Busting Next.js's layout cache before
  *     the new theme is durably persisted would race against the
@@ -134,8 +136,15 @@ export async function POST(request: NextRequest) {
       // would leave the wipe committed (operator sees an empty
       // site) and the active theme pointing at one whose seed
       // didn't write — recoverable, but confusing.
+      //
+      // `withDeferredPostCommit` queues per-row
+      // `content:afterDelete` / `content:afterSave` post-commit
+      // work (pg-boss job enqueues, plugin hooks) until the
+      // outer tx actually commits. On rollback the queue is
+      // discarded — no ghost audit-log entries or stale
+      // afterDelete jobs for rows that ended up restored.
       const db = getDb();
-      return await db.transaction(async (innerTx) => {
+      return await withDeferredPostCommit(async () => db.transaction(async (innerTx) => {
         const tx = innerTx as unknown as NpTransaction;
 
         // Wipe before activation so the slug uniqueness constraint
@@ -167,7 +176,7 @@ export async function POST(request: NextRequest) {
           }
           throw error;
         }
-      });
+      }));
     });
 
     // Bust theme + SEO + sitemap + feed caches so the next public
