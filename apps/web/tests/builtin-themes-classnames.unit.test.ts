@@ -204,11 +204,27 @@ const themes: ThemeUnderTest[] = [
  *     and either add the missing rules + trim the baseline, or
  *     reclassify as VERIFIED_LANDMARK with a sibling citation.
  *
- *     Two visible-bug surfaces flagged at gate-merge time were
- *     fixed in the follow-up CSS PR: magazine.hero-feature page-
- *     builder block (11 classes) and portfolio project-detail
- *     template at `/work/:slug` (6 classes). Both removed from
- *     the baseline below.
+ *     History of UNVERIFIED → resolved transitions:
+ *       - magazine.hero-feature page-builder block (11 classes)
+ *         → real CSS added in #802.
+ *       - portfolio project-detail at `/work/:slug` (6 classes)
+ *         → real CSS added in #802.
+ *       - default MemberStatusWidget + button helpers (5)
+ *         → real CSS added in #803.
+ *       - portfolio + docs members shell (4 classes) → real CSS
+ *         added in #803.
+ *       - portfolio + docs error / not-found / members-error /
+ *         members-not-found (8 classes) → VERIFIED_LANDMARK_INLINE
+ *         (inline style prop covers everything) in #803.
+ *       - magazine section-strip + portfolio page-builder blocks
+ *         (case-study-hero, image-grid, client-logos) →
+ *         VERIFIED_LANDMARK_INLINE (this PR).
+ *
+ *     Remaining UNVERIFIED: only the dormant `MagazinePostCard`
+ *     export's 7 classes — exported from `@nexpress/theme-magazine`
+ *     but no internal callers in the reference app or other
+ *     themes. Either keep deferring (YAGNI) or design CSS when
+ *     a first consumer lands.
  */
 const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
   default: [
@@ -239,8 +255,11 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     // `.np-magazine-mobile-nav-drawer` parent (mobile-nav.tsx).
     "np-magazine-mobile-nav-drawer-list",
     "np-magazine-mobile-subnav",
-    // UNVERIFIED — section-strip is a block container; needs
-    // verification of parent block-render context.
+    // VERIFIED_LANDMARK_INLINE — the SectionStrip page-builder
+    // block renders `<section className="np-magazine-section-strip"
+    // style={{ margin: "2.5rem 0", padding: "1.5rem 0" }}>` with
+    // inline-styled h2 + grid children (blocks.tsx:347-405).
+    // Layout is fully self-contained on the inline prop.
     "np-magazine-section-strip",
     // VERIFIED_LANDMARK — subscribe states are <p> inside the
     // styled newsletter-form, no layout needed on them.
@@ -248,9 +267,17 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-magazine-subscribe-success",
   ],
   portfolio: [
-    // UNVERIFIED — case-study + client-logos + image-grid are
-    // page-builder block containers. Need block-render context
-    // verification.
+    // VERIFIED_LANDMARK_INLINE — three page-builder blocks
+    // (blocks.tsx). Each renders its `<section>` root with a
+    // full inline `style={{...}}` prop:
+    //   - case-study-hero — backgroundImage + min-height + flex
+    //     end-aligned overlay (lines 30-121).
+    //   - image-grid — `display: grid` with dynamic columns from
+    //     the operator's `columns` prop (lines 134-174).
+    //   - client-logos — auto-fit grid of operator-supplied logos
+    //     (lines 244-319).
+    // Visuals are self-contained on the inline styles; no CSS
+    // rule needed.
     "np-portfolio-case-study-hero",
     "np-portfolio-client-logos",
     "np-portfolio-image-grid",
