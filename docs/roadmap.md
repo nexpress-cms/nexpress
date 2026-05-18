@@ -315,9 +315,61 @@ What a non-developer evaluator sees before they install.
 - The WP migration guide (`wordpress-import-guide.md`) needs a screenshot
   walkthrough.
 
+### 12. Multi-axis permission model (deferred — 1.x)
+
+Today's `can(user, capability)` is single-axis: four capability strings
+(`content.publish`, `content.author`, `community.moderate`,
+`admin.manage`), no context argument, role → capability mapped through
+a fixed switch. That works for single-board single-site installs.
+Multi-board / multi-site operators need scoped grants.
+
+NexPress already partitions data along several axes; permissions need
+to follow:
+
+1. **Site** (`site_id`) — data partitioned already; perms aren't. A
+   site-admin on `acme.com` should not touch `other.com`.
+2. **Collection** — staff member who edits posts shouldn't necessarily
+   edit pages.
+3. **Kind** (`posts.kind = article | doc | project`) — surfaced by the
+   U-track collapse. Doc-writer vs blog-editor in the same `posts`
+   collection.
+4. **Category** — taxonomy under posts; possibly hierarchical
+   (tech / tech.frontend / tech.backend grant tree).
+5. **Forum / discussion** — `packages/plugins/forum` and any other
+   plugin-contributed board surface.
+6. **Member portal** — `/u/<handle>` surfaces, depending on what they
+   eventually expose.
+
+The U-track design sketched `can(user, cap, { collection, kind })`,
+which covers only axes 2-3. The realistic shape is
+`can(user, capability, { siteId?, collection?, kind?, category?, boardId? })`.
+
+What this pulls in:
+
+- **Data model** — `np_user_permissions(user_id, site_id?, collection?,
+  kind?, board_id?, capability, granted)` (or similar). Wildcards + deny
+  rules. Inheritance: does a site admin auto-cover every collection on
+  that site? Tree vs flat.
+- **Performance** — `can()` is on every authz check, must not DB-hit.
+  Needs in-memory cache with bust-on-permission-write.
+- **Admin UX** — granting perms across N axes is an N-dimensional
+  matrix. Not trivial.
+- **Migration** — existing 5 roles (admin / editor / author / moderator
+  / viewer) need a deterministic mapping into the new shape so existing
+  installs stay functional through the cutover.
+- **Paradigm choice** — RBAC vs ACL vs capability-graph. Different
+  ergonomics for different operator shapes.
+
+**Action when this opens**: write `docs/design/multi-axis-permissions.md`
+FIRST, listing axes, 5-10 operator personas, API candidates, and
+trade-offs. Don't go straight to code; the design space is wide enough
+that getting the API shape wrong costs more than the speculative wait.
+Wait for at least one concrete operator with this need to validate the
+personas before locking the design.
+
 ## Recommended next phase
 
-Of the eleven categories, **1 + 2 + 3 + 5** is the natural Phase 23 cluster:
+Of the twelve categories, **1 + 2 + 3 + 5** is the natural Phase 23 cluster:
 
 1. Publish 0.1 and watch what breaks for real users.
 2. Fix the production-hardening items those users hit first.
@@ -325,10 +377,12 @@ Of the eleven categories, **1 + 2 + 3 + 5** is the natural Phase 23 cluster:
    `deploy plan`) so the AI-operated positioning is demonstrable.
 4. Tighten DX so a curious evaluator becomes a contributor.
 
-4, 7, 8, 9, 10 are 1.x candidates. 6 and 11 are continuous — they advance
-one issue at a time as 1, 2, 3, and 5 surface gaps. Category 9 (marketplace)
-has an MVP path that _can_ land in 1.0 as a curated index; the install-flow
-piece waits on category 4.
+4, 7, 8, 9, 10, 12 are 1.x candidates. 6 and 11 are continuous — they
+advance one issue at a time as 1, 2, 3, and 5 surface gaps. Category 9
+(marketplace) has an MVP path that _can_ land in 1.0 as a curated index;
+the install-flow piece waits on category 4. Category 12 (multi-axis
+perms) waits for a real operator with that shape — premature design
+risks locking in the wrong API.
 
 ## Open questions
 
