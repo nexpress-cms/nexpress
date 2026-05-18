@@ -18,6 +18,7 @@ export {
   findDocuments,
   getDocumentById,
 } from "./pipeline.js";
+export type { NpTransaction } from "./pipeline.js";
 export {
   listRevisions,
   getRevision,

@@ -65,13 +65,25 @@ function parseSlugCollision(error: unknown): string | null {
  *
  * Caveats:
  *
- *   - Drizzle transactions don't propagate through hook
- *     callbacks (nav-cache busts, media refcount drops). The
- *     wipe + seed loop runs hook-per-row instead of inside a
- *     single transaction. A mid-flow failure leaves partial
- *     state; the error message includes the count wiped before
- *     failure so the operator knows the resume point, and
- *     re-running the endpoint finishes the remainder.
+ *   - The WIPE phase is now atomic — `wipeSeededContent` opens a
+ *     single `db.transaction` and threads it through every per-row
+ *     `deleteDocument({ tx })` call. A mid-wipe failure rolls back
+ *     ALL the pending deletes and the cascade rows (child tables,
+ *     media refs, comments, reactions, reports) along with them.
+ *   - The SEED phase that follows is NOT inside the same tx —
+ *     `seedAll`'s per-row `saveDocument` calls don't yet accept a
+ *     tx parameter, and pulling them into one would force a much
+ *     wider pipeline refactor. A failure during seed (most often
+ *     the slug-collision case the 409 handler below catches)
+ *     leaves the wipe committed and the seed half-written. The
+ *     operator resolves the collision and re-runs; the seeder's
+ *     per-theme idempotency check skips rows it already wrote.
+ *   - Post-commit hooks (`content:afterDelete` job + plugin
+ *     `content:afterDelete`) still fire per-row inside the wipe
+ *     tx. Their side-effects (cache busts, audit log writes on a
+ *     separate connection) can diverge from final DB state on
+ *     rollback. Acceptable in practice — operator re-runs the
+ *     wipe, hooks re-fire idempotently against canonical sources.
  *   - Pre-PR1 installs have unmarked legacy seed rows. Migration
  *     `0007_legacy_seed_backfill` stamps `seed_source =
  *     "theme:default"` onto pages whose slug matches the
