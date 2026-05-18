@@ -85,6 +85,7 @@ describe("getProjectFiles", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     for (const name of [
       "package.json",
+      "pnpm-workspace.yaml",
       ".env",
       ".env.example",
       ".gitignore",
@@ -96,6 +97,26 @@ describe("getProjectFiles", () => {
     ]) {
       expect(files[name], `missing required file: ${name}`).toBeDefined();
     }
+  });
+
+  it("pre-approves native-build deps via pnpm-workspace.yaml allowBuilds", () => {
+    // pnpm 10.6+ ignores `pnpm.onlyBuiltDependencies` in package.json
+    // for non-workspace projects; the live allowlist is here. Without
+    // these entries a fresh `pnpm install` warns ERR_PNPM_IGNORED_BUILDS
+    // and the operator has to manually run `pnpm approve-builds`
+    // before any feature backed by sharp / argon2 / esbuild works.
+    const files = textFiles(getProjectFiles(baseConfig));
+    const workspaceYaml = files["pnpm-workspace.yaml"];
+    expect(workspaceYaml).toBeDefined();
+    expect(workspaceYaml).toMatch(/^allowBuilds:/m);
+    expect(workspaceYaml).toMatch(/^\s+sharp:\s*true$/m);
+    expect(workspaceYaml).toMatch(/^\s+"@node-rs\/argon2":\s*true$/m);
+    expect(workspaceYaml).toMatch(/^\s+esbuild:\s*true$/m);
+    // The old `pnpm.onlyBuiltDependencies` block in package.json
+    // is silently ignored by current pnpm and was removed alongside
+    // adding the workspace.yaml. Guard against its accidental
+    // reintroduction (two places for the same intent drift).
+    expect(files["package.json"]).not.toMatch(/onlyBuiltDependencies/);
   });
 
   it("uses workspace:* deps when localMode, otherwise an exact @nexpress/core pin", () => {
