@@ -547,6 +547,13 @@ interface SaveContext {
   registration: ReturnType<typeof getCollectionRegistration>;
   table: PgTable;
   db: DrizzleDatabaseLike;
+  /**
+   * Caller-provided transaction (from `options.tx`). When set,
+   * `persistDocumentTx` skips opening a private tx and runs the
+   * write block against this handle directly so callers can
+   * batch many saves under one outer transaction.
+   */
+  outerTx: DrizzleTransactionLike | undefined;
   operation: "create" | "update";
   originalDoc: Record<string, unknown> | null;
   userForHooks: NpAuthUser | null;
@@ -571,6 +578,12 @@ async function initSaveContext(
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
+  // Caller can hand us a transaction (e.g. the seed loop batches
+  // every theme's seedAll inside one outer tx). Cast from the
+  // `unknown`-typed slot on NpSaveOptions; the structural shape
+  // matches DrizzleTransactionLike at runtime — see the docstring
+  // on the option for the boundary contract.
+  const outerTx = options?.tx as DrizzleTransactionLike | undefined;
   // Pass `data` so the schema evaluates `admin.condition` and
   // drops `required` for hidden fields. Mirrors the admin
   // client's condition-aware resolver introduced in #759 — a
@@ -578,7 +591,12 @@ async function initSaveContext(
   // it on save would block writes the operator can't fix.
   const validatedData = toRecord(getCollectionZodSchema(config, data as Record<string, unknown>).parse(data));
   const operation: "create" | "update" = docId ? "update" : "create";
-  const originalDoc = docId ? await getDocumentByIdInternal(db, table, collection, docId) : null;
+  // Read the original doc through the outer tx when one is
+  // provided so the read sees the tx's own pending writes
+  // (matters when a batch saves dependent docs in sequence and
+  // a later one needs to look the earlier one up).
+  const readHandle: DrizzleTransactionLike = outerTx ?? db;
+  const originalDoc = docId ? await getDocumentByIdInternal(readHandle, table, collection, docId) : null;
   return {
     collection,
     docId,
@@ -589,6 +607,7 @@ async function initSaveContext(
     registration,
     table,
     db,
+    outerTx,
     operation,
     originalDoc,
     userForHooks: actorUserOrNull(actor),
@@ -819,7 +838,11 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
     });
   }
 
-  return ctx.db.transaction(async (tx) => {
+  // The whole persistence block runs against one tx — either the
+  // caller's outer tx (when `options.tx` was threaded in) or a
+  // private one opened here. Extracted into a `persist(tx)` local
+  // so both branches share the body verbatim.
+  const persist = async (tx: DrizzleTransactionLike): Promise<Record<string, unknown>> => {
     const persistedDoc: Record<string, unknown> =
       ctx.operation === "update"
         ? await updateMainDocument(
@@ -897,7 +920,12 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
     }
 
     return persistedDoc;
-  });
+  };
+
+  if (ctx.outerTx) {
+    return persist(ctx.outerTx);
+  }
+  return ctx.db.transaction(persist);
 }
 
 /**
@@ -2026,7 +2054,7 @@ function getSortOrderClause(
  * `withCurrentSite`, so it stays on the default path).
  */
 async function getDocumentByIdInternal(
-  db: DrizzleDatabaseLike,
+  db: DrizzleTransactionLike,
   table: PgTable,
   collection: string,
   id: string,
@@ -2053,7 +2081,7 @@ async function getDocumentByIdInternal(
 }
 
 async function getDocumentByIdOptional(
-  db: DrizzleDatabaseLike,
+  db: DrizzleTransactionLike,
   table: PgTable,
   id: string,
 ): Promise<Record<string, unknown> | null> {

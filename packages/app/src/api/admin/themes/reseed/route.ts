@@ -10,6 +10,7 @@ import {
   getThemeById,
   setActiveThemeId,
   withCurrentSite,
+  type NpTransaction,
 } from "@nexpress/core";
 import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import { sql } from "drizzle-orm";
@@ -63,27 +64,28 @@ function parseSlugCollision(error: unknown): string | null {
  *     leaves the old theme's seeded rows in place; reseed
  *     replaces them.
  *
- * Caveats:
+ * Atomicity:
  *
- *   - The WIPE phase is now atomic — `wipeSeededContent` opens a
- *     single `db.transaction` and threads it through every per-row
- *     `deleteDocument({ tx })` call. A mid-wipe failure rolls back
- *     ALL the pending deletes and the cascade rows (child tables,
- *     media refs, comments, reactions, reports) along with them.
- *   - The SEED phase that follows is NOT inside the same tx —
- *     `seedAll`'s per-row `saveDocument` calls don't yet accept a
- *     tx parameter, and pulling them into one would force a much
- *     wider pipeline refactor. A failure during seed (most often
- *     the slug-collision case the 409 handler below catches)
- *     leaves the wipe committed and the seed half-written. The
- *     operator resolves the collision and re-runs; the seeder's
- *     per-theme idempotency check skips rows it already wrote.
- *   - Post-commit hooks (`content:afterDelete` job + plugin
- *     `content:afterDelete`) still fire per-row inside the wipe
- *     tx. Their side-effects (cache busts, audit log writes on a
- *     separate connection) can diverge from final DB state on
- *     rollback. Acceptable in practice — operator re-runs the
- *     wipe, hooks re-fire idempotently against canonical sources.
+ *   - The whole reseed (wipe + active-theme flip + seed) runs
+ *     inside a single `db.transaction`. The handle threads through
+ *     `wipeSeededContent({ tx })`, `setActiveThemeId(_, _, { tx })`,
+ *     and `seedAll(_, _, { tx })` via the `NpTransaction` option
+ *     each function added. Failure anywhere — including the
+ *     common slug-collision case the 409 handler below catches —
+ *     rolls back every SQL write the call made up to that point.
+ *     The operator never sees a half-state where the wipe
+ *     committed but the seed didn't.
+ *   - Post-commit hooks (`content:afterDelete` /
+ *     `content:afterSave` jobs + their plugin equivalents) fire
+ *     per-row inside the tx but their side-effects (cache busts,
+ *     audit log writes through separate connections) can diverge
+ *     from final DB state on rollback. Acceptable in practice —
+ *     when the operator re-runs after resolving the collision,
+ *     hooks re-fire idempotently against canonical sources.
+ *   - `bustThemeCache` (line ~163) deliberately runs OUTSIDE the
+ *     tx, after commit. Busting Next.js's layout cache before
+ *     the new theme is durably persisted would race against the
+ *     next public render.
  *   - Pre-PR1 installs have unmarked legacy seed rows. Migration
  *     `0007_legacy_seed_backfill` stamps `seed_source =
  *     "theme:default"` onto pages whose slug matches the
@@ -126,34 +128,47 @@ export async function POST(request: NextRequest) {
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 
     const result = await withCurrentSite(siteId, async () => {
-      // Wipe before activation so the slug uniqueness constraint
-      // on `/` doesn't collide between outgoing theme's home page
-      // and the new theme's home page seed.
-      const wiped = await wipeSeededContent(user);
+      // Single outer transaction wraps wipe + active-theme flip +
+      // seed so any failure (most often the slug-collision case
+      // the parseSlugCollision handler catches below) rolls back
+      // the entire reseed. Without this scope, a seed failure
+      // would leave the wipe committed (operator sees an empty
+      // site) and the active theme pointing at one whose seed
+      // didn't write — recoverable, but confusing.
+      const db = getDb();
+      return await db.transaction(async (innerTx) => {
+        const tx = innerTx as unknown as NpTransaction;
 
-      // Activate the new theme so `seedAll` (which reads the
-      // active theme's seedContent through the registry) picks up
-      // the target theme.
-      await setActiveThemeId(themeId, user.id);
-      const newActive = await getActiveTheme();
-      if (!newActive || newActive.manifest.id !== themeId) {
-        throw new Error(
-          `Active-theme write succeeded but readback returned '${newActive?.manifest.id ?? "null"}' — aborting reseed.`,
-        );
-      }
+        // Wipe before activation so the slug uniqueness constraint
+        // on `/` doesn't collide between outgoing theme's home page
+        // and the new theme's home page seed.
+        const wiped = await wipeSeededContent(user, { tx });
 
-      try {
-        const seeded = await seedAll(user, newActive);
-        return { wiped, seeded };
-      } catch (error) {
-        const collisionSlug = parseSlugCollision(error);
-        if (collisionSlug) {
-          throw new NpConflictError(
-            `Cannot seed theme "${themeId}" — a page with slug "${collisionSlug}" already exists and isn't marked as framework seed. Delete or rename it and re-run reseed.`,
+        // Activate the new theme so `seedAll` (which reads the
+        // active theme's seedContent through the registry) picks up
+        // the target theme. Inside the same tx so a downstream
+        // seed failure also rolls back the activation.
+        await setActiveThemeId(themeId, user.id, { tx });
+        const newActive = await getActiveTheme();
+        if (!newActive || newActive.manifest.id !== themeId) {
+          throw new Error(
+            `Active-theme write succeeded but readback returned '${newActive?.manifest.id ?? "null"}' — aborting reseed.`,
           );
         }
-        throw error;
-      }
+
+        try {
+          const seeded = await seedAll(user, newActive, { tx });
+          return { wiped, seeded };
+        } catch (error) {
+          const collisionSlug = parseSlugCollision(error);
+          if (collisionSlug) {
+            throw new NpConflictError(
+              `Cannot seed theme "${themeId}" — a page with slug "${collisionSlug}" already exists and isn't marked as framework seed. Delete or rename it and re-run reseed.`,
+            );
+          }
+          throw error;
+        }
+      });
     });
 
     // Bust theme + SEO + sitemap + feed caches so the next public
