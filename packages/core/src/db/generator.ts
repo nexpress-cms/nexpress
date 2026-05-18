@@ -384,13 +384,24 @@ function buildScalarColumn(
   const notNull = field.required ? ".notNull()" : "";
 
   // Honors `field.defaultValue` for SQL-mappable scalar types
-  // (text family, number, checkbox). Drizzle's `.default(<expr>)`
-  // emits a `DEFAULT` clause in the generated migration, which is
-  // required for adding a NOT NULL column to a table that already
-  // has rows. Non-scalar types (`relationship`, `upload`, `array`,
-  // `group`, `richText`, `blocks`, `json`) ignore the value — those
-  // either don't map to a single column or have no sensible
-  // server-side default.
+  // (text family, number, checkbox, date). Drizzle's
+  // `.default(<expr>)` emits a `DEFAULT` clause in the generated
+  // migration, which is required for adding a NOT NULL column to
+  // a table that already has rows. Non-scalar types
+  // (`relationship`, `upload`, `array`, `group`, `richText`,
+  // `blocks`, `json`) ignore the value — those either don't map
+  // to a single column or have no sensible server-side default.
+  //
+  // For `date` fields the value accepts three shapes:
+  //   - the literal `"now"` sentinel → emit `.defaultNow()`
+  //     (Drizzle's helper that compiles to `DEFAULT now()`).
+  //   - a JS `Date` instance → emit
+  //     `.default(new Date("<iso>"))`; Drizzle converts at
+  //     query-build time.
+  //   - an ISO 8601 string → parsed via `new Date(...)` and
+  //     emitted the same way.
+  // Anything else is dropped silently (same defensive shape as
+  // mismatched scalars).
   const defaultClause = ((): string => {
     if (field.defaultValue === undefined || field.defaultValue === null) return "";
     if (field.type === "text" || field.type === "textarea" || field.type === "email" || field.type === "select" || field.type === "radio") {
@@ -408,6 +419,19 @@ function buildScalarColumn(
     if (field.type === "checkbox") {
       if (typeof field.defaultValue !== "boolean") return "";
       return `.default(${field.defaultValue.toString()})`;
+    }
+    if (field.type === "date") {
+      if (field.defaultValue === "now") return ".defaultNow()";
+      if (field.defaultValue instanceof Date && !Number.isNaN(field.defaultValue.getTime())) {
+        return `.default(new Date("${field.defaultValue.toISOString()}"))`;
+      }
+      if (typeof field.defaultValue === "string") {
+        const parsed = new Date(field.defaultValue);
+        if (!Number.isNaN(parsed.getTime())) {
+          return `.default(new Date("${parsed.toISOString()}"))`;
+        }
+      }
+      return "";
     }
     return "";
   })();
@@ -431,7 +455,9 @@ function buildScalarColumn(
       return { columns: [`${propertyName}: boolean("${columnName}")${defaultClause}${notNull}`], relations: [] };
     case "date":
       return {
-        columns: [`${propertyName}: timestamp("${columnName}", { withTimezone: true })${notNull}`],
+        columns: [
+          `${propertyName}: timestamp("${columnName}", { withTimezone: true })${defaultClause}${notNull}`,
+        ],
         relations: [],
       };
     case "upload": {
