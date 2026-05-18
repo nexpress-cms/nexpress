@@ -187,6 +187,22 @@ export interface NpCheckboxField extends NpFieldBase {
 
 export interface NpDateField extends NpFieldBase {
   type: "date";
+  /**
+   * Default value the Drizzle schema generator emits as a SQL
+   * `DEFAULT` clause. Accepted shapes:
+   *
+   *   - `"now"` sentinel → `.defaultNow()` → `DEFAULT now()`
+   *   - A `Date` instance → `.default(new Date("<iso>"))`
+   *   - Any ISO 8601 string → parsed via `new Date(...)` and
+   *     emitted identically to the Date case.
+   *
+   * Anything else is dropped silently at codegen time (mirroring
+   * the defensive shape used for other scalar fields). Required
+   * NOT NULL date columns paired with `defaultValue: "now"` let
+   * an `ALTER TABLE … ADD COLUMN` against a populated table
+   * succeed without a backfill step.
+   */
+  defaultValue?: Date | string;
   pickerOptions?: {
     format?: string;
     includeTime?: boolean;

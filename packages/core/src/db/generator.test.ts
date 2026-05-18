@@ -185,6 +185,62 @@ describe("generateDrizzleSchema", () => {
       expect(out).not.toMatch(/j:.*\.default\(/);
     });
 
+    it('emits .defaultNow() for date fields with `defaultValue: "now"`', () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          { type: "date", name: "publishedAt", defaultValue: "now" },
+        ]),
+      ]);
+      expect(out).toContain(
+        'publishedAt: timestamp("published_at", { withTimezone: true }).defaultNow()',
+      );
+    });
+
+    it("emits .default(new Date(...)) for date fields with a Date instance", () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          {
+            type: "date",
+            name: "publishedAt",
+            // Fixed-point Date — used for "site launches on this
+            // exact instant" style backfills.
+            defaultValue: new Date("2026-01-01T00:00:00Z"),
+          },
+        ]),
+      ]);
+      expect(out).toContain(
+        'publishedAt: timestamp("published_at", { withTimezone: true }).default(new Date("2026-01-01T00:00:00.000Z"))',
+      );
+    });
+
+    it("parses ISO date strings into a Date for emission", () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          {
+            type: "date",
+            name: "publishedAt",
+            defaultValue: "2026-01-01T00:00:00Z",
+          },
+        ]),
+      ]);
+      expect(out).toContain(
+        'publishedAt: timestamp("published_at", { withTimezone: true }).default(new Date("2026-01-01T00:00:00.000Z"))',
+      );
+    });
+
+    it("skips date defaultValue when the string is not a valid ISO", () => {
+      const out = generateDrizzleSchema([
+        collection("posts", [
+          {
+            type: "date",
+            name: "publishedAt",
+            defaultValue: "not a date",
+          },
+        ]),
+      ]);
+      expect(out).not.toMatch(/publishedAt:.*\.default/);
+    });
+
     it("skips defaultValue when the value type doesn't match the field type", () => {
       // Defensive: a number field with a string `defaultValue`
       // shouldn't emit `default("3")` — drizzle would build wrong
