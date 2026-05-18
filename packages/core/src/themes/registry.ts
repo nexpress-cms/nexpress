@@ -114,10 +114,17 @@ export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
  * an admin can't pick a string that doesn't resolve to anything
  * (which would silently fall back to the default and confuse
  * the operator).
+ *
+ * Accepts an optional outer transaction so the active-theme flip
+ * can sit inside the same atomic scope as a wipe + seed batch
+ * (see `wipeSeededContent` / `seedAll`'s `tx` option). Without
+ * an outer tx, the write runs against the pool handle and
+ * commits standalone.
  */
 export async function setActiveThemeId(
   id: string,
   updatedBy: string | null = null,
+  options: { tx?: unknown } = {},
 ): Promise<void> {
   if (!registry.has(id)) {
     throw new NpValidationError("Invalid input", [
@@ -127,11 +134,16 @@ export async function setActiveThemeId(
       },
     ]);
   }
-  const db = getDb();
+  // `options.tx` is typed `unknown` here to avoid pulling Drizzle
+  // internals onto the public registry surface. Callers thread
+  // the NpTransaction value they received from
+  // `db.transaction(async (tx) => …)`; structurally it has the
+  // same `.insert(table)` chain we rely on.
+  const dbHandle = (options.tx ?? getDb()) as ReturnType<typeof getDb>;
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   // Phase 15.4 — composite (site_id, key) PK.
-  await db
+  await dbHandle
     .insert(npSettings)
     .values({ siteId, key: "activeTheme", value: id, updatedAt: now, updatedBy })
     .onConflictDoUpdate({

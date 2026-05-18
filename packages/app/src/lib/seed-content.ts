@@ -79,6 +79,8 @@ export interface SeedAllResult {
 export interface SeedTermsOptions {
   tags?: NpThemeSeedTerm[];
   categories?: NpThemeSeedTerm[];
+  /** Outer transaction; see `WipeSeededOptions.tx` for semantics. */
+  tx?: NpTransaction;
 }
 
 export async function seedTerms(
@@ -106,7 +108,7 @@ export async function seedTerms(
       null,
       { name: sample.name, description: sample.description ?? "" },
       actor,
-      { status: "published" },
+      { status: "published", tx: options.tx },
     );
   }
   for (const sample of categories) {
@@ -115,7 +117,7 @@ export async function seedTerms(
       null,
       { name: sample.name, description: sample.description ?? "" },
       actor,
-      { status: "published" },
+      { status: "published", tx: options.tx },
     );
   }
   return {
@@ -147,6 +149,8 @@ export interface SeedPagesOptions {
    * a themeId.
    */
   themeId?: string;
+  /** Outer transaction; see `WipeSeededOptions.tx` for semantics. */
+  tx?: NpTransaction;
 }
 
 export async function seedPages(
@@ -178,7 +182,12 @@ export async function seedPages(
     }
   }
 
-  const db = getDb();
+  // Use the outer tx for the slug-override raw UPDATE so it
+  // joins the same atomic scope as the saveDocument writes.
+  // Without an outer tx, fall back to the singleton db handle.
+  const writeHandle = (options.tx ?? getDb()) as {
+    execute(query: ReturnType<typeof sql>): Promise<unknown>;
+  };
   for (const sample of pages) {
     const { slug, data: extraData, ...rest } = sample;
     // `extraData` (the `data` escape hatch) first, then `rest`
@@ -193,12 +202,13 @@ export async function seedPages(
     if (seedSource) payload.seedSource = seedSource;
     const result = await saveDocument("pages", null, payload, actor, {
       status: "published",
+      tx: options.tx,
     });
     if (slug) {
       const id = result.doc.id as string;
       // The pipeline's slugField derives from title, so we override
       // the home page's slug with a direct DB write after save.
-      await db.execute(
+      await writeHandle.execute(
         sql`update np_c_pages set slug = ${slug} where id = ${id}`,
       );
     }
@@ -212,6 +222,8 @@ export interface SeedPostsOptions {
   posts?: NpThemeSeedPost[];
   /** Theme that owns this seed. See `SeedPagesOptions.themeId`. */
   themeId?: string;
+  /** Outer transaction; see `WipeSeededOptions.tx` for semantics. */
+  tx?: NpTransaction;
 }
 
 export async function seedPosts(
@@ -278,7 +290,7 @@ export async function seedPosts(
       null,
       payload,
       actor,
-      { status: status ?? "published" },
+      { status: status ?? "published", tx: options.tx },
     );
     const savedSlug =
       typeof saved.doc.slug === "string" ? saved.doc.slug : null;
@@ -297,11 +309,17 @@ export async function seedPosts(
   // undefined. A pure-relationship column write doesn't need
   // hook fan-out (no search-vector recompute, no slug change), so
   // bypassing the pipeline here is correct.
-  const db = getDb();
+  //
+  // Use the outer tx (when provided) so the parent FK update joins
+  // the same atomic scope as the saveDocument writes that created
+  // the rows.
+  const writeHandle = (options.tx ?? getDb()) as {
+    execute(query: ReturnType<typeof sql>): Promise<unknown>;
+  };
   for (const { childId, parentSlug } of pendingParents) {
     const parentId = slugToId.get(parentSlug);
     if (!parentId) continue;
-    await db.execute(
+    await writeHandle.execute(
       sql`update np_c_posts set parent = ${parentId} where id = ${childId}`,
     );
   }
@@ -316,6 +334,8 @@ export async function seedPosts(
 export interface SeedNavigationOptions {
   header?: NpNavItem[];
   footer?: NpNavItem[];
+  /** Outer transaction; see `WipeSeededOptions.tx` for semantics. */
+  tx?: NpTransaction;
 }
 
 export async function seedNavigation(
@@ -334,9 +354,14 @@ export async function seedNavigation(
   }
 
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-  const db = getDb();
+  // Use the outer tx for the existence reads + writes so they
+  // join the same atomic scope as the rest of seedAll. Typed via
+  // `getDb()`'s return type so the select / insert builder chains
+  // resolve identically whether `tx` came from a transaction
+  // callback or the pool.
+  const dbHandle = (options.tx ?? getDb()) as unknown as ReturnType<typeof getDb>;
 
-  const headerExisting = await db
+  const headerExisting = await dbHandle
     .select({ id: npNavigation.id })
     .from(npNavigation)
     .where(
@@ -344,7 +369,7 @@ export async function seedNavigation(
     )
     .limit(1);
 
-  const footerExisting = await db
+  const footerExisting = await dbHandle
     .select({ id: npNavigation.id })
     .from(npNavigation)
     .where(
@@ -358,7 +383,7 @@ export async function seedNavigation(
   const footerSkipped = footerExisting.length > 0;
 
   if (!headerSkipped) {
-    await db.insert(npNavigation).values({
+    await dbHandle.insert(npNavigation).values({
       siteId,
       location: "header",
       items: headerItems,
@@ -369,7 +394,7 @@ export async function seedNavigation(
   }
 
   if (!footerSkipped) {
-    await db.insert(npNavigation).values({
+    await dbHandle.insert(npNavigation).values({
       siteId,
       location: "footer",
       items: footerItems,
@@ -413,9 +438,15 @@ export async function seedNavigation(
  *
  * Operator-authored rows (no `seed_source`) are never touched.
  */
+export interface SeedAllOptions {
+  /** Outer transaction; see `WipeSeededOptions.tx` for semantics. */
+  tx?: NpTransaction;
+}
+
 export async function seedAll(
   actor: NpAuthUser,
   theme?: NpRegisteredTheme | null,
+  options: SeedAllOptions = {},
 ): Promise<SeedAllResult> {
   // `NpRegisteredTheme.impl` is typed as opaque `unknown` in core
   // (themes opt into the typed `NpThemeImpl` view by importing
@@ -432,18 +463,22 @@ export async function seedAll(
   const terms = await seedTerms(actor, {
     tags: themed.tags,
     categories: themed.categories,
+    tx: options.tx,
   });
   const pages = await seedPages(actor, {
     pages: themed.pages,
     ...(themeId ? { themeId } : {}),
+    tx: options.tx,
   });
   const posts = await seedPosts(actor, {
     posts: themed.posts,
     ...(themeId ? { themeId } : {}),
+    tx: options.tx,
   });
   const nav = await seedNavigation(actor, {
     header: themed.navigation?.header,
     footer: themed.navigation?.footer,
+    tx: options.tx,
   });
   return { terms, pages, posts, navigation: nav };
 }
@@ -487,6 +522,13 @@ export interface WipeSeededOptions {
    * may not exist yet; the subsequent seed call writes it).
    */
   themeId?: string;
+  /**
+   * Outer transaction the wipe should run inside instead of opening
+   * its own. The reseed POST handler uses this to bundle wipe +
+   * setActiveThemeId + seedAll into one atomic transaction so a
+   * mid-seed failure rolls back the wipe as well.
+   */
+  tx?: NpTransaction;
 }
 
 export interface WipeSeededResult {
@@ -555,22 +597,26 @@ export async function wipeSeededContent(
   let pagesDeleted = 0;
   let postsDeleted = 0;
 
-  // Single tx for the whole wipe — every cascade (child rows,
-  // media refs, comments, reactions, reports) commits or rolls
-  // back together. `deleteDocument`'s `{ tx }` option threads the
-  // outer handle in so the per-row cascade runs against the same
-  // transaction. Failure on row N rolls back the previous N-1
-  // successful deletes; the operator re-runs from clean state.
-  const db = getDb();
-  await db.transaction(async (tx) => {
+  // Run every per-row deleteDocument against the same tx — either
+  // the caller's outer tx (reseed POST bundling wipe + seed) or a
+  // private one opened here. Both variants give the wipe atomic
+  // SQL semantics; the outer-tx variant additionally lets a later
+  // seed failure roll back the wipe.
+  const deleteAll = async (tx: NpTransaction): Promise<void> => {
     for (const { collection, id } of targets) {
-      await deleteDocument(collection, id, actor, {
-        tx: tx as unknown as NpTransaction,
-      });
+      await deleteDocument(collection, id, actor, { tx });
       if (collection === "pages") pagesDeleted += 1;
       else postsDeleted += 1;
     }
-  });
+  };
+  if (options.tx) {
+    await deleteAll(options.tx);
+  } else {
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      await deleteAll(tx as unknown as NpTransaction);
+    });
+  }
 
   return { pagesDeleted, postsDeleted };
 }

@@ -1212,6 +1212,27 @@ export type NpDocumentStatus = "draft" | "scheduled" | "published" | "archived" 
 
 export interface NpSaveOptions {
   status?: NpDocumentStatus;
+  /**
+   * Caller-owned Drizzle transaction handle. When provided, all
+   * reads + writes in the save flow run against this transaction
+   * instead of opening a private one — useful for batching many
+   * saves (the seed loop) so a mid-batch failure rolls back the
+   * pending writes as a unit.
+   *
+   * Typed as `unknown` here to avoid a circular import between
+   * `config/types.ts` and `collections/pipeline.ts` (where the
+   * structural type lives). Callers pass the `NpTransaction`
+   * value exported from `@nexpress/core`; the pipeline narrows
+   * with an internal cast at the boundary.
+   *
+   * Pre-write hooks still fire OUTSIDE the tx (they shouldn't see
+   * pending state). Post-commit hooks (`content:afterSave` job,
+   * plugin `content:afterCreate` / `content:afterUpdate`) fire
+   * after the inner persist block but before the caller's outer
+   * tx commits — their side effects can diverge from final DB
+   * state on rollback. Same trade-off as `deleteDocument({ tx })`.
+   */
+  tx?: unknown;
 }
 
 export interface NpSaveResult {
