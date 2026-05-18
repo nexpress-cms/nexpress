@@ -266,6 +266,24 @@ export const docsCss = `
   border-radius: 50%;
   background: var(--np-color-primary);
 }
+/* Leaf top-level doc rendered as a clickable eyebrow — inherits
+ * the eyebrow typography (mono / uppercase / 0.7rem) so it sits
+ * in the same visual row as sibling group eyebrows; primary
+ * accent on current, foreground on hover. */
+.np-docs-sidebar-eyebrow-link {
+  color: inherit;
+  text-decoration: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.np-docs-sidebar-eyebrow-link:hover {
+  color: var(--np-color-foreground);
+}
+.np-docs-sidebar-eyebrow-link[data-current="true"],
+.np-docs-sidebar-eyebrow-link[aria-current="page"] {
+  color: var(--np-color-primary);
+}
 .np-docs-sidebar ul {
   list-style: none;
   padding: 0;
