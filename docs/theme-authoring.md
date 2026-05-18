@@ -469,6 +469,37 @@ pick up its columns. There is no `prebake-themes` upgrade
 helper — the operator's `themes:` array is the source of truth
 for what's in the union.
 
+### Gotcha: select-options union is last-wins on `label`
+
+When two themes contribute the same field's `options:` array
+(typically `posts.kind` under the U-track collapse — docs theme
+adds `{ value: "doc", label: "Doc" }`, another theme might want
+`{ value: "doc", label: "Documentation" }`), `mergeThemeRequirements`
+deduplicates by `value` and keeps the **later** theme's `label`.
+The merge is stable per-boot — the order is the order of
+`themes:` in `defineConfig` — but it's not "first declared
+wins" the way a Map would be.
+
+What this means in practice:
+
+- If a third-party theme reskins `kind: "doc"` to "Documentation",
+  installing it after docs in `themes:` flips every operator's
+  admin sidebar label to "Documentation" with no warning.
+- The underlying `value` ("doc") stays the same, so existing
+  data and URL patterns are untouched — this is purely a label
+  swap.
+
+If you want to override an existing kind's label deliberately,
+just register your theme after the one you're overriding. If
+you want a different label without affecting other operators
+who use the original theme, pick a different `value` (e.g.
+`{ value: "guide", label: "Guide" }`) — the kinds union grows,
+existing data keeps its old kind.
+
+The same rule applies to any `select` / `radio` `options:`
+contributed via `manifest.requires.collections.<slug>.fields.<name>.options`
+— it's the generic merge semantic, not a kind-specific quirk.
+
 ### First-boot demo content (`impl.seedContent`)
 
 The setup wizard's "Add sample content" toggle runs the framework's
