@@ -1120,4 +1120,23 @@ export const docsCss = `
   color: var(--np-color-muted-foreground);
   flex-shrink: 0;
 }
+
+/* ────────────────────────────────────────────────────────────
+ * Members shell (DocsMembersShell — /members/* routes)
+ *
+ * Drops the docs sidebar — hierarchical navigation is useless
+ * on auth forms. Reuses DocsHeader directly. Body becomes a
+ * narrow centered column for the form / status content.
+ * ──────────────────────────────────────────────────────────── */
+.np-docs-members {
+  padding: 4rem 1.5rem;
+  min-height: 60vh;
+}
+.np-docs-members-column {
+  max-width: 32rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
 `;

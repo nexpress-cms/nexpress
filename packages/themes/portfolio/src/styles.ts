@@ -819,4 +819,25 @@ export const portfolioCss = `
    * physical margin-left/right for directional layout. */
   margin-inline: calc(50% - 50vw);
 }
+
+/* ────────────────────────────────────────────────────────────
+ * Members shell (PortfolioMembersShell — /members/* routes)
+ *
+ * Public site uses a wide image-led layout that dwarfs auth
+ * forms. The members shell drops the magazine canvas for a
+ * narrower centered column. Header + footer chrome stay (re-
+ * used directly from the site shell so a masthead change
+ * reaches every member page too).
+ * ──────────────────────────────────────────────────────────── */
+.np-portfolio-members {
+  padding: 4rem 1.5rem;
+  min-height: 60vh;
+}
+.np-portfolio-members-column {
+  max-width: 30rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
 `;
