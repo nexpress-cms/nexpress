@@ -4,7 +4,6 @@ import {
   NpForbiddenError,
   NpValidationError,
   can,
-  getActiveTheme,
   getCurrentSiteId,
   getDb,
   getThemeById,
@@ -144,20 +143,20 @@ export async function POST(request: NextRequest) {
         // and the new theme's home page seed.
         const wiped = await wipeSeededContent(user, { tx });
 
-        // Activate the new theme so `seedAll` (which reads the
-        // active theme's seedContent through the registry) picks up
-        // the target theme. Inside the same tx so a downstream
-        // seed failure also rolls back the activation.
+        // Activate the new theme inside the same tx so a downstream
+        // seed failure rolls back the activation too. We deliberately
+        // DO NOT call `getActiveTheme()` to verify the write — that
+        // helper reads through `getDb()` (the pool), which under PG
+        // read-committed isolation won't see the still-pending
+        // `np_settings.activeTheme` write inside this outer tx.
+        // `getThemeById(themeId)` resolves against the in-memory
+        // registry, which `setActiveThemeId` has already validated
+        // (line 116 above), so this is the same correctness gate
+        // the readback gave us — without the visibility hazard.
         await setActiveThemeId(themeId, user.id, { tx });
-        const newActive = await getActiveTheme();
-        if (!newActive || newActive.manifest.id !== themeId) {
-          throw new Error(
-            `Active-theme write succeeded but readback returned '${newActive?.manifest.id ?? "null"}' — aborting reseed.`,
-          );
-        }
 
         try {
-          const seeded = await seedAll(user, newActive, { tx });
+          const seeded = await seedAll(user, target, { tx });
           return { wiped, seeded };
         } catch (error) {
           const collisionSlug = parseSlugCollision(error);
