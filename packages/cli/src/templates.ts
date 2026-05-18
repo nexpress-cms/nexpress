@@ -32,6 +32,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "drizzle.config.ts": utf8(drizzleConfigTemplate()),
     "next.config.ts": utf8(nextConfigTemplate()),
     "package.json": utf8(packageJsonTemplate(config)),
+    "pnpm-workspace.yaml": utf8(pnpmWorkspaceYamlTemplate()),
     "postcss.config.mjs": utf8(postcssConfigTemplate()),
     "tsconfig.json": utf8(tsconfigTemplate()),
     "next-env.d.ts": utf8(nextEnvTemplate()),
@@ -208,23 +209,53 @@ function packageJsonTemplate(config: TemplateConfig): string {
         tsx: "^4.20.6",
         typescript: "^5.8.0",
       },
-      // pnpm 10+ defaults to NOT running native-build postinstalls
-      // (sharp, @node-rs/argon2). NexPress depends on both:
-      //   - sharp for media transforms (image upload + resize)
-      //   - @node-rs/argon2 for password hashing (login, member auth)
-      // Without these built, those features throw at runtime with
-      // opaque "module not found" / "function not implemented"
-      // errors deep inside the framework. Explicit allowlist gets
-      // them built on first `pnpm install` without operator
-      // intervention. Other native deps fall back to pnpm's safe
-      // default (ignored, operator can `pnpm approve-builds`).
-      pnpm: {
-        onlyBuiltDependencies: ["sharp", "@node-rs/argon2"],
-      },
+      // Native-build allowlist for pnpm lives in `pnpm-workspace.yaml`'s
+      // `allowBuilds` block now — pnpm 10.6+ ignores
+      // `pnpm.onlyBuiltDependencies` here in non-workspace projects
+      // (verified empirically against pnpm 10.33 + 11.1). See the
+      // `pnpmWorkspaceYamlTemplate` for the actual list.
     },
     null,
     2,
   )}\n`;
+}
+
+/**
+ * Scaffold's `pnpm-workspace.yaml`. The scaffold itself is NOT a
+ * monorepo, but pnpm 10.6+ reads `pnpm-workspace.yaml` even for
+ * single-package projects and that's where `allowBuilds` (the new
+ * native-build allowlist) actually takes effect — the old
+ * `pnpm.onlyBuiltDependencies` block in `package.json` is silently
+ * ignored in this context.
+ *
+ * NexPress hard-depends on three packages whose install scripts
+ * compile native code: `sharp` (media transforms), `@node-rs/argon2`
+ * (password hashing), and `esbuild` (transitive via tsx / vite /
+ * next). Without these built, those features throw at runtime with
+ * opaque "module not found" / "function not implemented" errors
+ * deep inside the framework on the first request that exercises
+ * them. Pre-approving them here makes a fresh `pnpm install`
+ * complete without the operator needing to run `pnpm approve-builds`
+ * — the warning the scaffolder's first-install ran into in
+ * `npx create-nexpress my-site` reports today.
+ *
+ * Other native deps fall back to pnpm's safe default (ignored, with
+ * an opt-in `pnpm approve-builds` flow if the operator pulls in a
+ * dep that needs one).
+ */
+function pnpmWorkspaceYamlTemplate(): string {
+  return `# pnpm 10.6+ native-build allowlist.
+# Without these entries, a fresh \`pnpm install\` warns
+# ERR_PNPM_IGNORED_BUILDS and the operator has to run
+# \`pnpm approve-builds\` before any of the framework's
+# native-backed features (image transforms / password hashing /
+# bundle build) work. Approving them up front matches what
+# \`pnpm approve-builds\` would write here anyway.
+allowBuilds:
+  sharp: true
+  "@node-rs/argon2": true
+  esbuild: true
+`;
 }
 
 function nexpressConfigTemplate(config: TemplateConfig): string {
