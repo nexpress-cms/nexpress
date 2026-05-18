@@ -99,25 +99,34 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
   return files;
 }
 
-// Family range for scaffolded `@nexpress/*` deps. `^0.1.0` =
-// `>= 0.1.0 < 0.2.0` — pins to the 0.1 minor family. `latest` is
-// tempting but creates a footgun: a stale `create-nexpress` would
-// scaffold against a future breaking `@nexpress/core` whose API
-// the scaffold's source templates haven't kept up with. The
-// `fixed` group in `.changeset/config.json` keeps every
-// `@nexpress/*` on the same `0.<minor>.x` patch in lockstep, so
-// the lower bound never misses a member of the family.
+// Exact-pin version for scaffolded `@nexpress/*` deps. The string is
+// injected at build time by `tsup.config.ts`'s `define` block from
+// `packages/core/package.json` (and mirrored in `vitest.config.ts`
+// so tests see the same literal); a scaffolded `my-site` pins every
+// `@nexpress/*` dep to this exact patch instead of a `^0.X.0` range
+// so:
+//   - a teammate scaffolding later against the same `create-nexpress`
+//     tarball gets the same patch, not whatever floats up inside
+//     the same minor;
+//   - a new patch released after `create-nexpress` was published
+//     doesn't silently flow into fresh scaffolds — operators
+//     re-scaffold or `pnpm update` on their schedule.
 //
-// Bump this when the family crosses a minor boundary (0.1.x →
-// 0.2.x, 0.2.x → 0.3.x, 1.0.0, …). Without the bump, `npm install`
-// resolves to the previous minor's last patch (e.g. with the pin
-// still at `^0.1.0` after the family went to 0.2.x, scaffolded
-// sites silently install 0.1.6 — the lib code shipped to operators
-// is one minor stale).
-const SCAFFOLDED_NEXPRESS_RANGE = "^0.2.0";
+// The pin moves only when `create-nexpress` itself is republished.
+// That requires a `create-nexpress: patch` (or higher) changeset
+// to land in the release pipeline. The corollary: forgetting to
+// land a `create-nexpress` changeset means new scaffolds keep
+// pinning the previously-published `@nexpress/*` patch — bug fixes
+// in newer patches don't reach freshly-scaffolded sites until the
+// CLI re-publishes. `templates.test.ts` enforces that whatever
+// version the CLI is built against matches `@nexpress/core`'s
+// current `package.json`, so the literal can't drift inside a
+// single build.
+declare const __NEXPRESS_PACKAGE_VERSION__: string;
+const SCAFFOLDED_NEXPRESS_VERSION: string = __NEXPRESS_PACKAGE_VERSION__;
 
 function packageJsonTemplate(config: TemplateConfig): string {
-  const nexpressVersion = config.localMode ? "workspace:*" : SCAFFOLDED_NEXPRESS_RANGE;
+  const nexpressVersion = config.localMode ? "workspace:*" : SCAFFOLDED_NEXPRESS_VERSION;
 
   return `${JSON.stringify(
     {

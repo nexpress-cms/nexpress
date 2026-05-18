@@ -1,7 +1,25 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { getProjectFiles } from "./templates.js";
 import type { TemplateFile } from "./template-loader.js";
+
+// Single source of truth for the @nexpress/* family version that
+// scaffolded sites should pin to. `tsup.config.ts` + `vitest.config.ts`
+// inject this same string into the bundle / test environment via
+// `define`; the assertion below catches the case where the build
+// machinery drifts (e.g. someone bumps `packages/core` but forgets to
+// rebuild the CLI). We read the file directly rather than touch
+// `__NEXPRESS_PACKAGE_VERSION__` so the test verifies the END output
+// — the rendered package.json — rather than just echoing the constant
+// back.
+const CORE_PACKAGE_VERSION: string = (
+  JSON.parse(
+    readFileSync(resolve(import.meta.dirname, "../../core/package.json"), "utf-8"),
+  ) as { version: string }
+).version;
 
 const baseConfig = {
   projectName: "test-site",
@@ -80,15 +98,53 @@ describe("getProjectFiles", () => {
     }
   });
 
-  it("uses workspace:* deps when localMode, otherwise a pinned range", () => {
+  it("uses workspace:* deps when localMode, otherwise an exact @nexpress/core pin", () => {
     const local = textFiles(getProjectFiles(baseConfig));
     const remote = textFiles(getProjectFiles({ ...baseConfig, localMode: false }));
     expect(local["package.json"]).toMatch(/"@nexpress\/core":\s*"workspace:\*"/);
-    // Pinned to the current @nexpress family minor (SCAFFOLDED_NEXPRESS_RANGE
-    // in templates.ts) instead of "latest" — keeps the scaffolded site on a
-    // known-compatible major+minor across @nexpress/*.
-    expect(remote["package.json"]).toMatch(/"@nexpress\/core":\s*"\^0\.\d+\.\d+"/);
+    // Pinned to the EXACT current `@nexpress/core` version (injected
+    // at build / test time from `packages/core/package.json` — see
+    // `tsup.config.ts` + `vitest.config.ts`). The check uses the
+    // literal version string rather than a range pattern, so a stale
+    // pin (CLI built against an older core than what's in the repo
+    // now) fails loudly. Drift causes:
+    //   1. A `@nexpress/core` patch bumps in `packages/core/package.json`.
+    //   2. `create-nexpress`'s next build picks up the new version
+    //      via `define` injection automatically.
+    //   3. This assertion confirms the build-time string matches the
+    //      current source-of-truth version.
+    expect(remote["package.json"]).toContain(`"@nexpress/core": "${CORE_PACKAGE_VERSION}"`);
     expect(remote["package.json"]).not.toMatch(/"@nexpress\/core":\s*"latest"/);
+    // Sanity: scaffolded sites must NOT pin a range (caret / tilde)
+    // — exact pin is the contract operators rely on for
+    // reproducibility across `npx create-nexpress` invocations.
+    expect(remote["package.json"]).not.toMatch(/"@nexpress\/core":\s*"[\^~]/);
+  });
+
+  it("pins every @nexpress/* family member to the same exact version", () => {
+    const remote = textFiles(getProjectFiles({ ...baseConfig, localMode: false }));
+    // Every workspace-published `@nexpress/*` dep should resolve to
+    // the same literal string — operators rely on the family staying
+    // in lockstep, and a mismatch (e.g. core@0.3.2 + admin@0.3.1)
+    // would surface as cryptic peer-dep failures later in `pnpm install`.
+    const families = [
+      "@nexpress/admin",
+      "@nexpress/app",
+      "@nexpress/blocks",
+      "@nexpress/core",
+      "@nexpress/editor",
+      "@nexpress/next",
+      "@nexpress/theme",
+      "@nexpress/theme-default",
+      "@nexpress/theme-docs",
+      "@nexpress/theme-magazine",
+      "@nexpress/theme-portfolio",
+    ];
+    for (const dep of families) {
+      expect(remote["package.json"], `expected ${dep} pinned to ${CORE_PACKAGE_VERSION}`).toContain(
+        `"${dep}": "${CORE_PACKAGE_VERSION}"`,
+      );
+    }
   });
 
   it("omits NP_ADMIN_THEME by default — the picker lives in the wizard", () => {
