@@ -256,3 +256,92 @@ describe("evaluateFieldCondition — serializable expressions (#763)", () => {
     expect(collectHiddenFieldNames(fields, { kind: "doc" }).has("parent")).toBe(false);
   });
 });
+
+describe("buildZodSchema — field.defaultValue", () => {
+  it("applies a scalar defaultValue when the field is omitted", () => {
+    const schema = buildZodSchema([
+      field({ type: "text", name: "kind", required: true, defaultValue: "article" }),
+    ]);
+    const parsed = schema.parse({});
+    expect(parsed).toEqual({ kind: "article" });
+  });
+
+  it("applies a group defaultValue when the whole group is omitted", () => {
+    // Without applyFieldDefault on the group branch, this case
+    // silently dropped the default — callers omitting `seo`
+    // got a Zod required error even though the field carried a
+    // sensible default object. Regression guard for that bug.
+    const schema = buildZodSchema([
+      field({
+        type: "group",
+        name: "seo",
+        required: true,
+        defaultValue: { metaTitle: "Untitled", metaDescription: "" },
+        fields: [
+          field({ type: "text", name: "metaTitle", required: true }),
+          field({ type: "text", name: "metaDescription" }),
+        ],
+      }),
+    ]);
+    const parsed = schema.parse({});
+    expect(parsed).toEqual({
+      seo: { metaTitle: "Untitled", metaDescription: "" },
+    });
+  });
+
+  it("applies an array defaultValue when the field is omitted", () => {
+    const schema = buildZodSchema([
+      field({
+        type: "array",
+        name: "tags",
+        required: true,
+        defaultValue: [],
+        fields: [field({ type: "text", name: "label", required: true })],
+      }),
+    ]);
+    const parsed = schema.parse({});
+    expect(parsed).toEqual({ tags: [] });
+  });
+
+  it("never enforces required for an unset field that carries a defaultValue", () => {
+    // A select with a single option + required + default is the
+    // canonical case (e.g. `posts.kind`) that motivated this
+    // function's existence — the default lets API callers omit
+    // the field without tripping a required error.
+    const schema = buildZodSchema([
+      field({
+        type: "select",
+        name: "kind",
+        required: true,
+        options: [{ label: "Article", value: "article" }],
+        defaultValue: "article",
+      }),
+    ]);
+    expect(() => schema.parse({})).not.toThrow();
+  });
+
+  it("`row` and `collapsible` containers flatten — their fields' own defaults apply", () => {
+    // Containers don't carry a value of their own; the schema
+    // builder flattens their nested fields into the parent
+    // shape, so each nested field's defaultValue is what fires.
+    const schema = buildZodSchema([
+      field({
+        type: "row",
+        fields: [
+          field({ type: "text", name: "first", defaultValue: "alpha" }),
+          field({ type: "text", name: "second", defaultValue: "beta" }),
+        ],
+      }),
+    ]);
+    expect(schema.parse({})).toEqual({ first: "alpha", second: "beta" });
+  });
+
+  it("a `defaultValue` of `undefined` is a no-op (existing behavior preserved)", () => {
+    const schema = buildZodSchema([
+      field({ type: "text", name: "title", defaultValue: undefined }),
+    ]);
+    // `title` is optional + no default applied → omitting it
+    // leaves the key off the parsed object entirely.
+    expect(schema.parse({})).toEqual({});
+  });
+});

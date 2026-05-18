@@ -84,7 +84,10 @@ export function buildZodSchema(
     if (field.type === "group") {
       const schema = buildZodSchema(field.fields, hiddenByCondition);
       const effectiveRequired = field.required && !hiddenByCondition.has(field.name);
-      shape[field.name] = applyOptionality(schema, effectiveRequired);
+      shape[field.name] = applyFieldDefault(
+        applyOptionality(schema, effectiveRequired),
+        field,
+      );
       continue;
     }
 
@@ -105,6 +108,13 @@ export function buildZodSchema(
  * omit the field — even though the framework expected the default to fill
  * in. Drizzle column defaults run at INSERT time and don't help the Zod
  * parse step that runs first; this is the validation-layer pair.
+ *
+ * Applies to every leaf field type that carries a `defaultValue` AND to
+ * `group` fields (a group default is an object literal merged in when the
+ * caller omits the whole group). `row` / `collapsible` are pure
+ * admin-layout containers with no value of their own — their nested
+ * fields each carry their own default — so the function returns the
+ * schema unchanged for those two.
  *
  * Only applies when `defaultValue !== undefined`. `null` is a legit
  * default for nullable text/json fields and gets forwarded as-is.
