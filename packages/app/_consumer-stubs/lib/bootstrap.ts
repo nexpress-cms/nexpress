@@ -1,26 +1,15 @@
-// Stub — see ./init-core.ts.
-// Per-symbol any-typed exports added as needed by the framework
-// pages that reference this module. Type-safe surfaces should be
-// fleshed out incrementally.
+// Stub target for `@nexpress/app/src/lib/*`'s `import "@/lib/bootstrap"`
+// side-effect imports. Each consumer (apps/web, scaffolded projects)
+// supplies the real `src/lib/bootstrap.ts` whose top-level
+// `createBootstrap(...)` call registers the active runtime on
+// `@nexpress/next`'s module-level state.
+//
+// Pre-refactor (#834 era) this file also exported `getDb`,
+// `nexpressConfig`, `ensureCoreServices`, etc. as `any`-typed stubs
+// so @nexpress/app's source typechecked. After the refactor the
+// symbol exports moved to `@nexpress/next`, so this file only needs
+// to *exist* — the side-effect import in `@nexpress/app/src/lib/*`
+// resolves to it during @nexpress/app's own typecheck (against
+// `_consumer-stubs/`), and to the real consumer file in Next's
+// bundled output. No symbols are pulled through the alias anymore.
 export {};
-declare global {
-  // intentionally empty — see .d.ts pattern below
-}
-
-// Loose dynamic re-export catch-all — each helper is referenced
-// by name in framework page imports; default to `any` for the
-// stub so typecheck passes.
-
-import type { NpDb } from "@nexpress/next";
-export function getDb(): NpDb { throw new Error("stub"); }
-export const nexpressConfig: { collections: Array<any>; site: { url?: string; name: string; [k: string]: any }; [k: string]: any } = { collections: [], site: { name: "" } };
-export type { NpDb };
-
-export const reloadPlugins: () => Promise<void> = async () => {};
-
-// Used by `@nexpress/app/lib/init-core` (now lives inside this package)
-// to compose the `ensureFor` orchestrator. The real bootstrap is
-// supplied by the consumer's `src/lib/bootstrap.ts` at build time.
-export function ensureCoreServices(): void {}
-export const ensurePluginsLoaded: () => Promise<void> = async () => {};
-export const ensureJobProducer: () => Promise<void> = async () => {};

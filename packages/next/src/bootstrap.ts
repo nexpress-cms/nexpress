@@ -2,7 +2,11 @@ import {
   can,
   createDbConnection,
   createStorageAdapter,
-  getDb,
+  // Renamed locally so this file can re-export `getDb` as the
+  // bootstrap-scoped accessor (the thing `@nexpress/app/lib/*`
+  // consumes) without a name collision with `@nexpress/core`'s
+  // singleton-scoped getter.
+  getDb as coreGetDb,
   getOptionalJobQueue,
   isSuperAdmin,
   listMembershipsForUser,
@@ -169,6 +173,91 @@ export type Bootstrap = {
    */
   readonly reloadPlugins: (this: void) => Promise<NpReloadPluginsResult>;
 };
+
+// Module-level state — `createBootstrap` sets these the moment it
+// runs, and `@nexpress/app/lib/*` reads from the accessor exports
+// below instead of going through the consumer's tsconfig-aliased
+// `@/lib/bootstrap`. Side-effect-loading of `@/lib/bootstrap`
+// (which is what calls `createBootstrap` in scaffolded sites)
+// remains the trigger that populates this state — see the
+// `import "@/lib/bootstrap"` lines in `@nexpress/app/src/lib/*`.
+//
+// Why move SYMBOL access here while keeping the side-effect import
+// in place? Two reasons.
+//
+//   1. Centralizing the typed accessors here means scaffold and
+//      apps/web don't have to re-export the per-helper grab-bag
+//      from their `src/lib/bootstrap.ts` — `createBootstrap(...)`
+//      is the single contract and everything else flows from
+//      there.
+//   2. Tsx-script consumers that want bootstrap state (worker,
+//      seed-content, etc.) can now go straight to `@nexpress/next`
+//      instead of re-inventing the wiring inline. The side-effect
+//      import in @nexpress/app/lib/* is only relevant when those
+//      files are loaded through Next's bundler (which resolves
+//      `@/` via the consumer tsconfig) — tsx scripts that bypass
+//      lib/init-core entirely (the pattern #834 established for
+//      seed-content + worker) get clean module-load behavior.
+let _activeBootstrap: Bootstrap | null = null;
+let _activeConfig: NpConfig | null = null;
+
+function requireActive(): { bootstrap: Bootstrap; config: NpConfig } {
+  if (!_activeBootstrap || !_activeConfig) {
+    throw new Error(
+      "NexPress bootstrap not initialized. The consumer's `src/lib/bootstrap.ts` " +
+        "must call `createBootstrap(...)` at module-load time before any " +
+        "@nexpress/app route or library function runs. In a scaffolded project " +
+        "the wrapper `src/lib/init-core.ts` side-effect-imports `./bootstrap.js` " +
+        "to do this automatically; if you've replaced that file, restore the " +
+        "import or call `createBootstrap` at the top of your entry script.",
+    );
+  }
+  return { bootstrap: _activeBootstrap, config: _activeConfig };
+}
+
+/** Bootstrap-scoped DB accessor — same handle `createBootstrap()` returned. */
+export const getDb = (): NpDb => requireActive().bootstrap.getDb();
+
+/** Mirrors `createBootstrap()`'s `ensureCoreServices` directly. */
+export const ensureCoreServices = (): void =>
+  requireActive().bootstrap.ensureCoreServices();
+
+/** Mirrors `createBootstrap()`'s `ensurePluginsLoaded` directly. */
+export const ensurePluginsLoaded = (): Promise<void> =>
+  requireActive().bootstrap.ensurePluginsLoaded();
+
+/** Mirrors `createBootstrap()`'s `ensureJobProducer` directly. */
+export const ensureJobProducer = (): Promise<void> =>
+  requireActive().bootstrap.ensureJobProducer();
+
+/** Mirrors `createBootstrap()`'s `reloadPlugins` directly. */
+export const reloadPlugins = (): Promise<NpReloadPluginsResult> =>
+  requireActive().bootstrap.reloadPlugins();
+
+/**
+ * Accessor for the consumer's resolved `nexpress.config`. Wrapped in a
+ * `Proxy` so existing `nexpressConfig.site.name` access patterns keep
+ * working — the proxy defers the lookup until the property is actually
+ * read, by which time `createBootstrap` has populated `_activeConfig`.
+ * Throws if accessed before bootstrap is registered.
+ */
+export const nexpressConfig: NpConfig = new Proxy({} as NpConfig, {
+  get(_target, prop, receiver) {
+    return Reflect.get(requireActive().config as object, prop, receiver);
+  },
+  has(_target, prop) {
+    return Reflect.has(requireActive().config as object, prop);
+  },
+  ownKeys() {
+    return Reflect.ownKeys(requireActive().config as object);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Reflect.getOwnPropertyDescriptor(
+      requireActive().config as object,
+      prop,
+    );
+  },
+});
 
 function toCamelCase(slug: string): string {
   return slug.replace(/[-_](.)/g, (_, ch: string) => ch.toUpperCase());
@@ -387,7 +476,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       const secret = config.auth?.secret;
       if (!secret) return null;
       try {
-        const db = getDb();
+        const db = coreGetDb();
         const user = await verifyTokenFull(
           sessionToken,
           secret,
@@ -446,7 +535,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     // structural — `setDb()` accepts `NodePgDatabase<Record<string,
     // unknown>>`, but the actual instance handed in here is the
     // schema-typed `NpDb`, so the cast is a no-op at runtime.
-    return getDb() as NpDb;
+    return coreGetDb() as NpDb;
   }
 
   async function ensurePluginsLoaded(): Promise<void> {
@@ -656,11 +745,19 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     }
   }
 
-  return {
+  const handles: Bootstrap = {
     getDb: getDbInstance,
     ensureCoreServices,
     ensurePluginsLoaded,
     ensureJobProducer,
     reloadPlugins,
   };
+  // Register on module-level state so `@nexpress/app/lib/*` accessor
+  // exports (`getDb`, `ensureCoreServices`, `nexpressConfig`, …) can
+  // resolve. Last-write-wins — in the typical single-bootstrap setup
+  // this fires exactly once at consumer boot. Tests that mount
+  // multiple bootstraps must reset between cases.
+  _activeBootstrap = handles;
+  _activeConfig = config;
+  return handles;
 }

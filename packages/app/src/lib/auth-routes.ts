@@ -1,7 +1,11 @@
+// Side-effect import triggers consumer's bootstrap.ts in Next bundler
+// context (see lib/init-core.ts for the full rationale).
+import "@/lib/bootstrap";
 import {
   createMemberAuthRoutes,
   createStaffAuthRoutes,
 } from "@nexpress/auth-pages/server";
+import { getDb } from "@nexpress/next";
 
 import {
   clearAuthCookies,
@@ -10,7 +14,6 @@ import {
   requireAuth,
   setAuthCookies,
 } from "./auth-helpers";
-import { getDb } from "@/lib/bootstrap";
 import { ensureFor, nexpressConfig } from "./init-core";
 import {
   clearMemberAuthCookies,

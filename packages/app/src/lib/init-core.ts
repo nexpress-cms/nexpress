@@ -1,13 +1,24 @@
 import { SmtpEmailAdapter, getScopedLogger, npUsers, setEmailAdapter } from "@nexpress/core";
 import { count, eq } from "drizzle-orm";
 
+// Side-effect import: in Next's bundler context this resolves through
+// the consumer's tsconfig path alias `@/* → ./src/*` to the project's
+// own `src/lib/bootstrap.ts`, whose top-level `createBootstrap(...)`
+// call registers the active bootstrap on `@nexpress/next`'s module-
+// level state. We import SYMBOLS from `@nexpress/next` (the typed
+// accessors) instead of from `@/lib/bootstrap` directly so that the
+// dist of @nexpress/app stays free of consumer-aliased symbol
+// references — the only remaining `@/` reference is this side-effect
+// import, which is dormant in tsx-script contexts (those bypass
+// lib/init-core entirely; see scripts/seed-content.ts + worker.ts).
+import "@/lib/bootstrap";
 import {
   ensureCoreServices as bootstrapEnsureCoreServices,
   ensureJobProducer as bootstrapEnsureJobProducer,
   ensurePluginsLoaded as bootstrapEnsurePluginsLoaded,
   getDb,
   nexpressConfig,
-} from "@/lib/bootstrap";
+} from "@nexpress/next";
 import { registerCustomRoutes } from "./custom-routes";
 
 export { nexpressConfig };

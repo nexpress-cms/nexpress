@@ -64,9 +64,21 @@ export {
 export {
   canActorUseSite,
   createBootstrap,
+  // Active-bootstrap accessors — `@nexpress/app/lib/*` reads from
+  // these instead of the consumer's `@/lib/bootstrap` re-exports.
+  // `createBootstrap(...)` populates the underlying state; the
+  // `@/lib/bootstrap` side-effect import in @nexpress/app/lib/* is
+  // what triggers `createBootstrap` to fire in Next's request path.
+  getDb,
+  ensureCoreServices,
+  ensurePluginsLoaded,
+  ensureJobProducer,
+  reloadPlugins,
+  nexpressConfig,
   type Bootstrap,
   type BootstrapOptions,
   type NpDb,
+  type NpReloadPluginsResult,
 } from "./bootstrap.js";
 
 export { toClientCollectionConfig } from "./client-safe.js";
