@@ -1,5 +1,46 @@
 # @nexpress/app
 
+## 0.3.4
+
+### Patch Changes
+
+- 197e1c5: `pnpm run setup --cli` (and the auto-CLI mode that kicks in on SSH / headless Linux) now reads the existing `.env` for its prompt defaults instead of hardcoding `localhost:5433`. Without this, a scaffold whose `.env` declares `NEXPRESS_DB_PORT=<unique>` (the per-project port `create-nexpress` writes since 0.1.x) would still see the CLI suggest `:5433` — operator hits Enter to accept, the saved `.env` overwrites the unique port with the hardcoded default, then `docker compose up -d db` (reading the freshly-overwritten file) binds the wrong port and `pnpm db:migrate` fails to connect.
+
+  HTTP mode has always read `.env` through `getFormDefaults()` at form-render time; CLI mode now uses the same call so both prompts default to whatever the operator's `.env` currently says. `process.env.DATABASE_URL` / `process.env.TEST_DATABASE_URL` still win when a shell env override is set, matching the pre-existing precedence.
+
+  Side effect: `TEST_DATABASE_URL` is now preserved across CLI-mode reruns. Previously the line was silently dropped on rewrite because CLI mode never collected it.
+
+- 0f32a57: Setup wizard's "Test connection" surfaces friendlier guidance for two more pg connection failure modes that previously fell through to the raw driver string:
+  - sqlstate `28P01` / `28000` (auth rejected) — almost always means a different Postgres instance is bound to the host port, so the scaffold's `docker compose up -d db` would have silently no-op'd against the existing container. The message now names this as the likely cause and offers two remediations: stop the conflicting service, or pick a free port via `NEXPRESS_DB_PORT` in `.env`.
+  - `ECONNREFUSED` — the message now points at the exact `docker compose ... up -d db` command instead of leaving the raw "connect ECONNREFUSED" string.
+
+  `3D000` (database does not exist) handling is unchanged. Internal split: `messageForConnectionError` moved into a new `scripts/setup-server-errors.ts` sibling so it's importable from unit tests without booting the wizard's HTTP server (mirroring `setup-server-validate.ts`).
+
+- Updated dependencies [4d997b8]
+  - @nexpress/core@0.3.4
+  - @nexpress/admin@0.3.4
+  - @nexpress/auth-pages@0.3.4
+  - @nexpress/blocks@0.3.4
+  - @nexpress/next@0.3.4
+  - @nexpress/plugin-sdk@0.3.4
+  - @nexpress/plugin-forum@0.3.4
+  - @nexpress/plugin-oauth-github@0.3.4
+  - @nexpress/plugin-oauth-google@0.3.4
+  - @nexpress/theme@0.3.4
+  - @nexpress/theme-default@0.3.4
+  - @nexpress/theme-docs@0.3.4
+  - @nexpress/theme-magazine@0.3.4
+  - @nexpress/theme-portfolio@0.3.4
+  - @nexpress/plugin-block-callout@0.3.4
+  - @nexpress/plugin-block-embed@0.3.4
+  - @nexpress/plugin-block-latest-posts@0.3.4
+  - @nexpress/plugin-block-newsletter@0.3.4
+  - @nexpress/plugin-block-pricing@0.3.4
+  - @nexpress/plugin-block-stats@0.3.4
+  - @nexpress/plugin-reading-time@0.3.4
+  - @nexpress/plugin-seo-audit@0.3.4
+  - @nexpress/editor@0.3.4
+
 ## 0.3.3
 
 ### Patch Changes

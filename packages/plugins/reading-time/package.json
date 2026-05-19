@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-reading-time",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Reading-time meta plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
