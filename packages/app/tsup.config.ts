@@ -34,6 +34,7 @@ const scriptEntries = {
   "scripts/run-migrations": "src/scripts/run-migrations.ts",
   "scripts/seed-admin": "src/scripts/seed-admin.ts",
   "scripts/setup-server": "src/scripts/setup-server.ts",
+  "scripts/setup-server-errors": "src/scripts/setup-server-errors.ts",
   "scripts/setup-server-validate": "src/scripts/setup-server-validate.ts",
   "scripts/worker": "src/scripts/worker.ts",
 };
