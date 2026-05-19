@@ -156,6 +156,7 @@ const TOKEN = randomUUID();
 // `validateBody` without triggering this script's top-level
 // `createServer` side-effect.
 import { type SetupBody, validateBody } from "./setup-server-validate.js";
+import { messageForConnectionError } from "./setup-server-errors.js";
 
 /**
  * `pnpm run setup` supports three modes:
@@ -543,41 +544,6 @@ async function testDbConnection(
       message: messageForConnectionError(url, err),
     };
   }
-}
-
-/**
- * Friendlier wording for the connection errors operators actually
- * hit in setup. Most pg-node errors are clear enough on their own
- * (`password authentication failed`, `connect ECONNREFUSED`), but
- * sqlstate 3D000 ("database does not exist") is a common first-run
- * stumble that benefits from spelling out the exact `psql` command
- * to fix it — the operator has the URL, they just need a
- * one-liner to materialise the DB.
- */
-function messageForConnectionError(url: string, err: unknown): string {
-  const fallback = err instanceof Error ? err.message : String(err);
-  const code = (err as { code?: unknown } | null)?.code;
-  if (code !== "3D000") return fallback;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return fallback;
-  }
-  const dbName = parsed.pathname.replace(/^\//, "") || "<db>";
-  const dbUser = decodeURIComponent(parsed.username) || "nexpress";
-  const dbHost = parsed.hostname || "localhost";
-  const dbPort = parsed.port || "5432";
-  return (
-    `Database "${dbName}" does not exist yet (sqlstate 3D000). ` +
-    `Create it with:\n\n` +
-    `  psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d postgres -c 'CREATE DATABASE "${dbName}"'\n\n` +
-    `If you're using the scaffold's docker-compose, the container's POSTGRES_DB ` +
-    `auto-creates the DB on first boot — stop the container, ` +
-    `\`docker volume rm <project>_pgdata\` to wipe the old data dir, then ` +
-    `\`docker compose -f docker/docker-compose.yml up -d db\` again.`
-  );
 }
 
 interface SetupSystemCheck {
