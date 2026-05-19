@@ -40,6 +40,31 @@ describe("messageForConnectionError", () => {
     expect(msg).toContain("NEXPRESS_DB_PORT");
   });
 
+  it("28P01 with suggestedPort appends a concrete recommendation", () => {
+    const msg = messageForConnectionError(TEST_URL, withCode("28P01"), {
+      suggestedPort: 5601,
+    });
+    expect(msg).toContain("Detected free port: 5601");
+    expect(msg).toContain("NEXPRESS_DB_PORT=5601");
+    expect(msg).toContain(":5601/mysite");
+  });
+
+  it("28P01 without suggestedPort emits the base message (no detected-port line)", () => {
+    const msg = messageForConnectionError(TEST_URL, withCode("28P01"));
+    expect(msg).not.toContain("Detected free port");
+  });
+
+  it("28P01 with null / non-positive suggestedPort is treated as absent", () => {
+    const a = messageForConnectionError(TEST_URL, withCode("28P01"), {
+      suggestedPort: null,
+    });
+    const b = messageForConnectionError(TEST_URL, withCode("28P01"), {
+      suggestedPort: 0,
+    });
+    expect(a).not.toContain("Detected free port");
+    expect(b).not.toContain("Detected free port");
+  });
+
   it("ECONNREFUSED tells the operator to start the docker-compose db", () => {
     const msg = messageForConnectionError(TEST_URL, withCode("ECONNREFUSED"));
     expect(msg).toContain("Nothing is listening on localhost:5433");

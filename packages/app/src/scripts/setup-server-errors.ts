@@ -22,7 +22,21 @@ export interface PgConnectionLikeError {
   code?: unknown;
 }
 
-export function messageForConnectionError(url: string, err: unknown): string {
+/**
+ * Optional caller-supplied free port to recommend in the
+ * port-collision (28P01 / 28000) message. The caller scans for a
+ * free port BEFORE invoking the formatter — that's an IO call we
+ * don't want this pure module to do.
+ */
+export interface MessageOptions {
+  suggestedPort?: number | null;
+}
+
+export function messageForConnectionError(
+  url: string,
+  err: unknown,
+  options: MessageOptions = {},
+): string {
   const fallback = err instanceof Error ? err.message : String(err);
   const code = (err as PgConnectionLikeError | null)?.code;
 
@@ -51,6 +65,15 @@ export function messageForConnectionError(url: string, err: unknown): string {
   }
 
   if (code === "28P01" || code === "28000") {
+    const suggestion =
+      typeof options.suggestedPort === "number" && options.suggestedPort > 0
+        ? `\n\nDetected free port: ${options.suggestedPort}. ` +
+          `If you want to pick that, set:\n\n` +
+          `  NEXPRESS_DB_PORT=${options.suggestedPort}\n` +
+          `  DATABASE_URL=postgres://${dbUser}:<password>@${dbHost}:${options.suggestedPort}/${dbName}\n\n` +
+          `in .env (the wizard's form will pick up the new port on the next reload), ` +
+          `then \`docker compose -f docker/docker-compose.yml up -d db\` to bring up this project's DB on the new port.`
+        : "";
     return (
       `Authentication failed for user "${dbUser}" on ${dbHost}:${dbPort} ` +
       `(sqlstate ${String(code)}).\n\n` +
@@ -63,7 +86,8 @@ export function messageForConnectionError(url: string, err: unknown): string {
       `  - Stop the conflicting service, then ` +
       `\`docker compose -f docker/docker-compose.yml up -d db\` to bring up this project's DB\n` +
       `  - Or pick a free port: set NEXPRESS_DB_PORT in .env and update ` +
-      `DATABASE_URL's port to match, then re-run setup`
+      `DATABASE_URL's port to match, then re-run setup` +
+      suggestion
     );
   }
 
