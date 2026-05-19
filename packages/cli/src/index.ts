@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
 import pc from "picocolors";
 
-import { promptForProjectConfig, resolveStarter, type CliFlags } from "./prompts.js";
+import { promptForProjectConfig, type CliFlags } from "./prompts.js";
 import { scaffoldProject } from "./scaffold.js";
 
 interface ParsedArgs {
@@ -16,9 +16,6 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
   let localMode = false;
   let showHelp = false;
 
-  // Two-pass walk so `--theme` can consume the next argv entry as
-  // its value without complicating the main loop. Same trick we'd
-  // use for any future `--<key> <value>` flag.
   const args = [...argv];
   while (args.length > 0) {
     const arg = args.shift()!;
@@ -28,35 +25,10 @@ export function parseCliArgs(argv: string[]): ParsedArgs {
       flags.yes = true;
     } else if (arg === "--local") {
       localMode = true;
-    } else if (arg === "--example") {
-      flags.includeExampleContent = true;
-    } else if (arg === "--no-example") {
-      flags.includeExampleContent = false;
     } else if (arg === "--docker") {
       flags.dockerSetup = true;
     } else if (arg === "--no-docker") {
       flags.dockerSetup = false;
-    } else if (arg === "--theme") {
-      // `--theme <id>` and the friendlier alias `--starter <id>` both
-      // store the picked theme id on the flag bag. The built-in id
-      // check happens inside `promptForProjectConfig` so the same
-      // gate covers space-form, `=`-form, and the alias. If both
-      // flags are passed, last-wins (standard CLI convention).
-      const value = args.shift();
-      if (!value || value.startsWith("--")) {
-        throw new Error("--theme requires a value (e.g. --theme magazine).");
-      }
-      flags.themeId = value;
-    } else if (arg.startsWith("--theme=")) {
-      flags.themeId = arg.slice("--theme=".length);
-    } else if (arg === "--starter") {
-      const value = args.shift();
-      if (!value || value.startsWith("--")) {
-        throw new Error("--starter requires a value (e.g. --starter blog).");
-      }
-      flags.themeId = resolveStarter(value);
-    } else if (arg.startsWith("--starter=")) {
-      flags.themeId = resolveStarter(arg.slice("--starter=".length));
     } else if (arg.startsWith("--")) {
       // Unknown flag — prefer a hard error over silently scaffolding
       // with the default. The operator probably meant to set
@@ -83,32 +55,20 @@ Positional:
 
 Flags:
   --yes, -y            skip prompts; use defaults (also implied when stdin is not a TTY)
-  --example            include sample collections
-  --no-example         skip sample collections
   --docker             include docker/docker-compose.yml + Dockerfile
   --no-docker          skip docker artifacts
-  --starter <id>       pick a starter (blog | magazine | portfolio | docs);
-                       sets the active theme at first boot, skipping the
-                       interactive starter prompt
-  --theme <id>         same as --starter but takes raw theme ids
-                       (default | magazine | portfolio | docs); kept for
-                       back-compat — prefer --starter for new scripts
   --local              use workspace:* deps (only inside the NexPress monorepo)
   -h, --help           show this help
 
-Starter picking normally happens interactively at scaffold time, or
-later in the first-boot admin setup wizard at /admin/setup (browser).
-All four built-in starters are bundled into every scaffold regardless;
-the flag / prompt just decides which one is active on first boot. The
-chosen id is written to .env as NP_ADMIN_THEME=<id>, which the wizard
-reads as the picker's initial selection.
+Every scaffold ships the four built-in themes (default / magazine /
+portfolio / docs) and the example collections + plugins. Pick the
+active theme and decide whether to seed sample content in the
+first-boot admin setup wizard at /admin/setup.
 
 Examples:
   pnpm create nexpress my-site
-  pnpm create nexpress my-site --starter docs
-  pnpm create nexpress my-site --yes --no-example
-  pnpm create nexpress my-site --no-docker --no-example --yes
-  pnpm create nexpress my-site --starter magazine --yes
+  pnpm create nexpress my-site --yes
+  pnpm create nexpress my-site --no-docker --yes
 `;
 
 async function main(): Promise<void> {

@@ -262,28 +262,20 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   // Built-in collections + themes + i18n are sourced from
   // `@nexpress/app/config-defaults` so the single source of truth
   // lives in the framework, not in scaffolded boilerplate.
-  // `includeExampleContent` toggles whether the scaffold pre-wires
-  // them. We always export `defaultI18n` because the default
-  // `pagesCollection` declares `i18n: true` and the pipeline
-  // refuses to boot without a matching top-level block.
-  const collections = config.includeExampleContent
-    ? "[...defaultCollections]"
-    : "[]";
-  // The themes array always nests a theme-list marker pair so
-  // `nexpress theme add <pkg>` from `@nexpress/cli-nexpress`
-  // has an anchor to append into. When the scaffold includes
-  // example content (the default), the array starts as
-  // `[...defaultThemes, /* markers */]`; the empty-content
-  // variant just has the marker pair.
-  const themes = config.includeExampleContent
-    ? "[\n    ...defaultThemes,\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]"
-    : "[\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]";
-  const plugins = config.includeExampleContent
-    ? "[\n    ...defaultPlugins,\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ]"
-    : "[\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ]";
-  const defaultsImports = config.includeExampleContent
-    ? 'import {\n  defaultCollections,\n  defaultI18n,\n  defaultPlugins,\n  defaultThemes,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n'
-    : 'import {\n  defaultI18n,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n';
+  // The four built-in themes + example collections + default plugins
+  // are always wired in — the operator picks the active theme and
+  // seeds (or skips) sample content in the first-boot admin setup
+  // wizard, not at scaffold time.
+  const collections = "[...defaultCollections]";
+  // Marker pair lets `nexpress theme add <pkg>` /
+  // `nexpress plugin add <pkg>` from `@nexpress/cli-nexpress`
+  // append into the array later.
+  const themes =
+    "[\n    ...defaultThemes,\n    // @nexpress:themes-list-start\n    // @nexpress:themes-list-end\n  ]";
+  const plugins =
+    "[\n    ...defaultPlugins,\n    // @nexpress:plugins-list-start\n    // @nexpress:plugins-list-end\n  ]";
+  const defaultsImports =
+    'import {\n  defaultCollections,\n  defaultI18n,\n  defaultPlugins,\n  defaultThemes,\n  storageFromEnv,\n} from "@nexpress/app/config-defaults";\n';
 
   // Marker comments let `nexpress plugin add/remove <pkg>` and
   // `nexpress theme add <pkg>` from `@nexpress/cli-nexpress` edit
@@ -562,12 +554,9 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# so headless / CI installs don't have to click through it.",
     "# These values DO NOT persist; the wizard writes the actual",
     "# rows (admin user, site, active theme) when the operator finishes.",
-    "# Theme is normally picked in the wizard itself; NP_ADMIN_THEME",
-    "# is only useful when the operator can't reach a browser and",
-    "# pre-commits the choice at scaffold time via `--theme <id>`.",
-    ...(config.themeId
-      ? [`NP_ADMIN_THEME=${config.themeId}`]
-      : ["# NP_ADMIN_THEME=default"]),
+    "# Theme is picked in the wizard; uncomment NP_ADMIN_THEME below",
+    "# to pre-select one when the operator can't reach a browser.",
+    "# NP_ADMIN_THEME=default",
     "# NP_ADMIN_EMAIL=admin@example.com",
     "# NP_ADMIN_NAME=Site Admin",
     "",
@@ -736,7 +725,6 @@ pnpm dev
 
 ## Options
 
-- Example content: ${config.includeExampleContent ? "Yes" : "No"}
 - Docker setup: ${config.dockerSetup ? "Yes" : "No"}
 
 - Site: http://localhost:3000

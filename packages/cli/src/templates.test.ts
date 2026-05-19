@@ -23,7 +23,6 @@ const CORE_PACKAGE_VERSION: string = (
 
 const baseConfig = {
   projectName: "test-site",
-  includeExampleContent: true,
   dockerSetup: true,
   localMode: true,
   secret: "test-secret-32characters-min-aaaaaaaaaaaa",
@@ -168,24 +167,14 @@ describe("getProjectFiles", () => {
     }
   });
 
-  it("omits NP_ADMIN_THEME by default — the picker lives in the wizard", () => {
+  it("emits NP_ADMIN_THEME only as a commented hint — the picker lives in the wizard", () => {
     const files = textFiles(getProjectFiles(baseConfig));
-    // No --theme flag → no live NP_ADMIN_THEME line, just a
-    // commented hint. Theme picking happens in /admin/setup at
-    // first boot; the wizard works without any env seeding.
+    // Theme picking happens in /admin/setup at first boot. The
+    // scaffold never bakes a live `NP_ADMIN_THEME=` line; operators
+    // who need a headless preset uncomment the hint manually.
     expect(files[".env.example"]).not.toMatch(/^NP_ADMIN_THEME=/m);
     expect(files[".env"]).not.toMatch(/^NP_ADMIN_THEME=/m);
     expect(files[".env.example"]).toMatch(/^# NP_ADMIN_THEME=/m);
-  });
-
-  it("bakes NP_ADMIN_THEME when --theme was passed (headless escape hatch)", () => {
-    const files = textFiles(getProjectFiles({ ...baseConfig, themeId: "magazine" }));
-    // With --theme set, the wizard reads NP_ADMIN_THEME and uses
-    // it as the picker's initial selection. This is the only way
-    // to commit a theme at scaffold time for installs that can't
-    // reach the browser wizard.
-    expect(files[".env.example"]).toMatch(/^NP_ADMIN_THEME=magazine$/m);
-    expect(files[".env"]).toMatch(/^NP_ADMIN_THEME=magazine$/m);
   });
 
   it("declares @nexpress/app as a dependency so subpath wrappers resolve", () => {
