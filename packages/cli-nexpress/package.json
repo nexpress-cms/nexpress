@@ -40,7 +40,7 @@
   "dependencies": {
     "@nexpress/core": "workspace:*",
     "picocolors": "^1.1.1",
-    "ts-morph": "^25.0.1"
+    "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
