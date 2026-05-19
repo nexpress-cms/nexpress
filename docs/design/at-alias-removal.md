@@ -48,7 +48,7 @@ Tried to remove BOTH the symbol imports AND the side-effect imports of `@/lib/bo
 
 What blocked it:
 
-- **Instrumentation bundling**: `instrumentation.ts` → `import("./lib/bootstrap")` → transitively loads `@nexpress/core` → which references `@node-rs/argon2-wasm32-wasi` (a platform-specific optional dep). Turbopack's instrumentation bundle didn't honor `serverExternalPackages` the way the main app bundle does, and the wasm32-wasi resolution failed at build time. Adding sub-deps to `serverExternalPackages` didn't fix it cleanly.
+- **Instrumentation bundling**: `instrumentation.ts` → `import("./lib/bootstrap")` → transitively loads `@nexpress/core` → which references `@node-rs/argon2-wasm32-wasi` (a platform-specific optional dep). Turbopack's instrumentation bundle didn't seem to honor `serverExternalPackages` the way the main app bundle does, and the wasm32-wasi resolution failed at build time. The obvious next thing to try — adding the wasm sub-dep explicitly to `serverExternalPackages` (or using a different config knob like `bundlePagesRouterDependencies`) — wasn't attempted in the v1 session. That's the first thing to verify if instrumentation comes back on the table.
 - **Route path graph**: removing the `@/`-aliased side-effect imports from `@nexpress/app/lib/*` meant nothing in the route's static import chain pulled the consumer's bootstrap. Routes go through `@nexpress/app/api/.../route.ts` (raw source via the `./api/*` exports map), which imports `./init-core` relatively — bypassing the consumer's wrapper init-core. To re-establish the trigger, every one of the ~131 `api/*` source files would need its relative `init-core` import rewritten to `@/lib/init-core` (consumer-aliased, routing through the wrapper). Too invasive for one PR.
 
 Reverted to a clean tree before the changes ever hit a PR.
@@ -72,7 +72,7 @@ Why the trade walked back:
 | Cross-package coupling | `@nexpress/next` accessors are silently coupled to `@nexpress/app/lib/*` having run their side-effect imports. Reading the code, the dependency is implicit. |
 | **The actual bug class stayed open** | The side-effect imports `import "@/lib/bootstrap"` are still in the compiled dist. A tsx-script consumer that hits `@nexpress/app/lib/*` would crash the same way as before. |
 
-Net: 135 lines of accessor + Proxy boilerplate for a cosmetic improvement in where symbols come from. The original bug class is unchanged. ROI negative.
+Net: ~130 lines of accessor + Proxy boilerplate added across @nexpress/next and @nexpress/app (PR #838: 168 insertions / 39 deletions), all for a cosmetic improvement in where symbols come from. The original bug class is unchanged. ROI negative.
 
 ## What a real fix looks like
 
