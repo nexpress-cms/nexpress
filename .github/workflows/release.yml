@@ -107,6 +107,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Create Release Pull Request or Publish
+        id: changesets
         uses: changesets/action@v1
         with:
           # `pnpm run version` invokes the `version` script in
@@ -145,3 +146,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+
+      # Race guard: the Version PR's merge commit (titled
+      # `chore(release): version packages`) is supposed to trigger
+      # `pnpm run release` (= publish to npm). But if a feature PR
+      # adds a new `.changeset/*.md` AFTER the Version PR was
+      # last rebased and the operator admin-merges the Version PR
+      # before changesets/action has time to fold the new entry
+      # in, the merge commit lands at a stale HEAD that doesn't
+      # include the new changeset's deletion. main now has a
+      # leftover `.changeset/*.md`; `changesets/action` on this
+      # run sees "still has changesets" and opens a *new* Version
+      # PR instead of publishing. The current run reports success,
+      # operator thinks they shipped, npm is unchanged.
+      #
+      # Detect by: this commit's title matches the Version PR
+      # convention, but `published` came back false. Fail loudly
+      # with the orphan file names so the operator can either
+      # merge the freshly-rebased Version PR, or pull the orphan
+      # changeset into a follow-up.
+      - name: Fail when Version PR merge skipped publish (race detector)
+        # `startsWith` (not `contains`) on head_commit.message because
+        # the Version PR squash commit title IS the entire first line
+        # (`chore(release): version packages (#NNN)`), but a regular
+        # feature commit's BODY could mention that string in passing
+        # (e.g., explaining a release-flow fix) and trip the detector.
+        # startsWith on the title-prefix avoids that false positive.
+        if: |
+          github.event_name == 'push' &&
+          startsWith(github.event.head_commit.message, 'chore(release): version packages') &&
+          steps.changesets.outputs.published != 'true'
+        run: |
+          echo "::error::Version PR merge did NOT publish — likely orphan changeset on main blocked it."
+          echo ""
+          echo "Orphan .changeset files (everything besides README.md / config.json):"
+          ls .changeset/ 2>/dev/null | grep -vE '^(README\.md|config\.json)$' | sed 's/^/  /' || echo "  (none — different cause?)"
+          echo ""
+          echo "Recovery: either merge the freshly-rebased Version PR that just opened,"
+          echo "or pull the orphan changeset into a follow-up PR and merge that Version PR."
+          exit 1
