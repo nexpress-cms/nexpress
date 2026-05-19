@@ -1,5 +1,15 @@
 # @nexpress/plugin-forum
 
+## 0.3.5
+
+### Patch Changes
+
+- @nexpress/blocks@0.3.5
+- @nexpress/core@0.3.5
+- @nexpress/editor@0.3.5
+- @nexpress/next@0.3.5
+- @nexpress/plugin-sdk@0.3.5
+
 ## 0.3.4
 
 ### Patch Changes
