@@ -39,7 +39,7 @@
     "@nexpress/core": "workspace:*",
     "fast-xml-parser": "^5.7.0",
     "node-html-parser": "^7.0.1",
-    "undici": "^6.25.0"
+    "undici": "^8.3.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
