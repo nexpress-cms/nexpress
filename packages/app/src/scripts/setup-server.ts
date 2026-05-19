@@ -157,6 +157,7 @@ const TOKEN = randomUUID();
 // `createServer` side-effect.
 import { type SetupBody, validateBody } from "./setup-server-validate.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
+import { findFreePort } from "./setup-server-ports.js";
 
 /**
  * `pnpm run setup` supports three modes:
@@ -539,9 +540,37 @@ async function testDbConnection(
     } catch {
       /* swallow */
     }
+    // For port-collision shaped errors (28P01 / 28000), try to find a
+    // free TCP port nearby so the failure message can suggest a
+    // concrete alternative ("set NEXPRESS_DB_PORT=<X>"). Skipped on
+    // other error codes — 3D000 / ECONNREFUSED already have their own
+    // actionable advice and scanning would just slow the response.
+    const code = (err as { code?: unknown } | null)?.code;
+    let suggestedPort: number | null = null;
+    if (code === "28P01" || code === "28000") {
+      const failingPort = (() => {
+        try {
+          const parsed = new URL(url);
+          const n = parsed.port ? Number(parsed.port) : NaN;
+          return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (failingPort !== null) {
+        try {
+          // Search starts one above the failing port — almost always
+          // hits within a few slots. Bounded scan keeps the wizard
+          // responsive on machines with many bound ports.
+          suggestedPort = await findFreePort(failingPort + 1);
+        } catch {
+          suggestedPort = null;
+        }
+      }
+    }
     return {
       ok: false,
-      message: messageForConnectionError(url, err),
+      message: messageForConnectionError(url, err, { suggestedPort }),
     };
   }
 }
