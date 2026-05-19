@@ -336,10 +336,15 @@ jobs:
             # `127.0.0.1:55432` is a guaranteed-closed port — the
             # scripts will fail to connect, but only AFTER they've
             # finished module-loading. That's the window we test.
+            # `</dev/null` is what protects against scripts that
+            # read stdin (seed-admin's readline) — the EOF makes them
+            # bail fast. The `--help` argument the scripts don't
+            # honor isn't needed; the timeout cuts off any HTTP
+            # listener (setup-server isn't in the list anyway).
             DATABASE_URL=postgres://nexpress:nexpress@127.0.0.1:55432/ci_unreachable \
               NP_SECRET=ci-secret-which-is-long-enough-for-jwt-signing-tests \
               SITE_URL=http://localhost:3000 \
-              timeout 20 pnpm exec tsx "scripts/$script" --help </dev/null > "$log" 2>&1 || true
+              timeout 20 pnpm exec tsx "scripts/$script" </dev/null > "$log" 2>&1 || true
 
             # Anything that's a resolver crash before user code runs.
             if grep -qE 'ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|Cannot find package|Cannot find module' "$log"; then

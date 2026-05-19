@@ -166,9 +166,15 @@ jobs:
       # merge the freshly-rebased Version PR, or pull the orphan
       # changeset into a follow-up.
       - name: Fail when Version PR merge skipped publish (race detector)
+        # `startsWith` (not `contains`) on head_commit.message because
+        # the Version PR squash commit title IS the entire first line
+        # (`chore(release): version packages (#NNN)`), but a regular
+        # feature commit's BODY could mention that string in passing
+        # (e.g., explaining a release-flow fix) and trip the detector.
+        # startsWith on the title-prefix avoids that false positive.
         if: |
           github.event_name == 'push' &&
-          contains(github.event.head_commit.message, 'chore(release): version packages') &&
+          startsWith(github.event.head_commit.message, 'chore(release): version packages') &&
           steps.changesets.outputs.published != 'true'
         run: |
           echo "::error::Version PR merge did NOT publish — likely orphan changeset on main blocked it."
