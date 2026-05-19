@@ -41,14 +41,13 @@ export default async function SetupPage() {
     description: theme.manifest.description ?? null,
   }));
 
-  // `NP_ADMIN_THEME` is the headless escape hatch — set either by
-  // `create-nexpress --theme <id>` at scaffold time or hand-written
-  // by an operator who can't open the wizard's browser UI. The
-  // wizard interactive picker still wins when the operator does
-  // reach the browser; this only seeds the initial selection. Only
-  // forward when the value names a registered theme so a typo'd
-  // env doesn't silently fall back, leaving the operator unsure
-  // which pick is active.
+  // `NP_ADMIN_THEME` is the headless escape hatch — hand-written
+  // into `.env` by an operator who can't open the wizard's browser
+  // UI. The wizard interactive picker still wins when the operator
+  // does reach the browser; this only seeds the initial selection.
+  // Only forward when the value names a registered theme so a
+  // typo'd env doesn't silently fall back, leaving the operator
+  // unsure which pick is active.
   const envThemeId = process.env.NP_ADMIN_THEME;
   const themeId =
     envThemeId && themes.some((t) => t.id === envThemeId) ? envThemeId : undefined;

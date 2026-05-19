@@ -278,7 +278,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/scaffold"
           cd "$RUNNER_TEMP/scaffold"
           node "$GITHUB_WORKSPACE/packages/cli/dist/index.js" \
-            smoke-app --yes --no-example --no-docker --local
+            smoke-app --yes --no-docker --local
 
       - name: Rewrite scaffold deps to use packed tarballs
         run: |

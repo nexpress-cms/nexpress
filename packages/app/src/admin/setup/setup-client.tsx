@@ -53,11 +53,10 @@ export interface SetupWizardProps {
     siteName?: string;
     /**
      * Pre-selected theme id, set when `NP_ADMIN_THEME` names a
-     * registered theme. Source is either `create-nexpress
-     * --theme <id>` at scaffold time or an operator hand-writing
-     * `.env` for a headless install. The interactive picker still
-     * wins when the operator reaches the browser — this just
-     * seeds the initial selection.
+     * registered theme. Source is an operator hand-writing `.env`
+     * for a headless install. The interactive picker still wins
+     * when the operator reaches the browser — this just seeds the
+     * initial selection.
      */
     themeId?: string;
   };
