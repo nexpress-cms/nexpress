@@ -500,7 +500,7 @@ async function probeExistingFrameworkTables(
 
 async function testDbConnection(
   url: string,
-): Promise<{ ok: boolean; message: string }> {
+): Promise<{ ok: boolean; message: string; suggestedPort?: number }> {
   // `pg` ships transitively via `@nexpress/core`. We dynamic-import
   // to avoid loading it on every setup invocation, and structurally
   // type the surface we touch so this file doesn't depend on
@@ -571,6 +571,10 @@ async function testDbConnection(
     return {
       ok: false,
       message: messageForConnectionError(url, err, { suggestedPort }),
+      // Expose the suggestion to the HTTP form's `testBtn` JS so it
+      // can auto-fill the dbPort input (or splice the URL) without
+      // the operator having to read the message + retype.
+      ...(suggestedPort !== null ? { suggestedPort } : {}),
     };
   }
 }
@@ -1895,12 +1899,41 @@ function renderHtml(defaults: FormDefaults): string {
       const body = await res.json();
       dbOk = body.ok === true;
       $("testStatus").innerHTML = '<span class="tone-' + (body.ok ? "ok" : "err") + '">' + esc(body.message || (body.ok ? "Connected" : "Failed")) + '</span>';
+      // On port-collision failures the server includes a scanned
+      // free port. Auto-fill the dbPort input (fields mode) or
+      // splice the URL's port (url mode) so the operator can hit
+      // "Test connection" again without retyping the recommendation
+      // out of the message body. Skips when no suggestion came back
+      // (any non-collision failure) or when the suggestion isn't a
+      // positive integer.
+      if (!body.ok && typeof body.suggestedPort === "number" && body.suggestedPort > 0) {
+        applyPortSuggestion(body.suggestedPort);
+      }
       if (dbOk) goto(step);
     } catch (err) {
       dbOk = false;
       $("testStatus").innerHTML = '<span class="tone-err">' + esc(err) + '</span>';
     }
   });
+  function applyPortSuggestion(port) {
+    if (dbMode === "fields") {
+      $("dbPort").value = String(port);
+    } else {
+      // URL mode — best-effort: parse the current connection
+      // string, swap the port, write it back. Leave the URL
+      // untouched if the operator typed something we can't parse;
+      // the message body still names the suggested port and they
+      // can edit manually.
+      try {
+        const u = new URL($("databaseUrl").value.trim());
+        u.port = String(port);
+        $("databaseUrl").value = u.toString();
+      } catch (e) {
+        return;
+      }
+    }
+    renderEnv();
+  }
   $("revealPassword").addEventListener("click", () => {
     const input = $("adminPassword");
     input.type = input.type === "password" ? "text" : "password";
