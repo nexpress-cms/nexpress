@@ -75,7 +75,7 @@
     "dotenv": "^17.2.4",
     "drizzle-kit": "^0.31.10",
     "postcss": "^8.5.11",
-    "tailwindcss": "^4.2.2",
+    "tailwindcss": "^4.3.0",
     "tsx": "^4.20.6",
     "typescript": "^5.8.0"
   }
