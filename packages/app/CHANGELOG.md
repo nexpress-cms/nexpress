@@ -1,5 +1,33 @@
 # @nexpress/app
 
+## 0.3.5
+
+### Patch Changes
+
+- @nexpress/admin@0.3.5
+- @nexpress/auth-pages@0.3.5
+- @nexpress/blocks@0.3.5
+- @nexpress/core@0.3.5
+- @nexpress/editor@0.3.5
+- @nexpress/next@0.3.5
+- @nexpress/plugin-block-callout@0.3.5
+- @nexpress/plugin-block-embed@0.3.5
+- @nexpress/plugin-block-latest-posts@0.3.5
+- @nexpress/plugin-block-newsletter@0.3.5
+- @nexpress/plugin-block-pricing@0.3.5
+- @nexpress/plugin-block-stats@0.3.5
+- @nexpress/plugin-forum@0.3.5
+- @nexpress/plugin-oauth-github@0.3.5
+- @nexpress/plugin-oauth-google@0.3.5
+- @nexpress/plugin-reading-time@0.3.5
+- @nexpress/plugin-sdk@0.3.5
+- @nexpress/plugin-seo-audit@0.3.5
+- @nexpress/theme@0.3.5
+- @nexpress/theme-default@0.3.5
+- @nexpress/theme-docs@0.3.5
+- @nexpress/theme-magazine@0.3.5
+- @nexpress/theme-portfolio@0.3.5
+
 ## 0.3.4
 
 ### Patch Changes
