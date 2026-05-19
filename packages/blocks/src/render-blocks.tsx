@@ -327,7 +327,7 @@ function renderBlock(
       <div
         key={instance.id}
         className="np-block-grid-cell"
-        style={cellStyle as React.CSSProperties}
+        style={cellStyle}
       >
         {markedNode}
       </div>
