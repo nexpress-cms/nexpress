@@ -351,6 +351,17 @@ function seedAdminScriptTemplate(): string {
 }
 
 function seedContentScriptTemplate(): string {
+  // Bootstrap via `@nexpress/next`'s `createBootstrap` directly,
+  // NOT via `../src/lib/init-core` (which re-exports from
+  // `@nexpress/app/lib/init-core`). The published `@nexpress/app`
+  // dist chunks reference `@/lib/bootstrap` (a consumer-supplied
+  // tsconfig path alias), and `tsx` does NOT apply tsconfig.paths
+  // to `.js` files inside `node_modules`. Result: `tsx
+  // scripts/seed-content.ts` hits `ERR_MODULE_NOT_FOUND: Cannot
+  // find package '@/lib'` the moment the chunk is loaded. The
+  // direct `createBootstrap` call sidesteps the chain — the
+  // resulting bootstrap functions are exactly what `init-core` /
+  // `@/lib/bootstrap` would have produced.
   return (
     `import "./_load-env.js";\n\n` +
     `import { eq } from "drizzle-orm";\n\n` +
@@ -361,14 +372,20 @@ function seedContentScriptTemplate(): string {
     `  npUsers,\n` +
     `  withCurrentSite,\n` +
     `} from "@nexpress/core";\n` +
-    `import type { NpAuthUser } from "@nexpress/core";\n\n` +
-    `import { ensureFor } from "../src/lib/init-core";\n` +
-    `import { seedAll } from "../src/lib/seed-content";\n\n` +
+    `import type { NpAuthUser } from "@nexpress/core";\n` +
+    `import { createBootstrap } from "@nexpress/next";\n` +
+    `import { seedAll } from "@nexpress/app/lib/seed-content";\n\n` +
+    `import nexpressConfig from "../src/nexpress.config.js";\n` +
+    `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
     `const databaseUrl = process.env.DATABASE_URL;\n` +
     `if (!databaseUrl) {\n` +
     `  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");\n` +
     `  process.exit(1);\n` +
     `}\n\n` +
+    `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
+    `  config: nexpressConfig,\n` +
+    `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
+    `});\n\n` +
     `async function findFirstAdmin(): Promise<NpAuthUser | null> {\n` +
     `  const db = createDbConnection({ connectionString: databaseUrl as string });\n` +
     `  const rows = await db\n` +
@@ -398,8 +415,8 @@ function seedContentScriptTemplate(): string {
     `  return arg.slice("--site=".length).trim() || "default";\n` +
     `}\n\n` +
     `async function main(): Promise<void> {\n` +
-    `  await ensureFor("read");\n` +
-    `  await ensureFor("plugins");\n\n` +
+    `  ensureCoreServices();\n` +
+    `  await ensurePluginsLoaded();\n\n` +
     `  const siteId = parseSiteFlag(process.argv);\n` +
     `  if (siteId !== "default") {\n` +
     `    const target = await getSiteById(siteId);\n` +
@@ -469,11 +486,24 @@ function dockerComposeTemplate(config: TemplateConfig): string {
   // compose up -d db` boots a db named `nexpress` but the scaffold's
   // DATABASE_URL points at `<project>` — the README's quickstart
   // dies on the first `pnpm setup` with "database does not exist".
+  //
+  // Also substitutes the `${NEXPRESS_DB_PORT:-5433}` fallback with the
+  // project-specific dbPort. Docker Compose's `--env-file` defaults to
+  // the compose file's directory (`docker/`), NOT the project root —
+  // so `${NEXPRESS_DB_PORT}` from the scaffold's root `.env` never
+  // gets picked up. Without baking the right fallback here, compose
+  // would bind 5433 while `.env`'s `NEXPRESS_DB_PORT=<unique>` /
+  // setup-wizard form / `DATABASE_URL` all point at the unique port,
+  // producing a confusing "connection refused" or "wrong DB" cascade.
+  // Operator can still override by exporting NEXPRESS_DB_PORT in their
+  // shell or by passing `--env-file .env` to docker compose.
   const dbName = dbNameFromProject(config.projectName);
-  return readTemplate("docker/docker-compose.yml").replace(
-    /^(\s*POSTGRES_DB:\s*)nexpress\s*$/m,
-    `$1${dbName}`,
-  );
+  return readTemplate("docker/docker-compose.yml")
+    .replace(/^(\s*POSTGRES_DB:\s*)nexpress\s*$/m, `$1${dbName}`)
+    .replace(
+      /\$\{NEXPRESS_DB_PORT:-5433\}/g,
+      `\${NEXPRESS_DB_PORT:-${config.dbPort}}`,
+    );
 }
 
 function dockerfileTemplate(): string {
