@@ -336,12 +336,34 @@ function generateSchemaScriptTemplate(): string {
 
 function workerScriptTemplate(): string {
   // Site-dep — worker needs the consumer's bootstrap singletons
-  // (DB, plugins, jobs). Wrapper hands `ensureFor` over to
-  // `@nexpress/app`'s shared runner.
+  // (DB, plugins, jobs). Bootstraps via `createBootstrap` from
+  // `@nexpress/next` directly, NOT via `@/lib/init-core` (which
+  // re-exports from `@nexpress/app/lib/init-core`). The published
+  // `@nexpress/app` dist chunks reference `@/lib/bootstrap` (a
+  // consumer tsconfig path alias), and `tsx` does NOT apply
+  // tsconfig.paths to `.js` files inside `node_modules`. So
+  // `tsx scripts/worker.ts` would hit `ERR_MODULE_NOT_FOUND:
+  // Cannot find package '@/lib'` the moment the chunk is loaded.
+  // Direct `createBootstrap` sidesteps the chain — `ensureFor`
+  // here mirrors what `@nexpress/app/lib/init-core`'s `ensureFor`
+  // does for the "plugins" intent the worker actually needs.
   return (
     `import "./_load-env.js";\n\n` +
     `import { runWorker } from "@nexpress/app/scripts/worker";\n` +
-    `import { ensureFor } from "@/lib/init-core";\n\n` +
+    `import { createBootstrap } from "@nexpress/next";\n\n` +
+    `import nexpressConfig from "../src/nexpress.config.js";\n` +
+    `import * as generatedSchema from "../src/db/generated/collections.js";\n\n` +
+    `const { ensureCoreServices, ensurePluginsLoaded } = createBootstrap({\n` +
+    `  config: nexpressConfig,\n` +
+    `  generatedSchema: generatedSchema as unknown as Record<string, unknown>,\n` +
+    `});\n\n` +
+    `async function ensureFor(intent: "read" | "plugins" | "write"): Promise<void> {\n` +
+    `  ensureCoreServices();\n` +
+    `  if (intent === "read") return;\n` +
+    `  await ensurePluginsLoaded();\n` +
+    `  // "write" intent would also wire email + jobs producer, but\n` +
+    `  // the worker only invokes ensureFor("plugins") on first call.\n` +
+    `}\n\n` +
     `await runWorker({ ensureFor });\n`
   );
 }
