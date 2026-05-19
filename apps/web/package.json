@@ -61,13 +61,13 @@
     "drizzle-orm": "^0.45.2",
     "next": "^16.2.6",
     "nodemailer": "^8.0.5",
-    "pg": "^8.13.1",
+    "pg": "^8.21.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
-    "@tailwindcss/postcss": "^4.2.2",
+    "@playwright/test": "^1.60.0",
+    "@tailwindcss/postcss": "^4.3.0",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -75,7 +75,7 @@
     "dotenv": "^17.2.4",
     "drizzle-kit": "^0.31.10",
     "postcss": "^8.5.11",
-    "tailwindcss": "^4.2.2",
+    "tailwindcss": "^4.3.0",
     "tsx": "^4.20.6",
     "typescript": "^5.8.0"
   }
