@@ -61,13 +61,11 @@ describe.skipIf(skipIfNoTestDb())("theme seed + reseed pipeline", () => {
   });
 
   async function asActor() {
-    const { signToken } = await import("@nexpress/core");
+    // Builds the `NpAuthUser` shape the seeder expects from what
+    // `seedUser` returns. `tokenVersion: 0` matches what `seedUser`
+    // inserts (the DB column default); the seeder never gates on
+    // tokenVersion anyway — it's metadata threaded into audit rows.
     const user = await seedUser({ role: "admin" });
-    // The seeder's actor shape matches NpAuthUser — id + email +
-    // name + role + tokenVersion. tokenVersion was issued in seedUser
-    // but isn't returned on TestUserSession; reach for the row to get it.
-    // Easier: rebuild the shape the seeder needs from what we have.
-    void signToken;
     return {
       id: user.userId,
       email: user.email,
