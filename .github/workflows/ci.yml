@@ -307,6 +307,51 @@ jobs:
           pnpm install --ignore-workspace
           pnpm exec tsc --noEmit
 
+      # Runtime smoke — typecheck passes for whole classes of bugs that
+      # only manifest at module load (the canonical case: `@nexpress/app`
+      # dist chunks importing `@/lib/bootstrap`, which `tsx` can't
+      # resolve in node_modules → `ERR_MODULE_NOT_FOUND` only when the
+      # script actually runs). For each tsx-launched script in the
+      # scaffold, do a short-timeout run with fake env vars and assert
+      # the failure is a downstream DB / migration error, NOT a
+      # module-resolution failure. The scripts all exit non-zero
+      # without a real DB — that's expected; what we're catching is
+      # ERR_MODULE_NOT_FOUND, ERR_PACKAGE_PATH_NOT_EXPORTED, and
+      # similar import-time crashes.
+      - name: Runtime smoke — tsx scripts load cleanly
+        run: |
+          cd "$RUNNER_TEMP/scaffold/smoke-app"
+          # Generate the schema first so `pnpm seed:content` / `worker`
+          # advance past the "no matching generated Drizzle table" gate
+          # and reach the actual bootstrap chain we care about.
+          DATABASE_URL=postgres://nexpress:nexpress@127.0.0.1:55432/ci_unreachable \
+            NP_SECRET=ci-secret-which-is-long-enough-for-jwt-signing-tests \
+            SITE_URL=http://localhost:3000 \
+            pnpm exec tsx scripts/generate-schema.ts || true
+
+          fail=0
+          for script in seed-admin.ts seed-content.ts worker.ts doctor.ts dev-notice.ts; do
+            if [ ! -f "scripts/$script" ]; then continue; fi
+            log="$RUNNER_TEMP/smoke-$script.log"
+            # `127.0.0.1:55432` is a guaranteed-closed port — the
+            # scripts will fail to connect, but only AFTER they've
+            # finished module-loading. That's the window we test.
+            DATABASE_URL=postgres://nexpress:nexpress@127.0.0.1:55432/ci_unreachable \
+              NP_SECRET=ci-secret-which-is-long-enough-for-jwt-signing-tests \
+              SITE_URL=http://localhost:3000 \
+              timeout 20 pnpm exec tsx "scripts/$script" --help </dev/null > "$log" 2>&1 || true
+
+            # Anything that's a resolver crash before user code runs.
+            if grep -qE 'ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|Cannot find package|Cannot find module' "$log"; then
+              echo "::error::scripts/$script crashed at module load:"
+              tail -20 "$log"
+              fail=1
+            else
+              echo "✓ scripts/$script module-loaded cleanly"
+            fi
+          done
+          exit $fail
+
       - name: Verify monorepo lockfile is untouched
         run: |
           if ! git diff --quiet pnpm-lock.yaml; then

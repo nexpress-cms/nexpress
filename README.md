@@ -88,6 +88,10 @@ Required reading before deeper work:
 - [`docs/testing.md`](./docs/testing.md) — unit vs. integration vs. e2e
 - [`docs/releasing.md`](./docs/releasing.md) — version bumps + publish flow
 
+Stuck on first boot? See
+[`docs/troubleshooting.md`](./docs/troubleshooting.md) for common
+errors (port collisions, missing migrations, etc.) and fixes.
+
 ---
 
 ## How the two tracks share code
