@@ -1,5 +1,42 @@
 # create-nexpress
 
+## 0.1.21
+
+### Patch Changes
+
+- 197e1c5: Drops the starter / theme picker and the "Include example content?" toggle from `create-nexpress`. The scaffold now always ships the four built-in themes (`default`, `magazine`, `portfolio`, `docs`) and the example collections + plugins. The active theme and whether to seed sample content are picked in the first-boot admin setup wizard at `/admin/setup`, where the wizard's picker is already authoritative.
+
+  Why: the scaffold-time starter pick wasn't visibly functional — picking `magazine` at `npx create-nexpress` time still rendered the default theme until the operator completed the admin wizard (where they pick the theme again). The "Include example content?" toggle behaved similarly: the toggle's "no" path produced an empty scaffold that doesn't render, but operators almost always want the working defaults, then prune later.
+
+  Removed surface (every removal is a breaking-by-script change, but pre-1.0 patch per the project's release policy):
+  - `--starter <id>` / `--starter=<id>` flag
+  - `--theme <id>` / `--theme=<id>` flag
+  - `--example` / `--no-example` flag
+  - Interactive "Pick a starter" prompt
+  - Interactive "Include example content?" prompt
+  - `BUILTIN_THEME_IDS`, `STARTER_OPTIONS`, `STARTER_TO_THEME`, `resolveStarter` exports from `./prompts`
+  - `themeId`, `includeExampleContent` fields on `ProjectConfig` and `CliFlags`
+
+  The scaffold's `.env` keeps the commented `# NP_ADMIN_THEME=default` hint for headless / CI installs that need to pre-commit a theme; uncommenting it pre-selects the picker in the admin wizard.
+
+- d614807: Release workflow now finds `tsx` when invoking the post-publish tag script. Today's v0.3.3 release went through npm publish cleanly but the workflow exited 1 at the trailing `tsx scripts/tag-release.mts` step with `sh: 1: tsx: not found` — `tsx` was only declared in `apps/web` devDeps and pnpm's `shamefully-hoist=false` keeps transitive workspace deps off the root `node_modules/.bin`. Locally the `tsx` symlink was a leftover from a prior install with different hoist behavior, masking the issue.
+
+  Also tightens `scripts/tag-release.mts`'s release-kind detection. The previous logic ("if `v<core>` doesn't exist on origin → family release, else cli-only") misfired when a `v<core>` tag had been manually created out of band (e.g. recovery after a failed CI run). The new logic compares the current `@nexpress/core` + `create-nexpress` versions to the previous `chore(release): version packages` commit's versions — unambiguous about what actually changed in this Version PR.
+
+  Two side effects from today's recovery:
+  - `v0.3.3` was created manually since the release workflow had already published to npm but exited 1 before tagging. The tag points at the correct merge commit.
+  - A spurious `create-nexpress@0.1.20` tag from a local dry-run was pushed out of band and immediately deleted. Origin's tag set is back to the 20-tag whitelist + `v0.3.3`.
+
+- d323d8b: Resyncs `packages/cli/templates/snapshot/` against `apps/web/src/`. Two route wrappers had drifted out of the scaffold since they were added in apps/web without a matching `pnpm sync-snapshot` run:
+  - `app/api/admin/themes/reseed/route.ts` — the destructive reseed endpoint the admin theme switcher's "Switch & reseed" / "Reseed demo" dialog calls. Without this file, scaffolded sites 404'd on `GET /api/admin/themes/reseed?themeId=…` and the dialog surfaced "Unable to read current state."
+  - `app/api/newsletter/route.ts` — the public newsletter signup endpoint.
+
+  Also adds a CI guard (in the `scaffold-smoke` job) that runs `sync-snapshot` and fails when it produces a diff, so this exact drift can't reach `main` again silently. The check is idempotent and adds ~2s to the job.
+
+  If you scaffolded a site between #791 (reseed UI) / the newsletter route landing and this fix, you have two options:
+  1. Re-scaffold (clean), or
+  2. Copy the two wrapper files from this repo's `packages/cli/templates/snapshot/src/app/api/{admin/themes/reseed,newsletter}/route.ts` into your project's `src/app/api/...` (same paths). The wrappers are 2 lines each.
+
 ## 0.1.20
 
 ### Patch Changes
