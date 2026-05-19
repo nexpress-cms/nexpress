@@ -186,14 +186,23 @@ async function fetchWithRedirects(
     // the agent entirely — the preflight check itself is bypassed,
     // so pinning would have nothing to enforce.
     const dispatcher = pinned ? createPinnedAgent(pinned) : undefined;
-    // Node's bundled fetch is undici under the hood and accepts
-    // `dispatcher`; the lib.dom RequestInit type doesn't carry it,
-    // so build the init separately and widen the call.
-    const init: RequestInit & { dispatcher?: Agent } = {
+    // Node's bundled fetch is undici under the hood and accepts a
+    // `dispatcher` option. Node 22 still vendors undici 6.x, so the
+    // ambient fetch types resolve `Dispatcher` against
+    // `undici-types@6.x` — but our explicit `undici@8` dep makes our
+    // `Agent` the 8.x variant. The two `Dispatcher` shapes are
+    // structurally identical for the call site but TS sees them as
+    // distinct nominal types from different packages. Casting the
+    // assignment through `unknown` ignores the version mismatch at
+    // the boundary; undici 8 is API-compatible for `new Agent({ connect })`,
+    // which is the only surface we touch.
+    const init: RequestInit & { dispatcher?: unknown } = {
       signal: opts.signal,
       redirect: "manual",
     };
-    if (dispatcher) init.dispatcher = dispatcher;
+    if (dispatcher) {
+      (init as { dispatcher?: unknown }).dispatcher = dispatcher as unknown;
+    }
     const res = await opts.fetchImpl(currentUrl, init as RequestInit);
     if (isRedirectStatus(res.status)) {
       const next = res.headers.get("location");
