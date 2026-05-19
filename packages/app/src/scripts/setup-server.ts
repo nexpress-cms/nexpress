@@ -1037,6 +1037,14 @@ async function runCli(): Promise<void> {
   );
   console.log("");
 
+  // Read existing `.env` values so the prompt defaults match what
+  // `docker compose up -d` will actually bind to. Without this,
+  // a scaffold with NEXPRESS_DB_PORT=5500 in its `.env` would still
+  // see the CLI prompt suggest the hardcoded :5433 default — operator
+  // hits Enter to accept, compose binds 5500, app tries 5433, mismatch.
+  // HTTP mode already reads `.env` via the same call at render-time.
+  const defaults = await getFormDefaults();
+
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = async (prompt: string, fallback?: string): Promise<string> => {
     const hint = fallback ? ` [${fallback}]` : "";
@@ -1053,7 +1061,7 @@ async function runCli(): Promise<void> {
   try {
     const databaseUrl = await ask(
       "PostgreSQL connection string (DATABASE_URL)",
-      process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
+      process.env.DATABASE_URL ?? defaults.databaseUrl,
     );
     const npSecretInput = await ask(
       "NP_SECRET (Enter to auto-generate 64-char hex)",
@@ -1074,6 +1082,12 @@ async function runCli(): Promise<void> {
       storage,
       runMigrate: false,
     };
+    // Preserve TEST_DATABASE_URL from `.env` if present — CLI mode
+    // doesn't prompt for it, but losing the line on rewrite breaks
+    // `pnpm test:integration` for operators who set it up once.
+    // `process.env` wins so a one-off shell override still applies.
+    const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? defaults.testDatabaseUrl;
+    if (testDatabaseUrl) body.testDatabaseUrl = testDatabaseUrl;
     if (storage === "s3") {
       body.s3Bucket = await ask("S3 bucket (NP_S3_BUCKET)", process.env.NP_S3_BUCKET);
       body.s3Region = await ask(
