@@ -60,12 +60,18 @@ describe("getProjectFiles", () => {
     expect(worker).toBeDefined();
     // Wrapper invariants — the substance (DATABASE_URL guard, signal
     // handlers, builtin-job context wiring) lives in @nexpress/app's
-    // shared `runWorker`. The scaffold's job is to feed it the site's
-    // bootstrap singletons.
+    // shared `runWorker`. The scaffold's job is to bootstrap directly
+    // via `createBootstrap` (NOT via `@/lib/init-core`, which transits
+    // through @nexpress/app's compiled chunks whose `@/lib/bootstrap`
+    // imports tsx can't resolve in node_modules) and feed an
+    // equivalent `ensureFor` to `runWorker`.
     expect(worker).toMatch(/@nexpress\/app\/scripts\/worker/);
+    expect(worker).toMatch(/createBootstrap/);
     expect(worker).toMatch(/ensureFor/);
     expect(worker).toMatch(/runWorker\(\s*\{\s*ensureFor\s*\}\s*\)/);
-    expect(worker.split("\n").filter((l) => l.trim().length > 0).length).toBeLessThanOrEqual(6);
+    // Must NOT re-import from @/lib/init-core — the whole point of
+    // the createBootstrap inline is to avoid that broken chain.
+    expect(worker).not.toMatch(/@\/lib\/init-core/);
   });
 
   it("emits the admin login + setup route files (now as @nexpress/app wrappers)", () => {
