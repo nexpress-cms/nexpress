@@ -33,6 +33,8 @@ interface ProjectRow {
   id: string;
   slug: string;
   title: string;
+  /** Universal-content-model discriminator — filtered to "project" at query time. */
+  kind?: string;
   body?: unknown;
   status?: string;
   hero?: unknown;
@@ -50,8 +52,14 @@ export async function PortfolioProjectDetailRoute({
   const slug = typeof params.slug === "string" ? params.slug : "";
   if (!slug) notFound();
 
+  // Filter by `kind: "project"` so a kind="article" post that
+  // happens to share a slug with a project doesn't get routed
+  // here. Without the filter, /work/<article-slug> would resolve
+  // and render through ProjectDetailTemplate (which expects
+  // portfolio's hero / year / role fields), producing a mangled
+  // output for what is canonically a /blog/<slug> article.
   const result = await findDocuments<ProjectRow>("posts", {
-    where: { slug, status: "published" },
+    where: { slug, status: "published", kind: "project" },
     limit: 1,
   });
   const doc = result.docs[0];
