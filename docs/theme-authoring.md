@@ -500,6 +500,36 @@ The same rule applies to any `select` / `radio` `options:`
 contributed via `manifest.requires.collections.<slug>.fields.<name>.options`
 — it's the generic merge semantic, not a kind-specific quirk.
 
+### Convention: ship migration SQL in the same PR as the field change
+
+When you add or change a field in `manifest.requires.collections.<slug>.fields`,
+generate and commit the resulting migration SQL in the same PR. Don't
+land "the field declaration" in one PR and "the migration that
+materialises it" in a later one — between those two PRs the repo is
+in an inconsistent state (types claim the columns exist, the
+database doesn't have them), and a contributor who rebases on the
+first PR runs into a schema mismatch the moment they hit
+`pnpm db:generate`.
+
+Concretely, after editing the theme's `requires.collections`:
+
+```bash
+pnpm db:generate    # regenerates collections.ts + documents.ts + the new SQL migration
+pnpm db:migrate     # apply against your local DB to verify the migration is valid
+```
+
+Commit BOTH the source change (`packages/themes/<name>/src/...`) and
+the generated artifacts (`apps/web/src/db/generated/collections.ts`,
+`apps/web/src/db/migrations/<n>_<name>.sql`) in the same PR. The
+review then surfaces the SQL alongside the schema intent, which is
+what catches accidentally-destructive changes.
+
+The 0002 migration drift (portfolio's
+`discipline` / `span` / `coverVariant` / `coverFigure` / `badge`
+and docs theme's `lede` / `stableSince` / `badge` all landing in
+the same later migration) is the precedent — each of those should
+have ridden its own PR's migration instead of accumulating.
+
 ### First-boot demo content (`impl.seedContent`)
 
 The setup wizard's "Add sample content" toggle runs the framework's
