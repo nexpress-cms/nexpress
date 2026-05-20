@@ -9,6 +9,9 @@ import { createRequire } from "node:module";
 import { access, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { messageForConnectionError } from "./setup-server-errors.js";
+import { findFreePort } from "./setup-server-ports.js";
+
 /**
  * `pnpm doctor` — best-effort diagnosis of the env / runtime
  * surface NexPress depends on. Designed to give a new operator a
@@ -319,11 +322,32 @@ async function checkDatabase(): Promise<CheckResult> {
     } catch {
       /* swallow */
     }
+    // Reuse the wizard's friendly error decoder so `pnpm doctor` and
+    // the browser wizard speak the same language on the common
+    // first-boot failure shapes (3D000 / 28P01 / 28000 / ECONNREFUSED).
+    // For port-collision codes also scan for a free port nearby so
+    // the message includes a concrete `Detected free port: <N>`
+    // recommendation. The base `detail` carries the rich, multi-line
+    // message; the canned `hint` field stays empty here because the
+    // message already names the fix.
+    const code = (err as { code?: unknown } | null)?.code;
+    let suggestedPort: number | null = null;
+    if (code === "28P01" || code === "28000") {
+      try {
+        const parsed = new URL(url);
+        const failingPort = parsed.port ? Number(parsed.port) : NaN;
+        if (Number.isInteger(failingPort) && failingPort > 0 && failingPort < 65536) {
+          suggestedPort = await findFreePort(failingPort + 1);
+        }
+      } catch {
+        // Unparseable URL — skip the scan; the message handles the
+        // fallback placeholders.
+      }
+    }
     return {
       state: "error",
       label: "Postgres reachable",
-      detail: err instanceof Error ? err.message : String(err),
-      hint: "Confirm `docker compose up -d db` is running and DATABASE_URL points at it.",
+      detail: messageForConnectionError(url, err, { suggestedPort }),
     };
   }
 }
