@@ -67,8 +67,7 @@ export const portfolioCss = `
 .np-portfolio-logo-amp {
   color: var(--np-color-accent, #d97a4f);
 }
-.np-portfolio-nav,
-.np-portfolio-nav-desktop {
+.np-portfolio-nav {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -132,8 +131,7 @@ export const portfolioCss = `
     grid-template-columns: auto auto;
     gap: 1rem;
   }
-  .np-portfolio-nav,
-  .np-portfolio-nav-desktop { display: none; }
+  .np-portfolio-nav { display: none; }
 }
 @media (max-width: 720px) {
   .np-portfolio-header-meta { display: none; }
