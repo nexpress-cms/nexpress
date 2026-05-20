@@ -105,7 +105,7 @@ function spanForIndex(doc: PortfolioProjectDoc, index: number): 4 | 5 | 6 | 7 | 
   ) {
     return explicit;
   }
-  return (SPAN_PATTERN[index] ?? 6) as 4 | 5 | 6 | 7 | 8 | 12;
+  return SPAN_PATTERN[index] ?? 6;
 }
 
 function coverClass(doc: PortfolioProjectDoc, index: number): string {
@@ -113,7 +113,7 @@ function coverClass(doc: PortfolioProjectDoc, index: number): string {
   if (typeof explicit === "string" && /^[a-h]$/.test(explicit)) {
     return `np-portfolio-cover-${explicit}`;
   }
-  const letter = COVER_LETTERS[index % COVER_LETTERS.length]!;
+  const letter = COVER_LETTERS[index % COVER_LETTERS.length];
   return `np-portfolio-cover-${letter}`;
 }
 

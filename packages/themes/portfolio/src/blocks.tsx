@@ -237,7 +237,7 @@ export const portfolioBlocks: NpBlockDefinition[] = [
     // source) rather than re-typing per block instance. The render
     // arrow itself is sync (just constructs the element); React
     // resolves the inner async at render time.
-    render: (props) => <ClientLogosStrip {...(props as { heading?: string })} />,
+    render: (props) => <ClientLogosStrip {...props} />,
   },
 ];
 
