@@ -1,5 +1,12 @@
 # @nexpress/plugin-block-latest-posts
 
+## 0.3.7
+
+### Patch Changes
+
+- @nexpress/blocks@0.3.7
+- @nexpress/plugin-sdk@0.3.7
+
 ## 0.3.6
 
 ### Patch Changes

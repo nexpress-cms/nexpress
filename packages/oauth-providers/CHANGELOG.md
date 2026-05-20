@@ -1,5 +1,11 @@
 # @nexpress/oauth-providers
 
+## 0.3.7
+
+### Patch Changes
+
+- @nexpress/core@0.3.7
+
 ## 0.3.6
 
 ### Patch Changes
