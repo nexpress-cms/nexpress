@@ -54,9 +54,14 @@ exist or has different credentials).
   `NEXPRESS_DB_PORT=<free port>` and update `DATABASE_URL`'s port
   to match, then re-run setup.
 
-The scaffold's compose template substitutes the project-specific
-port as the `${NEXPRESS_DB_PORT:-…}` fallback, so even when
-`--env-file` lookup misses (see below), the right port is used.
+Since `0.3.6` the wizard's "Test connection" button scans for a free
+port near the failing one and surfaces it as `Detected free port: <N>`
+in the error message. The browser form also auto-fills the dbPort
+input (or splices `DATABASE_URL`'s port in URL mode) so you can hit
+"Test connection" again without retyping the recommendation. The
+scaffold's compose template substitutes the project-specific port
+as the `${NEXPRESS_DB_PORT:-…}` fallback, so even when `--env-file`
+lookup misses (see below), the right port is used.
 
 ### `connect ECONNREFUSED 127.0.0.1:5433`
 
