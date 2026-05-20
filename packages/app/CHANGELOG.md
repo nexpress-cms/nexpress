@@ -1,5 +1,78 @@
 # @nexpress/app
 
+## 0.3.6
+
+### Patch Changes
+
+- 8d5d1db: `pnpm doctor` now uses the same friendly error decoder as the setup wizard's "Test connection" when the Postgres reachability check fails. Previously the doctor printed the raw `pg` driver message (e.g. `password authentication failed for user "nexpress"`) with a fixed canned hint (`Confirm \`docker compose up -d db\` is running…`). Now it surfaces the wizard-grade guidance:
+  - sqlstate `3D000` — the exact `psql -c 'CREATE DATABASE "<name>"'` recipe.
+  - sqlstate `28P01` / `28000` — the "different Postgres on this port" diagnosis PLUS a free-port scan that appends `Detected free port: <N>. Set NEXPRESS_DB_PORT=<N>...` (added in #841 / `findFreePort`).
+  - `ECONNREFUSED` — the exact `docker compose -f docker/docker-compose.yml up -d db` command.
+  - Anything else falls through to the raw driver string.
+
+  Concretely, `messageForConnectionError` + `findFreePort` from the wizard now drive the doctor's `checkDatabase` error path, so operators running `pnpm doctor` after a failed first-boot get the same rich, actionable output the wizard already shows on its Test connection button.
+
+  No API surface change. Pure error-formatting reuse.
+
+- cc665a8: Setup wizard's "Test connection" now scans for a free TCP port near the failing one when it hits a port-collision auth error (sqlstate `28P01` / `28000`), and appends a concrete recommendation to the error message:
+
+  ```
+  Detected free port: 5601. If you want to pick that, set:
+
+    NEXPRESS_DB_PORT=5601
+    DATABASE_URL=postgres://nexpress:<password>@localhost:5601/mysite
+
+  in .env …
+  ```
+
+  Previously the operator only got the generic "pick a free port via `NEXPRESS_DB_PORT`" advice and had to find a free slot themselves. The scan starts one above the failing port and is bounded (100 ports max) so the wizard stays responsive; when every port in the range is taken the wizard falls back to the base message with no suggestion.
+
+  Internal split: the helpers live in a new `scripts/setup-server-ports.ts` sibling alongside the existing `setup-server-errors.ts` / `setup-server-validate.ts` modules. `messageForConnectionError` gained an optional `{ suggestedPort }` parameter (defaults to absent — the unit tests confirm pure behavior is unchanged).
+
+- 2e9ba3d: Setup wizard's "Test connection" now auto-fills the dbPort field (or splices `DATABASE_URL`'s port in URL mode) when the test fails on a port-collision auth error (sqlstate `28P01` / `28000`) and the server's free-port scan returned a usable alternative.
+
+  Operator flow before:
+
+  ```
+  1. Hit "Test connection" → fails with 28P01
+  2. Read message: "Detected free port: 5601. Set NEXPRESS_DB_PORT=5601..."
+  3. Copy 5601, paste into the dbPort field
+  4. Hit "Test connection" again
+  ```
+
+  After:
+
+  ```
+  1. Hit "Test connection" → fails with 28P01
+  2. Form auto-fills 5601 in dbPort (or splices the URL string)
+  3. Hit "Test connection" again — no retyping
+  ```
+
+  The auto-fill is a UI-side enhancement on top of the suggestion exposed by `testDbConnection`. The server-side endpoint (`POST /test-db`) now includes `suggestedPort: <number>` in the JSON response alongside `ok` + `message` when the scan found a free port; the form's JS reads it and applies it to whichever input mode is active (fields vs. raw URL). When no suggestion came back (any non-collision failure, or every port in the scan range was taken), the form keeps the existing message-only behavior.
+  - @nexpress/admin@0.3.6
+  - @nexpress/auth-pages@0.3.6
+  - @nexpress/blocks@0.3.6
+  - @nexpress/core@0.3.6
+  - @nexpress/editor@0.3.6
+  - @nexpress/next@0.3.6
+  - @nexpress/plugin-block-callout@0.3.6
+  - @nexpress/plugin-block-embed@0.3.6
+  - @nexpress/plugin-block-latest-posts@0.3.6
+  - @nexpress/plugin-block-newsletter@0.3.6
+  - @nexpress/plugin-block-pricing@0.3.6
+  - @nexpress/plugin-block-stats@0.3.6
+  - @nexpress/plugin-forum@0.3.6
+  - @nexpress/plugin-oauth-github@0.3.6
+  - @nexpress/plugin-oauth-google@0.3.6
+  - @nexpress/plugin-reading-time@0.3.6
+  - @nexpress/plugin-sdk@0.3.6
+  - @nexpress/plugin-seo-audit@0.3.6
+  - @nexpress/theme@0.3.6
+  - @nexpress/theme-default@0.3.6
+  - @nexpress/theme-docs@0.3.6
+  - @nexpress/theme-magazine@0.3.6
+  - @nexpress/theme-portfolio@0.3.6
+
 ## 0.3.5
 
 ### Patch Changes
