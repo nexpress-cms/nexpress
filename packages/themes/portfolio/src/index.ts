@@ -85,6 +85,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "The wordmark is set in a single drawn pair of letters — H and G — at the size you'd want them to read across a gallery's facade. Underneath sits a quiet sans for the chrome (wall labels, ticketing, the website's tertiary type). The display face is used sparingly: titles, chapter markers, and the door numbers on the four ground-floor exhibit rooms.",
     ]),
     publishedAt: ISO(2026, 3, 1),
+    kind: "project",
     tagNames: ["Identity"],
     data: {
       year: 2026,
@@ -105,6 +106,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "Three issues have shipped under the new system. The fourth is in production. The editors say the most useful thing about the new type stack is that it survives bad paper.",
     ]),
     publishedAt: ISO(2026, 1, 14),
+    kind: "project",
     tagNames: ["Editorial"],
     data: {
       year: 2026,
@@ -124,6 +126,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "It is most useful at sizes you would normally describe in points rather than pixels: 96, 144, 216. At 12 it loses what makes it interesting.",
     ]),
     publishedAt: ISO(2025, 9, 8),
+    kind: "project",
     tagNames: ["Typography"],
     data: {
       year: 2025,
@@ -143,6 +146,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "Everything is set in a single drawn face. The labels are printed at three sizes; the rest of the system follows from there.",
     ]),
     publishedAt: ISO(2025, 6, 4),
+    kind: "project",
     tagNames: ["Environmental"],
     data: {
       year: 2025,
@@ -162,6 +166,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "We designed the cover series as a system rather than sixteen individual covers: a fixed grid, a fixed display face, a shifting accent color drawn from each book's lead photograph.",
     ]),
     publishedAt: ISO(2025, 4, 22),
+    kind: "project",
     tagNames: ["Editorial"],
     data: {
       year: 2025,
@@ -182,6 +187,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "The system is a fixed bag, a fixed bag color, a fixed type stack — and twelve labels we redraw every season.",
     ]),
     publishedAt: ISO(2024, 11, 17),
+    kind: "project",
     tagNames: ["Packaging"],
     data: {
       year: 2024,
@@ -201,6 +207,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "We worked through forty-three rounds. The version that shipped is the thirty-eighth.",
     ]),
     publishedAt: ISO(2024, 8, 9),
+    kind: "project",
     tagNames: ["Identity"],
     data: {
       year: 2024,
@@ -220,6 +227,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "The wordmark is set tighter than the old one and is a touch lighter at small sizes; the difference is visible on the spine more than on the cover.",
     ]),
     publishedAt: ISO(2023, 10, 30),
+    kind: "project",
     tagNames: ["Identity"],
     data: {
       year: 2023,
@@ -239,6 +247,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
       "The face is not for sale. Three of us in this studio still get to use it on the work we do for them; everyone else, including their clients, only ever sees the output.",
     ]),
     publishedAt: ISO(2023, 5, 12),
+    kind: "project",
     tagNames: ["Typography"],
     data: {
       year: 2023,
@@ -367,6 +376,16 @@ export const portfolioTheme = defineTheme({
       collections: {
         posts: {
           fields: {
+            // Register `kind="project"` so the merge-requirements
+            // union surfaces it as a selectable option in the
+            // admin (alongside whatever other themes contribute)
+            // and so `seo.urlPath` reads `kinds.project.urlPattern`
+            // to emit `/work/<slug>` instead of the article
+            // fallback `/blog/<slug>`.
+            kind: {
+              type: "select",
+              options: [{ label: "Project", value: "project" }],
+            },
             // All portfolio-contributed fields share two admin
             // hints: `group: "Portfolio"` (one sidebar Card)
             // and `condition: (data) => data.kind !== "doc"`
@@ -470,6 +489,21 @@ export const portfolioTheme = defineTheme({
             Portfolio: {
               icon: "Briefcase",
               description: "Project metadata — hero, client, year, role, cover treatment.",
+            },
+          },
+          kinds: {
+            project: {
+              label: "Project",
+              labelPlural: "Projects",
+              icon: "Briefcase",
+              // Canonical public-site URL pattern. The framework's
+              // `seo.urlPath` reads this so a kind="project" post
+              // emits `/work/<slug>` for permalinks / sitemap /
+              // feeds. The actual route component lives under
+              // `routes: [{ pattern: "/work/:slug", ... }]` below
+              // — kinds.urlPattern is metadata only; it does not
+              // auto-register a route.
+              urlPattern: "/work/:slug",
             },
           },
         },
