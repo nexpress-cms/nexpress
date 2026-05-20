@@ -52,7 +52,7 @@ export const docsCss = `
   margin: 0 auto;
   padding: 0.7rem 1.5rem;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) auto;
+  grid-template-columns: auto 1fr auto;
   gap: 1.5rem;
   align-items: center;
 }
@@ -82,7 +82,6 @@ export const docsCss = `
   opacity: 0.95;
   clip-path: polygon(0 0, 100% 0, 100% 100%, 60% 100%, 0 35%);
 }
-.np-docs-brand-name { font-weight: 700; }
 .np-docs-brand-version {
   font-family: var(--np-font-mono);
   font-size: 0.72rem;
@@ -158,24 +157,6 @@ export const docsCss = `
 .np-docs-primary-nav a[aria-current="page"] {
   color: var(--np-color-foreground);
 }
-.np-docs-github,
-.np-docs-github-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.7rem;
-  font-size: 0.8125rem;
-  color: var(--np-color-muted-foreground);
-  background: var(--np-color-muted);
-  border: 1px solid var(--np-color-border);
-  border-radius: 7px;
-  text-decoration: none;
-}
-.np-docs-github:hover,
-.np-docs-github-link:hover {
-  color: var(--np-color-foreground);
-}
-
 @media (max-width: 800px) {
   .np-docs-header-inner {
     grid-template-columns: auto 1fr auto;

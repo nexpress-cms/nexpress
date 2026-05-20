@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { PortfolioFooter } from "./footer.js";
 import { PortfolioHeader } from "./header.js";
@@ -35,7 +35,7 @@ export async function PortfolioMembersShell({
     styleVars["--np-color-primary"] = settings.accentColor;
   }
   return (
-    <div className="np-portfolio" style={styleVars as CSSProperties}>
+    <div className="np-portfolio" style={styleVars}>
       <PortfolioHeader />
       <div className="np-portfolio-members">
         <div className="np-portfolio-members-column">{children}</div>

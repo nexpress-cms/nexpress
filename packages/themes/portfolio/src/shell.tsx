@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { resolvePortfolioSettings } from "./settings-helpers.js";
 
@@ -30,7 +30,7 @@ export async function PortfolioShell({ children }: { children: ReactNode }) {
         href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
       />
       <style>{aliasCss}</style>
-      <div className="np-portfolio" style={styleVars as CSSProperties}>
+      <div className="np-portfolio" style={styleVars}>
         {children}
       </div>
     </>

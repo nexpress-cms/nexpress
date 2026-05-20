@@ -13,7 +13,11 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  *     name contains a literal `&`, the ampersand is wrapped in
  *     a span so CSS tints it with the accent color (matches the
  *     design's "Owen & Spruce" treatment).
- *   - **Nav** — primary sections, centered.
+ *   - **Nav** — primary sections, centered. Flat `<ul>` directly
+ *     under the header-inner grid track — no nested `<nav>` wrapper,
+ *     no hover subnav. The design intent is editorial / studio-
+ *     minimal; operators who need a multi-level menu pick a
+ *     different theme (default / docs both ship subnav).
  *   - **Local-time pill** — small monospaced label showing the
  *     studio's current local time. Pulled from
  *     `settings.timezone` so multi-site portfolios can show
@@ -23,7 +27,8 @@ import { resolvePortfolioSettings } from "./settings-helpers.js";
  *     destination to send the click to).
  *
  * Mobile collapses to the logo + a hamburger drawer via
- * `<PortfolioMobileNav />`.
+ * `<PortfolioMobileNav />`. The drawer DOES surface nav-item
+ * children — desktop deliberately omits them per the design.
  */
 export async function PortfolioHeader() {
   const items = await getCachedNavigation("header");
@@ -38,31 +43,13 @@ export async function PortfolioHeader() {
           {renderLogoText(settings.studioName)}
         </a>
         {items.length > 0 ? (
-          <nav aria-label="Main" className="np-portfolio-nav-desktop">
-            <ul className="np-portfolio-nav">
-              {items.map((item: NpNavItem, index: number) => (
-                <li
-                  key={`portfolio-nav-${index.toString()}`}
-                  className="np-portfolio-nav-item"
-                >
-                  <a href={item.url}>{item.label}</a>
-                  {item.children && item.children.length > 0 ? (
-                    <ul className="np-portfolio-subnav">
-                      {item.children.map(
-                        (child: NpNavItem, childIndex: number) => (
-                          <li
-                            key={`portfolio-nav-${index.toString()}-${childIndex.toString()}`}
-                          >
-                            <a href={child.url}>{child.label}</a>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </nav>
+          <ul className="np-portfolio-nav" aria-label="Main">
+            {items.map((item: NpNavItem, index: number) => (
+              <li key={`portfolio-nav-${index.toString()}`}>
+                <a href={item.url}>{item.label}</a>
+              </li>
+            ))}
+          </ul>
         ) : (
           <span aria-hidden="true" />
         )}

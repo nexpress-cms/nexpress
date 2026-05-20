@@ -291,13 +291,12 @@ const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
     "np-portfolio-members-error",
     "np-portfolio-members-not-found",
     "np-portfolio-not-found",
-    // VERIFIED_LANDMARK — nav-item / nav-toggle / subnav /
-    // mobile-subnav sit inside the styled `.np-portfolio-nav*`
-    // family (styles.ts). Parents provide layout.
+    // VERIFIED_LANDMARK — nav-toggle / mobile-subnav sit inside
+    // the styled `.np-portfolio-nav*` family (styles.ts). Parents
+    // provide layout. Desktop subnav + per-item wrapper were
+    // dropped to match the design's flat single-level nav.
     "np-portfolio-mobile-subnav",
-    "np-portfolio-nav-item",
     "np-portfolio-nav-toggle",
-    "np-portfolio-subnav",
     // VERIFIED_LANDMARK — `.np-portfolio-page-default` IS styled
     // (styles.ts:688); `np-portfolio-page` is a parent hook.
     "np-portfolio-page",
