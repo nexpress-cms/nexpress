@@ -89,7 +89,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     }>(res);
     expect(status).toBe(200);
     const ids = (body.docs ?? []).map((d) => d.id).sort();
-    expect(ids).toEqual(["default", "landing", "sidebar", "wide"]);
+    expect(ids).toEqual(["about", "default", "landing", "sidebar", "wide"]);
   });
 
   it("admin endpoint requires a `collection` query param", async () => {

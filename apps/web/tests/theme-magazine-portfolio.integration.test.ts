@@ -84,7 +84,7 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     }) => React.ReactElement;
     const html = renderToString(Masthead({ doc: { title: "Masthead" } }));
     expect(html).toContain("np-magazine-masthead");
-    expect(html).toContain("Editorial director");
+    expect(html).toContain("Editor in chief");
   });
 
   it("portfolio theme exposes the expected manifest + slots + templates", async () => {
