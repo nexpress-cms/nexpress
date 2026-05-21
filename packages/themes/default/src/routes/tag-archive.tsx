@@ -38,6 +38,7 @@ export async function DefaultTagArchiveRoute({
     asString(tag?.description) ??
     `Posts tagged ${title}, collected from the default NexPress publication.`;
   const [feature, ...rest] = posts.docs;
+  const hasPosts = posts.docs.length > 0;
 
   return (
     <main className="np-default-tag">
@@ -93,7 +94,7 @@ export async function DefaultTagArchiveRoute({
               );
             })}
           </ul>
-        ) : (
+        ) : hasPosts ? null : (
           <p className="np-default-tag-empty">No posts in this tag yet.</p>
         )}
       </section>

@@ -36,11 +36,7 @@ export async function MagazineSectionArchiveRoute({
         sort: "-publishedAt",
         limit: 24,
       })
-    : await findDocuments<Record<string, unknown>>("posts", {
-        where: { status: "published" },
-        sort: "-publishedAt",
-        limit: 12,
-      });
+    : { docs: [], totalDocs: 0 };
 
   return (
     <section className="np-magazine-section-page">
