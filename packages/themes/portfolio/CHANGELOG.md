@@ -1,5 +1,44 @@
 # @nexpress/theme-portfolio
 
+## 0.3.7
+
+### Patch Changes
+
+- 13442d2: Fix: portfolio's `/work/:slug` detail route now filters by `kind: "project"`, so a `kind="article"` post that happens to share a slug with a project doesn't get routed through `ProjectDetailTemplate`. Pre-fix, an operator who authored an article on a portfolio-themed site could have it accessible at both `/blog/<slug>` (the canonical URL per `posts.seo.urlPath` for kind=article) AND `/work/<slug>` (matched by the portfolio detail route's slug-only query) — the second URL would render the article through `ProjectDetailTemplate`, which expects portfolio-specific fields (hero, year, role, …) and produces a mangled page for an article.
+
+  One-line change to the `findDocuments("posts", { where: { … } })` call inside `PortfolioProjectDetailRoute`. Adds `kind: "project"` alongside the existing `slug` + `status: "published"` filters. The route now `notFound()`s for any post whose `kind !== "project"`, matching the framework's `/blog/<slug>` page which already 404s when `post.kind !== "article"`.
+
+  Direct follow-up to the seeding fix that landed in the previous release of `@nexpress/theme-portfolio`.
+
+- a04759b: Fix: portfolio's seeded `/` front page now renders the project grid instead of an empty fallback. Previously the nine `SEED_PROJECTS` entries shipped without an explicit `kind`, so `posts.kind`'s `defaultValue: "article"` was applied — but `PageFrontTemplate` queries `fetchFrontListPosts({ kind: "project" })`, which then returned zero docs and the asymmetric 12-col grid rendered empty.
+
+  Two corrections, applied together:
+  - Every `SEED_PROJECTS` entry now sets `kind: "project"` so the seeder writes rows that the front-page template can find.
+  - `manifest.requires.collections.posts` now declares `kind` as a select option (`{ label: "Project", value: "project" }`) and registers a `kinds.project` metadata block (`label`, `labelPlural`, `icon: "Briefcase"`, `urlPattern: "/work/:slug"`). The first half makes `"project"` a valid value for the merged kind union (it was previously not in the option list at all — so any operator authoring a project post had no `Project` choice in the kind picker). The second half lets the framework's `seo.urlPath` emit canonical `/work/<slug>` permalinks for project posts (matching the `routes: [{ pattern: "/work/:slug" }]` entry the theme already shipped) instead of the article fallback `/blog/<slug>`.
+
+  No migration is needed for existing portfolio installs: the kind field is `text`/`select` at runtime, and rows seeded by older portfolio versions retain their `kind: "article"` value. Operators who already activated portfolio and want the redesigned front page to populate can re-run reseed from `/admin/settings → Theme`.
+
+- cfb1e92: Aligns the docs + portfolio masthead/GNB markup and layout with the design-system prototype bundle. Operator-visible changes:
+
+  **`@nexpress/theme-docs`** — three corrections to the masthead:
+  - Header grid now uses `auto 1fr auto` (search fills the free middle track). Previously `minmax(220px, 1fr) minmax(0, 2fr) auto` pinned the brand column at ≥220px and gave the search input less room than the design intends. The search now expands to the full middle track up to its own 520px clamp.
+  - The brand wordmark's extra `<span class="np-docs-brand-name">` wrapper is gone; the bare `<span>{siteName}</span>` inherits `font-weight: 700` from `.np-docs-brand`. Visual no-op; structural cleanup.
+  - The conditional GitHub icon link in the header is removed. The design's masthead has three slots (brand / search / primary nav); the GitHub link wasn't one of them. Operators who want a GitHub entry add it to the primary header navigation (Settings → Menus → header), pointing at the same `settings.githubRepo` value. The doc-page footer's "Edit this page" and "Report issue" links continue to read `settings.githubRepo` independently.
+
+  Orphan CSS rules (`.np-docs-brand-name`, `.np-docs-github`, `.np-docs-github-link`) are removed.
+
+  **`@nexpress/theme-portfolio`** — three corrections to the masthead:
+  - The desktop nav is now a flat `<ul class="np-portfolio-nav">` directly under the header-inner grid track (matching the design). The previous extra `<nav class="np-portfolio-nav-desktop">` wrapper, the per-`<li>` `np-portfolio-nav-item` class, and the unstyled hover-revealed `<ul class="np-portfolio-subnav">` dropdown are all gone.
+  - Portfolio's design intent is editorial / studio-minimal — flat single-level nav, no dropdowns. Operators with nested header menus only see the children on mobile now (the drawer continues to surface them via `np-portfolio-mobile-subnav`); on desktop only the top-level items appear. Themes that ship multi-level desktop dropdowns: `default` and `magazine`.
+
+  Orphan CSS rules (`.np-portfolio-nav-desktop` in the combined selector + the responsive `display: none`) are removed.
+
+  No public-API change in either theme. Class-name coverage baseline in the framework's `builtin-themes-classnames.unit.test.ts` is updated to reflect the dropped portfolio classes.
+  - @nexpress/blocks@0.3.7
+  - @nexpress/core@0.3.7
+  - @nexpress/next@0.3.7
+  - @nexpress/theme@0.3.7
+
 ## 0.3.6
 
 ### Patch Changes
