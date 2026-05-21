@@ -1,8 +1,4 @@
-import {
-  defineTheme,
-  type NpThemeSeedPage,
-  type NpThemeSeedPost,
-} from "@nexpress/theme";
+import { defineTheme, type NpThemeSeedPage, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { docsBlocks } from "./blocks/index.js";
 import { CopyButton } from "./copy-button-bridge.js";
@@ -17,63 +13,136 @@ import { DocsSidebar } from "./sidebar.js";
 import { docsCss } from "./styles.js";
 import { docsSettingsSchema } from "./settings.js";
 import { DocPageTemplate } from "./templates/doc-page.js";
+import { PageApiReferenceTemplate } from "./templates/page-api-reference.js";
+import { PageChangelogTemplate } from "./templates/page-changelog.js";
 import { PageFrontTemplate } from "./templates/page-front.js";
 
 const SEED_NAV = {
   header: [
-    { id: "nav-docs-docs", label: "Docs", type: "link" as const, url: "/docs" },
+    { id: "nav-docs-docs", label: "Docs", type: "link" as const, url: "/" },
     { id: "nav-docs-reference", label: "Reference", type: "link" as const, url: "/docs/reference" },
     { id: "nav-docs-blog", label: "Blog", type: "link" as const, url: "/blog" },
   ],
   footer: [
-    { id: "nav-docs-footer-docs", label: "Documentation", type: "link" as const, url: "/docs" },
-    { id: "nav-docs-footer-reference", label: "Reference", type: "link" as const, url: "/docs/reference" },
-    { id: "nav-docs-footer-changelog", label: "Changelog", type: "link" as const, url: "/changelog" },
-    { id: "nav-docs-footer-github", label: "GitHub", type: "link" as const, url: "https://github.com" },
+    { id: "nav-docs-footer-docs", label: "Documentation", type: "link" as const, url: "/" },
+    {
+      id: "nav-docs-footer-reference",
+      label: "Reference",
+      type: "link" as const,
+      url: "/docs/reference",
+    },
+    {
+      id: "nav-docs-footer-changelog",
+      label: "Changelog",
+      type: "link" as const,
+      url: "/changelog",
+    },
+    {
+      id: "nav-docs-footer-github",
+      label: "GitHub",
+      type: "link" as const,
+      url: "https://github.com",
+    },
   ],
 };
 
-
 function paragraph(text: string) {
   return {
-    type: "paragraph", version: 1, direction: null, format: "", indent: 0,
-    children: [{
-      type: "text", version: 1, detail: 0, format: 0, mode: "normal", style: "", text,
-    }],
+    type: "paragraph",
+    version: 1,
+    direction: null,
+    format: "",
+    indent: 0,
+    children: [
+      {
+        type: "text",
+        version: 1,
+        detail: 0,
+        format: 0,
+        mode: "normal",
+        style: "",
+        text,
+      },
+    ],
   };
 }
 
 function heading(tag: "h2" | "h3", text: string) {
   return {
-    type: "heading", tag, version: 1, direction: null, format: "", indent: 0,
-    children: [{
-      type: "text", version: 1, detail: 0, format: 0, mode: "normal", style: "", text,
-    }],
+    type: "heading",
+    tag,
+    version: 1,
+    direction: null,
+    format: "",
+    indent: 0,
+    children: [
+      {
+        type: "text",
+        version: 1,
+        detail: 0,
+        format: 0,
+        mode: "normal",
+        style: "",
+        text,
+      },
+    ],
   };
 }
 
 function codeBlock(text: string, language?: string) {
   return {
-    type: "code", language: language ?? null, version: 1, direction: null, format: "", indent: 0,
-    children: [{
-      type: "text", version: 1, detail: 0, format: 0, mode: "normal", style: "", text,
-    }],
+    type: "code",
+    language: language ?? null,
+    version: 1,
+    direction: null,
+    format: "",
+    indent: 0,
+    children: [
+      {
+        type: "text",
+        version: 1,
+        detail: 0,
+        format: 0,
+        mode: "normal",
+        style: "",
+        text,
+      },
+    ],
   };
 }
 
 function listItem(text: string) {
   return {
-    type: "listitem", value: 1, version: 1, direction: null, format: "", indent: 0,
-    children: [{
-      type: "text", version: 1, detail: 0, format: 0, mode: "normal", style: "", text,
-    }],
+    type: "listitem",
+    value: 1,
+    version: 1,
+    direction: null,
+    format: "",
+    indent: 0,
+    children: [
+      {
+        type: "text",
+        version: 1,
+        detail: 0,
+        format: 0,
+        mode: "normal",
+        style: "",
+        text,
+      },
+    ],
   };
 }
 
 function bulletList(items: string[]) {
   return {
-    type: "list", listType: "bullet", start: 1, tag: "ul",
-    version: 1, direction: null, format: "", indent: 0,
+    type: "list",
+    listType: "bullet",
+    start: 1,
+    tag: "ul",
+    version: 1,
+    direction: null,
+    format: "",
+    indent: 0,
     children: items.map((t) => listItem(t)),
   };
 }
@@ -81,7 +150,11 @@ function bulletList(items: string[]) {
 function lexicalDoc(blocks: unknown[]): unknown {
   return {
     root: {
-      type: "root", version: 1, direction: null, format: "", indent: 0,
+      type: "root",
+      version: 1,
+      direction: null,
+      format: "",
+      indent: 0,
       children: blocks,
     },
   };
@@ -101,7 +174,9 @@ function stubDoc(opts: {
     title: opts.title,
     excerpt: opts.lede ?? `${opts.title} reference page.`,
     content: lexicalDoc([
-      paragraph(`Placeholder body for ${opts.title}. Operators replace this once they're set up — every doc-kind post renders through the three-column docs template.`),
+      paragraph(
+        `Placeholder body for ${opts.title}. Operators replace this once they're set up — every doc-kind post renders through the three-column docs template.`,
+      ),
     ]),
     publishedAt: DOCS_NOW,
     kind: "doc",
@@ -193,9 +268,7 @@ const QUICKSTART_BODY = lexicalDoc([
     "Hooks block the response: onDocumentPublished runs inside the publish request. Long-running work — sending emails, regenerating sitemaps — belongs in onSchedule or a queued job. Otherwise the editor will wait on it.",
   ),
   heading("h2", "Next steps"),
-  paragraph(
-    "You have a plugin that runs. Two natural directions from here:",
-  ),
+  paragraph("You have a plugin that runs. Two natural directions from here:"),
   bulletList([
     "Add a route. Declare a routes entry in the manifest to expose a public URL — for webhooks, OAuth callbacks, or a custom admin screen.",
     "Add collections. Plugins can declare their own collections, which the admin surfaces alongside the operator's. See the Plugin manifest reference.",
@@ -210,6 +283,20 @@ const SEED_PAGES: NpThemeSeedPage[] = [
       "Install NexPress, learn the core concepts, write plugins, and look up the API.",
     blocks: [],
     template: "front",
+  },
+  {
+    title: "definePlugin",
+    slug: "docs/reference/define-plugin",
+    seoDescription: "API reference for definePlugin from @nexpress/plugin-sdk.",
+    blocks: [],
+    template: "apiReference",
+  },
+  {
+    title: "Changelog",
+    slug: "changelog",
+    seoDescription: "Reverse-chronological changelog for NexPress pre-1.0 releases.",
+    blocks: [],
+    template: "changelog",
   },
 ];
 
@@ -226,7 +313,12 @@ const SEED_DOCS: NpThemeSeedPost[] = [
     lede: "What NexPress is, what it isn't, and who it's for.",
     stableSince: "Stable since 0.1",
   }),
-  stubDoc({ title: "Install & bootstrap", parentSlug: "get-started", order: 1, stableSince: "Stable since 0.1" }),
+  stubDoc({
+    title: "Install & bootstrap",
+    parentSlug: "get-started",
+    order: 1,
+    stableSince: "Stable since 0.1",
+  }),
   stubDoc({ title: "Project structure", parentSlug: "get-started", order: 2 }),
   stubDoc({ title: "Configuration", parentSlug: "get-started", order: 3 }),
   stubDoc({ title: "Deployment", parentSlug: "get-started", order: 4 }),
@@ -236,7 +328,12 @@ const SEED_DOCS: NpThemeSeedPost[] = [
     order: 1,
     lede: "The model behind collections, themes, plugins, and blocks.",
   }),
-  stubDoc({ title: "Collections", parentSlug: "core-concepts", order: 0, stableSince: "Stable since 0.1" }),
+  stubDoc({
+    title: "Collections",
+    parentSlug: "core-concepts",
+    order: 0,
+    stableSince: "Stable since 0.1",
+  }),
   stubDoc({ title: "Pages & routing", parentSlug: "core-concepts", order: 1 }),
   stubDoc({ title: "Themes", parentSlug: "core-concepts", order: 2 }),
   stubDoc({ title: "Blocks", parentSlug: "core-concepts", order: 3 }),
@@ -252,7 +349,7 @@ const SEED_DOCS: NpThemeSeedPost[] = [
   {
     title: "Author quickstart",
     excerpt:
-      "From \"I want to add behavior to NexPress\" to a running plugin in about ten minutes. Walks through the manifest, a lifecycle hook, and shipping the result to your own site.",
+      'From "I want to add behavior to NexPress" to a running plugin in about ten minutes. Walks through the manifest, a lifecycle hook, and shipping the result to your own site.',
     content: QUICKSTART_BODY,
     publishedAt: DOCS_NOW,
     kind: "doc",
@@ -260,8 +357,7 @@ const SEED_DOCS: NpThemeSeedPost[] = [
     order: 1,
     data: {
       badge: "NEW",
-      lede:
-        "From \"I want to add behavior to NexPress\" to a running plugin in about ten minutes. Walks through the manifest, a lifecycle hook, and shipping the result to your own site.",
+      lede: 'From "I want to add behavior to NexPress" to a running plugin in about ten minutes. Walks through the manifest, a lifecycle hook, and shipping the result to your own site.',
       stableSince: "Stable since 0.1",
     },
   },
@@ -429,8 +525,18 @@ export const docsTheme = defineTheme({
         front: {
           label: "Front page",
           description:
-            "Docs landing — hero + 2x2 group cards walking the kind=\"doc\" tree + recently-updated row. The seeded home page (slug \"/\") ships with this template.",
+            'Docs landing — hero + 2x2 group cards walking the kind="doc" tree + recently-updated row. The seeded home page (slug "/") ships with this template.',
           component: PageFrontTemplate,
+        },
+        apiReference: {
+          label: "API reference",
+          description: "Docs reference page with signature, parameter table, and return contract.",
+          component: PageApiReferenceTemplate,
+        },
+        changelog: {
+          label: "Changelog",
+          description: "Reverse-chronological release timeline with typed change labels.",
+          component: PageChangelogTemplate,
         },
       },
       // Universal-content-model #748 — docs are posts with
@@ -514,6 +620,8 @@ export {
   DocsMembersNotFound,
   DocsSearch,
   DocPageTemplate,
+  PageApiReferenceTemplate,
+  PageChangelogTemplate,
 };
 export { docsBlocks } from "./blocks/index.js";
 export { docsCss };

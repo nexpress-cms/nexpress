@@ -1,8 +1,4 @@
-import {
-  defineTheme,
-  type NpThemeSeedPage,
-  type NpThemeSeedPost,
-} from "@nexpress/theme";
+import { defineTheme, type NpThemeSeedPage, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { portfolioBlocks } from "./blocks.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
@@ -18,11 +14,11 @@ import { portfolioCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageFrontTemplate } from "./templates/page-front.js";
 import { PageGalleryTemplate } from "./templates/page-gallery.js";
+import { PageJournalTemplate } from "./templates/page-journal.js";
+import { PagePressTemplate } from "./templates/page-press.js";
+import { PageStudioTemplate } from "./templates/page-studio.js";
 import { ProjectDetailTemplate } from "./templates/project-detail.js";
-import {
-  ProjectIndexTemplate,
-  type PortfolioProjectDoc,
-} from "./templates/project-index.js";
+import { ProjectIndexTemplate, type PortfolioProjectDoc } from "./templates/project-index.js";
 
 /**
  * Minimal Lexical-shaped rich-text doc helper. Inlined so the
@@ -269,10 +265,49 @@ const SEED_NAV = {
     { id: "nav-portfolio-press", label: "Press", type: "link" as const, url: "/press" },
   ],
   footer: [
-    { id: "nav-portfolio-footer-index", label: "Index", type: "link" as const, url: "/index" },
-    { id: "nav-portfolio-footer-colophon", label: "Colophon", type: "link" as const, url: "/colophon" },
+    { id: "nav-portfolio-footer-index", label: "Index", type: "link" as const, url: "/" },
+    { id: "nav-portfolio-footer-colophon", label: "Studio", type: "link" as const, url: "/studio" },
   ],
 };
+
+const SEED_JOURNAL_POSTS: NpThemeSeedPost[] = [
+  {
+    title: "Why the first round is never for approval",
+    excerpt:
+      "A studio note on keeping early identity work exploratory before the system starts asking for rules.",
+    content: lexicalDoc([
+      "The first round is for range, not approval. We use it to test the edges of the brief while the stakes are still low and the vocabulary is still flexible.",
+      "The strongest projects usually keep one surprising artifact from that round. It may not survive intact, but it keeps the later system from collapsing into the obvious.",
+    ]),
+    publishedAt: ISO(2026, 2, 18),
+    kind: "article",
+    tagNames: ["Process"],
+  },
+  {
+    title: "A shelf of paper that keeps saving us",
+    excerpt:
+      "Four paper samples, two binding references, and the dull magic of having physical constraints nearby.",
+    content: lexicalDoc([
+      "A good paper shelf is less about taste than memory. It keeps old constraints close enough that they can become useful again.",
+      "The samples we return to most often are not precious. They are the ones that explain a production tradeoff at a glance.",
+    ]),
+    publishedAt: ISO(2025, 12, 4),
+    kind: "article",
+    tagNames: ["References"],
+  },
+  {
+    title: "On display type that refuses to behave at 12px",
+    excerpt:
+      "Not every typeface needs to be a system font. Some drawings are better when they stay loud.",
+    content: lexicalDoc([
+      "There is a temptation to make every custom display face behave everywhere. Usually that is a mistake.",
+      "Some drawings are useful because they are specific. They start working at 96 points and get better as the room gets bigger.",
+    ]),
+    publishedAt: ISO(2025, 8, 21),
+    kind: "article",
+    tagNames: ["Typography"],
+  },
+];
 
 /**
  * Portfolio theme home page + ancillary pages.
@@ -282,8 +317,10 @@ const SEED_NAV = {
  * lays them out as the 12-col asymmetric grid + studio strip + contact
  * strip. The page row has no blocks — the template owns the visual.
  *
- * Studio + Journal stubs use the default template (centered text
- * column on the dark canvas).
+ * Studio, Journal, and Press ship dedicated templates so the
+ * design bundle's ancillary pages render without relying on
+ * rich-text stubs. Journal posts stay `kind: "article"` so the
+ * project grid only receives `kind: "project"` work.
  */
 const SEED_PAGES: NpThemeSeedPage[] = [
   {
@@ -297,39 +334,24 @@ const SEED_PAGES: NpThemeSeedPage[] = [
   {
     title: "Studio",
     slug: "studio",
-    seoDescription:
-      "About the studio — what we do, who we work with, and how we work.",
-    blocks: [
-      {
-        type: "richText",
-        id: "seed-port-studio-body",
-        props: {
-          content: lexicalDoc([
-            "Owen & Spruce is a five-person studio working at the intersection of identity, custom type, and editorial design. We were founded in 2018 in a converted printer's shop in Mapo, Seoul; we opened a second desk in New York in 2024.",
-            "We work with brands at the inflection — when the way they look needs to catch up to who they've become. That usually means an identity refresh, sometimes a full rebrand, and occasionally a one-off display cut drawn for a single use.",
-            "We accept four engagements a year. The studio's calendar runs roughly six months ahead.",
-          ]),
-        },
-      },
-    ],
+    seoDescription: "About the studio — what we do, who we work with, and how we work.",
+    blocks: [],
+    template: "studio",
   },
   {
     title: "Journal",
     slug: "journal",
     seoDescription:
       "Notes from the studio — process, references, occasional opinions on type and editorial.",
-    blocks: [
-      {
-        type: "richText",
-        id: "seed-port-journal-body",
-        props: {
-          content: lexicalDoc([
-            "We post twice a month on average — process notes, references we keep coming back to, opinions on type and editorial work that didn't quite fit on a project page.",
-            "The journal isn't a feed. We don't optimise for engagement. If a post takes nine months to land, it takes nine months.",
-          ]),
-        },
-      },
-    ],
+    blocks: [],
+    template: "journal",
+  },
+  {
+    title: "Press",
+    slug: "press",
+    seoDescription: "Selected coverage, interviews, and awards for Owen & Spruce.",
+    blocks: [],
+    template: "press",
   },
 ];
 
@@ -530,8 +552,7 @@ export const portfolioTheme = defineTheme({
         accent: "#d97a4f",
       },
       typography: {
-        fontHeading:
-          '"Instrument Serif", "Times New Roman", Georgia, serif',
+        fontHeading: '"Instrument Serif", "Times New Roman", Georgia, serif',
         fontBody:
           '"Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         fontMono:
@@ -541,7 +562,7 @@ export const portfolioTheme = defineTheme({
     css: portfolioCss,
     seedContent: {
       pages: SEED_PAGES,
-      posts: SEED_PROJECTS,
+      posts: [...SEED_PROJECTS, ...SEED_JOURNAL_POSTS],
       navigation: SEED_NAV,
     },
     templates: {
@@ -553,15 +574,30 @@ export const portfolioTheme = defineTheme({
         },
         gallery: {
           label: "Gallery",
-          description:
-            "Auto-fill block grid for image-led project pages and case studies.",
+          description: "Auto-fill block grid for image-led project pages and case studies.",
           component: PageGalleryTemplate,
         },
         front: {
           label: "Front page",
           description:
-            "Studio front page — hero + filter tablist + 12-col asymmetric project grid + studio strip + contact strip. Pulls projects from the server at render time. The seeded home page (slug \"/\") ships with this template.",
+            'Studio front page — hero + filter tablist + 12-col asymmetric project grid + studio strip + contact strip. Pulls projects from the server at render time. The seeded home page (slug "/") ships with this template.',
           component: PageFrontTemplate,
+        },
+        studio: {
+          label: "Studio",
+          description: "Studio profile page with services and team roster.",
+          component: PageStudioTemplate,
+        },
+        journal: {
+          label: "Journal",
+          description:
+            "Studio journal index that lists article posts separately from project work.",
+          component: PageJournalTemplate,
+        },
+        press: {
+          label: "Press",
+          description: "Press and recognition page for studio coverage.",
+          component: PagePressTemplate,
         },
       },
       posts: {
@@ -579,9 +615,7 @@ export const portfolioTheme = defineTheme({
         },
       },
     },
-    routes: [
-      { pattern: "/work/:slug", component: PortfolioProjectDetailRoute },
-    ],
+    routes: [{ pattern: "/work/:slug", component: PortfolioProjectDetailRoute }],
     blocks: portfolioBlocks,
     navLocations: {
       primary: {
@@ -618,9 +652,7 @@ export {
   PortfolioMobileNav,
   PortfolioNotFound,
 };
+export { PageJournalTemplate, PagePressTemplate, PageStudioTemplate };
 export { portfolioCss };
 export type { PortfolioProjectDoc };
-export {
-  portfolioSettingsSchema,
-  type PortfolioSettings,
-} from "./settings.js";
+export { portfolioSettingsSchema, type PortfolioSettings } from "./settings.js";

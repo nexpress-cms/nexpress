@@ -22,6 +22,162 @@ export const magazineCss = `
   -webkit-font-smoothing: antialiased;
 }
 .np-magazine a { color: inherit; }
+.np-magazine-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+  border-top: 1px solid var(--np-color-border, #d8ccb4);
+  padding-top: 1rem;
+  margin-bottom: 1.5rem;
+}
+.np-magazine-section-head h2 {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+.np-magazine-section-head span {
+  font-family: var(--np-font-mono, "Hanken Grotesk", sans-serif);
+  color: var(--np-color-muted-foreground, #6a5a48);
+  font-size: 0.78rem;
+}
+.np-magazine-masthead,
+.np-magazine-section-page {
+  padding: 3rem 0 5rem;
+}
+.np-magazine-masthead {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-inline: 1.5rem;
+}
+.np-magazine-masthead-hero,
+.np-magazine-section-hero {
+  max-width: 780px;
+  padding: 3rem 0;
+}
+.np-magazine-masthead-hero p,
+.np-magazine-section-hero p {
+  margin: 0 0 0.8rem;
+  font-family: var(--np-font-mono, "Hanken Grotesk", sans-serif);
+  color: var(--np-color-primary, #b04a26);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.75rem;
+}
+.np-magazine-masthead-hero h1,
+.np-magazine-section-hero h1 {
+  margin: 0;
+  font-style: italic;
+  font-size: clamp(3rem, 7vw, 6.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+}
+.np-magazine-masthead-hero span,
+.np-magazine-section-hero span {
+  display: block;
+  margin-top: 1.25rem;
+  color: var(--np-color-muted-foreground, #6a5a48);
+  font-size: 1.15rem;
+  line-height: 1.65;
+}
+.np-magazine-masthead-manifesto {
+  max-width: 760px;
+  margin: 1rem auto 4rem;
+  padding-block: 2rem;
+  border-block: 3px double var(--np-color-foreground, #1a1411);
+}
+.np-magazine-masthead-manifesto p {
+  font-size: 1.28rem;
+  line-height: 1.75;
+  margin: 0 0 1rem;
+}
+.np-magazine-masthead-editors {
+  display: grid;
+  gap: 1.5rem;
+}
+.np-magazine-masthead-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+.np-magazine-masthead-editor {
+  border-top: 1px solid var(--np-color-border, #d8ccb4);
+  padding-top: 1rem;
+}
+.np-magazine-masthead-editor div {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  background: linear-gradient(145deg, #2a1810, #b04a26);
+  margin-bottom: 1rem;
+  position: relative;
+}
+.np-magazine-masthead-editor div::after {
+  content: attr(data-initials);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(252, 250, 243, 0.28);
+  font-size: 2.4rem;
+  font-style: italic;
+}
+.np-magazine-masthead-editor span,
+.np-magazine-masthead-editor small {
+  display: block;
+  font-family: var(--np-font-mono, "Hanken Grotesk", sans-serif);
+  color: var(--np-color-muted-foreground, #6a5a48);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.np-magazine-masthead-editor h3 {
+  margin: 0.35rem 0;
+  font-style: italic;
+  font-size: 1.4rem;
+}
+.np-magazine-masthead-editor p {
+  margin: 0 0 0.8rem;
+  color: var(--np-color-muted-foreground, #6a5a48);
+}
+.np-magazine-section-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 3rem;
+}
+.np-magazine-section-layout aside {
+  position: sticky;
+  top: 7rem;
+  align-self: start;
+  border-top: 3px double var(--np-color-foreground, #1a1411);
+  padding-top: 1rem;
+}
+.np-magazine-section-layout aside strong {
+  display: block;
+  font-style: italic;
+  font-size: 4rem;
+  line-height: 0.9;
+}
+.np-magazine-section-layout aside span {
+  font-family: var(--np-font-mono, "Hanken Grotesk", sans-serif);
+  color: var(--np-color-muted-foreground, #6a5a48);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+}
+.np-magazine-section-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.2rem;
+}
+@media (max-width: 900px) {
+  .np-magazine-masthead-grid,
+  .np-magazine-section-layout {
+    grid-template-columns: 1fr;
+  }
+}
 .np-magazine img { max-width: 100%; display: block; }
 .np-magazine-container {
   max-width: 1240px;

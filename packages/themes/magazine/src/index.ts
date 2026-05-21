@@ -13,12 +13,14 @@ import { MagazineMembersNotFound } from "./members-not-found.js";
 import { MagazineMembersShell } from "./members-shell.js";
 import { MagazineNotFound } from "./not-found.js";
 import { magazinePatterns } from "./patterns.js";
+import { MagazineSectionArchiveRoute } from "./routes/section-archive.js";
 import { magazineSettingsSchema } from "./settings.js";
 import { MagazineShell } from "./shell.js";
 import { magazineCss } from "./styles.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageCoverTemplate } from "./templates/page-cover.js";
 import { PageFrontTemplate } from "./templates/page-front.js";
+import { PageMastheadTemplate } from "./templates/page-masthead.js";
 import { PostFeatureTemplate } from "./templates/post-feature.js";
 import { PostListTemplate } from "./templates/post-list.js";
 
@@ -256,7 +258,7 @@ const SEED_NAV = {
     { id: "nav-mag-profiles", label: "Profiles", type: "link" as const, url: "/profiles" },
     { id: "nav-mag-essays", label: "Essays", type: "link" as const, url: "/essays" },
     { id: "nav-mag-photography", label: "Photography", type: "link" as const, url: "/photography" },
-    { id: "nav-mag-archive", label: "Archive", type: "link" as const, url: "/archive" },
+    { id: "nav-mag-masthead", label: "Masthead", type: "link" as const, url: "/masthead" },
   ],
   footer: [
     { id: "nav-mag-footer-features", label: "Features", type: "link" as const, url: "/features" },
@@ -264,6 +266,7 @@ const SEED_NAV = {
     { id: "nav-mag-footer-profiles", label: "Profiles", type: "link" as const, url: "/profiles" },
     { id: "nav-mag-footer-essays", label: "Essays", type: "link" as const, url: "/essays" },
     { id: "nav-mag-footer-photography", label: "Photography", type: "link" as const, url: "/photography" },
+    { id: "nav-mag-footer-masthead", label: "Masthead", type: "link" as const, url: "/masthead" },
   ],
 };
 
@@ -287,6 +290,14 @@ const SEED_PAGES: NpThemeSeedPage[] = [
       "A small editorial review, published every other Sunday — features, dispatches, profiles, and photography from Seoul, New York, and the long road between them.",
     blocks: [],
     template: "front",
+  },
+  {
+    title: "Masthead",
+    slug: "masthead",
+    seoDescription:
+      "About The Northbound Review — editors, principles, and publishing cadence.",
+    blocks: [],
+    template: "masthead",
   },
   {
     title: "Colophon",
@@ -480,6 +491,12 @@ export const magazineTheme = defineTheme({
             "Full-bleed hero at the top with the page title overlaid; body content flows below in the standard column.",
           component: PageCoverTemplate,
         },
+        masthead: {
+          label: "Masthead",
+          description:
+            "Magazine about page with manifesto, editor cards, and publication stats.",
+          component: PageMastheadTemplate,
+        },
         front: {
           label: "Front page",
           description:
@@ -503,6 +520,12 @@ export const magazineTheme = defineTheme({
       },
     },
     archives: magazineArchives,
+    routes: [
+      {
+        pattern: "/:section(features|dispatches|profiles|essays|photography)",
+        component: MagazineSectionArchiveRoute,
+      },
+    ],
     blocks: magazineBlocks,
     patterns: magazinePatterns,
     navLocations: {
@@ -556,6 +579,8 @@ export const magazineTheme = defineTheme({
 });
 
 export { MagazineHeader, MagazineFooter, MagazineShell };
+export { MagazineSectionArchiveRoute } from "./routes/section-archive.js";
+export { PageMastheadTemplate } from "./templates/page-masthead.js";
 export { magazineCss };
 export {
   MagazineArchiveItem,

@@ -37,22 +37,23 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     expect(magazineTheme.impl.slots?.header).toBeTypeOf("function");
     expect(magazineTheme.impl.slots?.footer).toBeTypeOf("function");
 
-    // Templates: pages.default + pages.cover + pages.front, posts.feature + posts.list.
+    // Templates: pages.default + pages.cover + pages.front + pages.masthead,
+    // posts.feature + posts.list.
     // posts.list was added in the v0.2 reference impl (#612) for the
     // blog index route's theme template dispatch.
     // pages.front was added in the seed-architecture track (#782) so
     // magazine's seeded "/" page renders the editorial home layout.
     const pageTemplates = magazineTheme.impl.templates?.pages ?? {};
-    expect(Object.keys(pageTemplates).sort()).toEqual(["cover", "default", "front"]);
+    expect(Object.keys(pageTemplates).sort()).toEqual(["cover", "default", "front", "masthead"]);
     const postTemplates = magazineTheme.impl.templates?.posts ?? {};
     expect(Object.keys(postTemplates).sort()).toEqual(["feature", "list"]);
   });
 
   it("magazine cover template renders the title with the cover hero markup", async () => {
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    const Cover = magazineTheme.impl.templates!.pages!.cover!.component as (
-      props: { doc: Record<string, unknown> },
-    ) => React.ReactElement;
+    const Cover = magazineTheme.impl.templates!.pages!.cover!.component as (props: {
+      doc: Record<string, unknown>;
+    }) => React.ReactElement;
     const html = renderToString(
       Cover({ doc: { title: "Issue 01", coverImage: "https://example.com/c.jpg" } }),
     );
@@ -66,14 +67,24 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
 
   it("magazine cover template falls back to a flat hero when no cover image is set", async () => {
     const { magazineTheme } = await import("@nexpress/theme-magazine");
-    const Cover = magazineTheme.impl.templates!.pages!.cover!.component as (
-      props: { doc: Record<string, unknown> },
-    ) => React.ReactElement;
+    const Cover = magazineTheme.impl.templates!.pages!.cover!.component as (props: {
+      doc: Record<string, unknown>;
+    }) => React.ReactElement;
     const html = renderToString(Cover({ doc: { title: "Untitled draft" } }));
     expect(html).toContain("np-magazine-cover-hero");
     expect(html).toContain("Untitled draft");
     // No inline background-image style when no cover URL.
     expect(html).not.toContain("background-image");
+  });
+
+  it("magazine masthead template renders the designed staff page", async () => {
+    const { magazineTheme } = await import("@nexpress/theme-magazine");
+    const Masthead = magazineTheme.impl.templates!.pages!.masthead!.component as (props: {
+      doc: Record<string, unknown>;
+    }) => React.ReactElement;
+    const html = renderToString(Masthead({ doc: { title: "Masthead" } }));
+    expect(html).toContain("np-magazine-masthead");
+    expect(html).toContain("Editor in chief");
   });
 
   it("portfolio theme exposes the expected manifest + slots + templates", async () => {
@@ -85,17 +96,42 @@ describe.skipIf(skipIfNoTestDb())("example themes (magazine + portfolio)", () =>
     // pages.front added by #783 — portfolio's seeded "/" lands on
     // the project-grid home layout.
     const pageTemplates = portfolioTheme.impl.templates?.pages ?? {};
-    expect(Object.keys(pageTemplates).sort()).toEqual(["default", "front", "gallery"]);
+    expect(Object.keys(pageTemplates).sort()).toEqual([
+      "default",
+      "front",
+      "gallery",
+      "journal",
+      "press",
+      "studio",
+    ]);
   });
 
   it("portfolio gallery template wraps blocks in the grid container", async () => {
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
-    const Gallery = portfolioTheme.impl.templates!.pages!.gallery!.component as (
-      props: { doc: Record<string, unknown> },
-    ) => React.ReactElement;
+    const Gallery = portfolioTheme.impl.templates!.pages!.gallery!.component as (props: {
+      doc: Record<string, unknown>;
+    }) => React.ReactElement;
     const html = renderToString(Gallery({ doc: { title: "Selected work" } }));
     expect(html).toContain("np-portfolio-gallery-grid");
     expect(html).toContain("Selected work");
+  });
+
+  it("portfolio studio and press templates render without rich-text stubs", async () => {
+    const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    const Studio = portfolioTheme.impl.templates!.pages!.studio!.component as (props: {
+      doc: Record<string, unknown>;
+    }) => React.ReactElement;
+    const Press = portfolioTheme.impl.templates!.pages!.press!.component as (props: {
+      doc: Record<string, unknown>;
+    }) => React.ReactElement;
+
+    const studioHtml = renderToString(Studio({ doc: { title: "Studio" } }));
+    const pressHtml = renderToString(Press({ doc: { title: "Press" } }));
+
+    expect(studioHtml).toContain("np-portfolio-studio-page");
+    expect(studioHtml).toContain("Creative direction");
+    expect(pressHtml).toContain("np-portfolio-press-page");
+    expect(pressHtml).toContain("Selected coverage");
   });
 
   it("each example theme's CSS is non-trivial and scoped under its own selectors", async () => {

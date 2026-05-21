@@ -33,6 +33,140 @@ export const docsCss = `
   font-family: var(--np-font-mono, "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
+.np-docs-api,
+.np-docs-changelog-page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 3rem 1rem 5rem;
+}
+.np-docs-api-hero,
+.np-docs-changelog-hero {
+  padding: 3rem 0 2rem;
+}
+.np-docs-api-eyebrow,
+.np-docs-changelog-hero p {
+  margin: 0 0 0.8rem;
+  font-family: var(--np-font-mono);
+  color: var(--np-color-primary);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.np-docs-api-hero h1,
+.np-docs-changelog-hero h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 5vw, 4.4rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.np-docs-api-hero p,
+.np-docs-changelog-hero span {
+  display: block;
+  max-width: 44rem;
+  margin-top: 1rem;
+  color: var(--np-color-muted-foreground);
+  font-size: 1.05rem;
+}
+.np-docs-api-signature {
+  overflow: hidden;
+  border: 1px solid var(--np-color-border);
+  border-radius: 14px;
+  background: #0b1220;
+  color: #e6edf6;
+}
+.np-docs-api-signature-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  color: #93c5fd;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  font-family: var(--np-font-mono);
+  font-size: 0.78rem;
+}
+.np-docs-api-signature pre {
+  margin: 0;
+  padding: 1.2rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.65;
+}
+.np-docs-api-section { padding-top: 2.5rem; }
+.np-docs-api-section h2 {
+  margin: 0 0 1rem;
+  font-size: 1.35rem;
+}
+.np-docs-api-table {
+  border: 1px solid var(--np-color-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--np-color-card);
+}
+.np-docs-api-row {
+  display: grid;
+  grid-template-columns: 10rem 7rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--np-color-border);
+}
+.np-docs-api-row:last-child { border-bottom: 0; }
+.np-docs-api-row span {
+  color: var(--np-color-primary);
+  font-family: var(--np-font-mono);
+  font-size: 0.76rem;
+}
+.np-docs-api-row p { margin: 0; color: var(--np-color-muted-foreground); }
+.np-docs-changelog-timeline {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--np-color-border);
+}
+.np-docs-changelog-release {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: 2rem;
+  padding: 1.6rem 0;
+  border-bottom: 1px solid var(--np-color-border);
+}
+.np-docs-changelog-release aside {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+}
+.np-docs-changelog-release aside strong {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.np-docs-changelog-release aside span,
+.np-docs-changelog-release aside i {
+  color: var(--np-color-muted-foreground);
+  font-style: normal;
+  font-size: 0.82rem;
+}
+.np-docs-changelog-release p {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 1rem;
+  margin: 0 0 0.85rem;
+}
+.np-docs-changelog-release p span {
+  justify-self: start;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--np-color-border);
+  font-family: var(--np-font-mono);
+  font-size: 0.7rem;
+  color: var(--np-color-primary);
+}
+@media (max-width: 760px) {
+  .np-docs-api-row,
+  .np-docs-changelog-release,
+  .np-docs-changelog-release p {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ============================================================
  * Header — sticky bar with brand + version pill, ⌘K search in
  * the center, primary nav + GitHub link on the right. Grid
