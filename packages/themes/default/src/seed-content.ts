@@ -485,8 +485,7 @@ function buildContactPageBlocks(): unknown[] {
       props: {
         eyebrow: "Get in touch",
         heading: "We read every message",
-        subtitle:
-          "Questions, plugin proposals, or just saying hi — we'd love to hear from you.",
+        subtitle: "Questions, plugin proposals, or just saying hi — we'd love to hear from you.",
         align: "center",
       },
     },
@@ -496,12 +495,7 @@ function buildContactPageBlocks(): unknown[] {
       props: {
         heading: "Send us a note",
         email: "hello@example.com",
-        fields: [
-          { label: "Name" },
-          { label: "Email" },
-          { label: "Company" },
-          { label: "Message" },
-        ],
+        fields: [{ label: "Name" }, { label: "Email" }, { label: "Company" }, { label: "Message" }],
       },
     },
     {
@@ -515,7 +509,6 @@ function buildContactPageBlocks(): unknown[] {
     },
   ];
 }
-
 
 /**
  * The default theme intentionally ships NO categories. The 11
@@ -545,13 +538,14 @@ export const defaultPages: NpThemeSeedPage[] = [
   },
   {
     title: "About",
+    slug: "about",
     seoDescription: "What NexPress is, who builds it, and why.",
     blocks: buildAboutPageBlocks(),
+    template: "about",
   },
   {
     title: "Pricing",
-    seoDescription:
-      "Simple per-site pricing — start free, upgrade when you need a team.",
+    seoDescription: "Simple per-site pricing — start free, upgrade when you need a team.",
     blocks: buildPricingPageBlocks(),
   },
   {

@@ -84,6 +84,212 @@ export const defaultThemeCss = `
 }
 
 /* ----------------------------------------------------------------
+ * Designed about + tag archive pages.
+ * --------------------------------------------------------------- */
+.np-default-about,
+.np-default-tag {
+  --np-default-page-max: 1180px;
+  max-width: var(--np-default-page-max);
+  margin: 0 auto;
+  padding: 4rem 1.75rem 5rem;
+}
+.np-default-about-hero,
+.np-default-tag-hero {
+  max-width: 820px;
+  padding: 3rem 0;
+}
+.np-default-about-eyebrow,
+.np-default-tag-mark,
+.np-default-tag-crumbs {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  color: var(--np-color-primary, #4f46e5);
+}
+.np-default-about-hero h1,
+.np-default-tag-hero h1 {
+  font-size: clamp(2.6rem, 6vw, 5rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  margin: 1rem 0;
+  max-width: 12ch;
+}
+.np-default-tag-hero h1 span {
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-weight: 500;
+  font-size: 0.45em;
+  letter-spacing: -0.02em;
+}
+.np-default-about-lede,
+.np-default-tag-hero p {
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-size: 1.125rem;
+  line-height: 1.65;
+  max-width: 42rem;
+}
+.np-default-about-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--np-color-border, #ececef);
+}
+.np-default-about-stat {
+  padding: 1.4rem 1.2rem;
+  border-inline-end: 1px solid var(--np-color-border, #ececef);
+}
+.np-default-about-stat:last-child { border-inline-end: 0; }
+.np-default-about-stat span,
+.np-default-about-stat small {
+  display: block;
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-size: 0.8rem;
+}
+.np-default-about-stat strong {
+  display: block;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 0.45rem 0;
+}
+.np-default-about-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 4rem;
+  padding: 4rem 0;
+}
+.np-default-about-prose p {
+  font-size: 1.125rem;
+  line-height: 1.75;
+  color: var(--np-color-foreground, #0a0a0c);
+}
+.np-default-about-card,
+.np-default-about-now-card {
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: 18px;
+  background: var(--np-color-card, #fff);
+}
+.np-default-about-card { padding: 1.4rem; align-self: start; }
+.np-default-about-card h2 { margin: 0 0 1rem; font-size: 1rem; }
+.np-default-about-card dl { margin: 0; display: grid; gap: 0.8rem; }
+.np-default-about-card div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--np-color-border, #ececef);
+  padding-top: 0.8rem;
+}
+.np-default-about-card dt {
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-size: 0.8rem;
+}
+.np-default-about-card dd { margin: 0; font-size: 0.9rem; text-align: end; }
+.np-default-about-now { padding-top: 1rem; }
+.np-default-about-now-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.np-default-about-now-card { padding: 1.2rem; }
+.np-default-about-now-card span {
+  color: var(--np-color-primary, #4f46e5);
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+}
+.np-default-about-now-card h3 { margin: 0.45rem 0 1rem; font-size: 1rem; }
+.np-default-about-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--np-color-muted, #f5f5f7);
+  overflow: hidden;
+}
+.np-default-about-progress i {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--np-color-primary, #4f46e5);
+}
+.np-default-tag-crumbs {
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+.np-default-tag-crumbs a { text-decoration: none; color: inherit; }
+.np-default-tag-feature a {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: stretch;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid var(--np-color-border, #ececef);
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--np-color-card, #fff);
+}
+.np-default-tag-feature-cover {
+  min-height: 320px;
+  background: linear-gradient(135deg, #1e1b4b, #4f46e5 55%, #818cf8);
+}
+.np-default-tag-feature div:last-child { padding: 2rem; }
+.np-default-tag-feature span {
+  color: var(--np-color-primary, #4f46e5);
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.np-default-tag-feature h2 {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  margin: 0.7rem 0;
+}
+.np-default-tag-feature p {
+  color: var(--np-color-muted-foreground, #6b6b74);
+  line-height: 1.65;
+}
+.np-default-tag-list-wrap { padding-top: 3rem; }
+.np-default-tag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--np-color-border, #ececef);
+}
+.np-default-tag-list li {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr) 3rem;
+  gap: 1.5rem;
+  padding: 1.35rem 0;
+  border-bottom: 1px solid var(--np-color-border, #ececef);
+}
+.np-default-tag-list time,
+.np-default-tag-list > li > span {
+  font-family: var(--np-font-mono, ui-monospace, monospace);
+  color: var(--np-color-muted-foreground, #6b6b74);
+  font-size: 0.78rem;
+}
+.np-default-tag-list h3 { margin: 0 0 0.35rem; }
+.np-default-tag-list h3 a { color: inherit; text-decoration: none; }
+.np-default-tag-list p {
+  margin: 0;
+  color: var(--np-color-muted-foreground, #6b6b74);
+}
+.np-default-tag-empty {
+  color: var(--np-color-muted-foreground, #6b6b74);
+}
+@media (max-width: 800px) {
+  .np-default-about-stats,
+  .np-default-about-now-grid,
+  .np-default-about-split,
+  .np-default-tag-feature a,
+  .np-default-tag-list li {
+    grid-template-columns: 1fr;
+  }
+  .np-default-about-stat {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--np-color-border, #ececef);
+  }
+}
+
+/* ----------------------------------------------------------------
  * Header — sticky bar, hairline border, blurred translucent surface.
  * Grid keeps logo on the left, nav centered, tools (search +
  * Subscribe CTA) on the right at desktop widths. Mobile drawer

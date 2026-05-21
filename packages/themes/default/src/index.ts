@@ -5,6 +5,8 @@ import { defaultCategories, defaultPages } from "./seed-content.js";
 import { DefaultHeader } from "./header.js";
 import { DefaultShell } from "./shell.js";
 import { defaultThemeCss } from "./styles.js";
+import { DefaultTagArchiveRoute } from "./routes/tag-archive.js";
+import { PageAboutTemplate } from "./templates/page-about.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageLandingTemplate } from "./templates/page-landing.js";
 import { PageSidebarTemplate } from "./templates/page-sidebar.js";
@@ -55,8 +57,7 @@ function lexicalDoc(paragraphs: string[]): unknown {
 
 const DAY = 1000 * 60 * 60 * 24;
 const SEED_NOW = new Date("2026-05-08T12:00:00.000Z");
-const daysAgo = (days: number): string =>
-  new Date(SEED_NOW.getTime() - days * DAY).toISOString();
+const daysAgo = (days: number): string => new Date(SEED_NOW.getTime() - days * DAY).toISOString();
 
 /**
  * Default theme seed posts — eight pieces that exercise the
@@ -73,8 +74,8 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     excerpt:
       "Postgres replicas are great until a write redirects to a different replica and reads stale data. Here's the small routing layer that follows a write within the request and kept our p99 reads under 12 ms.",
     content: lexicalDoc([
-      "Read-replica routing is a cheap win for read-heavy workloads, but the moment a user writes a row and the next request lands on a different replica, you ship a stale view. The standard fixes — session affinity, "
-        + "sticky cookies, replica lag thresholds — each have failure modes that are hard to reason about under load.",
+      "Read-replica routing is a cheap win for read-heavy workloads, but the moment a user writes a row and the next request lands on a different replica, you ship a stale view. The standard fixes — session affinity, " +
+        "sticky cookies, replica lag thresholds — each have failure modes that are hard to reason about under load.",
       "We rebuilt routing as a small library that follows a write within the lifetime of the request that produced it. Writes go to the primary; subsequent reads in the same request are pinned to the primary; everything else flows to a replica. The lookup is one map operation per query.",
       "After two weeks at 10x load, p99 reads sat at 11.8 ms and zero stale-read complaints came in from the iOS team. The library is ~140 lines, no schema changes, no migration. The full annotated source is at the bottom of this post.",
     ]),
@@ -97,7 +98,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     excerpt:
       "A pragmatic pattern for distinguishing `UserId` from `OrgId` in the type system, with no helpers and no `as` casts. The trick is doing the branding at the boundary so the rest of the codebase doesn't notice.",
     content: lexicalDoc([
-      "Branded primitives in TypeScript usually come with helpers — `brand(value, \"UserId\")`, a runtime tag, a `Brand<T, K>` type. The cost is real: every call site that produces an id needs the helper, every consumer needs to remember the brand, and `as` casts creep back in.",
+      'Branded primitives in TypeScript usually come with helpers — `brand(value, "UserId")`, a runtime tag, a `Brand<T, K>` type. The cost is real: every call site that produces an id needs the helper, every consumer needs to remember the brand, and `as` casts creep back in.',
       "The pattern that survived for us: brand the id at the boundary (the DB row, the URL parser, the form decoder) once, and let the rest of the codebase treat it as the branded type. No helpers, no runtime cost. The boundary is the one place a new contributor has to think about it.",
     ]),
     publishedAt: daysAgo(5),
@@ -106,7 +107,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
   {
     title: "Outbox isn't a queue — it's a contract between two writers",
     excerpt:
-      "Why every team eventually reinvents the transactional outbox, and how to pick the implementation that won't bite you. Spoiler: the answer is rarely \"use Kafka\".",
+      'Why every team eventually reinvents the transactional outbox, and how to pick the implementation that won\'t bite you. Spoiler: the answer is rarely "use Kafka".',
     content: lexicalDoc([
       "The outbox pattern shows up every time you need to do one thing in the database and a second thing somewhere else (a webhook, a search index, an email). The naive implementation — write the row, then do the second thing — is correct exactly until the second thing fails.",
       "Three implementations have lasted: a polling worker over an indexed `outbox` table; a logical-replication consumer; and a transactional CDC stream. Each has a different failure mode. This post walks through what we tried, what we picked, and why we'd pick differently for a smaller team.",
@@ -150,32 +151,52 @@ const SEED_POSTS: NpThemeSeedPost[] = [
 ];
 
 const SEED_TAGS = [
-  { name: "Engineering", description: "Architecture, system design, and the day-to-day of shipping." },
-  { name: "Postgres", description: "Query planners, indexes, replication, and other database concerns." },
+  {
+    name: "Engineering",
+    description: "Architecture, system design, and the day-to-day of shipping.",
+  },
+  {
+    name: "Postgres",
+    description: "Query planners, indexes, replication, and other database concerns.",
+  },
   { name: "TypeScript", description: "Type-system patterns, ergonomics, and runtime trade-offs." },
-  { name: "Distributed", description: "Queues, contracts, and the failure modes between two writers." },
+  {
+    name: "Distributed",
+    description: "Queues, contracts, and the failure modes between two writers.",
+  },
   { name: "Product", description: "Roadmap, decisions, and the conversations that drive them." },
   { name: "Notes", description: "Shorter pieces — observations, references, opinions in passing." },
   { name: "RFC", description: "Decision records and the discussions that produced them." },
-  { name: "Caches", description: "Invalidation, stampedes, and the layers between user and origin." },
+  {
+    name: "Caches",
+    description: "Invalidation, stampedes, and the layers between user and origin.",
+  },
   { name: "Indexes", description: "Index design patterns and when adding one makes things worse." },
   { name: "Types", description: "Branded primitives, exhaustiveness, and other type-level work." },
-  { name: "Queues", description: "Outbox, CDC, replication slots, and other message-passing patterns." },
+  {
+    name: "Queues",
+    description: "Outbox, CDC, replication slots, and other message-passing patterns.",
+  },
 ];
 
 const SEED_NAV = {
   header: [
     { id: "nav-default-writing", label: "Writing", type: "link" as const, url: "/blog" },
-    { id: "nav-default-notes", label: "Notes", type: "link" as const, url: "/notes" },
-    { id: "nav-default-talks", label: "Talks", type: "link" as const, url: "/talks" },
+    { id: "nav-default-notes", label: "Notes", type: "link" as const, url: "/tag/postgres" },
+    { id: "nav-default-talks", label: "Archive", type: "link" as const, url: "/tag/postgres" },
     { id: "nav-default-about", label: "About", type: "link" as const, url: "/about" },
   ],
   footer: [
     { id: "nav-default-footer-writing", label: "Writing", type: "link" as const, url: "/blog" },
-    { id: "nav-default-footer-notes", label: "Notes", type: "link" as const, url: "/notes" },
-    { id: "nav-default-footer-talks", label: "Talks", type: "link" as const, url: "/talks" },
+    { id: "nav-default-footer-notes", label: "Notes", type: "link" as const, url: "/tag/postgres" },
+    { id: "nav-default-footer-talks", label: "Profile", type: "link" as const, url: "/about" },
     { id: "nav-default-footer-about", label: "About", type: "link" as const, url: "/about" },
-    { id: "nav-default-footer-archive", label: "Archive", type: "link" as const, url: "/blog/archive" },
+    {
+      id: "nav-default-footer-archive",
+      label: "Archive",
+      type: "link" as const,
+      url: "/tag/postgres",
+    },
   ],
 };
 
@@ -262,6 +283,11 @@ export const defaultTheme = defineTheme({
           description: "Centered content container with the standard reading width.",
           component: PageDefaultTemplate,
         },
+        about: {
+          label: "About",
+          description: "Publication masthead with stats, editorial note, and current-work cards.",
+          component: PageAboutTemplate,
+        },
         wide: {
           label: "Wide",
           description:
@@ -296,12 +322,14 @@ export const defaultTheme = defineTheme({
         },
       },
     },
+    routes: [{ pattern: "/tag/:slug", component: DefaultTagArchiveRoute }],
   },
 });
 
 export { DefaultShell } from "./shell.js";
 export { DefaultHeader } from "./header.js";
 export { DefaultFooter } from "./footer.js";
+export { DefaultTagArchiveRoute } from "./routes/tag-archive.js";
 export { MemberStatusWidget } from "./components/member-status-widget.js";
 export { MobileNav } from "./components/mobile-nav.js";
 export { SocialLinks } from "./components/social-links.js";
@@ -309,6 +337,7 @@ export { NewsletterForm } from "./components/newsletter-form.js";
 export { PostCard, type PostCardDoc, type PostCardProps } from "./components/post-card.js";
 export { Pagination, type PaginationProps } from "./components/pagination.js";
 export { PageLandingTemplate } from "./templates/page-landing.js";
+export { PageAboutTemplate } from "./templates/page-about.js";
 export { PageSidebarTemplate } from "./templates/page-sidebar.js";
 export { PostDefaultTemplate } from "./templates/post-default.js";
 export { PostListTemplate } from "./templates/post-list.js";

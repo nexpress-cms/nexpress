@@ -78,12 +78,8 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
    * is a no-op for collections the theme doesn't `require`.
    */
   async function activateThemeForSeed(themeId: "magazine" | "portfolio" | "docs"): Promise<void> {
-    const {
-      mergeThemeRequirements,
-      registerCollection,
-      registerThemes,
-      resetThemes,
-    } = await import("@nexpress/core");
+    const { mergeThemeRequirements, registerCollection, registerThemes, resetThemes } =
+      await import("@nexpress/core");
     const { defaultTheme } = await import("@nexpress/theme-default");
     const { magazineTheme } = await import("@nexpress/theme-magazine");
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
@@ -95,11 +91,7 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     );
 
     const theme =
-      themeId === "magazine"
-        ? magazineTheme
-        : themeId === "portfolio"
-          ? portfolioTheme
-          : docsTheme;
+      themeId === "magazine" ? magazineTheme : themeId === "portfolio" ? portfolioTheme : docsTheme;
 
     const merged = mergeThemeRequirements([postsCollection], [defaultTheme, theme]);
     const mergedPosts = merged.find((c) => c.slug === "posts");
@@ -131,9 +123,9 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     // which is itself async. `await`ing the outer call unwraps both —
     // an async function that `return`s a Promise resolves to that
     // Promise's resolved value.
-    const element = await (Front as (props: {
-      doc: Record<string, unknown>;
-    }) => Promise<React.ReactElement>)({ doc: {} });
+    const element = await (
+      Front as (props: { doc: Record<string, unknown> }) => Promise<React.ReactElement>
+    )({ doc: {} });
     const html = renderToString(element);
 
     // PostListTemplate's main container — always emitted when at
@@ -157,15 +149,28 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     await activateThemeForSeed("portfolio");
     const actor = await asActor();
     const { portfolioTheme } = await import("@nexpress/theme-portfolio");
+    const { findDocuments } = await import("@nexpress/core");
     const { seedAll } = await import("@/lib/seed-content");
 
     const seed = await seedAll(actor, portfolioTheme);
     expect(seed.posts.created).toBeGreaterThan(0);
+    expect(seed.pages.created).toBeGreaterThanOrEqual(4);
+
+    const seededProjects = await findDocuments<Record<string, unknown>>("posts", {
+      where: { seedSource: "theme:portfolio", kind: "project" },
+      limit: 20,
+    });
+    const seededJournal = await findDocuments<Record<string, unknown>>("posts", {
+      where: { seedSource: "theme:portfolio", kind: "article" },
+      limit: 20,
+    });
+    expect(seededProjects.docs.length).toBeGreaterThan(0);
+    expect(seededJournal.docs.length).toBeGreaterThan(0);
 
     const Front = portfolioTheme.impl.templates!.pages!.front!.component;
-    const element = await (Front as (props: {
-      doc: Record<string, unknown>;
-    }) => Promise<React.ReactElement>)({ doc: {} });
+    const element = await (
+      Front as (props: { doc: Record<string, unknown> }) => Promise<React.ReactElement>
+    )({ doc: {} });
     const html = renderToString(element);
 
     // Hero strip is unconditional, but the grid section only
@@ -189,9 +194,9 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     expect(seed.posts.created).toBeGreaterThan(0);
 
     const Front = docsTheme.impl.templates!.pages!.front!.component;
-    const element = await (Front as (props: {
-      doc: Record<string, unknown>;
-    }) => Promise<React.ReactElement>)({ doc: {} });
+    const element = await (
+      Front as (props: { doc: Record<string, unknown> }) => Promise<React.ReactElement>
+    )({ doc: {} });
     const html = renderToString(element);
 
     // Outer article wrapper + hero are always emitted; the

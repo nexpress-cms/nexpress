@@ -31,6 +31,190 @@ export const portfolioCss = `
   margin: 0 auto;
   padding: 0 2rem;
 }
+.np-portfolio-studio-page,
+.np-portfolio-journal-page,
+.np-portfolio-press-page {
+  min-height: 80vh;
+}
+.np-portfolio-subpage-hero {
+  padding-block: 6rem 3rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+  gap: 4rem;
+  border-bottom: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-subpage-hero > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--np-color-accent, #d97a4f);
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.np-portfolio-subpage-hero h1 {
+  margin: 0;
+  font-family: var(--np-font-display, "Instrument Serif", "Times New Roman", serif);
+  font-size: clamp(3rem, 7vw, 6.75rem);
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  max-width: 12ch;
+}
+.np-portfolio-subpage-hero div {
+  display: grid;
+  gap: 1rem;
+  align-content: end;
+}
+.np-portfolio-subpage-hero div p {
+  margin: 0;
+  color: var(--np-color-muted-foreground, #8a857d);
+  font-size: 1rem;
+  line-height: 1.75;
+}
+.np-portfolio-studio-services {
+  padding-block: 4rem;
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 3rem;
+  border-bottom: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-studio-services p {
+  margin: 0;
+  color: var(--np-color-muted-foreground, #8a857d);
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.np-portfolio-studio-services ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.np-portfolio-studio-services li {
+  padding: 1rem;
+  border: 1px solid var(--np-color-border, #232323);
+  background: var(--np-color-card, #141414);
+  color: var(--np-color-foreground, #f5f1ea);
+}
+.np-portfolio-studio-people {
+  list-style: none;
+  margin: 0;
+  padding: 4rem 0 7rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-studio-person {
+  min-height: 24rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: end;
+  padding: 1.5rem;
+  border: 1px solid var(--np-color-border, #232323);
+  border-inline-end: 0;
+  background:
+    radial-gradient(circle at 50% 20%, color-mix(in oklab, var(--np-color-accent, #d97a4f) 18%, transparent), transparent 34%),
+    var(--np-color-card, #141414);
+}
+.np-portfolio-studio-person:last-child {
+  border-inline-end: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-studio-person p,
+.np-portfolio-press-list p {
+  margin: 0;
+  color: var(--np-color-accent, #d97a4f);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.np-portfolio-studio-person h2,
+.np-portfolio-journal-list h2,
+.np-portfolio-press-list h2 {
+  margin: 0.5rem 0 0;
+  font-family: var(--np-font-display, "Instrument Serif", serif);
+  font-size: clamp(1.9rem, 3vw, 3rem);
+  font-weight: 400;
+  line-height: 1;
+}
+.np-portfolio-studio-person span {
+  margin-top: 1rem;
+  color: var(--np-color-muted-foreground, #8a857d);
+  line-height: 1.65;
+}
+.np-portfolio-journal-list,
+.np-portfolio-press-list {
+  list-style: none;
+  margin: 0;
+  padding: 3rem 0 7rem;
+  display: grid;
+  border-bottom: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-journal-list li,
+.np-portfolio-press-list li {
+  border-top: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-journal-list li:last-child,
+.np-portfolio-press-list li:last-child {
+  border-bottom: 1px solid var(--np-color-border, #232323);
+}
+.np-portfolio-journal-list a,
+.np-portfolio-press-list li {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 2rem;
+  padding-block: 1.6rem;
+  text-decoration: none;
+}
+.np-portfolio-journal-list time,
+.np-portfolio-press-list span {
+  color: var(--np-color-muted-foreground, #8a857d);
+  font-size: 0.8rem;
+  font-feature-settings: "tnum";
+}
+.np-portfolio-journal-list p {
+  max-width: 42rem;
+  margin: 0.75rem 0 0;
+  color: var(--np-color-muted-foreground, #8a857d);
+  line-height: 1.7;
+}
+.np-portfolio-journal-list a:hover h2 {
+  color: var(--np-color-accent, #d97a4f);
+}
+@media (max-width: 920px) {
+  .np-portfolio-subpage-hero,
+  .np-portfolio-studio-services,
+  .np-portfolio-journal-list a,
+  .np-portfolio-press-list li {
+    grid-template-columns: 1fr;
+  }
+  .np-portfolio-studio-services ul,
+  .np-portfolio-studio-people {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .np-portfolio-studio-person:nth-child(2n) {
+    border-inline-end: 1px solid var(--np-color-border, #232323);
+  }
+}
+@media (max-width: 640px) {
+  .np-portfolio-container {
+    padding: 0 1rem;
+  }
+  .np-portfolio-subpage-hero {
+    padding-block: 4rem 2rem;
+    gap: 2rem;
+  }
+  .np-portfolio-studio-services ul,
+  .np-portfolio-studio-people {
+    grid-template-columns: 1fr;
+  }
+  .np-portfolio-studio-person {
+    min-height: 18rem;
+    border-inline-end: 1px solid var(--np-color-border, #232323);
+  }
+}
 
 /* ============================================================
  * Header — sticky, blurred, logo on the left, nav centered,

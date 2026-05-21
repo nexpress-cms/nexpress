@@ -43,8 +43,9 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     const ids = docs.map((d) => d.id).sort();
     // Default theme's pages templates expanded during v0.2 (#612):
     // `landing` (full-bleed marketing) + `sidebar` (docs-style) joined
-    // the original `default` + `wide`.
-    expect(ids).toEqual(["default", "landing", "sidebar", "wide"]);
+    // the original `default` + `wide`; `about` is the built-in
+    // theme page from the design parity pass.
+    expect(ids).toEqual(["about", "default", "landing", "sidebar", "wide"]);
     const def = docs.find((d) => d.id === "default");
     expect(def?.label).toBe("Default");
     expect(typeof def?.description).toBe("string");
@@ -77,9 +78,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
 
   it("admin endpoint returns the active theme's templates for editor+", async () => {
     const editor = await seedUser({ role: "editor" });
-    const { GET } = await import(
-      "@/app/api/admin/themes/active/templates/route"
-    );
+    const { GET } = await import("@/app/api/admin/themes/active/templates/route");
     const req = buildRequest("/api/admin/themes/active/templates", {
       session: editor,
       query: { collection: "pages" },
@@ -95,9 +94,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
 
   it("admin endpoint requires a `collection` query param", async () => {
     const editor = await seedUser({ role: "editor" });
-    const { GET } = await import(
-      "@/app/api/admin/themes/active/templates/route"
-    );
+    const { GET } = await import("@/app/api/admin/themes/active/templates/route");
     const req = buildRequest("/api/admin/themes/active/templates", {
       session: editor,
     });
@@ -108,9 +105,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
 
   it("admin endpoint forbids viewers (editor-or-above gate)", async () => {
     const viewer = await seedUser({ role: "viewer" });
-    const { GET } = await import(
-      "@/app/api/admin/themes/active/templates/route"
-    );
+    const { GET } = await import("@/app/api/admin/themes/active/templates/route");
     const req = buildRequest("/api/admin/themes/active/templates", {
       session: viewer,
       query: { collection: "pages" },
@@ -132,9 +127,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
         Record<
           string,
           {
-            component?: (props: {
-              doc: Record<string, unknown>;
-            }) => React.ReactElement;
+            component?: (props: { doc: Record<string, unknown> }) => React.ReactElement;
             label?: string;
           }
         >
@@ -161,9 +154,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
         Record<
           string,
           {
-            component?: (props: {
-              doc: Record<string, unknown>;
-            }) => React.ReactElement;
+            component?: (props: { doc: Record<string, unknown> }) => React.ReactElement;
           }
         >
       >;
