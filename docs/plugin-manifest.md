@@ -34,34 +34,34 @@ export default definePlugin({
 Everything else (`capabilities`, `provides`, `agent`, `requires`,
 `allowedHosts`, `usesTokens`, `styleSlots`, `apiVersion`) has a default
 or is auto-derived from your declared surface. You add them when you
-*need* them, not because the type system forces you.
+_need_ them, not because the type system forces you.
 
 ## Field reference
 
 ### Required (no default)
 
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string | npm-package-shaped slug. Also the row key in `np_plugins`. |
-| `version` | semver | Authored by you, NOT the framework version. |
-| `name` | string | Human label. Surfaces in `/admin/plugins`. |
-| `description` | string (1–500 chars) | One-line summary. The agent block falls back to this when its own description is empty. |
-| `author` | `{ name, email?, url? }` | At minimum, `name`. |
-| `license` | string | SPDX id (`"MIT"`, `"Apache-2.0"`, etc.). |
-| `nexpress.minVersion` | semver | Lowest framework version this plugin is known to work against. The host refuses to load it on older versions and logs why. |
+| Field                 | Type                     | Notes                                                                                                                      |
+| --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | string                   | npm-package-shaped slug. Also the row key in `np_plugins`.                                                                 |
+| `version`             | semver                   | Authored by you, NOT the framework version.                                                                                |
+| `name`                | string                   | Human label. Surfaces in `/admin/plugins`.                                                                                 |
+| `description`         | string (1–500 chars)     | One-line summary. The agent block falls back to this when its own description is empty.                                    |
+| `author`              | `{ name, email?, url? }` | At minimum, `name`.                                                                                                        |
+| `license`             | string                   | SPDX id (`"MIT"`, `"Apache-2.0"`, etc.).                                                                                   |
+| `nexpress.minVersion` | semver                   | Lowest framework version this plugin is known to work against. The host refuses to load it on older versions and logs why. |
 
 ### Auto-defaulted (you can omit)
 
-| Field | Default | What it's for |
-|---|---|---|
-| `apiVersion` | `"1"` | Plugin manifest schema version. Bumps on breaking shape changes; older plugins keep loading on a newer host until major. |
-| `capabilities` | `[]` + auto-derived | See "Capabilities" below — `routes` / `hooks` add entries automatically. |
-| `provides.{blocks, fields, hooks, apiRoutes, adminExtensions, collections}` | derived from declared surface | Catalog metadata. The block array's `type`s end up in `provides.blocks`, etc. Author-declared entries merge with derived ones. |
-| `agent` | empty descriptor | AI / catalog metadata. Listing it explicitly with `category` / `tags` improves discoverability in the Browse panel. |
-| `requires` | `[]` | Other plugin ids this one depends on. The host topo-sorts the load order. |
-| `allowedHosts` | `[]` | Hostnames `ctx.http.fetch` may call. Empty = no outbound HTTP allowed. |
-| `usesTokens` | `[]` | Theme tokens the plugin reads. Documentation only. |
-| `styleSlots` | `{}` | CSS custom-property slots the plugin's blocks render against. Documentation only. |
+| Field                                                                                                   | Default                       | What it's for                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apiVersion`                                                                                            | `"1"`                         | Plugin manifest schema version. Bumps on breaking shape changes; older plugins keep loading on a newer host until major.                                                       |
+| `capabilities`                                                                                          | `[]` + auto-derived           | See "Capabilities" below — `routes` / `hooks` add entries automatically.                                                                                                       |
+| `provides.{blocks, fields, hooks, apiRoutes, pageRoutes, scheduledTasks, adminExtensions, collections}` | derived from declared surface | Catalog metadata. The block array's `type`s end up in `provides.blocks`, route patterns end up in `provides.pageRoutes`, etc. Author-declared entries merge with derived ones. |
+| `agent`                                                                                                 | empty descriptor              | AI / catalog metadata. Listing it explicitly with `category` / `tags` improves discoverability in the Browse panel.                                                            |
+| `requires`                                                                                              | `[]`                          | Other plugin ids this one depends on. The host topo-sorts the load order.                                                                                                      |
+| `allowedHosts`                                                                                          | `[]`                          | Hostnames `ctx.http.fetch` may call. Empty = no outbound HTTP allowed.                                                                                                         |
+| `usesTokens`                                                                                            | `[]`                          | Theme tokens the plugin reads. Documentation only.                                                                                                                             |
+| `styleSlots`                                                                                            | `{}`                          | CSS custom-property slots the plugin's blocks render against. Documentation only.                                                                                              |
 
 ## Capabilities
 
@@ -71,12 +71,17 @@ runtime. Two kinds:
 **Auto-derived from surface** — `definePlugin` adds these for you:
 
 - `routes: [...]` ⟶ `api:route`
+- `pageRoutes: [...]` ⟶ `site:route`
+- `scheduled: [...]` ⟶ `hooks:scheduled`
 - `hooks: { "<ns>:<event>": ... }` ⟶ `hooks:<ns>` (one per namespace)
+- `admin.widgets/actions/tables/settings` ⟶ `admin:panel`
+- `admin.collectionTabs` ⟶ `admin:collection-tab`
+- `admin.dashboardWidgets` ⟶ `admin:dashboard`
 
 **Author-declared** — you list these because the host can't statically
 tell from the top-level definition that your handler will call them.
-Examples: `storage:kv`, `media:read`, `network:fetch`, `content:write`,
-`admin:panel`. Full list + the matching `ctx.*` methods is in
+Examples: `storage:kv`, `media:read`, `network:fetch`, and `content:write`.
+Full list + the matching `ctx.*` methods is in
 [`plugin-capabilities.md`](plugin-capabilities.md).
 
 A merge happens — author entries + derived entries with no duplicates.
@@ -110,7 +115,7 @@ manifest: {
 ```
 
 The host topologically sorts the load order so your `setup(ctx)` runs
-*after* every plugin in `requires` has finished its own setup. If a
+_after_ every plugin in `requires` has finished its own setup. If a
 required plugin is missing, the dependent is skipped with a `missing
 required plugin(s)` warning — and the cascade continues, so a plugin
 whose dep was skipped is also skipped (issue #464).
@@ -155,23 +160,23 @@ definePlugin<MyPluginConfig>({
 
 The full list:
 
-| Definition field | Purpose | When to use |
-|---|---|---|
-| `configSchema` | Zod schema for operator-tunable plugin config. Renders an auto-form on `/admin/plugins/<id>`. | When you want the operator to tune plugin behavior at runtime. See [`plugin-quickstart.md`](plugin-quickstart.md) Step 2b. |
-| `configVersion` | Schema version (defaults to 1). | Bump when `configSchema` changes shape non-additively. |
-| `configMigrate` | `(old, fromVersion) => current` migrator. | Pair with a `configVersion` bump so existing operator data upgrades on first cold read. |
-| `hooks` | Lifecycle hook handlers keyed by hook name. | Most plugins start here. |
-| `routes` | Plugin API routes mounted under `/api/plugins/<id>`. | When the plugin needs an HTTP surface. |
-| `pageRoutes` | Public-site URL routes the plugin owns. See [`plugin-pages.md`](plugin-pages.md). | When the plugin ships its own pages (e.g. forum threads, calendar events). |
-| `blocks` | Block definitions for the page builder. | Block-shipping plugins. |
-| `admin` | Declarative admin extension (widgets, actions, tables, dashboard, collectionTabs). | When the plugin contributes UI to `/admin`. |
-| `setup` | `(ctx) => …` invoked once per plugin load. | Register actions, validate environment, log a startup line. |
-| `teardown` | Cleanup callback for graceful shutdown. | When the plugin holds long-lived resources. |
-| `i18n` | Locale string bundles. | When the plugin renders user-facing copy. |
-| `templates` | Page-template contributions per collection. | Plugins that ship templates for the dispatcher. |
-| `patterns` | Page-builder pattern presets. | When the plugin ships pre-shaped block trees. |
-| `fields` | Custom field types for the admin field renderer. | Plugins extending the field-config vocabulary. |
-| `scheduled` | Cron-style scheduled tasks. | Background jobs the plugin owns. |
+| Definition field | Purpose                                                                                       | When to use                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `configSchema`   | Zod schema for operator-tunable plugin config. Renders an auto-form on `/admin/plugins/<id>`. | When you want the operator to tune plugin behavior at runtime. See [`plugin-quickstart.md`](plugin-quickstart.md) Step 2b. |
+| `configVersion`  | Schema version (defaults to 1).                                                               | Bump when `configSchema` changes shape non-additively.                                                                     |
+| `configMigrate`  | `(old, fromVersion) => current` migrator.                                                     | Pair with a `configVersion` bump so existing operator data upgrades on first cold read.                                    |
+| `hooks`          | Lifecycle hook handlers keyed by hook name.                                                   | Most plugins start here.                                                                                                   |
+| `routes`         | Plugin API routes mounted under `/api/plugins/<id>`.                                          | When the plugin needs an HTTP surface.                                                                                     |
+| `pageRoutes`     | Public-site URL routes the plugin owns. See [`plugin-pages.md`](plugin-pages.md).             | When the plugin ships its own pages (e.g. forum threads, calendar events).                                                 |
+| `blocks`         | Block definitions for the page builder.                                                       | Block-shipping plugins.                                                                                                    |
+| `admin`          | Declarative admin extension (widgets, actions, tables, dashboard, collectionTabs).            | When the plugin contributes UI to `/admin`.                                                                                |
+| `setup`          | `(ctx) => …` invoked once per plugin load.                                                    | Register actions, validate environment, log a startup line.                                                                |
+| `teardown`       | Cleanup callback for graceful shutdown.                                                       | When the plugin holds long-lived resources.                                                                                |
+| `i18n`           | Locale string bundles.                                                                        | When the plugin renders user-facing copy.                                                                                  |
+| `templates`      | Page-template contributions per collection.                                                   | Plugins that ship templates for the dispatcher.                                                                            |
+| `patterns`       | Page-builder pattern presets.                                                                 | When the plugin ships pre-shaped block trees.                                                                              |
+| `fields`         | Custom field types for the admin field renderer.                                              | Plugins extending the field-config vocabulary.                                                                             |
+| `scheduled`      | Cron-style scheduled tasks.                                                                   | Background jobs the plugin owns.                                                                                           |
 
 `admin.settings.fields` (a hand-rolled NpFieldConfig array) is
 the legacy version of `configSchema`. When BOTH are declared on

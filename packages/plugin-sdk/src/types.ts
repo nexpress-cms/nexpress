@@ -45,32 +45,39 @@ export const npPluginCapabilities = [
  * in-process bookkeeping that costs nothing, or already gated upstream
  * (action dispatch is admin-only at the API layer).
  */
-export const npCapabilityToCtxMembers: Readonly<
-  Record<NpPluginCapability, readonly string[]>
-> = Object.freeze({
-  "content:read": ["content.find", "content.findOne", "content.count"],
-  "content:write": ["content.create", "content.update"],
-  "content:delete": ["content.delete"],
-  "media:read": ["media.list", "media.getById", "media.getUrl"],
-  "media:write": ["media.upload"],
-  "media:delete": ["media.delete"],
-  "settings:read": ["settings.getSite"],
-  "settings:write": [],
-  "theme:read": ["theme.getTokens"],
-  "theme:write": ["theme.setTokens"],
-  "admin:panel": [],
-  "admin:dashboard": [],
-  "admin:collection-tab": [],
-  "api:route": ["routes[].handler"],
-  "site:route": [],
-  "network:fetch": ["http.fetch"],
-  "storage:kv": ["storage.get", "storage.set", "storage.delete", "storage.list", "storage.has"],
-  "hooks:content": ["hooks.content:*"],
-  "hooks:auth": ["hooks.auth:*"],
-  "hooks:render": ["hooks.render:*"],
-  "hooks:scheduled": ["hooks.scheduled:*"],
-  "hooks:media": ["hooks.media:*"],
-});
+export const npCapabilityToCtxMembers: Readonly<Record<NpPluginCapability, readonly string[]>> =
+  Object.freeze({
+    "content:read": ["content.find", "content.findOne", "content.count"],
+    "content:write": ["content.create", "content.update"],
+    "content:delete": ["content.delete"],
+    "media:read": ["media.list", "media.getById", "media.getUrl"],
+    "media:write": ["media.upload"],
+    "media:delete": ["media.delete"],
+    "settings:read": ["settings.getSite"],
+    "settings:write": [],
+    "theme:read": ["theme.getTokens"],
+    "theme:write": ["theme.setTokens"],
+    "admin:panel": [],
+    "admin:dashboard": [],
+    "admin:collection-tab": [],
+    "api:route": ["routes[].handler"],
+    "site:route": [],
+    "network:fetch": ["http.fetch"],
+    "storage:kv": [
+      "storage.get",
+      "storage.set",
+      "storage.delete",
+      "storage.list",
+      "storage.has",
+      "storage.append",
+      "storage.listValues",
+    ],
+    "hooks:content": ["hooks.content:*"],
+    "hooks:auth": ["hooks.auth:*"],
+    "hooks:render": ["hooks.render:*"],
+    "hooks:scheduled": ["hooks.scheduled:*"],
+    "hooks:media": ["hooks.media:*"],
+  });
 
 export type NpPluginCapability = (typeof npPluginCapabilities)[number];
 
@@ -220,6 +227,25 @@ export interface NpAdminTableExtension {
   /** Action that returns `{ rows: Record<string, unknown>[], total: number }`. */
   rowsActionId: string;
   emptyMessage?: string;
+}
+
+export interface NpAdminMetricResult {
+  value: string | number;
+  delta?: string;
+}
+
+export type NpAdminStatusLevel = "ok" | "warn" | "error";
+
+export interface NpAdminStatusResult {
+  level: NpAdminStatusLevel;
+  message: string;
+}
+
+export interface NpAdminTableResult<
+  TRow extends Record<string, unknown> = Record<string, unknown>,
+> {
+  rows: TRow[];
+  total: number;
 }
 
 /**
@@ -466,9 +492,9 @@ export type NpActionHandler<TConfig = Record<string, unknown>> = (
   ctx: NpPluginContext<TConfig>,
 ) => Promise<NpActionResult>;
 
-export interface NpActionResult {
+export interface NpActionResult<TData = unknown> {
   ok: boolean;
-  data?: unknown;
+  data?: TData;
   error?: string;
 }
 
@@ -497,6 +523,16 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
     delete(key: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
     has(key: string): Promise<boolean>;
+    /**
+     * Append a value as a new unique key under `prefix`, returning the generated
+     * key. Use this for event-log style plugin data instead of repeatedly
+     * reading and rewriting a large array under one key.
+     */
+    append<T = unknown>(prefix: string, value: T, options?: { ttl?: number }): Promise<string>;
+    /**
+     * Read every non-expired value under `prefix`, ordered by generated key.
+     */
+    listValues<T = unknown>(prefix: string): Promise<Array<{ key: string; value: T }>>;
   };
   readonly settings: {
     getSite(): Promise<NpSiteSettings>;

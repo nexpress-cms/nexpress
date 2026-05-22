@@ -31,6 +31,8 @@ describe.skipIf(skipIfNoTestDb())("ctx.storage (integration)", () => {
         delete(key: string): Promise<void>;
         list(prefix?: string): Promise<string[]>;
         has(key: string): Promise<boolean>;
+        append<T>(prefix: string, value: T, opts?: { ttl?: number }): Promise<string>;
+        listValues<T>(prefix: string): Promise<Array<{ key: string; value: T }>>;
       };
     };
   }
@@ -86,5 +88,27 @@ describe.skipIf(skipIfNoTestDb())("ctx.storage (integration)", () => {
     expect(await ctx.storage.get("ephemeral")).toBeNull();
     expect(await ctx.storage.has("ephemeral")).toBe(false);
     expect(await ctx.storage.list()).not.toContain("ephemeral");
+  });
+
+  it("append writes unique prefixed keys and listValues returns ordered values", async () => {
+    const ctx = makeCtx();
+    const first = await ctx.storage.append("events:2026-05-22:", { path: "/docs" });
+    const second = await ctx.storage.append("events:2026-05-22:", { path: "/pricing" });
+    await ctx.storage.append("events:2026-05-23:", { path: "/ignored" });
+
+    expect(first).toMatch(/^events:2026-05-22:/);
+    expect(second).toMatch(/^events:2026-05-22:/);
+    expect(first).not.toBe(second);
+    expect(await ctx.storage.listValues("events:2026-05-22:")).toEqual([
+      { key: first, value: { path: "/docs" } },
+      { key: second, value: { path: "/pricing" } },
+    ]);
+  });
+
+  it("listValues hides expired appended entries", async () => {
+    const ctx = makeCtx();
+    await ctx.storage.append("short:", "gone", { ttl: 0.5 });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(await ctx.storage.listValues("short:")).toEqual([]);
   });
 });

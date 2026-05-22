@@ -35,10 +35,7 @@ describe("definePlugin — capability derivation", () => {
         "auth:afterLogin": () => undefined,
       },
     });
-    expect(plugin.manifest.capabilities.sort()).toEqual([
-      "hooks:auth",
-      "hooks:content",
-    ]);
+    expect(plugin.manifest.capabilities.sort()).toEqual(["hooks:auth", "hooks:content"]);
   });
 
   it("merges author-declared capabilities with derived ones (no duplicates)", () => {
@@ -69,6 +66,52 @@ describe("definePlugin — capability derivation", () => {
     });
     expect(plugin.manifest.capabilities).toEqual([]);
   });
+
+  it("auto-adds site:route when page routes are declared", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      pageRoutes: [{ pattern: "/status", component: () => null }],
+    });
+    expect(plugin.manifest.capabilities).toContain("site:route");
+  });
+
+  it("auto-adds hooks:scheduled when scheduled tasks are declared", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      scheduled: [
+        {
+          id: "nightly",
+          cron: "0 2 * * *",
+          handler: () => undefined,
+        },
+      ],
+    });
+    expect(plugin.manifest.capabilities).toContain("hooks:scheduled");
+  });
+
+  it("auto-adds admin capabilities from the declared admin surface", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      admin: {
+        widgets: [{ id: "health", label: "Health", kind: "status", actionId: "health" }],
+        collectionTabs: [
+          {
+            id: "doc",
+            label: "Document",
+            collections: ["posts"],
+            actions: [{ id: "sync", label: "Sync", actionId: "sync" }],
+          },
+        ],
+        dashboardWidgets: [{ id: "metric", label: "Metric", kind: "metric", actionId: "metric" }],
+      },
+    });
+
+    expect(plugin.manifest.capabilities.sort()).toEqual([
+      "admin:collection-tab",
+      "admin:dashboard",
+      "admin:panel",
+    ]);
+  });
 });
 
 describe("definePlugin — provides derivation (regression)", () => {
@@ -81,10 +124,21 @@ describe("definePlugin — provides derivation (regression)", () => {
           label: "Callout",
           defaultProps: {},
           propsSchema: [],
-          render: () => ({ type: "div", props: {}, key: null } as never),
+          render: () => ({ type: "div", props: {}, key: null }) as never,
         },
       ],
     });
     expect(plugin.manifest.provides.blocks).toContain("callout");
+  });
+
+  it("derives page route and scheduled task provides from definition surfaces", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      pageRoutes: [{ pattern: "/events/:slug", component: () => null }],
+      scheduled: [{ id: "sync-events", cron: "*/15 * * * *", handler: () => undefined }],
+    });
+
+    expect(plugin.manifest.provides.pageRoutes).toEqual(["/events/:slug"]);
+    expect(plugin.manifest.provides.scheduledTasks).toEqual(["sync-events"]);
   });
 });

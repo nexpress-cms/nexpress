@@ -54,6 +54,8 @@ export const npPluginManifestSchema = z.object({
       collections: z.array(z.string()).default([]),
       adminExtensions: z.array(z.string()).default([]),
       apiRoutes: z.array(z.string()).default([]),
+      pageRoutes: z.array(z.string()).default([]),
+      scheduledTasks: z.array(z.string()).default([]),
       hooks: z.array(z.string()).default([]),
     })
     .default({
@@ -62,6 +64,8 @@ export const npPluginManifestSchema = z.object({
       collections: [],
       adminExtensions: [],
       apiRoutes: [],
+      pageRoutes: [],
+      scheduledTasks: [],
       hooks: [],
     }),
   // The agent block exists for AI assistants / catalog generators that
@@ -126,9 +130,7 @@ export const npAdminActionSchema = z.object({
 export const npAdminTableSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
-  columns: z
-    .array(z.object({ name: z.string().min(1), label: z.string().min(1) }))
-    .min(1),
+  columns: z.array(z.object({ name: z.string().min(1), label: z.string().min(1) })).min(1),
   rowsActionId: z.string().min(1),
   emptyMessage: z.string().optional(),
 });

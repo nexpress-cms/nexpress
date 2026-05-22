@@ -723,6 +723,28 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/plugins/analytics-lite:
+    dependencies:
+      '@nexpress/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.15)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.6
+        version: 4.1.6(@types/node@22.19.17)(vite@7.3.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0))
+
   packages/plugins/block-callout:
     dependencies:
       '@nexpress/blocks':
@@ -992,6 +1014,28 @@ importers:
         version: 4.1.6(@types/node@22.19.17)(vite@7.3.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0))
 
   packages/plugins/seo-audit:
+    dependencies:
+      '@nexpress/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.15)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.6
+        version: 4.1.6(@types/node@22.19.17)(vite@7.3.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0))
+
+  packages/plugins/webhook-relay:
     dependencies:
       '@nexpress/plugin-sdk':
         specifier: workspace:*
