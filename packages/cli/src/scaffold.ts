@@ -60,7 +60,7 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
   // built-in (installs pnpm itself) and shadows our package script.
   const setupStep = localMode
     ? `  pnpm --filter ${projectName} run setup`
-    : "  pnpm run setup      (browser env wizard — DB / secret / storage)";
+    : "  pnpm run setup      (wizard: DB / secret / storage / migrations)";
   const devStep = localMode ? `  pnpm --filter ${projectName} dev` : "  pnpm dev";
   const nextSteps = [
     `  cd ${projectName}`,
@@ -89,4 +89,6 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
   console.log(
     "\nAdmin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
   );
+  console.log("Before deploying: pnpm run doctor:prod");
+  console.log("Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md");
 }

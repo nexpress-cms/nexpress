@@ -323,6 +323,16 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
   });
 
+  it("scaffold README follows the current setup-first onboarding path", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const readme = files["README.md"];
+    expect(readme).toContain("pnpm run setup");
+    expect(readme).toContain("## First-site checklist");
+    expect(readme).toContain("pnpm run doctor:prod");
+    expect(readme).toContain("Quick choice:");
+    expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);
+  });
+
   it("package.json exposes seed:content for setup's one-step sample-content path", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const pkg = JSON.parse(files["package.json"]) as {

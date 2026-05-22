@@ -765,6 +765,14 @@ The first time you visit \`http://localhost:3000/admin\` on an empty
 DB, a 2-step wizard collects your admin account, site name, and
 optional sample content — no manual \`pnpm seed:admin\` needed.
 
+## First-site checklist
+
+1. Run \`pnpm run setup\` and let it apply migrations.
+2. Start \`pnpm dev\` and open \`/admin\`.
+3. Name the site, pick a theme, and seed sample content if useful.
+4. Publish the first page or post, then open it on the public site.
+5. Run \`pnpm run doctor:prod\` before deploying.
+
 ### Manual flow (no wizard)
 
 \`\`\`bash
@@ -802,6 +810,15 @@ With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
 
 See [docs/deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md)
 for full Docker / Vercel / Fly.io recipes plus multi-node notes.
+
+Quick choice:
+
+- **Vercel** — fastest app hosting path, but requires S3-compatible storage
+  for media because the filesystem is ephemeral.
+- **Railway / Render** — straightforward Docker deploys with managed
+  Postgres; still use S3-compatible storage for durable media.
+- **Fly.io / Docker self-host** — best when you want to own the runtime;
+  local uploaded files are acceptable only for single-node deployments.
 
 ### Vercel
 

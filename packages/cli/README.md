@@ -10,8 +10,7 @@ npx create-nexpress my-site
 cd my-site
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db
-cp .env.example .env
-pnpm build
+pnpm run setup    # browser env wizard: DB, NP_SECRET, storage, migrations
 pnpm dev
 ```
 
@@ -21,12 +20,17 @@ active theme and whether to seed sample content are picked in the
 first-boot admin setup wizard at [`/admin/setup`](http://localhost:3000/admin/setup),
 not at scaffold time.
 
+`create-nexpress` writes both `.env.example` and `.env` for you. Use the
+setup wizard to confirm the DB connection, generate or accept the auth
+secret, run migrations, create the first admin, pick a theme, and optionally
+seed starter content.
+
 The site runs at [`localhost:3000`](http://localhost:3000) and the admin
 panel is at [`localhost:3000/admin`](http://localhost:3000/admin).
 
 ## What you get
 
-A Next.js 15 App Router project with:
+A Next.js 16 App Router project with:
 
 - `src/collections/` — example collections (posts, pages) using
   `defineCollection()`
@@ -35,8 +39,9 @@ A Next.js 15 App Router project with:
 - `src/app/(site)` — public site routes with the catch-all `[[...slug]]`
 - `src/app/(admin)/admin` — login + protected admin shell
 - `src/app/api/` — REST endpoints (rate-limited, CSRF-enforced via `proxy.ts`)
-- `docker/docker-compose.yml` — Postgres 16 on port 5433
-- `.env.example` — every env var the project actually reads
+- `docker/docker-compose.yml` — Postgres 16 plus Mailpit, with a
+  project-specific host port to avoid collisions between scaffolds
+- `.env.example` / `.env` — every env var the project actually reads
 
 ## Prerequisites
 
@@ -47,10 +52,13 @@ A Next.js 15 App Router project with:
 
 ## Next steps after scaffolding
 
-- Seed the first admin: `pnpm seed:admin` (set `NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`, `NP_ADMIN_PASSWORD`)
+- Run the first-boot wizard: `pnpm run setup`
+- Start the site: `pnpm dev`, then open `/admin`
+- Publish your first page or post from the admin
+- Check production readiness before hosting: `pnpm run doctor:prod`
 - Add a collection: edit `src/collections/<name>.ts`, run `pnpm db:generate && pnpm db:migrate`
 - Read [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview
-- Read [docs/](https://github.com/nexpress-cms/nexpress/tree/main/docs) — deployment, jobs, observability, theming
+- Read [deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md) — Docker, Vercel, Fly.io, Render, Railway
 
 ## Links
 
