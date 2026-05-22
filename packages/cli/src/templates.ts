@@ -818,6 +818,31 @@ With jobs off, \`enqueueJob\` is a no-op — simpler dev, fewer moving parts.
 See [docs/deployment.md](https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md)
 for full Docker / Vercel / Fly.io recipes plus multi-node notes.
 
+### Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new?utm_source=nexpress&utm_campaign=oss)
+
+Push this scaffold to GitHub, click the button, and import your repo in
+Vercel. Before promoting the deployment:
+
+\`\`\`bash
+pnpm run deploy:plan -- --target vercel
+pnpm run doctor:prod -- --target vercel
+\`\`\`
+
+Required Vercel env vars:
+
+- \`DATABASE_URL\`
+- \`NP_SECRET\`
+- \`SITE_URL\`
+- \`NP_STORAGE_ADAPTER=s3\`
+- \`NP_S3_BUCKET\`
+- \`NP_S3_REGION\`
+
+Vercel's filesystem is ephemeral, so media uploads require S3/R2/MinIO
+or another S3-compatible store. Scheduled publishing also needs
+\`NP_SCHEDULER_TOKEN\` matching Vercel's \`CRON_SECRET\`.
+
 Quick choice:
 
 - **Vercel** — fastest app hosting path, but requires S3-compatible storage
@@ -834,13 +859,14 @@ Quick choice:
 
 1. Push the repo and import it in the Vercel dashboard.
 2. Set env vars: \`DATABASE_URL\`, \`NP_SECRET\`, \`SITE_URL\`,
-   \`NP_ENABLE_JOBS=1\`.
+   \`NP_STORAGE_ADAPTER=s3\`, \`NP_S3_BUCKET\`, and \`NP_S3_REGION\`.
 3. Add \`CRON_SECRET\` in the Vercel env, then set
    \`NP_SCHEDULER_TOKEN\` to the same value — Vercel signs cron requests
    with \`Authorization: Bearer $CRON_SECRET\`, and the scheduler route
    verifies against \`NP_SCHEDULER_TOKEN\`.
-4. Storage: Vercel filesystem is ephemeral — set
-   \`NP_STORAGE_ADAPTER=s3\` plus \`NP_S3_*\`.
+4. If you need long-running background jobs, run \`pnpm worker\` on a
+   separate worker host and set \`NP_ENABLE_JOBS=1\` there. Vercel cron
+   handles scheduled HTTP calls, but not a long-lived pg-boss worker.
 
 If you don't use scheduled publishing, the cron entry is a no-op (the
 endpoint short-circuits when \`NP_SCHEDULER_TOKEN\` is unset).
