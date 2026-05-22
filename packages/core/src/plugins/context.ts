@@ -673,6 +673,24 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       ): void {
         registration.actions.set(actionName, handler);
       },
+      registerMetric(
+        actionName: string,
+        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
+      ): void {
+        registration.actions.set(actionName, handler);
+      },
+      registerStatus(
+        actionName: string,
+        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
+      ): void {
+        registration.actions.set(actionName, handler);
+      },
+      registerTable(
+        actionName: string,
+        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
+      ): void {
+        registration.actions.set(actionName, handler);
+      },
       async dispatch(
         targetPluginId: string,
         actionName: string,

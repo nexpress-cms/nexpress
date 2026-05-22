@@ -487,10 +487,10 @@ export interface NpRouteResponse {
   headers?: Record<string, string>;
 }
 
-export type NpActionHandler<TConfig = Record<string, unknown>> = (
+export type NpActionHandler<TConfig = Record<string, unknown>, TData = unknown> = (
   data: unknown,
   ctx: NpPluginContext<TConfig>,
-) => Promise<NpActionResult>;
+) => Promise<NpActionResult<TData>>;
 
 export interface NpActionResult<TData = unknown> {
   ok: boolean;
@@ -580,6 +580,18 @@ export interface NpPluginContext<TConfig = Record<string, unknown>> {
   };
   readonly actions: {
     register(actionName: string, handler: NpActionHandler<TConfig>): void;
+    registerMetric(
+      actionName: string,
+      handler: NpActionHandler<TConfig, NpAdminMetricResult>,
+    ): void;
+    registerStatus(
+      actionName: string,
+      handler: NpActionHandler<TConfig, NpAdminStatusResult>,
+    ): void;
+    registerTable<TRow extends Record<string, unknown>>(
+      actionName: string,
+      handler: NpActionHandler<TConfig, NpAdminTableResult<TRow>>,
+    ): void;
     dispatch(pluginId: string, actionName: string, data?: unknown): Promise<NpActionResult>;
   };
 }

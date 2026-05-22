@@ -46,14 +46,8 @@ export default defineConfig({
 Reference: [Plugin SDK quickstart](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-quickstart.md).
 `;
 
-function fillReadme(
-  template: string,
-  packageName: string,
-  exportName: string,
-): string {
-  return template
-    .replaceAll("<packageName>", packageName)
-    .replaceAll("<exportName>", exportName);
+function fillReadme(template: string, packageName: string, exportName: string): string {
+  return template.replaceAll("<packageName>", packageName).replaceAll("<exportName>", exportName);
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -151,7 +145,7 @@ export async function scaffoldRoutePlugin(options: ScaffoldOptions): Promise<Sca
   assertDirAvailable(names.pluginDir);
 
   const description = `API route plugin: ${names.packageName}`;
-  const indexSource = `import { definePlugin } from "@nexpress/plugin-sdk";
+  const indexSource = `import { definePlugin, npAdminStatus } from "@nexpress/plugin-sdk";
 
 /**
  * API route plugin scaffold. Plugin routes mount under
@@ -241,7 +235,7 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
   assertDirAvailable(names.pluginDir);
 
   const description = `Admin extension plugin: ${names.packageName}`;
-  const indexSource = `import { definePlugin } from "@nexpress/plugin-sdk";
+  const indexSource = `import { definePlugin, npAdminStatus } from "@nexpress/plugin-sdk";
 
 /**
  * Admin-extension plugin scaffold. Demonstrates the three most useful
@@ -251,7 +245,7 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
  *   - \`widgets\` — small status / metric cards shown on the plugin's
  *     dashboard at \`/admin/plugins/<id>\`.
  *   - \`actions\` — buttons that dispatch a registered action handler
- *     (\`ctx.actions.register(actionId, …)\`).
+ *     (\`ctx.actions.registerStatus(actionId, …)\`).
  *
  * The action and the widget both reference \`actionId: "syncStatus"\`,
  * which the \`setup(ctx)\` block below registers. Click the action
@@ -274,11 +268,6 @@ export const ${names.exportName} = definePlugin<${names.componentName}Config>({
     author: { name: "" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    // \`admin:panel\` is the umbrella capability for plugins that ship
-    // an admin extension. The framework currently doesn't gate on it
-    // at runtime, but declaring it documents intent for future
-    // permission-aware admin filtering.
-    capabilities: ["admin:panel"],
   },
   admin: {
     settings: {
@@ -317,27 +306,18 @@ export const ${names.exportName} = definePlugin<${names.componentName}Config>({
     ],
   },
   setup: (ctx) => {
-    // \`ctx.actions.register\` MUST run during setup — the admin's
+    // \`ctx.actions.registerStatus\` MUST run during setup — the admin's
     // action / widget routes look up the handler at request time.
-    ctx.actions.register("syncStatus", async () => {
+    ctx.actions.registerStatus("syncStatus", async () => {
       const config = ctx.config;
       if (!config.enabled) {
-        return {
-          ok: true,
-          data: { level: "warn", message: "Plugin is disabled in settings." },
-        };
+        return npAdminStatus("warn", "Plugin is disabled in settings.");
       }
       if (!config.apiKey) {
-        return {
-          ok: true,
-          data: { level: "error", message: "Missing API key in settings." },
-        };
+        return npAdminStatus("error", "Missing API key in settings.");
       }
       // Replace with a real upstream call once you've wired one up.
-      return {
-        ok: true,
-        data: { level: "ok", message: "All systems go." },
-      };
+      return npAdminStatus("ok", "All systems go.");
     });
   },
 });
@@ -406,9 +386,9 @@ export async function scaffoldScheduledPlugin(options: ScaffoldOptions): Promise
  * can't install workers across processes. The admin toast warns when
  * this is the case.
  *
- * \`definePlugin\` auto-adds \`hooks:scheduled\` only if you also use a
- * scheduled-related hook. The \`scheduled\` field doesn't require any
- * capability today — it lives outside the hook capability vocabulary.
+ * \`definePlugin\` auto-adds \`hooks:scheduled\` because at least one
+ * scheduled task is declared. You still list capabilities for what the
+ * handler actually calls (\`storage:kv\`, \`content:read\`, etc.).
  */
 export const ${names.exportName} = definePlugin({
   manifest: {

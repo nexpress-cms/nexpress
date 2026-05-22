@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { npAdminActionError, npAdminMetric, npAdminStatus, npAdminTable } from "./admin-results.js";
+import type { NpPluginContext } from "./types.js";
 
 describe("admin result helpers", () => {
   it("builds metric results", () => {
@@ -26,5 +27,17 @@ describe("admin result helpers", () => {
 
   it("builds action errors", () => {
     expect(npAdminActionError("Nope")).toEqual({ ok: false, error: "Nope" });
+  });
+
+  it("types action registration helpers by admin result shape", () => {
+    function register(ctx: NpPluginContext) {
+      ctx.actions.registerMetric("views", () => Promise.resolve(npAdminMetric(12)));
+      ctx.actions.registerStatus("health", () => Promise.resolve(npAdminStatus("ok", "Healthy")));
+      ctx.actions.registerTable("rows", () =>
+        Promise.resolve(npAdminTable([{ path: "/", views: 1 }])),
+      );
+    }
+
+    expect(typeof register).toBe("function");
   });
 });

@@ -211,12 +211,12 @@ export const analyticsLitePlugin = definePlugin<AnalyticsLiteConfig>({
     ],
   },
   setup: (ctx) => {
-    ctx.actions.register("todayViews", async () => {
+    ctx.actions.registerMetric("todayViews", async () => {
       const events = await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey());
       return npAdminMetric(events.length, `${dayKey()} local UTC key`);
     });
 
-    ctx.actions.register("topPaths", async () => {
+    ctx.actions.registerTable("topPaths", async () => {
       const events = (await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey())).map(
         (row) => row.value,
       );

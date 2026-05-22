@@ -21,6 +21,9 @@ These notes come from building two bundled example plugins in May 2026:
 - `@nexpress/plugin-sdk` now exports admin action result helpers:
   `npAdminMetric()`, `npAdminStatus()`, `npAdminTable()`, and
   `npAdminActionError()`.
+- `ctx.actions` now includes typed registration methods for common admin
+  result shapes: `registerMetric()`, `registerStatus()`, and
+  `registerTable()`.
 - `ctx.storage` now includes `append()` and `listValues()` for event-log style
   plugin data. `analytics-lite` uses those helpers instead of rewriting an
   array under one key.
@@ -36,13 +39,11 @@ inferred from syntax, such as `storage:kv` and `network:fetch`.
 - `render:afterPage` accepts body-end script contributions through the same
   contribution type as `render:beforePage`, but the naming makes examples look
   more surprising than they need to.
-- Admin action helpers type the returned payloads, but `ctx.actions.register()`
-  still accepts the broad `NpActionResult` shape. A future pass could bind an
-  action id to the widget/table kind that consumes it.
+- CLI plugin scaffold tests now cover package-shape consistency and ensure
+  admin scaffolds use the typed status helper instead of hand-built payloads.
 
 ## Follow-Ups
 
-- Add a shared plugin scaffold helper or a template test that keeps bundled
-  plugin package metadata consistent.
-- Consider typed action registration for admin widgets/tables so a metric
-  widget cannot point at a table-shaped action.
+- Consider a future manifest-level action registry if we want to validate that
+  a specific widget's `actionId` points to a compatible registered action id at
+  plugin definition time.

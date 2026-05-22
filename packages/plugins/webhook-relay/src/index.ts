@@ -101,7 +101,7 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
     ],
   },
   setup: (ctx) => {
-    ctx.actions.register("lastDelivery", async () => {
+    ctx.actions.registerStatus("lastDelivery", async () => {
       const last = await ctx.storage.get<{ ok: boolean; message: string }>("last-delivery");
       return last
         ? npAdminStatus(last.ok ? "ok" : "warn", last.message)

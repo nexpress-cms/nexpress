@@ -47,9 +47,9 @@ describe("non-block scaffold generators", () => {
 
     it(`${kind} — refuses to overwrite existing dirs`, async () => {
       await generator({ slug: "twice", outDir: workdir });
-      await expect(
-        generator({ slug: "twice", outDir: workdir }),
-      ).rejects.toThrow(/Refusing to overwrite/);
+      await expect(generator({ slug: "twice", outDir: workdir })).rejects.toThrow(
+        /Refusing to overwrite/,
+      );
     });
   };
 
@@ -79,7 +79,7 @@ describe("non-block scaffold generators", () => {
   describe("admin plugin", () => {
     commonAssertions("admin", scaffoldAdminPlugin);
 
-    it("declares settings + widget + action wired through ctx.actions.register", async () => {
+    it("declares settings + widget + action wired through typed status registration", async () => {
       const result = await scaffoldAdminPlugin({ slug: "status-card", outDir: workdir });
       const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
       // All three admin surface kinds.
@@ -87,14 +87,16 @@ describe("non-block scaffold generators", () => {
       expect(source).toMatch(/widgets:\s*\[/);
       expect(source).toMatch(/actions:\s*\[/);
       // Setup hook registers the shared action handler.
+      expect(source).toMatch(/import \{ definePlugin, npAdminStatus \}/);
       expect(source).toMatch(/setup:\s*\(ctx\)\s*=>/);
-      expect(source).toMatch(/ctx\.actions\.register\("syncStatus"/);
+      expect(source).toMatch(/ctx\.actions\.registerStatus\("syncStatus"/);
+      expect(source).toMatch(/npAdminStatus\("ok", "All systems go\."\)/);
     });
 
-    it("declares admin:panel capability up front (auto-derive doesn't cover admin)", async () => {
+    it("omits manually declared admin:panel because definePlugin derives it", async () => {
       const result = await scaffoldAdminPlugin({ slug: "ui", outDir: workdir });
       const source = await readFile(join(result.pluginDir, "src/index.tsx"), "utf-8");
-      expect(source).toMatch(/capabilities: \["admin:panel"\]/);
+      expect(source).not.toMatch(/capabilities: \["admin:panel"\]/);
     });
   });
 
@@ -122,9 +124,7 @@ describe("non-block scaffold generators", () => {
           slug: `pkg-${Math.random().toString(16).slice(2, 8)}`,
           outDir: workdir,
         });
-        const pkg = JSON.parse(
-          await readFile(join(result.pluginDir, "package.json"), "utf-8"),
-        ) as {
+        const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
           dependencies: Record<string, string>;
           scripts: Record<string, string>;
         };
@@ -132,6 +132,43 @@ describe("non-block scaffold generators", () => {
         expect(pkg.dependencies["@nexpress/blocks"]).toBe("workspace:*");
         expect(pkg.scripts.build).toBe("tsup");
         expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+      }
+    });
+
+    it("keeps every non-block plugin package on the shared scaffold baseline", async () => {
+      const expectedScripts = {
+        build: "tsup",
+        dev: "tsup --watch --no-clean",
+        clean: "rm -rf dist",
+        typecheck: "tsc --noEmit",
+      };
+
+      for (const generator of [
+        scaffoldHookPlugin,
+        scaffoldRoutePlugin,
+        scaffoldAdminPlugin,
+        scaffoldScheduledPlugin,
+      ]) {
+        const result = await generator({
+          slug: `baseline-${Math.random().toString(16).slice(2, 8)}`,
+          outDir: workdir,
+        });
+        const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+          files: string[];
+          engines: Record<string, string>;
+          exports: Record<string, { types: string; import: string }>;
+          peerDependencies: Record<string, string>;
+          scripts: Record<string, string>;
+        };
+
+        expect(pkg.files).toEqual(["dist"]);
+        expect(pkg.engines.node).toBe(">=20");
+        expect(pkg.exports["."]).toEqual({
+          types: "./dist/index.d.ts",
+          import: "./dist/index.js",
+        });
+        expect(pkg.peerDependencies.react).toBe("^19.0.0");
+        expect(pkg.scripts).toEqual(expectedScripts);
       }
     });
   });
