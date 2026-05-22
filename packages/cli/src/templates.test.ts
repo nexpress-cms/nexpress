@@ -338,7 +338,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm run setup");
     expect(readme).toContain("## First-site checklist");
     expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
-    expect(readme).toContain("pnpm run doctor:prod");
+    expect(readme).toContain("pnpm run doctor:prod -- --target vercel");
     expect(readme).toContain("Quick choice:");
     expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);
   });

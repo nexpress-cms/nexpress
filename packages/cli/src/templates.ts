@@ -760,7 +760,7 @@ Before deploying, run the production-readiness pass:
 
 \`\`\`bash
 pnpm run deploy:plan -- --target vercel
-pnpm run doctor:prod
+pnpm run doctor:prod -- --target vercel
 \`\`\`
 
 Tightens the dev defaults: \`NP_SECRET\` < 32 chars becomes an error,
@@ -778,7 +778,7 @@ optional sample content — no manual \`pnpm seed:admin\` needed.
 2. Start \`pnpm dev\` and open \`/admin\`.
 3. Name the site, pick a theme, and seed sample content if useful.
 4. Publish the first page or post, then open it on the public site.
-5. Run \`pnpm run doctor:prod\` before deploying.
+5. Run \`pnpm run doctor:prod -- --target vercel\` before deploying.
 
 ### Manual flow (no wizard)
 

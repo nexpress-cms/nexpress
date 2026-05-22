@@ -1,7 +1,13 @@
 // Must be first so .env is available before we inspect deployment shape.
 import "./_load-env.js";
 
-type DeployTarget = "vercel" | "railway" | "render" | "fly" | "docker";
+import {
+  DEPLOY_TARGETS,
+  deployTargetTitle,
+  inferDeployTargetFromEnv,
+  parseDeployTargetArg,
+  type DeployTarget,
+} from "./deploy-targets.js";
 
 interface TargetPlan {
   target: DeployTarget;
@@ -14,14 +20,6 @@ interface TargetPlan {
   commands: string[];
 }
 
-const TARGETS = [
-  "vercel",
-  "railway",
-  "render",
-  "fly",
-  "docker",
-] as const satisfies readonly DeployTarget[];
-
 const COLOR = {
   green: "\x1b[32m",
   yellow: "\x1b[33m",
@@ -29,10 +27,6 @@ const COLOR = {
   dim: "\x1b[2m",
   reset: "\x1b[0m",
 };
-
-function isDeployTarget(value: string): value is DeployTarget {
-  return TARGETS.includes(value as DeployTarget);
-}
 
 function printHelp(): void {
   console.log(`NexPress deploy plan
@@ -42,41 +36,12 @@ Usage:
   pnpm run deploy:plan -- --target vercel
 
 Targets:
-  ${TARGETS.join(", ")}
+  ${DEPLOY_TARGETS.join(", ")}
 `);
 }
 
-function parseTarget(argv: string[]): DeployTarget | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
-    if (arg === "--target") {
-      const next = argv[i + 1];
-      if (!next || !isDeployTarget(next)) {
-        throw new Error(`--target must be one of: ${TARGETS.join(", ")}`);
-      }
-      return next;
-    }
-    if (arg.startsWith("--target=")) {
-      const value = arg.slice("--target=".length);
-      if (!isDeployTarget(value)) {
-        throw new Error(`--target must be one of: ${TARGETS.join(", ")}`);
-      }
-      return value;
-    }
-    if (arg === "--help" || arg === "-h") {
-      printHelp();
-      process.exit(0);
-    }
-  }
-  return null;
-}
-
-function inferTarget(): DeployTarget {
-  if (process.env.VERCEL) return "vercel";
-  if (process.env.RAILWAY_ENVIRONMENT_NAME) return "railway";
-  if (process.env.RENDER) return "render";
-  if (process.env.FLY_APP_NAME || process.env.FLY_REGION) return "fly";
-  return "docker";
+function shouldPrintHelp(argv: string[]): boolean {
+  return argv.includes("--help") || argv.includes("-h");
 }
 
 function planFor(target: DeployTarget): TargetPlan {
@@ -86,14 +51,14 @@ function planFor(target: DeployTarget): TargetPlan {
     "pnpm install",
     "pnpm run setup -- --non-interactive",
     "pnpm db:migrate",
-    "pnpm run doctor:prod",
+    `pnpm run doctor:prod -- --target ${target}`,
   ];
 
   switch (target) {
     case "vercel":
       return {
         target,
-        title: "Vercel",
+        title: deployTargetTitle(target),
         fit: [
           "Fastest hosted app path for a scaffolded Next.js site.",
           "Best when media is stored in S3/R2 and scheduled publishing uses vercel.json cron.",
@@ -114,7 +79,7 @@ function planFor(target: DeployTarget): TargetPlan {
     case "railway":
       return {
         target,
-        title: "Railway",
+        title: deployTargetTitle(target),
         fit: [
           "Good Docker deploy path with managed Postgres.",
           "Best when web and worker run as separate services from the same image.",
@@ -135,7 +100,7 @@ function planFor(target: DeployTarget): TargetPlan {
     case "render":
       return {
         target,
-        title: "Render",
+        title: deployTargetTitle(target),
         fit: [
           "Good Docker deploy path with managed Postgres.",
           "Best when a background worker service is allowed to run beside the web service.",
@@ -156,7 +121,7 @@ function planFor(target: DeployTarget): TargetPlan {
     case "fly":
       return {
         target,
-        title: "Fly.io",
+        title: deployTargetTitle(target),
         fit: [
           "Good Docker self-hosting path when you want control over machines and regions.",
           "Works with local storage only for a single-machine deployment with attached volume.",
@@ -228,13 +193,18 @@ function printPlan(plan: TargetPlan, inferred: boolean): void {
   printSection("Run before deploy", plan.commands);
 
   console.log(
-    `\n${COLOR.dim}Use \`pnpm run doctor:prod\` as the failing readiness gate; deploy:plan is advisory.${COLOR.reset}`,
+    `\n${COLOR.dim}Use \`pnpm run doctor:prod -- --target ${plan.target}\` as the failing readiness gate; deploy:plan is advisory.${COLOR.reset}`,
   );
 }
 
 try {
-  const explicitTarget = parseTarget(process.argv.slice(2));
-  const target = explicitTarget ?? inferTarget();
+  const argv = process.argv.slice(2);
+  if (shouldPrintHelp(argv)) {
+    printHelp();
+    process.exit(0);
+  }
+  const explicitTarget = parseDeployTargetArg(argv);
+  const target = explicitTarget ?? inferDeployTargetFromEnv() ?? "docker";
   printPlan(planFor(target), explicitTarget === null);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
