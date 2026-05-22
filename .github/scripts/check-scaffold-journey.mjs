@@ -16,6 +16,7 @@ import { spawnSync } from "node:child_process";
 const [, , scaffoldDirArg] = process.argv;
 const scaffoldDir = scaffoldDirArg ? resolve(scaffoldDirArg) : process.cwd();
 const pkg = JSON.parse(readFileSync(resolve(scaffoldDir, "package.json"), "utf8"));
+const readme = readFileSync(resolve(scaffoldDir, "README.md"), "utf8");
 
 const REQUIRED_SCRIPTS = [
   "setup",
@@ -111,3 +112,9 @@ assertIncludes(doctor.output, "Postgres reachable", "doctor:prod");
 assertIncludes(doctor.output, "Vercel storage", "doctor:prod");
 assertIncludes(doctor.output, "NP_STORAGE_ADAPTER=local", "doctor:prod");
 console.log("✓ doctor:prod target-aware failure is actionable");
+
+assertIncludes(readme, "Deploy with Vercel", "README");
+assertIncludes(readme, "https://vercel.com/new?utm_source=nexpress", "README");
+assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
+assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
+console.log("✓ README exposes the Vercel deploy entrypoint");

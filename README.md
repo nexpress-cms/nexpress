@@ -40,6 +40,9 @@ from the scaffolded project for a host-specific checklist, then run
 `pnpm run doctor:prod -- --target vercel` as the readiness gate. Doctor
 checks the production env shape, storage choice, job-worker settings,
 Postgres reachability, and migration state before traffic hits the app.
+For the fastest hosted path, push the scaffold to GitHub and import it
+from [Vercel New Project](https://vercel.com/new?utm_source=nexpress&utm_campaign=oss);
+Vercel deployments require S3-compatible media storage.
 
 **What you can customise without touching the monorepo** — full guide in
 [`docs/site-customization.md`](./docs/site-customization.md):
