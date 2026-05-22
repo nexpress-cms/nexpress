@@ -55,6 +55,7 @@ A Next.js 16 App Router project with:
 - Run the first-boot wizard: `pnpm run setup`
 - Start the site: `pnpm dev`, then open `/admin`
 - Publish your first page or post from the admin
+- Generate a host-specific deploy checklist: `pnpm run deploy:plan -- --target vercel`
 - Check production readiness before hosting: `pnpm run doctor:prod`
 - Add a collection: edit `src/collections/<name>.ts`, run `pnpm db:generate && pnpm db:migrate`
 - Read [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md) — architecture overview

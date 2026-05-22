@@ -62,6 +62,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "src/collections/posts.ts": utf8(postsCollectionTemplate()),
     "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
+    "scripts/deploy-plan.ts": utf8(deployPlanScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
@@ -141,6 +142,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         build: "next build",
         start: "next start",
         typecheck: "tsc --noEmit",
+        "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
         postinstall: "tsx scripts/postinstall-notice.ts",
@@ -485,6 +487,10 @@ function doctorScriptTemplate(): string {
   return `import "@nexpress/app/scripts/doctor";\n`;
 }
 
+function deployPlanScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/deploy-plan";\n`;
+}
+
 function devNoticeScriptTemplate(): string {
   return `import "@nexpress/app/scripts/dev-notice";\n`;
 }
@@ -753,6 +759,7 @@ one-line hint for each non-OK line.
 Before deploying, run the production-readiness pass:
 
 \`\`\`bash
+pnpm run deploy:plan -- --target vercel
 pnpm run doctor:prod
 \`\`\`
 
