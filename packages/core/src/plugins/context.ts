@@ -70,6 +70,12 @@ interface RegistrationLike {
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
 }
 
+type RuntimeActionResult = { ok: boolean; data?: unknown; error?: string };
+type RuntimeActionHandler = (
+  data: unknown,
+  ctx: Record<string, unknown>,
+) => Promise<RuntimeActionResult>;
+
 interface BuildContextOptions {
   pluginId: string;
   capabilities: readonly string[];
@@ -153,7 +159,11 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
   // plugin output without each plugin reaching for `console.*`.
   const pluginLog = getScopedLogger({ pluginId });
 
-  return {
+  function registerAction(actionName: string, handler: RuntimeActionHandler): void {
+    registration.actions.set(actionName, (data) => handler(data, runtimeContext));
+  }
+
+  const runtimeContext: Record<string, unknown> = {
     pluginId,
     config,
     capabilities,
@@ -539,7 +549,8 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         assertCap(pluginId, capabilities, "network:fetch");
         // Allowed-host check: manifest.allowedHosts gates every fetch. Empty
         // list means the plugin declared network:fetch but didn't scope it
-        // — refuse rather than allow anything.
+        // — refuse rather than allow anything. A literal "*" is reserved
+        // for plugins whose endpoint host is operator-configured.
         let target: URL;
         try {
           target = new URL(url);
@@ -551,6 +562,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           );
         }
         const hostMatches = allowedHosts.some((pattern) => {
+          if (pattern === "*") return true;
           if (pattern === target.hostname) return true;
           if (pattern.startsWith("*.") && target.hostname.endsWith(pattern.slice(1))) return true;
           return false;
@@ -667,29 +679,17 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     },
 
     actions: {
-      register(
-        actionName: string,
-        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
-      ): void {
-        registration.actions.set(actionName, handler);
+      register(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
       },
-      registerMetric(
-        actionName: string,
-        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
-      ): void {
-        registration.actions.set(actionName, handler);
+      registerMetric(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
       },
-      registerStatus(
-        actionName: string,
-        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
-      ): void {
-        registration.actions.set(actionName, handler);
+      registerStatus(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
       },
-      registerTable(
-        actionName: string,
-        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
-      ): void {
-        registration.actions.set(actionName, handler);
+      registerTable(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
       },
       async dispatch(
         targetPluginId: string,
@@ -708,4 +708,6 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
     },
   };
+
+  return runtimeContext;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeEvent, rollupEvents } from "./index.js";
+import { normalizeEvent, previousUtcDay, rollupEvents } from "./index.js";
 
 describe("analytics-lite", () => {
   it("normalizes sparse event payloads", () => {
@@ -26,5 +26,11 @@ describe("analytics-lite", () => {
       ],
       referrers: [{ referrer: "https://example.com", views: 2 }],
     });
+  });
+
+  it("targets the previous UTC day for scheduled rollups", () => {
+    expect(previousUtcDay(new Date("2026-03-01T00:05:00.000Z")).toISOString()).toBe(
+      "2026-02-28T00:05:00.000Z",
+    );
   });
 });

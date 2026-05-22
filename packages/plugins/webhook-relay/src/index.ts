@@ -67,7 +67,7 @@ export const webhookRelayPlugin = definePlugin<WebhookRelayConfig>({
     author: { name: "NexPress" },
     license: "MIT",
     nexpress: { minVersion: "0.1.0" },
-    allowedHosts: [],
+    allowedHosts: ["*"],
     capabilities: ["network:fetch", "storage:kv"],
     agent: {
       description:

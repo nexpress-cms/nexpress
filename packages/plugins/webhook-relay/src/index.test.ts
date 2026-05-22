@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPayload, signPayload } from "./index.js";
+import { buildPayload, signPayload, webhookRelayPlugin } from "./index.js";
 
 describe("webhook-relay", () => {
   it("builds a compact lifecycle payload", () => {
@@ -28,5 +28,9 @@ describe("webhook-relay", () => {
 
     expect(signPayload(payload, "secret")).toBe(signPayload(payload, "secret"));
     expect(signPayload(payload, "secret")).not.toBe(signPayload(payload, "other"));
+  });
+
+  it("declares wildcard outbound hosts for operator-configured endpoints", () => {
+    expect(webhookRelayPlugin.manifest.allowedHosts).toEqual(["*"]);
   });
 });

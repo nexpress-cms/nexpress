@@ -40,6 +40,12 @@ function rollupKey(date = new Date()): string {
   return `${ROLLUP_PREFIX}${dayKey(date)}`;
 }
 
+export function previousUtcDay(date = new Date()): Date {
+  const previous = new Date(date);
+  previous.setUTCDate(previous.getUTCDate() - 1);
+  return previous;
+}
+
 function cleanString(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -167,9 +173,9 @@ export const analyticsLitePlugin = definePlugin<AnalyticsLiteConfig>({
     {
       id: "daily-rollup",
       cron: "5 0 * * *",
-      description: "Roll up the current day's analytics events into summary counts.",
+      description: "Roll up the previous day's analytics events into summary counts.",
       handler: async (ctx) => {
-        const date = new Date();
+        const date = previousUtcDay();
         const events = (await ctx.storage.listValues<NormalizedAnalyticsEvent>(eventKey(date))).map(
           (row) => row.value,
         );
