@@ -90,6 +90,6 @@ function printSuccess(projectName: string, dockerSetup: boolean, localMode: bool
     "\nAdmin: http://localhost:3000/admin (the first-boot wizard collects your admin account)",
   );
   console.log("Deploy plan: pnpm run deploy:plan -- --target vercel");
-  console.log("Before deploying: pnpm run doctor:prod");
+  console.log("Before deploying: pnpm run doctor:prod -- --target vercel");
   console.log("Deploy guide: https://github.com/nexpress-cms/nexpress/blob/main/docs/deployment.md");
 }

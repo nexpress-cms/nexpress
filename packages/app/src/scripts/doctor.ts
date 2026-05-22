@@ -11,6 +11,12 @@ import { resolve } from "node:path";
 
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
+import {
+  deployTargetTitle,
+  inferDeployTargetFromEnv,
+  parseDeployTargetArg,
+  type DeployTarget,
+} from "./deploy-targets.js";
 
 /**
  * `pnpm doctor` — best-effort diagnosis of the env / runtime
@@ -58,7 +64,10 @@ interface PgClientLike {
 
 interface PgModuleLike {
   default: {
-    Client: new (config: { connectionString: string; connectionTimeoutMillis?: number }) => PgClientLike;
+    Client: new (config: {
+      connectionString: string;
+      connectionTimeoutMillis?: number;
+    }) => PgClientLike;
   };
 }
 
@@ -91,7 +100,7 @@ async function checkPnpmVersion(): Promise<CheckResult> {
     };
   }
   const [major, minor] = match[1]!.split(".").map((n) => Number.parseInt(n, 10));
-  if ((major ?? 0) < 10 || ((major === 10) && (minor ?? 0) < 33)) {
+  if ((major ?? 0) < 10 || (major === 10 && (minor ?? 0) < 33)) {
     return {
       state: "error",
       label: "pnpm 10.33+",
@@ -203,22 +212,22 @@ function checkJobsEnabledProd(): CheckResult | null {
   };
 }
 
-function checkStorageProd(): CheckResult | null {
+function checkStorageProd(target: DeployTarget | null): CheckResult | null {
   if (!PROD_MODE) return null;
   const adapter = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
   const multiNode = process.env.NP_MULTI_NODE === "true" || process.env.NP_MULTI_NODE === "1";
   // Same heuristic verifyStartupSafety() uses — explicit opt-out wins.
-  const explicitSingle =
-    process.env.NP_MULTI_NODE === "false" || process.env.NP_MULTI_NODE === "0";
+  const explicitSingle = process.env.NP_MULTI_NODE === "false" || process.env.NP_MULTI_NODE === "0";
   const containerHint =
     !explicitSingle &&
     Boolean(
       process.env.KUBERNETES_SERVICE_HOST ||
-        process.env.FLY_REGION ||
-        process.env.RENDER_INSTANCE_ID ||
-        process.env.RAILWAY_ENVIRONMENT_NAME,
+      process.env.FLY_REGION ||
+      process.env.RENDER_INSTANCE_ID ||
+      process.env.RAILWAY_ENVIRONMENT_NAME,
     );
-  if (adapter === "local" && (multiNode || containerHint)) {
+  const genericMultiNodeCheck = !target || target === "docker";
+  if (adapter === "local" && ((genericMultiNodeCheck && multiNode) || (!target && containerHint))) {
     return {
       state: "error",
       label: "Storage adapter (production)",
@@ -265,6 +274,68 @@ function checkSchedulerTokenProd(): CheckResult | null {
     };
   }
   return { state: "ok", label: "NP_SCHEDULER_TOKEN" };
+}
+
+function checkTargetStorageProd(target: DeployTarget | null): CheckResult[] {
+  if (!PROD_MODE || !target) return [];
+  const adapter = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
+  const explicitSingle = process.env.NP_MULTI_NODE === "false" || process.env.NP_MULTI_NODE === "0";
+  const targetTitle = deployTargetTitle(target);
+
+  if (target === "vercel") {
+    if (adapter !== "s3") {
+      return [
+        {
+          state: "error",
+          label: `${targetTitle} storage`,
+          detail: `NP_STORAGE_ADAPTER=${adapter}`,
+          hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy.",
+        },
+      ];
+    }
+    return [{ state: "ok", label: `${targetTitle} storage`, detail: "S3-compatible" }];
+  }
+
+  if ((target === "railway" || target === "render" || target === "fly") && adapter === "local") {
+    return [
+      {
+        state: explicitSingle ? "warn" : "error",
+        label: `${targetTitle} storage`,
+        detail: explicitSingle ? "local + NP_MULTI_NODE=false" : "local storage",
+        hint: explicitSingle
+          ? "Confirm the service has a persistent disk/volume and regular backups."
+          : "Managed container filesystems are not durable across nodes/redeploys. Set NP_STORAGE_ADAPTER=s3, or set NP_MULTI_NODE=false only for a deliberate single-node persistent-volume deploy.",
+      },
+    ];
+  }
+
+  return [{ state: "ok", label: `${targetTitle} storage`, detail: adapter }];
+}
+
+function checkTargetWorkerProd(target: DeployTarget | null): CheckResult[] {
+  if (!PROD_MODE || !target) return [];
+  const jobsEnabled = process.env.NP_ENABLE_JOBS === "1" || process.env.NP_ENABLE_JOBS === "true";
+  if (!jobsEnabled) return [];
+  const targetTitle = deployTargetTitle(target);
+
+  if (target === "vercel") {
+    return [
+      {
+        state: "warn",
+        label: `${targetTitle} jobs worker`,
+        detail: "NP_ENABLE_JOBS is set",
+        hint: "Vercel handles scheduled HTTP cron, but it does not run a long-lived pg-boss worker. Use a separate worker host for background jobs that must drain continuously.",
+      },
+    ];
+  }
+
+  return [
+    {
+      state: "ok",
+      label: `${targetTitle} jobs worker`,
+      detail: "NP_ENABLE_JOBS is set; run a separate `pnpm worker` process/service",
+    },
+  ];
 }
 
 async function loadPg(): Promise<unknown> {
@@ -521,8 +592,14 @@ function render(result: CheckResult): string {
 }
 
 async function main(): Promise<void> {
+  const deployTarget = PROD_MODE
+    ? (parseDeployTargetArg(process.argv.slice(2)) ?? inferDeployTargetFromEnv())
+    : null;
   if (PROD_MODE) {
-    console.log(`${COLOR.dim}Running in --prod mode: deploy-readiness checks.${COLOR.reset}\n`);
+    const targetDetail = deployTarget ? ` for ${deployTarget}` : "";
+    console.log(
+      `${COLOR.dim}Running in --prod mode${targetDetail}: deploy-readiness checks.${COLOR.reset}\n`,
+    );
   }
   const checks: Array<CheckResult> = [];
   checks.push(await checkNodeVersion());
@@ -540,9 +617,11 @@ async function main(): Promise<void> {
   for (const result of [
     checkSecretLengthProd(),
     checkJobsEnabledProd(),
-    checkStorageProd(),
+    checkStorageProd(deployTarget),
+    ...checkTargetStorageProd(deployTarget),
     checkSiteUrlProd(),
     checkSchedulerTokenProd(),
+    ...checkTargetWorkerProd(deployTarget),
   ]) {
     if (result) checks.push(result);
   }

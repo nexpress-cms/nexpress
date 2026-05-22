@@ -37,9 +37,9 @@ site name, and optional sample content.
 
 Before deploying the site, run `pnpm run deploy:plan -- --target vercel`
 from the scaffolded project for a host-specific checklist, then run
-`pnpm run doctor:prod` as the readiness gate. Doctor checks the production
-env shape, storage choice, job-worker settings, Postgres reachability, and
-migration state before traffic hits the app.
+`pnpm run doctor:prod -- --target vercel` as the readiness gate. Doctor
+checks the production env shape, storage choice, job-worker settings,
+Postgres reachability, and migration state before traffic hits the app.
 
 **What you can customise without touching the monorepo** — full guide in
 [`docs/site-customization.md`](./docs/site-customization.md):
