@@ -1,5 +1,4 @@
 import { and, asc, count, desc, eq, notInArray, sql, type SQL } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDocumentById } from "../collections/pipeline.js";
@@ -170,7 +169,7 @@ async function doCreateComment(input: NpCommentCreateInput): Promise<NpCommentRo
   //     reply would publish under content the site hasn't accepted
   //     yet (and would fire a `comment.reply` notification to an
   //     author whose own comment is still pending) — see #127
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   let parentAuthorId: string | null = null;
   if (input.parentId) {
     const [parent] = (await db
@@ -424,7 +423,7 @@ export async function listComments(
   targetId: string,
   options: NpCommentListOptions = {},
 ): Promise<NpCommentListResult> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
   const order = options.order ?? "newest";
@@ -498,7 +497,7 @@ export interface NpCommentUpdateInput {
 
 export async function updateComment(input: NpCommentUpdateInput): Promise<NpCommentRow> {
   validateBody(input.bodyMd);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select()
     .from(npComments)
@@ -664,7 +663,7 @@ export interface NpCommentDeleteInput {
 }
 
 export async function deleteComment(input: NpCommentDeleteInput): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select()
     .from(npComments)
@@ -706,7 +705,7 @@ export interface NpCommentHideInput {
 }
 
 export async function hideComment(input: NpCommentHideInput): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select()
     .from(npComments)
@@ -746,7 +745,7 @@ export interface NpCommentRestoreInput {
 }
 
 export async function restoreComment(input: NpCommentRestoreInput): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select()
     .from(npComments)
@@ -805,7 +804,7 @@ async function loadCommentForStaffOp(commentId: string): Promise<{
   row: NpCommentRow;
   siteId: string;
 }> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select()
     .from(npComments)
@@ -825,7 +824,7 @@ export async function staffHideComment(
   reason?: string | null,
 ): Promise<void> {
   const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   await db
     .update(npComments)
     .set({
@@ -868,7 +867,7 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
       },
     ]);
   }
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   await db
     .update(npComments)
     .set({
@@ -889,7 +888,7 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
 
 export async function staffDeleteComment(commentId: string, staffUserId: string): Promise<void> {
   const { row: existing, siteId } = await loadCommentForStaffOp(commentId);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   await db
     .update(npComments)
     .set({ status: "deleted", bodyMd: "", bodyHtml: "" })

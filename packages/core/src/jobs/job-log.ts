@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { and, asc, eq, gte, lt } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
@@ -103,7 +102,7 @@ export async function listJobLogs(
 ): Promise<NpJobLogEntry[]> {
   const limit = Math.min(Math.max(1, options.limit ?? 200), 1000);
   const offset = Math.max(0, options.offset ?? 0);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
 
   const rows = (await db
     .select()
@@ -147,7 +146,7 @@ export const DEFAULT_JOB_LOG_RETENTION_MS =
  * useful retention summary.
  */
 export async function pruneJobLogsOlderThan(cutoff: Date): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const deleted = (await db
     .delete(npJobLogs)
     .where(lt(npJobLogs.createdAt, cutoff))
@@ -160,7 +159,7 @@ export async function pruneJobLogsOlderThan(cutoff: Date): Promise<number> {
  * without paying for the page payload until the operator expands.
  */
 export async function countJobLogs(jobId: string, sinceCreatedAt?: Date): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const where = sinceCreatedAt
     ? and(eq(npJobLogs.jobId, jobId), gte(npJobLogs.createdAt, sinceCreatedAt))
     : eq(npJobLogs.jobId, jobId);

@@ -1,5 +1,4 @@
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npBans } from "../db/schema/community.js";
@@ -64,7 +63,7 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
     ]);
   }
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const byUserId = input.actor.kind === "staff" ? input.actor.user.id : null;
   const byMemberId = input.actor.kind === "member" ? input.actor.memberId : null;
 
@@ -114,7 +113,7 @@ export async function issueBan(input: IssueBanInput): Promise<NpBanRow> {
 }
 
 export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Active bans only — expired/revoked rows aren't shown by default.
   // Staff who want to see history can hit the audit log.
   // The `or()` helper wraps its branches in parens; a raw `sql` template
@@ -138,7 +137,7 @@ export async function listBansForMember(memberId: string): Promise<NpBanRow[]> {
         or(isNull(npBans.expiresAt), gt(npBans.expiresAt, now)),
       ),
     )
-    .orderBy(desc(npBans.createdAt))) as NpBanRow[];
+    .orderBy(desc(npBans.createdAt)));
 }
 
 export interface RevokeBanInput {
@@ -156,7 +155,7 @@ export async function revokeBan(input: RevokeBanInput): Promise<void> {
   // request site, reject when the loaded row is in a different
   // tenant, and pin `siteId` in the delete predicate so the
   // read-check and the write cannot drift.
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const requestSiteId = await requireSiteId();
   const [existing] = (await db
     .select()

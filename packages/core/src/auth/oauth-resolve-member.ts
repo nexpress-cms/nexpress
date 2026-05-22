@@ -126,7 +126,7 @@ async function loadMember(
 export async function resolveMemberOAuthLogin(
   input: ResolveMemberOAuthLoginInput,
 ): Promise<ResolveMemberOAuthLoginResult> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const { provider, profile } = input;
 
   // Step 1: durable lookup.

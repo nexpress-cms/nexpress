@@ -319,7 +319,7 @@ describe("introspectThemeSettingsSchema", () => {
         max: z.number().default(100),
       })
       .refine((v) => v.min <= v.max, { message: "min <= max" });
-    const fields = introspectThemeSettingsSchema(schema as never);
+    const fields = introspectThemeSettingsSchema(schema);
     expect(fields).toHaveLength(2);
     expect(fields[0]?.name).toBe("min");
     expect(fields[1]?.name).toBe("max");
@@ -333,7 +333,7 @@ describe("introspectThemeSettingsSchema", () => {
       })
       .refine((v) => v.a < v.b)
       .refine((v) => v.b > 0);
-    const fields = introspectThemeSettingsSchema(schema as never);
+    const fields = introspectThemeSettingsSchema(schema);
     expect(fields).toHaveLength(2);
   });
 });

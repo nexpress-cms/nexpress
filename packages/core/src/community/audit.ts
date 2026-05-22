@@ -1,5 +1,4 @@
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npAuditEvents } from "../db/schema/community.js";
@@ -56,7 +55,7 @@ export interface AuditEventRow {
 }
 
 export async function recordAuditEvent(input: RecordAuditEventInput): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   try {
     // Phase 17 — fill `site_id` from the request resolver when
     // the caller doesn't pin it explicitly. Resolver returns
@@ -119,7 +118,7 @@ export interface ListAuditOptions {
 export async function listAuditEvents(
   options: ListAuditOptions = {},
 ): Promise<{ events: AuditEventRow[]; totalDocs: number }> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 

@@ -1,5 +1,4 @@
 import { and, count, desc, eq, isNull, inArray } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npNotifications } from "../db/schema/community.js";
@@ -75,7 +74,7 @@ export async function createNotification(
     if (!enabled) return null;
   }
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Phase 18 — site comes from the request resolver. The
   // notification belongs to the tenant where the actor's
   // action happened (a reaction on tenant A → notification
@@ -116,7 +115,7 @@ export async function listNotifications(
   memberId: string,
   options: ListNotificationsOptions = {},
 ): Promise<NpNotificationListResult> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 
@@ -154,7 +153,7 @@ export async function listNotifications(
 }
 
 export async function unreadNotificationCount(memberId: string): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Phase 18 — count only notifications on the current site.
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
@@ -182,7 +181,7 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
       { field: "notificationIds", message: "Up to 200 ids per request" },
     ]);
   }
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Issue #219 — scope the update to the current site so a member
   // active on multiple tenants can't mark IDs read across tenants
   // by passing a site-A request that names site-B notification ids.
@@ -209,7 +208,7 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
 }
 
 export async function markAllNotificationsRead(memberId: string): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Phase 18 — "mark all read" only marks the current site's
   // inbox so a member doesn't accidentally clear another
   // tenant's unread count when toggling on this one.
@@ -238,7 +237,7 @@ export async function assertOwnsNotification(
   memberId: string,
   notificationId: string,
 ): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [row] = (await db
     .select({ memberId: npNotifications.memberId })
     .from(npNotifications)

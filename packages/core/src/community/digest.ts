@@ -214,7 +214,7 @@ export interface RunDigestSweepResult {
 
 export async function runDigestSweep(input: RunDigestSweepInput): Promise<RunDigestSweepResult> {
   const now = input.now ?? new Date();
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const adapter = getEmailAdapter();
   const log = getLogger();
 

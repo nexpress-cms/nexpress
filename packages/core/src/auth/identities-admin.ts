@@ -1,5 +1,4 @@
 import { and, desc, eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { recordAuditEvent } from "../community/audit.js";
@@ -47,7 +46,7 @@ export interface NpMemberIdentityRow {
 }
 
 async function assertUserExists(userId: string): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [row] = (await db
     .select({ id: npUsers.id })
     .from(npUsers)
@@ -57,7 +56,7 @@ async function assertUserExists(userId: string): Promise<void> {
 }
 
 async function assertMemberExists(memberId: string): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [row] = (await db
     .select({ id: npMembers.id })
     .from(npMembers)
@@ -68,7 +67,7 @@ async function assertMemberExists(memberId: string): Promise<void> {
 
 export async function listUserIdentities(userId: string): Promise<NpUserIdentityRow[]> {
   await assertUserExists(userId);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = (await db
     .select()
     .from(npUserOAuthIdentities)
@@ -79,7 +78,7 @@ export async function listUserIdentities(userId: string): Promise<NpUserIdentity
 
 export async function listMemberIdentities(memberId: string): Promise<NpMemberIdentityRow[]> {
   await assertMemberExists(memberId);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = (await db
     .select()
     .from(npMemberIdentities)
@@ -98,7 +97,7 @@ export async function revokeUserIdentity(
   identityId: string,
   actor: RevokeIdentityInput,
 ): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Fetch the row first so the audit event captures the provider /
   // subject — once deleted we'd lose the forensic context.
   const [existing] = (await db
@@ -145,7 +144,7 @@ export async function revokeMemberIdentity(
   identityId: string,
   actor: RevokeIdentityInput,
 ): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select()
     .from(npMemberIdentities)

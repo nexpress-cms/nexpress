@@ -34,7 +34,7 @@ export async function isMemberBanned(
   db?: NodePgDatabase<Record<string, unknown>>,
   now: Date = new Date(),
 ): Promise<boolean> {
-  const handle = db ?? (getDb() as unknown as NodePgDatabase<Record<string, unknown>>);
+  const handle = db ?? (getDb());
   // Phase 18 — bans are tenant-scoped. A site-wide ban on
   // tenant A doesn't block writes on tenant B; the ban row
   // includes `site_id` and we filter by the resolver's
@@ -166,7 +166,7 @@ export async function memberCan(
   target: MemberCanTarget,
   options: MemberCanOptions = {},
 ): Promise<boolean> {
-  const db = options.db ?? (getDb() as unknown as NodePgDatabase<Record<string, unknown>>);
+  const db = options.db ?? (getDb());
   const now = options.now ?? new Date();
   const scopes = target.scopes ?? [];
 

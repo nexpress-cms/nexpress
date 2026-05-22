@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npFollows, npMembers } from "../db/schema/community.js";
@@ -64,7 +63,7 @@ export async function follow(input: NpFollowInput): Promise<NpFollowRow> {
 
 async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
 
   // Validate the target exists so a typo doesn't quietly insert a
   // dangling follow row. `thread` / `tag` targets had no validation
@@ -155,7 +154,7 @@ async function doFollow(input: NpFollowInput): Promise<NpFollowRow> {
 
 export async function unfollow(input: NpFollowInput): Promise<void> {
   assertSupportedTarget(input.targetType);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   await db
     .delete(npFollows)
@@ -171,7 +170,7 @@ export async function unfollow(input: NpFollowInput): Promise<void> {
 
 export async function isFollowing(input: NpFollowInput): Promise<boolean> {
   assertSupportedTarget(input.targetType);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ id: npFollows.id })
@@ -196,7 +195,7 @@ export async function listFollowing(
   followerId: string,
   options: { targetType?: FollowTarget; limit?: number; offset?: number } = {},
 ): Promise<NpFollowRow[]> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
   // Phase 18 — scope to current site. A member who follows on

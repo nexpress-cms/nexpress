@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
@@ -96,7 +95,7 @@ function readQuota(raw: unknown): NpMemberUploadQuota {
 }
 
 export async function getCommunitySettings(): Promise<NpCommunitySettings> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const { getCurrentSiteId } = await import("../sites/context.js");
   const { NP_DEFAULT_SITE_ID } = await import("../sites/registry.js");
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
@@ -224,7 +223,7 @@ export async function updateCommunitySettings(
 ): Promise<NpCommunitySettings> {
   const current = await getCommunitySettings();
   const next = validateCommunitySettingsPatch(current, patch);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // #272 — write: must NOT silently fall through. A staff member
   // on tenant A who saves community settings without a resolved
   // site context would otherwise overwrite the default tenant's

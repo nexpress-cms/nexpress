@@ -2,7 +2,6 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 
 import { desc, eq, gt, lt } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { readEnvPositiveInt } from "../config/env.js";
@@ -84,7 +83,7 @@ export async function recordHeartbeat(
   workerId: string,
   meta: Record<string, unknown> = {},
 ): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const now = new Date();
   await db
     .insert(npWorkerHeartbeats)
@@ -106,7 +105,7 @@ export async function recordHeartbeat(
  * shutdown rather than the row drifting into `unhealthy`.
  */
 export async function markWorkerStopped(workerId: string): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   await db
     .update(npWorkerHeartbeats)
     .set({ status: "stopped", lastSeenAt: new Date() })
@@ -119,7 +118,7 @@ export async function markWorkerStopped(workerId: string): Promise<void> {
  * first so the admin's first row is the freshest worker.
  */
 export async function listWorkerHealth(now: Date = new Date()): Promise<NpWorkerHealthSummary> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = (await db
     .select()
     .from(npWorkerHeartbeats)
@@ -206,7 +205,7 @@ export function startHeartbeatLoop(
 export async function purgeStaleWorkers(
   olderThan: Date = new Date(Date.now() - WORKER_STALE_THRESHOLD_MS * 10),
 ): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const deleted = (await db
     .delete(npWorkerHeartbeats)
     .where(lt(npWorkerHeartbeats.lastSeenAt, olderThan))
@@ -216,7 +215,7 @@ export async function purgeStaleWorkers(
 
 /** Return only the rows currently considered alive. Cheap probe for boot health. */
 export async function countAliveWorkers(now: Date = new Date()): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const cutoff = new Date(now.getTime() - WORKER_STALE_THRESHOLD_MS);
   const rows = (await db
     .select({ id: npWorkerHeartbeats.id })

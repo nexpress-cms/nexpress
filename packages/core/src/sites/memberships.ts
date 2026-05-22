@@ -44,7 +44,7 @@ export async function listSiteMemberships(
   return rows.map((row) => ({
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NpUserRole,
+    role: row.role,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }));
@@ -61,7 +61,7 @@ export async function listMembershipsForUser(
   return rows.map((row) => ({
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NpUserRole,
+    role: row.role,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }));
@@ -86,7 +86,7 @@ export async function getMembership(
   return {
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NpUserRole,
+    role: row.role,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -111,7 +111,7 @@ export async function grantSiteMembership(
   return {
     siteId: row.siteId,
     userId: row.userId,
-    role: row.role as NpUserRole,
+    role: row.role,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -193,7 +193,7 @@ export async function resolveUserRoleOnSite(
   if (membership) return membership.role;
 
   // Fallback to global default role.
-  return row.role as NpUserRole;
+  return row.role;
 }
 
 /**
