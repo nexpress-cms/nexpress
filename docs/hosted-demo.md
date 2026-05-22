@@ -60,6 +60,61 @@ The content pack should be deterministic. Re-running the reset should recreate
 the same pages, posts, navigation, active theme, plugin config, and sample media
 references.
 
+### Content Pack v1
+
+Use the bundled `docs` theme for the first hosted demo. It demonstrates a
+structured content site, search, page templates, rich text, navigation, and
+authoring without needing custom visual design work before the demo is live.
+
+The reset script should create this baseline:
+
+| Area         | Baseline                                                                            |
+| ------------ | ----------------------------------------------------------------------------------- |
+| Site         | `NexPress Demo`, `SITE_URL` public origin, docs theme active                        |
+| Home         | `/` explaining the CMS/admin/plugin/theme workflow                                  |
+| Admin tour   | `/try-admin` with reset notice and demo-login link                                  |
+| Blog         | `/blog` plus 4-6 posts covering setup, authoring, plugins, deployment               |
+| Page builder | `/showcase` with callout, latest posts, stats, pricing, newsletter, embed           |
+| Plugins      | `/plugins` describing reading-time, seo-audit, forum, analytics-lite, webhook-relay |
+| Navigation   | Header: Home, Blog, Showcase, Plugins, Try Admin                                    |
+| Footer       | Docs, Deployment, GitHub, Try Admin                                                 |
+| Media        | 3-5 images under the storage prefix `demo/baseline/`                                |
+| Demo user    | `demo@nexpress.local`, non-super-admin, content-authoring permissions only          |
+
+Content rules:
+
+- Keep slugs stable. Reset should update/recreate the same slugs, not mint new
+  timestamped records.
+- Mark baseline rows with seed metadata where the existing seed pipeline
+  supports it. For demo-only rows that cannot use framework seed metadata, use a
+  stable convention such as `demo:` in internal titles or a demo-owned settings
+  key.
+- Keep media replaceable. Referenced files should live under
+  `demo/baseline/`; visitor uploads should live under `demo/uploads/`.
+- Avoid external webhooks in baseline config. Analytics and webhook examples can
+  be enabled only in local/no-op mode until explicit outbound allowlists exist.
+- Keep copy short enough that visitors can understand the Admin in one minute.
+
+### Implementation Shape
+
+Start in the generated demo repository, not in framework packages:
+
+```text
+scripts/demo-reset.ts
+src/app/api/internal/demo-reset/route.ts
+src/app/(admin)/admin/demo-login/page.tsx
+src/app/api/admin/demo-login/route.ts
+src/lib/demo-mode.ts
+```
+
+Only promote code back into `@nexpress/app` or `@nexpress/core` once the demo
+has proved which helpers are broadly useful. Good promotion candidates are:
+
+- `isDemoMode()`
+- `isDemoPrincipal(principal)`
+- a reusable demo deny helper for API routes
+- admin banner slot support
+
 ## Admin Demo Model
 
 Start with a shared reset-style Admin demo. It is less isolated than per-session
@@ -142,6 +197,32 @@ Implementation options:
 - A `pnpm demo:reset` script in the demo repo.
 - A protected `POST /api/internal/demo-reset` route called by Vercel Cron.
 - A small lock row or advisory lock to prevent concurrent resets.
+
+Reset algorithm:
+
+1. Acquire a database advisory lock or a dedicated `demo.reset.lock` setting.
+2. Load the current active site and verify `NP_DEMO_MODE=1`.
+3. Disable or revoke active demo sessions by bumping the demo user's token
+   version.
+4. Delete visitor-created content in demo-owned collections.
+5. Delete demo-owned navigation rows.
+6. Delete demo-owned plugin config and plugin storage rows.
+7. Delete demo-owned media rows and storage objects under `demo/uploads/`.
+8. Recreate the baseline media under `demo/baseline/`.
+9. Activate the baseline theme and settings.
+10. Run `seedAll(actor, theme)` where it fits, then upsert demo-only pages and
+    plugin showcase content.
+11. Recreate header/footer navigation.
+12. Recreate the demo user with only the allowed demo permissions.
+13. Write a `demo.reset.lastCompletedAt` setting and release the lock.
+
+Failure behavior:
+
+- If the lock is held, return `409` for manual calls and let cron skip.
+- If baseline seed fails, return non-2xx so Vercel Cron records the failure.
+- Never partially delete operator accounts or non-demo storage prefixes.
+- Log reset start/end/error with enough detail to diagnose without exposing
+  secrets.
 
 ## Environment
 
