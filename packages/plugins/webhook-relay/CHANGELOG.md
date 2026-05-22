@@ -1,0 +1,19 @@
+# @nexpress/plugin-webhook-relay
+
+## 0.2.0
+
+### Minor Changes
+
+- b331118: Add bundled analytics-lite and webhook-relay plugin examples, and derive admin,
+  page-route, and scheduled-task capabilities from `definePlugin()` declarations.
+  Also derive page-route and scheduled-task catalog metadata and add typed admin
+  action result helpers. Add plugin storage append/listValues helpers for
+  event-log style plugin data. Add typed admin action registration helpers and
+  pass the runtime context into action handlers. Update plugin scaffolds/tests
+  around the newer authoring surface and document the `allowedHosts: ["*"]`
+  escape hatch for operator-configured integration endpoints.
+
+### Patch Changes
+
+- Updated dependencies [b331118]
+  - @nexpress/plugin-sdk@0.3.8

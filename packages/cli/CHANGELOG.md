@@ -1,5 +1,16 @@
 # create-nexpress
 
+## 0.1.23
+
+### Patch Changes
+
+- b879ba1: Refresh the scaffold onboarding copy so the package README, generated project
+  README, and CLI success output all point operators through `pnpm run setup`,
+  the first-site checklist, `doctor:prod`, and the deployment guide.
+- b4089ee: Add a scaffolded `pnpm run deploy:plan` command that prints target-specific deployment steps, environment variables, storage guidance, worker notes, and the final `doctor:prod` readiness gate.
+- 7d5a684: Let `pnpm run doctor:prod` accept `--target vercel|railway|render|fly|docker` so production readiness checks can enforce host-specific storage and worker requirements.
+- ae76316: Add a Vercel deploy entrypoint to scaffolded README files with the required preflight commands, S3 storage warning, and production environment checklist.
+
 ## 0.1.22
 
 ### Patch Changes
