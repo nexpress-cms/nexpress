@@ -227,7 +227,7 @@ jobs:
   # vs. tarball, which is the only safe difference until the
   # packages are published).
   scaffold-smoke:
-    name: scaffold smoke (typecheck a fresh scaffold)
+    name: scaffold smoke (fresh scaffold journey)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -356,6 +356,11 @@ jobs:
             fi
           done
           exit $fail
+
+      - name: Journey smoke — deploy readiness commands
+        run: |
+          node "$GITHUB_WORKSPACE/.github/scripts/check-scaffold-journey.mjs" \
+            "$RUNNER_TEMP/scaffold/smoke-app"
 
       - name: Verify monorepo lockfile is untouched
         run: |
