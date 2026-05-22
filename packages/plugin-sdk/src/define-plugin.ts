@@ -113,7 +113,9 @@ function deriveProvides(
     .filter((t): t is string => typeof t === "string");
   const routePaths = (definition.routes ?? []).map((r) => `${r.method} ${r.path}`);
   const pageRoutePatterns = (definition.pageRoutes ?? []).map((r) => r.pattern);
-  const scheduledTaskIds = (definition.scheduled ?? []).map((task) => task.id);
+  const scheduledTaskIds = (definition.scheduled ?? [])
+    .map((task) => task.id)
+    .filter((id): id is string => typeof id === "string");
   const hookNames = Object.keys(definition.hooks ?? {});
   // `admin.settings/widgets/actions/tables/collectionTabs/dashboardWidgets`
   // — flatten to the single label "admin" so we don't enumerate every id.

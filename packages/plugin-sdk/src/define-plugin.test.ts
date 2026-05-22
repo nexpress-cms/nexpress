@@ -141,4 +141,16 @@ describe("definePlugin — provides derivation (regression)", () => {
     expect(plugin.manifest.provides.pageRoutes).toEqual(["/events/:slug"]);
     expect(plugin.manifest.provides.scheduledTasks).toEqual(["sync-events"]);
   });
+
+  it("skips malformed scheduled entries while deriving provides", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      scheduled: [
+        { id: "valid", cron: "*/15 * * * *", handler: () => undefined },
+        { cron: "*/15 * * * *", handler: () => undefined } as never,
+      ],
+    });
+
+    expect(plugin.manifest.provides.scheduledTasks).toEqual(["valid"]);
+  });
 });
