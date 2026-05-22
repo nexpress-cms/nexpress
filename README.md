@@ -4,7 +4,7 @@ Next.js-based open-source CMS for developers building content-managed
 sites. Self-hostable on a single Postgres + a Next.js app; horizontally
 scalable when you flip on S3 + an upstream rate limiter.
 
-> **Status — pre-1.0 (`v0.2.x`).** Public APIs are committed per
+> **Status — pre-1.0 (`v0.3.x`).** Public APIs are committed per
 > [the Stability section in `AGENTS.md`](./AGENTS.md#stability-v01).
 > Breaking changes during `0.x` ride a minor bump and ship with a
 > CHANGELOG line you can search for.
@@ -27,13 +27,18 @@ npx create-nexpress my-site
 cd my-site
 pnpm install
 docker compose -f docker/docker-compose.yml up -d db
-pnpm run setup    # browser env wizard — DB connection, NP_SECRET, storage
+pnpm run setup    # browser env wizard — DB, NP_SECRET, storage, migrations
 pnpm dev
 ```
 
 Site at `localhost:3000`, admin at `localhost:3000/admin`. The first
 `/admin` visit on an empty DB runs a 2-step wizard for the admin account,
 site name, and optional sample content.
+
+Before deploying the site, run `pnpm run doctor:prod` from the scaffolded
+project. It checks the production env shape, storage choice, job-worker
+settings, Postgres reachability, and migration state before traffic hits
+the app.
 
 **What you can customise without touching the monorepo** — full guide in
 [`docs/site-customization.md`](./docs/site-customization.md):
