@@ -131,9 +131,7 @@ export function fromArctic(
             code: string,
             verifier: string,
           ) => Promise<ArcticLikeTokens>)(code, codeVerifier)
-        : await (arctic.validateAuthorizationCode as unknown as (
-            code: string,
-          ) => Promise<ArcticLikeTokens>)(code);
+        : await (arctic.validateAuthorizationCode)(code);
       return opts.fetchProfile(tokens.accessToken(), tokens);
     },
   };

@@ -50,6 +50,31 @@ describe("scaffoldBlockPlugin", () => {
     expect(source).toMatch(/type: "myCallout\.example"/);
   });
 
+  it("keeps static block package metadata aligned with the shared plugin baseline", async () => {
+    const result = await scaffoldBlockPlugin({ slug: "baseline-block", outDir: workdir });
+    const pkg = JSON.parse(await readFile(join(result.pluginDir, "package.json"), "utf-8")) as {
+      files: string[];
+      engines: Record<string, string>;
+      exports: Record<string, { types: string; import: string }>;
+      peerDependencies: Record<string, string>;
+      scripts: Record<string, string>;
+    };
+
+    expect(pkg.files).toEqual(["dist"]);
+    expect(pkg.engines.node).toBe(">=20");
+    expect(pkg.exports["."]).toEqual({
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+    });
+    expect(pkg.peerDependencies.react).toBe("^19.0.0");
+    expect(pkg.scripts).toEqual({
+      build: "tsup",
+      dev: "tsup --watch --no-clean",
+      clean: "rm -rf dist",
+      typecheck: "tsc --noEmit",
+    });
+  });
+
   it("preserves npm scope when the slug already has one", async () => {
     const result = await scaffoldBlockPlugin({
       slug: "@acme/banner",
@@ -66,9 +91,9 @@ describe("scaffoldBlockPlugin", () => {
 
   it("refuses to overwrite an existing directory", async () => {
     await scaffoldBlockPlugin({ slug: "duplicate", outDir: workdir });
-    await expect(
-      scaffoldBlockPlugin({ slug: "duplicate", outDir: workdir }),
-    ).rejects.toThrow(/Refusing to overwrite/);
+    await expect(scaffoldBlockPlugin({ slug: "duplicate", outDir: workdir })).rejects.toThrow(
+      /Refusing to overwrite/,
+    );
   });
 
   it("emits an extra client entry + boundary wiring when interactive", async () => {

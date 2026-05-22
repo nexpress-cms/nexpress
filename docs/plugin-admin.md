@@ -20,7 +20,9 @@ optional; declare what you actually need.
 import { definePlugin } from "@nexpress/plugin-sdk";
 
 export default definePlugin({
-  manifest: { /* ... */ },
+  manifest: {
+    /* ... */
+  },
 
   admin: {
     settings: {
@@ -81,12 +83,13 @@ export default definePlugin({
     ctx.actions.register("listFailures", async () => ({
       ok: true,
       data: {
-        rows: await ctx.content.find("posts", { where: { status: "archived" } })
-          .then((r) => r.docs.map((d) => ({
+        rows: await ctx.content.find("posts", { where: { status: "archived" } }).then((r) =>
+          r.docs.map((d) => ({
             documentId: d.id,
             reason: "stale",
             at: d.updatedAt,
-          }))),
+          })),
+        ),
         total: 42,
       },
     }));
@@ -197,10 +200,19 @@ Requires the `admin:dashboard` capability.
 
 ## Wiring handlers
 
-Every widget / action / table references a handler registered via
-`ctx.actions.register(actionId, handler)` during `setup`. Handlers have
-full `ctx` access (content, media, storage, settings, http, …) and
-return the standard `{ ok, data?, error? }` shape.
+Every widget / action / table references a handler registered during
+`setup`. Use the typed helpers when the action backs a known admin
+surface:
+
+- `ctx.actions.registerMetric(actionId, handler)` for metric widgets.
+- `ctx.actions.registerStatus(actionId, handler)` for status widgets.
+- `ctx.actions.registerTable(actionId, handler)` for tables.
+- `ctx.actions.register(actionId, handler)` for general buttons.
+
+Handlers have full `ctx` access (content, media, storage, settings, http,
+…) and return the standard `{ ok, data?, error? }` shape. The SDK also
+exports `npAdminMetric()`, `npAdminStatus()`, `npAdminTable()`, and
+`npAdminActionError()` to build the common result payloads.
 
 The admin dispatches through `POST /api/plugins/:id/actions/:actionId`,
 which is admin-only + CSRF-protected + rate-limited by the existing

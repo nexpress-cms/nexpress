@@ -1,5 +1,4 @@
 import { and, count, eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npComments, npReactions } from "../db/schema/community.js";
@@ -92,7 +91,7 @@ async function deriveScopesFor(
   input: NpReactToInput,
 ): Promise<ReadonlyArray<{ type: CommunityScope; id: string }>> {
   if (input.targetType !== "comment") return [];
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [comment] = (await db
     .select({ targetType: npComments.targetType })
     .from(npComments)
@@ -103,7 +102,7 @@ async function deriveScopesFor(
 }
 
 async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
 
   // Phase 18 — derive site_id from the target so the reaction
   // is grouped with its target's tenant. Today only `comment`
@@ -212,7 +211,7 @@ async function doAddReaction(input: NpReactToInput): Promise<NpReactionRow> {
 
 export async function removeReaction(input: NpReactToInput): Promise<void> {
   validateKind(input.kind);
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Look up the reaction's recipient BEFORE deleting so the
   // reputation event has the right context. We only emit
   // `reaction.removed` when there was actually something to remove
@@ -280,7 +279,7 @@ export async function countReactions(
   targetType: string,
   targetId: string,
 ): Promise<Record<string, number>> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = (await db
     .select({ kind: npReactions.kind, total: count() })
     .from(npReactions)
@@ -300,7 +299,7 @@ export async function listMemberReactions(
   targetId: string,
   memberId: string,
 ): Promise<string[]> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = (await db
     .select({ kind: npReactions.kind })
     .from(npReactions)
@@ -331,7 +330,7 @@ export async function assertReactableExists(targetType: string, targetId: string
       },
     ]);
   }
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [comment] = (await db
     .select({ id: npComments.id, status: npComments.status })
     .from(npComments)

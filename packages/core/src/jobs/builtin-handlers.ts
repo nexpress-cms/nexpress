@@ -319,7 +319,7 @@ async function loadRevalidateTag(): Promise<((tag: string) => void) | null> {
   // and 16.x without a hard pin: pre-16 ignores extra args.
   return (tag: string) => {
     if (revalidateTag.length >= 2) {
-      (revalidateTag as (tag: string, profile: string) => void)(tag, "default");
+      (revalidateTag)(tag, "default");
     } else {
       (revalidateTag as (tag: string) => void)(tag);
     }

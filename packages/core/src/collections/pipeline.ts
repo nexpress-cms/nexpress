@@ -673,7 +673,7 @@ async function initSaveContext(
   // client's condition-aware resolver introduced in #759 — a
   // hidden field can't be filled by the operator, so requiring
   // it on save would block writes the operator can't fix.
-  const validatedData = toRecord(getCollectionZodSchema(config, data as Record<string, unknown>).parse(data));
+  const validatedData = toRecord(getCollectionZodSchema(config, data).parse(data));
   const operation: "create" | "update" = docId ? "update" : "create";
   // Read the original doc through the outer tx when one is
   // provided so the read sees the tx's own pending writes
@@ -1505,7 +1505,7 @@ async function deleteDocumentImpl(
     await deleteChildTables(tx, registration.childTables, docId);
     await deleteJoinTables(tx, registration.joinTables, docId);
     await tx
-      .delete(npMediaRefs as unknown as PgTable)
+      .delete(npMediaRefs)
       .where(
         sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), docId)}`,
       );
@@ -1521,16 +1521,16 @@ async function deleteDocumentImpl(
     // both carry `target_id=$docId`, so a single SELECT covers both.
     const commentIdRows = (await tx
       .select({
-        id: getTableColumn(npComments as unknown as PgTable, "id"),
+        id: getTableColumn(npComments, "id"),
       })
-      .from(npComments as unknown as PgTable)
+      .from(npComments)
       .where(
         sql`${eq(getTableColumn(npComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npComments as unknown as PgTable, "targetId"), docId)}`,
       )) as Array<{ id: string }>;
     if (commentIdRows.length > 0) {
       const commentIds = commentIdRows.map((row) => row.id);
       await tx
-        .delete(npReactions as unknown as PgTable)
+        .delete(npReactions)
         .where(
           sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(npReactions as unknown as PgTable, "targetId"), commentIds)}`,
         );
@@ -1540,18 +1540,18 @@ async function deleteDocumentImpl(
       // existing audit row carries enough context for after-the-
       // fact tracing, so the report itself can go.
       await tx
-        .delete(npReports as unknown as PgTable)
+        .delete(npReports)
         .where(
           sql`${eq(getTableColumn(npReports as unknown as PgTable, "targetType"), "comment")} and ${inArray(getTableColumn(npReports as unknown as PgTable, "targetId"), commentIds)}`,
         );
     }
     await tx
-      .delete(npComments as unknown as PgTable)
+      .delete(npComments)
       .where(
         sql`${eq(getTableColumn(npComments as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npComments as unknown as PgTable, "targetId"), docId)}`,
       );
     await tx
-      .delete(npReactions as unknown as PgTable)
+      .delete(npReactions)
       .where(
         sql`${eq(getTableColumn(npReactions as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReactions as unknown as PgTable, "targetId"), docId)}`,
       );
@@ -1561,7 +1561,7 @@ async function deleteDocumentImpl(
     // is polymorphic — a future surface could add doc-level reports
     // and this cascade keeps that case correct from day one.
     await tx
-      .delete(npReports as unknown as PgTable)
+      .delete(npReports)
       .where(
         sql`${eq(getTableColumn(npReports as unknown as PgTable, "targetType"), collection)} and ${eq(getTableColumn(npReports as unknown as PgTable, "targetId"), docId)}`,
       );
@@ -2293,7 +2293,7 @@ async function syncMediaRefsForDocument(
 
   if (refs.length === 0) {
     await tx
-      .delete(npMediaRefs as unknown as PgTable)
+      .delete(npMediaRefs)
       .where(
         sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
       );
@@ -2301,7 +2301,7 @@ async function syncMediaRefsForDocument(
   }
 
   await tx
-    .delete(npMediaRefs as unknown as PgTable)
+    .delete(npMediaRefs)
     .where(
       sql`${eq(getTableColumn(npMediaRefs as unknown as PgTable, "collection"), collection)} and ${eq(getTableColumn(npMediaRefs as unknown as PgTable, "documentId"), documentId)}`,
     );
@@ -2314,7 +2314,7 @@ async function syncMediaRefsForDocument(
     field: ref.field,
   }));
 
-  await tx.insert(npMediaRefs as unknown as PgTable).values(values);
+  await tx.insert(npMediaRefs).values(values);
 }
 
 function extractMediaIdsFromFields(

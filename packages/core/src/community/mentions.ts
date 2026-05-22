@@ -1,5 +1,4 @@
 import { inArray } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npMembers } from "../db/schema/community.js";
@@ -130,7 +129,7 @@ export function extractMentionHandlesFromDocData(data: Record<string, unknown>):
 export async function resolveMentionedMembers(handles: string[]): Promise<NpMentionTarget[]> {
   if (handles.length === 0) return [];
   const lower = Array.from(new Set(handles.map((h) => h.toLowerCase())));
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const rows = (await db
     .select({ id: npMembers.id, handle: npMembers.handle, status: npMembers.status })
     .from(npMembers)

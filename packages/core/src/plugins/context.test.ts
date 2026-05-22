@@ -28,7 +28,7 @@ function buildCtx(overrides?: {
     allowedHosts: overrides?.allowedHosts ?? [],
     config: overrides?.config ?? {},
     registration,
-    lookupRegistration: () => undefined,
+    lookupRegistration: (pluginId) => (pluginId === "test-plugin" ? registration : undefined),
   }) as {
     pluginId: string;
     config: Record<string, unknown>;
@@ -50,6 +50,20 @@ function buildCtx(overrides?: {
     };
     errors: {
       report(error: unknown, context?: { extra?: Record<string, unknown>; tags?: Record<string, string> }): Promise<void>;
+    };
+    actions: {
+      register(
+        actionName: string,
+        handler: (
+          data: unknown,
+          ctx: { pluginId: string; config: Record<string, unknown> },
+        ) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
+      ): void;
+      dispatch(
+        pluginId: string,
+        actionName: string,
+        data?: unknown,
+      ): Promise<{ ok: boolean; data?: unknown; error?: string }>;
     };
   };
 }
@@ -120,6 +134,29 @@ describe("ctx.cache", () => {
   });
 });
 
+describe("ctx.actions", () => {
+  it("passes the runtime context into registered action handlers", async () => {
+    const ctx = buildCtx({ config: { mode: "test" } });
+    ctx.actions.register("inspectCtx", (_data, actionCtx) =>
+      Promise.resolve({
+        ok: true,
+        data: {
+          pluginId: actionCtx.pluginId,
+          config: actionCtx.config,
+        },
+      }),
+    );
+
+    await expect(ctx.actions.dispatch("test-plugin", "inspectCtx")).resolves.toEqual({
+      ok: true,
+      data: {
+        pluginId: "test-plugin",
+        config: { mode: "test" },
+      },
+    });
+  });
+});
+
 describe("ctx.http.fetch allowedHosts", () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -180,6 +217,15 @@ describe("ctx.http.fetch allowedHosts", () => {
       allowedHosts: ["*.example.com"],
     });
     const res = await ctx.http.fetch("https://api.example.com/x");
+    expect(res.ok).toBe(true);
+  });
+
+  it("supports * for operator-configured integration endpoints", async () => {
+    const ctx = buildCtx({
+      capabilities: ["network:fetch"],
+      allowedHosts: ["*"],
+    });
+    const res = await ctx.http.fetch("https://customer-webhook.test/x");
     expect(res.ok).toBe(true);
   });
 

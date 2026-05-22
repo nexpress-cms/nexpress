@@ -1,5 +1,4 @@
 import { eq, sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npMembers } from "../db/schema/community.js";
@@ -50,7 +49,7 @@ export async function applyReputation(
   const truncated = Math.trunc(delta);
   if (truncated === 0) return;
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   try {
     await db
       .update(npMembers)

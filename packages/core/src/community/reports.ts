@@ -1,5 +1,4 @@
 import { and, count, desc, eq, isNotNull, isNull } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { getCollectionRegistration, getCollectionTable } from "../collections/registry.js";
@@ -99,7 +98,7 @@ async function doFileReport(
   // path stays single-tenant.
   const target = await assertReportTargetExists(input.targetType, targetId);
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Phase 18 — file the report under the current tenant so the
   // mod queue surfaces it on the right site.
   // #272 — write: must NOT silently fall through; a misfiled
@@ -153,7 +152,7 @@ export interface ListReportsResult {
 }
 
 export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
 
@@ -212,7 +211,7 @@ export async function resolveReport(input: ResolveReportInput): Promise<NpReport
     ]);
   }
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Issue #363 — `listReports` was already site-scoped, but
   // `resolveReport` fetched and updated by id only. A moderator who
   // obtained a foreign report id (e.g. from logs of a tenant they
@@ -294,7 +293,7 @@ async function assertReportTargetExists(
   targetType: string,
   targetId: string,
 ): Promise<{ siteId: string | null }> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   if (targetType === "comment" || targetType === "reply") {
     const [row] = (await db
       .select({ id: npComments.id, siteId: npComments.siteId })
@@ -358,7 +357,7 @@ async function assertReportTargetExists(
 
 /** Cheap "is anything in the queue?" probe for the admin badge. */
 export async function unresolvedReportCount(): Promise<number> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Phase 18 — count only the current tenant's queue.
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db

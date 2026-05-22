@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { and, eq, gt, isNull, like, or } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, like, or } from "drizzle-orm";
 
 import type { NpAuthUser, NpFindOptions } from "../config/types.js";
 import { NpError, NpForbiddenError } from "../errors.js";
@@ -17,11 +19,7 @@ import {
   getStorageAdapter,
 } from "../media/service.js";
 import { getDb } from "../db/runtime.js";
-import {
-  NP_GLOBAL_PLUGIN_SITE_ID,
-  npPluginStorage,
-  npSettings,
-} from "../db/schema/system.js";
+import { NP_GLOBAL_PLUGIN_SITE_ID, npPluginStorage, npSettings } from "../db/schema/system.js";
 import { getScopedLogger } from "../observability/logger.js";
 import { reportError } from "../observability/error-reporter.js";
 import { getCurrentSiteId } from "../sites/context.js";
@@ -72,6 +70,12 @@ interface RegistrationLike {
   actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
 }
 
+type RuntimeActionResult = { ok: boolean; data?: unknown; error?: string };
+type RuntimeActionHandler = (
+  data: unknown,
+  ctx: Record<string, unknown>,
+) => Promise<RuntimeActionResult>;
+
 interface BuildContextOptions {
   pluginId: string;
   capabilities: readonly string[];
@@ -87,6 +91,7 @@ interface BuildContextOptions {
  * Lost on process restart — use `ctx.storage` for durable state.
  */
 const pluginCache = new Map<string, { value: unknown; expiresAt: number | null }>();
+let pluginStorageAppendCounter = 0;
 
 function cacheKey(pluginId: string, key: string): string {
   return `${pluginId}:${key}`;
@@ -154,7 +159,11 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
   // plugin output without each plugin reaching for `console.*`.
   const pluginLog = getScopedLogger({ pluginId });
 
-  return {
+  function registerAction(actionName: string, handler: RuntimeActionHandler): void {
+    registration.actions.set(actionName, (data) => handler(data, runtimeContext));
+  }
+
+  const runtimeContext: Record<string, unknown> = {
     pluginId,
     config,
     capabilities,
@@ -344,6 +353,49 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           .limit(1);
         return rows.length > 0;
       },
+      async append<T = unknown>(
+        prefix: string,
+        value: T,
+        opts?: { ttl?: number },
+      ): Promise<string> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        const normalizedPrefix = prefix.length > 0 ? prefix : "append:";
+        pluginStorageAppendCounter = (pluginStorageAppendCounter + 1) % 1_000_000;
+        const sequence = String(pluginStorageAppendCounter).padStart(6, "0");
+        const key = `${normalizedPrefix}${new Date().toISOString()}:${sequence}:${randomUUID()}`;
+        const siteId = await resolveStorageSiteId();
+        const expiresAt = opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
+
+        await db().insert(npPluginStorage).values({
+          pluginId,
+          siteId,
+          key,
+          value,
+          expiresAt,
+          updatedAt: new Date(),
+        });
+
+        return key;
+      },
+      async listValues<T = unknown>(prefix: string): Promise<Array<{ key: string; value: T }>> {
+        assertCap(pluginId, capabilities, "storage:kv");
+        const siteId = await resolveStorageSiteId();
+        const now = new Date();
+        const rows = (await db()
+          .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+          .from(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, pluginId),
+              eq(npPluginStorage.siteId, siteId),
+              like(npPluginStorage.key, `${prefix}%`),
+              or(isNull(npPluginStorage.expiresAt), gt(npPluginStorage.expiresAt, now)),
+            ),
+          )
+          .orderBy(asc(npPluginStorage.key))) as Array<{ key: string; value: T }>;
+
+        return rows;
+      },
     },
 
     cache: {
@@ -497,7 +549,8 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         assertCap(pluginId, capabilities, "network:fetch");
         // Allowed-host check: manifest.allowedHosts gates every fetch. Empty
         // list means the plugin declared network:fetch but didn't scope it
-        // — refuse rather than allow anything.
+        // — refuse rather than allow anything. A literal "*" is reserved
+        // for plugins whose endpoint host is operator-configured.
         let target: URL;
         try {
           target = new URL(url);
@@ -509,6 +562,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           );
         }
         const hostMatches = allowedHosts.some((pattern) => {
+          if (pattern === "*") return true;
           if (pattern === target.hostname) return true;
           if (pattern.startsWith("*.") && target.hostname.endsWith(pattern.slice(1))) return true;
           return false;
@@ -619,17 +673,23 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         if (fn.length >= 2) {
           (fn as (tag: string, profile: string) => void)(tag, "default");
         } else {
-          (fn as (tag: string) => void)(tag);
+          fn(tag);
         }
       },
     },
 
     actions: {
-      register(
-        actionName: string,
-        handler: (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>,
-      ): void {
-        registration.actions.set(actionName, handler);
+      register(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
+      },
+      registerMetric(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
+      },
+      registerStatus(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
+      },
+      registerTable(actionName: string, handler: RuntimeActionHandler): void {
+        registerAction(actionName, handler);
       },
       async dispatch(
         targetPluginId: string,
@@ -648,4 +708,6 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       },
     },
   };
+
+  return runtimeContext;
 }

@@ -1,5 +1,4 @@
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npMemberRoles } from "../db/schema/community.js";
@@ -78,7 +77,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NpMe
     ]);
   }
 
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
 
   // Pre-check for an existing active grant matching the same
   // `(member, role, scope_type, scope_id)` tuple. The schema's
@@ -170,7 +169,7 @@ export async function grantMemberRole(input: GrantMemberRoleInput): Promise<NpMe
  * `memberCan` filter so expired rows are hidden.
  */
 export async function listMemberRoleGrants(memberId: string): Promise<NpMemberRoleGrantRow[]> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // Phase 18 — show only grants on the current tenant. A
   // member who's a community-mod on tenant A and not on
   // tenant B should see exactly one grant when admin pages
@@ -187,7 +186,7 @@ export async function listMemberRoleGrants(memberId: string): Promise<NpMemberRo
         or(isNull(npMemberRoles.expiresAt), gt(npMemberRoles.expiresAt, now)),
       ),
     )
-    .orderBy(desc(npMemberRoles.grantedAt))) as NpMemberRoleGrantRow[];
+    .orderBy(desc(npMemberRoles.grantedAt)));
 }
 
 export interface RevokeMemberRoleInput {
@@ -207,7 +206,7 @@ export async function revokeMemberRole(input: RevokeMemberRoleInput): Promise<vo
   // "no such grant" and "grant exists but in another site" — the
   // distinction is intentional: leaking which case applies would
   // confirm the foreign grant's existence.
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const requestSiteId = await requireSiteId();
   const deleted = (await db
     .delete(npMemberRoles)

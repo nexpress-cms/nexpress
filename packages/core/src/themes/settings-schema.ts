@@ -165,13 +165,13 @@ function unwrap(node: ZodNode): {
         typeof current._def.defaultValue === "function"
           ? (current._def.defaultValue as () => unknown)()
           : current._def.defaultValue;
-      current = (current._def.innerType as ZodNode | undefined) ?? current;
+      current = (current._def.innerType) ?? current;
       if (!current._def.innerType) break;
       continue;
     }
     if (t === "optional" || t === "nullable") {
       required = false;
-      const next = current._def.innerType as ZodNode | undefined;
+      const next = current._def.innerType;
       if (!next) break;
       current = next;
       continue;
@@ -289,7 +289,7 @@ function introspectField(
       return { ...base, type: "enum", options: Object.values(entries) };
     }
     case "array": {
-      const element = innerDef.element as ZodNode | undefined;
+      const element = innerDef.element;
       // v0.2 supports z.array(z.object(...)) — typed nested form
       // for each item.
       if (element?._def.type === "object" && element._def.shape) {
@@ -325,7 +325,7 @@ function introspectShape(
 ): NpThemeSettingsField[] {
   const out: NpThemeSettingsField[] = [];
   for (const [name, raw] of Object.entries(shape)) {
-    out.push(introspectField(name, raw as ZodNode));
+    out.push(introspectField(name, raw));
   }
   return out;
 }
@@ -346,7 +346,7 @@ export function introspectThemeSettingsSchema(
   // checking for object shape — themes that wrap their whole
   // schema in `.default({...})` are unusual but valid; without
   // unwrap we'd silently render an empty form.
-  const { inner } = unwrap(schema as unknown as ZodNode);
+  const { inner } = unwrap(schema);
   if (inner._def.type !== "object" || !inner._def.shape) return [];
   return introspectShape(inner._def.shape);
 }

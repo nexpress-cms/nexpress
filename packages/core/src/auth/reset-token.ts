@@ -193,6 +193,6 @@ export async function consumePasswordResetToken(
   return {
     userId: user.id,
     email: user.email,
-    purpose: (user.purpose ?? "reset") as NpPasswordResetPurpose,
+    purpose: (user.purpose ?? "reset"),
   };
 }

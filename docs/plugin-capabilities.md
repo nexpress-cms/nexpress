@@ -94,7 +94,8 @@ plugin manifest's capabilities array.
 - `api:route` and `hooks:<ns>` both auto-derive — you should never
   type them yourself unless the type system warns you.
 - `network:fetch` requires `allowedHosts` — list the exact hostnames
-  your plugin will hit. `*.example.com` wildcards work; the empty list
-  refuses every fetch.
+  your plugin will hit. `*.example.com` wildcards work, `*` allows
+  operator-configured integration endpoints, and the empty list refuses
+  every fetch.
 - Capabilities are a runtime gate only — they don't change TypeScript
   types on `ctx`. SDK-level conditional typing is on the v2 wishlist.

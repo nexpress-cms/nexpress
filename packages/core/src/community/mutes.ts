@@ -1,5 +1,4 @@
 import { and, desc, eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npMemberMutes, npMembers } from "../db/schema/community.js";
@@ -36,7 +35,7 @@ export async function muteMember(input: MuteMemberInput): Promise<void> {
       { field: "targetId", message: "Cannot mute yourself." },
     ]);
   }
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
 
   // Confirm both rows exist — otherwise the FK violation
   // surfaces as an opaque 500. NotFound is the right shape:
@@ -75,7 +74,7 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
       { field: "targetId", message: "Cannot unmute yourself." },
     ]);
   }
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   // #272 — write: must NOT silently fall through to default site.
   const siteId = await requireSiteId();
   const result = (await db
@@ -100,7 +99,7 @@ export async function unmuteMember(input: MuteMemberInput): Promise<boolean> {
  */
 export async function isMuted(input: MuteMemberInput): Promise<boolean> {
   if (input.memberId === input.targetId) return false;
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const [row] = (await db
     .select({ memberId: npMemberMutes.memberId })
@@ -122,7 +121,7 @@ export async function isMuted(input: MuteMemberInput): Promise<boolean> {
  * DB round-trip rather than `isMuted()` per row.
  */
 export async function getMutedTargetIds(memberId: string): Promise<Set<string>> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = (await db
     .select({ targetId: npMemberMutes.targetId })
@@ -154,7 +153,7 @@ export async function listMutes(
   memberId: string,
   options: ListMutesOptions = {},
 ): Promise<NpMemberMuteSummary[]> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   // Phase 18 — settings list is per-site. The same muter can
   // see different lists on different tenants.

@@ -170,7 +170,7 @@ export async function uploadMedia(
   // `status`. Hard delete is the right semantic.
   if (resolvedUploader && resolvedUploader.kind === "member") {
     const memberId = resolvedUploader.memberId;
-    const dbPg = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+    const dbPg = getDb();
     await dbPg.transaction(async (tx) => {
       // `pg_advisory_xact_lock` auto-releases on commit/rollback.
       // `hashtextextended` produces a stable int8 from a UUID
@@ -259,7 +259,7 @@ async function assertMemberUploadQuota(
   // shared media DB.
   const db =
     txDb ??
-    (getDb() as unknown as NodePgDatabase<Record<string, unknown>>);
+    (getDb());
 
   if (total !== null) {
     const [row] = (await db
@@ -532,7 +532,7 @@ export async function listMedia(options: {
   }));
 
   return {
-    docs: docs as Record<string, unknown>[],
+    docs: docs,
     totalDocs,
     totalPages,
     page,

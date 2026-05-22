@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { getDb } from "../db/runtime.js";
 import { npMembers } from "../db/schema/community.js";
@@ -167,7 +166,7 @@ function normalizePrefs(raw: unknown): NpNotificationPrefs {
 }
 
 export async function getMemberNotificationPrefs(memberId: string): Promise<NpNotificationPrefs> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [row] = (await db
     .select({ prefs: npMembers.notificationPrefs })
     .from(npMembers)
@@ -227,7 +226,7 @@ export async function setMemberNotificationPrefs(
       },
     ]);
   }
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
 
   // Read-then-merge so we don't clobber other JSONB keys
   // (lastDigestAt, future channel toggles, etc.).
@@ -268,7 +267,7 @@ export async function recordDigestSent(
   sentAt: Date,
   scope?: { siteId: string; cadence: NpDigestCadence },
 ): Promise<void> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [existing] = (await db
     .select({ prefs: npMembers.notificationPrefs })
     .from(npMembers)

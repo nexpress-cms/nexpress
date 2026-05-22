@@ -66,7 +66,7 @@ function deriveName(profile: OAuthProfile, fallbackEmail: string): string {
 export async function resolveOAuthLogin(
   input: ResolveOAuthLoginInput,
 ): Promise<ResolveOAuthLoginResult> {
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const provider = input.provider;
   const profile = input.profile;
   const role: NpUserRole = input.defaultRole ?? "viewer";

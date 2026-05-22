@@ -1,9 +1,5 @@
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
-import type {
-  NpPluginCapability,
-  NpPluginDefinition,
-  NpResolvedPlugin,
-} from "./types.js";
+import type { NpPluginCapability, NpPluginDefinition, NpResolvedPlugin } from "./types.js";
 
 /**
  * Capabilities the host can confidently infer from the plugin's declared
@@ -41,6 +37,32 @@ function deriveCapabilities(
     set.add(cap);
   }
 
+  if (definition.pageRoutes && definition.pageRoutes.length > 0) {
+    set.add("site:route");
+  }
+
+  if (definition.scheduled && definition.scheduled.length > 0) {
+    set.add("hooks:scheduled");
+  }
+
+  if (definition.admin) {
+    const hasPluginPanel =
+      definition.admin.settings !== undefined ||
+      Boolean(definition.admin.widgets?.length) ||
+      Boolean(definition.admin.actions?.length) ||
+      Boolean(definition.admin.tables?.length);
+
+    if (hasPluginPanel) {
+      set.add("admin:panel");
+    }
+    if (definition.admin.collectionTabs?.length) {
+      set.add("admin:collection-tab");
+    }
+    if (definition.admin.dashboardWidgets?.length) {
+      set.add("admin:dashboard");
+    }
+  }
+
   return [...set];
 }
 
@@ -65,6 +87,8 @@ function deriveProvides(
         collections?: readonly string[];
         adminExtensions?: readonly string[];
         apiRoutes?: readonly string[];
+        pageRoutes?: readonly string[];
+        scheduledTasks?: readonly string[];
         hooks?: readonly string[];
       }
     | undefined,
@@ -74,6 +98,8 @@ function deriveProvides(
   collections: string[];
   adminExtensions: string[];
   apiRoutes: string[];
+  pageRoutes: string[];
+  scheduledTasks: string[];
   hooks: string[];
 } {
   const merge = (declaredArr: readonly string[] | undefined, derived: string[]): string[] => {
@@ -82,8 +108,14 @@ function deriveProvides(
     return [...set];
   };
 
-  const blockTypes = (definition.blocks ?? []).map((b) => b.type).filter((t): t is string => typeof t === "string");
+  const blockTypes = (definition.blocks ?? [])
+    .map((b) => b.type)
+    .filter((t): t is string => typeof t === "string");
   const routePaths = (definition.routes ?? []).map((r) => `${r.method} ${r.path}`);
+  const pageRoutePatterns = (definition.pageRoutes ?? []).map((r) => r.pattern);
+  const scheduledTaskIds = (definition.scheduled ?? [])
+    .map((task) => task.id)
+    .filter((id): id is string => typeof id === "string");
   const hookNames = Object.keys(definition.hooks ?? {});
   // `admin.settings/widgets/actions/tables/collectionTabs/dashboardWidgets`
   // — flatten to the single label "admin" so we don't enumerate every id.
@@ -98,7 +130,9 @@ function deriveProvides(
         ...(definition.admin.dashboardWidgets?.length ? ["dashboardWidgets"] : []),
       ]
     : [];
-  const fieldTypes = (definition.fields ?? []).map((f) => f.type).filter((t): t is string => typeof t === "string");
+  const fieldTypes = (definition.fields ?? [])
+    .map((f) => f.type)
+    .filter((t): t is string => typeof t === "string");
 
   return {
     blocks: merge(declared?.blocks, blockTypes),
@@ -106,6 +140,8 @@ function deriveProvides(
     collections: [...(declared?.collections ?? [])],
     adminExtensions: merge(declared?.adminExtensions, adminExtensionLabels),
     apiRoutes: merge(declared?.apiRoutes, routePaths),
+    pageRoutes: merge(declared?.pageRoutes, pageRoutePatterns),
+    scheduledTasks: merge(declared?.scheduledTasks, scheduledTaskIds),
     hooks: merge(declared?.hooks, hookNames),
   };
 }
@@ -120,9 +156,8 @@ export function definePlugin<TConfig = Record<string, unknown>>(
   const declaredProvides = (
     definition.manifest as { provides?: Parameters<typeof deriveProvides>[1] }
   ).provides;
-  const declaredCaps = (
-    definition.manifest as { capabilities?: readonly NpPluginCapability[] }
-  ).capabilities;
+  const declaredCaps = (definition.manifest as { capabilities?: readonly NpPluginCapability[] })
+    .capabilities;
   const manifestWithDerived = {
     ...definition.manifest,
     provides: deriveProvides(definition as NpPluginDefinition<unknown>, declaredProvides),
@@ -135,5 +170,5 @@ export function definePlugin<TConfig = Record<string, unknown>>(
     // actionIds, etc. at plugin-build time rather than runtime render.
     npAdminExtensionSchema.parse(definition.admin);
   }
-  return { ...definition, manifest } as NpResolvedPlugin<TConfig>;
+  return { ...definition, manifest };
 }

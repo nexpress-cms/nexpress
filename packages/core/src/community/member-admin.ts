@@ -1,5 +1,4 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import {
@@ -60,7 +59,7 @@ export async function purgeMemberContent(
   // operator a confusing zero-count response when the id is a
   // typo. Mirrors the 404 surface from the identities-admin
   // helpers.
-  const db = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const db = getDb();
   const [memberRow] = (await db
     .select({ id: npMembers.id })
     .from(npMembers)
@@ -133,7 +132,7 @@ export async function purgeMemberContent(
   //    a doc body, etc.) come back with `deleted: false` and
   //    `references` populated. Count those separately so the
   //    operator knows manual cleanup is still needed.
-  const mediaDb = getDb() as unknown as NodePgDatabase<Record<string, unknown>>;
+  const mediaDb = getDb();
   const liveMedia = (await mediaDb
     .select({ id: npMedia.id })
     .from(npMedia)
