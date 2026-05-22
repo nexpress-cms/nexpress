@@ -198,6 +198,7 @@ stability contract lives in [`AGENTS.md`](./AGENTS.md).
 | **Track A — author a theme** | [docs/theme-authoring.md](./docs/theme-authoring.md) |
 | **Track A — author a plugin** | [docs/plugin-quickstart.md](./docs/plugin-quickstart.md) |
 | **Production deployment** | [docs/deployment.md](./docs/deployment.md) |
+| **Hosted demo plan** | [docs/hosted-demo.md](./docs/hosted-demo.md) |
 | **Operations runbook** | [docs/operations.md](./docs/operations.md) |
 | Background jobs | [docs/jobs.md](./docs/jobs.md) |
 | Caching strategy | [docs/caching.md](./docs/caching.md) |
