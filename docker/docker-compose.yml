@@ -50,6 +50,18 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: "true"
       MP_SMTP_AUTH_ALLOW_INSECURE: "true"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${NEXPRESS_REDIS_PORT:-6379}:6379"
+    profiles:
+      - redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
   minio-data:

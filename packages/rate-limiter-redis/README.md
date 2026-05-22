@@ -74,6 +74,18 @@ Call `await limiter.shutdown()` from your process's SIGTERM
 handler if the adapter owns its client (cases 1 and 2 above). It's
 a no-op when you passed in a shared client.
 
+## Tests
+
+The unit suite stubs ioredis. To run the optional live Redis
+integration test:
+
+```bash
+docker compose -f docker/docker-compose.yml --profile redis up -d redis
+TEST_REDIS_URL=redis://localhost:6379 pnpm --filter @nexpress/rate-limiter-redis test
+```
+
+When `TEST_REDIS_URL` is unset, the live integration test is skipped.
+
 ## License
 
 MIT
