@@ -27,6 +27,26 @@ Optional (defaults shown in `.env.example`):
 
 ---
 
+## Preflight commands
+
+Scaffolded projects ship deploy-readiness commands that should run before
+you promote any host:
+
+```bash
+pnpm run deploy:plan -- --target vercel
+pnpm run doctor:prod -- --target vercel
+```
+
+Supported targets are `vercel`, `railway`, `render`, `fly`, and `docker`.
+`deploy:plan` prints the host-specific checklist. `doctor:prod` is the
+failing gate: it checks required env shape, Postgres reachability,
+migration state, storage policy, scheduler token, and job-worker settings.
+For example, `--target vercel` errors unless media storage is S3-compatible;
+`railway`, `render`, and `fly` warn or error on local storage depending on
+whether you explicitly opted into a single-node volume deployment.
+
+---
+
 ## Path 1: Docker self-host
 
 The repo ships a multi-stage Dockerfile that produces a ~275 MB image
@@ -229,19 +249,23 @@ schedule `*/2 * * * *`, share `NP_SCHEDULER_TOKEN` and `SITE_URL` via
 
 ## First-deploy checklist
 
-1. Run drizzle migrations: `pnpm --filter @nexpress/web db:migrate`.
-2. Seed the initial admin user with `pnpm --filter @nexpress/web seed:admin`
+1. Run `pnpm run deploy:plan -- --target <host>` and fix the checklist
+   items for your platform.
+2. Run `pnpm run doctor:prod -- --target <host>` and treat any error as a
+   deploy blocker.
+3. Run drizzle migrations: `pnpm --filter @nexpress/web db:migrate`.
+4. Seed the initial admin user with `pnpm --filter @nexpress/web seed:admin`
    (set `NP_ADMIN_EMAIL`, `NP_ADMIN_NAME`, `NP_ADMIN_PASSWORD` first), or
    register via `/admin/login` if your config allows it.
-3. Confirm `/api/health` returns `{"status":"ok"}` and `/api/health/ready`
+5. Confirm `/api/health` returns `{"status":"ok"}` and `/api/health/ready`
    returns 200 with every probe `ok: true`. The readiness probe pings
    the DB and (when wired) the pg-boss queue (Phase 22.4) — a 503 here
    means traffic should not be routed to this node yet.
-4. Confirm `/api/openapi.json` lists every collection — agents and the
+6. Confirm `/api/openapi.json` lists every collection — agents and the
    admin both rely on it being accurate (no cache, rebuilt per request).
-5. Wire scheduled publishing if your collections use `_status: "scheduled"`.
-6. (If using SMTP) trigger a password reset and confirm an email arrives.
-7. Tail the boot logs for warnings emitted by `verifyStartupSafety`
+7. Wire scheduled publishing if your collections use `_status: "scheduled"`.
+8. (If using SMTP) trigger a password reset and confirm an email arrives.
+9. Tail the boot logs for warnings emitted by `verifyStartupSafety`
    (Phase 22.2). Each warning carries a `check` id (see
    [operations.md § Boot warnings](./operations.md#boot-warnings)) and
    names a fix. A clean boot has none.
