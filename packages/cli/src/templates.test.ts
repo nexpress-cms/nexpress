@@ -323,11 +323,21 @@ describe("getProjectFiles", () => {
     expect(pkg.scripts["doctor:prod"]).toBe("tsx scripts/doctor.ts --prod");
   });
 
+  it("package.json exposes a deploy plan script backed by @nexpress/app", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["deploy:plan"]).toBe("tsx scripts/deploy-plan.ts");
+    expect(files["scripts/deploy-plan.ts"]).toMatch(/@nexpress\/app\/scripts\/deploy-plan/);
+  });
+
   it("scaffold README follows the current setup-first onboarding path", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const readme = files["README.md"];
     expect(readme).toContain("pnpm run setup");
     expect(readme).toContain("## First-site checklist");
+    expect(readme).toContain("pnpm run deploy:plan -- --target vercel");
     expect(readme).toContain("pnpm run doctor:prod");
     expect(readme).toContain("Quick choice:");
     expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);

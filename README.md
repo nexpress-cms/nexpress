@@ -35,10 +35,11 @@ Site at `localhost:3000`, admin at `localhost:3000/admin`. The first
 `/admin` visit on an empty DB runs a 2-step wizard for the admin account,
 site name, and optional sample content.
 
-Before deploying the site, run `pnpm run doctor:prod` from the scaffolded
-project. It checks the production env shape, storage choice, job-worker
-settings, Postgres reachability, and migration state before traffic hits
-the app.
+Before deploying the site, run `pnpm run deploy:plan -- --target vercel`
+from the scaffolded project for a host-specific checklist, then run
+`pnpm run doctor:prod` as the readiness gate. Doctor checks the production
+env shape, storage choice, job-worker settings, Postgres reachability, and
+migration state before traffic hits the app.
 
 **What you can customise without touching the monorepo** — full guide in
 [`docs/site-customization.md`](./docs/site-customization.md):
