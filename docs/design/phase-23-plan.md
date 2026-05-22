@@ -290,17 +290,13 @@ register a different adapter at boot. Open question settled:
   share a Redis without colliding.
 - 7 unit tests (RESP shape parsing, key prefixing, TTL fallback,
   shutdown semantics) running against a `vi.fn()`-stubbed
-  client; live-Redis integration test deferred — see follow-ups
-  below.
+  client; a follow-up live-Redis integration test now pins the
+  fixed-window Lua semantics against `TEST_REDIS_URL`.
 - Package README + `docs/deployment.md` updated with the install +
   wire snippet.
 
 **Deferred for 23.7.2 if/when needed:**
 
-- Live-Redis integration test (docker-compose Redis service,
-  similar to the Postgres pattern). The unit suite covers the
-  adapter surface; live coverage is mainly to pin the Lua
-  semantics across Redis versions.
 - Sliding-window / token-bucket variants. v0.1's contract is
   fixed-window, mirroring `InMemoryRateLimiter`.
 

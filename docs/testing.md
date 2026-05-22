@@ -75,6 +75,13 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
 - When `TEST_DATABASE_URL` is unset, every integration test is skipped
   (reads as "skipped" in vitest output, not "failed"). Safe to run in
   any environment.
+- `@nexpress/rate-limiter-redis` has an optional live Redis integration
+  test. Start it with
+  `docker compose -f docker/docker-compose.yml --profile redis up -d redis`,
+  export `TEST_REDIS_URL=redis://localhost:6379`, then run
+  `pnpm --filter @nexpress/rate-limiter-redis test`. When
+  `TEST_REDIS_URL` is unset, that package's Redis integration test is
+  skipped.
 
 ### Writing a new integration test
 

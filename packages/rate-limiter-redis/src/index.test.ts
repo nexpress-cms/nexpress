@@ -5,17 +5,16 @@ import { RedisRateLimiter } from "./index.js";
 
 /**
  * The unit suite stubs the `eval` call rather than booting a real
- * Redis. The Lua semantics belong in an integration test against a
- * live Redis (Phase 23.7.1 follow-up); here we pin the *adapter*
- * surface — it issues one EVAL per check, derives `limited` from
- * the returned count, and computes `retryAfterSeconds` from the
- * TTL.
+ * Redis. The companion integration test covers the Lua semantics
+ * against a live Redis; here we pin the *adapter* surface — it
+ * issues one EVAL per check, derives `limited` from the returned
+ * count, and computes `retryAfterSeconds` from the TTL.
  */
 
 function fakeClient(eval_: (...args: unknown[]) => Promise<unknown>): Redis {
   const partial: Partial<Redis> = {
-    eval: eval_ as unknown as Redis["eval"],
-    quit: vi.fn().mockResolvedValue("OK") as unknown as Redis["quit"],
+    eval: eval_,
+    quit: vi.fn().mockResolvedValue("OK"),
   };
   return partial as Redis;
 }
@@ -85,11 +84,11 @@ describe("RedisRateLimiter", () => {
     // Build the partial Redis manually so the spy is the same
     // reference we assert on (avoiding `unbound-method` against
     // the casted Redis type).
-    const client = {
-      eval: evalStub as unknown as Redis["eval"],
-      quit: quitStub as unknown as Redis["quit"],
-    } as Redis;
-    const limiter = new RedisRateLimiter({ client });
+    const client: Partial<Redis> = {
+      eval: evalStub,
+      quit: quitStub,
+    };
+    const limiter = new RedisRateLimiter({ client: client as Redis });
     await limiter.shutdown();
     expect(quitStub).not.toHaveBeenCalled();
   });
