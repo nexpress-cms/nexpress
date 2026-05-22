@@ -1,5 +1,15 @@
 # @nexpress/rate-limiter-redis
 
+## 0.3.8
+
+### Patch Changes
+
+- 0d16fdd: Add an optional live Redis integration test for the fixed-window Lua script and
+  document the `TEST_REDIS_URL` workflow. The default unit test path still skips
+  the live checks unless a Redis URL is provided.
+- Updated dependencies [b331118]
+  - @nexpress/core@0.3.8
+
 ## 0.3.7
 
 ### Patch Changes

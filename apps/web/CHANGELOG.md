@@ -1,5 +1,40 @@
 # @nexpress/web
 
+## 0.0.19
+
+### Patch Changes
+
+- Updated dependencies [b4089ee]
+- Updated dependencies [7d5a684]
+- Updated dependencies [b331118]
+- Updated dependencies [28a2dec]
+  - @nexpress/app@0.3.8
+  - @nexpress/plugin-sdk@0.3.8
+  - @nexpress/core@0.3.8
+  - @nexpress/theme-docs@0.3.8
+  - @nexpress/theme-portfolio@0.3.8
+  - @nexpress/plugin-block-callout@0.3.8
+  - @nexpress/plugin-block-embed@0.3.8
+  - @nexpress/plugin-block-latest-posts@0.3.8
+  - @nexpress/plugin-block-newsletter@0.3.8
+  - @nexpress/plugin-block-pricing@0.3.8
+  - @nexpress/plugin-block-stats@0.3.8
+  - @nexpress/plugin-forum@0.3.8
+  - @nexpress/plugin-oauth-github@0.3.8
+  - @nexpress/plugin-oauth-google@0.3.8
+  - @nexpress/plugin-reading-time@0.3.8
+  - @nexpress/plugin-seo-audit@0.3.8
+  - @nexpress/admin@0.3.8
+  - @nexpress/auth-pages@0.3.8
+  - @nexpress/blocks@0.3.8
+  - @nexpress/next@0.3.8
+  - @nexpress/theme@0.3.8
+  - @nexpress/theme-default@0.3.8
+  - @nexpress/theme-magazine@0.3.8
+  - @nexpress/wp-import@0.3.8
+  - @nexpress/xliff@0.3.8
+  - @nexpress/editor@0.3.8
+
 ## 0.0.18
 
 ### Patch Changes
