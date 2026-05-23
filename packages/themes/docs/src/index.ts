@@ -242,7 +242,7 @@ const QUICKSTART_BODY = lexicalDoc([
     "typescript",
   ),
   paragraph(
-    "Hot reload: the dev server picks up new plugin files without a restart. Config changes do require one — that's a Next.js constraint, not ours.",
+    "Hot reload picks up new plugin files without a restart. Config changes do require one — that's a Next.js constraint, not ours.",
   ),
   heading("h2", "Lifecycle hooks at a glance"),
   paragraph(
@@ -314,7 +314,7 @@ const SEED_DOCS: NpThemeSeedPost[] = [
     stableSince: "Stable since 0.1",
   }),
   stubDoc({
-    title: "Install & bootstrap",
+    title: "Install",
     parentSlug: "get-started",
     order: 1,
     stableSince: "Stable since 0.1",
@@ -345,11 +345,10 @@ const SEED_DOCS: NpThemeSeedPost[] = [
     order: 2,
     lede: "Extend NexPress with hooks, routes, blocks, and scheduled jobs.",
   }),
-  stubDoc({ title: "Plugin overview", parentSlug: "plugins", order: 0 }),
+  stubDoc({ title: "Overview", parentSlug: "plugins", order: 0 }),
   {
-    title: "Author quickstart",
-    excerpt:
-      'From "I want to add behavior to NexPress" to a running plugin in about ten minutes. Walks through the manifest, a lifecycle hook, and shipping the result to your own site.',
+    title: "Plugin author quickstart",
+    excerpt: 'From "I want to add behavior" to a running plugin in ten minutes.',
     content: QUICKSTART_BODY,
     publishedAt: DOCS_NOW,
     kind: "doc",
@@ -357,12 +356,12 @@ const SEED_DOCS: NpThemeSeedPost[] = [
     order: 1,
     data: {
       badge: "NEW",
-      lede: 'From "I want to add behavior to NexPress" to a running plugin in about ten minutes. Walks through the manifest, a lifecycle hook, and shipping the result to your own site.',
+      lede: 'From "I want to add behavior" to a running plugin in ten minutes.',
       stableSince: "Stable since 0.1",
     },
   },
-  stubDoc({ title: "Manifest reference", parentSlug: "plugins", order: 2 }),
-  stubDoc({ title: "Lifecycle hooks", parentSlug: "plugins", order: 3 }),
+  stubDoc({ title: "Manifest", parentSlug: "plugins", order: 2 }),
+  stubDoc({ title: "Lifecycle", parentSlug: "plugins", order: 3 }),
   stubDoc({ title: "Publishing", parentSlug: "plugins", order: 4 }),
 
   stubDoc({

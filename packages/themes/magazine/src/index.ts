@@ -1,9 +1,5 @@
 import { findDocuments } from "@nexpress/core";
-import {
-  defineTheme,
-  type NpThemeSeedPage,
-  type NpThemeSeedPost,
-} from "@nexpress/theme";
+import { defineTheme, type NpThemeSeedPage, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { magazineArchives } from "./archives.js";
 import { magazineBlocks } from "./blocks.js";
@@ -87,9 +83,8 @@ const at = (daysAgo: number, hour = 9, minute = 0): string => {
 const SEED_POSTS: NpThemeSeedPost[] = [
   // ── Lead — cover story ────────────────────────────────────
   {
-    title: "The cartographers of a city that won't sit still",
-    excerpt:
-      "For thirty-two years a small office in Mapo has redrawn Seoul block by block — every demolition, every new subway exit, every cul-de-sac added on a Friday afternoon. We spent two months inside what may be the last working paper atlas of a city that keeps building itself.",
+    title: "The cartographers of a city that won't sit still.",
+    excerpt: "Thirty-two years redrawing Seoul, block by block — inside the last paper atlas.",
     content: lexicalDoc([
       "The third floor of the building on Hapjeong-ro is quieter than you would expect for a place that has been drawing Seoul, daily, since the Hangang was a different shape. There are eleven people here. They redraw the city's streets onto large rolls of paper, one neighbourhood at a time, and they have not yet finished — they will not yet finish, because the city keeps moving on without them.",
       "The room is lit with the kind of bright that print designers know: lamps low and angled, the windows half-shaded, the air slightly cooler than the hallway outside. The atlas they are working on is the forty-seventh edition. It will take another nineteen months. By the time it is delivered to its first subscribers, parts of it will already be wrong.",
@@ -97,6 +92,11 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     ]),
     publishedAt: at(0),
     tagNames: ["Features"],
+    data: {
+      authorName: "Helena Park",
+      featured: true,
+      readingTime: "22 min",
+    },
   },
   // ── Secondary 3-up ────────────────────────────────────────
   {
@@ -154,10 +154,8 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Dispatches"],
   },
   {
-    title:
-      "What we read this week — and which one we'll be arguing about for the next six months.",
-    excerpt:
-      "The editors' weekly roundup, lightly fact-checked, generously opinionated.",
+    title: "What we read this week — and which one we'll be arguing about for the next six months.",
+    excerpt: "The editors' weekly roundup, lightly fact-checked, generously opinionated.",
     content: lexicalDoc([
       "Three of the four editors agreed on the book. The fourth thinks the other three are wrong, and is preparing a long essay about it. We expect to publish it before the autumn, and we expect at least two of us to change our minds about something by the time it lands.",
     ]),
@@ -196,8 +194,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Essays"],
   },
   {
-    title:
-      "The night porter knows whose flowers were delivered to which floor, and won't tell.",
+    title: "The night porter knows whose flowers were delivered to which floor, and won't tell.",
     excerpt:
       "A profile of one of the last working hotel porters in the old downtown, and the discipline of professional discretion.",
     content: lexicalDoc([
@@ -207,8 +204,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Profiles"],
   },
   {
-    title:
-      "Twenty-eight portraits, one barbershop, sixty-two years of haircuts.",
+    title: "Twenty-eight portraits, one barbershop, sixty-two years of haircuts.",
     excerpt:
       "A photographer's portrait series of the regulars at a barbershop that has changed hands twice and never closed.",
     content: lexicalDoc([
@@ -218,8 +214,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Photography"],
   },
   {
-    title:
-      "On the small uses of carrying a notebook, in a year of carrying nothing else.",
+    title: "On the small uses of carrying a notebook, in a year of carrying nothing else.",
     excerpt:
       "Twelve months of paper notes, three notebooks, and the things that turned out to be worth writing down by hand.",
     content: lexicalDoc([
@@ -229,8 +224,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Essays"],
   },
   {
-    title:
-      "The translator's translator: a quiet hand behind half the year's most-read books.",
+    title: "The translator's translator: a quiet hand behind half the year's most-read books.",
     excerpt:
       "A profile of the editor most working literary translators send their first drafts to.",
     content: lexicalDoc([
@@ -262,10 +256,20 @@ const SEED_NAV = {
   ],
   footer: [
     { id: "nav-mag-footer-features", label: "Features", type: "link" as const, url: "/features" },
-    { id: "nav-mag-footer-dispatches", label: "Dispatches", type: "link" as const, url: "/dispatches" },
+    {
+      id: "nav-mag-footer-dispatches",
+      label: "Dispatches",
+      type: "link" as const,
+      url: "/dispatches",
+    },
     { id: "nav-mag-footer-profiles", label: "Profiles", type: "link" as const, url: "/profiles" },
     { id: "nav-mag-footer-essays", label: "Essays", type: "link" as const, url: "/essays" },
-    { id: "nav-mag-footer-photography", label: "Photography", type: "link" as const, url: "/photography" },
+    {
+      id: "nav-mag-footer-photography",
+      label: "Photography",
+      type: "link" as const,
+      url: "/photography",
+    },
     { id: "nav-mag-footer-masthead", label: "Masthead", type: "link" as const, url: "/masthead" },
   ],
 };
@@ -294,8 +298,7 @@ const SEED_PAGES: NpThemeSeedPage[] = [
   {
     title: "Masthead",
     slug: "masthead",
-    seoDescription:
-      "About The Northbound Review — editors, principles, and publishing cadence.",
+    seoDescription: "About The Northbound Review — editors, principles, and publishing cadence.",
     blocks: [],
     template: "masthead",
   },
@@ -408,6 +411,24 @@ export const magazineTheme = defineTheme({
               relationTo: "users",
               hard: false,
             },
+            authorName: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Magazine",
+                condition: { when: "kind", notEquals: "doc" },
+              },
+            },
+            readingTime: {
+              type: "text",
+              hard: false,
+              admin: {
+                position: "sidebar",
+                group: "Magazine",
+                condition: { when: "kind", notEquals: "doc" },
+              },
+            },
           },
           // Editor sidebar icon for the theme's own group
           // (#8 of the editor progressive-disclosure track).
@@ -449,10 +470,8 @@ export const magazineTheme = defineTheme({
         card: "#fcfaf3",
       },
       typography: {
-        fontHeading:
-          '"Newsreader", "EB Garamond", Georgia, "Times New Roman", serif',
-        fontBody:
-          '"Newsreader", Georgia, "Times New Roman", serif',
+        fontHeading: '"Newsreader", "EB Garamond", Georgia, "Times New Roman", serif',
+        fontBody: '"Newsreader", Georgia, "Times New Roman", serif',
         fontMono:
           '"Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       },
@@ -468,8 +487,7 @@ export const magazineTheme = defineTheme({
       ko: {
         "magazine.title": "더 노스바운드 리뷰",
         "magazine.ornament": "Est. 2014 · 서울 · 뉴욕",
-        "magazine.tagline":
-          "장인, 도시, 그리고 그들을 움직이는 사람들에 관한 장문 리포팅.",
+        "magazine.tagline": "장인, 도시, 그리고 그들을 움직이는 사람들에 관한 장문 리포팅.",
       },
     },
     seedContent: {
@@ -493,8 +511,7 @@ export const magazineTheme = defineTheme({
         },
         masthead: {
           label: "Masthead",
-          description:
-            "Magazine about page with manifesto, editor cards, and publication stats.",
+          description: "Magazine about page with manifesto, editor cards, and publication stats.",
           component: PageMastheadTemplate,
         },
         front: {
@@ -555,20 +572,17 @@ export const magazineTheme = defineTheme({
         // Re-query categories to surface every category archive
         // page in the sitemap. Lightweight (categories collection
         // is small and capped); runs once per cache window.
-        const result = await findDocuments<Record<string, unknown>>(
-          "categories",
-          { where: { status: "published" }, limit: 200 },
-        );
+        const result = await findDocuments<Record<string, unknown>>("categories", {
+          where: { status: "published" },
+          limit: 200,
+        });
         return result.docs
           .filter((d) => typeof d.slug === "string")
           .map((d) => {
             const updatedAt = d.updatedAt;
             return {
               loc: `/category/${d.slug as string}`,
-              lastmod:
-                updatedAt instanceof Date
-                  ? updatedAt.toISOString()
-                  : undefined,
+              lastmod: updatedAt instanceof Date ? updatedAt.toISOString() : undefined,
               changefreq: "daily" as const,
               priority: 0.7,
             };

@@ -59,7 +59,7 @@ export async function PortfolioHeader() {
           </span>
           {ctaHref ? (
             <a href={ctaHref} className="np-portfolio-cta">
-              Start a project
+              Start a project →
             </a>
           ) : null}
           {items.length > 0 ? <PortfolioMobileNav items={items} /> : null}

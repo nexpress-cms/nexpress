@@ -88,8 +88,7 @@ export function MagazineArchiveItem({
   coverVariant,
 }: MagazineArchiveItemProps): React.ReactElement {
   const cover = coverImage(doc.coverImage);
-  const variant =
-    coverVariant ?? COVER_VARIANTS[(romanIndex ?? 0) % COVER_VARIANTS.length]!;
+  const variant = coverVariant ?? COVER_VARIANTS[(romanIndex ?? 0) % COVER_VARIANTS.length] ?? 2;
   const sectionLabel = archiveSection(doc);
   const date = dateLabel(doc.publishedAt);
   const linkTarget = href ?? postHref(doc);
@@ -101,25 +100,16 @@ export function MagazineArchiveItem({
         data-has-image={cover ? "true" : undefined}
       >
         {cover ? (
-          <img
-            className="np-magazine-cover-image"
-            src={cover.url}
-            alt={cover.alt}
-            loading="lazy"
-          />
+          <img className="np-magazine-cover-image" src={cover.url} alt={cover.alt} loading="lazy" />
         ) : (
-          <div className="np-magazine-archive-item-cover-fig">
-            {toRoman((romanIndex ?? 0) + 1)}
-          </div>
+          <div className="np-magazine-archive-item-cover-fig">{toRoman((romanIndex ?? 0) + 1)}</div>
         )}
       </div>
       <div>
         <p className="np-magazine-archive-item-section">
           {date ? `${sectionLabel} · ${date}` : sectionLabel}
         </p>
-        <h3 className="np-magazine-archive-item-title">
-          {doc.title ?? "Untitled"}
-        </h3>
+        <h3 className="np-magazine-archive-item-title">{doc.title ?? "Untitled"}</h3>
         <p className="np-magazine-archive-item-byline">{bylineLabel(doc)}</p>
       </div>
     </a>

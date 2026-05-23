@@ -19,13 +19,10 @@ import { SocialLinks } from "./social-links.js";
  * no JS). The bottom row carries the copyright and a small set
  * of secondary links (RSS / Sitemap / Privacy / Colophon).
  */
-const FALLBACK_SITE_NAME = "NexPress";
+const FALLBACK_SITE_NAME = "Equilibrium";
 
 export async function DefaultFooter() {
-  const [footerNav, site] = await Promise.all([
-    getCachedNavigation("footer"),
-    getCachedSite(),
-  ]);
+  const [footerNav, site] = await Promise.all([getCachedNavigation("footer"), getCachedSite()]);
   const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   const year = new Date().getFullYear();
 
@@ -39,7 +36,8 @@ export async function DefaultFooter() {
               <span>{siteName}</span>
             </Link>
             <p className="np-site-footer-tagline">
-              A team blog about the systems we ship — built on {siteName}.
+              A team blog about the systems we ship. Written from Seoul, Berlin, and somewhere
+              between AWS regions.
             </p>
             <SocialLinks />
           </section>
@@ -50,14 +48,20 @@ export async function DefaultFooter() {
               {footerNav.length > 0 ? (
                 footerNav.map((item: NpNavItem, index: number) => (
                   <li key={`footer-sitemap-${index.toString()}`}>
-                    {item.url ? <Link href={item.url}>{item.label}</Link> : <span>{item.label}</span>}
+                    {item.url ? (
+                      <Link href={item.url}>{item.label}</Link>
+                    ) : (
+                      <span>{item.label}</span>
+                    )}
                     {item.children && item.children.length > 0 ? (
                       <ul className="np-site-footer-subnav">
                         {item.children.map((child: NpNavItem, childIndex: number) => (
-                          <li
-                            key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}
-                          >
-                            {child.url ? <Link href={child.url}>{child.label}</Link> : <span>{child.label}</span>}
+                          <li key={`footer-sitemap-${index.toString()}-${childIndex.toString()}`}>
+                            {child.url ? (
+                              <Link href={child.url}>{child.label}</Link>
+                            ) : (
+                              <span>{child.label}</span>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -85,13 +89,16 @@ export async function DefaultFooter() {
               <li>
                 <Link href="/colophon">Colophon</Link>
               </li>
+              <li>
+                <Link href="/about">Hire the team</Link>
+              </li>
             </ul>
           </section>
 
           <section className="np-site-footer-col np-site-footer-subscribe">
             <h2 className="np-site-footer-heading">Newsletter</h2>
             <p className="np-site-footer-subscribe-blurb">
-              One post every other Tuesday. No threads, no roundups.
+              One essay every other Tuesday. No threads, no roundups.
             </p>
             <NewsletterForm />
           </section>
@@ -99,7 +106,7 @@ export async function DefaultFooter() {
 
         <div className="np-site-footer-bottom">
           <p className="np-site-footer-copy">
-            © {year.toString()} {siteName} · Built with NexPress
+            © {year.toString()} {siteName} · Built with NexPress, theme-default.
           </p>
           <ul className="np-site-footer-meta">
             <li>

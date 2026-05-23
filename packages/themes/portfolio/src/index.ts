@@ -15,7 +15,6 @@ import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageFrontTemplate } from "./templates/page-front.js";
 import { PageGalleryTemplate } from "./templates/page-gallery.js";
 import { PageJournalTemplate } from "./templates/page-journal.js";
-import { PagePressTemplate } from "./templates/page-press.js";
 import { PageStudioTemplate } from "./templates/page-studio.js";
 import { ProjectDetailTemplate } from "./templates/project-detail.js";
 import { ProjectIndexTemplate, type PortfolioProjectDoc } from "./templates/project-index.js";
@@ -262,7 +261,6 @@ const SEED_NAV = {
     { id: "nav-portfolio-work", label: "Work", type: "link" as const, url: "/" },
     { id: "nav-portfolio-studio", label: "Studio", type: "link" as const, url: "/studio" },
     { id: "nav-portfolio-journal", label: "Journal", type: "link" as const, url: "/journal" },
-    { id: "nav-portfolio-press", label: "Press", type: "link" as const, url: "/press" },
   ],
   footer: [
     { id: "nav-portfolio-footer-index", label: "Index", type: "link" as const, url: "/" },
@@ -317,10 +315,10 @@ const SEED_JOURNAL_POSTS: NpThemeSeedPost[] = [
  * lays them out as the 12-col asymmetric grid + studio strip + contact
  * strip. The page row has no blocks — the template owns the visual.
  *
- * Studio, Journal, and Press ship dedicated templates so the
- * design bundle's ancillary pages render without relying on
- * rich-text stubs. Journal posts stay `kind: "article"` so the
- * project grid only receives `kind: "project"` work.
+ * Studio and Journal ship dedicated templates so the design
+ * bundle's ancillary pages render without relying on rich-text
+ * stubs. Journal posts stay `kind: "article"` so the project
+ * grid only receives `kind: "project"` work.
  */
 const SEED_PAGES: NpThemeSeedPage[] = [
   {
@@ -345,13 +343,6 @@ const SEED_PAGES: NpThemeSeedPage[] = [
       "Notes from the studio — process, references, occasional opinions on type and editorial.",
     blocks: [],
     template: "journal",
-  },
-  {
-    title: "Press",
-    slug: "press",
-    seoDescription: "Selected coverage, interviews, and awards for Owen & Spruce.",
-    blocks: [],
-    template: "press",
   },
 ];
 
@@ -594,11 +585,6 @@ export const portfolioTheme = defineTheme({
             "Studio journal index that lists article posts separately from project work.",
           component: PageJournalTemplate,
         },
-        press: {
-          label: "Press",
-          description: "Press and recognition page for studio coverage.",
-          component: PagePressTemplate,
-        },
       },
       posts: {
         detail: {
@@ -620,7 +606,7 @@ export const portfolioTheme = defineTheme({
     navLocations: {
       primary: {
         label: "Primary nav",
-        description: "Top nav links (Work / Studio / Journal / Press).",
+        description: "Top nav links (Work / Studio / Journal).",
         maxItems: 5,
       },
       footerSecondary: {
@@ -652,7 +638,7 @@ export {
   PortfolioMobileNav,
   PortfolioNotFound,
 };
-export { PageJournalTemplate, PagePressTemplate, PageStudioTemplate };
+export { PageJournalTemplate, PageStudioTemplate };
 export { portfolioCss };
 export type { PortfolioProjectDoc };
 export { portfolioSettingsSchema, type PortfolioSettings } from "./settings.js";

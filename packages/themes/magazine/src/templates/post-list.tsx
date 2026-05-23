@@ -1,9 +1,6 @@
 import type { NpTemplateRenderProps } from "@nexpress/theme";
 
-import {
-  MagazineArchiveItem,
-  type MagazineArchiveItemDoc,
-} from "../components/archive-item.js";
+import { MagazineArchiveItem, type MagazineArchiveItemDoc } from "../components/archive-item.js";
 import { MagazineNewsletterForm } from "../newsletter-form-bridge.js";
 import type { MagazinePostCardDoc } from "../components/post-card.js";
 import { toRoman } from "../lib/roman.js";
@@ -38,10 +35,11 @@ interface PostListDoc {
 const COVER_VARIANTS: Array<2 | 3 | 4 | 5 | 6 | 7> = [2, 3, 4, 5, 6, 7];
 
 function coverClass(index: number): string {
-  return `np-magazine-cover-${COVER_VARIANTS[index % COVER_VARIANTS.length]!.toString()}`;
+  return `np-magazine-cover-${(COVER_VARIANTS[index % COVER_VARIANTS.length] ?? 2).toString()}`;
 }
 
 function bylineLabel(doc: MagazinePostCardDoc): string {
+  if (doc.authorName) return doc.authorName;
   if (doc.author && typeof doc.author === "object" && doc.author.name) {
     return doc.author.name;
   }
@@ -74,10 +72,7 @@ function weekOfYear(now: Date): number {
 function dispatchTime(doc: MagazinePostCardDoc): string {
   if (!doc.publishedAt) return "";
   try {
-    const d =
-      typeof doc.publishedAt === "string"
-        ? new Date(doc.publishedAt)
-        : doc.publishedAt;
+    const d = typeof doc.publishedAt === "string" ? new Date(doc.publishedAt) : doc.publishedAt;
     if (Number.isNaN(d.getTime())) return "";
     const month = d.toLocaleString(undefined, { month: "short" });
     const day = d.getDate();
@@ -109,9 +104,7 @@ function kickerLabel(doc: MagazinePostCardDoc): string | null {
   return null;
 }
 
-function coverImageOf(
-  doc: MagazinePostCardDoc,
-): { url: string; alt: string } | null {
+function coverImageOf(doc: MagazinePostCardDoc): { url: string; alt: string } | null {
   const raw = doc.coverImage ?? doc.cover;
   if (!raw) return null;
   if (typeof raw === "string") return { url: raw, alt: doc.title ?? "" };
@@ -123,16 +116,15 @@ function leadDoc(docs: MagazinePostCardDoc[]): {
   lead: MagazinePostCardDoc | null;
   rest: MagazinePostCardDoc[];
 } {
-  const featuredIdx = docs.findIndex(
-    (d) => "featured" in d && Boolean((d as { featured?: unknown }).featured),
-  );
+  const featuredIdx = docs.findIndex((d) => Boolean(d.featured));
   if (featuredIdx >= 0) {
-    const lead = docs[featuredIdx]!;
+    const lead = docs[featuredIdx];
+    if (!lead) return { lead: null, rest: [] };
     const rest = [...docs.slice(0, featuredIdx), ...docs.slice(featuredIdx + 1)];
     return { lead, rest };
   }
   if (docs.length === 0) return { lead: null, rest: [] };
-  return { lead: docs[0]!, rest: docs.slice(1) };
+  return { lead: docs[0] ?? null, rest: docs.slice(1) };
 }
 
 export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
@@ -143,9 +135,7 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
     return (
       <section className="np-magazine-index">
         <div className="np-magazine-container">
-          <p className="np-magazine-archive-empty">
-            The next issue is on press.
-          </p>
+          <p className="np-magazine-archive-empty">The next issue is on press.</p>
         </div>
       </section>
     );
@@ -184,45 +174,29 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
                     {leadIssueNumber.toString()}
                   </span>
                 )}
-                <span className="np-magazine-lead-cover-caption">
-                  Photograph by editorial
-                </span>
+                <span className="np-magazine-lead-cover-caption">Photograph by editorial</span>
               </a>
               <div className="np-magazine-lead-body">
                 <p className="np-magazine-lead-kicker">The cover story</p>
                 <h1 className="np-magazine-lead-title">
-                  <a
-                    href={postHref(lead)}
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
+                  <a href={postHref(lead)} style={{ textDecoration: "none", color: "inherit" }}>
                     {lead.title ?? "Untitled"}
                   </a>
                 </h1>
-                {lead.excerpt ? (
-                  <p className="np-magazine-lead-deck">{lead.excerpt}</p>
-                ) : null}
+                {lead.excerpt ? <p className="np-magazine-lead-deck">{lead.excerpt}</p> : null}
                 <div className="np-magazine-byline">
                   <span>
-                    By{" "}
-                    <span className="np-magazine-byline-author">
-                      {bylineLabel(lead)}
-                    </span>
+                    By <span className="np-magazine-byline-author">{bylineLabel(lead)}</span>
                   </span>
                   {readingLabel(lead) ? (
                     <>
-                      <span
-                        className="np-magazine-byline-sep"
-                        aria-hidden="true"
-                      >
+                      <span className="np-magazine-byline-sep" aria-hidden="true">
                         ·
                       </span>
-                      <span>{readingLabel(lead)} read</span>
+                      <span>{readingLabel(lead)}</span>
                     </>
                   ) : null}
-                  <a
-                    href={postHref(lead)}
-                    className="np-magazine-byline-link"
-                  >
+                  <a href={postHref(lead)} className="np-magazine-byline-link">
                     Read →
                   </a>
                 </div>
@@ -238,9 +212,7 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
                   const kicker = kickerLabel(post);
                   const cover = coverImageOf(post);
                   return (
-                    <li
-                      key={post.id ?? post.slug ?? `secondary-${index.toString()}`}
-                    >
+                    <li key={post.id ?? post.slug ?? `secondary-${index.toString()}`}>
                       <a className="np-magazine-story" href={postHref(post)}>
                         <div
                           className={`np-magazine-story-cover ${coverClass(index)}`}
@@ -259,16 +231,10 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
                             </div>
                           )}
                         </div>
-                        {kicker ? (
-                          <p className="np-magazine-story-kicker">{kicker}</p>
-                        ) : null}
-                        <h3 className="np-magazine-story-title">
-                          {post.title ?? "Untitled"}
-                        </h3>
+                        {kicker ? <p className="np-magazine-story-kicker">{kicker}</p> : null}
+                        <h3 className="np-magazine-story-title">{post.title ?? "Untitled"}</h3>
                         {post.excerpt ? (
-                          <p className="np-magazine-story-excerpt">
-                            {post.excerpt}
-                          </p>
+                          <p className="np-magazine-story-excerpt">{post.excerpt}</p>
                         ) : null}
                         <p className="np-magazine-story-byline">
                           <strong>{bylineLabel(post)}</strong>
@@ -285,28 +251,19 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
           {dispatches.length > 0 || archive.length > 0 ? (
             <section className="np-magazine-split">
               <div>
-                <h2 className="np-magazine-dispatches-head">
-                  From the dispatch desk
-                </h2>
+                <h2 className="np-magazine-dispatches-head">From the dispatch desk</h2>
                 <ul className="np-magazine-dispatches">
                   {dispatches.map((post, index) => (
                     <li
                       key={post.id ?? post.slug ?? `dispatch-${index.toString()}`}
                       className="np-magazine-dispatch"
                     >
-                      <p className="np-magazine-dispatch-time">
-                        {dispatchTime(post)}
-                      </p>
-                      <a
-                        className="np-magazine-dispatch-title"
-                        href={postHref(post)}
-                      >
+                      <p className="np-magazine-dispatch-time">{dispatchTime(post)}</p>
+                      <a className="np-magazine-dispatch-title" href={postHref(post)}>
                         {post.title ?? "Untitled"}
                       </a>
                       {post.excerpt ? (
-                        <p className="np-magazine-dispatch-excerpt">
-                          {post.excerpt}
-                        </p>
+                        <p className="np-magazine-dispatch-excerpt">{post.excerpt}</p>
                       ) : null}
                     </li>
                   ))}
@@ -320,15 +277,11 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
                 </h2>
                 <ul className="np-magazine-archive">
                   {archive.map((post, index) => (
-                    <li
-                      key={post.id ?? post.slug ?? `archive-${index.toString()}`}
-                    >
+                    <li key={post.id ?? post.slug ?? `archive-${index.toString()}`}>
                       <MagazineArchiveItem
                         doc={post as MagazineArchiveItemDoc}
                         romanIndex={index + 4}
-                        coverVariant={
-                          COVER_VARIANTS[(index + 2) % COVER_VARIANTS.length]
-                        }
+                        coverVariant={COVER_VARIANTS[(index + 2) % COVER_VARIANTS.length]}
                       />
                     </li>
                   ))}
@@ -345,14 +298,12 @@ export async function PostListTemplate({ doc }: NpTemplateRenderProps) {
             <p className="np-magazine-subscribe-eyebrow">Subscribe</p>
             <h2>Every other Sunday, by inbox.</h2>
             <p>
-              The full issue, the dispatch desk, the unpublished outtakes —
-              free to read, free to forward, cancel any time.
+              The full issue, the dispatch desk, the unpublished outtakes — free to read, free to
+              forward, cancel any time.
             </p>
             <MagazineNewsletterForm />
             {settings.subscribeStats ? (
-              <p className="np-magazine-subscribe-stats">
-                {settings.subscribeStats}
-              </p>
+              <p className="np-magazine-subscribe-stats">{settings.subscribeStats}</p>
             ) : null}
           </div>
         </section>

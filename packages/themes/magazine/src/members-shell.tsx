@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { MagazineFooter } from "./footer.js";
 import { MagazineHeader } from "./header.js";
@@ -35,11 +35,7 @@ export async function MagazineMembersShell({ children }: { children: ReactNode }
       <style>{MAGAZINE_TOKEN_FALLBACKS}</style>
       <div
         className="np-magazine"
-        style={
-          Object.keys(styleVars).length > 0
-            ? (styleVars as CSSProperties)
-            : undefined
-        }
+        style={Object.keys(styleVars).length > 0 ? styleVars : undefined}
       >
         <MagazineHeader />
         <div className="np-magazine-members">
