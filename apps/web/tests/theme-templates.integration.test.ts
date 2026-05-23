@@ -13,8 +13,8 @@ import {
 } from "./harness.js";
 
 /**
- * Phase 11.3 — page templates. The default theme registers two
- * `pages` templates (`default`, `wide`); the registry helper
+ * Phase 11.3 — page templates. The default theme registers multiple
+ * `pages` templates; the registry helper
  * surfaces them as summaries; the admin endpoint hands them to
  * the admin form's template-picker dropdown. These tests pin
  * each link in that chain.
@@ -44,8 +44,9 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     // Default theme's pages templates expanded during v0.2 (#612):
     // `landing` (full-bleed marketing) + `sidebar` (docs-style) joined
     // the original `default` + `wide`; `about` is the built-in
-    // theme page from the design parity pass.
-    expect(ids).toEqual(["about", "default", "landing", "sidebar", "wide"]);
+    // theme page from the design parity pass; `front` is the
+    // Equilibrium writing index now used by the seeded home page.
+    expect(ids).toEqual(["about", "default", "front", "landing", "sidebar", "wide"]);
     const def = docs.find((d) => d.id === "default");
     expect(def?.label).toBe("Default");
     expect(typeof def?.description).toBe("string");
@@ -89,7 +90,7 @@ describe.skipIf(skipIfNoTestDb())("theme templates (Phase 11.3)", () => {
     }>(res);
     expect(status).toBe(200);
     const ids = (body.docs ?? []).map((d) => d.id).sort();
-    expect(ids).toEqual(["about", "default", "landing", "sidebar", "wide"]);
+    expect(ids).toEqual(["about", "default", "front", "landing", "sidebar", "wide"]);
   });
 
   it("admin endpoint requires a `collection` query param", async () => {

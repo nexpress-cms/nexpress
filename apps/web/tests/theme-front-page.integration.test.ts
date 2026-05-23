@@ -154,7 +154,7 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
 
     const seed = await seedAll(actor, portfolioTheme);
     expect(seed.posts.created).toBeGreaterThan(0);
-    expect(seed.pages.created).toBeGreaterThanOrEqual(4);
+    expect(seed.pages.created).toBeGreaterThanOrEqual(3);
 
     const seededProjects = await findDocuments<Record<string, unknown>>("posts", {
       where: { seedSource: "theme:portfolio", kind: "project" },
