@@ -15,6 +15,7 @@ import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageFrontTemplate } from "./templates/page-front.js";
 import { PageGalleryTemplate } from "./templates/page-gallery.js";
 import { PageJournalTemplate } from "./templates/page-journal.js";
+import { PagePressTemplate } from "./templates/page-press.js";
 import { PageStudioTemplate } from "./templates/page-studio.js";
 import { ProjectDetailTemplate } from "./templates/project-detail.js";
 import { ProjectIndexTemplate, type PortfolioProjectDoc } from "./templates/project-index.js";
@@ -585,6 +586,12 @@ export const portfolioTheme = defineTheme({
             "Studio journal index that lists article posts separately from project work.",
           component: PageJournalTemplate,
         },
+        press: {
+          label: "Press",
+          description:
+            "Press and recognition page for studio coverage. Kept available for existing sites; the built-in demo seed now follows the design handoff's Work/Project/Studio/Journal set.",
+          component: PagePressTemplate,
+        },
       },
       posts: {
         detail: {
@@ -638,7 +645,7 @@ export {
   PortfolioMobileNav,
   PortfolioNotFound,
 };
-export { PageJournalTemplate, PageStudioTemplate };
+export { PageJournalTemplate, PagePressTemplate, PageStudioTemplate };
 export { portfolioCss };
 export type { PortfolioProjectDoc };
 export { portfolioSettingsSchema, type PortfolioSettings } from "./settings.js";
