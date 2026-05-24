@@ -9,6 +9,10 @@ scalable when you flip on S3 + an upstream rate limiter.
 > Breaking changes during `0.x` ride a minor bump and ship with a
 > CHANGELOG line you can search for.
 
+[Live demo](https://nexpress-hosted-demo.vercel.app) ·
+[Scaffold a site](#track-a--build-a-site-npx-create-nexpress) ·
+[Docs](#documentation)
+
 ---
 
 ## Two ways to use NexPress
