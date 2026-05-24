@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/oauth-providers",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "OAuth provider factories for NexPress — Google, GitHub, Discord. Framework-shipped, plugin-free.",
   "license": "MIT",
   "author": "Nexpress",

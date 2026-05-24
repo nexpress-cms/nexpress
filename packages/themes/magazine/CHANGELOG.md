@@ -1,5 +1,18 @@
 # @nexpress/theme-magazine
 
+## 0.3.9
+
+### Patch Changes
+
+- 48ac6a4: Align the default theme's seeded content with the Equilibrium design handoff. The home page now seeds into the writing front template instead of marketing blocks, `/blog` uses the same publication copy and category strip, and the seeded posts/navigation/footer copy match the redesigned theme preview.
+
+  Tighten the other built-in themes against the same design handoff: docs now seeds the visible "Plugin author quickstart" page copy, magazine fixes the cover-story title/deck/byline/issue chrome, and portfolio removes the extra Press seed surface so the seeded pages match the Work/Project/Studio/Journal design set.
+  - @nexpress/blocks@0.3.9
+  - @nexpress/core@0.3.9
+  - @nexpress/editor@0.3.9
+  - @nexpress/next@0.3.9
+  - @nexpress/theme@0.3.9
+
 ## 0.3.8
 
 ### Patch Changes
