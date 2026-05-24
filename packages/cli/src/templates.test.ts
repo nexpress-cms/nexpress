@@ -16,9 +16,9 @@ import type { TemplateFile } from "./template-loader.js";
 // — the rendered package.json — rather than just echoing the constant
 // back.
 const CORE_PACKAGE_VERSION: string = (
-  JSON.parse(
-    readFileSync(resolve(import.meta.dirname, "../../core/package.json"), "utf-8"),
-  ) as { version: string }
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "../../core/package.json"), "utf-8")) as {
+    version: string;
+  }
 ).version;
 
 const baseConfig = {
@@ -342,7 +342,9 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("Deploy with Vercel");
     expect(readme).toContain("https://vercel.com/new?utm_source=nexpress");
     expect(readme).toContain("NP_STORAGE_ADAPTER=s3");
-    expect(readme).toContain("Quick choice:");
+    expect(readme).toContain("NP_S3_ENDPOINT");
+    expect(readme).toContain("pnpm db:migrate");
+    expect(readme).toContain("Other hosting choices");
     expect(readme).not.toMatch(/cp \.env\.example \.env\s*\n\s*pnpm build\s*\n\s*pnpm dev/);
   });
 

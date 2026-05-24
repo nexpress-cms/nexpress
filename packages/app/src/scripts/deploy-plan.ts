@@ -71,6 +71,8 @@ function planFor(target: DeployTarget): TargetPlan {
         ],
         runtime: [
           "Import the project in Vercel after pushing the repo.",
+          "Set the required env vars in Vercel Project Settings before the first production deploy.",
+          "Run migrations against the same DATABASE_URL that Vercel will use.",
           "vercel.json already includes the scheduled-publish cron endpoint.",
           "Use a separate worker host if you need long-running pg-boss workers.",
         ],
