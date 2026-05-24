@@ -145,6 +145,44 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     expect(html).toContain("The cartographers of a city that");
   });
 
+  it("magazine section and category archives render seeded category posts", async () => {
+    await activateThemeForSeed("magazine");
+    const actor = await asActor();
+    const { magazineTheme, MagazineSectionArchiveRoute } = await import("@nexpress/theme-magazine");
+    const { createSiteScopedBlockRenderContext } = await import("@nexpress/next");
+    const { seedAll } = await import("@/lib/seed-content");
+
+    const seed = await seedAll(actor, magazineTheme);
+    expect(seed.posts.created).toBeGreaterThan(0);
+    expect(seed.terms.categoriesCreated).toBeGreaterThan(0);
+
+    const blockCtx = await createSiteScopedBlockRenderContext();
+    const sectionElement = await MagazineSectionArchiveRoute({
+      params: { section: "features" },
+      searchParams: {},
+      blockCtx,
+    });
+    const sectionHtml = renderToString(sectionElement);
+    expect(sectionHtml).toContain("np-magazine-section-list");
+    expect(sectionHtml).toContain("The cartographers of a city that");
+    expect(sectionHtml).not.toContain("No stories yet.");
+
+    const Category = magazineTheme.impl.archives!.posts!.byCategory!.component as (props: {
+      params: Record<string, string>;
+      searchParams: Record<string, string>;
+      blockCtx: typeof blockCtx;
+    }) => Promise<React.ReactElement>;
+    const categoryElement = await Category({
+      params: { slug: "features" },
+      searchParams: {},
+      blockCtx,
+    });
+    const categoryHtml = renderToString(categoryElement);
+    expect(categoryHtml).toContain("np-magazine-archive");
+    expect(categoryHtml).toContain("The cartographers of a city that");
+    expect(categoryHtml).not.toContain("No stories yet.");
+  });
+
   it("portfolio pages.front renders the studio grid with seeded projects", async () => {
     await activateThemeForSeed("portfolio");
     const actor = await asActor();
@@ -182,6 +220,8 @@ describe.skipIf(skipIfNoTestDb())("theme front-page rendering", () => {
     expect(html).toContain("np-portfolio-container");
     // First seeded project's title surfaces in the grid.
     expect(html).toContain("Hanmi Gallery");
+    expect(html).toContain('href="/work/');
+    expect(html).not.toContain('href="/projects/');
   });
 
   it("docs pages.front renders the documentation landing with seeded doc tree", async () => {

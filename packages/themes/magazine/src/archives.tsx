@@ -2,6 +2,7 @@ import * as React from "react";
 import type { NpRouteRenderProps, NpThemeArchives } from "@nexpress/theme";
 import {
   findDocuments,
+  findPosts,
   getUserById,
   type NpFindResult,
 } from "@nexpress/core";
@@ -18,8 +19,9 @@ import { resolveMagazineSettings } from "./settings-helpers.js";
  *
  * Each archive component fetches its own data (per design doc
  * §5.1 — components own queries; framework provides the route
- * dispatch only). The hasMany filter from F.E (#542) keeps the
- * code minimal: `where: { categories: id }` works directly.
+ * dispatch only). `findPosts` resolves hasMany filters through
+ * the registered join table, so `where: { categories: id }`
+ * stays ergonomic without bypassing relationship storage.
  *
  * Two archives shipped:
  *   - byCategory at /category/:slug
@@ -91,7 +93,7 @@ export async function CategoryArchive({
       if (!category) {
         return { category: null, posts: emptyResult(settings.postsPerPage) };
       }
-      const posts = await findDocuments<Record<string, unknown>>("posts", {
+      const posts = await findPosts({
         where: {
           status: "published",
           categories: category.id as string,
@@ -147,7 +149,7 @@ export async function AuthorArchive({
     ["magazine.author-archive", id, String(settings.postsPerPage)],
     async () => {
       const author = await getUserById(id);
-      const posts = await findDocuments<Record<string, unknown>>("posts", {
+      const posts = await findPosts({
         where: { status: "published", author: id },
         sort: "-publishedAt",
         limit: settings.postsPerPage,

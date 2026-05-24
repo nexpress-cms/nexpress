@@ -151,7 +151,7 @@ function resolveCoverUrl(doc: PortfolioProjectDoc): string | null {
 
 function projectHref(doc: PortfolioProjectDoc): string {
   if (doc.slug) {
-    return doc.slug.startsWith("/") ? doc.slug : `/projects/${doc.slug}`;
+    return doc.slug.startsWith("/") ? doc.slug : `/work/${doc.slug}`;
   }
   return "#";
 }

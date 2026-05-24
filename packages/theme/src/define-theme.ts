@@ -402,6 +402,11 @@ export interface NpThemeSeedPost {
    */
   tagNames?: string[];
   /**
+   * Category names to link via the `categories` collection. Same
+   * resolution semantics as `tagNames`; unresolved names are skipped.
+   */
+  categoryNames?: string[];
+  /**
    * Extra fields merged onto the seeded post. The pipeline's
    * Zod validation strips keys the collection doesn't declare,
    * so extra fields are silently dropped rather than rejected.
