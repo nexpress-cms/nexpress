@@ -1,10 +1,6 @@
 import { getI18nConfig } from "@nexpress/core";
 import type { NpNavItem } from "@nexpress/core";
-import {
-  getCachedNavigation,
-  getCachedSite,
-  resolveAvailableLocales,
-} from "@nexpress/next";
+import { getCachedNavigation, getCachedSite, resolveAvailableLocales } from "@nexpress/next";
 import Link from "next/link";
 
 // `next/headers` lives in the Next-build-context-only world —
@@ -40,13 +36,10 @@ import { SearchKeyboardShortcut } from "./components/search-keyboard-shortcut.js
  * surface (see styles.ts) so the search + member widget stay
  * reachable as the page scrolls.
  */
-const FALLBACK_SITE_NAME = "NexPress";
+const FALLBACK_SITE_NAME = "Equilibrium";
 
 export async function DefaultHeader() {
-  const [headerNav, site] = await Promise.all([
-    getCachedNavigation("header"),
-    getCachedSite(),
-  ]);
+  const [headerNav, site] = await Promise.all([getCachedNavigation("header"), getCachedSite()]);
   const siteName = site?.name?.trim() || FALLBACK_SITE_NAME;
   const i18n = getI18nConfig();
   const showLanguagePicker = (i18n?.locales.length ?? 0) > 1;
@@ -81,7 +74,11 @@ export async function DefaultHeader() {
                   <ul className="np-site-subnav">
                     {item.children.map((child: NpNavItem, childIndex: number) => (
                       <li key={`nav-${index.toString()}-${childIndex.toString()}`}>
-                        {child.url ? <Link href={child.url}>{child.label}</Link> : <span>{child.label}</span>}
+                        {child.url ? (
+                          <Link href={child.url}>{child.label}</Link>
+                        ) : (
+                          <span>{child.label}</span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -91,12 +88,7 @@ export async function DefaultHeader() {
           </ul>
         </nav>
         <div className="np-site-header-tools">
-          <form
-            action="/search"
-            method="GET"
-            role="search"
-            className="np-site-search"
-          >
+          <form action="/search" method="GET" role="search" className="np-site-search">
             <svg
               width="14"
               height="14"
@@ -116,7 +108,7 @@ export async function DefaultHeader() {
               id="np-site-search-input"
               type="search"
               name="q"
-              placeholder="Search…"
+              placeholder="Search writing"
               autoComplete="off"
               className="np-site-search-input"
             />

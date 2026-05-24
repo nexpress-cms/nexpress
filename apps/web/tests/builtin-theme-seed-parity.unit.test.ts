@@ -60,11 +60,18 @@ function assertLocalNavTargetsResolve(theme: NpThemeDefinition): void {
 }
 
 describe("built-in theme seed parity", () => {
-  it("default seeds About and points local nav at pages or theme routes", () => {
+  it("default seeds the Equilibrium front page and points local nav at pages or routes", () => {
     const pages = defaultTheme.impl.seedContent?.pages ?? [];
     expect(pages).toEqual(
-      expect.arrayContaining([expect.objectContaining({ slug: "about", template: "about" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ slug: "/", template: "front" }),
+        expect.objectContaining({ slug: "about", template: "about" }),
+      ]),
     );
+    expect(pages.map((page) => page.title)).not.toEqual(
+      expect.arrayContaining(["Pricing", "Contact", "Welcome to NexPress"]),
+    );
+    expect(defaultTheme.impl.templates?.pages?.front).toBeDefined();
     expect(defaultTheme.impl.templates?.pages?.about).toBeDefined();
     expect(defaultTheme.impl.routes?.map((route) => route.pattern)).toContain("/tag/:slug");
     assertLocalNavTargetsResolve(defaultTheme);
@@ -72,6 +79,7 @@ describe("built-in theme seed parity", () => {
 
   it("docs seeds API reference and changelog pages with dedicated templates", () => {
     const pages = docsTheme.impl.seedContent?.pages ?? [];
+    const posts = docsTheme.impl.seedContent?.posts ?? [];
     expect(pages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -81,6 +89,16 @@ describe("built-in theme seed parity", () => {
         expect.objectContaining({ slug: "changelog", template: "changelog" }),
       ]),
     );
+    expect(posts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "Plugin author quickstart",
+          data: expect.objectContaining({
+            lede: 'From "I want to add behavior" to a running plugin in ten minutes.',
+          }),
+        }),
+      ]),
+    );
     expect(docsTheme.impl.templates?.pages?.apiReference).toBeDefined();
     expect(docsTheme.impl.templates?.pages?.changelog).toBeDefined();
     assertLocalNavTargetsResolve(docsTheme);
@@ -88,8 +106,20 @@ describe("built-in theme seed parity", () => {
 
   it("magazine seeds Masthead and routes every designed section archive", () => {
     const pages = magazineTheme.impl.seedContent?.pages ?? [];
+    const posts = magazineTheme.impl.seedContent?.posts ?? [];
     expect(pages).toEqual(
       expect.arrayContaining([expect.objectContaining({ slug: "masthead", template: "masthead" })]),
+    );
+    expect(posts[0]).toEqual(
+      expect.objectContaining({
+        title: "The cartographers of a city that won't sit still.",
+        excerpt: "Thirty-two years redrawing Seoul, block by block — inside the last paper atlas.",
+        data: expect.objectContaining({
+          authorName: "Helena Park",
+          featured: true,
+          readingTime: "22 min",
+        }),
+      }),
     );
     expect(magazineTheme.impl.templates?.pages?.masthead).toBeDefined();
     expect(magazineTheme.impl.routes?.map((route) => route.pattern)).toContain(
@@ -98,18 +128,17 @@ describe("built-in theme seed parity", () => {
     assertLocalNavTargetsResolve(magazineTheme);
   });
 
-  it("portfolio seeds Studio, Journal, Press and separates projects from journal posts", () => {
+  it("portfolio seeds Studio and Journal and separates projects from journal posts", () => {
     const pages = portfolioTheme.impl.seedContent?.pages ?? [];
     expect(pages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ slug: "studio", template: "studio" }),
         expect.objectContaining({ slug: "journal", template: "journal" }),
-        expect.objectContaining({ slug: "press", template: "press" }),
       ]),
     );
+    expect(pages.map((page) => page.slug)).not.toContain("press");
     expect(portfolioTheme.impl.templates?.pages?.studio).toBeDefined();
     expect(portfolioTheme.impl.templates?.pages?.journal).toBeDefined();
-    expect(portfolioTheme.impl.templates?.pages?.press).toBeDefined();
 
     const posts = portfolioTheme.impl.seedContent?.posts ?? [];
     expect(posts.filter((post) => post.kind === "project").length).toBeGreaterThan(0);

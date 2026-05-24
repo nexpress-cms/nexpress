@@ -69,16 +69,53 @@ interface PostListDoc {
       };
 }
 
+type CategoryStripItem = NonNullable<PostListDoc["categories"]>[number];
+
 const COVER_GRADIENTS: Array<1 | 2 | 3 | 4 | 5 | 6> = [1, 2, 3, 4, 5, 6];
 const AVATAR_TONES: Array<1 | 2 | 3 | 4> = [1, 2, 3, 4];
+const DEFAULT_INDEX_COPY = {
+  eyebrow: "/writing",
+  heading: "Notes from the edge of distributed systems.",
+  intro:
+    "Long-form essays and shorter notes on the trade-offs that show up when you actually ship — databases, type systems, queues, the bits in between.",
+  sectionMeta: "68 posts · sorted by date",
+  featureOverlay: {
+    left: "ISSUE\u00a0#47",
+    right: "14\u00a0MIN\u00a0READ",
+  },
+  newsletter: {
+    heading: "One essay every other Tuesday. No threads, no roundups.",
+    body: "Three thousand engineers read it. Cancel any time — the archive stays public.",
+  },
+};
+const DEFAULT_INDEX_CATEGORIES: CategoryStripItem[] = [
+  { label: "All", active: true },
+  { label: "Engineering", href: "/tag/engineering", count: 24 },
+  { label: "Postgres", href: "/tag/postgres", count: 12 },
+  { label: "TypeScript", href: "/tag/typescript", count: 9 },
+  { label: "Distributed", href: "/tag/distributed", count: 7 },
+  { label: "Product", href: "/tag/product", count: 5 },
+];
+
+export function createDefaultPostListDoc(docs: unknown[]): PostListDoc {
+  return {
+    docs: docs as PostCardWithTags[],
+    heading: DEFAULT_INDEX_COPY.heading,
+    eyebrow: DEFAULT_INDEX_COPY.eyebrow,
+    intro: DEFAULT_INDEX_COPY.intro,
+    categories: DEFAULT_INDEX_CATEGORIES,
+    sectionMeta: DEFAULT_INDEX_COPY.sectionMeta,
+    newsletter: DEFAULT_INDEX_COPY.newsletter,
+  };
+}
 
 function gridCoverGradient(index: number): 1 | 2 | 3 | 4 | 5 | 6 {
   // Six-step cycle so consecutive cards never share a gradient.
-  return COVER_GRADIENTS[index % COVER_GRADIENTS.length]!;
+  return COVER_GRADIENTS[index % COVER_GRADIENTS.length];
 }
 
 function gridAvatarTone(index: number): 1 | 2 | 3 | 4 {
-  return AVATAR_TONES[index % AVATAR_TONES.length]!;
+  return AVATAR_TONES[index % AVATAR_TONES.length];
 }
 
 function gridCoverFigure(doc: PostCardWithTags, index: number): string {
@@ -91,7 +128,7 @@ function gridCoverFigure(doc: PostCardWithTags, index: number): string {
 
 function featureKicker(doc: PostCardWithTags): string | undefined {
   if (doc.category) return `${doc.category} · Featured`;
-  if (doc.tags && doc.tags.length > 0) return `${doc.tags[0]!} · Featured`;
+  if (doc.tags && doc.tags.length > 0) return `${doc.tags[0]} · Featured`;
   return "Featured";
 }
 
@@ -135,20 +172,30 @@ function deriveCategoryStrip(
 
 export function PostListTemplate({ doc }: NpTemplateRenderProps) {
   const data = doc as PostListDoc;
-  const heading = data.heading ?? "Posts";
-  const eyebrow = data.eyebrow;
-  const intro = data.intro;
+  const useDefaultIndexCopy =
+    data.heading === "Blog" &&
+    !data.eyebrow &&
+    !data.intro &&
+    !data.categories &&
+    !data.sectionMeta &&
+    data.newsletter === undefined;
+  const heading = useDefaultIndexCopy ? DEFAULT_INDEX_COPY.heading : (data.heading ?? "Posts");
+  const eyebrow = useDefaultIndexCopy ? DEFAULT_INDEX_COPY.eyebrow : data.eyebrow;
+  const intro = useDefaultIndexCopy ? DEFAULT_INDEX_COPY.intro : data.intro;
   const all = data.docs ?? [];
   const categories =
-    data.categories ?? (all.length > 0 ? deriveCategoryStrip(all) : []);
+    data.categories ??
+    (useDefaultIndexCopy
+      ? DEFAULT_INDEX_CATEGORIES
+      : all.length > 0
+        ? deriveCategoryStrip(all)
+        : []);
 
   if (all.length === 0) {
     return (
       <section className="np-post-list np-post-list-empty">
         <header className="np-post-list-header">
-          {eyebrow ? (
-            <span className="np-post-list-eyebrow">{eyebrow}</span>
-          ) : null}
+          {eyebrow ? <span className="np-post-list-eyebrow">{eyebrow}</span> : null}
           <h1>{heading}</h1>
           <p className="np-post-list-intro">
             No posts yet — once you publish from the admin, they'll appear here.
@@ -160,28 +207,33 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
 
   const [feature, ...rest] = all;
   const featureCoverOverlay = feature
-    ? {
-        left: `ISSUE #${all.length.toString().padStart(2, "0")}`,
-        right: (() => {
-          const m = readingMinutes(feature.readingTime);
-          return m ? `${m.toString()} MIN READ` : "FEATURED";
-        })(),
-      }
+    ? useDefaultIndexCopy
+      ? DEFAULT_INDEX_COPY.featureOverlay
+      : {
+          left: `ISSUE\u00a0#${all.length.toString().padStart(2, "0")}`,
+          right: (() => {
+            const m = readingMinutes(feature.readingTime);
+            return m ? `${m.toString()}\u00a0MIN\u00a0READ` : "FEATURED";
+          })(),
+        }
     : undefined;
   const sectionMetaCopy =
     data.sectionMeta ??
-    (rest.length > 0
-      ? `${rest.length.toString()} ${rest.length === 1 ? "post" : "posts"} · sorted by date`
-      : undefined);
-  const newsletter = data.newsletter === false ? null : data.newsletter ?? {};
+    (useDefaultIndexCopy
+      ? DEFAULT_INDEX_COPY.sectionMeta
+      : rest.length > 0
+        ? `${rest.length.toString()} ${rest.length === 1 ? "post" : "posts"} · sorted by date`
+        : undefined);
+  const newsletter =
+    data.newsletter === false
+      ? null
+      : (data.newsletter ?? (useDefaultIndexCopy ? DEFAULT_INDEX_COPY.newsletter : {}));
   const pagination = data.pagination ?? [];
 
   return (
     <section className="np-post-list">
       <header className="np-post-list-header">
-        {eyebrow ? (
-          <span className="np-post-list-eyebrow">{eyebrow}</span>
-        ) : null}
+        {eyebrow ? <span className="np-post-list-eyebrow">{eyebrow}</span> : null}
         <h1>{heading}</h1>
         {intro ? <p className="np-post-list-intro">{intro}</p> : null}
         {categories.length > 0 ? (
@@ -250,11 +302,7 @@ export function PostListTemplate({ doc }: NpTemplateRenderProps) {
                 "Sign up to receive new essays in your inbox. No threads, no roundups, cancel any time."}
             </p>
           </div>
-          <form
-            className="np-newsletter-form"
-            action="/api/newsletter"
-            method="POST"
-          >
+          <form className="np-newsletter-form" action="/api/newsletter" method="POST">
             <label className="sr-only" htmlFor="np-newsletter-email">
               Email address
             </label>

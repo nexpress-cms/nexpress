@@ -5,11 +5,14 @@ export function PageAboutTemplate(_props: NpTemplateRenderProps) {
     <article className="np-default-about">
       <header className="np-default-about-hero">
         <span className="np-default-about-eyebrow">/about</span>
-        <h1>Readable systems notes from people who keep production honest.</h1>
+        <h1>
+          A small place for <em>long thoughts</em> on the parts of the stack that don't fit in a
+          tweet.
+        </h1>
         <p className="np-default-about-lede">
-          Equilibrium is the default NexPress demo publication: a clean,
-          practical engineering journal for teams writing about infrastructure,
-          product, and the decisions that survive real traffic.
+          Equilibrium is a working journal by Anya Hartwell and a rotating group of engineers
+          writing about production systems, databases, language design, and the trade-offs that only
+          show up after launch.
         </p>
       </header>
 
@@ -31,19 +34,18 @@ export function PageAboutTemplate(_props: NpTemplateRenderProps) {
       <section className="np-default-about-split">
         <div className="np-default-about-prose">
           <p>
-            We write for working engineers: the person debugging stale reads,
-            reviewing a migration at midnight, or trying to explain why the
-            simple queue became a contract between two systems.
+            We are interested in the parts that sound boring in architecture diagrams and become
+            very loud at 2:13 a.m.: replicas, queues, migrations, type boundaries, observability,
+            and the social contract around changing shared systems.
           </p>
           <p>
-            The default theme is intentionally quiet. It gives long-form posts a
-            sharp header, useful archives, a durable newsletter slot, and enough
-            typographic range to feel like a real publication without becoming a
-            brand exercise.
+            Most posts begin as internal notes. We rewrite them until the production detail is still
+            intact but the lesson travels: what broke, what fixed it, what we would avoid next time.
           </p>
           <p>
-            Use it as a blog, changelog, product journal, or team notebook. The
-            seeded content is fictional, but the layout is production-shaped.
+            The archive is fictional demo content, but the editorial model is real enough to
+            exercise the theme: long-form essays, short notes, topic archives, a durable newsletter
+            slot, and a quiet masthead.
           </p>
         </div>
         <aside className="np-default-about-card" aria-label="Masthead">
@@ -59,7 +61,7 @@ export function PageAboutTemplate(_props: NpTemplateRenderProps) {
             </div>
             <div>
               <dt>Type & tools</dt>
-              <dd>Jules Park</dd>
+              <dd>Lukas Berg</dd>
             </div>
             <div>
               <dt>Cadence</dt>

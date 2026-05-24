@@ -8,6 +8,7 @@ import { defaultThemeCss } from "./styles.js";
 import { DefaultTagArchiveRoute } from "./routes/tag-archive.js";
 import { PageAboutTemplate } from "./templates/page-about.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
+import { PageFrontTemplate } from "./templates/page-front.js";
 import { PageLandingTemplate } from "./templates/page-landing.js";
 import { PageSidebarTemplate } from "./templates/page-sidebar.js";
 import { PageWideTemplate } from "./templates/page-wide.js";
@@ -70,9 +71,9 @@ const daysAgo = (days: number): string => new Date(SEED_NOW.getTime() - days * D
  */
 const SEED_POSTS: NpThemeSeedPost[] = [
   {
-    title: "Read-your-writes without the asterisks",
+    title: "Read-your-writes without the asterisks.",
     excerpt:
-      "Postgres replicas are great until a write redirects to a different replica and reads stale data. Here's the small routing layer that follows a write within the request and kept our p99 reads under 12 ms.",
+      "Postgres replicas are fast and cheap until a user writes a row, redirects, and reads stale data on a different replica. We rebuilt the routing layer to follow a write within the request, and kept p99 read latency under 12 ms.",
     content: lexicalDoc([
       "Read-replica routing is a cheap win for read-heavy workloads, but the moment a user writes a row and the next request lands on a different replica, you ship a stale view. The standard fixes — session affinity, " +
         "sticky cookies, replica lag thresholds — each have failure modes that are hard to reason about under load.",
@@ -83,9 +84,8 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Engineering", "Postgres"],
   },
   {
-    title: "Why your index is fine and your query planner isn't",
-    excerpt:
-      "Six query rewrites that survived a year in production — and the two that didn't. A practical tour of the cases where adding an index made the problem worse before it made it better.",
+    title: "Why your index is fine and your query planner isn't.",
+    excerpt: "Six query rewrites that survived a year in production — and the two that didn't.",
     content: lexicalDoc([
       "The first time the planner ignored a perfectly good index, I spent an hour writing increasingly specific `EXPLAIN ANALYZE` queries before I noticed the statistics were three days old. The second time, it was a parameter sniffing problem and the index was right; I just needed to teach the planner about it.",
       "This post walks through six rewrites — two `ROW_NUMBER()` cases, two correlated subqueries, a `LATERAL` join, and one CTE we ended up inlining — and the diagnostic we settled on for each. Three of the six are wins that survived a year of production traffic. Two regressed and got reverted. One is still in flight.",
@@ -94,7 +94,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Postgres", "Indexes"],
   },
   {
-    title: "Typing the unknown: branded IDs without the runtime tax",
+    title: "Typing the unknown: branded IDs without the runtime tax.",
     excerpt:
       "A pragmatic pattern for distinguishing `UserId` from `OrgId` in the type system, with no helpers and no `as` casts. The trick is doing the branding at the boundary so the rest of the codebase doesn't notice.",
     content: lexicalDoc([
@@ -105,7 +105,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["TypeScript", "Types"],
   },
   {
-    title: "Outbox isn't a queue — it's a contract between two writers",
+    title: "Outbox isn't a queue — it's a contract between two writers.",
     excerpt:
       'Why every team eventually reinvents the transactional outbox, and how to pick the implementation that won\'t bite you. Spoiler: the answer is rarely "use Kafka".',
     content: lexicalDoc([
@@ -116,7 +116,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Distributed", "Queues"],
   },
   {
-    title: "Latency budgets are how you keep your roadmap honest",
+    title: "Latency budgets are how you keep your roadmap honest.",
     excerpt:
       "A four-quarter look at one team's p99 budget — what it bought, and the work that fell off the plan because of it. The number itself was less interesting than the conversations it forced.",
     content: lexicalDoc([
@@ -127,7 +127,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Product", "Notes"],
   },
   {
-    title: "Two cache stampedes I wish I'd seen coming",
+    title: "Two cache stampedes I wish I'd seen coming.",
     excerpt:
       "A post-mortem on the day a featured-post invalidation pushed our origin from 200 rps to 18,000 in nine seconds. And the second time, six months later, when we caught it before any of the dashboards did.",
     content: lexicalDoc([
@@ -138,7 +138,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     tagNames: ["Engineering", "Caches"],
   },
   {
-    title: "RFC: shorter, smaller, more of them",
+    title: "RFC: shorter, smaller, more of them.",
     excerpt:
       "The RFC template our team converged on after eighteen months of over-scoped design docs and under-scoped Slack threads. Three sections, two pages, one decision per document.",
     content: lexicalDoc([
@@ -182,14 +182,14 @@ const SEED_TAGS = [
 const SEED_NAV = {
   header: [
     { id: "nav-default-writing", label: "Writing", type: "link" as const, url: "/blog" },
-    { id: "nav-default-notes", label: "Notes", type: "link" as const, url: "/tag/postgres" },
-    { id: "nav-default-talks", label: "Archive", type: "link" as const, url: "/tag/postgres" },
+    { id: "nav-default-notes", label: "Notes", type: "link" as const, url: "/tag/notes" },
+    { id: "nav-default-talks", label: "Talks", type: "link" as const, url: "/tag/product" },
     { id: "nav-default-about", label: "About", type: "link" as const, url: "/about" },
   ],
   footer: [
     { id: "nav-default-footer-writing", label: "Writing", type: "link" as const, url: "/blog" },
-    { id: "nav-default-footer-notes", label: "Notes", type: "link" as const, url: "/tag/postgres" },
-    { id: "nav-default-footer-talks", label: "Profile", type: "link" as const, url: "/about" },
+    { id: "nav-default-footer-notes", label: "Notes", type: "link" as const, url: "/tag/notes" },
+    { id: "nav-default-footer-talks", label: "Talks", type: "link" as const, url: "/tag/product" },
     { id: "nav-default-footer-about", label: "About", type: "link" as const, url: "/about" },
     {
       id: "nav-default-footer-archive",
@@ -223,10 +223,11 @@ const SEED_NAV = {
  * the radii scale. Sites brand by overriding the same custom
  * properties — this theme is structural.
  *
- * Ships `seedContent`: seven demo posts, eleven tags, header +
- * footer nav. First-boot wizard pours these through the
- * framework's seeder so a fresh install lands on a populated
- * blog rather than the generic "Welcome to NexPress" copy.
+ * Ships `seedContent`: seven demo posts, eleven tags, the
+ * front-page writing index, About page, and header + footer nav.
+ * First-boot wizard pours these through the framework's seeder
+ * so a fresh install lands on the Equilibrium publication from
+ * the design handoff rather than framework marketing copy.
  */
 export const defaultTheme = defineTheme({
   manifest: {
@@ -282,6 +283,12 @@ export const defaultTheme = defineTheme({
           label: "Default",
           description: "Centered content container with the standard reading width.",
           component: PageDefaultTemplate,
+        },
+        front: {
+          label: "Front",
+          description:
+            "Equilibrium writing index — feature story, category strip, latest grid, and newsletter. Pulls published posts from the server at render time. The seeded home page uses this template.",
+          component: PageFrontTemplate,
         },
         about: {
           label: "About",

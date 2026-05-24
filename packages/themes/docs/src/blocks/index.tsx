@@ -112,8 +112,7 @@ const docsCalloutBlock: NpBlockDefinition = {
       name: "body",
       label: "Body",
       type: "textarea",
-      defaultValue:
-        "Add context that an operator should not miss when scanning the page.",
+      defaultValue: "Add context that an operator should not miss when scanning the page.",
     },
   ],
   render: (props) => {
@@ -145,7 +144,7 @@ const docsCodePanelBlock: NpBlockDefinition = {
   defaultProps: {
     filename: "example.ts",
     language: "ts",
-    source: "export const greeting = \"hello\";",
+    source: 'export const greeting = "hello";',
   },
   propsSchema: [
     {
@@ -165,7 +164,7 @@ const docsCodePanelBlock: NpBlockDefinition = {
       label: "Source",
       type: "textarea",
       rows: 10,
-      defaultValue: "export const greeting = \"hello\";",
+      defaultValue: 'export const greeting = "hello";',
     },
   ],
   render: (props) => {
@@ -177,9 +176,7 @@ const docsCodePanelBlock: NpBlockDefinition = {
         <div className="np-docs-code-head">
           <span className="np-docs-code-file">
             {filename ? <span>{filename}</span> : null}
-            {language ? (
-              <span className="np-docs-brand-version">{language}</span>
-            ) : null}
+            {language ? <span className="np-docs-brand-version">{language}</span> : null}
           </span>
           <CopyButton text={source} />
         </div>
@@ -234,12 +231,10 @@ interface StepItem {
 
 function readSteps(value: unknown): StepItem[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .filter(isRecord)
-    .map((item) => ({
-      title: readString(item.title, "Step"),
-      body: readString(item.body, ""),
-    }));
+  return value.filter(isRecord).map((item) => ({
+    title: readString(item.title, "Step"),
+    body: readString(item.body, ""),
+  }));
 }
 
 const docsStepsBlock: NpBlockDefinition = {
@@ -296,19 +291,6 @@ interface ApiRow {
   required: boolean;
 }
 
-function readApiColumns(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((cell): cell is string => typeof cell === "string");
-}
-
-function readApiRows(value: unknown): ApiRow[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord).map((row) => ({
-    cells: readApiColumns(row.cells),
-    required: row.required === true,
-  }));
-}
-
 const docsApiTableBlock: NpBlockDefinition = {
   type: "docsApiTable",
   label: "API table",
@@ -333,17 +315,13 @@ const docsApiTableBlock: NpBlockDefinition = {
       type: "array",
       defaultValue: ["Name", "Type", "Description"],
       itemDefault: { value: "Column" },
-      itemSchema: [
-        { name: "value", label: "Header", type: "text", defaultValue: "Column" },
-      ],
+      itemSchema: [{ name: "value", label: "Header", type: "text", defaultValue: "Column" }],
     },
     {
       name: "rows",
       label: "Rows",
       type: "array",
-      defaultValue: [
-        { cells: ["slug", "string", "Unique URL fragment."], required: true },
-      ],
+      defaultValue: [{ cells: ["slug", "string", "Unique URL fragment."], required: true }],
       itemDefault: { cells: [], required: false },
       itemSchema: [
         {
@@ -352,9 +330,7 @@ const docsApiTableBlock: NpBlockDefinition = {
           type: "array",
           defaultValue: [],
           itemDefault: { value: "" },
-          itemSchema: [
-            { name: "value", label: "Cell", type: "text", defaultValue: "" },
-          ],
+          itemSchema: [{ name: "value", label: "Cell", type: "text", defaultValue: "" }],
         },
         {
           name: "required",

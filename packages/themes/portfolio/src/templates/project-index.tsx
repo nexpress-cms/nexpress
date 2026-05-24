@@ -229,10 +229,7 @@ function projectYear(doc: PortfolioProjectDoc): string | null {
   if (typeof year === "string") return year;
   if (doc.publishedAt) {
     try {
-      const d =
-        typeof doc.publishedAt === "string"
-          ? new Date(doc.publishedAt)
-          : doc.publishedAt;
+      const d = typeof doc.publishedAt === "string" ? new Date(doc.publishedAt) : doc.publishedAt;
       if (!Number.isNaN(d.getTime())) return d.getFullYear().toString();
     } catch {
       // fall through
@@ -263,16 +260,14 @@ export async function ProjectIndexTemplate({
   const settings = await resolvePortfolioSettings();
   const docs = data.docs ?? [];
   const heroEyebrow = data.heroEyebrow ?? "Selected work — 2018 — 2026";
-  const heading = data.heading ?? "A small studio for <em>identity, type,</em> and the long view of a brand.";
+  const heading = data.heading ?? "A small studio for <em>identity, type,</em> and the long view.";
   const heroMeta: MetaBlock[] = data.heroMeta ?? settings.heroMeta;
   const filters = data.filters ?? deriveFiltersFromDocs(docs);
   const studioEyebrow = data.studioEyebrow ?? "The studio";
   const studioHeading = data.studioHeading ?? settings.studioHeading;
   const studioBody = data.studioBody ?? settings.studioBody;
   const studioStats = data.studioStats ?? settings.studioStats;
-  const contactHref = settings.contactEmail
-    ? `mailto:${settings.contactEmail}`
-    : null;
+  const contactHref = settings.contactEmail ? `mailto:${settings.contactEmail}` : null;
 
   return (
     <>
@@ -280,10 +275,7 @@ export async function ProjectIndexTemplate({
       <section className="np-portfolio-hero">
         <div className="np-portfolio-container">
           <p className="np-portfolio-hero-eyebrow">
-            <span
-              className="np-portfolio-hero-eyebrow-dot"
-              aria-hidden="true"
-            />
+            <span className="np-portfolio-hero-eyebrow-dot" aria-hidden="true" />
             {heroEyebrow}
           </p>
           <h1>{renderHeadlineWithEm(heading)}</h1>
@@ -305,12 +297,8 @@ export async function ProjectIndexTemplate({
             <div className="np-portfolio-hero-meta">
               {heroMeta.map((block, i) => (
                 <div key={`hero-meta-${i.toString()}`}>
-                  <p className="np-portfolio-hero-meta-block-label">
-                    {block.label}
-                  </p>
-                  <p className="np-portfolio-hero-meta-block-value">
-                    {block.value}
-                  </p>
+                  <p className="np-portfolio-hero-meta-block-label">{block.label}</p>
+                  <p className="np-portfolio-hero-meta-block-value">{block.value}</p>
                 </div>
               ))}
             </div>
@@ -325,14 +313,9 @@ export async function ProjectIndexTemplate({
             <ul className="np-portfolio-filters" role="tablist">
               {filters.map((f, i) => (
                 <li key={`filter-${i.toString()}-${f.label}`}>
-                  <a
-                    href={f.href ?? "#"}
-                    data-active={f.active ? "true" : undefined}
-                  >
+                  <a href={f.href ?? "#"} data-active={f.active ? "true" : undefined}>
                     {f.label}
-                    {typeof f.count === "number" ? (
-                      <sup>{f.count.toString()}</sup>
-                    ) : null}
+                    {typeof f.count === "number" ? <sup>{f.count.toString()}</sup> : null}
                   </a>
                 </li>
               ))}
@@ -345,11 +328,7 @@ export async function ProjectIndexTemplate({
                     : ""}
                 </span>
                 <div className="np-portfolio-view-toggle" role="group">
-                  <button
-                    type="button"
-                    aria-pressed="true"
-                    aria-label="Grid view"
-                  >
+                  <button type="button" aria-pressed="true" aria-label="Grid view">
                     <svg
                       width="14"
                       height="14"
@@ -364,11 +343,7 @@ export async function ProjectIndexTemplate({
                       <rect x="14" y="14" width="7" height="7" />
                     </svg>
                   </button>
-                  <button
-                    type="button"
-                    aria-pressed="false"
-                    aria-label="List view"
-                  >
+                  <button type="button" aria-pressed="false" aria-label="List view">
                     <svg
                       width="14"
                       height="14"
@@ -394,9 +369,7 @@ export async function ProjectIndexTemplate({
         {docs.length === 0 ? (
           <div className="np-portfolio-empty">
             <h1>The shelf is empty.</h1>
-            <p>
-              Add projects from the admin to fill the grid.
-            </p>
+            <p>Add projects from the admin to fill the grid.</p>
           </div>
         ) : (
           <ul className="np-portfolio-grid">
@@ -415,14 +388,8 @@ export async function ProjectIndexTemplate({
                   key={project.id ?? project.slug ?? `card-${index.toString()}`}
                   className={`np-portfolio-span-${span.toString()}`}
                 >
-                  <a
-                    href={projectHref(project)}
-                    className="np-portfolio-card"
-                  >
-                    <div
-                      className={coverClassName}
-                      data-has-image={hasImage ? "true" : undefined}
-                    >
+                  <a href={projectHref(project)} className="np-portfolio-card">
+                    <div className={coverClassName} data-has-image={hasImage ? "true" : undefined}>
                       {typeof badge === "string" && badge.length > 0 ? (
                         <span
                           className={
@@ -443,9 +410,7 @@ export async function ProjectIndexTemplate({
                             style={{ width: "100%", height: "100%", objectFit: "cover" }}
                           />
                         ) : (
-                          <span className="np-portfolio-card-fig">
-                            {coverFigure(project)}
-                          </span>
+                          <span className="np-portfolio-card-fig">{coverFigure(project)}</span>
                         )}
                       </div>
                     </div>
@@ -454,9 +419,7 @@ export async function ProjectIndexTemplate({
                         {renderHeadlineWithEm(project.title ?? "Untitled")}
                       </h3>
                       {yearLabel ? (
-                        <span className="np-portfolio-card-year">
-                          {yearLabel}
-                        </span>
+                        <span className="np-portfolio-card-year">{yearLabel}</span>
                       ) : null}
                     </div>
                     {disc.length > 0 ? (
@@ -465,15 +428,10 @@ export async function ProjectIndexTemplate({
                           i === 0
                             ? [<React.Fragment key={`d-${i.toString()}`}>{part}</React.Fragment>]
                             : [
-                                <span
-                                  key={`s-${i.toString()}`}
-                                  aria-hidden="true"
-                                >
+                                <span key={`s-${i.toString()}`} aria-hidden="true">
                                   ·
                                 </span>,
-                                <React.Fragment key={`d-${i.toString()}`}>
-                                  {part}
-                                </React.Fragment>,
+                                <React.Fragment key={`d-${i.toString()}`}>{part}</React.Fragment>,
                               ],
                         )}
                       </p>
@@ -493,9 +451,7 @@ export async function ProjectIndexTemplate({
             <div className="np-portfolio-studio-grid">
               <div>
                 <p className="np-portfolio-studio-eyebrow">{studioEyebrow}</p>
-                {studioHeading ? (
-                  <h2>{renderHeadlineWithEm(studioHeading)}</h2>
-                ) : null}
+                {studioHeading ? <h2>{renderHeadlineWithEm(studioHeading)}</h2> : null}
                 {studioBody.map((para, i) => (
                   <p key={`studio-p-${i.toString()}`}>{para}</p>
                 ))}
@@ -503,16 +459,9 @@ export async function ProjectIndexTemplate({
               {studioStats.length > 0 ? (
                 <ul className="np-portfolio-studio-stats">
                   {studioStats.map((stat, i) => (
-                    <li
-                      key={`studio-stat-${i.toString()}`}
-                      className="np-portfolio-studio-stat"
-                    >
-                      <p className="np-portfolio-studio-stat-value">
-                        {stat.value}
-                      </p>
-                      <p className="np-portfolio-studio-stat-label">
-                        {stat.label}
-                      </p>
+                    <li key={`studio-stat-${i.toString()}`} className="np-portfolio-studio-stat">
+                      <p className="np-portfolio-studio-stat-value">{stat.value}</p>
+                      <p className="np-portfolio-studio-stat-label">{stat.label}</p>
                     </li>
                   ))}
                 </ul>
@@ -526,13 +475,8 @@ export async function ProjectIndexTemplate({
       {!data.hideContact && contactHref ? (
         <section className="np-portfolio-contact">
           <div className="np-portfolio-container">
-            <p className="np-portfolio-contact-eyebrow">
-              {settings.bookingNotice}
-            </p>
-            <a
-              href={contactHref}
-              className="np-portfolio-contact-mail"
-            >
+            <p className="np-portfolio-contact-eyebrow">{settings.bookingNotice}</p>
+            <a href={contactHref} className="np-portfolio-contact-mail">
               {settings.contactEmail}
             </a>
             {settings.socialLinks.length > 0 ? (
@@ -556,10 +500,7 @@ export async function ProjectIndexTemplate({
                   return i === 0
                     ? [anchor]
                     : [
-                        <span
-                          key={`sep-${i.toString()}`}
-                          aria-hidden="true"
-                        >
+                        <span key={`sep-${i.toString()}`} aria-hidden="true">
                           ·
                         </span>,
                         anchor,

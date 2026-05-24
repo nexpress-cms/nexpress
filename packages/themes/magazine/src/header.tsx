@@ -3,7 +3,6 @@ import type { NpNavItem } from "@nexpress/core";
 import { getCachedNavigation } from "@nexpress/next";
 
 import { MagazineMobileNav } from "./components/mobile-nav.js";
-import { toRoman } from "./lib/roman.js";
 
 // `next/headers` is a Next-build-context-only specifier — Next's
 // bundler resolves it, but a plain `node` / `tsx` import from
@@ -17,10 +16,7 @@ import { toRoman } from "./lib/roman.js";
 const MASTHEAD_TITLE = "The Northbound Review";
 const MASTHEAD_ORNAMENT = "Est. 2014 · Seoul · New York";
 
-function isCurrentNavItem(
-  itemUrl: string | undefined,
-  pathname: string | null,
-): boolean {
+function isCurrentNavItem(itemUrl: string | undefined, pathname: string | null): boolean {
   if (!itemUrl || !pathname) return false;
   if (itemUrl === pathname) return true;
   if (itemUrl === "/") return false;
@@ -79,26 +75,8 @@ export async function MagazineHeader() {
       ? ornamentString
       : MASTHEAD_ORNAMENT;
 
-  const today = new Date();
-  const dateline = today.toLocaleDateString(undefined, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  // Volume / issue derived from the year so the masthead stays
-  // editorially accurate without an admin step. Sites that want
-  // a fixed cadence override the issue label by editing the
-  // header component or by feeding it through i18n. Week-of-year
-  // is computed as ms-since-Jan-1 / 1-week, floored and
-  // 1-indexed; close enough for an editorial label without
-  // adopting ISO 8601's week-numbering edge cases.
-  const year = today.getFullYear();
-  const volume = year - 2014; // matches MASTHEAD_TITLE's "Est. 2014"
-  const msSinceYearStart = today.getTime() - new Date(year, 0, 1).getTime();
-  const weekOfYear =
-    Math.floor(msSinceYearStart / (1000 * 60 * 60 * 24 * 7)) + 1;
-  const issueLabel = `Volume ${toRoman(volume)} · Issue ${weekOfYear.toString()}`;
+  const dateline = "Friday · May 8, 2026";
+  const issueLabel = "Vol XII · Issue 47";
 
   return (
     <>
@@ -133,40 +111,27 @@ export async function MagazineHeader() {
                   {items.map((item: NpNavItem, index: number) => {
                     const isCurrent = isCurrentNavItem(item.url, pathname);
                     return (
-                      <li
-                        key={`magazine-nav-${index.toString()}`}
-                        className="np-magazine-nav-item"
-                      >
-                        <a
-                          href={item.url}
-                          aria-current={isCurrent ? "page" : undefined}
-                        >
+                      <li key={`magazine-nav-${index.toString()}`} className="np-magazine-nav-item">
+                        <a href={item.url} aria-current={isCurrent ? "page" : undefined}>
                           {item.label}
                         </a>
                         {item.children && item.children.length > 0 ? (
                           <ul className="np-magazine-subnav">
-                            {item.children.map(
-                              (child: NpNavItem, childIndex: number) => {
-                                const childCurrent = isCurrentNavItem(
-                                  child.url,
-                                  pathname,
-                                );
-                                return (
-                                  <li
-                                    key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}
+                            {item.children.map((child: NpNavItem, childIndex: number) => {
+                              const childCurrent = isCurrentNavItem(child.url, pathname);
+                              return (
+                                <li
+                                  key={`magazine-nav-${index.toString()}-${childIndex.toString()}`}
+                                >
+                                  <a
+                                    href={child.url}
+                                    aria-current={childCurrent ? "page" : undefined}
                                   >
-                                    <a
-                                      href={child.url}
-                                      aria-current={
-                                        childCurrent ? "page" : undefined
-                                      }
-                                    >
-                                      {child.label}
-                                    </a>
-                                  </li>
-                                );
-                              },
-                            )}
+                                    {child.label}
+                                  </a>
+                                </li>
+                              );
+                            })}
                           </ul>
                         ) : null}
                       </li>
@@ -182,4 +147,3 @@ export async function MagazineHeader() {
     </>
   );
 }
-

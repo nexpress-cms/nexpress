@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { resolveMagazineSettings } from "./settings-helpers.js";
 
@@ -40,11 +40,7 @@ export async function MagazineShell({ children }: { children: ReactNode }) {
       <style>{MAGAZINE_TOKEN_FALLBACKS}</style>
       <div
         className="np-magazine"
-        style={
-          Object.keys(styleVars).length > 0
-            ? (styleVars as CSSProperties)
-            : undefined
-        }
+        style={Object.keys(styleVars).length > 0 ? styleVars : undefined}
       >
         {children}
       </div>
