@@ -18,7 +18,6 @@ behavior they describe changes.
 | [community.md](community.md)                           | Community / member features (live behavior)                            |
 | [deployment.md](deployment.md)                         | Production deployment notes                                            |
 | [email.md](email.md)                                   | Email adapters and templates                                           |
-| [hosted-demo.md](hosted-demo.md)                       | Hosted public demo operating spec                                      |
 | [i18n.md](i18n.md)                                     | Internationalization                                                   |
 | [jobs.md](jobs.md)                                     | pg-boss-backed job queue                                               |
 | [multi-site.md](multi-site.md)                         | Multi-tenant site model                                                |

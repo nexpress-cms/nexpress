@@ -121,7 +121,6 @@ apps/web            private reference app
 - [Testing](./docs/testing.md)
 - [Releasing](./docs/releasing.md)
 - [Operations](./docs/operations.md)
-- [Hosted demo plan](./docs/hosted-demo.md)
 - [Troubleshooting](./docs/troubleshooting.md)
 - [All docs](./docs/README.md)
 

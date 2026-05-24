@@ -197,10 +197,9 @@ What a new developer sees in their first hour with NexPress.
   end-to-end example PR walkthrough).
 - E2E test coverage on the reference app — Playwright covering the golden
   paths (sign in, publish a post, install a plugin, switch theme).
-- Hosted demo deploy we can link from the README. The current operating spec is
-  [`docs/hosted-demo.md`](./hosted-demo.md): build from published
-  `create-nexpress`, expose a reset-style Admin demo, and keep destructive
-  surfaces guarded.
+- Hosted demo deploy we can link from the README. Keep the public surface to
+  the live demo link; operational details can stay out of the docs until they
+  become reusable product behavior.
 - Migration UI for the WordPress importer — CLI exists; admins want a
   drag-and-drop WXR uploader with progress.
 
