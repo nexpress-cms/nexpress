@@ -1,5 +1,12 @@
 # @nexpress/xliff
 
+## 0.3.10
+
+### Patch Changes
+
+- Updated dependencies [45bca0d]
+  - @nexpress/core@0.3.10
+
 ## 0.3.9
 
 ### Patch Changes
