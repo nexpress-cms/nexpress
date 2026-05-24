@@ -88,9 +88,18 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
     if (!updatedAtCol || !idCol) continue;
 
     const titleKey = TITLE_CANDIDATES.find((candidate) => getColumn(table, candidate));
+    const titleCol = titleKey ? getColumn(table, titleKey) : null;
+    const recentSelect: Record<string, AnyPgColumn> = {
+      id: idCol,
+      updatedAt: updatedAtCol,
+      title: titleCol ?? idCol,
+    };
+    if (statusCol) {
+      recentSelect.status = statusCol;
+    }
 
     const rows = (await db
-      .select()
+      .select(recentSelect)
       .from(table)
       .orderBy(desc(updatedAtCol))
       .limit(RECENT_PER_COLLECTION)) as Array<Record<string, unknown>>;
@@ -100,13 +109,13 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
       const rowId = typeof rowIdValue === "string" ? rowIdValue : "";
       if (!rowId) continue;
 
-      const titleValue = titleKey ? row[titleKey] : undefined;
+      const titleValue = row.title;
       const title =
         typeof titleValue === "string" && titleValue.trim().length > 0
           ? titleValue
           : rowId;
 
-      const statusValue = row._status;
+      const statusValue = row.status;
       const action =
         typeof statusValue === "string" && statusValue.length > 0
           ? statusValue
