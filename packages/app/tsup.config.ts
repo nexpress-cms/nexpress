@@ -31,6 +31,7 @@ const scriptEntries = {
   "scripts/deploy-targets": "src/scripts/deploy-targets.ts",
   "scripts/dev-notice": "src/scripts/dev-notice.ts",
   "scripts/doctor": "src/scripts/doctor.ts",
+  "scripts/doctor-readiness": "src/scripts/doctor-readiness.ts",
   "scripts/generate-schema": "src/scripts/generate-schema.ts",
   "scripts/postinstall-notice": "src/scripts/postinstall-notice.ts",
   "scripts/run-migrations": "src/scripts/run-migrations.ts",
