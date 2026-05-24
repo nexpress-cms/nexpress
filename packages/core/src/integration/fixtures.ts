@@ -12,7 +12,9 @@
 import {
   categoriesTable,
   pagesTable,
+  postsCategoriesTable,
   postsTable,
+  postsTagsTable,
   tagsTable,
 } from "../../../../apps/web/src/db/generated/collections.js";
 // eslint-disable-next-line import-x/no-relative-packages
@@ -52,7 +54,12 @@ export function registerTestCollections(): void {
     access: undefined,
     hooks: undefined,
   };
-  registerCollection("posts", postsTable, postsConfig);
+  registerCollection("posts", postsTable, postsConfig, {
+    joinTables: {
+      categories: postsCategoriesTable,
+      tags: postsTagsTable,
+    },
+  });
 
   const pagesConfig: NpCollectionConfig = {
     ...pagesCollection,
@@ -82,4 +89,4 @@ export function registerTestCollections(): void {
   registered = true;
 }
 
-export { categoriesTable, pagesTable, postsTable, tagsTable };
+export { categoriesTable, pagesTable, postsCategoriesTable, postsTable, postsTagsTable, tagsTable };

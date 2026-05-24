@@ -227,10 +227,7 @@ const themes: ThemeUnderTest[] = [
  *     a first consumer lands.
  */
 const KNOWN_UNSTYLED: Record<string, readonly string[]> = {
-  default: [
-    "np-post-meta-date", // VERIFIED_LANDMARK — sibling `.np-post-meta` styled.
-    "np-post-meta-reading", // VERIFIED_LANDMARK — sibling `.np-post-meta` styled.
-  ],
+  default: [],
   magazine: [
     // UNVERIFIED — post-card.tsx (`np-magazine-card-*`, 7 entries).
     // Component is exported from `@nexpress/theme-magazine` but
