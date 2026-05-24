@@ -1,5 +1,37 @@
 # @nexpress/app
 
+## 0.3.10
+
+### Patch Changes
+
+- 40c46c6: Limit admin dashboard recent-activity queries to the columns they render so dashboard loads tolerate additive collection-field drift until migrations are applied.
+- 45bca0d: Fix bundled-theme archive and project-link regressions: theme seeds can now attach posts to categories, `findPosts` resolves hasMany relationship filters through registered join tables, magazine section/category archives render seeded category posts, and portfolio project cards link to `/work/:slug`.
+- Updated dependencies [6d0b818]
+- Updated dependencies [45bca0d]
+  - @nexpress/theme-default@0.3.10
+  - @nexpress/core@0.3.10
+  - @nexpress/theme@0.3.10
+  - @nexpress/theme-magazine@0.3.10
+  - @nexpress/theme-portfolio@0.3.10
+  - @nexpress/admin@0.3.10
+  - @nexpress/auth-pages@0.3.10
+  - @nexpress/blocks@0.3.10
+  - @nexpress/next@0.3.10
+  - @nexpress/plugin-sdk@0.3.10
+  - @nexpress/plugin-forum@0.3.10
+  - @nexpress/plugin-oauth-github@0.3.10
+  - @nexpress/plugin-oauth-google@0.3.10
+  - @nexpress/theme-docs@0.3.10
+  - @nexpress/plugin-block-callout@0.3.10
+  - @nexpress/plugin-block-embed@0.3.10
+  - @nexpress/plugin-block-latest-posts@0.3.10
+  - @nexpress/plugin-block-newsletter@0.3.10
+  - @nexpress/plugin-block-pricing@0.3.10
+  - @nexpress/plugin-block-stats@0.3.10
+  - @nexpress/plugin-reading-time@0.3.10
+  - @nexpress/plugin-seo-audit@0.3.10
+  - @nexpress/editor@0.3.10
+
 ## 0.3.9
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @nexpress/theme-portfolio
 
+## 0.3.10
+
+### Patch Changes
+
+- 45bca0d: Fix bundled-theme archive and project-link regressions: theme seeds can now attach posts to categories, `findPosts` resolves hasMany relationship filters through registered join tables, magazine section/category archives render seeded category posts, and portfolio project cards link to `/work/:slug`.
+- Updated dependencies [45bca0d]
+  - @nexpress/core@0.3.10
+  - @nexpress/theme@0.3.10
+  - @nexpress/blocks@0.3.10
+  - @nexpress/next@0.3.10
+
 ## 0.3.9
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @nexpress/theme-default
 
+## 0.3.10
+
+### Patch Changes
+
+- 6d0b818: Complete the default theme's single-post and tag archive surfaces with resolved tag links, related posts, archive metadata, and relationship-backed tag browsing.
+- Updated dependencies [45bca0d]
+  - @nexpress/core@0.3.10
+  - @nexpress/theme@0.3.10
+  - @nexpress/blocks@0.3.10
+  - @nexpress/next@0.3.10
+  - @nexpress/editor@0.3.10
+
 ## 0.3.9
 
 ### Patch Changes
