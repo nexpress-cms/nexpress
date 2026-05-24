@@ -11,12 +11,17 @@ import { resolve } from "node:path";
 
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
+import { inferDeployTargetFromEnv, parseDeployTargetArg } from "./deploy-targets.js";
 import {
-  deployTargetTitle,
-  inferDeployTargetFromEnv,
-  parseDeployTargetArg,
-  type DeployTarget,
-} from "./deploy-targets.js";
+  checkJobsEnabledProd,
+  checkSchedulerTokenProd,
+  checkSecretLengthProd,
+  checkSiteUrlProd,
+  checkStorageProd,
+  checkTargetStorageProd,
+  checkTargetWorkerProd,
+  type CheckResult,
+} from "./doctor-readiness.js";
 
 /**
  * `pnpm doctor` — best-effort diagnosis of the env / runtime
@@ -48,13 +53,6 @@ import {
  */
 
 const PROD_MODE = process.argv.includes("--prod");
-
-interface CheckResult {
-  state: "ok" | "warn" | "error";
-  label: string;
-  detail?: string;
-  hint?: string;
-}
 
 interface PgClientLike {
   connect(): Promise<void>;
@@ -179,163 +177,6 @@ function checkRequiredVar(spec: RequiredVarSpec): CheckResult {
     };
   }
   return { state: "ok", label: spec.name };
-}
-
-/**
- * Production-only readiness checks. Mirror what
- * `verifyStartupSafety()` in @nexpress/core checks at boot, plus
- * a few things only the operator can answer pre-deploy (jobs
- * worker, scheduler token, https origin).
- */
-function checkSecretLengthProd(): CheckResult | null {
-  if (!PROD_MODE) return null;
-  const value = process.env.NP_SECRET ?? "";
-  if (value.length >= 32) return null;
-  return {
-    state: "error",
-    label: "NP_SECRET ≥ 32 chars (production)",
-    detail: value ? `only ${value.length.toString()} chars` : "not set",
-    hint: "Generate a strong secret: `openssl rand -base64 48`. Existing sessions will be invalidated.",
-  };
-}
-
-function checkJobsEnabledProd(): CheckResult | null {
-  if (!PROD_MODE) return null;
-  if (process.env.NP_ENABLE_JOBS === "1" || process.env.NP_ENABLE_JOBS === "true") {
-    return { state: "ok", label: "Jobs worker enabled (NP_ENABLE_JOBS)" };
-  }
-  return {
-    state: "warn",
-    label: "Jobs worker enabled (NP_ENABLE_JOBS)",
-    detail: "not set",
-    hint: "Without NP_ENABLE_JOBS=1, scheduled-publish / email / revalidation jobs are silently dropped. Set it on the runtime that owns the worker.",
-  };
-}
-
-function checkStorageProd(target: DeployTarget | null): CheckResult | null {
-  if (!PROD_MODE) return null;
-  const adapter = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  const multiNode = process.env.NP_MULTI_NODE === "true" || process.env.NP_MULTI_NODE === "1";
-  // Same heuristic verifyStartupSafety() uses — explicit opt-out wins.
-  const explicitSingle = process.env.NP_MULTI_NODE === "false" || process.env.NP_MULTI_NODE === "0";
-  const containerHint =
-    !explicitSingle &&
-    Boolean(
-      process.env.KUBERNETES_SERVICE_HOST ||
-      process.env.FLY_REGION ||
-      process.env.RENDER_INSTANCE_ID ||
-      process.env.RAILWAY_ENVIRONMENT_NAME,
-    );
-  const genericMultiNodeCheck = !target || target === "docker";
-  if (adapter === "local" && ((genericMultiNodeCheck && multiNode) || (!target && containerHint))) {
-    return {
-      state: "error",
-      label: "Storage adapter (production)",
-      detail: `local + ${multiNode ? "NP_MULTI_NODE=true" : "managed-container env detected"}`,
-      hint: "LocalStorageAdapter is per-process. Set NP_STORAGE_ADAPTER=s3 + NP_S3_BUCKET / NP_S3_REGION, or NP_MULTI_NODE=false on a single-node deploy.",
-    };
-  }
-  return { state: "ok", label: `Storage adapter (production): ${adapter}` };
-}
-
-function checkSiteUrlProd(): CheckResult | null {
-  if (!PROD_MODE) return null;
-  const url = process.env.SITE_URL ?? "";
-  if (url.startsWith("https://")) return { state: "ok", label: "SITE_URL is https" };
-  if (url.startsWith("http://")) {
-    return {
-      state: "warn",
-      label: "SITE_URL is https",
-      detail: "set to http://",
-      hint: "Production cookies are Secure-flagged when SITE_URL is https://. Switch once your deploy has TLS.",
-    };
-  }
-  // Already covered by checkRequiredVar; don't double-error.
-  return { state: "ok", label: "SITE_URL is https", detail: "skipped (unset)" };
-}
-
-function checkSchedulerTokenProd(): CheckResult | null {
-  if (!PROD_MODE) return null;
-  const token = process.env.NP_SCHEDULER_TOKEN ?? "";
-  if (!token) {
-    return {
-      state: "warn",
-      label: "NP_SCHEDULER_TOKEN",
-      detail: "not set",
-      hint: "If you use _status: 'scheduled' anywhere, set NP_SCHEDULER_TOKEN and have your cron driver send `Authorization: Bearer <token>`. Otherwise ignore this warning.",
-    };
-  }
-  if (token.length < 16) {
-    return {
-      state: "warn",
-      label: "NP_SCHEDULER_TOKEN",
-      detail: `only ${token.length.toString()} chars`,
-      hint: "Use a 32+ char random token: `openssl rand -hex 32`.",
-    };
-  }
-  return { state: "ok", label: "NP_SCHEDULER_TOKEN" };
-}
-
-function checkTargetStorageProd(target: DeployTarget | null): CheckResult[] {
-  if (!PROD_MODE || !target) return [];
-  const adapter = (process.env.NP_STORAGE_ADAPTER ?? "local").toLowerCase();
-  const explicitSingle = process.env.NP_MULTI_NODE === "false" || process.env.NP_MULTI_NODE === "0";
-  const targetTitle = deployTargetTitle(target);
-
-  if (target === "vercel") {
-    if (adapter !== "s3") {
-      return [
-        {
-          state: "error",
-          label: `${targetTitle} storage`,
-          detail: `NP_STORAGE_ADAPTER=${adapter}`,
-          hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy; add NP_S3_ENDPOINT for R2, MinIO, or another non-AWS S3 provider.",
-        },
-      ];
-    }
-    return [{ state: "ok", label: `${targetTitle} storage`, detail: "S3-compatible" }];
-  }
-
-  if ((target === "railway" || target === "render" || target === "fly") && adapter === "local") {
-    return [
-      {
-        state: explicitSingle ? "warn" : "error",
-        label: `${targetTitle} storage`,
-        detail: explicitSingle ? "local + NP_MULTI_NODE=false" : "local storage",
-        hint: explicitSingle
-          ? "Confirm the service has a persistent disk/volume and regular backups."
-          : "Managed container filesystems are not durable across nodes/redeploys. Set NP_STORAGE_ADAPTER=s3, or set NP_MULTI_NODE=false only for a deliberate single-node persistent-volume deploy.",
-      },
-    ];
-  }
-
-  return [{ state: "ok", label: `${targetTitle} storage`, detail: adapter }];
-}
-
-function checkTargetWorkerProd(target: DeployTarget | null): CheckResult[] {
-  if (!PROD_MODE || !target) return [];
-  const jobsEnabled = process.env.NP_ENABLE_JOBS === "1" || process.env.NP_ENABLE_JOBS === "true";
-  if (!jobsEnabled) return [];
-  const targetTitle = deployTargetTitle(target);
-
-  if (target === "vercel") {
-    return [
-      {
-        state: "warn",
-        label: `${targetTitle} jobs worker`,
-        detail: "NP_ENABLE_JOBS is set",
-        hint: "Vercel handles scheduled HTTP cron, but it does not run a long-lived pg-boss worker. Use a separate worker host for background jobs that must drain continuously.",
-      },
-    ];
-  }
-
-  return [
-    {
-      state: "ok",
-      label: `${targetTitle} jobs worker`,
-      detail: "NP_ENABLE_JOBS is set; run a separate `pnpm worker` process/service",
-    },
-  ];
 }
 
 async function loadPg(): Promise<unknown> {
@@ -615,13 +456,13 @@ async function main(): Promise<void> {
   // Production-only checks. Each returns null in dev mode so the
   // dev-default doctor output is unchanged.
   for (const result of [
-    checkSecretLengthProd(),
-    checkJobsEnabledProd(),
-    checkStorageProd(deployTarget),
-    ...checkTargetStorageProd(deployTarget),
-    checkSiteUrlProd(),
-    checkSchedulerTokenProd(),
-    ...checkTargetWorkerProd(deployTarget),
+    checkSecretLengthProd(PROD_MODE, process.env),
+    checkJobsEnabledProd(PROD_MODE, process.env),
+    checkStorageProd(PROD_MODE, deployTarget, process.env),
+    ...checkTargetStorageProd(PROD_MODE, deployTarget, process.env),
+    checkSiteUrlProd(PROD_MODE, process.env),
+    checkSchedulerTokenProd(PROD_MODE, process.env),
+    ...checkTargetWorkerProd(PROD_MODE, deployTarget, process.env),
   ]) {
     if (result) checks.push(result);
   }
