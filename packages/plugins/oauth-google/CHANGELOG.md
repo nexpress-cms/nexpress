@@ -1,5 +1,13 @@
 # @nexpress/plugin-oauth-google
 
+## 0.3.9
+
+### Patch Changes
+
+- @nexpress/core@0.3.9
+- @nexpress/oauth-providers@0.3.9
+- @nexpress/plugin-sdk@0.3.9
+
 ## 0.3.8
 
 ### Patch Changes

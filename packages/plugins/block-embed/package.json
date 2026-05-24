@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-block-embed",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Embed blocks (YouTube, Vimeo, Twitter) for the page builder. Sample plugin showcasing URL-driven blocks.",
   "license": "MIT",
   "author": "Nexpress",

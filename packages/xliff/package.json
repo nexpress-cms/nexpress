@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/xliff",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "XLIFF translation export/import for NexPress i18n.",
   "license": "MIT",
   "author": "Nexpress",
