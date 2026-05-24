@@ -1,6 +1,9 @@
 import { findDocuments } from "@nexpress/core";
 import type { NpRouteRenderProps } from "@nexpress/theme";
+import type { Metadata } from "next";
 import * as React from "react";
+
+import { findPublishedPostsForTag } from "../post-tags.js";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -16,23 +19,69 @@ function formatDate(value: unknown): string {
   }
 }
 
-export async function DefaultTagArchiveRoute({
-  params,
-}: NpRouteRenderProps): Promise<React.ReactElement> {
-  const slug = params.slug ?? "";
+interface TagSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  count: number;
+}
+
+async function loadTagBySlug(slug: string): Promise<Record<string, unknown> | null> {
   const tagResult = await findDocuments<Record<string, unknown>>("tags", {
     where: { slug },
     limit: 1,
   });
-  const tag = tagResult.docs[0] ?? null;
+  return tagResult.docs[0] ?? null;
+}
+
+async function countPostsForTag(tagId: string): Promise<number> {
+  const result = await findPublishedPostsForTag(tagId, { limit: 1 });
+  return result.totalDocs;
+}
+
+async function loadTagCloud(activeSlug: string): Promise<TagSummary[]> {
+  const result = await findDocuments<Record<string, unknown>>("tags", {
+    sort: "name",
+    limit: 24,
+  });
+
+  const rows: TagSummary[] = [];
+  for (const tag of result.docs) {
+    const id = asString(tag.id);
+    const name = asString(tag.name);
+    const slug = asString(tag.slug);
+    if (!id || !name || !slug) continue;
+
+    rows.push({
+      id,
+      name,
+      slug,
+      description: asString(tag.description) ?? undefined,
+      count: await countPostsForTag(id),
+    });
+  }
+
+  return rows
+    .filter((tag) => tag.count > 0 || tag.slug === activeSlug)
+    .sort((a, b) => {
+      if (a.slug === activeSlug) return -1;
+      if (b.slug === activeSlug) return 1;
+      return b.count - a.count || a.name.localeCompare(b.name);
+    })
+    .slice(0, 12);
+}
+
+export async function DefaultTagArchiveRoute({
+  params,
+}: NpRouteRenderProps): Promise<React.ReactElement> {
+  const slug = params.slug ?? "";
+  const tag = await loadTagBySlug(slug);
   const tagId = asString(tag?.id);
   const posts = tagId
-    ? await findDocuments<Record<string, unknown>>("posts", {
-        where: { status: "published", tags: tagId },
-        sort: "-publishedAt",
-        limit: 24,
-      })
+    ? await findPublishedPostsForTag(tagId, { limit: 24 })
     : { docs: [], totalDocs: 0 };
+  const tagCloud = await loadTagCloud(slug);
   const title = asString(tag?.name) ?? slug;
   const description =
     asString(tag?.description) ??
@@ -46,13 +95,31 @@ export async function DefaultTagArchiveRoute({
         <nav className="np-default-tag-crumbs" aria-label="Breadcrumb">
           <a href="/">Writing</a>
           <span>/</span>
-          <span>Tags</span>
+          <a href="/blog">Archive</a>
         </nav>
-        <span className="np-default-tag-mark">{slug}</span>
+        <span className="np-default-tag-mark">topic archive</span>
         <h1>
           {title} <span>{posts.totalDocs.toString()} posts</span>
         </h1>
         <p>{description}</p>
+      </section>
+
+      <section className="np-default-tag-metrics" aria-label="Archive metrics">
+        <div>
+          <span>Topic</span>
+          <strong>{title}</strong>
+          <p>{slug}</p>
+        </div>
+        <div>
+          <span>Published</span>
+          <strong>{posts.totalDocs.toString()}</strong>
+          <p>{posts.totalDocs === 1 ? "post" : "posts"}</p>
+        </div>
+        <div>
+          <span>Graph</span>
+          <strong>{tagCloud.length.toString()}</strong>
+          <p>active tags</p>
+        </div>
       </section>
 
       {feature ? (
@@ -98,6 +165,40 @@ export async function DefaultTagArchiveRoute({
           <p className="np-default-tag-empty">No posts in this tag yet.</p>
         )}
       </section>
+
+      {tagCloud.length > 0 ? (
+        <section className="np-default-tag-cloud" aria-label="Browse tags">
+          <div className="np-section-head">
+            <h2>Browse the graph</h2>
+            <span className="np-section-head-meta">tags with live post counts</span>
+          </div>
+          <ul>
+            {tagCloud.map((item) => (
+              <li key={item.id}>
+                <a href={`/tag/${item.slug}`} data-active={item.slug === slug ? "true" : undefined}>
+                  <span>{item.name}</span>
+                  <strong>{item.count.toString()}</strong>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </main>
   );
+}
+
+export async function defaultTagArchiveMetadata({ params }: NpRouteRenderProps): Promise<Metadata> {
+  const slug = params.slug ?? "";
+  const tag = await loadTagBySlug(slug);
+  const title = asString(tag?.name) ?? slug;
+  const description =
+    asString(tag?.description) ??
+    `Posts tagged ${title}, collected from the default NexPress publication.`;
+
+  return {
+    title: `${title} archive`,
+    description,
+    alternates: { canonical: `/tag/${slug}` },
+  };
 }

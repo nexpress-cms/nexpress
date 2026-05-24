@@ -24,6 +24,7 @@ import {
   NP_DEFAULT_SITE_ID,
   type NpAuthUser,
   type NpConfig,
+  type NpFieldConfig,
   type NpPluginConfig,
   type NpReconcileSchedulesResult,
   type NpResolvedPluginLike,
@@ -174,6 +175,11 @@ function toCamelCase(slug: string): string {
   return slug.replace(/[-_](.)/g, (_, ch: string) => ch.toUpperCase());
 }
 
+function toPascalCase(value: string): string {
+  const camel = toCamelCase(value);
+  return camel ? `${camel.charAt(0).toUpperCase()}${camel.slice(1)}` : "";
+}
+
 /**
  * Best-effort hostname extractor for the boot-time safety check
  * (#597). Postgres URLs follow the standard `postgres://...`
@@ -204,10 +210,7 @@ function extractDatabaseHost(connectionString: string | null): string | null {
  *
  * Anyone else falls through and the resolver drops the override.
  */
-export async function canActorUseSite(
-  user: NpAuthUser,
-  siteId: string,
-): Promise<boolean> {
+export async function canActorUseSite(user: NpAuthUser, siteId: string): Promise<boolean> {
   if (await isSuperAdmin(user)) return true;
   const memberships = await listMembershipsForUser(user.id);
   if (memberships.some((m) => m.siteId === siteId)) return true;
@@ -215,10 +218,7 @@ export async function canActorUseSite(
   return false;
 }
 
-function resolveTable(
-  generatedSchema: Record<string, unknown>,
-  slug: string,
-): unknown {
+function resolveTable(generatedSchema: Record<string, unknown>, slug: string): unknown {
   const identifier = `${toCamelCase(slug)}Table`;
   const table = generatedSchema[identifier];
   if (!table) {
@@ -229,6 +229,61 @@ function resolveTable(
     );
   }
   return table;
+}
+
+function resolveNestedTable(
+  generatedSchema: Record<string, unknown>,
+  collectionSlug: string,
+  path: string[],
+): unknown {
+  const identifier = `${toCamelCase(collectionSlug)}${path.map(toPascalCase).join("")}Table`;
+  const table = generatedSchema[identifier];
+  if (!table) {
+    throw new Error(
+      `Collection "${collectionSlug}" field "${path.join(".")}" has no matching generated ` +
+        `Drizzle table (expected export \`${identifier}\`). ` +
+        `Did you run \`pnpm db:generate\` after changing nested fields?`,
+    );
+  }
+  return table;
+}
+
+function resolveRelatedTables(
+  generatedSchema: Record<string, unknown>,
+  collectionSlug: string,
+  fields: NpFieldConfig[],
+): { childTables: Record<string, unknown>; joinTables: Record<string, unknown> } {
+  const childTables: Record<string, unknown> = {};
+  const joinTables: Record<string, unknown> = {};
+
+  function collect(currentFields: NpFieldConfig[], prefix: string[]): void {
+    for (const field of currentFields) {
+      if (field.type === "group") {
+        collect(field.fields, [...prefix, field.name]);
+        continue;
+      }
+
+      if (field.type === "row" || field.type === "collapsible") {
+        collect(field.fields, prefix);
+        continue;
+      }
+
+      const path = [...prefix, field.name];
+      const fieldPath = path.join(".");
+
+      if (field.type === "array") {
+        childTables[fieldPath] = resolveNestedTable(generatedSchema, collectionSlug, path);
+        continue;
+      }
+
+      if (field.type === "relationship" && field.hasMany) {
+        joinTables[fieldPath] = resolveNestedTable(generatedSchema, collectionSlug, path);
+      }
+    }
+  }
+
+  collect(fields, []);
+  return { childTables, joinTables };
 }
 
 /**
@@ -292,9 +347,9 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // become common.
       containerEnv: Boolean(
         process.env.KUBERNETES_SERVICE_HOST ||
-          process.env.FLY_REGION ||
-          process.env.RENDER_INSTANCE_ID ||
-          process.env.RAILWAY_ENVIRONMENT_NAME,
+        process.env.FLY_REGION ||
+        process.env.RENDER_INSTANCE_ID ||
+        process.env.RAILWAY_ENVIRONMENT_NAME,
       ),
       // #597 — three more prod-only checks that map to common
       // dev → prod slip-ups: noop email in prod, loopback DATABASE_URL
@@ -308,10 +363,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       // (`NP_EMAIL_ADAPTER`) is the right signal at this boot stage.
       emailAdapterEnv: process.env.NP_EMAIL_ADAPTER ?? null,
       databaseHost: extractDatabaseHost(
-        options.connectionString ||
-          config.db.connectionString ||
-          process.env.DATABASE_URL ||
-          null,
+        options.connectionString || config.db.connectionString || process.env.DATABASE_URL || null,
       ),
       siteUrl: process.env.SITE_URL ?? null,
       // #621 — `getOptionalRateLimiter()` returns the adapter the
@@ -330,10 +382,16 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
     if (collectionsRegistered) return;
 
     for (const collection of config.collections) {
+      const relatedTables = resolveRelatedTables(
+        generatedSchema,
+        collection.slug,
+        collection.fields,
+      );
       registerCollection(
         collection.slug,
         resolveTable(generatedSchema, collection.slug),
         collection,
+        relatedTables,
       );
     }
 
@@ -388,12 +446,7 @@ export function createBootstrap(options: BootstrapOptions): Bootstrap {
       if (!secret) return null;
       try {
         const db = getDb();
-        const user = await verifyTokenFull(
-          sessionToken,
-          secret,
-          db as never,
-          "access",
-        );
+        const user = await verifyTokenFull(sessionToken, secret, db as never, "access");
         if (!user) return null;
         return (await canActorUseSite(user, siteId)) ? siteId : null;
       } catch {

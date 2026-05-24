@@ -5,7 +5,7 @@ import { defaultCategories, defaultPages } from "./seed-content.js";
 import { DefaultHeader } from "./header.js";
 import { DefaultShell } from "./shell.js";
 import { defaultThemeCss } from "./styles.js";
-import { DefaultTagArchiveRoute } from "./routes/tag-archive.js";
+import { DefaultTagArchiveRoute, defaultTagArchiveMetadata } from "./routes/tag-archive.js";
 import { PageAboutTemplate } from "./templates/page-about.js";
 import { PageDefaultTemplate } from "./templates/page-default.js";
 import { PageFrontTemplate } from "./templates/page-front.js";
@@ -329,14 +329,20 @@ export const defaultTheme = defineTheme({
         },
       },
     },
-    routes: [{ pattern: "/tag/:slug", component: DefaultTagArchiveRoute }],
+    routes: [
+      {
+        pattern: "/tag/:slug",
+        component: DefaultTagArchiveRoute,
+        metadata: defaultTagArchiveMetadata,
+      },
+    ],
   },
 });
 
 export { DefaultShell } from "./shell.js";
 export { DefaultHeader } from "./header.js";
 export { DefaultFooter } from "./footer.js";
-export { DefaultTagArchiveRoute } from "./routes/tag-archive.js";
+export { DefaultTagArchiveRoute, defaultTagArchiveMetadata } from "./routes/tag-archive.js";
 export { MemberStatusWidget } from "./components/member-status-widget.js";
 export { MobileNav } from "./components/mobile-nav.js";
 export { SocialLinks } from "./components/social-links.js";

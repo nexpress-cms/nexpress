@@ -1127,6 +1127,9 @@ importers:
       '@nexpress/theme':
         specifier: workspace:*
         version: link:../../theme
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.21.0)
     devDependencies:
       '@types/react':
         specifier: ^19.0.0

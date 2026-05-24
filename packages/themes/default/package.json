@@ -42,7 +42,8 @@
     "@nexpress/core": "workspace:*",
     "@nexpress/editor": "workspace:*",
     "@nexpress/next": "workspace:*",
-    "@nexpress/theme": "workspace:*"
+    "@nexpress/theme": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

@@ -17,11 +17,12 @@ export function registerCollection(
   config: NpCollectionConfig,
   opts?: { childTables?: Record<string, unknown>; joinTables?: Record<string, unknown> },
 ): void {
+  const existing = registry.get(slug);
   registry.set(slug, {
     config,
     table,
-    childTables: opts?.childTables,
-    joinTables: opts?.joinTables,
+    childTables: opts?.childTables ?? existing?.childTables,
+    joinTables: opts?.joinTables ?? existing?.joinTables,
   });
 }
 
