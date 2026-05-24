@@ -1,4 +1,4 @@
-import { findDocuments } from "@nexpress/core";
+import { findDocuments, findPosts } from "@nexpress/core";
 import type { NpRouteRenderProps } from "@nexpress/theme";
 import * as React from "react";
 
@@ -31,7 +31,7 @@ export async function MagazineSectionArchiveRoute({
   const category = categories.docs[0];
   const categoryId = typeof category?.id === "string" ? category.id : null;
   const result = categoryId
-    ? await findDocuments<Record<string, unknown>>("posts", {
+    ? await findPosts({
         where: { status: "published", categories: categoryId },
         sort: "-publishedAt",
         limit: 24,

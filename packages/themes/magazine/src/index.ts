@@ -91,7 +91,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "When the office began in 1994 there were 1,032 paper subscribers. Today there are eighty-four — public libraries, mostly, plus a small ring of architects, urban planners, the city's own records office, and one private collector in Daegu who has ordered a copy of every edition since 1998 and writes a letter back, every spring, listing the corrections he has spotted in the previous year's run.",
     ]),
     publishedAt: at(0),
-    tagNames: ["Features"],
+    categoryNames: ["Features"],
     data: {
       authorName: "Helena Park",
       featured: true,
@@ -108,7 +108,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "His workshop is on the second floor of a building that has otherwise been a noodle restaurant since the late nineties. The smell of broth gets into everything; the apprentices say it changes the way the wood ages.",
     ]),
     publishedAt: at(1),
-    tagNames: ["Profiles"],
+    categoryNames: ["Profiles"],
   },
   {
     title: "In praise of the slow train, the long letter, the second draft",
@@ -119,7 +119,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "The argument for slowness is usually a moral one, which is the surest way to lose the argument. The better case is technical: a slow thing leaves room around it. The long letter has room for the question the short note didn't have time to ask. The second draft has room for the sentence the first draft made you write before you knew what you meant.",
     ]),
     publishedAt: at(2),
-    tagNames: ["Essays"],
+    categoryNames: ["Essays"],
   },
   {
     title: "A small republic of bicycle repairmen, in a courtyard nobody owns",
@@ -130,7 +130,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "There is no rent. There is no signage. The men do not advertise. The customers find them the same way customers found a barber forty years ago — by walking past, by asking a neighbour, by knowing somebody who already knew. The waiting time, on a good Friday, can be three hours.",
     ]),
     publishedAt: at(3),
-    tagNames: ["Reporting"],
+    categoryNames: ["Reporting"],
   },
   // ── Dispatches (timed, short) ─────────────────────────────
   {
@@ -141,7 +141,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "The Bucheon literature festival's third day belonged to the Q&A. Two writers, one translator, and a small room with the heating on too high — the kind of room a festival is supposed to outgrow. Nobody seemed to mind. The translator caught up gradually. The writers waited. The audience took notes in margins.",
     ]),
     publishedAt: at(0, 7, 42),
-    tagNames: ["Dispatches"],
+    categoryNames: ["Dispatches"],
   },
   {
     title:
@@ -151,7 +151,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "The bakery on Bukchon-ro 8-gil has been under renovation for fourteen years. The neighbours say the owner was waiting for the right baker. The right baker, it turns out, is the owner's granddaughter, who took over the lease at twenty-three and has spent six years figuring out how to bring back exactly seven recipes from the original menu and quietly add three of her own.",
     ]),
     publishedAt: at(1, 18, 10),
-    tagNames: ["Dispatches"],
+    categoryNames: ["Dispatches"],
   },
   {
     title: "What we read this week — and which one we'll be arguing about for the next six months.",
@@ -160,7 +160,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "Three of the four editors agreed on the book. The fourth thinks the other three are wrong, and is preparing a long essay about it. We expect to publish it before the autumn, and we expect at least two of us to change our minds about something by the time it lands.",
     ]),
     publishedAt: at(2, 9, 0),
-    tagNames: ["Dispatches"],
+    categoryNames: ["Dispatches"],
   },
   {
     title:
@@ -170,7 +170,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "There is a particular kind of silence that happens in a reading room when nobody has anything urgent to do. The Daegu central library has it on Tuesday afternoons, between the school groups and the evening commuters. I have started timing my trips around it.",
     ]),
     publishedAt: at(3, 14, 30),
-    tagNames: ["Dispatches"],
+    categoryNames: ["Dispatches"],
   },
   // ── Archive ───────────────────────────────────────────────
   {
@@ -181,7 +181,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "The Cheongun-dong theatre opened in 1949 with a borrowed projector and a leaking roof. It has been continuously open since — through war, censorship, the deflation of the 1990s arthouse circuit, and three separate seasons in which the building's structural engineer recommended closing it entirely. It is currently showing a Brakhage retrospective on Saturday mornings.",
     ]),
     publishedAt: at(28),
-    tagNames: ["Profiles"],
+    categoryNames: ["Profiles"],
   },
   {
     title: "My grandmother could mend anything. I can barely sew a button.",
@@ -191,7 +191,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "There are five drawers in the kitchen of my mother's house that I have not opened in twelve years. They contain — I am told — my grandmother's mending kit, her thimbles, the small wooden box she kept buttons in, and her bias-tape collection. I do not know what bias-tape is. I have been meaning to learn.",
     ]),
     publishedAt: at(32),
-    tagNames: ["Essays"],
+    categoryNames: ["Essays"],
   },
   {
     title: "The night porter knows whose flowers were delivered to which floor, and won't tell.",
@@ -201,7 +201,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "Mr. Lee has worked the overnight shift at the Imperial since 1991. He is fifty-eight years old. He knows who left the building at 3 a.m. on the second Tuesday of last month, and who came back without their shoes. He will not tell you any of it. He will, on a slow night, tell you which corridor lamps need new bulbs.",
     ]),
     publishedAt: at(45),
-    tagNames: ["Profiles"],
+    categoryNames: ["Profiles"],
   },
   {
     title: "Twenty-eight portraits, one barbershop, sixty-two years of haircuts.",
@@ -211,7 +211,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "The barbershop on Jongno 5-ga is one of those rooms that arranges itself around its regulars. Mr. Park photographed twenty-eight of them, in sittings spread across a year, and arranged the prints in the order they first walked in — 1962 to 2024. The earliest sitter is now eighty-nine. The youngest is two months old.",
     ]),
     publishedAt: at(60),
-    tagNames: ["Photography"],
+    categoryNames: ["Photography"],
   },
   {
     title: "On the small uses of carrying a notebook, in a year of carrying nothing else.",
@@ -221,7 +221,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "I spent last year trying to write every observation down by hand before it reached a screen. Twelve months, three notebooks, and a small collection of habits I did not expect. The biggest of them is that I have stopped pretending to remember things by the act of typing them. The second biggest is that my handwriting has, against my best efforts, slowly improved.",
     ]),
     publishedAt: at(75),
-    tagNames: ["Essays"],
+    categoryNames: ["Essays"],
   },
   {
     title: "The translator's translator: a quiet hand behind half the year's most-read books.",
@@ -231,7 +231,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
       "Most working literary translators in this country know about Lim Hye-young. Few of them have met her. She works mostly from home — a small apartment in Seodaemun-gu with a desk by the window and three cats, one of whom likes to sit on whatever manuscript is currently being marked up — and she returns drafts within a fortnight, with margin notes that her translators describe, almost without exception, as ruthless and exactly right.",
     ]),
     publishedAt: at(95),
-    tagNames: ["Profiles"],
+    categoryNames: ["Profiles"],
   },
 ];
 

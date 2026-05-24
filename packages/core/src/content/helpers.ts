@@ -1,11 +1,17 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { npSettings } from "../db/schema/system.js";
 import { npNavigation, npSlugHistory } from "../db/schema/system.js";
 import type { NpThemeTokens, NpThemeTokensOverlay } from "../theme/types.js";
 import type { NpNavItem, NpFindOptions, NpFindResult, NpAuthUser } from "../config/types.js";
 import { DEFAULT_THEME } from "../theme/defaults.js";
-import { findDocuments, getCollectionConfig, getDb } from "../collections/index.js";
+import {
+  findDocuments,
+  getCollectionConfig,
+  getCollectionRegistration,
+  getDb,
+} from "../collections/index.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 import { getActiveTheme } from "../themes/registry.js";
@@ -270,7 +276,110 @@ export async function findPosts(
   options: NpFindOptions,
   user?: NpAuthUser,
 ): Promise<NpFindResult> {
-  return findDocuments("posts", options, user);
+  const resolved = await resolveHasManyRelationshipWhere("posts", options);
+  if (resolved.empty) {
+    return emptyFindResult(options);
+  }
+  return findDocuments("posts", { ...options, where: resolved.where }, user);
+}
+
+function emptyFindResult(options: NpFindOptions): NpFindResult {
+  const limit = options.limit ?? 20;
+  return {
+    docs: [],
+    totalDocs: 0,
+    totalPages: 0,
+    page: options.page ?? 1,
+    limit,
+    hasNextPage: false,
+    hasPrevPage: false,
+  };
+}
+
+async function resolveHasManyRelationshipWhere(
+  collectionSlug: string,
+  options: NpFindOptions,
+): Promise<{ where: Record<string, unknown>; empty: boolean }> {
+  const where = options.where ? { ...options.where } : {};
+  const registration = getCollectionRegistration(collectionSlug);
+  const joinTables = registration.joinTables ?? {};
+  const matchedIds: string[][] = [];
+
+  for (const field of registration.config.fields) {
+    if (field.type !== "relationship" || !field.hasMany) continue;
+    const value = where[field.name];
+    if (value === undefined) continue;
+    const table = joinTables[field.name];
+    if (!table) {
+      throw new Error(
+        `Collection "${collectionSlug}" relationship field "${field.name}" has no registered join table.`,
+      );
+    }
+
+    delete where[field.name];
+    const targetIds = (Array.isArray(value) ? value : [value]).filter(
+      (item): item is string => typeof item === "string" && item.length > 0,
+    );
+    if (targetIds.length === 0) {
+      matchedIds.push([]);
+      continue;
+    }
+
+    const pgTable = table as PgTable;
+    const rows = await getDb()
+      .select({ id: parentColumn(pgTable) })
+      .from(pgTable)
+      .where(inArray(column(pgTable, "targetId"), targetIds));
+    matchedIds.push(rows.map((row) => String(row.id)));
+  }
+
+  if (matchedIds.length === 0) {
+    return { where, empty: false };
+  }
+
+  let ids = matchedIds[0] ?? [];
+  for (let i = 1; i < matchedIds.length; i++) {
+    const allowed = new Set(matchedIds[i]);
+    ids = ids.filter((id) => allowed.has(id));
+  }
+
+  const existingId = where.id;
+  if (typeof existingId === "string") {
+    ids = ids.includes(existingId) ? [existingId] : [];
+  } else if (Array.isArray(existingId)) {
+    const allowed = new Set(existingId.filter((item): item is string => typeof item === "string"));
+    ids = ids.filter((id) => allowed.has(id));
+  }
+
+  if (ids.length === 0) {
+    return { where, empty: true };
+  }
+
+  where.id = ids;
+  return { where, empty: false };
+}
+
+function column(table: PgTable, key: string): PgColumn {
+  const selected = getTableColumns(table)[key];
+  if (!selected) {
+    throw new Error(`Column '${key}' not found on relationship join table.`);
+  }
+  return selected;
+}
+
+function parentColumn(table: PgTable): PgColumn {
+  const columns = getTableColumns(table);
+  const key = Object.keys(columns).find(
+    (candidate) =>
+      candidate !== "id" &&
+      candidate !== "targetId" &&
+      candidate !== "order" &&
+      candidate.endsWith("Id"),
+  );
+  if (!key) {
+    throw new Error("Parent column not found on relationship join table.");
+  }
+  return columns[key];
 }
 
 export async function getAllPageSlugs(): Promise<string[]> {

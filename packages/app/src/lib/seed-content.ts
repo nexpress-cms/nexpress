@@ -138,6 +138,17 @@ async function tagIdsByName(): Promise<Map<string, string>> {
   return ids;
 }
 
+async function categoryIdsByName(): Promise<Map<string, string>> {
+  const result = await findDocuments("categories", { limit: 50 });
+  const ids = new Map<string, string>();
+  for (const doc of result.docs) {
+    const name = typeof doc.name === "string" ? doc.name : null;
+    const id = typeof doc.id === "string" ? doc.id : null;
+    if (name && id) ids.set(name, id);
+  }
+  return ids;
+}
+
 export interface SeedPagesOptions {
   pages?: NpThemeSeedPage[];
   /**
@@ -246,7 +257,7 @@ export async function seedPosts(
     }
   }
 
-  const tagIds = await tagIdsByName();
+  const [tagIds, categoryIds] = await Promise.all([tagIdsByName(), categoryIdsByName()]);
   const samples = options.posts ?? [];
   if (samples.length === 0) {
     return { created: 0, skipped: true };
@@ -264,8 +275,12 @@ export async function seedPosts(
     const tagRefs = (sample.tagNames ?? [])
       .map((name) => tagIds.get(name))
       .filter((id): id is string => typeof id === "string");
+    const categoryRefs = (sample.categoryNames ?? [])
+      .map((name) => categoryIds.get(name))
+      .filter((id): id is string => typeof id === "string");
     const {
       tagNames: _tagNames,
+      categoryNames: _categoryNames,
       status,
       kind,
       parentSlug,
@@ -281,6 +296,7 @@ export async function seedPosts(
       ...rest,
       author: actor.id,
       tags: tagRefs,
+      categories: categoryRefs,
     };
     if (kind) payload.kind = kind;
     if (typeof order === "number") payload.order = order;
