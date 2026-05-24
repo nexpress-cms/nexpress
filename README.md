@@ -35,6 +35,16 @@ Site at `localhost:3000`, admin at `localhost:3000/admin`. The first
 `/admin` visit on an empty DB runs a 2-step wizard for the admin account,
 site name, and optional sample content.
 
+What a fresh scaffold gives you:
+- Admin for pages, posts, media, users, members, jobs, themes, plugins,
+  imports, and site settings.
+- A public site shell backed by the active theme, with pages/posts routed
+  from Postgres instead of hard-coded Next pages.
+- Seedable starter content that matches the chosen built-in theme, so a
+  new install opens on a coherent site rather than placeholder filler.
+- Deployment scripts that check env vars, migrations, storage, worker
+  settings, and host-specific assumptions before you publish.
+
 Before deploying the site, run `pnpm run deploy:plan -- --target vercel`
 from the scaffolded project for a host-specific checklist, then run
 `pnpm run doctor:prod -- --target vercel` as the readiness gate. Doctor
@@ -67,6 +77,24 @@ reachability, migrations applied, storage dir).
 > `pnpm run setup` / `pnpm run doctor`, not `pnpm setup` / `pnpm doctor`
 > — pnpm built-ins shadow scripts of the same name; always invoke ours
 > with `pnpm run <name>`.
+
+### Built-in themes
+
+NexPress ships four reference themes. They are real npm packages, not demo-only
+fixtures, and each theme owns its templates, CSS variables, shell chrome, and
+seed content.
+
+| Theme | Best for | Fresh-site feel |
+| --- | --- | --- |
+| `@nexpress/theme-default` | Publication sites, blogs, small teams | Equilibrium-style writing index with featured essays, topic navigation, About, and newsletter surfaces |
+| `@nexpress/theme-docs` | Product docs, plugin docs, internal handbooks | Documentation landing, sidebar hierarchy, quickstart copy, callouts, code-oriented layouts |
+| `@nexpress/theme-magazine` | Editorial sites and issue-led publishing | Masthead, cover story, archive cards, bylines, reading-time metadata |
+| `@nexpress/theme-portfolio` | Studios, agencies, independent designers | Work grid, project detail, studio page, journal, and concise project CTAs |
+
+The active theme can be switched from Admin → Appearance or configured in
+`src/nexpress.config.ts`. Built-in seed data is intentionally theme-shaped:
+when you pick a theme, the first page should look like that theme's product
+promise, not like a generic CMS fixture.
 
 ### Track B — Contribute to the framework (monorepo)
 
