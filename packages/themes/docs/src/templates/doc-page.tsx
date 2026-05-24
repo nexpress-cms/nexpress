@@ -24,6 +24,7 @@ interface DocDoc {
   title: string;
   lede?: string;
   body?: NpRichTextContent;
+  content?: NpRichTextContent;
   parent?: string | null;
   order?: number;
   updatedAt?: string | Date;
@@ -69,7 +70,8 @@ export async function DocPageTemplate({
   const editHref = settings.githubRepo
     ? `${settings.githubRepo}/edit/${settings.githubBranch}/${settings.githubDocsPath}/${doc.slug}${settings.githubExtension}`
     : null;
-  const toc = extractHeadingToc(doc.body);
+  const richText = doc.body ?? doc.content;
+  const toc = extractHeadingToc(richText);
   const reportIssueHref = settings.githubRepo
     ? `${settings.githubRepo}/issues/new`
     : null;
@@ -127,14 +129,14 @@ export async function DocPageTemplate({
       ) : null}
 
       <div className="np-docs-page-body">
-        {doc.body ? (
+        {richText ? (
           // Core types `NpRichTextContent` as the opaque
           // `Record<string, unknown>`; the editor's renderer
           // refines it to `{ root: ... }`. Structural cast at
           // the boundary — both sides go through the same
           // Lexical serializer.
           renderRichText(
-            doc.body as unknown as Parameters<typeof renderRichText>[0],
+            richText as unknown as Parameters<typeof renderRichText>[0],
             { headingAnchors: true },
           )
         ) : (
