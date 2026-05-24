@@ -99,6 +99,7 @@ if (deployPlan.code !== 0) {
 }
 assertIncludes(deployPlan.output, "NexPress deploy plan: Vercel", "deploy:plan");
 assertIncludes(deployPlan.output, "NP_STORAGE_ADAPTER=s3", "deploy:plan");
+assertIncludes(deployPlan.output, "Run migrations against the same DATABASE_URL", "deploy:plan");
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 console.log("✓ deploy:plan target guidance renders");
 
@@ -116,5 +117,7 @@ console.log("✓ doctor:prod target-aware failure is actionable");
 assertIncludes(readme, "Deploy with Vercel", "README");
 assertIncludes(readme, "https://vercel.com/new?utm_source=nexpress", "README");
 assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
+assertIncludes(readme, "NP_S3_ENDPOINT", "README");
+assertIncludes(readme, "pnpm db:migrate", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
 console.log("✓ README exposes the Vercel deploy entrypoint");

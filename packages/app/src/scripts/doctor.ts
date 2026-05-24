@@ -289,7 +289,7 @@ function checkTargetStorageProd(target: DeployTarget | null): CheckResult[] {
           state: "error",
           label: `${targetTitle} storage`,
           detail: `NP_STORAGE_ADAPTER=${adapter}`,
-          hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy.",
+          hint: "Vercel's filesystem is ephemeral. Set NP_STORAGE_ADAPTER=s3 plus NP_S3_BUCKET / NP_S3_REGION before deploy; add NP_S3_ENDPOINT for R2, MinIO, or another non-AWS S3 provider.",
         },
       ];
     }
