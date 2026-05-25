@@ -129,8 +129,7 @@ async function getFormDefaults(): Promise<FormDefaults> {
   const dbHost = parsedUrl?.hostname || FALLBACK_FORM_DEFAULTS.dbHost;
   const dbPortFromUrl = parsedUrl?.port || "";
   const dbPort = envPort || dbPortFromUrl || FALLBACK_FORM_DEFAULTS.dbPort;
-  const dbName =
-    parsedUrl?.pathname?.replace(/^\//, "") || FALLBACK_FORM_DEFAULTS.dbName;
+  const dbName = parsedUrl?.pathname?.replace(/^\//, "") || FALLBACK_FORM_DEFAULTS.dbName;
   // Derive the test URL default from the parsed main URL so
   // operators who picked a non-default port don't see TEST land
   // on 5433 / different DB name. `find` still wins if the
@@ -158,6 +157,7 @@ const TOKEN = randomUUID();
 import { type SetupBody, validateBody } from "./setup-server-validate.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
+import { buildNonInteractiveSetupBody } from "./setup-non-interactive.js";
 
 /**
  * `pnpm run setup` supports three modes:
@@ -189,9 +189,7 @@ function detectMode(): Mode {
   // almost certainly impossible.
   const isSsh = Boolean(process.env.SSH_TTY || process.env.SSH_CONNECTION);
   const isLinuxHeadless =
-    process.platform === "linux" &&
-    !process.env.DISPLAY &&
-    !process.env.WAYLAND_DISPLAY;
+    process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
   if (isSsh || isLinuxHeadless) return "cli";
   return "http";
 }
@@ -245,7 +243,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (url.searchParams.get("token") !== TOKEN) {
     res.statusCode = 403;
     res.setHeader("content-type", "text/plain");
-    res.end("Forbidden — wrong or missing setup token. Re-open the URL printed by `pnpm run setup`.");
+    res.end(
+      "Forbidden — wrong or missing setup token. Re-open the URL printed by `pnpm run setup`.",
+    );
     return;
   }
 
@@ -413,7 +413,10 @@ interface PgClientLike {
 
 interface PgModuleLike {
   default: {
-    Client: new (config: { connectionString: string; connectionTimeoutMillis?: number }) => PgClientLike;
+    Client: new (config: {
+      connectionString: string;
+      connectionTimeoutMillis?: number;
+    }) => PgClientLike;
   };
 }
 
@@ -436,9 +439,7 @@ interface PgModuleLike {
  *     setup; drizzle-kit migrate is idempotent so safe to
  *     proceed without a false-positive collision flag)
  */
-async function probeExistingFrameworkTables(
-  url: string,
-): Promise<{ existing: number }> {
+async function probeExistingFrameworkTables(url: string): Promise<{ existing: number }> {
   let pg: PgModuleLike;
   try {
     // Resolve `pg` from the project root (not this module's
@@ -621,10 +622,7 @@ async function getSystemChecks(): Promise<SetupSystemCheck[]> {
   ];
 }
 
-function probeCommand(
-  command: string,
-  argv: string[],
-): Promise<{ ok: boolean; output: string }> {
+function probeCommand(command: string, argv: string[]): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolveProbe) => {
     const child = spawn(command, argv, {
       cwd: PROJECT_DIR,
@@ -766,8 +764,7 @@ async function completeFirstBoot(
         return {
           ok: false,
           output:
-            `Unknown theme '${body.adminThemeId}'. Registered themes: ` +
-            knownThemeIds.join(", "),
+            `Unknown theme '${body.adminThemeId}'. Registered themes: ` + knownThemeIds.join(", "),
         };
       }
     }
@@ -1031,9 +1028,7 @@ async function runCli(): Promise<void> {
   console.log("  NexPress setup (CLI mode)");
   console.log("  -------------------------");
   console.log(`  Will write .env → ${ENV_PATH}`);
-  console.log(
-    "  (press Ctrl+C at any prompt to abort — nothing is written until the end)",
-  );
+  console.log("  (press Ctrl+C at any prompt to abort — nothing is written until the end)");
   console.log("");
 
   // Read existing `.env` values so the prompt defaults match what
@@ -1062,10 +1057,7 @@ async function runCli(): Promise<void> {
       "PostgreSQL connection string (DATABASE_URL)",
       process.env.DATABASE_URL ?? defaults.databaseUrl,
     );
-    const npSecretInput = await ask(
-      "NP_SECRET (Enter to auto-generate 64-char hex)",
-      "",
-    );
+    const npSecretInput = await ask("NP_SECRET (Enter to auto-generate 64-char hex)", "");
     const npSecret = npSecretInput || generatedSecret();
     const siteUrl = await ask(
       "Public site URL (SITE_URL)",
@@ -1089,10 +1081,7 @@ async function runCli(): Promise<void> {
     if (testDatabaseUrl) body.testDatabaseUrl = testDatabaseUrl;
     if (storage === "s3") {
       body.s3Bucket = await ask("S3 bucket (NP_S3_BUCKET)", process.env.NP_S3_BUCKET);
-      body.s3Region = await ask(
-        "S3 region (NP_S3_REGION)",
-        process.env.NP_S3_REGION ?? "auto",
-      );
+      body.s3Region = await ask("S3 region (NP_S3_REGION)", process.env.NP_S3_REGION ?? "auto");
       const ep = await ask(
         "S3 endpoint URL (NP_S3_ENDPOINT — leave blank for AWS)",
         process.env.NP_S3_ENDPOINT ?? "",
@@ -1170,36 +1159,7 @@ async function runNonInteractive(): Promise<void> {
   console.log(`  Will write .env → ${ENV_PATH}`);
   console.log("");
 
-  const storage = (process.env.NP_STORAGE_ADAPTER === "s3" ? "s3" : "local") as
-    | "local"
-    | "s3";
-  const runMigrate =
-    (process.env.NP_SETUP_RUN_MIGRATIONS ?? "true").toLowerCase() !== "false";
-  const body: SetupBody = {
-    databaseUrl: process.env.DATABASE_URL ?? "",
-    npSecret: process.env.NP_SECRET ?? generatedSecret(),
-    siteUrl: process.env.SITE_URL ?? "http://localhost:3000",
-    storage,
-    runMigrate,
-  };
-  if (storage === "s3") {
-    if (process.env.NP_S3_BUCKET) body.s3Bucket = process.env.NP_S3_BUCKET;
-    if (process.env.NP_S3_REGION) body.s3Region = process.env.NP_S3_REGION;
-    if (process.env.NP_S3_ENDPOINT) body.s3Endpoint = process.env.NP_S3_ENDPOINT;
-  }
-  if (process.env.TEST_DATABASE_URL) body.testDatabaseUrl = process.env.TEST_DATABASE_URL;
-  const shouldCreateAdmin =
-    process.env.NP_SETUP_CREATE_ADMIN === "true" ||
-    Boolean(process.env.NP_ADMIN_EMAIL && process.env.NP_ADMIN_PASSWORD);
-  if (shouldCreateAdmin) {
-    if (process.env.NP_ADMIN_EMAIL) body.adminEmail = process.env.NP_ADMIN_EMAIL;
-    if (process.env.NP_ADMIN_PASSWORD) body.adminPassword = process.env.NP_ADMIN_PASSWORD;
-    if (process.env.NP_ADMIN_NAME) body.adminName = process.env.NP_ADMIN_NAME;
-    if (process.env.NP_ADMIN_THEME) body.adminThemeId = process.env.NP_ADMIN_THEME;
-    if (process.env.NP_SITE_NAME) body.siteName = process.env.NP_SITE_NAME;
-    body.sampleContent =
-      (process.env.NP_SETUP_SAMPLE_CONTENT ?? "true").toLowerCase() !== "false";
-  }
+  const body = buildNonInteractiveSetupBody(process.env, generatedSecret);
 
   const validated = validateBody(body);
   if ("error" in validated) {
@@ -1222,7 +1182,7 @@ async function runNonInteractive(): Promise<void> {
   await saveEnv(validated.body);
   console.log(`[setup] wrote ${ENV_PATH}`);
 
-  if (runMigrate) {
+  if (validated.body.runMigrate) {
     const result = await runMigrations(validated.body);
     if (!result.ok) {
       console.error("");

@@ -38,6 +38,7 @@ const scriptEntries = {
   "scripts/seed-admin": "src/scripts/seed-admin.ts",
   "scripts/setup-server": "src/scripts/setup-server.ts",
   "scripts/setup-server-errors": "src/scripts/setup-server-errors.ts",
+  "scripts/setup-non-interactive": "src/scripts/setup-non-interactive.ts",
   "scripts/setup-server-ports": "src/scripts/setup-server-ports.ts",
   "scripts/setup-server-validate": "src/scripts/setup-server-validate.ts",
   "scripts/worker": "src/scripts/worker.ts",
