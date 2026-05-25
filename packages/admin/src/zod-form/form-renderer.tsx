@@ -216,7 +216,7 @@ function ColorField({ field, value, onChange }: FieldProps) {
   const v = typeof value === "string" ? value : "#000000";
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
         <Input
           id={field.name}
           type="color"
@@ -258,7 +258,7 @@ function NumberField({ field, value, onChange }: FieldProps) {
 
 function BooleanField({ field, value, onChange }: FieldProps) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/60 bg-background/40 px-3 py-2">
       <Label htmlFor={field.name} className="min-w-0 cursor-pointer break-words">
         {field.description ?? field.name}
       </Label>
@@ -295,7 +295,7 @@ function ObjectField({ field, value, onChange }: FieldProps) {
       <legend className="max-w-full break-words px-1 text-xs font-medium text-muted-foreground">
         {field.description ?? field.name}
       </legend>
-      <div className="space-y-3">
+      <div className="min-w-0 space-y-3">
         {f.fields.map((child) => (
           <FieldDispatch
             key={child.name}
@@ -323,7 +323,7 @@ function ArrayField({ field, value, onChange }: FieldProps) {
 
   return (
     <FieldShell name={field.name} description={field.description ?? field.name}>
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         {items.length === 0 ? <p className="text-xs text-muted-foreground">No items.</p> : null}
         {items.map((item, idx) => {
           const itemV = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
@@ -332,7 +332,7 @@ function ArrayField({ field, value, onChange }: FieldProps) {
               key={idx}
               className="min-w-0 space-y-2 rounded-md border border-border/60 bg-background/30 p-3"
             >
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                 <span className="min-w-0 break-words text-xs font-medium text-muted-foreground">
                   Item {idx + 1}
                 </span>
@@ -450,7 +450,7 @@ function UnsupportedField({ field, value, onChange }: FieldProps) {
           }
         }}
       />
-      <p className="text-[11px] text-muted-foreground">
+      <p className="break-words text-[11px] text-muted-foreground">
         Field type <code className="break-all">{f.zodTypeName}</code> doesn't have a dedicated
         editor in v0.2 — edit as JSON.
       </p>

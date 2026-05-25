@@ -148,7 +148,7 @@ export function BlockJsonDialog({
             save.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap sm:items-center">
           <Button
             type="button"
             variant="ghost"
