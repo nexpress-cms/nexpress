@@ -17,13 +17,7 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
 type CommunityScope = "site" | "category" | "collection" | "thread";
 
@@ -82,11 +76,7 @@ const EMPTY_FORM: GrantFormState = {
  * filtered by the chosen scope so a `category-mod` definition
  * doesn't show up under scope `collection`.
  */
-export function MemberRolesPanel({
-  memberId,
-  memberHandle,
-  canModify,
-}: MemberRolesPanelProps) {
+export function MemberRolesPanel({ memberId, memberHandle, canModify }: MemberRolesPanelProps) {
   const router = useRouter();
   const [grants, setGrants] = useState<MemberRoleGrantRow[]>([]);
   const [definitions, setDefinitions] = useState<RoleDefinition[]>([]);
@@ -114,10 +104,7 @@ export function MemberRolesPanel({
   // changes — otherwise a leftover `category-mod` selection survives
   // a scope flip to `site` and the API rejects the grant.
   useEffect(() => {
-    if (
-      form.role &&
-      !eligibleRoles.some((r) => r.role === form.role)
-    ) {
+    if (form.role && !eligibleRoles.some((r) => r.role === form.role)) {
       setForm((f) => ({ ...f, role: eligibleRoles[0]?.role ?? "" }));
     }
   }, [eligibleRoles, form.role]);
@@ -127,19 +114,14 @@ export function MemberRolesPanel({
     setError(null);
     try {
       const [grantsRes, rolesRes] = await Promise.all([
-        npFetch(
-          `/api/admin/community/role-grants?memberId=${encodeURIComponent(memberId)}`,
-        ),
+        npFetch(`/api/admin/community/role-grants?memberId=${encodeURIComponent(memberId)}`),
         npFetch("/api/admin/community/roles"),
       ]);
       const grantsRaw = (await grantsRes.json().catch(() => null)) as Record<
         string,
         unknown
       > | null;
-      const rolesRaw = (await rolesRes.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const rolesRaw = (await rolesRes.json().catch(() => null)) as Record<string, unknown> | null;
       if (!grantsRes.ok || !grantsRaw) {
         setError(extractErrorMessage(grantsRaw) ?? `HTTP ${grantsRes.status}`);
         return;
@@ -180,10 +162,7 @@ export function MemberRolesPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const raw = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
@@ -203,14 +182,10 @@ export function MemberRolesPanel({
     setRevokingId(grantId);
     setError(null);
     try {
-      const res = await npFetch(
-        `/api/admin/community/role-grants/${encodeURIComponent(grantId)}`,
-        { method: "DELETE" },
-      );
-      const raw = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const res = await npFetch(`/api/admin/community/role-grants/${encodeURIComponent(grantId)}`, {
+        method: "DELETE",
+      });
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
@@ -226,18 +201,18 @@ export function MemberRolesPanel({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle>Community roles</CardTitle>
+      <CardHeader className="grid gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <CardTitle className="min-w-0">Community roles</CardTitle>
         {canModify ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => {
               setForm({
                 ...EMPTY_FORM,
-                role:
-                  definitions.find((d) => d.scopeType === "site")?.role ?? "",
+                role: definitions.find((d) => d.scopeType === "site")?.role ?? "",
               });
               setGrantOpen(true);
             }}
@@ -261,26 +236,24 @@ export function MemberRolesPanel({
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : grants.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            @{memberHandle} has no community role grants. Granting a role gives
-            this member the moderation capabilities for the chosen scope.
+            <span className="break-all">@{memberHandle}</span> has no community role grants.
+            Granting a role gives this member the moderation capabilities for the chosen scope.
           </p>
         ) : (
           <ul className="space-y-2">
             {grants.map((g) => {
-              const def = definitions.find(
-                (d) => d.role === g.role && d.scopeType === g.scopeType,
-              );
+              const def = definitions.find((d) => d.role === g.role && d.scopeType === g.scopeType);
               return (
                 <li
                   key={g.id}
-                  className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3"
+                  className="grid gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex sm:items-start sm:justify-between"
                 >
-                  <div className="flex-1 space-y-1">
+                  <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="default">{def?.label ?? g.role}</Badge>
                       <Badge variant="secondary">{g.scopeType}</Badge>
                       {g.scopeId ? (
-                        <code className="rounded bg-background px-2 py-0.5 font-mono text-xs">
+                        <code className="inline-block max-w-full break-all rounded bg-background px-2 py-0.5 font-mono text-xs">
                           {g.scopeId}
                         </code>
                       ) : null}
@@ -291,7 +264,7 @@ export function MemberRolesPanel({
                       ) : null}
                     </div>
                     {def && def.capabilities.length > 0 ? (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="break-words text-xs text-muted-foreground">
                         {def.capabilities.length} capabilities ·{" "}
                         {def.capabilities.slice(0, 4).join(", ")}
                         {def.capabilities.length > 4 ? "…" : ""}
@@ -306,6 +279,7 @@ export function MemberRolesPanel({
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="w-full sm:w-auto"
                       onClick={() => void revoke(g.id)}
                       disabled={revokingId === g.id}
                     >
@@ -323,12 +297,11 @@ export function MemberRolesPanel({
         <Dialog open onOpenChange={(open) => !open && setGrantOpen(false)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Grant role to @{memberHandle}</DialogTitle>
+              <DialogTitle className="break-words">Grant role to @{memberHandle}</DialogTitle>
               <DialogDescription>
-                Granting a role gives this member the moderation capabilities
-                for the chosen scope. Use site-wide for `community-mod`, or
-                pick a category / collection / thread to limit the grant.
-                The action is recorded in the audit log.
+                Granting a role gives this member the moderation capabilities for the chosen scope.
+                Use site-wide for `community-mod`, or pick a category / collection / thread to limit
+                the grant. The action is recorded in the audit log.
               </DialogDescription>
             </DialogHeader>
 
@@ -339,9 +312,7 @@ export function MemberRolesPanel({
                 </Label>
                 <Select
                   value={form.scopeType}
-                  onValueChange={(v) =>
-                    setForm((f) => ({ ...f, scopeType: v as CommunityScope }))
-                  }
+                  onValueChange={(v) => setForm((f) => ({ ...f, scopeType: v as CommunityScope }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -397,9 +368,7 @@ export function MemberRolesPanel({
                   <Input
                     id="grant-scope-id"
                     value={form.scopeId}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, scopeId: e.target.value }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, scopeId: e.target.value }))}
                     placeholder={
                       form.scopeType === "collection"
                         ? "posts, discussions, …"
@@ -422,13 +391,9 @@ export function MemberRolesPanel({
                   id="grant-expires-at"
                   type="datetime-local"
                   value={form.expiresAt}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, expiresAt: e.target.value }))
-                  }
+                  onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Leave blank for a permanent grant.
-                </p>
+                <p className="text-xs text-muted-foreground">Leave blank for a permanent grant.</p>
               </div>
             </div>
 
@@ -441,11 +406,7 @@ export function MemberRolesPanel({
               >
                 Cancel
               </Button>
-              <Button
-                type="button"
-                onClick={() => void grant()}
-                disabled={granting || !form.role}
-              >
+              <Button type="button" onClick={() => void grant()} disabled={granting || !form.role}>
                 {granting ? "Granting…" : "Grant role"}
               </Button>
             </DialogFooter>

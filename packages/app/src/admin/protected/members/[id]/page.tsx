@@ -1,10 +1,4 @@
-import {
-  NpForbiddenError,
-  NpNotFoundError,
-  npMembers,
-  verifyTokenFull,
-  can,
-} from "@nexpress/core";
+import { NpForbiddenError, NpNotFoundError, npMembers, verifyTokenFull, can } from "@nexpress/core";
 import {
   LinkedIdentitiesPanel,
   MemberBansPanel,
@@ -65,23 +59,25 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="min-w-0">
         <Link
           href="/admin/members"
           className="text-[12.5px] text-neutral-500 underline-offset-[3px] hover:underline dark:text-neutral-400"
         >
           ← Members
         </Link>
-        <div className="mt-1.5 flex items-baseline gap-2.5">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
+        <div className="mt-1.5 grid gap-1 sm:flex sm:items-baseline sm:gap-2.5">
+          <h1 className="min-w-0 break-words text-[22px] font-semibold tracking-[-0.02em] text-neutral-950 dark:text-neutral-50">
             {row.displayName}
           </h1>
-          <span className="font-mono text-[12px] text-neutral-500 dark:text-neutral-400">
+          <span className="min-w-0 break-all font-mono text-[12px] text-neutral-500 dark:text-neutral-400">
             @{row.handle}
           </span>
         </div>
-        <p className="mt-1 text-[13px] text-neutral-500 dark:text-neutral-400">
-          {row.email} · status: {row.status} · reputation: {row.reputation}
+        <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[13px] text-neutral-500 dark:text-neutral-400">
+          <span className="min-w-0 break-all">{row.email}</span>
+          <span>status: {row.status}</span>
+          <span>reputation: {row.reputation}</span>
         </p>
       </div>
 

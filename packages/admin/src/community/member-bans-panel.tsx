@@ -17,13 +17,7 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 import { Switch } from "../ui/switch.js";
 
 const SCOPE_OPTIONS = [
@@ -89,11 +83,7 @@ const EMPTY_FORM: BanFormState = {
  * mental model is "anything in this list is currently restricting
  * the account".
  */
-export function MemberBansPanel({
-  memberId,
-  memberHandle,
-  canModify,
-}: MemberBansPanelProps) {
+export function MemberBansPanel({ memberId, memberHandle, canModify }: MemberBansPanelProps) {
   const router = useRouter();
   const [bans, setBans] = useState<BanRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,10 +105,7 @@ export function MemberBansPanel({
       const res = await npFetch(
         `/api/admin/community/bans?memberId=${encodeURIComponent(memberId)}`,
       );
-      const raw = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
@@ -149,9 +136,7 @@ export function MemberBansPanel({
         // no offset suffix — feed it through `new Date()` to get the
         // browser's interpretation, then ISO-stringify so the API
         // sees an unambiguous UTC timestamp.
-        body.expiresAt = form.expiresAt
-          ? new Date(form.expiresAt).toISOString()
-          : "";
+        body.expiresAt = form.expiresAt ? new Date(form.expiresAt).toISOString() : "";
       }
       if (form.reason.trim()) {
         body.reason = form.reason.trim();
@@ -162,10 +147,7 @@ export function MemberBansPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const raw = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !raw) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
@@ -185,14 +167,10 @@ export function MemberBansPanel({
     setRevokingId(banId);
     setError(null);
     try {
-      const res = await npFetch(
-        `/api/admin/community/bans/${encodeURIComponent(banId)}`,
-        { method: "DELETE" },
-      );
-      const raw = (await res.json().catch(() => null)) as Record<
-        string,
-        unknown
-      > | null;
+      const res = await npFetch(`/api/admin/community/bans/${encodeURIComponent(banId)}`, {
+        method: "DELETE",
+      });
+      const raw = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok) {
         setError(extractErrorMessage(raw) ?? `HTTP ${res.status}`);
         return;
@@ -208,13 +186,14 @@ export function MemberBansPanel({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle>Bans</CardTitle>
+      <CardHeader className="grid gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <CardTitle className="min-w-0">Bans</CardTitle>
         {canModify ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => {
               setForm(EMPTY_FORM);
               setIssueOpen(true);
@@ -239,21 +218,22 @@ export function MemberBansPanel({
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : bans.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No active bans. Issuing a ban prevents @{memberHandle} from posting
-            comments or new community content within the chosen scope.
+            No active bans. Issuing a ban prevents{" "}
+            <span className="break-all">@{memberHandle}</span> from posting comments or new
+            community content within the chosen scope.
           </p>
         ) : (
           <ul className="space-y-2">
             {bans.map((ban) => (
               <li
                 key={ban.id}
-                className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3"
+                className="grid gap-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 sm:flex sm:items-start sm:justify-between"
               >
-                <div className="flex-1 space-y-1">
+                <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="destructive">{ban.scopeType}</Badge>
                     {ban.scopeId ? (
-                      <code className="rounded bg-background px-2 py-0.5 font-mono text-xs">
+                      <code className="inline-block max-w-full break-all rounded bg-background px-2 py-0.5 font-mono text-xs">
                         {ban.scopeId}
                       </code>
                     ) : null}
@@ -265,7 +245,7 @@ export function MemberBansPanel({
                     ) : null}
                   </div>
                   {ban.reason ? (
-                    <p className="text-sm text-foreground/80">{ban.reason}</p>
+                    <p className="break-words text-sm text-foreground/80">{ban.reason}</p>
                   ) : null}
                   <p className="text-xs text-muted-foreground">
                     Issued {new Date(ban.createdAt).toLocaleString()}
@@ -276,6 +256,7 @@ export function MemberBansPanel({
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => void revoke(ban.id)}
                     disabled={revokingId === ban.id}
                   >
@@ -292,11 +273,10 @@ export function MemberBansPanel({
         <Dialog open onOpenChange={(open) => !open && setIssueOpen(false)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Ban @{memberHandle}</DialogTitle>
+              <DialogTitle className="break-words">Ban @{memberHandle}</DialogTitle>
               <DialogDescription>
-                Choose a scope and duration. Site-wide bans block every
-                community write; scoped bans restrict the chosen
-                category/collection. The action is recorded in the audit log.
+                Choose a scope and duration. Site-wide bans block every community write; scoped bans
+                restrict the chosen category/collection. The action is recorded in the audit log.
               </DialogDescription>
             </DialogHeader>
 
@@ -307,9 +287,7 @@ export function MemberBansPanel({
                 </Label>
                 <Select
                   value={form.scopeType}
-                  onValueChange={(v) =>
-                    setForm((f) => ({ ...f, scopeType: v as BanScope }))
-                  }
+                  onValueChange={(v) => setForm((f) => ({ ...f, scopeType: v as BanScope }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -330,46 +308,33 @@ export function MemberBansPanel({
                     htmlFor="ban-scope-id"
                     className="text-xs uppercase tracking-wide text-muted-foreground"
                   >
-                    {form.scopeType === "category"
-                      ? "Category id"
-                      : "Collection slug"}
+                    {form.scopeType === "category" ? "Category id" : "Collection slug"}
                   </Label>
                   <Input
                     id="ban-scope-id"
                     value={form.scopeId}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, scopeId: e.target.value }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, scopeId: e.target.value }))}
                     placeholder={
-                      form.scopeType === "collection"
-                        ? "posts, discussions, …"
-                        : "category-uuid"
+                      form.scopeType === "collection" ? "posts, discussions, …" : "category-uuid"
                     }
                   />
                 </div>
               ) : null}
 
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="ban-permanent"
-                    className="text-sm font-medium"
-                  >
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                <div className="min-w-0 space-y-1">
+                  <Label htmlFor="ban-permanent" className="text-sm font-medium">
                     Permanent ban
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Permanent bans never expire — revoke from this panel to
-                    lift them.
+                    Permanent bans never expire — revoke from this panel to lift them.
                   </p>
                 </div>
                 <Switch
                   id="ban-permanent"
                   checked={form.kind === "permanent"}
                   onCheckedChange={(v) =>
-                    setForm((f) => ({
-                      ...f,
-                      kind: v ? "permanent" : "temporary",
-                    }))
+                    setForm((f) => ({ ...f, kind: v ? "permanent" : "temporary" }))
                   }
                 />
               </div>
@@ -386,9 +351,7 @@ export function MemberBansPanel({
                     id="ban-expires-at"
                     type="datetime-local"
                     value={form.expiresAt}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, expiresAt: e.target.value }))
-                    }
+                    onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
                   />
                 </div>
               ) : null}
@@ -403,9 +366,7 @@ export function MemberBansPanel({
                 <Input
                   id="ban-reason"
                   value={form.reason}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, reason: e.target.value }))
-                  }
+                  onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
                   placeholder="Repeat spam, harassment, etc."
                 />
               </div>

@@ -74,31 +74,37 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
         <CardTitle className="text-destructive">Danger zone</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Delete every piece of content this member authored — comments,
-          discussions, uploaded images. Existing references in other docs
-          are preserved (the operator must clean those up separately, see
-          the count of skipped media). The action is logged in the audit
-          trail. The member account itself is NOT deleted; ban or revoke
-          identity separately if needed.
+        <p className="break-words text-sm text-muted-foreground">
+          Delete every piece of content this member authored — comments, discussions, uploaded
+          images. Existing references in other docs are preserved (the operator must clean those up
+          separately, see the count of skipped media). The action is logged in the audit trail. The
+          member account itself is NOT deleted; ban or revoke identity separately if needed.
         </p>
 
         {error ? (
-          <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div
+            role="alert"
+            className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
             {error}
           </div>
         ) : null}
 
         {result ? (
-          <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+          <div
+            role="status"
+            className="break-words rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400"
+          >
             <p>
-              <strong>Purge complete for @{memberHandle}.</strong>
+              <strong>
+                Purge complete for <span className="break-all">@{memberHandle}</span>.
+              </strong>
             </p>
             <ul className="mt-2 list-inside list-disc space-y-1">
               <li>{result.comments} comments deleted</li>
               {Object.entries(result.documents).map(([slug, count]) => (
                 <li key={slug}>
-                  {count} {slug} deleted
+                  {count} <span className="break-all">{slug}</span> deleted
                 </li>
               ))}
               <li>
@@ -115,6 +121,7 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
           <Button
             type="button"
             variant="destructive"
+            className="w-full sm:w-auto"
             onClick={() => setConfirming(true)}
             disabled={submitting}
           >
@@ -127,13 +134,14 @@ export function MemberPurgePanel({ memberId, memberHandle }: MemberPurgePanelPro
         <Dialog open onOpenChange={(open) => !open && setConfirming(false)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete all content by @{memberHandle}?</DialogTitle>
+              <DialogTitle className="break-words">
+                Delete all content by @{memberHandle}?
+              </DialogTitle>
               <DialogDescription>
-                This wipes comments, member-authored docs, and uploaded
-                media in one sweep. Audit log records the action. Items
-                still referenced from other docs (embedded media) are
-                skipped — you&rsquo;ll see them in the count and can clean up
-                separately. The member account itself is untouched.
+                This wipes comments, member-authored docs, and uploaded media in one sweep. Audit
+                log records the action. Items still referenced from other docs (embedded media) are
+                skipped — you&rsquo;ll see them in the count and can clean up separately. The member
+                account itself is untouched.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
