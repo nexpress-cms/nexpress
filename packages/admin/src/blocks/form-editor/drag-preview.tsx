@@ -20,9 +20,9 @@ export interface DragPreviewProps {
 export function DragPreview({ block, definition }: DragPreviewProps): ReactNode {
   if (!block) return null;
   return (
-    <Card className="min-w-[18rem] border-border/60 px-4 py-3 shadow-2xl">
-      <div className="text-sm font-semibold">{definition?.label ?? block.type}</div>
-      <div className="font-mono text-xs text-muted-foreground">{block.type}</div>
+    <Card className="w-[min(18rem,calc(100vw-2rem))] min-w-0 border-border/60 px-4 py-3 shadow-2xl">
+      <div className="truncate text-sm font-semibold">{definition?.label ?? block.type}</div>
+      <div className="truncate font-mono text-xs text-muted-foreground">{block.type}</div>
     </Card>
   );
 }

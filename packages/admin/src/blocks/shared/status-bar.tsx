@@ -88,8 +88,8 @@ export function StatusBar({
   startSlot,
 }: StatusBarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3.5 py-2 text-xs text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3.5 py-2 text-xs text-muted-foreground dark:border-neutral-800/80 dark:bg-neutral-900/40">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         {startSlot}
         {/* Build the segment list mode-aware, then interpose `·`
             separators in render. The same component covers Doc
@@ -139,17 +139,19 @@ export function StatusBar({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         {activeMeta && activeType ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200/80 bg-background px-2 py-0.5 text-[11px] dark:border-neutral-800/80">
+          <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-neutral-200/80 bg-background px-2 py-0.5 text-[11px] dark:border-neutral-800/80">
             <BlockIcon
               icon={activeMeta.icon}
               kind={activeMeta.iconKind}
               sizeClassName="h-3 w-3"
               className="text-muted-foreground"
             />
-            <span className="font-medium text-foreground">{activeMeta.label ?? activeType}</span>
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground/80">
+            <span className="min-w-0 truncate font-medium text-foreground">
+              {activeMeta.label ?? activeType}
+            </span>
+            <code className="inline-block max-w-[8rem] truncate rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground/80">
               {activeType}
             </code>
           </span>

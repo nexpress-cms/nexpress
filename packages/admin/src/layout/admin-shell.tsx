@@ -426,8 +426,10 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
               setMobileOpen(true);
             }}
           />
-          <main className="flex-1 px-4 py-5 sm:px-5 md:px-8 md:py-7">
-            <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-6">{children}</div>
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-5 md:px-8 md:py-7">
+            <div className="mx-auto flex min-w-0 w-full max-w-[1180px] flex-col gap-6">
+              {children}
+            </div>
           </main>
         </div>
       </div>

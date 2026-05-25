@@ -711,12 +711,12 @@ export function BlockPageEditor({
   return (
     <section
       ref={sectionRef}
-      className={cn("np-block-page-editor flex flex-col gap-4")}
+      className={cn("np-block-page-editor flex min-w-0 flex-col gap-4")}
       onKeyDown={handleKeyboardNav}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <ModeSwitch view={view} onViewChange={setView} scope={viewScope} />
-        <div className="grid w-full grid-cols-3 gap-1 sm:flex sm:w-auto sm:items-center">
+        <div className="grid min-w-0 w-full grid-cols-1 gap-1 min-[360px]:grid-cols-3 sm:flex sm:w-auto sm:items-center">
           <Button
             type="button"
             variant="ghost"
@@ -761,12 +761,12 @@ export function BlockPageEditor({
           empty selection. */}
       {selectedIds.size >= 1 ? (
         <div
-          className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 backdrop-blur"
+          className="sticky top-0 z-20 flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 backdrop-blur"
           role="region"
           aria-label="Bulk block actions"
         >
           <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
-          <div className="grid w-full grid-cols-2 gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+          <div className="grid min-w-0 w-full grid-cols-1 gap-1 min-[360px]:grid-cols-2 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
             <div className="relative" ref={wrapPickerRef}>
               <Button
                 type="button"
@@ -799,7 +799,7 @@ export function BlockPageEditor({
                         key={def.type}
                         type="button"
                         role="menuitem"
-                        className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        className="flex min-w-0 w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
                         onClick={() => {
                           dispatch({
                             type: "WRAP_MANY",
@@ -813,8 +813,8 @@ export function BlockPageEditor({
                           clearSelection();
                         }}
                       >
-                        <span>{def.label}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground">
+                        <span className="min-w-0 truncate">{def.label}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                           {def.type}
                         </span>
                       </button>
@@ -896,7 +896,7 @@ export function BlockPageEditor({
             items={blocks.map((block) => block.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               {blocks.map((block, index) => {
                 const blockDefinition = definitions.get(block.type);
                 const blockLabel = blockDefinition?.label ?? block.type;
@@ -948,7 +948,7 @@ export function BlockPageEditor({
                 );
               })}
               {blocks.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
+                <div className="min-w-0 rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center sm:px-6 sm:py-10">
                   <p className="mb-4 text-sm text-muted-foreground">
                     No blocks yet. Pick one to start building the page.
                   </p>
@@ -958,7 +958,7 @@ export function BlockPageEditor({
                     hero/heading and a paragraph or grid. We show
                     only blocks the host actually registered so a
                     plugin-light setup doesn't see broken buttons. */}
-                  <div className="flex flex-wrap justify-center gap-2">
+                  <div className="flex min-w-0 flex-wrap justify-center gap-2">
                     {(() => {
                       const preferred = ["hero", "heading", "text", "grid", "cta"];
                       const pickList: NpBlockMetadata[] = [];
@@ -1003,7 +1003,7 @@ export function BlockPageEditor({
       ) : null}
 
       {view === "page" ? (
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-center">
+        <div className="grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:items-center sm:justify-center">
           <BlockPalette
             availableBlocks={availableBlocks}
             onAdd={(type) => dispatch({ type: "ADD", blockType: type })}
@@ -1052,7 +1052,7 @@ export function BlockPageEditor({
               mounted the target, EditorAsidePortal renders nothing
               (a console warning fires in dev). */}
       <EditorAsidePortal targetId={asideMountId}>
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <OutlinePanel
             blocks={blocks}
             definitions={definitions}
