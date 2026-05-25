@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkJobsEnabledProd,
+  checkMigrationStatusReadiness,
   checkSchedulerTokenProd,
   checkSecretLengthProd,
   checkSiteUrlProd,
@@ -9,6 +10,22 @@ import {
   checkTargetStorageProd,
   checkTargetWorkerProd,
 } from "./doctor-readiness.js";
+import type { MigrationStatus } from "./migration-status.js";
+
+const migrated: MigrationStatus = {
+  local: [
+    { index: 0, tag: "0000_init", createdAt: 1_700_000_000_000, hash: "hash-init" },
+    { index: 1, tag: "0001_posts", createdAt: 1_700_000_100_000, hash: "hash-posts" },
+  ],
+  applied: [
+    { id: 1, createdAt: 1_700_000_000_000, hash: "hash-init" },
+    { id: 2, createdAt: 1_700_000_100_000, hash: "hash-posts" },
+  ],
+  latestApplied: { id: 2, createdAt: 1_700_000_100_000, hash: "hash-posts" },
+  pending: [],
+  drifted: [],
+  unknownApplied: [],
+};
 
 describe("doctor production target readiness", () => {
   it("keeps target checks out of the default dev doctor path", () => {
@@ -131,6 +148,88 @@ describe("doctor production target readiness", () => {
         id: "prod.storage_adapter",
         state: "ok",
         label: "Storage adapter (production): local",
+      }),
+    );
+  });
+
+  it("reports fully applied migration status as ok", () => {
+    expect(checkMigrationStatusReadiness(true, migrated)).toEqual({
+      id: "migrations.applied",
+      state: "ok",
+      label: "Migrations applied",
+      detail: "2/2 migrations applied",
+    });
+  });
+
+  it("warns for pending migrations in dev and errors in prod", () => {
+    const status: MigrationStatus = {
+      ...migrated,
+      local: [
+        ...migrated.local,
+        { index: 2, tag: "0002_comments", createdAt: 1_700_000_200_000, hash: "hash-comments" },
+      ],
+      pending: [
+        { index: 2, tag: "0002_comments", createdAt: 1_700_000_200_000, hash: "hash-comments" },
+      ],
+    };
+
+    expect(checkMigrationStatusReadiness(false, status)).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: "1 pending of 3 local",
+      }),
+    );
+    expect(checkMigrationStatusReadiness(true, status)).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "1 pending of 3 local",
+      }),
+    );
+  });
+
+  it("treats missing local migration metadata as deployment-blocking in prod", () => {
+    expect(
+      checkMigrationStatusReadiness(true, {
+        ...migrated,
+        local: [],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "no local migrations found",
+      }),
+    );
+  });
+
+  it("errors on migration drift or rows not present in local code", () => {
+    expect(
+      checkMigrationStatusReadiness(true, {
+        ...migrated,
+        drifted: [
+          {
+            tag: "0001_posts",
+            createdAt: 1_700_000_100_000,
+            localHash: "hash-posts",
+            appliedHash: "changed",
+          },
+        ],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "1 applied migration hash mismatch",
+      }),
+    );
+
+    expect(
+      checkMigrationStatusReadiness(true, {
+        ...migrated,
+        unknownApplied: [{ id: 3, createdAt: 1_700_000_999_000, hash: "from-another-codebase" }],
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: "1 applied migration row not present locally",
       }),
     );
   });

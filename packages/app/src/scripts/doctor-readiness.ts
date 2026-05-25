@@ -1,4 +1,5 @@
 import { deployTargetTitle, type DeployTarget } from "./deploy-targets.js";
+import type { MigrationStatus } from "./migration-status.js";
 
 export interface CheckResult {
   id: string;
@@ -121,6 +122,58 @@ export function checkSchedulerTokenProd(prodMode: boolean, env: DoctorEnv): Chec
     };
   }
   return { id: "prod.scheduler_token", state: "ok", label: "NP_SCHEDULER_TOKEN" };
+}
+
+export function checkMigrationStatusReadiness(
+  prodMode: boolean,
+  status: MigrationStatus,
+): CheckResult {
+  if (status.local.length === 0) {
+    return {
+      id: "migrations.applied",
+      state: prodMode ? "error" : "warn",
+      label: "Migrations applied",
+      detail: "no local migrations found",
+      hint: "Run `pnpm db:generate`, review the generated SQL, then run `pnpm db:migrate`.",
+    };
+  }
+
+  if (status.drifted.length > 0) {
+    return {
+      id: "migrations.applied",
+      state: "error",
+      label: "Migrations applied",
+      detail: `${status.drifted.length.toString()} applied migration hash mismatch`,
+      hint: "Local migration SQL no longer matches what this database recorded. Restore the migration files from git or reset the database before deploying.",
+    };
+  }
+
+  if (status.unknownApplied.length > 0) {
+    return {
+      id: "migrations.applied",
+      state: "error",
+      label: "Migrations applied",
+      detail: `${status.unknownApplied.length.toString()} applied migration row not present locally`,
+      hint: "DATABASE_URL may point at a different NexPress codebase or a newer deploy. Check the database target before applying more migrations.",
+    };
+  }
+
+  if (status.pending.length > 0) {
+    return {
+      id: "migrations.applied",
+      state: prodMode ? "error" : "warn",
+      label: "Migrations applied",
+      detail: `${status.pending.length.toString()} pending of ${status.local.length.toString()} local`,
+      hint: "Run `pnpm db:migrate` before starting the app or deploying.",
+    };
+  }
+
+  return {
+    id: "migrations.applied",
+    state: "ok",
+    label: "Migrations applied",
+    detail: `${status.applied.length.toString()}/${status.local.length.toString()} migrations applied`,
+  };
 }
 
 export function checkTargetStorageProd(

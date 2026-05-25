@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import type { QueryResult, QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 
 export const MIGRATIONS_SCHEMA = "drizzle";
 export const MIGRATIONS_TABLE = "__drizzle_migrations";
@@ -11,7 +11,7 @@ interface MigrationQueryClient {
   query<T extends QueryResultRow = QueryResultRow>(
     text: string,
     values?: unknown[],
-  ): Promise<QueryResult<T>>;
+  ): Promise<{ rows: T[] }>;
 }
 
 export interface LocalMigrationEntry {
