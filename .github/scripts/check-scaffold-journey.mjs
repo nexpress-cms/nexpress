@@ -51,6 +51,21 @@ function assertIncludes(text, needle, label) {
   }
 }
 
+function assertNotIncludes(text, needle, label) {
+  if (text.includes(needle)) {
+    fail(`${label} unexpectedly included text: ${needle}`, text.split("\n").slice(-40).join("\n"));
+  }
+}
+
+function assertNoAnsi(text, label) {
+  if (/\x1b\[/.test(text)) {
+    fail(
+      `${label} should not include ANSI color sequences`,
+      text.split("\n").slice(-40).join("\n"),
+    );
+  }
+}
+
 function assertNoResolverCrash(text, label) {
   if (
     /ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|Cannot find package|Cannot find module/.test(
@@ -103,6 +118,26 @@ assertIncludes(deployPlan.output, "Run migrations against the same DATABASE_URL"
 assertIncludes(deployPlan.output, "pnpm run doctor:prod -- --target vercel", "deploy:plan");
 console.log("✓ deploy:plan target guidance renders");
 
+const deployPlanBrief = runTsx("scripts/deploy-plan.ts", [
+  "--target",
+  "vercel",
+  "--brief",
+  "--no-color",
+]);
+assertNoResolverCrash(deployPlanBrief.output, "deploy:plan --brief");
+if (deployPlanBrief.code !== 0) {
+  fail(
+    "deploy:plan --brief should exit 0",
+    deployPlanBrief.output.split("\n").slice(-40).join("\n"),
+  );
+}
+assertNoAnsi(deployPlanBrief.output, "deploy:plan --brief --no-color");
+assertIncludes(deployPlanBrief.output, "Required env:", "deploy:plan --brief");
+assertIncludes(deployPlanBrief.output, "[check] NP_STORAGE_ADAPTER=s3", "deploy:plan --brief");
+assertIncludes(deployPlanBrief.output, "Run before deploy:", "deploy:plan --brief");
+assertNotIncludes(deployPlanBrief.output, "Fit", "deploy:plan --brief");
+console.log("✓ deploy:plan brief target guidance stays compact");
+
 const doctor = runTsx("scripts/doctor.ts", ["--prod", "--target", "vercel"]);
 assertNoResolverCrash(doctor.output, "doctor:prod");
 if (doctor.code === 0) {
@@ -114,10 +149,32 @@ assertIncludes(doctor.output, "Vercel storage", "doctor:prod");
 assertIncludes(doctor.output, "NP_STORAGE_ADAPTER=local", "doctor:prod");
 console.log("✓ doctor:prod target-aware failure is actionable");
 
+const doctorBrief = runTsx("scripts/doctor.ts", [
+  "--prod",
+  "--target",
+  "vercel",
+  "--brief",
+  "--no-color",
+]);
+assertNoResolverCrash(doctorBrief.output, "doctor:prod --brief");
+if (doctorBrief.code === 0) {
+  fail(
+    "doctor:prod --brief should fail against the intentional closed DB/local Vercel storage env",
+  );
+}
+assertNoAnsi(doctorBrief.output, "doctor:prod --brief --no-color");
+assertIncludes(doctorBrief.output, "NexPress doctor: prod for vercel", "doctor:prod --brief");
+assertIncludes(doctorBrief.output, "[error] target.vercel.storage", "doctor:prod --brief");
+assertIncludes(doctorBrief.output, "NP_STORAGE_ADAPTER=local", "doctor:prod --brief");
+assertNotIncludes(doctorBrief.output, "Running in --prod mode", "doctor:prod --brief");
+console.log("✓ doctor:prod brief failure stays compact");
+
 assertIncludes(readme, "Deploy with Vercel", "README");
 assertIncludes(readme, "https://vercel.com/new?utm_source=nexpress", "README");
 assertIncludes(readme, "NP_STORAGE_ADAPTER=s3", "README");
 assertIncludes(readme, "NP_S3_ENDPOINT", "README");
 assertIncludes(readme, "pnpm db:migrate", "README");
 assertIncludes(readme, "pnpm run doctor:prod -- --target vercel", "README");
+assertIncludes(readme, "pnpm run deploy:plan -- --target vercel --brief --no-color", "README");
+assertIncludes(readme, "pnpm run doctor:prod -- --target vercel --brief --no-color", "README");
 console.log("✓ README exposes the Vercel deploy entrypoint");
