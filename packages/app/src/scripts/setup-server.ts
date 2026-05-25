@@ -1486,10 +1486,11 @@ function renderHtml(defaults: FormDefaults): string {
   .checklist { display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; padding:0; margin:4px 0 0; }
   .checklist li { list-style:none; font:11.5px var(--nx-mono); color:var(--nx-neutral-500); }
   .checklist li[data-ok="true"] { color:var(--nx-success); }
-  .banner { display:grid; grid-template-columns:18px 1fr auto; gap:10px; align-items:start; padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; color:#1e3a8a; border-radius:10px; font-size:13px; }
+  .banner { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:10px; align-items:start; padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; color:#1e3a8a; border-radius:10px; font-size:13px; }
   .banner-error { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
   .banner-title { font-weight:600; }
   .banner-body { margin-top:2px; font:12.5px var(--nx-mono); opacity:.86; }
+  .banner-error .banner-body { margin-top:8px; max-height:168px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:8px 10px; border:1px solid #fecaca; border-radius:8px; background:rgba(255,255,255,.68); color:#7f1d1d; opacity:1; }
   .codepanel { background:#0f0f0e; border:1px solid #1d1d1c; border-radius:10px; overflow:hidden; }
   .code-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:#161615; border-bottom:1px solid #1d1d1c; color:#c8c8c6; font:11px var(--nx-mono); }
   .code-actions { display:inline-flex; gap:4px; }
@@ -1508,6 +1509,7 @@ function renderHtml(defaults: FormDefaults): string {
   @keyframes spin { to { transform:rotate(360deg); } }
   .log { height:200px; overflow:auto; background:#0f0f0e; border:1px solid #1d1d1c; border-radius:10px; padding:12px 14px; font:11.5px/1.65 var(--nx-mono); color:#d6d6d4; }
   .log-row { display:grid; grid-template-columns:56px 24px 1fr; gap:8px; }
+  .log-row span:last-child { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
   .log-time, .log-lvl { color:#6e6e6c; } .log-info .log-lvl { color:#6f8df0; } .log-ok .log-lvl { color:#79c87f; } .log-warn .log-lvl { color:#e5b35e; } .log-err .log-lvl { color:#e57b7b; }
   .done { display:flex; flex-direction:column; gap:22px; align-items:center; padding:18px 8px 8px; }
   .seal { width:64px; height:64px; border-radius:50%; background:var(--nx-brand-soft); color:var(--nx-brand); display:inline-flex; align-items:center; justify-content:center; font-size:28px; font-weight:700; }
